@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'models.dart';
-import 'package:uuid/uuid.dart';
 
 void main() => runApp(const MyApp());
 
@@ -10,187 +8,261 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Workout Tracker',
-      theme: ThemeData.dark(),
-      home: const WorkoutScreen(),
+      title: 'Workout Session',
+      theme: ThemeData.dark(useMaterial3: true),
+      home: const WorkoutSessionScreen(),
     );
   }
 }
 
-class WorkoutScreen extends StatefulWidget {
-  const WorkoutScreen({super.key});
+class WorkoutSessionScreen extends StatefulWidget {
+  const WorkoutSessionScreen({super.key});
 
   @override
-  State<WorkoutScreen> createState() => _WorkoutScreenState();
+  State<WorkoutSessionScreen> createState() => _WorkoutSessionScreenState();
 }
 
-class _WorkoutScreenState extends State<WorkoutScreen> {
-  final _uuid = const Uuid();
-  List<Exercise> exercises = [];
-  Map<String, List<SetRow>> sets = {};
+class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
+  // Dummy data
+  final List<ExerciseData> _exercises = [
+    ExerciseData(name: 'Bench Press', weight: 80, reps: 6, totalSets: 5),
+    ExerciseData(name: 'Squats', weight: 100, reps: 8, totalSets: 4),
+    ExerciseData(name: 'Deadlift', weight: 120, reps: 5, totalSets: 3),
+    ExerciseData(name: 'Overhead Press', weight: 50, reps: 8, totalSets: 4),
+    ExerciseData(name: 'Barbell Row', weight: 70, reps: 8, totalSets: 4),
+    ExerciseData(name: 'Pull-ups', weight: 0, reps: 10, totalSets: 3),
+  ];
 
-  @override
-  void initState() {
-    super.initState();
-    // For MVP, we start empty
-  }
+  int _currentExerciseIndex = 0;
+  int _currentSet = 1;
+  final int _restSeconds = 72; // Static dummy countdown
 
-  void addExercise(String name) {
-    final ex = Exercise(
-      id: _uuid.v4(),
-      workoutId: 'temp', // temp workout for MVP
-      name: name,
-      order: exercises.length,
-    );
+  void _logSet() {
     setState(() {
-      exercises.add(ex);
-      sets[ex.id] = [];
+      final exercise = _exercises[_currentExerciseIndex];
+      if (_currentSet < exercise.totalSets) {
+        _currentSet++;
+      } else {
+        // Move to next exercise
+        if (_currentExerciseIndex < _exercises.length - 1) {
+          _currentExerciseIndex++;
+          _currentSet = 1;
+        }
+      }
     });
   }
 
-  void addSet(String exerciseId) {
-    final set = SetRow(
-      id: _uuid.v4(),
-      exerciseId: exerciseId,
-      reps: 10,
-      weight: 0.0,
-      duration: 0,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-    );
+  void _switchExercise(int delta) {
     setState(() {
-      sets[exerciseId]!.add(set);
+      final newIndex = _currentExerciseIndex + delta;
+      if (newIndex >= 0 && newIndex < _exercises.length) {
+        _currentExerciseIndex = newIndex;
+        _currentSet = 1;
+      }
     });
-  }
-
-  Future<void> _editSet(BuildContext context, String exerciseId, SetRow s) async {
-    final repsController = TextEditingController(text: s.reps.toString());
-    final weightController = TextEditingController(text: s.weight.toString());
-
-    final result = await showDialog<bool?>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Set'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: repsController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Reps'),
-            ),
-            TextField(
-              controller: weightController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Weight'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Save')),
-        ],
-      ),
-    );
-
-    if (result == true) {
-      final newReps = int.tryParse(repsController.text) ?? s.reps;
-      final newWeight = double.tryParse(weightController.text) ?? s.weight;
-      setState(() {
-        s.reps = newReps;
-        s.weight = newWeight;
-      });
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final exercise = _exercises[_currentExerciseIndex];
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Workout Tracker')),
-      body: ListView(
-        padding: const EdgeInsets.all(12),
-        children: [
-          ...exercises.map((ex) => Card(
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(ex.name, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  ...sets[ex.id]!.map((s) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                initialValue: s.reps.toString(),
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(labelText: 'Reps'),
-                                onChanged: (v) {
-                                  final val = int.tryParse(v) ?? s.reps;
-                                  setState(() => s.reps = val);
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextFormField(
-                                initialValue: s.weight.toString(),
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                decoration: const InputDecoration(labelText: 'Weight'),
-                                onChanged: (v) {
-                                  final val = double.tryParse(v) ?? s.weight;
-                                  setState(() => s.weight = val);
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      )),
-                  TextButton(
-                    onPressed: () => addSet(ex.id),
-                    child: const Text('Add Set'),
-                  ),
-                ],
-              ),
-            ),
-          )),
-          TextButton(
-            onPressed: () async {
-              final nameController = TextEditingController();
-              final result = await showDialog<String?>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('New Exercise'),
-                  content: TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Exercise name',
-                      hintText: 'e.g. Squats',
-                    ),
-                    autofocus: true,
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(null),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(nameController.text.trim()),
-                      child: const Text('Add'),
-                    ),
+      backgroundColor: theme.colorScheme.surface,
+      body: GestureDetector(
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity! > 0) {
+            _switchExercise(-1); // Swipe right = previous
+          } else if (details.primaryVelocity! < 0) {
+            _switchExercise(1); // Swipe left = next
+          }
+        },
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Header
+              _buildHeader(theme),
+
+              const SizedBox(height: 48),
+
+              // Central focus area
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _buildWeightReps(exercise, theme),
+                    const SizedBox(height: 32),
+                    _buildSetProgress(exercise, theme),
+                    const SizedBox(height: 24),
+                    _buildSetIndicator(exercise, theme),
+                    const SizedBox(height: 48),
+                    _buildRestIndicator(theme),
                   ],
                 ),
-              );
-              if (result != null && result.isNotEmpty) {
-                addExercise(result);
-              }
-            },
-            child: const Text('Add Exercise'),
+              ),
+
+              // Primary action
+              _buildPrimaryAction(theme),
+
+              const SizedBox(height: 16),
+
+              // Secondary controls
+              _buildSecondaryControls(theme),
+
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Row(
+        children: [
+          Icon(Icons.arrow_back, color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _exercises[_currentExerciseIndex].name,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildWeightReps(ExerciseData exercise, ThemeData theme) {
+    return Text(
+      exercise.weight > 0 ? '${exercise.weight} × ${exercise.reps}' : '${exercise.reps}',
+      style: theme.textTheme.displayLarge?.copyWith(
+        fontSize: 72,
+        fontWeight: FontWeight.w300,
+        letterSpacing: -2,
+      ),
+    );
+  }
+
+  Widget _buildSetProgress(ExerciseData exercise, ThemeData theme) {
+    return Text(
+      'SET $_currentSet / ${exercise.totalSets}',
+        style: theme.textTheme.titleMedium?.copyWith(
+        letterSpacing: 2,
+        color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+
+  Widget _buildSetIndicator(ExerciseData exercise, ThemeData theme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(exercise.totalSets, (index) {
+        final isCompleted = index < _currentSet - 1;
+        final isCurrent = index == _currentSet - 1;
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          width: isCurrent ? 14 : 10,
+          height: isCurrent ? 14 : 10,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isCompleted
+                ? theme.colorScheme.primary
+                    : isCurrent
+                      ? theme.colorScheme.primary.withAlpha((0.5 * 255).round())
+                      : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildRestIndicator(ThemeData theme) {
+    return Text(
+      'REST ${(_restSeconds ~/ 60).toString().padLeft(2, '0')}:${(_restSeconds % 60).toString().padLeft(2, '0')}',
+        style: theme.textTheme.bodyLarge?.copyWith(
+        color: theme.colorScheme.onSurface.withAlpha((0.4 * 255).round()),
+        letterSpacing: 1,
+      ),
+    );
+  }
+
+  Widget _buildPrimaryAction(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: SizedBox(
+        width: double.infinity,
+        height: 64,
+        child: FilledButton(
+          onPressed: _logSet,
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.primary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          child: Text(
+            'LOG SET',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSecondaryControls(ThemeData theme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildIconButton(Icons.pause, theme),
+        const SizedBox(width: 32),
+        _buildIconButton(Icons.edit_outlined, theme),
+        const SizedBox(width: 32),
+        _buildIconButton(Icons.skip_next_outlined, theme),
+      ],
+    );
+  }
+
+  Widget _buildIconButton(IconData icon, ThemeData theme) {
+    return IconButton(
+      onPressed: () {},
+      icon: Icon(icon),
+      color: theme.colorScheme.onSurface.withAlpha((0.3 * 255).round()),
+      iconSize: 24,
+    );
+  }
+}
+
+class ExerciseData {
+  final String name;
+  final double weight;
+  final int reps;
+  final int totalSets;
+
+  ExerciseData({
+    required this.name,
+    required this.weight,
+    required this.reps,
+    required this.totalSets,
+  });
 }

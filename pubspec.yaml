@@ -34,6 +34,7 @@ dependencies:
   path_provider: ^2.1.5 # for DB file path
   fl_chart: ^0.60.0      # dynamic charts
   uuid: ^4.0.0              # unique IDs
+  path: ^1.8.4              # file paths
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -42,6 +43,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  sqflite_common_ffi: ^2.4.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -60,6 +62,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - scripts/sqlite_schema.sql
+    - scripts/sqlite_seed.sql
 
   # To add assets to your application, add an assets section, like this:
   # assets:

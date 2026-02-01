@@ -1,0 +1,351 @@
+PRAGMA foreign_keys = ON;
+BEGIN TRANSACTION;
+
+-- Note: IDs are TEXT (UUID hex), timestamps in INTEGER (ms), booleans as INTEGER (0/1).
+CREATE TABLE app_sport_category (
+  id TEXT NOT NULL PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE app_discipline (
+  id TEXT NOT NULL PRIMARY KEY,
+  category_id TEXT NOT NULL,
+  key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY(category_id) REFERENCES app_sport_category(id)
+);
+CREATE INDEX IF NOT EXISTS IX_discipline_category ON app_discipline(category_id);
+
+CREATE TABLE app_exercise (
+  id TEXT NOT NULL PRIMARY KEY,
+  owner_user_id TEXT,
+  discipline_id TEXT,
+  name TEXT NOT NULL,
+  description TEXT,
+  movement_pattern TEXT,
+  is_archived INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY(discipline_id) REFERENCES app_discipline(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS UX_exercise_owner_name ON app_exercise(owner_user_id, name);
+
+CREATE TABLE app_exercise_alias (
+  id TEXT NOT NULL PRIMARY KEY,
+  exercise_id TEXT NOT NULL,
+  alias TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
+);
+
+CREATE TABLE app_equipment (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE app_exercise_equipment (
+  exercise_id TEXT NOT NULL,
+  equipment_id TEXT NOT NULL,
+  PRIMARY KEY (exercise_id, equipment_id),
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
+  FOREIGN KEY(equipment_id) REFERENCES app_equipment(id)
+);
+
+CREATE TABLE app_training_session (
+  id TEXT NOT NULL PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
+  started_at_ms INTEGER NOT NULL,
+  ended_at_ms INTEGER,
+  title TEXT,
+  note TEXT,
+  location_text TEXT,
+  perceived_session_rpe REAL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS IX_session_started_at ON app_training_session(started_at_ms);
+CREATE INDEX IF NOT EXISTS IX_session_owner_dirty ON app_training_session(owner_user_id, is_dirty);
+
+CREATE TABLE app_session_discipline (
+  session_id TEXT NOT NULL,
+  discipline_id TEXT NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (session_id, discipline_id),
+  FOREIGN KEY(session_id) REFERENCES app_training_session(id),
+  FOREIGN KEY(discipline_id) REFERENCES app_discipline(id)
+);
+
+CREATE TABLE app_session_segment (
+  id TEXT NOT NULL PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  order_index INTEGER NOT NULL,
+  segment_type TEXT NOT NULL,
+  discipline_id TEXT,
+  name TEXT,
+  note TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 1,
+  FOREIGN KEY(session_id) REFERENCES app_training_session(id),
+  FOREIGN KEY(discipline_id) REFERENCES app_discipline(id)
+);
+CREATE INDEX IF NOT EXISTS IX_segment_session_order ON app_session_segment(session_id, order_index);
+
+CREATE TABLE app_segment_effort (
+  id TEXT NOT NULL PRIMARY KEY,
+  segment_id TEXT NOT NULL,
+  order_index INTEGER NOT NULL,
+  effort_kind TEXT NOT NULL,
+  exercise_id TEXT,
+  note TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 1,
+  FOREIGN KEY(segment_id) REFERENCES app_session_segment(id),
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
+);
+CREATE INDEX IF NOT EXISTS IX_effort_segment_order ON app_segment_effort(segment_id, order_index);
+CREATE INDEX IF NOT EXISTS IX_effort_exercise ON app_segment_effort(exercise_id);
+
+CREATE TABLE app_unit (
+  id TEXT NOT NULL PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  unit_type TEXT,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE app_metric_definition (
+  id TEXT NOT NULL PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  data_type TEXT NOT NULL,
+  default_unit_id TEXT,
+  is_core INTEGER NOT NULL DEFAULT 0,
+  applies_to_effort_kind TEXT,
+  created_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(default_unit_id) REFERENCES app_unit(id)
+);
+
+CREATE TABLE app_metric_applicability (
+  metric_id TEXT NOT NULL,
+  effort_kind TEXT NOT NULL,
+  PRIMARY KEY (metric_id, effort_kind),
+  FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id)
+);
+
+CREATE TABLE app_effort_observation (
+  id TEXT NOT NULL PRIMARY KEY,
+  effort_id TEXT NOT NULL,
+  metric_id TEXT NOT NULL,
+  unit_id TEXT,
+  value_int INTEGER,
+  value_real REAL,
+  value_text TEXT,
+  value_bool INTEGER,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 1,
+  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id),
+  FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
+  FOREIGN KEY(unit_id) REFERENCES app_unit(id),
+  CHECK (
+    (CASE WHEN value_int IS NOT NULL THEN 1 ELSE 0 END)
+    + (CASE WHEN value_real IS NOT NULL THEN 1 ELSE 0 END)
+    + (CASE WHEN value_text IS NOT NULL THEN 1 ELSE 0 END)
+    + (CASE WHEN value_bool IS NOT NULL THEN 1 ELSE 0 END) = 1
+  )
+);
+CREATE INDEX IF NOT EXISTS IX_obs_effort ON app_effort_observation(effort_id);
+CREATE INDEX IF NOT EXISTS IX_obs_metric ON app_effort_observation(metric_id);
+
+CREATE TABLE app_exercise_pr (
+  id TEXT NOT NULL PRIMARY KEY,
+  exercise_id TEXT NOT NULL,
+  metric_id TEXT NOT NULL,
+  best_value_real REAL,
+  best_value_int INTEGER,
+  best_session_id TEXT,
+  best_effort_id TEXT,
+  computed_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
+  FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
+  FOREIGN KEY(best_session_id) REFERENCES app_training_session(id),
+  FOREIGN KEY(best_effort_id) REFERENCES app_segment_effort(id)
+);
+CREATE INDEX IF NOT EXISTS IX_exercise_pr_ex_metric ON app_exercise_pr(exercise_id, metric_id);
+
+CREATE TABLE app_training_plan (
+  id TEXT NOT NULL PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  is_archived INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE app_focus_block (
+  id TEXT NOT NULL PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  note TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(plan_id) REFERENCES app_training_plan(id)
+);
+
+CREATE TABLE app_plan_day (
+  id TEXT NOT NULL PRIMARY KEY,
+  plan_id TEXT NOT NULL,
+  block_id TEXT,
+  date TEXT NOT NULL,
+  name TEXT,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'planned',
+  linked_session_id TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(plan_id) REFERENCES app_training_plan(id),
+  FOREIGN KEY(block_id) REFERENCES app_focus_block(id),
+  FOREIGN KEY(linked_session_id) REFERENCES app_training_session(id)
+);
+CREATE INDEX IF NOT EXISTS IX_plan_day_plan_date ON app_plan_day(plan_id, date);
+
+CREATE TABLE app_workout_template (
+  id TEXT NOT NULL PRIMARY KEY,
+  owner_user_id TEXT,
+  name TEXT NOT NULL,
+  primary_discipline_id TEXT,
+  note TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(primary_discipline_id) REFERENCES app_discipline(id)
+);
+
+CREATE TABLE app_template_segment (
+  id TEXT NOT NULL PRIMARY KEY,
+  template_id TEXT NOT NULL,
+  order_index INTEGER NOT NULL,
+  segment_type TEXT NOT NULL,
+  discipline_id TEXT,
+  name TEXT,
+  note TEXT,
+  created_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(template_id) REFERENCES app_workout_template(id),
+  FOREIGN KEY(discipline_id) REFERENCES app_discipline(id)
+);
+
+CREATE TABLE app_template_effort (
+  id TEXT NOT NULL PRIMARY KEY,
+  template_segment_id TEXT NOT NULL,
+  order_index INTEGER NOT NULL,
+  effort_kind TEXT NOT NULL,
+  exercise_id TEXT,
+  note TEXT,
+  created_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(template_segment_id) REFERENCES app_template_segment(id),
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
+);
+
+CREATE TABLE app_template_target (
+  id TEXT NOT NULL PRIMARY KEY,
+  template_effort_id TEXT NOT NULL,
+  metric_id TEXT NOT NULL,
+  unit_id TEXT,
+  target_min REAL,
+  target_max REAL,
+  target_int INTEGER,
+  target_text TEXT,
+  created_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(template_effort_id) REFERENCES app_template_effort(id),
+  FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
+  FOREIGN KEY(unit_id) REFERENCES app_unit(id)
+);
+
+CREATE TABLE app_plan_day_template (
+  plan_day_id TEXT NOT NULL,
+  template_id TEXT NOT NULL,
+  PRIMARY KEY (plan_day_id, template_id),
+  FOREIGN KEY(plan_day_id) REFERENCES app_plan_day(id),
+  FOREIGN KEY(template_id) REFERENCES app_workout_template(id)
+);
+
+CREATE TABLE app_tag (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE app_session_tag (
+  session_id TEXT NOT NULL,
+  tag_id TEXT NOT NULL,
+  PRIMARY KEY (session_id, tag_id),
+  FOREIGN KEY(session_id) REFERENCES app_training_session(id),
+  FOREIGN KEY(tag_id) REFERENCES app_tag(id)
+);
+
+CREATE TABLE app_exercise_tag (
+  exercise_id TEXT NOT NULL,
+  tag_id TEXT NOT NULL,
+  PRIMARY KEY (exercise_id, tag_id),
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
+  FOREIGN KEY(tag_id) REFERENCES app_tag(id)
+);
+
+CREATE TABLE app_sync_event (
+  event_id TEXT NOT NULL PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id TEXT,
+  op TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  server_sequence INTEGER,
+  pushed_at_ms INTEGER,
+  applied_at_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS IX_sync_event_user_seq ON app_sync_event(user_id, server_sequence);
+CREATE INDEX IF NOT EXISTS IX_sync_event_user_device ON app_sync_event(user_id, device_id);
+
+CREATE TABLE app_sync_op_local_example (
+  id TEXT NOT NULL PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  op_time_ms INTEGER NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT,
+  op TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  pushed INTEGER NOT NULL DEFAULT 0
+);
+
+COMMIT;
