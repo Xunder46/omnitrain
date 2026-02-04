@@ -51,8 +51,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             _currentSet = 1;
             _showListView = false; // Show detail view when focusing a specific exercise
           }
-        } else {
-          _showListView = true; // Default to list view when no specific exercise
         }
 
         if (_currentExerciseIndex >= _exercises.length && _exercises.isNotEmpty) {
@@ -309,10 +307,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ),
               ],
             ),
-          ),
-          IconButton(
-            icon: Icon(Icons.add, color: theme.colorScheme.onSurface.withAlpha((0.7 * 255).round())),
-            onPressed: _addExercise,
           ),
         ],
       ),
