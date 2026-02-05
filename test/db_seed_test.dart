@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:omnitrain/src/data/database_provider.dart';
+import 'package:omnitrain/data/datasources/database_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 // Ensure sqflite uses ffi implementation when running on desktop/test.

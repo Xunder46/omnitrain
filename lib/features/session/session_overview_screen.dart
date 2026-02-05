@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import '../workout_session_service.dart';
+import '../../state/workout/workout_state.dart';
 import 'workout_session_screen.dart';
 
 class SessionOverviewScreen extends StatefulWidget {
-  final WorkoutSessionService sessionService;
+  final WorkoutState workoutState;
 
-  const SessionOverviewScreen({super.key, required this.sessionService});
+  const SessionOverviewScreen({super.key, required this.workoutState});
 
   @override
   State<SessionOverviewScreen> createState() => _SessionOverviewScreenState();
@@ -23,10 +23,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
   Future<void> _initializeSession() async {
     setState(() => _isLoading = true);
     try {
-      if (widget.sessionService.currentSession == null) {
-        await widget.sessionService.createNewSession();
+      if (!widget.workoutState.hasSession) {
+        await widget.workoutState.createNewSession();
       }
-      await widget.sessionService.loadSessionData();
+      await widget.workoutState.loadSessionData();
     } catch (e) {
       print('Error initializing session: $e');
     } finally {
@@ -63,10 +63,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     if (result != null && result.isNotEmpty) {
       try {
-        final effortId = await widget.sessionService.addExercise(result);
+        final effortId = await widget.workoutState.addExercise(result);
         if (effortId.isNotEmpty) {
           await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => WorkoutSessionScreen(sessionService: widget.sessionService, initialFocusId: effortId),
+            builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState, initialFocusId: effortId),
           ));
         }
         await _initializeSession();
@@ -101,7 +101,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
       );
     }
 
-    final exercises = widget.sessionService.getExercisesWithSets();
+    final exercises = widget.workoutState.getExercisesWithSets();
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,

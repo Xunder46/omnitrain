@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../workout_session_service.dart';
+import '../../state/workout/workout_state.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
-  final WorkoutSessionService sessionService;
+  final WorkoutState workoutState;
   final String? initialFocusId;
 
-  const WorkoutSessionScreen({super.key, required this.sessionService, this.initialFocusId});
+  const WorkoutSessionScreen({super.key, required this.workoutState, this.initialFocusId});
 
   @override
   State<WorkoutSessionScreen> createState() => _WorkoutSessionScreenState();
@@ -36,11 +36,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Future<void> _loadExercises() async {
     setState(() => _isLoading = true);
     try {
-      if (widget.sessionService.currentSession == null) {
-        await widget.sessionService.createNewSession();
+      if (!widget.workoutState.hasSession) {
+        await widget.workoutState.createNewSession();
       }
-      await widget.sessionService.loadSessionData();
-      final exercises = widget.sessionService.getExercisesWithSets();
+      await widget.workoutState.loadSessionData();
+      final exercises = widget.workoutState.getExercisesWithSets();
       setState(() {
         _exercises = exercises;
         final initialId = widget.initialFocusId;
@@ -127,7 +127,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     if (result != null && result.isNotEmpty) {
       String effortId = '';
       try {
-        effortId = await widget.sessionService.addExercise(result);
+        effortId = await widget.workoutState.addExercise(result);
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
@@ -152,7 +152,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     if (_exercises.isNotEmpty) {
       final exercise = _exercises[_currentExerciseIndex];
       final effortId = exercise['id'] as String;
-      await widget.sessionService.addSet(effortId);
+      await widget.workoutState.addSet(effortId);
       await _loadExercises();
     }
   }
