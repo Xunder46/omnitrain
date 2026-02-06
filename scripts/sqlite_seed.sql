@@ -251,49 +251,110 @@ INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(h
 
 -- Default shared exercises (owner_user_id IS NULL)
 INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Run', 'Outdoor or treadmill running', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
-WHERE d.key='running' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Run' AND owner_user_id IS NULL);
+JOIN (
+  SELECT 'Easy Run', 'Low intensity steady run' UNION ALL
+  SELECT 'Long Run', 'Extended endurance run' UNION ALL
+  SELECT 'Tempo Run', 'Sustained threshold pace run' UNION ALL
+  SELECT 'Interval Run', 'Repeated fast efforts with rest' UNION ALL
+  SELECT 'Hill Repeats', 'Uphill running intervals' UNION ALL
+  SELECT 'Fartlek', 'Unstructured pace variation run' UNION ALL
+  SELECT 'Recovery Run', 'Very easy recovery pace run' UNION ALL
+  SELECT 'Track Repeats', 'Measured distance intervals on track' UNION ALL
+  SELECT 'Progression Run', 'Run with gradually increasing pace' UNION ALL
+  SELECT 'Time Trial', 'Max effort over fixed distance or time'
+) e
+WHERE d.key='running'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
 
 INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Treadmill Run', 'Indoor treadmill running', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
-WHERE d.key='running' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Treadmill Run' AND owner_user_id IS NULL);
+JOIN (
+  SELECT 'Barbell Squat', 'Back squat with barbell' UNION ALL
+  SELECT 'Bench Press', 'Barbell bench press' UNION ALL
+  SELECT 'Deadlift', 'Conventional barbell deadlift' UNION ALL
+  SELECT 'Overhead Press', 'Standing barbell shoulder press' UNION ALL
+  SELECT 'Pull-Up', 'Bodyweight vertical pull' UNION ALL
+  SELECT 'Lat Pulldown', 'Cable vertical pull' UNION ALL
+  SELECT 'Dumbbell Row', 'Single-arm dumbbell row' UNION ALL
+  SELECT 'Leg Press', 'Machine-based squat pattern' UNION ALL
+  SELECT 'Lateral Raise', 'Dumbbell shoulder isolation' UNION ALL
+  SELECT 'Triceps Pressdown', 'Cable triceps extension'
+) e
+WHERE d.key='bodybuilding'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
 
 INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Bench Press', 'Compound upper body push exercise', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
-WHERE d.key='powerlifting' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Bench Press' AND owner_user_id IS NULL);
+JOIN (
+  SELECT 'Heavy Bag Rounds', 'Boxing heavy bag work' UNION ALL
+  SELECT 'Shadowboxing', 'Footwork and technique without equipment' UNION ALL
+  SELECT 'Pad Work', 'Striking drills with pads' UNION ALL
+  SELECT 'Speed Bag', 'Hand speed and rhythm training' UNION ALL
+  SELECT 'Double-End Bag', 'Timing and accuracy training' UNION ALL
+  SELECT 'Sparring', 'Live boxing rounds' UNION ALL
+  SELECT 'Defensive Drills', 'Slips, rolls, and blocks practice' UNION ALL
+  SELECT 'Footwork Drills', 'Movement and positioning drills' UNION ALL
+  SELECT 'Conditioning Rounds', 'High intensity boxing rounds' UNION ALL
+  SELECT 'Technical Rounds', 'Low intensity skill-focused rounds'
+) e
+WHERE d.key='boxing'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
 
 INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Back Squat', 'Compound lower body exercise', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
-WHERE d.key='powerlifting' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Back Squat' AND owner_user_id IS NULL);
+JOIN (
+  SELECT 'Plank Hold', 'Isometric core hold' UNION ALL
+  SELECT 'Side Plank', 'Lateral core isometric hold' UNION ALL
+  SELECT 'Wall Sit', 'Isometric leg hold' UNION ALL
+  SELECT 'Dead Hang', 'Grip and shoulder isometric hang' UNION ALL
+  SELECT 'Hollow Body Hold', 'Anterior core isometric hold' UNION ALL
+  SELECT 'Glute Bridge Hold', 'Hip extension isometric hold' UNION ALL
+  SELECT 'L-Sit Hold', 'Advanced seated isometric hold' UNION ALL
+  SELECT 'Isometric Push-Up Hold', 'Paused push-up position hold' UNION ALL
+  SELECT 'Calf Raise Hold', 'Isometric calf contraction' UNION ALL
+  SELECT 'Split Squat Hold', 'Unilateral leg isometric hold'
+) e
+WHERE d.key='calisthenics'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
 
 INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Deadlift', 'Compound posterior chain exercise', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
-WHERE d.key='powerlifting' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Deadlift' AND owner_user_id IS NULL);
-
-INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Pull-up', 'Bodyweight vertical pull exercise', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
-FROM app_discipline d
-WHERE d.key='calisthenics' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Pull-up' AND owner_user_id IS NULL);
-
-INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Couch Stretch', 'Hip flexor and quad stretch', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
-FROM app_discipline d
-WHERE d.key='stretching' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Couch Stretch' AND owner_user_id IS NULL);
-
-INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Heavy Bag Rounds', 'Boxing heavy bag work', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
-FROM app_discipline d
-WHERE d.key='boxing' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Heavy Bag Rounds' AND owner_user_id IS NULL);
-
-INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, 'Shadowboxing', 'Boxing technique and conditioning', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
-FROM app_discipline d
-WHERE d.key='boxing' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Shadowboxing' AND owner_user_id IS NULL);
+JOIN (
+  SELECT 'Plank Hold', 'Isometric core hold' UNION ALL
+  SELECT 'Side Plank', 'Lateral core isometric hold' UNION ALL
+  SELECT 'Wall Sit', 'Isometric leg hold' UNION ALL
+  SELECT 'Dead Hang', 'Grip and shoulder isometric hang' UNION ALL
+  SELECT 'Hollow Body Hold', 'Anterior core isometric hold' UNION ALL
+  SELECT 'Glute Bridge Hold', 'Hip extension isometric hold' UNION ALL
+  SELECT 'L-Sit Hold', 'Advanced seated isometric hold' UNION ALL
+  SELECT 'Isometric Push-Up Hold', 'Paused push-up position hold' UNION ALL
+  SELECT 'Calf Raise Hold', 'Isometric calf contraction' UNION ALL
+  SELECT 'Split Squat Hold', 'Unilateral leg isometric hold'
+) e
+WHERE d.key='calisthenics'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
 
 -- Exercise-Muscle Group relationships
 -- Bench Press: Chest (primary), Triceps, Shoulders
