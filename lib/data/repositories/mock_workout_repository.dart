@@ -15,7 +15,19 @@ class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, MetricDefinition> _metrics = {};
   final Map<String, MuscleGroup> _muscleGroups = {};
   final Map<String, Discipline> _disciplines = {};
+  final Map<String, SportCategory> _sportCategories = {};
+  final Map<String, Equipment> _equipment = {};
+  final Map<String, Tag> _tags = {};
+  final Map<String, WorkoutTemplate> _templates = {};
+  final Map<String, TemplateSegment> _templateSegments = {};
+  final Map<String, TemplateEffort> _templateEfforts = {};
+  final Map<String, TemplateTarget> _templateTargets = {};
+  
+  // Relationship maps
   final Map<String, List<String>> _exerciseMuscleGroups = {}; // exerciseId -> List<muscleGroupId>
+  final Map<String, List<String>> _exerciseEquipment = {}; // exerciseId -> List<equipmentId>
+  final Map<String, List<String>> _exerciseTags = {}; // exerciseId -> List<tagId>
+  final Map<String, List<String>> _metricEffortKinds = {}; // metricId -> List<effortKind>
 
   bool _initialized = false;
 
@@ -23,48 +35,86 @@ class MockWorkoutRepository implements WorkoutRepository {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // Load seed exercises
-    for (final exercise in SeedData.sampleExercises) {
-      _exercises[exercise.id] = exercise;
+    // Load sport categories
+    for (final category in SeedData.sampleSportCategories) {
+      _sportCategories[category.id] = category;
     }
 
-    // Load seed units
-    for (final unit in SeedData.defaultUnits) {
-      _units[unit.id] = unit;
-    }
-
-    // Load seed metrics
-    for (final metric in SeedData.defaultMetrics) {
-      _metrics[metric.id] = metric;
-    }
-
-    // Load seed muscle groups
-    for (final muscleGroup in SeedData.sampleMuscleGroups) {
-      _muscleGroups[muscleGroup.id] = muscleGroup;
-    }
-
-    // Load seed disciplines
+    // Load disciplines
     for (final discipline in SeedData.sampleDisciplines) {
       _disciplines[discipline.id] = discipline;
     }
 
-    // Load exercise-muscle group relationships
+    // Load exercises
+    for (final exercise in SeedData.sampleExercises) {
+      _exercises[exercise.id] = exercise;
+    }
+
+    // Load muscle groups
+    for (final muscleGroup in SeedData.sampleMuscleGroups) {
+      _muscleGroups[muscleGroup.id] = muscleGroup;
+    }
+
+    // Load equipment
+    for (final equip in SeedData.sampleEquipment) {
+      _equipment[equip.id] = equip;
+    }
+
+    // Load tags
+    for (final tag in SeedData.sampleTags) {
+      _tags[tag.id] = tag;
+    }
+
+    // Load units
+    for (final unit in SeedData.defaultUnits) {
+      _units[unit.id] = unit;
+    }
+
+    // Load metrics
+    for (final metric in SeedData.defaultMetrics) {
+      _metrics[metric.id] = metric;
+    }
+
+    // Load templates
+    for (final template in SeedData.sampleTemplates) {
+      _templates[template.id] = template;
+    }
+
+    // Load template segments
+    for (final segment in SeedData.sampleTemplateSegments) {
+      _templateSegments[segment.id] = segment;
+    }
+
+    // Load template efforts
+    for (final effort in SeedData.sampleTemplateEfforts) {
+      _templateEfforts[effort.id] = effort;
+    }
+
+    // Load template targets
+    for (final target in SeedData.sampleTemplateTargets) {
+      _templateTargets[target.id] = target;
+    }
+
+    // Load relationships
     for (final entry in SeedData.exerciseMuscleGroupRelationships.entries) {
       _exerciseMuscleGroups[entry.key] = List.from(entry.value);
+    }
+
+    for (final entry in SeedData.exerciseEquipmentRelationships.entries) {
+      _exerciseEquipment[entry.key] = List.from(entry.value);
+    }
+
+    // Build metric applicability map
+    for (final applicability in SeedData.metricApplicability) {
+      _metricEffortKinds
+          .putIfAbsent(applicability.metricId, () => [])
+          .add(applicability.effortKind);
     }
 
     _initialized = true;
   }
 
-  /// Gets default units
-  Future<List<UnitModel>> getUnits() async {
-    return _units.values.toList();
-  }
-
-  /// Gets default metrics
-  Future<List<MetricDefinition>> getMetrics() async {
-    return _metrics.values.toList();
-  }
+  // ===== EXERCISES =====
 
   @override
   Future<List<Exercise>> getExercises() async {
@@ -90,84 +140,6 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> deleteExercise(String id) async {
     _exercises.remove(id);
-  }
-
-  @override
-  Future<TrainingSession?> getSession(String id) async {
-    return _sessions[id];
-  }
-
-  @override
-  Future<String> createSession(TrainingSession session) async {
-    _sessions[session.id] = session;
-    return session.id;
-  }
-
-  @override
-  Future<void> updateSession(TrainingSession session) async {
-    _sessions[session.id] = session;
-  }
-
-  @override
-  Future<List<SessionSegment>> getSessionSegments(String sessionId) async {
-    return _segments.values
-        .where((s) => s.sessionId == sessionId)
-        .toList()
-      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
-  }
-
-  @override
-  Future<String> createSegment(SessionSegment segment) async {
-    _segments[segment.id] = segment;
-    return segment.id;
-  }
-
-  @override
-  Future<List<SegmentEffort>> getSegmentEfforts(String segmentId) async {
-    return _efforts.values
-        .where((e) => e.segmentId == segmentId)
-        .toList()
-      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
-  }
-
-  @override
-  Future<String> createEffort(SegmentEffort effort) async {
-    _efforts[effort.id] = effort;
-    return effort.id;
-  }
-
-  @override
-  Future<List<EffortObservation>> getEffortObservations(String effortId) async {
-    return _observations.values
-        .where((o) => o.effortId == effortId)
-        .toList();
-  }
-
-  @override
-  Future<String> createObservation(EffortObservation observation) async {
-    _observations[observation.id] = observation;
-    return observation.id;
-  }
-
-  @override
-  Future<void> updateObservation(EffortObservation observation) async {
-    _observations[observation.id] = observation;
-  }
-
-  @override
-  Future<List<MuscleGroup>> getMuscleGroups() async {
-    return _muscleGroups.values.toList();
-  }
-
-  @override
-  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
-    final muscleGroupIds = _exerciseMuscleGroups[exerciseId] ?? [];
-    return muscleGroupIds.map((id) => _muscleGroups[id]!).toList();
-  }
-
-  @override
-  Future<List<Discipline>> getDisciplines() async {
-    return _disciplines.values.toList();
   }
 
   @override
@@ -204,6 +176,241 @@ class MockWorkoutRepository implements WorkoutRepository {
     return results.toList();
   }
 
+  // ===== SESSIONS =====
+
+  @override
+  Future<TrainingSession?> getSession(String id) async {
+    return _sessions[id];
+  }
+
+  @override
+  Future<String> createSession(TrainingSession session) async {
+    _sessions[session.id] = session;
+    return session.id;
+  }
+
+  @override
+  Future<void> updateSession(TrainingSession session) async {
+    _sessions[session.id] = session;
+  }
+
+  // ===== SEGMENTS =====
+
+  @override
+  Future<List<SessionSegment>> getSessionSegments(String sessionId) async {
+    return _segments.values
+        .where((s) => s.sessionId == sessionId)
+        .toList()
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+  }
+
+  @override
+  Future<String> createSegment(SessionSegment segment) async {
+    _segments[segment.id] = segment;
+    return segment.id;
+  }
+
+  // ===== EFFORTS =====
+
+  @override
+  Future<List<SegmentEffort>> getSegmentEfforts(String segmentId) async {
+    return _efforts.values
+        .where((e) => e.segmentId == segmentId)
+        .toList()
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+  }
+
+  @override
+  Future<String> createEffort(SegmentEffort effort) async {
+    _efforts[effort.id] = effort;
+    return effort.id;
+  }
+
+  // ===== OBSERVATIONS =====
+
+  @override
+  Future<List<EffortObservation>> getEffortObservations(String effortId) async {
+    return _observations.values.where((o) => o.effortId == effortId).toList();
+  }
+
+  @override
+  Future<String> createObservation(EffortObservation observation) async {
+    _observations[observation.id] = observation;
+    return observation.id;
+  }
+
+  @override
+  Future<void> updateObservation(EffortObservation observation) async {
+    _observations[observation.id] = observation;
+  }
+
+  // ===== SPORT CATEGORIES =====
+
+  @override
+  Future<List<SportCategory>> getSportCategories() async {
+    return _sportCategories.values.toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  }
+
+  @override
+  Future<SportCategory?> getSportCategoryById(String id) async {
+    return _sportCategories[id];
+  }
+
+  @override
+  Future<SportCategory?> getSportCategoryByKey(String key) async {
+    return _sportCategories.values.firstWhere(
+      (c) => c.key == key,
+      orElse: () => SportCategory(
+        id: '',
+        key: key,
+        name: '',
+        createdAtMs: 0,
+        updatedAtMs: 0,
+      ),
+    ).id.isEmpty
+        ? null
+        : _sportCategories.values.firstWhere((c) => c.key == key);
+  }
+
+  // ===== DISCIPLINES =====
+
+  @override
+  Future<List<Discipline>> getDisciplines() async {
+    return _disciplines.values.toList();
+  }
+
+  @override
+  Future<Discipline?> getDisciplineById(String id) async {
+    return _disciplines[id];
+  }
+
+  @override
+  Future<List<Discipline>> getDisciplinesByCategory(String categoryId) async {
+    return _disciplines.values
+        .where((d) => d.categoryId == categoryId)
+        .toList();
+  }
+
+  // ===== MUSCLE GROUPS =====
+
+  @override
+  Future<List<MuscleGroup>> getMuscleGroups() async {
+    return _muscleGroups.values.toList();
+  }
+
+  @override
+  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
+    final muscleGroupIds = _exerciseMuscleGroups[exerciseId] ?? [];
+    return muscleGroupIds
+        .map((id) => _muscleGroups[id])
+        .whereType<MuscleGroup>()
+        .toList();
+  }
+
+  // ===== EQUIPMENT =====
+
+  @override
+  Future<List<Equipment>> getEquipment() async {
+    return _equipment.values.toList();
+  }
+
+  @override
+  Future<List<Equipment>> getExerciseEquipment(String exerciseId) async {
+    final equipmentIds = _exerciseEquipment[exerciseId] ?? [];
+    return equipmentIds
+        .map((id) => _equipment[id])
+        .whereType<Equipment>()
+        .toList();
+  }
+
+  // ===== TAGS =====
+
+  @override
+  Future<List<Tag>> getTags() async {
+    return _tags.values.toList();
+  }
+
+  @override
+  Future<List<Tag>> getExerciseTags(String exerciseId) async {
+    final tagIds = _exerciseTags[exerciseId] ?? [];
+    return tagIds.map((id) => _tags[id]).whereType<Tag>().toList();
+  }
+
+  // ===== UNITS =====
+
+  @override
+  Future<List<UnitModel>> getUnits() async {
+    return _units.values.toList();
+  }
+
+  @override
+  Future<UnitModel?> getUnitById(String id) async {
+    return _units[id];
+  }
+
+  // ===== METRICS =====
+
+  @override
+  Future<List<MetricDefinition>> getMetricDefinitions() async {
+    return _metrics.values.toList();
+  }
+
+  @override
+  Future<List<MetricDefinition>> getMetricsForEffortKind(String effortKind) async {
+    final metricIds = _metricEffortKinds.entries
+        .where((entry) => entry.value.contains(effortKind))
+        .map((entry) => entry.key)
+        .toList();
+    
+    return metricIds
+        .map((id) => _metrics[id])
+        .whereType<MetricDefinition>()
+        .toList();
+  }
+
+  @override
+  Future<MetricDefinition?> getMetricById(String id) async {
+    return _metrics[id];
+  }
+
+  // ===== TEMPLATES =====
+
+  @override
+  Future<List<WorkoutTemplate>> getTemplates() async {
+    return _templates.values.toList();
+  }
+
+  @override
+  Future<WorkoutTemplate?> getTemplateById(String id) async {
+    return _templates[id];
+  }
+
+  @override
+  Future<List<TemplateSegment>> getTemplateSegments(String templateId) async {
+    return _templateSegments.values
+        .where((s) => s.templateId == templateId)
+        .toList()
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+  }
+
+  @override
+  Future<List<TemplateEffort>> getTemplateEfforts(String templateSegmentId) async {
+    return _templateEfforts.values
+        .where((e) => e.templateSegmentId == templateSegmentId)
+        .toList()
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+  }
+
+  @override
+  Future<List<TemplateTarget>> getTemplateTargets(String templateEffortId) async {
+    return _templateTargets.values
+        .where((t) => t.templateEffortId == templateEffortId)
+        .toList();
+  }
+
+  // ===== UTILITY METHODS =====
+
   /// Clears all data (useful for testing)
   void clear() {
     _exercises.clear();
@@ -215,7 +422,17 @@ class MockWorkoutRepository implements WorkoutRepository {
     _metrics.clear();
     _muscleGroups.clear();
     _disciplines.clear();
+    _sportCategories.clear();
+    _equipment.clear();
+    _tags.clear();
+    _templates.clear();
+    _templateSegments.clear();
+    _templateEfforts.clear();
+    _templateTargets.clear();
     _exerciseMuscleGroups.clear();
+    _exerciseEquipment.clear();
+    _exerciseTags.clear();
+    _metricEffortKinds.clear();
     _initialized = false;
   }
 
