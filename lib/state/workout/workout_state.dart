@@ -17,6 +17,11 @@ class WorkoutState extends ChangeNotifier {
   final Map<String, List<EffortObservation>> _observations = {};
   final Map<String, Exercise> _exerciseCache = {};
 
+  // Exercise library data
+  List<Exercise> _allExercises = [];
+  List<MuscleGroup> _muscleGroups = [];
+  List<Discipline> _disciplines = [];
+
   bool _isLoading = false;
   String? _error;
 
@@ -26,6 +31,9 @@ class WorkoutState extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasSession => _currentSession != null;
+  List<Exercise> get allExercises => List.unmodifiable(_allExercises);
+  List<MuscleGroup> get muscleGroups => List.unmodifiable(_muscleGroups);
+  List<Discipline> get disciplines => List.unmodifiable(_disciplines);
 
   /// Get efforts for a segment
   List<SegmentEffort> getEffortsForSegment(String segmentId) {
@@ -302,6 +310,64 @@ class WorkoutState extends ChangeNotifier {
     _exerciseCache.clear();
     _clearError();
     notifyListeners();
+  }
+
+  /// Load all exercises from repository
+  Future<void> loadAllExercises() async {
+    try {
+      _allExercises = await _repository.getExercises();
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to load exercises: $e');
+    }
+  }
+
+  /// Load muscle groups from repository
+  Future<void> loadMuscleGroups() async {
+    try {
+      _muscleGroups = await _repository.getMuscleGroups();
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to load muscle groups: $e');
+    }
+  }
+
+  /// Load disciplines from repository
+  Future<void> loadDisciplines() async {
+    try {
+      _disciplines = await _repository.getDisciplines();
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to load disciplines: $e');
+    }
+  }
+
+  /// Search exercises with filters
+  Future<List<Exercise>> searchExercises({
+    String? searchText,
+    String? disciplineId,
+    List<String>? muscleGroupIds,
+  }) async {
+    try {
+      return await _repository.searchExercises(
+        searchText: searchText,
+        disciplineId: disciplineId,
+        muscleGroupIds: muscleGroupIds,
+      );
+    } catch (e) {
+      _setError('Failed to search exercises: $e');
+      return [];
+    }
+  }
+
+  /// Get muscle groups for a specific exercise
+  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
+    try {
+      return await _repository.getExerciseMuscleGroups(exerciseId);
+    } catch (e) {
+      _setError('Failed to load exercise muscle groups: $e');
+      return [];
+    }
   }
 
   // Private helpers

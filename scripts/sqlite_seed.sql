@@ -101,6 +101,17 @@ INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(random
 INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Stretching', (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_tag (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Full Body', (strftime('%s','now') * 1000));
 
+-- Muscle Groups
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Chest', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Back', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Shoulders', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Biceps', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Triceps', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Quadriceps', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Hamstrings', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Glutes', (strftime('%s','now') * 1000));
+INSERT OR IGNORE INTO app_muscle_group (id, name, created_at_ms) VALUES (lower(hex(randomblob(16))), 'Core', (strftime('%s','now') * 1000));
+
 -- Default shared exercises (owner_user_id IS NULL)
 INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), NULL, d.id, 'Run', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
@@ -136,5 +147,52 @@ INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, created_at_ms,
 SELECT lower(hex(randomblob(16))), NULL, d.id, 'Heavy Bag Rounds', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 WHERE d.key='boxing' AND NOT EXISTS (SELECT 1 FROM app_exercise WHERE name='Heavy Bag Rounds' AND owner_user_id IS NULL);
+
+-- Exercise-Muscle Group relationships
+-- Note: These INSERT statements use subqueries to look up IDs by name.
+-- In production, you may want to use fixed UUIDs for consistency across devices.
+
+-- Bench Press: Chest (primary), Triceps, Shoulders
+INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
+SELECT e.id, mg.id, 1
+FROM app_exercise e, app_muscle_group mg
+WHERE e.name = 'Bench Press' AND e.owner_user_id IS NULL AND mg.name = 'Chest';
+
+INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
+SELECT e.id, mg.id, 0
+FROM app_exercise e, app_muscle_group mg
+WHERE e.name = 'Bench Press' AND e.owner_user_id IS NULL AND mg.name = 'Triceps';
+
+INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
+SELECT e.id, mg.id, 0
+FROM app_exercise e, app_muscle_group mg
+WHERE e.name = 'Bench Press' AND e.owner_user_id IS NULL AND mg.name = 'Shoulders';
+
+-- Back Squat: Quadriceps (primary), Glutes, Hamstrings
+INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
+SELECT e.id, mg.id, 1
+FROM app_exercise e, app_muscle_group mg
+WHERE e.name = 'Back Squat' AND e.owner_user_id IS NULL AND mg.name = 'Quadriceps';
+
+INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
+SELECT e.id, mg.id, 0
+FROM app_exercise e, app_muscle_group mg
+WHERE e.name = 'Back Squat' AND e.owner_user_id IS NULL AND mg.name = 'Glutes';
+
+INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
+SELECT e.id, mg.id, 0
+FROM app_exercise e, app_muscle_group mg
+WHERE e.name = 'Back Squat' AND e.owner_user_id IS NULL AND mg.name = 'Hamstrings';
+
+-- Pull-up: Back (primary), Biceps
+INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
+SELECT e.id, mg.id, 1
+FROM app_exercise e, app_muscle_group mg
+WHERE e.name = 'Pull-up' AND e.owner_user_id IS NULL AND mg.name = 'Back';
+
+INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
+SELECT e.id, mg.id, 0
+FROM app_exercise e, app_muscle_group mg
+WHERE e.name = 'Pull-up' AND e.owner_user_id IS NULL AND mg.name = 'Biceps';
 
 COMMIT;

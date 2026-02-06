@@ -319,6 +319,21 @@ CREATE TABLE app_exercise_tag (
   FOREIGN KEY(tag_id) REFERENCES app_tag(id)
 );
 
+CREATE TABLE app_muscle_group (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE app_exercise_muscle_group (
+  exercise_id TEXT NOT NULL,
+  muscle_group_id TEXT NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (exercise_id, muscle_group_id),
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
+  FOREIGN KEY(muscle_group_id) REFERENCES app_muscle_group(id)
+);
+
 CREATE TABLE app_sync_event (
   event_id TEXT NOT NULL PRIMARY KEY,
   device_id TEXT NOT NULL,

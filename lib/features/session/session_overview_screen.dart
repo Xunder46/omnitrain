@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/pickers/exercise_picker_dialog.dart';
+import '../../data/models/models.dart';
 import 'workout_session_screen.dart';
 
 class SessionOverviewScreen extends StatefulWidget {
@@ -35,35 +37,14 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
   }
 
   Future<void> _addExercise() async {
-    final nameController = TextEditingController();
-    final result = await showDialog<String?>(
+    final selectedExercise = await showDialog<Exercise>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Exercise'),
-        content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(
-            labelText: 'Exercise name',
-            hintText: 'e.g. Squats',
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(null),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(nameController.text.trim()),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
+      builder: (context) => ExercisePickerDialog(workoutState: widget.workoutState),
     );
 
-    if (result != null && result.isNotEmpty) {
+    if (selectedExercise != null) {
       try {
-        final effortId = await widget.workoutState.addExercise(result);
+        final effortId = await widget.workoutState.addExercise(selectedExercise.name);
         if (effortId.isNotEmpty) {
           await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState, initialFocusId: effortId),

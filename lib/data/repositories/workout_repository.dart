@@ -21,4 +21,18 @@ abstract class WorkoutRepository {
   Future<List<EffortObservation>> getEffortObservations(String effortId);
   Future<String> createObservation(EffortObservation observation);
   Future<void> updateObservation(EffortObservation observation);
+
+  // Muscle groups
+  Future<List<MuscleGroup>> getMuscleGroups();
+  Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId);
+
+  // Disciplines
+  Future<List<Discipline>> getDisciplines();
+
+  // Exercise search with filters
+  Future<List<Exercise>> searchExercises({
+    String? searchText,
+    String? disciplineId,
+    List<String>? muscleGroupIds,
+  });
 }

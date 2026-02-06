@@ -449,6 +449,18 @@ class Tag {
   Map<String, dynamic> toMap() => {'id': id, 'name': name, 'created_at_ms': createdAtMs};
 }
 
+class MuscleGroup {
+  final String id;
+  final String name;
+  final int createdAtMs;
+
+  MuscleGroup({required this.id, required this.name, required this.createdAtMs});
+
+  factory MuscleGroup.fromMap(Map<String, dynamic> m) => MuscleGroup(id: m['id'] as String, name: m['name'] as String, createdAtMs: m['created_at_ms'] as int);
+
+  Map<String, dynamic> toMap() => {'id': id, 'name': name, 'created_at_ms': createdAtMs};
+}
+
 // Lightweight SetRow used by UI for logging sets. Kept separate from the
 // typed observation rows in the DB layer for simplicity.
 class SetRow {

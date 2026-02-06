@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/pickers/exercise_picker_dialog.dart';
+import '../../data/models/models.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -98,36 +100,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Future<void> _addExercise() async {
-    final nameController = TextEditingController();
-    final result = await showDialog<String?>(
+    final selectedExercise = await showDialog<Exercise>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Exercise'),
-        content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(
-            labelText: 'Exercise name',
-            hintText: 'e.g. Squats',
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(null),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(nameController.text.trim()),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
+      builder: (context) => ExercisePickerDialog(workoutState: widget.workoutState),
     );
 
-    if (result != null && result.isNotEmpty) {
+    if (selectedExercise != null) {
       String effortId = '';
       try {
-        effortId = await widget.workoutState.addExercise(result);
+        effortId = await widget.workoutState.addExercise(selectedExercise.name);
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
@@ -142,6 +123,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           setState(() {
             _currentExerciseIndex = idx;
             _currentSet = 1;
+            _showListView = false;
           });
         }
       }
