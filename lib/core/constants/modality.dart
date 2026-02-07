@@ -2,7 +2,15 @@
 /// Used for filtering, summaries, and progress grouping
 
 class Modality {
+  // Primary home screen modalities
   static const String cardioEndurance = 'cardio_endurance';
+  static const String resistanceLifting = 'resistance_lifting';
+  static const String martialArts = 'martial_arts';
+  static const String isometricStretching = 'isometric_stretching';
+  static const String sports = 'sports';
+  // Free training has no modality preset (null)
+
+  // Legacy/additional modalities (kept for compatibility)
   static const String strengthResistance = 'strength_resistance';
   static const String skillTechnique = 'skill_technique';
   static const String conditioningMixed = 'conditioning_mixed';
@@ -10,8 +18,21 @@ class Modality {
   static const String recoveryRehab = 'recovery_rehab';
   static const String competitionMatch = 'competition_match';
 
+  static const List<String> primaryHomeTiles = [
+    cardioEndurance,
+    resistanceLifting,
+    martialArts,
+    isometricStretching,
+    sports,
+    // Note: Free Training = null modality
+  ];
+
   static const List<String> all = [
     cardioEndurance,
+    resistanceLifting,
+    martialArts,
+    isometricStretching,
+    sports,
     strengthResistance,
     skillTechnique,
     conditioningMixed,
@@ -24,6 +45,14 @@ class Modality {
     switch (modality) {
       case cardioEndurance:
         return 'Cardio / Endurance';
+      case resistanceLifting:
+        return 'Resistance / Lifting';
+      case martialArts:
+        return 'Martial Arts';
+      case isometricStretching:
+        return 'Isometric / Stretching';
+      case sports:
+        return 'Sports';
       case strengthResistance:
         return 'Strength / Resistance';
       case skillTechnique:

@@ -77,7 +77,7 @@ CREATE TABLE app_training_session (
   title TEXT,
   note TEXT,
   location_text TEXT,
-  modality TEXT,
+  modality TEXT, -- Functional training type: 'cardio_endurance', 'resistance_lifting', 'martial_arts', 'isometric_stretching', 'sports', or NULL for 'Free Training'
   intent TEXT,
   perceived_session_rpe REAL,
   created_at_ms INTEGER NOT NULL,

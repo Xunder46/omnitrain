@@ -52,7 +52,9 @@ class WorkoutState extends ChangeNotifier {
   }
 
   /// Create a new workout session
-  Future<void> createNewSession() async {
+  /// [modality] - Optional training modality (e.g., 'cardio_endurance', 'resistance_lifting').
+  ///              If null, creates a 'Free Training' session with no modality preset.
+  Future<void> createNewSession({String? modality}) async {
     _setLoading(true);
     _clearError();
 
@@ -64,6 +66,7 @@ class WorkoutState extends ChangeNotifier {
         id: sessionId,
         ownerUserId: 'user-1',
         startedAtMs: now,
+        modality: modality,
         createdAtMs: now,
         updatedAtMs: now,
       );

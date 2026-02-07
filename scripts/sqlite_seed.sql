@@ -116,19 +116,21 @@ SELECT m.id, 'drill' FROM app_metric_definition m WHERE m.key = 'reps';
 INSERT OR IGNORE INTO app_metric_applicability (metric_id, effort_kind)
 SELECT m.id, 'drill' FROM app_metric_definition m WHERE m.key = 'quality';
 
--- Categories (with new fields)
+-- Categories (aligned with 6 home screen modality tiles)
+-- Note: Keys match Modality constants in lib/core/constants/modality.dart
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'cardio_endurance', 'Cardio / Endurance', 'Running, cycling, swimming, rowing', 'directions_run', 1, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
-VALUES (lower(hex(randomblob(16))), 'strength_resistance', 'Strength / Resistance', 'Weightlifting, bodybuilding, powerlifting', 'fitness_center', 2, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+VALUES (lower(hex(randomblob(16))), 'resistance_lifting', 'Resistance / Lifting', 'Weightlifting, bodybuilding, powerlifting, strength training', 'fitness_center', 2, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
-VALUES (lower(hex(randomblob(16))), 'martial_arts_combat', 'Martial Arts / Combat', 'Boxing, BJJ, Muay Thai, wrestling', 'sports_mma', 3, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+VALUES (lower(hex(randomblob(16))), 'martial_arts', 'Martial Arts', 'Boxing, BJJ, Muay Thai, wrestling, karate', 'sports_mma', 3, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
-VALUES (lower(hex(randomblob(16))), 'sports_games', 'Sports / Games', 'Soccer, basketball, tennis, general sports', 'sports_soccer', 4, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+VALUES (lower(hex(randomblob(16))), 'isometric_stretching', 'Isometric / Stretching', 'Yoga, static holds, stretching, flexibility work', 'self_improvement', 4, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
-VALUES (lower(hex(randomblob(16))), 'mobility_flexibility', 'Mobility / Flexibility', 'Yoga, stretching, mobility work', 'self_improvement', 5, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+VALUES (lower(hex(randomblob(16))), 'sports', 'Sports', 'Soccer, basketball, tennis, team sports', 'sports_soccer', 5, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+-- Legacy category (kept for backward compatibility)
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
-VALUES (lower(hex(randomblob(16))), 'recovery_rehab', 'Recovery / Rehab', 'Active recovery, physical therapy, rehab', 'spa', 6, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+VALUES (lower(hex(randomblob(16))), 'recovery_rehab', 'Recovery / Rehab', 'Active recovery, physical therapy, rehab', 'spa', 10, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 
 -- Disciplines (using category lookup)
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
@@ -154,57 +156,57 @@ WHERE c.key='cardio_endurance' AND NOT EXISTS (SELECT 1 FROM app_discipline WHER
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'boxing', 'Boxing', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='martial_arts_combat' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='boxing');
+WHERE c.key='martial_arts' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='boxing');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'bjj', 'Brazilian Jiu-Jitsu', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='martial_arts_combat' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='bjj');
+WHERE c.key='martial_arts' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='bjj');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'muay_thai', 'Muay Thai', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='martial_arts_combat' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='muay_thai');
+WHERE c.key='martial_arts' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='muay_thai');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'powerlifting', 'Powerlifting', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='strength_resistance' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='powerlifting');
+WHERE c.key='resistance_lifting' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='powerlifting');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'bodybuilding', 'Bodybuilding', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='strength_resistance' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='bodybuilding');
+WHERE c.key='resistance_lifting' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='bodybuilding');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'weightlifting', 'Olympic Weightlifting', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='strength_resistance' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='weightlifting');
+WHERE c.key='resistance_lifting' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='weightlifting');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'calisthenics', 'Calisthenics', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='strength_resistance' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='calisthenics');
+WHERE c.key='resistance_lifting' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='calisthenics');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'soccer', 'Soccer', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='sports_games' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='soccer');
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='soccer');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'basketball', 'Basketball', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='sports_games' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='basketball');
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='basketball');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'yoga', 'Yoga', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='mobility_flexibility' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='yoga');
+WHERE c.key='isometric_stretching' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='yoga');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'stretching', 'Stretching', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='mobility_flexibility' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='stretching');
+WHERE c.key='isometric_stretching' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='stretching');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'active_recovery', 'Active Recovery', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)

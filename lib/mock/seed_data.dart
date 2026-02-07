@@ -3,6 +3,7 @@ import '../data/models/models.dart';
 /// Seed data for development and testing purposes
 class SeedData {
   static final List<SportCategory> sampleSportCategories = [
+    // Primary home screen tiles (aligned with 6-tile layout)
     SportCategory(
       id: 'category-cardio',
       key: 'cardio_endurance',
@@ -14,52 +15,53 @@ class SeedData {
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     SportCategory(
-      id: 'category-strength',
-      key: 'strength_resistance',
-      name: 'Strength / Resistance',
-      description: 'Weightlifting, bodybuilding, powerlifting',
+      id: 'category-resistance',
+      key: 'resistance_lifting',
+      name: 'Resistance / Lifting',
+      description: 'Weightlifting, bodybuilding, powerlifting, strength training',
       iconName: 'fitness_center',
       sortOrder: 2,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     SportCategory(
-      id: 'category-combat',
-      key: 'martial_arts_combat',
-      name: 'Martial Arts / Combat',
-      description: 'Boxing, BJJ, Muay Thai, wrestling',
+      id: 'category-martial-arts',
+      key: 'martial_arts',
+      name: 'Martial Arts',
+      description: 'Boxing, BJJ, Muay Thai, wrestling, karate',
       iconName: 'sports_mma',
       sortOrder: 3,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     SportCategory(
-      id: 'category-sports',
-      key: 'sports_games',
-      name: 'Sports / Games',
-      description: 'Soccer, basketball, tennis, general sports',
-      iconName: 'sports_soccer',
+      id: 'category-isometric',
+      key: 'isometric_stretching',
+      name: 'Isometric / Stretching',
+      description: 'Yoga, static holds, stretching, flexibility work',
+      iconName: 'self_improvement',
       sortOrder: 4,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     SportCategory(
-      id: 'category-mobility',
-      key: 'mobility_flexibility',
-      name: 'Mobility / Flexibility',
-      description: 'Yoga, stretching, mobility work',
-      iconName: 'self_improvement',
+      id: 'category-sports',
+      key: 'sports',
+      name: 'Sports',
+      description: 'Soccer, basketball, tennis, team sports',
+      iconName: 'sports_soccer',
       sortOrder: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
+    // Legacy categories (kept for backward compatibility)
     SportCategory(
       id: 'category-recovery',
       key: 'recovery_rehab',
       name: 'Recovery / Rehab',
       description: 'Active recovery, physical therapy, rehab',
       iconName: 'spa',
-      sortOrder: 6,
+      sortOrder: 10,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
@@ -99,10 +101,10 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
-    // Strength / Resistance
+    // Resistance / Lifting
     Discipline(
       id: 'discipline-powerlifting',
-      categoryId: 'category-strength',
+      categoryId: 'category-resistance',
       key: 'powerlifting',
       name: 'Powerlifting',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -110,7 +112,7 @@ class SeedData {
     ),
     Discipline(
       id: 'discipline-bodybuilding',
-      categoryId: 'category-strength',
+      categoryId: 'category-resistance',
       key: 'bodybuilding',
       name: 'Bodybuilding',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -118,7 +120,7 @@ class SeedData {
     ),
     Discipline(
       id: 'discipline-weightlifting',
-      categoryId: 'category-strength',
+      categoryId: 'category-resistance',
       key: 'weightlifting',
       name: 'Olympic Weightlifting',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -126,16 +128,16 @@ class SeedData {
     ),
     Discipline(
       id: 'discipline-calisthenics',
-      categoryId: 'category-strength',
+      categoryId: 'category-resistance',
       key: 'calisthenics',
       name: 'Calisthenics',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
-    // Martial Arts / Combat
+    // Martial Arts
     Discipline(
       id: 'discipline-boxing',
-      categoryId: 'category-combat',
+      categoryId: 'category-martial-arts',
       key: 'boxing',
       name: 'Boxing',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -143,7 +145,7 @@ class SeedData {
     ),
     Discipline(
       id: 'discipline-bjj',
-      categoryId: 'category-combat',
+      categoryId: 'category-martial-arts',
       key: 'bjj',
       name: 'Brazilian Jiu-Jitsu',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -151,13 +153,13 @@ class SeedData {
     ),
     Discipline(
       id: 'discipline-muay-thai',
-      categoryId: 'category-combat',
+      categoryId: 'category-martial-arts',
       key: 'muay_thai',
       name: 'Muay Thai',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
-    // Sports / Games
+    // Sports
     Discipline(
       id: 'discipline-soccer',
       categoryId: 'category-sports',
@@ -174,10 +176,10 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
-    // Mobility / Flexibility
+    // Isometric / Stretching
     Discipline(
       id: 'discipline-yoga',
-      categoryId: 'category-mobility',
+      categoryId: 'category-isometric',
       key: 'yoga',
       name: 'Yoga',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -185,7 +187,7 @@ class SeedData {
     ),
     Discipline(
       id: 'discipline-stretching',
-      categoryId: 'category-mobility',
+      categoryId: 'category-isometric',
       key: 'stretching',
       name: 'Stretching',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
