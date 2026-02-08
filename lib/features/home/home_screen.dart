@@ -40,6 +40,35 @@ class HomeScreen extends StatelessWidget {
 
   /// Start a workout session with the selected modality
   Future<void> _startWorkout(BuildContext context, HomeTileConfig tile) async {
+    // Check if there's an active session
+    if (workoutState.hasActiveSession) {
+      // Show warning dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Start New Session?'),
+          content: const Text(
+            'Changing modality will start a new session. Current session will be saved.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Start New'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+      
+      // Clear current session
+      workoutState.clearSession();
+    }
+
     // Create new session with the tile's modality (null for Free Training)
     if (!workoutState.hasSession) {
       await workoutState.createNewSession(modality: tile.modality);

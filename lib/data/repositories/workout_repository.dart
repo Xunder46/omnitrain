@@ -69,5 +69,17 @@ abstract class WorkoutRepository {
   Future<List<TemplateSegment>> getTemplateSegments(String templateId);
   Future<List<TemplateEffort>> getTemplateEfforts(String templateSegmentId);
   Future<List<TemplateTarget>> getTemplateTargets(String templateEffortId);
+
+  // Exercise Capabilities
+  Future<List<String>> getExerciseCapabilities(String exerciseId);
+  Future<void> setExerciseCapabilities(String exerciseId, List<String> capabilities);
+
+  // Modality-ranked exercise retrieval
+  Future<List<Exercise>> getExercisesRankedForModality(
+    String? modality, {
+    String? searchText,
+    String? disciplineId,
+    List<String>? muscleGroupIds,
+  });
 }
 

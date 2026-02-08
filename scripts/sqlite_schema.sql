@@ -324,6 +324,14 @@ CREATE TABLE app_exercise_tag (
   FOREIGN KEY(tag_id) REFERENCES app_tag(id)
 );
 
+CREATE TABLE app_exercise_capability (
+  exercise_id TEXT NOT NULL,
+  capability TEXT NOT NULL,
+  PRIMARY KEY (exercise_id, capability),
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
+);
+CREATE INDEX IF NOT EXISTS IX_exercise_capability_cap ON app_exercise_capability(capability);
+
 CREATE TABLE app_muscle_group (
   id TEXT NOT NULL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,

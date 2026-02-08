@@ -960,6 +960,58 @@ class SeedData {
     'exercise-split-squat-hold': ['equipment-bodyweight'],
   };
 
+  /// Maps exercise IDs to capability flags
+  /// Hand-curated for seed data - each exercise declares which metrics it supports
+  static final Map<String, List<String>> exerciseCapabilityRelationships = {
+    // Running exercises - continuous time + distance tracking
+    'exercise-easy-run': ['time', 'distance'],
+    'exercise-long-run': ['time', 'distance'],
+    'exercise-tempo-run': ['time', 'distance'],
+    'exercise-interval-run': ['time', 'distance', 'rounds'],
+    'exercise-hill-repeats': ['time', 'distance', 'rounds'],
+    'exercise-fartlek': ['time', 'distance'],
+    'exercise-recovery-run': ['time', 'distance'],
+    'exercise-track-repeats': ['time', 'distance', 'rounds'],
+    'exercise-progression-run': ['time', 'distance'],
+    'exercise-time-trial': ['time', 'distance'],
+    
+    // Bodybuilding exercises - reps/sets/load primary, also support time for cardio-context
+    'exercise-barbell-squat': ['reps', 'sets', 'load', 'time'],
+    'exercise-bench-press': ['reps', 'sets', 'load', 'time'],
+    'exercise-deadlift': ['reps', 'sets', 'load', 'time'],
+    'exercise-overhead-press': ['reps', 'sets', 'load', 'time'],
+    'exercise-pullup': ['reps', 'sets', 'load', 'time'],
+    'exercise-lat-pulldown': ['reps', 'sets', 'load', 'time'],
+    'exercise-dumbbell-row': ['reps', 'sets', 'load', 'time'],
+    'exercise-leg-press': ['reps', 'sets', 'load', 'time'],
+    'exercise-lateral-raise': ['reps', 'sets', 'load', 'time'],
+    'exercise-triceps-pressdown': ['reps', 'sets', 'load', 'time'],
+    
+    // Boxing exercises - time and rounds based
+    'exercise-heavy-bag-rounds': ['time', 'rounds'],
+    'exercise-shadowboxing': ['time', 'rounds'],
+    'exercise-pad-work': ['time', 'rounds'],
+    'exercise-speed-bag': ['time', 'rounds'],
+    'exercise-double-end-bag': ['time', 'rounds'],
+    'exercise-sparring': ['time', 'rounds'],
+    'exercise-defensive-drills': ['time', 'rounds'],
+    'exercise-footwork-drills': ['time', 'rounds'],
+    'exercise-conditioning-rounds': ['time', 'rounds'],
+    'exercise-technical-rounds': ['time', 'rounds'],
+    
+    // Calisthenics/Isometric - hold time primary, also support regular time and sets for dynamic variations
+    'exercise-plank-hold': ['hold', 'time', 'sets'],
+    'exercise-side-plank': ['hold', 'time', 'sets'],
+    'exercise-wall-sit': ['hold', 'time', 'sets'],
+    'exercise-dead-hang': ['hold', 'time', 'sets'],
+    'exercise-hollow-body-hold': ['hold', 'time', 'sets'],
+    'exercise-glute-bridge-hold': ['hold', 'time', 'sets'],
+    'exercise-l-sit-hold': ['hold', 'time', 'sets'],
+    'exercise-isometric-pushup-hold': ['hold', 'time', 'sets'],
+    'exercise-calf-raise-hold': ['hold', 'time', 'sets'],
+    'exercise-split-squat-hold': ['hold', 'time', 'sets'],
+  };
+
   /// Sample workout templates
   static final List<WorkoutTemplate> sampleTemplates = [
     WorkoutTemplate(
@@ -1135,4 +1187,15 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
   ];
+}
+
+/// Helper class for metric-to-effort-kind relationships
+class MetricApplicability {
+  final String metricId;
+  final String effortKind;
+
+  const MetricApplicability({
+    required this.metricId,
+    required this.effortKind,
+  });
 }

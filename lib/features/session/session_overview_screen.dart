@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
+import '../../widgets/pickers/metric_chooser_dialog.dart';
+import '../../core/constants/modality_display.dart';
 import '../../data/models/models.dart';
 import 'workout_session_screen.dart';
 
@@ -37,17 +39,40 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
   }
 
   Future<void> _addExercise() async {
+    final modality = widget.workoutState.currentSession?.modality;
+    
     final selectedExercise = await showDialog<Exercise>(
       context: context,
-      builder: (context) => ExercisePickerDialog(workoutState: widget.workoutState),
+      builder: (context) => ExercisePickerDialog(
+        workoutState: widget.workoutState,
+        sessionModality: modality,
+      ),
     );
 
     if (selectedExercise != null) {
+      String? chosenMetric;
+      
+      // If Free Training (null modality), show metric chooser
+      if (modality == null) {
+        chosenMetric = await showDialog<String>(
+          context: context,
+          builder: (context) => MetricChooserDialog(exercise: selectedExercise),
+        );
+        
+        if (chosenMetric == null) return; // User cancelled
+      }
+      
       try {
-        final effortId = await widget.workoutState.addExercise(selectedExercise.name);
+        final effortId = await widget.workoutState.addExerciseToSession(
+          selectedExercise,
+          chosenMetric: chosenMetric,
+        );
         if (effortId.isNotEmpty) {
           await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState, initialFocusId: effortId),
+            builder: (_) => WorkoutSessionScreen(
+              workoutState: widget.workoutState,
+              initialFocusId: effortId,
+            ),
           ));
         }
         await _initializeSession();
@@ -82,12 +107,25 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
       );
     }
 
-    final exercises = widget.workoutState.getExercisesWithSets();
+    final exercises = widget.workoutState.getExercisesWithEntries();
+    final modality = widget.workoutState.currentSession?.modality;
+    final modalityName = ModalityDisplay.getName(modality);
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Workout Session'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Workout Session'),
+            Text(
+              modalityName,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: theme.colorScheme.surface,
         elevation: 0,
       ),
@@ -141,12 +179,35 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                         itemCount: exercises.length,
                         itemBuilder: (context, index) {
                           final exercise = exercises[index];
-                          final sets = exercise['sets'] as List<Map<String, dynamic>>;
+                          final entries = exercise['entries'] as List<Map<String, dynamic>>;
+                          final effortKind = exercise['effortKind'] as String? ?? 'set';
+                          
+                          String subtitle;
+                          switch (effortKind) {
+                            case 'set':
+                              subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
+                              break;
+                            case 'timed':
+                              final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
+                              final minutes = totalDuration ~/ 60;
+                              final seconds = totalDuration % 60;
+                              subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+                              break;
+                            case 'round':
+                              subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
+                              break;
+                            case 'drill':
+                              subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+                              break;
+                            default:
+                              subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
+                          }
+                          
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             child: ListTile(
                               title: Text(exercise['name'] as String),
-                              subtitle: Text('${sets.length} set${sets.length != 1 ? 's' : ''}'),
+                              subtitle: Text(subtitle),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete_outline),
                                 onPressed: () {

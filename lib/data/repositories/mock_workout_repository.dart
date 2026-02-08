@@ -28,6 +28,7 @@ class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, List<String>> _exerciseEquipment = {}; // exerciseId -> List<equipmentId>
   final Map<String, List<String>> _exerciseTags = {}; // exerciseId -> List<tagId>
   final Map<String, List<String>> _metricEffortKinds = {}; // metricId -> List<effortKind>
+  final Map<String, List<String>> _exerciseCapabilities = {}; // exerciseId -> List<capability>
 
   bool _initialized = false;
 
@@ -102,6 +103,10 @@ class MockWorkoutRepository implements WorkoutRepository {
 
     for (final entry in SeedData.exerciseEquipmentRelationships.entries) {
       _exerciseEquipment[entry.key] = List.from(entry.value);
+    }
+
+    for (final entry in SeedData.exerciseCapabilityRelationships.entries) {
+      _exerciseCapabilities[entry.key] = List.from(entry.value);
     }
 
     // Build metric applicability map
@@ -368,6 +373,114 @@ class MockWorkoutRepository implements WorkoutRepository {
         .whereType<MetricDefinition>()
         .toList();
   }
+
+  // ===== EXERCISE CAPABILITIES =====
+
+  @override
+  Future<List<String>> getExerciseCapabilities(String exerciseId) async {
+    return _exerciseCapabilities[exerciseId] ?? [];
+  }
+
+  @override
+  Future<void> setExerciseCapabilities(String exerciseId, List<String> capabilities) async {
+    _exerciseCapabilities[exerciseId] = List.from(capabilities);
+  }
+
+  @override
+  Future<List<Exercise>> getExercisesRankedForModality(
+    String? modality, {
+    String? searchText,
+    String? disciplineId,
+    List<String>? muscleGroupIds,
+  }) async {
+    // Start with all non-archived exercises
+    var results = _exercises.values.where((e) => !e.isArchived);
+
+    // Apply search text filter (case-insensitive, matches name or description)
+    if (searchText != null && searchText.isNotEmpty) {
+      final lowerSearch = searchText.toLowerCase();
+      results = results.where((e) {
+        final nameMatch = e.name.toLowerCase().contains(lowerSearch);
+        final descMatch = e.description?.toLowerCase().contains(lowerSearch) ?? false;
+        return nameMatch || descMatch;
+      });
+    }
+
+    // Filter by discipline
+    if (disciplineId != null && disciplineId.isNotEmpty) {
+      results = results.where((e) => e.disciplineId == disciplineId);
+    }
+
+    // Filter by muscle groups (exercise must have at least one of the specified muscle groups)
+    if (muscleGroupIds != null && muscleGroupIds.isNotEmpty) {
+      results = results.where((e) {
+        final exerciseMuscles = _exerciseMuscleGroups[e.id] ?? [];
+        return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
+      });
+    }
+
+    final allExercises = results.toList();
+
+    // If no modality, return alphabetically sorted
+    if (modality == null) {
+      allExercises.sort((a, b) => a.name.compareTo(b.name));
+      // Attach capabilities
+      return allExercises.map((e) {
+        final caps = _exerciseCapabilities[e.id] ?? [];
+        return e.copyWith(capabilities: caps);
+      }).toList();
+    }
+
+    // Get the modality config to find primary metric
+    final modalityConfig = _getModalityConfig(modality);
+    final primaryMetric = modalityConfig?['primaryMetric'] as String?;
+
+    if (primaryMetric == null) {
+      // Fallback if config not found
+      allExercises.sort((a, b) => a.name.compareTo(b.name));
+      return allExercises.map((e) {
+        final caps = _exerciseCapabilities[e.id] ?? [];
+        return e.copyWith(capabilities: caps);
+      }).toList();
+    }
+
+    // Partition into two groups
+    final recommended = <Exercise>[];
+    final others = <Exercise>[];
+
+    for (final exercise in allExercises) {
+      final caps = _exerciseCapabilities[exercise.id] ?? [];
+      final exerciseWithCaps = exercise.copyWith(capabilities: caps);
+      
+      if (caps.contains(primaryMetric)) {
+        recommended.add(exerciseWithCaps);
+      } else {
+        others.add(exerciseWithCaps);
+      }
+    }
+
+    // Sort each group alphabetically
+    recommended.sort((a, b) => a.name.compareTo(b.name));
+    others.sort((a, b) => a.name.compareTo(b.name));
+
+    // Return concatenated list (recommended first)
+    return [...recommended, ...others];
+  }
+
+  /// Get modality configuration (simplified for mock)
+  Map<String, dynamic>? _getModalityConfig(String modality) {
+    // Import from modality_config.dart would be better, but for now inline
+    const configs = {
+      'cardio_endurance': {'primaryMetric': 'time'},
+      'resistance_lifting': {'primaryMetric': 'reps'},
+      'martial_arts': {'primaryMetric': 'time'},
+      'isometric_stretching': {'primaryMetric': 'hold'},
+      'sports': {'primaryMetric': 'time'},
+    };
+    return configs[modality];
+  }
+
+  // ===== METRICS =====
 
   @override
   Future<MetricDefinition?> getMetricById(String id) async {

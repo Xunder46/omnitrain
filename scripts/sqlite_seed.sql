@@ -418,4 +418,86 @@ SELECT e.id, mg.id, 0
 FROM app_exercise e, app_muscle_group mg
 WHERE e.name = 'Deadlift' AND e.owner_user_id IS NULL AND mg.name = 'Glutes';
 
+-- Exercise Capabilities
+-- Running exercises: time + distance
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'time' FROM app_exercise e WHERE e.name IN (
+  'Easy Run', 'Long Run', 'Tempo Run', 'Interval Run', 'Hill Repeats',
+  'Fartlek', 'Recovery Run', 'Track Repeats', 'Progression Run', 'Time Trial'
+) AND e.owner_user_id IS NULL;
+
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'distance' FROM app_exercise e WHERE e.name IN (
+  'Easy Run', 'Long Run', 'Tempo Run', 'Interval Run', 'Hill Repeats',
+  'Fartlek', 'Recovery Run', 'Track Repeats', 'Progression Run', 'Time Trial'
+) AND e.owner_user_id IS NULL;
+
+-- Running exercises with rounds (intervals)
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'rounds' FROM app_exercise e WHERE e.name IN (
+  'Interval Run', 'Hill Repeats', 'Track Repeats'
+) AND e.owner_user_id IS NULL;
+
+-- Strength exercises: reps + sets + load + time (for cardio context)
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'reps' FROM app_exercise e WHERE e.name IN (
+  'Back Squat', 'Bench Press', 'Deadlift', 'Overhead Press', 'Pull-up',
+  'Lat Pulldown', 'Dumbbell Row', 'Leg Press', 'Lateral Raise', 'Triceps Pressdown'
+) AND e.owner_user_id IS NULL;
+
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'sets' FROM app_exercise e WHERE e.name IN (
+  'Back Squat', 'Bench Press', 'Deadlift', 'Overhead Press', 'Pull-up',
+  'Lat Pulldown', 'Dumbbell Row', 'Leg Press', 'Lateral Raise', 'Triceps Pressdown'
+) AND e.owner_user_id IS NULL;
+
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'load' FROM app_exercise e WHERE e.name IN (
+  'Back Squat', 'Bench Press', 'Deadlift', 'Overhead Press', 'Pull-up',
+  'Lat Pulldown', 'Dumbbell Row', 'Leg Press', 'Lateral Raise', 'Triceps Pressdown'
+) AND e.owner_user_id IS NULL;
+
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'time' FROM app_exercise e WHERE e.name IN (
+  'Back Squat', 'Bench Press', 'Deadlift', 'Overhead Press', 'Pull-up',
+  'Lat Pulldown', 'Dumbbell Row', 'Leg Press', 'Lateral Raise', 'Triceps Pressdown'
+) AND e.owner_user_id IS NULL;
+
+-- Boxing exercises: time + rounds
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'time' FROM app_exercise e WHERE e.name IN (
+  'Heavy Bag Rounds', 'Shadowboxing', 'Pad Work', 'Speed Bag',
+  'Double-End Bag', 'Sparring', 'Defensive Drills', 'Footwork Drills',
+  'Conditioning Rounds', 'Technical Rounds'
+) AND e.owner_user_id IS NULL;
+
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'rounds' FROM app_exercise e WHERE e.name IN (
+  'Heavy Bag Rounds', 'Shadowboxing', 'Pad Work', 'Speed Bag',
+  'Double-End Bag', 'Sparring', 'Defensive Drills', 'Footwork Drills',
+  'Conditioning Rounds', 'Technical Rounds'
+) AND e.owner_user_id IS NULL;
+
+-- Isometric exercises: hold + time + sets
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'hold' FROM app_exercise e WHERE e.name IN (
+  'Plank Hold', 'Side Plank', 'Wall Sit', 'Dead Hang',
+  'Hollow Body Hold', 'Glute Bridge Hold', 'L-Sit Hold',
+  'Isometric Push-Up Hold', 'Calf Raise Hold', 'Split Squat Hold'
+) AND e.owner_user_id IS NULL;
+
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'time' FROM app_exercise e WHERE e.name IN (
+  'Plank Hold', 'Side Plank', 'Wall Sit', 'Dead Hang',
+  'Hollow Body Hold', 'Glute Bridge Hold', 'L-Sit Hold',
+  'Isometric Push-Up Hold', 'Calf Raise Hold', 'Split Squat Hold'
+) AND e.owner_user_id IS NULL;
+
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'sets' FROM app_exercise e WHERE e.name IN (
+  'Plank Hold', 'Side Plank', 'Wall Sit', 'Dead Hang',
+  'Hollow Body Hold', 'Glute Bridge Hold', 'L-Sit Hold',
+  'Isometric Push-Up Hold', 'Calf Raise Hold', 'Split Squat Hold'
+) AND e.owner_user_id IS NULL;
+
 COMMIT;

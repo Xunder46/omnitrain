@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
+import '../../core/constants/modality_config.dart';
+import '../../core/constants/metric_ids.dart';
+import '../../core/utils/observation_grouper.dart';
 
 /// State holder for workout session data.
 /// Uses ChangeNotifier pattern and talks ONLY to repositories.
@@ -12,6 +15,7 @@ class WorkoutState extends ChangeNotifier {
 
   // Current session state
   TrainingSession? _currentSession;
+  ModalityConfig? _currentModalityConfig;
   final List<SessionSegment> _segments = [];
   final Map<String, List<SegmentEffort>> _efforts = {};
   final Map<String, List<EffortObservation>> _observations = {};
@@ -27,10 +31,12 @@ class WorkoutState extends ChangeNotifier {
 
   // Getters
   TrainingSession? get currentSession => _currentSession;
+  ModalityConfig? get modalityConfig => _currentModalityConfig;
   List<SessionSegment> get segments => List.unmodifiable(_segments);
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasSession => _currentSession != null;
+  bool get hasActiveSession => _currentSession != null && _efforts.values.any((list) => list.isNotEmpty);
   List<Exercise> get allExercises => List.unmodifiable(_allExercises);
   List<MuscleGroup> get muscleGroups => List.unmodifiable(_muscleGroups);
   List<Discipline> get disciplines => List.unmodifiable(_disciplines);
@@ -73,6 +79,7 @@ class WorkoutState extends ChangeNotifier {
 
       await _repository.createSession(session);
       _currentSession = session;
+      _currentModalityConfig = ModalityConfig.forModality(modality);
 
       // Create default segment
       final segmentId = 'segment-${now}';
@@ -142,7 +149,9 @@ class WorkoutState extends ChangeNotifier {
   }
 
   /// Add an exercise to the current session
-  Future<String> addExercise(String exerciseName) async {
+  /// [exercise] - The exercise from the library to add
+  /// [chosenMetric] - Optional metric chosen by user (for Free Training only)
+  Future<String> addExerciseToSession(Exercise exercise, {String? chosenMetric}) async {
     if (_segments.isEmpty) return '';
 
     _clearError();
@@ -151,17 +160,21 @@ class WorkoutState extends ChangeNotifier {
       final segment = _segments.first;
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      // Create or get exercise
-      final exerciseId = 'exercise-${now}';
-      final exercise = Exercise(
-        id: exerciseId,
-        name: exerciseName,
-        createdAtMs: now,
-        updatedAtMs: now,
-      );
+      // Determine effort kind from modality or chosen metric
+      String effortKind;
+      if (_currentModalityConfig != null && _currentSession?.modality != null) {
+        // Use modality config
+        effortKind = _currentModalityConfig!.effortKind;
+      } else if (chosenMetric != null) {
+        // Free Training - derive from chosen metric
+        effortKind = ModalityConfig.effortKindFromMetric(chosenMetric);
+      } else {
+        // Fallback to set-based
+        effortKind = 'set';
+      }
 
-      await _repository.createExercise(exercise);
-      _exerciseCache[exerciseId] = exercise;
+      // Cache the exercise
+      _exerciseCache[exercise.id] = exercise;
 
       // Create effort
       final effortId = 'effort-${now}';
@@ -170,8 +183,8 @@ class WorkoutState extends ChangeNotifier {
         id: effortId,
         segmentId: segment.id,
         orderIndex: currentEfforts.length,
-        effortKind: 'strength',
-        exerciseId: exerciseId,
+        effortKind: effortKind,
+        exerciseId: exercise.id,
         createdAtMs: now,
         updatedAtMs: now,
       );
@@ -179,8 +192,8 @@ class WorkoutState extends ChangeNotifier {
       await _repository.createEffort(effort);
       _efforts.putIfAbsent(segment.id, () => []).add(effort);
 
-      // Add initial set
-      await addSet(effortId);
+      // Add initial entry based on effort kind
+      await addEntry(effortId);
 
       notifyListeners();
       return effortId;
@@ -190,56 +203,163 @@ class WorkoutState extends ChangeNotifier {
     }
   }
 
-  /// Add a set to an effort
-  Future<void> addSet(String effortId) async {
+  /// Add an entry (set/round/hold/etc.) to an effort
+  /// Creates appropriate observations based on effort kind
+  Future<void> addEntry(String effortId) async {
     _clearError();
 
     try {
+      // Find the effort to get its kind
+      SegmentEffort? effort;
+      for (final effortList in _efforts.values) {
+        effort = effortList.firstWhere((e) => e.id == effortId, orElse: () => effortList.first);
+        if (effort.id == effortId) break;
+      }
+      if (effort == null) {
+        _setError('Effort not found');
+        return;
+      }
+
       final now = DateTime.now().millisecondsSinceEpoch;
-      final setIndex = _observations[effortId]?.length ?? 0;
+      final entryIndex = (_observations[effortId]?.length ?? 0) ~/ 2; // Rough index for grouping
 
-      // Add reps observation
-      final repsObs = EffortObservation(
-        id: 'obs-$effortId-$setIndex-reps',
-        effortId: effortId,
-        metricId: 'metric-reps',
-        unitId: 'unit-reps',
-        valueInt: 10,
-        createdAtMs: now,
-        updatedAtMs: now,
-      );
+      final observations = <EffortObservation>[];
 
-      // Add weight observation
-      final weightObs = EffortObservation(
-        id: 'obs-$effortId-$setIndex-weight',
-        effortId: effortId,
-        metricId: 'metric-weight',
-        unitId: 'unit-kg',
-        valueReal: 0.0,
-        createdAtMs: now,
-        updatedAtMs: now,
-      );
+      // Create observations based on effort kind
+      switch (effort.effortKind) {
+        case 'set': // Resistance training
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-reps',
+            effortId: effortId,
+            metricId: MetricIds.reps,
+            unitId: MetricIds.unitReps,
+            valueInt: 10,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-weight',
+            effortId: effortId,
+            metricId: MetricIds.weight,
+            unitId: MetricIds.unitKg,
+            valueReal: 0.0,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+          break;
 
-      await _repository.createObservation(repsObs);
-      await _repository.createObservation(weightObs);
+        case 'timed': // Cardio/endurance
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-duration',
+            effortId: effortId,
+            metricId: MetricIds.duration,
+            unitId: MetricIds.unitSeconds,
+            valueInt: 0,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+          // Optional distance
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-distance',
+            effortId: effortId,
+            metricId: MetricIds.distance,
+            unitId: MetricIds.unitMeters,
+            valueReal: 0.0,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+          break;
 
-      _observations.putIfAbsent(effortId, () => []).addAll([repsObs, weightObs]);
+        case 'round': // Martial arts / Sports
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-rounds',
+            effortId: effortId,
+            metricId: MetricIds.rounds,
+            unitId: MetricIds.unitRounds,
+            valueInt: 1,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-round-duration',
+            effortId: effortId,
+            metricId: MetricIds.roundDuration,
+            unitId: MetricIds.unitSeconds,
+            valueInt: 180, // 3 minutes default
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+          break;
+
+        case 'drill': // Isometric / holds
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-duration',
+            effortId: effortId,
+            metricId: MetricIds.duration,
+            unitId: MetricIds.unitSeconds,
+            valueInt: 0, // Hold time
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+          // Optional RPE
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-rpe',
+            effortId: effortId,
+            metricId: MetricIds.rpe,
+            valueInt: 5,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+          break;
+
+        default:
+          // Fallback to set-based
+          observations.add(EffortObservation(
+            id: 'obs-$effortId-$entryIndex-reps',
+            effortId: effortId,
+            metricId: MetricIds.reps,
+            unitId: MetricIds.unitReps,
+            valueInt: 10,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
+      }
+
+      // Save all observations
+      for (final obs in observations) {
+        await _repository.createObservation(obs);
+      }
+
+      _observations.putIfAbsent(effortId, () => []).addAll(observations);
 
       notifyListeners();
     } catch (e) {
-      _setError('Failed to add set: $e');
+      _setError('Failed to add entry: $e');
     }
   }
 
-  /// Update a set value
-  Future<void> updateSetValue(String effortId, String metricKey, dynamic value) async {
+  /// Update an entry value for any metric
+  Future<void> updateEntryValue(String effortId, String metricKey, dynamic value) async {
     final observations = _observations[effortId];
     if (observations == null) return;
 
     _clearError();
 
     try {
-      final metricId = metricKey == 'reps' ? 'metric-reps' : 'metric-weight';
+      // Map metric keys to metric IDs
+      final metricIdMap = {
+        'reps': 'metric-reps',
+        'weight': 'metric-weight',
+        'duration': 'metric-duration',
+        'distance': 'metric-distance',
+        'rounds': 'metric-rounds',
+        'round-duration': 'metric-round-duration',
+        'rpe': 'metric-rpe',
+      };
+
+      final metricId = metricIdMap[metricKey];
+      if (metricId == null) return;
+
       final obsIndex = observations.indexWhere((o) => o.metricId == metricId);
 
       if (obsIndex != -1) {
@@ -249,10 +369,10 @@ class WorkoutState extends ChangeNotifier {
           effortId: oldObs.effortId,
           metricId: oldObs.metricId,
           unitId: oldObs.unitId,
-          valueInt: metricKey == 'reps' ? value as int : oldObs.valueInt,
-          valueReal: metricKey == 'weight' ? value as double : oldObs.valueReal,
-          valueText: oldObs.valueText,
-          valueBool: oldObs.valueBool,
+          valueInt: (value is int) ? value : oldObs.valueInt,
+          valueReal: (value is double) ? value : oldObs.valueReal,
+          valueText: (value is String) ? value : oldObs.valueText,
+          valueBool: (value is bool) ? value : oldObs.valueBool,
           createdAtMs: oldObs.createdAtMs,
           updatedAtMs: DateTime.now().millisecondsSinceEpoch,
         );
@@ -263,12 +383,12 @@ class WorkoutState extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      _setError('Failed to update set: $e');
+      _setError('Failed to update entry: $e');
     }
   }
 
-  /// Get exercises with their sets for display
-  List<Map<String, dynamic>> getExercisesWithSets() {
+  /// Get exercises with their entries for display (modality-aware)
+  List<Map<String, dynamic>> getExercisesWithEntries() {
     final result = <Map<String, dynamic>>[];
 
     for (final segment in _segments) {
@@ -279,24 +399,17 @@ class WorkoutState extends ChangeNotifier {
         final exerciseName = exercise?.name ?? 'Unknown Exercise';
         final effortObservations = _observations[effort.id] ?? [];
 
-        // Group observations by set (they're created in pairs)
-        final sets = <Map<String, dynamic>>[];
-        for (int i = 0; i < effortObservations.length; i += 2) {
-          if (i + 1 < effortObservations.length) {
-            final repsObs = effortObservations[i];
-            final weightObs = effortObservations[i + 1];
-
-            sets.add({
-              'reps': repsObs.valueInt ?? 0,
-              'weight': weightObs.valueReal ?? 0.0,
-            });
-          }
-        }
+        // Group observations by entry type based on effort kind
+        final entries = ObservationGrouper.groupByEffortKind(
+          effort.effortKind,
+          effortObservations,
+        );
 
         result.add({
           'id': effort.id,
           'name': exerciseName,
-          'sets': sets,
+          'effortKind': effort.effortKind,
+          'entries': entries,
         });
       }
     }
@@ -307,6 +420,7 @@ class WorkoutState extends ChangeNotifier {
   /// Clear session data
   void clearSession() {
     _currentSession = null;
+    _currentModalityConfig = null;
     _segments.clear();
     _efforts.clear();
     _observations.clear();
@@ -359,6 +473,25 @@ class WorkoutState extends ChangeNotifier {
       );
     } catch (e) {
       _setError('Failed to search exercises: $e');
+      return [];
+    }
+  }
+
+  /// Get exercises ranked by modality compatibility
+  Future<List<Exercise>> getExercisesRankedForModality({
+    String? searchText,
+    String? disciplineId,
+    List<String>? muscleGroupIds,
+  }) async {
+    try {
+      return await _repository.getExercisesRankedForModality(
+        _currentSession?.modality,
+        searchText: searchText,
+        disciplineId: disciplineId,
+        muscleGroupIds: muscleGroupIds,
+      );
+    } catch (e) {
+      _setError('Failed to get ranked exercises: $e');
       return [];
     }
   }

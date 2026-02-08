@@ -10,8 +10,13 @@ void main() {
     await repository.initialize();
     final workoutState = WorkoutState(repository);
     await workoutState.createNewSession();
-    await workoutState.addExercise('Squats');
-    await workoutState.addExercise('Press');
+    
+    // Add exercises to session
+    final exercises = await repository.getExercises();
+    final squats = exercises.firstWhere((e) => e.name.contains('Squat'));
+    final press = exercises.firstWhere((e) => e.name.contains('Press'));
+    await workoutState.addExerciseToSession(squats, chosenMetric: 'reps');
+    await workoutState.addExerciseToSession(press, chosenMetric: 'reps');
 
     await tester.pumpWidget(MaterialApp(home: WorkoutSessionScreen(workoutState: workoutState)));
     await tester.pumpAndSettle();

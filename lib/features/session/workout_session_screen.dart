@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
+import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
@@ -42,7 +43,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         await widget.workoutState.createNewSession();
       }
       await widget.workoutState.loadSessionData();
-      final exercises = widget.workoutState.getExercisesWithSets();
+      final exercises = widget.workoutState.getExercisesWithEntries();
       setState(() {
         _exercises = exercises;
         final initialId = widget.initialFocusId;
@@ -100,18 +101,40 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Future<void> _addExercise() async {
+    final modality = widget.workoutState.currentSession?.modality;
+    
     final selectedExercise = await showDialog<Exercise>(
       context: context,
-      builder: (context) => ExercisePickerDialog(workoutState: widget.workoutState),
+      builder: (context) => ExercisePickerDialog(
+        workoutState: widget.workoutState,
+        sessionModality: modality,
+      ),
     );
 
     if (selectedExercise != null) {
+      String? chosenMetric;
+      
+      // If Free Training (null modality), show metric chooser
+      if (modality == null) {
+        chosenMetric = await showDialog<String>(
+          context: context,
+          builder: (context) => MetricChooserDialog(exercise: selectedExercise),
+        );
+        
+        if (chosenMetric == null) return; // User cancelled metric selection
+      }
+      
       String effortId = '';
       try {
-        effortId = await widget.workoutState.addExercise(selectedExercise.name);
+        effortId = await widget.workoutState.addExerciseToSession(
+          selectedExercise,
+          chosenMetric: chosenMetric,
+        );
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to add exercise: $e')),
+          );
         }
       }
 
@@ -134,7 +157,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     if (_exercises.isNotEmpty) {
       final exercise = _exercises[_currentExerciseIndex];
       final effortId = exercise['id'] as String;
-      await widget.workoutState.addSet(effortId);
+      await widget.workoutState.addEntry(effortId);
       await _loadExercises();
     }
   }
@@ -199,10 +222,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
 
     final exercise = _exercises[_currentExerciseIndex];
-    final sets = exercise['sets'] as List<Map<String, dynamic>>;
-    final currentSetData = sets.isNotEmpty && _currentSet <= sets.length
-        ? sets[_currentSet - 1]
-        : {'reps': 0, 'weight': 0.0};
+    final entries = exercise['entries'] as List<Map<String, dynamic>>;
+    final effortKind = exercise['effortKind'] as String? ?? 'set';
+    final currentEntry = entries.isNotEmpty && _currentSet <= entries.length
+        ? entries[_currentSet - 1]
+        : (effortKind == 'set' ? {'reps': 0, 'weight': 0.0} : {'duration': 0});
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -225,11 +249,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildWeightReps(currentSetData, theme),
+                    _buildMetricDisplay(currentEntry, effortKind, theme),
                     const SizedBox(height: 32),
-                    _buildSetProgress(sets.length, theme),
+                    _buildSetProgress(entries.length, effortKind, theme),
                     const SizedBox(height: 24),
-                    _buildSetIndicator(sets.length, theme),
+                    _buildSetIndicator(entries.length, theme),
                     const SizedBox(height: 48),
                     _buildRestIndicator(theme),
                   ],
@@ -333,10 +357,33 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (context, index) {
                         final ex = _exercises[index];
-                        final sets = ex['sets'] as List<dynamic>? ?? [];
+                        final entries = ex['entries'] as List<dynamic>? ?? [];
+                        final effortKind = ex['effortKind'] as String? ?? 'set';
+                        
+                        String subtitle;
+                        switch (effortKind) {
+                          case 'set':
+                            subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
+                            break;
+                          case 'timed':
+                            final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
+                            final minutes = totalDuration ~/ 60;
+                            final seconds = totalDuration % 60;
+                            subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+                            break;
+                          case 'round':
+                            subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
+                            break;
+                          case 'drill':
+                            subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+                            break;
+                          default:
+                            subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
+                        }
+                        
                         return ListTile(
                           title: Text(ex['name'] as String),
-                          subtitle: Text('${sets.length} set${sets.length != 1 ? 's' : ''}'),
+                          subtitle: Text(subtitle),
                           onTap: () {
                             setState(() {
                               _currentExerciseIndex = index;
@@ -359,11 +406,45 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
-  Widget _buildWeightReps(Map<String, dynamic> setData, ThemeData theme) {
-    final weight = setData['weight'] as double;
-    final reps = setData['reps'] as int;
+  Widget _buildMetricDisplay(Map<String, dynamic> entryData, String effortKind, ThemeData theme) {
+    String displayText;
+    
+    switch (effortKind) {
+      case 'set': // Resistance training
+        final weight = entryData['weight'] as double? ?? 0.0;
+        final reps = entryData['reps'] as int? ?? 0;
+        displayText = weight > 0 ? '${weight.toStringAsFixed(1)} × $reps' : '$reps';
+        break;
+      
+      case 'timed': // Cardio
+        final duration = entryData['duration'] as int? ?? 0;
+        final minutes = duration ~/ 60;
+        final seconds = duration % 60;
+        displayText = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+        break;
+      
+      case 'round': // Martial arts / Sports
+        final rounds = entryData['rounds'] as int? ?? 1;
+        final roundDuration = entryData['round-duration'] as int? ?? 180;
+        final minutes = roundDuration ~/ 60;
+        final seconds = roundDuration % 60;
+        displayText = 'Round $rounds\n${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+        break;
+      
+      case 'drill': // Isometric holds
+        final duration = entryData['duration'] as int? ?? 0;
+        final minutes = duration ~/ 60;
+        final seconds = duration % 60;
+        displayText = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+        break;
+      
+      default:
+        displayText = '0';
+    }
+    
     return Text(
-      weight > 0 ? '${weight.toStringAsFixed(1)} × $reps' : '$reps',
+      displayText,
+      textAlign: TextAlign.center,
       style: theme.textTheme.displayLarge?.copyWith(
         fontSize: 72,
         fontWeight: FontWeight.w300,
@@ -372,10 +453,30 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
-  Widget _buildSetProgress(int totalSets, ThemeData theme) {
+  Widget _buildSetProgress(int totalEntries, String effortKind, ThemeData theme) {
+    String label;
+    switch (effortKind) {
+      case 'set':
+        label = 'SET $_currentSet / $totalEntries';
+        break;
+      case 'timed':
+        label = 'ELAPSED';
+        break;
+      case 'round':
+        final modality = widget.workoutState.currentSession?.modality;
+        final isWorkoutLabel = modality == 'sports' ? 'PERIOD' : 'ROUND';
+        label = '$isWorkoutLabel $_currentSet / $totalEntries';
+        break;
+      case 'drill':
+        label = 'HOLD $_currentSet / $totalEntries';
+        break;
+      default:
+        label = 'SET $_currentSet / $totalEntries';
+    }
+    
     return Text(
-      'SET $_currentSet / $totalSets',
-        style: theme.textTheme.titleMedium?.copyWith(
+      label,
+      style: theme.textTheme.titleMedium?.copyWith(
         letterSpacing: 2,
         color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
         fontWeight: FontWeight.w500,

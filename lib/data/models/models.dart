@@ -85,8 +85,20 @@ class Exercise {
   final bool isArchived;
   final int createdAtMs;
   final int updatedAtMs;
+  final List<String> capabilities;
 
-  Exercise({required this.id, this.ownerUserId, this.disciplineId, required this.name, this.description, this.movementPattern, this.isArchived = false, required this.createdAtMs, required this.updatedAtMs});
+  Exercise({
+    required this.id,
+    this.ownerUserId,
+    this.disciplineId,
+    required this.name,
+    this.description,
+    this.movementPattern,
+    this.isArchived = false,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+    this.capabilities = const [],
+  });
 
   factory Exercise.fromMap(Map<String, dynamic> m) => Exercise(
       id: m['id'] as String,
@@ -110,6 +122,39 @@ class Exercise {
         'created_at_ms': createdAtMs,
         'updated_at_ms': updatedAtMs
       };
+
+  /// Check if exercise supports a specific capability
+  bool supports(String capability) => capabilities.contains(capability);
+
+  /// Check if exercise supports any of the given capabilities
+  bool supportsAny(List<String> caps) => caps.any((c) => capabilities.contains(c));
+
+  /// Create a copy with updated fields
+  Exercise copyWith({
+    String? id,
+    String? ownerUserId,
+    String? disciplineId,
+    String? name,
+    String? description,
+    String? movementPattern,
+    bool? isArchived,
+    int? createdAtMs,
+    int? updatedAtMs,
+    List<String>? capabilities,
+  }) {
+    return Exercise(
+      id: id ?? this.id,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      disciplineId: disciplineId ?? this.disciplineId,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      movementPattern: movementPattern ?? this.movementPattern,
+      isArchived: isArchived ?? this.isArchived,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      capabilities: capabilities ?? this.capabilities,
+    );
+  }
 }
 
 class Equipment {
