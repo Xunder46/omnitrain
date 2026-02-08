@@ -478,14 +478,18 @@ class WorkoutState extends ChangeNotifier {
   }
 
   /// Get exercises ranked by modality compatibility
+  /// Pass modality explicitly rather than relying on currentSession
   Future<List<Exercise>> getExercisesRankedForModality({
+    String? modality,
     String? searchText,
     String? disciplineId,
     List<String>? muscleGroupIds,
   }) async {
     try {
+      // Use the provided modality, or fall back to current session's modality
+      final modalityToUse = modality ?? _currentSession?.modality;
       return await _repository.getExercisesRankedForModality(
-        _currentSession?.modality,
+        modalityToUse,
         searchText: searchText,
         disciplineId: disciplineId,
         muscleGroupIds: muscleGroupIds,

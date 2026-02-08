@@ -18,6 +18,17 @@ class Modality {
   static const String recoveryRehab = 'recovery_rehab';
   static const String competitionMatch = 'competition_match';
 
+  /// Maps modality keys to their corresponding SportCategory IDs.
+  /// Used for exercise ranking - disciplines belong to categories, which map to modalities.
+  /// Example: Running discipline (discipline-running) → category-cardio → cardio_endurance modality
+  static const Map<String, String> modalityToCategoryId = {
+    cardioEndurance: 'category-cardio',
+    resistanceLifting: 'category-resistance',
+    martialArts: 'category-martial-arts',
+    isometricStretching: 'category-isometric',
+    sports: 'category-sports',
+  };
+
   static const List<String> primaryHomeTiles = [
     cardioEndurance,
     resistanceLifting,

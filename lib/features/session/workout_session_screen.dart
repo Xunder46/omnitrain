@@ -255,7 +255,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     const SizedBox(height: 24),
                     _buildSetIndicator(entries.length, theme),
                     const SizedBox(height: 48),
-                    _buildRestIndicator(theme),
                   ],
                 ),
               ),
@@ -504,16 +503,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           ),
         );
       }),
-    );
-  }
-
-  Widget _buildRestIndicator(ThemeData theme) {
-    return Text(
-      'REST ${(_restSeconds ~/ 60).toString().padLeft(2, '0')}:${(_restSeconds % 60).toString().padLeft(2, '0')}',
-        style: theme.textTheme.bodyLarge?.copyWith(
-        color: theme.colorScheme.onSurface.withAlpha((0.4 * 255).round()),
-        letterSpacing: 1,
-      ),
     );
   }
 

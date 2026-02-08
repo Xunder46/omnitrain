@@ -39,6 +39,26 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
   }
 
   @override
+  void didUpdateWidget(ExercisePickerDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // If the modality changed, refresh the exercise list and clear cache
+    if (oldWidget.sessionModality != widget.sessionModality) {
+      // Clear muscle groups cache since ordering may change with modality
+      _exerciseMuscleGroupsCache.clear();
+      // Reset filters to start fresh with new modality
+      setState(() {
+        _selectedDisciplineId = null;
+        _selectedMuscleGroupId = null;
+        _filteredExercises = []; // Clear the list immediately
+      });
+      _searchController.clear();
+      // Refresh exercises with new modality
+      _searchExercises();
+    }
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
@@ -77,6 +97,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
     final muscleGroupIds = _selectedMuscleGroupId != null ? [_selectedMuscleGroupId!] : null;
 
     final results = await widget.workoutState.getExercisesRankedForModality(
+      modality: widget.sessionModality, // Explicitly pass modality to ensure consistency
       searchText: searchText.isEmpty ? null : searchText,
       disciplineId: _selectedDisciplineId,
       muscleGroupIds: muscleGroupIds,
@@ -284,109 +305,15 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
     );
   }
 
-  Map<String, dynamic>? _getModalityConfig(String modality) {
-    const configs = {
-      'cardio_endurance': {'primaryMetric': 'time'},
-      'resistance_lifting': {'primaryMetric': 'reps'},
-      'martial_arts': {'primaryMetric': 'time'},
-      'isometric_stretching': {'primaryMetric': 'hold'},
-      'sports': {'primaryMetric': 'time'},
-    };
-    return configs[modality];
-  }
 
   Widget _buildExerciseList(ThemeData theme) {
-    // Determine if we need section headers (when modality is set)
-    final hasModality = widget.sessionModality != null;
-    final modalityConfig = hasModality ? _getModalityConfig(widget.sessionModality!) : null;
-    final primaryMetric = modalityConfig?['primaryMetric'] as String?;
-
-    // Split into recommended and other if modality is set
-    final recommended = <Exercise>[];
-    final others = <Exercise>[];
-
-    if (hasModality && primaryMetric != null) {
-      for (final exercise in _filteredExercises) {
-        if (exercise.supports(primaryMetric)) {
-          recommended.add(exercise);
-        } else {
-          others.add(exercise);
-        }
-      }
-    } else {
-      // No modality - all exercises in one group
-      recommended.addAll(_filteredExercises);
-    }
-
+    // Repository returns exercises sorted by relevance for the modality
+    // Just display them in order without section headers
     return ListView.builder(
-      itemCount: _calculateItemCount(recommended.length, others.length, hasModality && primaryMetric != null),
+      itemCount: _filteredExercises.length,
       itemBuilder: (context, index) {
-        return _buildListItem(context, theme, index, recommended, others, hasModality && primaryMetric != null);
+        return _buildExerciseTile(context, theme, _filteredExercises[index]);
       },
-    );
-  }
-
-  int _calculateItemCount(int recommendedCount, int othersCount, bool hasSections) {
-    if (!hasSections) return recommendedCount;
-    // Headers + exercises
-    int count = 0;
-    if (recommendedCount > 0) count += 1 + recommendedCount; // Header + exercises
-    if (othersCount > 0) count += 1 + othersCount; // Header + exercises
-    return count;
-  }
-
-  Widget _buildListItem(BuildContext context, ThemeData theme, int index, 
-      List<Exercise> recommended, List<Exercise> others, bool hasSections) {
-    if (!hasSections) {
-      // No sections - simple list
-      return _buildExerciseTile(context, theme, recommended[index]);
-    }
-
-    // With sections
-    if (recommended.isNotEmpty) {
-      if (index == 0) {
-        return _buildSectionHeader(theme, 'Recommended for this workout', Icons.star, theme.colorScheme.primary);
-      }
-      if (index <= recommended.length) {
-        return _buildExerciseTile(context, theme, recommended[index - 1]);
-      }
-      // Adjust index for "others" section
-      final othersIndex = index - recommended.length - 1;
-      if (othersIndex == 0 && others.isNotEmpty) {
-        return _buildSectionHeader(theme, 'Other exercises', Icons.fitness_center, theme.colorScheme.onSurface.withOpacity(0.6));
-      }
-      if (othersIndex > 0 && othersIndex <= others.length) {
-        return _buildExerciseTile(context, theme, others[othersIndex - 1]);
-      }
-    } else if (others.isNotEmpty) {
-      // Only "others" section
-      if (index == 0) {
-        return _buildSectionHeader(theme, 'All exercises', Icons.fitness_center, theme.colorScheme.onSurface.withOpacity(0.6));
-      }
-      return _buildExerciseTile(context, theme, others[index - 1]);
-    }
-
-    return const SizedBox.shrink();
-  }
-
-  Widget _buildSectionHeader(ThemeData theme, String title, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
-          Text(
-            title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
     );
   }
 

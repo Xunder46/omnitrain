@@ -1,6 +1,40 @@
 PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
 
+-- ============================================================================
+-- EXERCISE CAPABILITY SEEDING NOTES
+-- ============================================================================
+-- When implementing SqliteWorkoutRepository.getExercisesRankedForModality(),
+-- ensure exercise capabilities are properly seeded into app_exercise_capability table.
+--
+-- The capability flags define what tracking methods each exercise supports:
+--   'time'     - Continuous duration (e.g., running, holding)
+--   'distance' - Distance covered (e.g., running, cycling)
+--   'reps'     - Repetition counting (e.g., barbell exercises)
+--   'sets'     - Set grouping (e.g., bodybuilding)
+--   'load'     - External weight/resistance (e.g., barbell exercises)
+--   'hold'     - Isometric hold duration (e.g., planks, yoga)
+--   'rounds'   - Round/period segmentation (e.g., boxing, sports)
+--
+-- Running exercises (category-cardio):
+--   - 'exercise-easy-run', 'exercise-long-run', etc.: ['time', 'distance']
+--   - 'exercise-interval-run', 'exercise-hill-repeats': ['time', 'distance', 'rounds']
+--   (See lib/mock/seed_data.dart exerciseCapabilityRelationships for complete list)
+--
+-- Bodybuilding exercises (category-resistance):
+--   - 'exercise-barbell-squat', 'exercise-bench-press', etc.: ['reps', 'sets', 'load', 'time']
+--   (Can be done for time in cardio context, but primarily reps/sets/load)
+--
+-- Boxing exercises (category-martial-arts):
+--   - 'exercise-heavy-bag-rounds', 'exercise-sparring', etc.: ['time', 'rounds']
+--
+-- Calisthenics/Isometric (category-calisthenics → category-isometric):
+--   - 'exercise-plank-hold', 'exercise-wall-sit', etc.: ['hold', 'time', 'sets']
+--
+-- These seed values are in lib/mock/seed_data.dart as exerciseCapabilityRelationships Map.
+-- When migrating to SQLite, insert these into app_exercise_capability via DELETE+INSERT
+-- or idempotent ON CONFLICT DO UPDATE patterns.
+
 -- Units (idempotent)
 INSERT OR IGNORE INTO app_unit (id, key, name, unit_type, created_at_ms)
 VALUES

@@ -75,6 +75,53 @@ abstract class WorkoutRepository {
   Future<void> setExerciseCapabilities(String exerciseId, List<String> capabilities);
 
   // Modality-ranked exercise retrieval
+  /// Retrieve exercises ranked by relevance to a given modality.
+  ///
+  /// This method implements intelligent exercise recommendation for the exercise picker.
+  /// Exercises are scored based on how well they fit the specified modality, using a
+  /// multi-factor ranking algorithm that considers:
+  ///
+  /// 1. **Discipline Affinity (0-40 points)**: Does the exercise's discipline belong
+  ///    to the modality's category? E.g., Running discipline → category-cardio → cardio_endurance.
+  ///    This is the strongest signal because it directly maps to the modality.
+  ///
+  /// 2. **Primary Capability Match (0-30 points)**: What fraction of the modality's core
+  ///    capabilities does the exercise support? E.g., cardio_endurance has primary capabilities
+  ///    ['time', 'distance']. An exercise with ['time', 'distance'] gets 30 points.
+  ///
+  /// 3. **Secondary Capability Bonus (0-10 points)**: Bonus for supporting secondary
+  ///    capabilities. E.g., cardio accepts ['rounds'] as secondary.
+  ///
+  /// 4. **Anti-Capability Penalty (0 to -20 points)**: Penalty for having capabilities
+  ///    from conflicting modalities. E.g., 'load' and 'hold' capabilities are bad for cardio.
+  ///
+  /// 5. **No-Overlap Penalty (0 or -10 points)**: Additional penalty if no primary
+  ///    capabilities match AND the exercise's category differs from the modality's category.
+  ///
+  /// **Scoring Example**:
+  /// - Barbell Squat (discipline: bodybuilding, capabilities: ['reps', 'sets', 'load', 'time'])
+  ///   - In resistance_lifting: 40 (discipline) + 30 (all 3 primary) + 0 (no secondary) + 0 (no anti) = **70 → Recommended**
+  ///   - In cardio_endurance: 0 (different category) + 0 (no primary time/distance) + 0 (no secondary) + -20 ('load' anti) = **-20 → 0 (clamped) → Others**
+  ///
+  /// **Return Order**:
+  /// - Exercises are sorted descending by relevance score
+  /// - Ties are broken alphabetically by name
+  /// - The UI partitions at score >= 50.0 to create "Recommended" vs "Others" sections
+  /// - For Free Training (modality=null), exercises return alphabetically sorted without ranking
+  ///
+  /// **Parameters**:
+  /// - `modality`: The session's modality (e.g., 'cardio_endurance') or null for Free Training
+  /// - `searchText`: Optional search filter (matches exercise name/description, case-insensitive)
+  /// - `disciplineId`: Optional discipline filter
+  /// - `muscleGroupIds`: Optional muscle group filter (exercise must have at least one)
+  ///
+  /// **Implementation Notes**:
+  /// - Web (MockWorkoutRepository): Uses in-memory lookups with ModalityConfig from lib/core/constants/modality_config.dart
+  /// - Production (SqliteWorkoutRepository): Queries app_exercise_capability table and calculates scores
+  /// - Both implementations share the same scoring logic from ModalityConfig.calculateRelevanceScore()
+  /// - The 'capabilities' list is populated on each Exercise returned (transient field)
+  /// - See scripts/sqlite_schema.sql for app_exercise_capability table documentation
+  /// - See lib/core/constants/modality_config.dart for modality configuration definitions
   Future<List<Exercise>> getExercisesRankedForModality(
     String? modality, {
     String? searchText,

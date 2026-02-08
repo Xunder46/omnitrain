@@ -324,6 +324,69 @@ CREATE TABLE app_exercise_tag (
   FOREIGN KEY(tag_id) REFERENCES app_tag(id)
 );
 
+-- Exercise capabilities for modality-aware ranking
+-- Maps each exercise to a set of capability flags indicating what tracking methods it supports.
+-- Used for intelligent exercise recommendation in the exercise picker.
+--
+-- Capability flags:
+--   'time'     - Continuous duration tracking (e.g., running, holding)
+--   'distance' - Distance covered (e.g., running, cycling)
+--   'reps'     - Repetition counting (e.g., strength exercises)
+--   'sets'     - Set grouping (e.g., strength exercises)
+--   'load'     - External weight/resistance (e.g., barbell exercises)
+--   'hold'     - Isometric hold duration (e.g., planks, wall sits)
+--   'rounds'   - Round/period segmentation (e.g., boxing, sports)
+--
+-- Exercise Ranking Algorithm (in workoutRepository.getExercisesRankedForModality):
+-- When a user creates a session with a specific modality (e.g., cardio_endurance), exercises
+-- are ranked by their relevance to that modality using a multi-factor scoring system:
+--
+-- Scoring breakdown (total: 0-100):
+--   1. Discipline affinity (0-40): Does the exercise's discipline belong to the modality's category?
+--      - E.g., Running discipline (category-cardio) gets 40 points in cardio_endurance modality
+--   2. Primary capability match (0-30): What fraction of modality's core capabilities does the exercise support?
+--      - E.g., cardio_endurance has primary ['time', 'distance']; exercise with ['time'] gets 15 points
+--   3. Secondary capability bonus (0-10): What fraction of modality's bonus capabilities matched?
+--   4. Anti-capability penalty (0 to -20): Does the exercise have capabilities from conflicting modalities?
+--      - E.g., 'load' capability in cardio context suggests strength focus, reduces score
+--   5. No-overlap penalty (0 or -10): No primary capabilities matched AND different category
+--
+-- Recommendation threshold: Score >= 50.0 puts exercise in "Recommended" section of picker
+--
+-- Modality configurations (lib/core/constants/modality_config.dart):
+--   cardio_endurance:
+--     categoryId: category-cardio
+--     primaryCapabilities: ['time', 'distance']
+--     secondaryCapabilities: ['rounds']
+--     antiCapabilities: ['load', 'hold']
+--   resistance_lifting:
+--     categoryId: category-resistance
+--     primaryCapabilities: ['reps', 'sets', 'load']
+--     secondaryCapabilities: ['time']
+--     antiCapabilities: ['distance', 'rounds', 'hold']
+--   martial_arts:
+--     categoryId: category-martial-arts
+--     primaryCapabilities: ['time', 'rounds']
+--     secondaryCapabilities: []
+--     antiCapabilities: ['load', 'hold', 'distance']
+--   isometric_stretching:
+--     categoryId: category-isometric
+--     primaryCapabilities: ['hold', 'time']
+--     secondaryCapabilities: ['sets']
+--     antiCapabilities: ['load', 'distance', 'rounds']
+--   sports:
+--     categoryId: category-sports
+--     primaryCapabilities: ['time', 'rounds']
+--     secondaryCapabilities: ['distance']
+--     antiCapabilities: ['load', 'hold']
+--
+-- Example: Barbell Squat with capabilities ['reps', 'sets', 'load', 'time']
+--   In resistance_lifting:  Score = 40 (discipline) + 30 (all 3 primary) + 0 (secondary) + 0 (no anti) = 70 → Recommended
+--   In cardio_endurance:    Score = 0 (different category) + 0 (no primary) + 0 (no secondary) + -20 (load anti) = -20 → clamp to 0 → Others
+--
+-- Note: The 'time' capability is present on almost all exercises because virtually anything can be
+-- done for duration. This is why discipline affinity (0-40) is the strongest signal—it prevents
+-- pure strength exercises from appearing as "Recommended" in cardio just because they support 'time'.
 CREATE TABLE app_exercise_capability (
   exercise_id TEXT NOT NULL,
   capability TEXT NOT NULL,

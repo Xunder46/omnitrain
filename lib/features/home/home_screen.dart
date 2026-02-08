@@ -64,15 +64,11 @@ class HomeScreen extends StatelessWidget {
       );
 
       if (confirmed != true) return;
-      
-      // Clear current session
-      workoutState.clearSession();
     }
-
-    // Create new session with the tile's modality (null for Free Training)
-    if (!workoutState.hasSession) {
-      await workoutState.createNewSession(modality: tile.modality);
-    }
+    
+    // Always clear old session and create new one with selected modality
+    workoutState.clearSession();
+    await workoutState.createNewSession(modality: tile.modality);
 
     // Navigate to workout session screen
     if (context.mounted) {

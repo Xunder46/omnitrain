@@ -1,5 +1,6 @@
 import '../models/models.dart';
 import '../../mock/seed_data.dart';
+import '../../core/constants/modality_config.dart';
 import 'workout_repository.dart';
 
 /// In-memory mock implementation of WorkoutRepository for development/testing.
@@ -421,22 +422,19 @@ class MockWorkoutRepository implements WorkoutRepository {
 
     final allExercises = results.toList();
 
-    // If no modality, return alphabetically sorted
+    // If no modality, return alphabetically sorted (Free Training mode)
     if (modality == null) {
       allExercises.sort((a, b) => a.name.compareTo(b.name));
-      // Attach capabilities
       return allExercises.map((e) {
         final caps = _exerciseCapabilities[e.id] ?? [];
         return e.copyWith(capabilities: caps);
       }).toList();
     }
 
-    // Get the modality config to find primary metric
-    final modalityConfig = _getModalityConfig(modality);
-    final primaryMetric = modalityConfig?['primaryMetric'] as String?;
-
-    if (primaryMetric == null) {
-      // Fallback if config not found
+    // Get the modality configuration for ranking
+    final modalityConfig = ModalityConfig.forModality(modality);
+    if (modalityConfig == null) {
+      // Fallback if config not found (shouldn't happen for valid modalities)
       allExercises.sort((a, b) => a.name.compareTo(b.name));
       return allExercises.map((e) {
         final caps = _exerciseCapabilities[e.id] ?? [];
@@ -444,40 +442,38 @@ class MockWorkoutRepository implements WorkoutRepository {
       }).toList();
     }
 
-    // Partition into two groups
-    final recommended = <Exercise>[];
-    final others = <Exercise>[];
+    // Score each exercise and attach scores for later partitioning by UI
+    final scoredExercises = <(Exercise, double)>[];
 
     for (final exercise in allExercises) {
       final caps = _exerciseCapabilities[exercise.id] ?? [];
       final exerciseWithCaps = exercise.copyWith(capabilities: caps);
-      
-      if (caps.contains(primaryMetric)) {
-        recommended.add(exerciseWithCaps);
-      } else {
-        others.add(exerciseWithCaps);
+
+      // Get the exercise's discipline's category for affinity scoring
+      String? exerciseCategoryId;
+      if (exercise.disciplineId != null) {
+        final discipline = _disciplines[exercise.disciplineId];
+        exerciseCategoryId = discipline?.categoryId;
       }
+
+      // Calculate relevance score using the modality's scoring algorithm
+      final score = modalityConfig.calculateRelevanceScore(
+        exerciseCapabilities: caps,
+        exerciseCategoryId: exerciseCategoryId,
+      );
+
+      scoredExercises.add((exerciseWithCaps, score));
     }
 
-    // Sort each group alphabetically
-    recommended.sort((a, b) => a.name.compareTo(b.name));
-    others.sort((a, b) => a.name.compareTo(b.name));
+    // Sort by score descending, then alphabetically for ties
+    scoredExercises.sort((a, b) {
+      final scoreCompare = b.$2.compareTo(a.$2); // Descending score
+      if (scoreCompare != 0) return scoreCompare;
+      return a.$1.name.compareTo(b.$1.name); // Alphabetical for ties
+    });
 
-    // Return concatenated list (recommended first)
-    return [...recommended, ...others];
-  }
-
-  /// Get modality configuration (simplified for mock)
-  Map<String, dynamic>? _getModalityConfig(String modality) {
-    // Import from modality_config.dart would be better, but for now inline
-    const configs = {
-      'cardio_endurance': {'primaryMetric': 'time'},
-      'resistance_lifting': {'primaryMetric': 'reps'},
-      'martial_arts': {'primaryMetric': 'time'},
-      'isometric_stretching': {'primaryMetric': 'hold'},
-      'sports': {'primaryMetric': 'time'},
-    };
-    return configs[modality];
+    // Return only the exercises (scores were for ranking, UI will partition at threshold)
+    return scoredExercises.map((e) => e.$1).toList();
   }
 
   // ===== METRICS =====
