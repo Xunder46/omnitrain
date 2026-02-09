@@ -1,6 +1,6 @@
 {
-    "name": "omnitrain1",
-    "short_name": "omnitrain1",
+    "name": "omnitrain",
+    "short_name": "omnitrain",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

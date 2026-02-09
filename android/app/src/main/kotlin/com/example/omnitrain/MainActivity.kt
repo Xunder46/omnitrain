@@ -1,4 +1,4 @@
-package com.example.omnitrain1
+package com.example.omnitrain
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -2,10 +2,49 @@ PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
 
 -- Note: IDs are TEXT (UUID hex), timestamps in INTEGER (ms), booleans as INTEGER (0/1).
+--
+-- DELETE OPERATIONS (Phase 1 Implementation - Feb 2026):
+-- =========================================================
+-- The repository interface now supports deletion operations for session management:
+--
+-- 1. DELETE INDIVIDUAL OBSERVATIONS (remove sets/entries):
+--    - WorkoutRepository.deleteObservation(String id)
+--    - Use case: Remove a single set from an exercise
+--    - SQLite: DELETE FROM app_effort_observation WHERE id = ?;
+--
+-- 2. DELETE ALL OBSERVATIONS FOR AN EFFORT (batch delete):
+--    - WorkoutRepository.deleteObservationsForEffort(String effortId)
+--    - Use case: Clear all entries when removing an exercise
+--    - SQLite: DELETE FROM app_effort_observation WHERE effort_id = ?;
+--
+-- 3. DELETE EFFORT (remove exercise from session):
+--    - WorkoutRepository.deleteEffort(String id)
+--    - Must delete observations first (or use CASCADE)
+--    - SQLite: DELETE FROM app_segment_effort WHERE id = ?;
+--    - Note: Foreign keys configured with ON DELETE CASCADE for automatic cleanup
+--
+-- 4. UPDATE SESSION (end workout):
+--    - WorkoutRepository.updateSession(TrainingSession session)
+--    - Use case: Set ended_at_ms when finishing a workout
+--    - SQLite: UPDATE app_training_session SET ended_at_ms = ?, updated_at_ms = ? WHERE id = ?;
+--
+-- CASCADE BEHAVIOR:
+-- - app_effort_observation.effort_id → ON DELETE CASCADE
+--   Deleting an effort automatically removes all its observations
+-- - app_segment_effort.segment_id → ON DELETE CASCADE
+--   Deleting a segment automatically removes all its efforts (and their observations)
+--
+-- SOFT DELETE ALTERNATIVE:
+-- - For production sync/history preservation, consider using deleted_at_ms field
+-- - Current implementation uses hard deletes (removes from Maps in MockWorkoutRepository)
+-- - Future SqliteWorkoutRepository can implement soft deletes for sync conflict resolution
 CREATE TABLE app_sport_category (
   id TEXT NOT NULL PRIMARY KEY,
   key TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
+  description TEXT,
+  icon_name TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   deleted_at_ms INTEGER,
@@ -74,6 +113,8 @@ CREATE TABLE app_training_session (
   title TEXT,
   note TEXT,
   location_text TEXT,
+  modality TEXT, -- Functional training type: 'cardio_endurance', 'resistance_lifting', 'martial_arts', 'isometric_stretching', 'sports', or NULL for 'Free Training'
+  intent TEXT,
   perceived_session_rpe REAL,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
@@ -123,11 +164,17 @@ CREATE TABLE app_segment_effort (
   deleted_at_ms INTEGER,
   row_version INTEGER NOT NULL DEFAULT 0,
   is_dirty INTEGER NOT NULL DEFAULT 1,
-  FOREIGN KEY(segment_id) REFERENCES app_session_segment(id),
+  FOREIGN KEY(segment_id) REFERENCES app_session_segment(id) ON DELETE CASCADE,
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
 );
 CREATE INDEX IF NOT EXISTS IX_effort_segment_order ON app_segment_effort(segment_id, order_index);
 CREATE INDEX IF NOT EXISTS IX_effort_exercise ON app_segment_effort(exercise_id);
+
+-- DELETE NOTES for app_segment_effort:
+-- When deleting an effort:
+--   1. Set deleted_at_ms for soft delete (preserves history)
+--   2. For hard delete, must first delete all app_effort_observation rows for this effort
+--   3. OR use ON DELETE CASCADE foreign key on app_effort_observation.effort_id
 
 CREATE TABLE app_unit (
   id TEXT NOT NULL PRIMARY KEY,
@@ -170,7 +217,7 @@ CREATE TABLE app_effort_observation (
   deleted_at_ms INTEGER,
   row_version INTEGER NOT NULL DEFAULT 0,
   is_dirty INTEGER NOT NULL DEFAULT 1,
-  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id),
+  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE,
   FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
   FOREIGN KEY(unit_id) REFERENCES app_unit(id),
   CHECK (
@@ -182,6 +229,13 @@ CREATE TABLE app_effort_observation (
 );
 CREATE INDEX IF NOT EXISTS IX_obs_effort ON app_effort_observation(effort_id);
 CREATE INDEX IF NOT EXISTS IX_obs_metric ON app_effort_observation(metric_id);
+
+-- DELETE NOTES for app_effort_observation:
+-- Individual observations can be deleted to remove sets/entries from an effort
+-- When deleting by effort_id (removing entire exercise from session):
+--   DELETE FROM app_effort_observation WHERE effort_id = ?;
+--   Then: DELETE FROM app_segment_effort WHERE id = ?;
+-- With ON DELETE CASCADE, deleting an effort automatically deletes its observations
 
 CREATE TABLE app_exercise_pr (
   id TEXT NOT NULL PRIMARY KEY,
@@ -317,6 +371,92 @@ CREATE TABLE app_exercise_tag (
   PRIMARY KEY (exercise_id, tag_id),
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
   FOREIGN KEY(tag_id) REFERENCES app_tag(id)
+);
+
+-- Exercise capabilities for modality-aware ranking
+-- Maps each exercise to a set of capability flags indicating what tracking methods it supports.
+-- Used for intelligent exercise recommendation in the exercise picker.
+--
+-- Capability flags:
+--   'time'     - Continuous duration tracking (e.g., running, holding)
+--   'distance' - Distance covered (e.g., running, cycling)
+--   'reps'     - Repetition counting (e.g., strength exercises)
+--   'sets'     - Set grouping (e.g., strength exercises)
+--   'load'     - External weight/resistance (e.g., barbell exercises)
+--   'hold'     - Isometric hold duration (e.g., planks, wall sits)
+--   'rounds'   - Round/period segmentation (e.g., boxing, sports)
+--
+-- Exercise Ranking Algorithm (in workoutRepository.getExercisesRankedForModality):
+-- When a user creates a session with a specific modality (e.g., cardio_endurance), exercises
+-- are ranked by their relevance to that modality using a multi-factor scoring system:
+--
+-- Scoring breakdown (total: 0-100):
+--   1. Discipline affinity (0-40): Does the exercise's discipline belong to the modality's category?
+--      - E.g., Running discipline (category-cardio) gets 40 points in cardio_endurance modality
+--   2. Primary capability match (0-30): What fraction of modality's core capabilities does the exercise support?
+--      - E.g., cardio_endurance has primary ['time', 'distance']; exercise with ['time'] gets 15 points
+--   3. Secondary capability bonus (0-10): What fraction of modality's bonus capabilities matched?
+--   4. Anti-capability penalty (0 to -20): Does the exercise have capabilities from conflicting modalities?
+--      - E.g., 'load' capability in cardio context suggests strength focus, reduces score
+--   5. No-overlap penalty (0 or -10): No primary capabilities matched AND different category
+--
+-- Recommendation threshold: Score >= 50.0 puts exercise in "Recommended" section of picker
+--
+-- Modality configurations (lib/core/constants/modality_config.dart):
+--   cardio_endurance:
+--     categoryId: category-cardio
+--     primaryCapabilities: ['time', 'distance']
+--     secondaryCapabilities: ['rounds']
+--     antiCapabilities: ['load', 'hold']
+--   resistance_lifting:
+--     categoryId: category-resistance
+--     primaryCapabilities: ['reps', 'sets', 'load']
+--     secondaryCapabilities: ['time']
+--     antiCapabilities: ['distance', 'rounds', 'hold']
+--   martial_arts:
+--     categoryId: category-martial-arts
+--     primaryCapabilities: ['time', 'rounds']
+--     secondaryCapabilities: []
+--     antiCapabilities: ['load', 'hold', 'distance']
+--   isometric_stretching:
+--     categoryId: category-isometric
+--     primaryCapabilities: ['hold', 'time']
+--     secondaryCapabilities: ['sets']
+--     antiCapabilities: ['load', 'distance', 'rounds']
+--   sports:
+--     categoryId: category-sports
+--     primaryCapabilities: ['time', 'rounds']
+--     secondaryCapabilities: ['distance']
+--     antiCapabilities: ['load', 'hold']
+--
+-- Example: Barbell Squat with capabilities ['reps', 'sets', 'load', 'time']
+--   In resistance_lifting:  Score = 40 (discipline) + 30 (all 3 primary) + 0 (secondary) + 0 (no anti) = 70 → Recommended
+--   In cardio_endurance:    Score = 0 (different category) + 0 (no primary) + 0 (no secondary) + -20 (load anti) = -20 → clamp to 0 → Others
+--
+-- Note: The 'time' capability is present on almost all exercises because virtually anything can be
+-- done for duration. This is why discipline affinity (0-40) is the strongest signal—it prevents
+-- pure strength exercises from appearing as "Recommended" in cardio just because they support 'time'.
+CREATE TABLE app_exercise_capability (
+  exercise_id TEXT NOT NULL,
+  capability TEXT NOT NULL,
+  PRIMARY KEY (exercise_id, capability),
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
+);
+CREATE INDEX IF NOT EXISTS IX_exercise_capability_cap ON app_exercise_capability(capability);
+
+CREATE TABLE app_muscle_group (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE app_exercise_muscle_group (
+  exercise_id TEXT NOT NULL,
+  muscle_group_id TEXT NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (exercise_id, muscle_group_id),
+  FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
+  FOREIGN KEY(muscle_group_id) REFERENCES app_muscle_group(id)
 );
 
 CREATE TABLE app_sync_event (

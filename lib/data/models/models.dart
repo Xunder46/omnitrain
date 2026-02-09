@@ -4,16 +4,32 @@ class SportCategory {
   final String id;
   final String key;
   final String name;
+  final String? description;
+  final String? iconName;
+  final int sortOrder;
   final int createdAtMs;
   final int updatedAtMs;
   final int? deletedAtMs;
 
-  SportCategory({required this.id, required this.key, required this.name, required this.createdAtMs, required this.updatedAtMs, this.deletedAtMs});
+  SportCategory({
+    required this.id,
+    required this.key,
+    required this.name,
+    this.description,
+    this.iconName,
+    this.sortOrder = 0,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+    this.deletedAtMs,
+  });
 
   factory SportCategory.fromMap(Map<String, dynamic> m) => SportCategory(
       id: m['id'] as String,
       key: m['key'] as String,
       name: m['name'] as String,
+      description: m['description'] as String?,
+      iconName: m['icon_name'] as String?,
+      sortOrder: m['sort_order'] as int? ?? 0,
       createdAtMs: m['created_at_ms'] as int,
       updatedAtMs: m['updated_at_ms'] as int,
       deletedAtMs: m['deleted_at_ms'] as int?);
@@ -22,6 +38,9 @@ class SportCategory {
         'id': id,
         'key': key,
         'name': name,
+        'description': description,
+        'icon_name': iconName,
+        'sort_order': sortOrder,
         'created_at_ms': createdAtMs,
         'updated_at_ms': updatedAtMs,
         'deleted_at_ms': deletedAtMs
@@ -66,8 +85,20 @@ class Exercise {
   final bool isArchived;
   final int createdAtMs;
   final int updatedAtMs;
+  final List<String> capabilities;
 
-  Exercise({required this.id, this.ownerUserId, this.disciplineId, required this.name, this.description, this.movementPattern, this.isArchived = false, required this.createdAtMs, required this.updatedAtMs});
+  Exercise({
+    required this.id,
+    this.ownerUserId,
+    this.disciplineId,
+    required this.name,
+    this.description,
+    this.movementPattern,
+    this.isArchived = false,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+    this.capabilities = const [],
+  });
 
   factory Exercise.fromMap(Map<String, dynamic> m) => Exercise(
       id: m['id'] as String,
@@ -91,6 +122,39 @@ class Exercise {
         'created_at_ms': createdAtMs,
         'updated_at_ms': updatedAtMs
       };
+
+  /// Check if exercise supports a specific capability
+  bool supports(String capability) => capabilities.contains(capability);
+
+  /// Check if exercise supports any of the given capabilities
+  bool supportsAny(List<String> caps) => caps.any((c) => capabilities.contains(c));
+
+  /// Create a copy with updated fields
+  Exercise copyWith({
+    String? id,
+    String? ownerUserId,
+    String? disciplineId,
+    String? name,
+    String? description,
+    String? movementPattern,
+    bool? isArchived,
+    int? createdAtMs,
+    int? updatedAtMs,
+    List<String>? capabilities,
+  }) {
+    return Exercise(
+      id: id ?? this.id,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      disciplineId: disciplineId ?? this.disciplineId,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      movementPattern: movementPattern ?? this.movementPattern,
+      isArchived: isArchived ?? this.isArchived,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      capabilities: capabilities ?? this.capabilities,
+    );
+  }
 }
 
 class Equipment {
@@ -113,11 +177,26 @@ class TrainingSession {
   final String? title;
   final String? note;
   final String? locationText;
+  final String? modality;
+  final String? intent;
   final double? perceivedSessionRpe;
   final int createdAtMs;
   final int updatedAtMs;
 
-  TrainingSession({required this.id, required this.ownerUserId, required this.startedAtMs, this.endedAtMs, this.title, this.note, this.locationText, this.perceivedSessionRpe, required this.createdAtMs, required this.updatedAtMs});
+  TrainingSession({
+    required this.id,
+    required this.ownerUserId,
+    required this.startedAtMs,
+    this.endedAtMs,
+    this.title,
+    this.note,
+    this.locationText,
+    this.modality,
+    this.intent,
+    this.perceivedSessionRpe,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
   factory TrainingSession.fromMap(Map<String, dynamic> m) => TrainingSession(
       id: m['id'] as String,
@@ -127,6 +206,8 @@ class TrainingSession {
       title: m['title'] as String?,
       note: m['note'] as String?,
       locationText: m['location_text'] as String?,
+      modality: m['modality'] as String?,
+      intent: m['intent'] as String?,
       perceivedSessionRpe: (m['perceived_session_rpe'] as num?)?.toDouble(),
       createdAtMs: m['created_at_ms'] as int,
       updatedAtMs: m['updated_at_ms'] as int);
@@ -139,6 +220,8 @@ class TrainingSession {
         'title': title,
         'note': note,
         'location_text': locationText,
+        'modality': modality,
+        'intent': intent,
         'perceived_session_rpe': perceivedSessionRpe,
         'created_at_ms': createdAtMs,
         'updated_at_ms': updatedAtMs
@@ -447,6 +530,66 @@ class Tag {
   factory Tag.fromMap(Map<String, dynamic> m) => Tag(id: m['id'] as String, name: m['name'] as String, createdAtMs: m['created_at_ms'] as int);
 
   Map<String, dynamic> toMap() => {'id': id, 'name': name, 'created_at_ms': createdAtMs};
+}
+
+class MuscleGroup {
+  final String id;
+  final String name;
+  final int createdAtMs;
+
+  MuscleGroup({required this.id, required this.name, required this.createdAtMs});
+
+  factory MuscleGroup.fromMap(Map<String, dynamic> m) => MuscleGroup(id: m['id'] as String, name: m['name'] as String, createdAtMs: m['created_at_ms'] as int);
+
+  Map<String, dynamic> toMap() => {'id': id, 'name': name, 'created_at_ms': createdAtMs};
+}
+
+class ExerciseAlias {
+  final String id;
+  final String exerciseId;
+  final String alias;
+  final int createdAtMs;
+
+  ExerciseAlias({
+    required this.id,
+    required this.exerciseId,
+    required this.alias,
+    required this.createdAtMs,
+  });
+
+  factory ExerciseAlias.fromMap(Map<String, dynamic> m) => ExerciseAlias(
+        id: m['id'] as String,
+        exerciseId: m['exercise_id'] as String,
+        alias: m['alias'] as String,
+        createdAtMs: m['created_at_ms'] as int,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'exercise_id': exerciseId,
+        'alias': alias,
+        'created_at_ms': createdAtMs,
+      };
+}
+
+class MetricApplicability {
+  final String metricId;
+  final String effortKind;
+
+  MetricApplicability({
+    required this.metricId,
+    required this.effortKind,
+  });
+
+  factory MetricApplicability.fromMap(Map<String, dynamic> m) => MetricApplicability(
+        metricId: m['metric_id'] as String,
+        effortKind: m['effort_kind'] as String,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'metric_id': metricId,
+        'effort_kind': effortKind,
+      };
 }
 
 // Lightweight SetRow used by UI for logging sets. Kept separate from the

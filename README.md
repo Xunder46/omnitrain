@@ -1,4 +1,4 @@
-# omnitrain1
+# omnitrain
 
 A new Flutter project.
 
