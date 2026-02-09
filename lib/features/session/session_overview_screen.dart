@@ -86,14 +86,6 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
     }
   }
 
-  void _startWorkout() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => Container(),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -210,8 +202,29 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                               subtitle: Text(subtitle),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete_outline),
-                                onPressed: () {
-                                  // TODO: Implement delete exercise
+                                onPressed: () async {
+                                  final effortId = exercise['id'] as String;
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('Remove Exercise'),
+                                      content: Text('Remove ${exercise['name']} from this workout?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        FilledButton(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          child: const Text('Remove'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed == true && mounted) {
+                                    await widget.workoutState.removeExerciseFromSession(effortId);
+                                    await _initializeSession();
+                                  }
                                 },
                               ),
                             ),
@@ -235,7 +248,18 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: FilledButton(
-                      onPressed: exercises.isNotEmpty ? _startWorkout : null,
+                      onPressed: exercises.isNotEmpty
+                          ? () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => WorkoutSessionScreen(
+                                    workoutState: widget.workoutState,
+                                  ),
+                                ),
+                              );
+                              await _initializeSession();
+                            }
+                          : null,
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),

@@ -2,6 +2,42 @@ PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
 
 -- Note: IDs are TEXT (UUID hex), timestamps in INTEGER (ms), booleans as INTEGER (0/1).
+--
+-- DELETE OPERATIONS (Phase 1 Implementation - Feb 2026):
+-- =========================================================
+-- The repository interface now supports deletion operations for session management:
+--
+-- 1. DELETE INDIVIDUAL OBSERVATIONS (remove sets/entries):
+--    - WorkoutRepository.deleteObservation(String id)
+--    - Use case: Remove a single set from an exercise
+--    - SQLite: DELETE FROM app_effort_observation WHERE id = ?;
+--
+-- 2. DELETE ALL OBSERVATIONS FOR AN EFFORT (batch delete):
+--    - WorkoutRepository.deleteObservationsForEffort(String effortId)
+--    - Use case: Clear all entries when removing an exercise
+--    - SQLite: DELETE FROM app_effort_observation WHERE effort_id = ?;
+--
+-- 3. DELETE EFFORT (remove exercise from session):
+--    - WorkoutRepository.deleteEffort(String id)
+--    - Must delete observations first (or use CASCADE)
+--    - SQLite: DELETE FROM app_segment_effort WHERE id = ?;
+--    - Note: Foreign keys configured with ON DELETE CASCADE for automatic cleanup
+--
+-- 4. UPDATE SESSION (end workout):
+--    - WorkoutRepository.updateSession(TrainingSession session)
+--    - Use case: Set ended_at_ms when finishing a workout
+--    - SQLite: UPDATE app_training_session SET ended_at_ms = ?, updated_at_ms = ? WHERE id = ?;
+--
+-- CASCADE BEHAVIOR:
+-- - app_effort_observation.effort_id → ON DELETE CASCADE
+--   Deleting an effort automatically removes all its observations
+-- - app_segment_effort.segment_id → ON DELETE CASCADE
+--   Deleting a segment automatically removes all its efforts (and their observations)
+--
+-- SOFT DELETE ALTERNATIVE:
+-- - For production sync/history preservation, consider using deleted_at_ms field
+-- - Current implementation uses hard deletes (removes from Maps in MockWorkoutRepository)
+-- - Future SqliteWorkoutRepository can implement soft deletes for sync conflict resolution
 CREATE TABLE app_sport_category (
   id TEXT NOT NULL PRIMARY KEY,
   key TEXT NOT NULL UNIQUE,
@@ -128,11 +164,17 @@ CREATE TABLE app_segment_effort (
   deleted_at_ms INTEGER,
   row_version INTEGER NOT NULL DEFAULT 0,
   is_dirty INTEGER NOT NULL DEFAULT 1,
-  FOREIGN KEY(segment_id) REFERENCES app_session_segment(id),
+  FOREIGN KEY(segment_id) REFERENCES app_session_segment(id) ON DELETE CASCADE,
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
 );
 CREATE INDEX IF NOT EXISTS IX_effort_segment_order ON app_segment_effort(segment_id, order_index);
 CREATE INDEX IF NOT EXISTS IX_effort_exercise ON app_segment_effort(exercise_id);
+
+-- DELETE NOTES for app_segment_effort:
+-- When deleting an effort:
+--   1. Set deleted_at_ms for soft delete (preserves history)
+--   2. For hard delete, must first delete all app_effort_observation rows for this effort
+--   3. OR use ON DELETE CASCADE foreign key on app_effort_observation.effort_id
 
 CREATE TABLE app_unit (
   id TEXT NOT NULL PRIMARY KEY,
@@ -175,7 +217,7 @@ CREATE TABLE app_effort_observation (
   deleted_at_ms INTEGER,
   row_version INTEGER NOT NULL DEFAULT 0,
   is_dirty INTEGER NOT NULL DEFAULT 1,
-  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id),
+  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE,
   FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
   FOREIGN KEY(unit_id) REFERENCES app_unit(id),
   CHECK (
@@ -187,6 +229,13 @@ CREATE TABLE app_effort_observation (
 );
 CREATE INDEX IF NOT EXISTS IX_obs_effort ON app_effort_observation(effort_id);
 CREATE INDEX IF NOT EXISTS IX_obs_metric ON app_effort_observation(metric_id);
+
+-- DELETE NOTES for app_effort_observation:
+-- Individual observations can be deleted to remove sets/entries from an effort
+-- When deleting by effort_id (removing entire exercise from session):
+--   DELETE FROM app_effort_observation WHERE effort_id = ?;
+--   Then: DELETE FROM app_segment_effort WHERE id = ?;
+-- With ON DELETE CASCADE, deleting an effort automatically deletes its observations
 
 CREATE TABLE app_exercise_pr (
   id TEXT NOT NULL PRIMARY KEY,

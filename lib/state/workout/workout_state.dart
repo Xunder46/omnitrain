@@ -205,7 +205,8 @@ class WorkoutState extends ChangeNotifier {
 
   /// Add an entry (set/round/hold/etc.) to an effort
   /// Creates appropriate observations based on effort kind
-  Future<void> addEntry(String effortId) async {
+  /// [previousValues] - Optional map of metric values to pre-fill from previous entry
+  Future<void> addEntry(String effortId, {Map<String, dynamic>? previousValues}) async {
     _clearError();
 
     try {
@@ -233,7 +234,7 @@ class WorkoutState extends ChangeNotifier {
             effortId: effortId,
             metricId: MetricIds.reps,
             unitId: MetricIds.unitReps,
-            valueInt: 10,
+            valueInt: (previousValues?['reps'] as int?) ?? 10,
             createdAtMs: now,
             updatedAtMs: now,
           ));
@@ -242,7 +243,7 @@ class WorkoutState extends ChangeNotifier {
             effortId: effortId,
             metricId: MetricIds.weight,
             unitId: MetricIds.unitKg,
-            valueReal: 0.0,
+            valueReal: (previousValues?['weight'] as double?) ?? 0.0,
             createdAtMs: now,
             updatedAtMs: now,
           ));
@@ -254,7 +255,7 @@ class WorkoutState extends ChangeNotifier {
             effortId: effortId,
             metricId: MetricIds.duration,
             unitId: MetricIds.unitSeconds,
-            valueInt: 0,
+            valueInt: (previousValues?['duration'] as int?) ?? 0,
             createdAtMs: now,
             updatedAtMs: now,
           ));
@@ -264,7 +265,7 @@ class WorkoutState extends ChangeNotifier {
             effortId: effortId,
             metricId: MetricIds.distance,
             unitId: MetricIds.unitMeters,
-            valueReal: 0.0,
+            valueReal: (previousValues?['distance'] as double?) ?? 0.0,
             createdAtMs: now,
             updatedAtMs: now,
           ));
@@ -276,7 +277,7 @@ class WorkoutState extends ChangeNotifier {
             effortId: effortId,
             metricId: MetricIds.rounds,
             unitId: MetricIds.unitRounds,
-            valueInt: 1,
+            valueInt: (previousValues?['rounds'] as int?) ?? 1,
             createdAtMs: now,
             updatedAtMs: now,
           ));
@@ -285,7 +286,7 @@ class WorkoutState extends ChangeNotifier {
             effortId: effortId,
             metricId: MetricIds.roundDuration,
             unitId: MetricIds.unitSeconds,
-            valueInt: 180, // 3 minutes default
+            valueInt: (previousValues?['round-duration'] as int?) ?? 180,
             createdAtMs: now,
             updatedAtMs: now,
           ));
@@ -297,7 +298,7 @@ class WorkoutState extends ChangeNotifier {
             effortId: effortId,
             metricId: MetricIds.duration,
             unitId: MetricIds.unitSeconds,
-            valueInt: 0, // Hold time
+            valueInt: (previousValues?['duration'] as int?) ?? 0,
             createdAtMs: now,
             updatedAtMs: now,
           ));
@@ -306,7 +307,7 @@ class WorkoutState extends ChangeNotifier {
             id: 'obs-$effortId-$entryIndex-rpe',
             effortId: effortId,
             metricId: MetricIds.rpe,
-            valueInt: 5,
+            valueInt: (previousValues?['rpe'] as int?) ?? 5,
             createdAtMs: now,
             updatedAtMs: now,
           ));
@@ -339,7 +340,16 @@ class WorkoutState extends ChangeNotifier {
   }
 
   /// Update an entry value for any metric
-  Future<void> updateEntryValue(String effortId, String metricKey, dynamic value) async {
+  /// [effortId] - The effort containing the entry
+  /// [entryIndex] - The 0-based index of the entry (set/round/hold number)
+  /// [metricKey] - The metric to update ('reps', 'weight', 'duration', etc.)
+  /// [value] - The new value to set
+  Future<void> updateEntryValue(
+    String effortId,
+    int entryIndex,
+    String metricKey,
+    dynamic value,
+  ) async {
     final observations = _observations[effortId];
     if (observations == null) return;
 
@@ -360,9 +370,17 @@ class WorkoutState extends ChangeNotifier {
       final metricId = metricIdMap[metricKey];
       if (metricId == null) return;
 
-      final obsIndex = observations.indexWhere((o) => o.metricId == metricId);
+      // Find the observation for this entry index and metric
+      // Observations are grouped in pairs (e.g., reps+weight, duration+distance)
+      // For entryIndex N, observations start at index N*2
+      final matchingObservations = observations
+          .asMap()
+          .entries
+          .where((entry) => entry.value.metricId == metricId)
+          .toList();
 
-      if (obsIndex != -1) {
+      if (entryIndex < matchingObservations.length) {
+        final obsIndex = matchingObservations[entryIndex].key;
         final oldObs = observations[obsIndex];
         final newObs = EffortObservation(
           id: oldObs.id,
@@ -384,6 +402,99 @@ class WorkoutState extends ChangeNotifier {
       }
     } catch (e) {
       _setError('Failed to update entry: $e');
+    }
+  }
+
+  /// Delete a specific entry (set/round/hold) from an effort
+  /// [effortId] - The effort containing the entry
+  /// [entryIndex] - The 0-based index of the entry to delete
+  Future<void> deleteEntry(String effortId, int entryIndex) async {
+    final observations = _observations[effortId];
+    if (observations == null) return;
+
+    _clearError();
+
+    try {
+      // Each entry is typically 2 observations (reps+weight, duration+distance, etc.)
+      // Calculate the observation indices for this entry
+      final startIndex = entryIndex * 2;
+      final endIndex = startIndex + 2;
+
+      if (startIndex >= observations.length) return;
+
+      // Delete the observations in reverse order to maintain indices
+      final obsToDelete = observations.sublist(
+        startIndex,
+        endIndex.clamp(0, observations.length),
+      );
+
+      for (final obs in obsToDelete) {
+        await _repository.deleteObservation(obs.id);
+      }
+
+      // Remove from local cache
+      observations.removeRange(startIndex, endIndex.clamp(0, observations.length));
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to delete entry: $e');
+    }
+  }
+
+  /// Remove an exercise (effort) from the session
+  /// [effortId] - The effort to remove
+  Future<void> removeExerciseFromSession(String effortId) async {
+    _clearError();
+
+    try {
+      // Delete the effort (this also deletes all its observations via repository)
+      await _repository.deleteEffort(effortId);
+
+      // Remove from local caches
+      _observations.remove(effortId);
+      for (final effortList in _efforts.values) {
+        effortList.removeWhere((e) => e.id == effortId);
+      }
+
+      // Note: We don't remove from _exerciseCache as the exercise itself still exists
+      // Only the effort (instance of exercise in this session) is removed
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to remove exercise: $e');
+    }
+  }
+
+  /// End the current session
+  /// Sets the session end timestamp and persists to repository
+  Future<void> endSession() async {
+    if (_currentSession == null) return;
+
+    _clearError();
+
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updatedSession = TrainingSession(
+        id: _currentSession!.id,
+        ownerUserId: _currentSession!.ownerUserId,
+        startedAtMs: _currentSession!.startedAtMs,
+        endedAtMs: now,
+        title: _currentSession!.title,
+        note: _currentSession!.note,
+        locationText: _currentSession!.locationText,
+        modality: _currentSession!.modality,
+        intent: _currentSession!.intent,
+        perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        createdAtMs: _currentSession!.createdAtMs,
+        updatedAtMs: now,
+      );
+
+      await _repository.updateSession(updatedSession);
+      _currentSession = updatedSession;
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to end session: $e');
     }
   }
 

@@ -250,6 +250,27 @@ class MockWorkoutRepository implements WorkoutRepository {
     _observations[observation.id] = observation;
   }
 
+  @override
+  Future<void> deleteObservation(String id) async {
+    _observations.remove(id);
+  }
+
+  @override
+  Future<void> deleteObservationsForEffort(String effortId) async {
+    // Remove all observations for the given effort
+    _observations.removeWhere((id, obs) => obs.effortId == effortId);
+  }
+
+  // ===== EFFORTS (additional) =====
+
+  @override
+  Future<void> deleteEffort(String id) async {
+    // First delete all observations for this effort
+    await deleteObservationsForEffort(id);
+    // Then remove the effort itself
+    _efforts.remove(id);
+  }
+
   // ===== SPORT CATEGORIES =====
 
   @override

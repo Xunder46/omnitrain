@@ -31,6 +31,11 @@ abstract class WorkoutRepository {
   Future<List<EffortObservation>> getEffortObservations(String effortId);
   Future<String> createObservation(EffortObservation observation);
   Future<void> updateObservation(EffortObservation observation);
+  Future<void> deleteObservation(String id);
+  Future<void> deleteObservationsForEffort(String effortId);
+
+  // Efforts (additional methods)
+  Future<void> deleteEffort(String id);
 
   // Sport Categories
   Future<List<SportCategory>> getSportCategories();
