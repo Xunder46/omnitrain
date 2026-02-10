@@ -756,7 +756,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
+                      color: theme.colorScheme.primary,
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
@@ -772,7 +772,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                         Icon(
                           Icons.self_improvement,
                           size: 24,
-                          color: theme.colorScheme.onPrimaryContainer,
+                          color: theme.colorScheme.onPrimary,
                         ),
                         const SizedBox(width: 12),
                         Column(
@@ -782,7 +782,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                             Text(
                               _restFormatted,
                               style: theme.textTheme.titleLarge?.copyWith(
-                                color: theme.colorScheme.onPrimaryContainer,
+                                color: theme.colorScheme.onPrimary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -935,7 +935,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
+                    color: theme.colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
@@ -951,7 +951,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       Icon(
                         Icons.self_improvement,
                         size: 24,
-                        color: theme.colorScheme.onPrimaryContainer,
+                        color: theme.colorScheme.onPrimary,
                       ),
                       const SizedBox(width: 12),
                       Column(
@@ -961,7 +961,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                           Text(
                             _restFormatted,
                             style: theme.textTheme.titleLarge?.copyWith(
-                              color: theme.colorScheme.onPrimaryContainer,
+                              color: theme.colorScheme.onPrimary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -977,6 +977,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _addExercise,
         child: const Icon(Icons.add),
+        backgroundColor: theme.colorScheme.primary,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
