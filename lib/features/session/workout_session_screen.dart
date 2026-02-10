@@ -388,7 +388,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     // Store the current elapsed value as the base (so timer counts up from this point)
     _effortElapsedBase[timerKey] = _effortElapsed[timerKey] ?? 0;
     
-    _effortStopwatches.putIfAbsent(timerKey, () => Stopwatch())..start();
+    _effortStopwatches.putIfAbsent(timerKey, () => Stopwatch()).start();
 
     _effortTimers[timerKey]?.cancel();
     _effortTimers[timerKey] =
@@ -689,20 +689,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       body: GestureDetector(
         onHorizontalDragEnd: (details) {
           // Left swipe = skip set; right swipe = previous set (only in detail view)
-          if (details.primaryVelocity! > 500) {
+          if (details.primaryVelocity! > 200) {
             // Right swipe with sufficient velocity = previous set
-            _previousSet();
-          } else if (details.primaryVelocity! < -500) {
-            // Left swipe with sufficient velocity = skip set
             _skipSet();
+          } else if (details.primaryVelocity! < -200) {
+            // Left swipe with sufficient velocity = skip set
+            _previousSet();
           }
         },
         onVerticalDragEnd: (details) {
           // Up swipe = next exercise; down swipe = previous exercise
-          if (details.primaryVelocity! < -300) {
+          if (details.primaryVelocity! < -200) {
             // Swipe up = next exercise
             _switchExercise(1);
-          } else if (details.primaryVelocity! > 300) {
+          } else if (details.primaryVelocity! > 200) {
             // Swipe down = previous exercise
             _switchExercise(-1);
           }
@@ -760,7 +760,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: theme.colorScheme.primary.withAlpha((0.3 * 255).round()),
+                          color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
                           blurRadius: 12,
                           spreadRadius: 2,
                         ),
@@ -784,15 +784,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                               style: theme.textTheme.titleLarge?.copyWith(
                                 color: theme.colorScheme.onPrimaryContainer,
                                 fontWeight: FontWeight.w600,
-                                fontSize: 20,
-                              ),
-                            ),
-                            Text(
-                              'Rest',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onPrimaryContainer,
-                                letterSpacing: 2,
-                                fontSize: 20,
                               ),
                             ),
                           ],
@@ -948,7 +939,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: theme.colorScheme.primary.withAlpha((0.3 * 255).round()),
+                        color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
                         blurRadius: 12,
                         spreadRadius: 2,
                       ),
@@ -972,15 +963,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                             style: theme.textTheme.titleLarge?.copyWith(
                               color: theme.colorScheme.onPrimaryContainer,
                               fontWeight: FontWeight.w600,
-                              fontSize: 20,
-                            ),
-                          ),
-                          Text(
-                            'Rest',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onPrimaryContainer,
-                              letterSpacing: 2,
-                              fontSize: 20,
                             ),
                           ),
                         ],
@@ -1079,7 +1061,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             Text(
               'ROUND $rounds',
               style: theme.textTheme.displayLarge?.copyWith(
-                fontSize: 72,
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
               ),

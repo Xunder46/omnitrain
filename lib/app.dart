@@ -9,9 +9,27 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Custom text theme with explicit font sizes (accessibility-compliant)
+    final textTheme = ThemeData.dark().textTheme.copyWith(
+      labelSmall: const TextStyle(
+        fontSize: 18,
+        letterSpacing: 2,
+        color: Colors.white
+      ),
+      labelLarge: const TextStyle(
+        fontSize: 18,
+        letterSpacing: 2,
+        color: Colors.white,
+        decorationColor: Colors.white
+      ),
+    );
+
     return MaterialApp(
       title: 'Omnitrain',
-      theme: ThemeData.dark(useMaterial3: true),
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(useMaterial3: true).copyWith(
+        textTheme: textTheme,
+      ),
       home: HomeScreen(workoutState: workoutState),
     );
   }

@@ -66,7 +66,7 @@ class WorkoutState extends ChangeNotifier {
 
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final sessionId = 'session-${now}';
+      final sessionId = 'session-$now';
 
       final session = TrainingSession(
         id: sessionId,
@@ -82,7 +82,7 @@ class WorkoutState extends ChangeNotifier {
       _currentModalityConfig = ModalityConfig.forModality(modality);
 
       // Create default segment
-      final segmentId = 'segment-${now}';
+      final segmentId = 'segment-$now';
       final segment = SessionSegment(
         id: segmentId,
         sessionId: sessionId,
@@ -177,7 +177,7 @@ class WorkoutState extends ChangeNotifier {
       _exerciseCache[exercise.id] = exercise;
 
       // Create effort
-      final effortId = 'effort-${now}';
+      final effortId = 'effort-$now';
       final currentEfforts = _efforts[segment.id] ?? [];
       final effort = SegmentEffort(
         id: effortId,

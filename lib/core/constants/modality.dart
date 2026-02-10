@@ -1,5 +1,6 @@
 /// Modality constants - functional classification of session types
 /// Used for filtering, summaries, and progress grouping
+library;
 
 class Modality {
   // Primary home screen modalities

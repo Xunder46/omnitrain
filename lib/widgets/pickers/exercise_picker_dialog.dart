@@ -25,7 +25,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
   List<Exercise> _filteredExercises = [];
   List<MuscleGroup> _muscleGroups = [];
   List<Discipline> _disciplines = [];
-  Map<String, List<MuscleGroup>> _exerciseMuscleGroupsCache = {};
+  final Map<String, List<MuscleGroup>> _exerciseMuscleGroupsCache = {};
 
   String? _selectedDisciplineId;
   String? _selectedMuscleGroupId;
@@ -186,7 +186,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _selectedDisciplineId,
+                    initialValue: _selectedDisciplineId,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'Discipline',
@@ -215,7 +215,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _selectedMuscleGroupId,
+                    initialValue: _selectedMuscleGroupId,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'Muscle',
@@ -360,7 +360,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                 Chip(
                   label: Text(
                     discipline.name,
-                    style: theme.textTheme.labelSmall,
+                    style: theme.textTheme.bodySmall,
                   ),
                   backgroundColor: theme.colorScheme.primaryContainer,
                   padding: EdgeInsets.zero,
@@ -370,7 +370,9 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
               ...muscleGroups.map((mg) => Chip(
                     label: Text(
                       mg.name,
-                      style: theme.textTheme.labelSmall,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSecondary,
+                      ),
                     ),
                     backgroundColor: theme.colorScheme.secondaryContainer,
                     padding: EdgeInsets.zero,

@@ -1,5 +1,6 @@
 /// Intent constants - session purpose classification
 /// Used for filtering, summaries, and progress grouping
+library;
 
 class Intent {
   static const String easyBase = 'easy_base';
