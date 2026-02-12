@@ -33,7 +33,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Track skipped sets per effort (UI-only state)
   final Map<String, Set<int>> _skippedSets = {};
 
-  late final Stopwatch _stopwatch;
   Timer? _ticker;
   String _elapsedFormatted = '00:00';
 
@@ -53,7 +52,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   @override
   void initState() {
     super.initState();
-    _stopwatch = Stopwatch()..start();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     _tick();
     _loadExercises();
@@ -513,9 +511,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   void _tick() {
-    final elapsed = _stopwatch.elapsed;
-    final mm = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+    // Calculate elapsed time from session start time (not from a local stopwatch)
+    // This ensures the timer doesn't reset when navigating away and back
+    final session = widget.workoutState.currentSession;
+    if (session == null) return;
+    
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - session.startedAtMs;
+    final elapsedSeconds = (elapsedMs / 1000).toInt();
+    final mm = (elapsedSeconds ~/ 60).remainder(60).toString().padLeft(2, '0');
+    final ss = (elapsedSeconds % 60).toString().padLeft(2, '0');
     if (mounted) {
       setState(() {
         _elapsedFormatted = '$mm:$ss';
@@ -544,10 +548,119 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _restStopwatch?.stop();
   }
 
+  Future<void> _showFinishSessionDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Finish Workout?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You have completed:',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '• ${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '• Elapsed time: $_elapsedFormatted',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'This action will save and close the workout session.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Finish'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _finishSession();
+    }
+  }
+
+  Future<void> _finishSession() async {
+    try {
+      // Show loading indicator
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Call state method to end session (goes through repository interface)
+      await widget.workoutState.endSession();
+      
+      // Clear the session from state so it's no longer accessible
+      widget.workoutState.clearSession();
+
+      if (!mounted) return;
+
+      // Close loading dialog
+      Navigator.pop(context);
+
+      // Navigate back to home (pop until first route)
+      Navigator.of(context).popUntil((route) => route.isFirst);
+
+      // Show success feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Workout session saved successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      // Close loading dialog if open
+      Navigator.pop(context);
+
+      // Show error feedback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saving session: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _ticker?.cancel();
-    _stopwatch.stop();
     // Cancel all effort timers
     for (final timer in _effortTimers.values) {
       timer?.cancel();
@@ -972,14 +1085,49 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ),
               ),
             ),
+          Positioned(
+            right: 10,
+            bottom: 110,
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
+                width: 60,
+                height: 60,
+                child: FilledButton(
+                  style: ButtonStyle(
+                    shape: WidgetStateProperty.all(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  onPressed: _addExercise,
+                  child: const Icon(Icons.add),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 10,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: FilledButton(
+                    onPressed: _showFinishSessionDialog,
+                    child: const Text('Finish Workout'),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addExercise,
-        child: const Icon(Icons.add),
-        backgroundColor: theme.colorScheme.primary,
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 
@@ -1064,6 +1212,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               style: theme.textTheme.displayLarge?.copyWith(
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
+                fontSize: theme.textTheme.displayMedium?.fontSize
               ),
             ),
             const SizedBox(height: 32),

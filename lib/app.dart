@@ -9,20 +9,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Custom dark color scheme with your preferred purple
-    final colorScheme = ColorScheme.dark(
-      primary: const Color(0xFFbc441c),
-      onPrimary: Colors.white,
-      primaryContainer: const Color(0xFF21022d),
-      onPrimaryContainer: Colors.white,
-      secondary: const Color(0xFFbfbf31),
-      onSecondary: Colors.black,
-      surface: const Color(0xFF0c071e), // Dark background
-      onSurface: Colors.white,
-      error: const Color(0xFFd68473),
-      onError: Color.fromARGB(255, 156, 0, 0),
-    );
-
     // Custom text theme with explicit font sizes (accessibility-compliant)
     final textTheme = ThemeData.dark().textTheme.copyWith(
       labelSmall: const TextStyle(
@@ -38,14 +24,61 @@ class MyApp extends StatelessWidget {
       ),
     );
 
+    // Active theme: abyssalNeonDark
+    final ThemeData abyssalNeonDark = buildTheme(
+      brightness: Brightness.dark,
+      background: Color(0xFF0B0F14),
+      surface: Color(0xFF121826),
+      primary: Color(0xFF2DE2E6),
+      secondary: Color(0xFF1B9AAA),
+      textPrimary: Color(0xFFE6EDF3),
+      textSecondary: Color(0xFF9BA4B5),
+      divider: Color(0xFF1F2937),
+    );
+
     return MaterialApp(
       title: 'Omnitrain',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(useMaterial3: true).copyWith(
-        colorScheme: colorScheme,
+      theme: abyssalNeonDark.copyWith(
         textTheme: textTheme,
       ),
       home: HomeScreen(workoutState: workoutState),
     );
   }
+}
+
+ThemeData buildTheme({
+  required Brightness brightness,
+  required Color primary,
+  required Color secondary,
+  required Color background,
+  required Color surface,
+  required Color textPrimary,
+  required Color textSecondary,
+  required Color divider,
+}) {
+  final colorScheme = ColorScheme(
+    brightness: brightness,
+    primary: primary,
+    onPrimary: brightness == Brightness.dark ? Colors.black : Colors.white,
+    secondary: secondary,
+    onSecondary: Colors.white,
+    error: Colors.red,
+    onError: Colors.white,
+    surface: surface,
+    onSurface: textPrimary,
+  );
+
+  return ThemeData(
+    useMaterial3: true,
+    brightness: brightness,
+    colorScheme: colorScheme,
+    scaffoldBackgroundColor: background,
+    dividerColor: divider,
+    textTheme: TextTheme(
+      bodyLarge: TextStyle(color: textPrimary),
+      bodyMedium: TextStyle(color: textSecondary),
+      labelLarge: TextStyle(color: textPrimary),
+    ),
+  );
 }

@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'modality.dart';
 
-/// Configuration for home screen modality tiles
+/// Configuration for home screen modality tiles with cosmic aesthetic
 /// Defines the 6 primary entry points for workout sessions
 class HomeTileConfig {
   final String key;
   final String label;
   final IconData iconData;
-  final Color color;
+  final List<Color> gradientColors;
   final String? modality; // null = Free Training (no modality preset)
 
   const HomeTileConfig({
     required this.key,
     required this.label,
     required this.iconData,
-    required this.color,
+    required this.gradientColors,
     this.modality,
   });
 }
@@ -27,14 +27,14 @@ class HomeTiles {
       key: 'cardio',
       label: 'Cardio / Endurance',
       iconData: Icons.directions_run,
-      color: Color(0xFF4e8ea7), // Teal blue
+      gradientColors: [Color(0xFF1ED7C6), Color(0xFF0E5E6F)],
       modality: Modality.cardioEndurance,
     ),
     HomeTileConfig(
       key: 'resistance',
       label: 'Resistance / Lifting',
       iconData: Icons.fitness_center,
-      color: Color(0xFF0f324c), // dark blue
+      gradientColors: [Color(0xFF4FC3F7), Color(0xFF1A3A5F)],
       modality: Modality.resistanceLifting,
     ),
     
@@ -43,14 +43,14 @@ class HomeTiles {
       key: 'martial_arts',
       label: 'Martial Arts',
       iconData: Icons.sports_mma,
-      color: Color(0xFFD32F2F), // Red 700
+      gradientColors: [Color(0xFFE53935), Color(0xFF5C1A1A)],
       modality: Modality.martialArts,
     ),
     HomeTileConfig(
       key: 'isometric',
       label: 'Isometric / Stretching',
       iconData: Icons.accessibility,
-      color: Color(0xFFFFC434), // Amber/gold
+      gradientColors: [Color(0xFFFFC107), Color(0xFF5C4A1A)],
       modality: Modality.isometricStretching,
     ),
     
@@ -59,14 +59,14 @@ class HomeTiles {
       key: 'sports',
       label: 'Sports',
       iconData: Icons.sports_soccer,
-      color: Color(0xFF388E3C), // Green 700
+      gradientColors: [Color(0xFF43A047), Color(0xFF1B3A22)],
       modality: Modality.sports,
     ),
     HomeTileConfig(
       key: 'free_training',
       label: 'Free Training',
       iconData: Icons.play_arrow,
-      color: Color(0xFF424242), // Neutral grey 800 (theme-friendly)
+      gradientColors: [Color(0xFF3F51B5), Color(0xFF1A1F4A)],
       modality: null, // No modality preset
     ),
   ];

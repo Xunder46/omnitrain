@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../state/workout/workout_state.dart';
 import '../../core/constants/home_tiles.dart';
-import '../../widgets/cards/modality_tile_widget.dart';
+import '../../core/constants/omni_theme.dart';
+import '../../widgets/layout/omni_gradient_background.dart';
+import '../../widgets/cards/energy_tile.dart';
 import '../session/workout_session_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -11,38 +13,75 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: false,
       appBar: AppBar(
-        title: const Text('Omnitrain'),
-        backgroundColor: theme.colorScheme.surface,
+        title: const Text(
+          'OMNITRAIN',
+          style: TextStyle(
+            fontSize: 16,
+            letterSpacing: OmniTheme.headerLetterSpacing,
+            fontWeight: FontWeight.w600,
+            color: OmniTheme.backgroundGradientTop,
+          ),
+        ),
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: GridView.count(
-            crossAxisCount: 2,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            childAspectRatio: 1.0,
-            children: HomeTiles.all.map((tile) {
-              return ModalityTile(
-                config: tile,
-                onTap: () => _startWorkout(context, tile),
-              );
-            }).toList(),
+      body: OmniGradientBackground(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ListenableBuilder(
+              listenable: workoutState,
+              builder: (context, child) {
+                return GridView.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 16,
+                  childAspectRatio: 1.0,
+                  children: HomeTiles.all.map((tile) {
+                    // Determine if this tile is the currently active session
+                    final isActive = workoutState.hasActiveSession &&
+                        workoutState.currentSession?.modality == tile.modality;
+
+                    return EnergyTile(
+                      title: tile.label,
+                      icon: tile.iconData,
+                      gradientColors: tile.gradientColors,
+                      isActive: isActive,
+                      onTap: () => _handleTileTap(context, tile, isActive),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Start a workout session with the selected modality
-  Future<void> _startWorkout(BuildContext context, HomeTileConfig tile) async {
-    // Check if there's an active session
+  /// Handle tile tap - either resume active session or start new one
+  Future<void> _handleTileTap(
+    BuildContext context,
+    HomeTileConfig tile,
+    bool isActive,
+  ) async {
+    // If tapping active tile, navigate directly to session
+    if (isActive) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => WorkoutSessionScreen(workoutState: workoutState),
+        ),
+      );
+      return;
+    }
+
+    // If tapping inactive tile and session is active, confirm before switching
     if (workoutState.hasActiveSession) {
-      // Show warning dialog
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -65,8 +104,8 @@ class HomeScreen extends StatelessWidget {
 
       if (confirmed != true) return;
     }
-    
-    // Always clear old session and create new one with selected modality
+
+    // Start new session with selected modality
     workoutState.clearSession();
     await workoutState.createNewSession(modality: tile.modality);
 
