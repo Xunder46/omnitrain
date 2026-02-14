@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../state/workout/workout_state.dart';
+import '../../state/home/home_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/logo/animated_zen_halo.dart';
 import '../home/home_screen.dart';
@@ -10,11 +11,13 @@ import '../home/home_screen.dart';
 /// Auto-transitions to HomeScreen after configured duration
 class OmniSplashScreen extends StatefulWidget {
   final WorkoutState workoutState;
+  final HomeState homeState;
   final Duration duration;
 
   const OmniSplashScreen({
     super.key,
     required this.workoutState,
+    required this.homeState,
     this.duration = OmniTheme.splashDuration,
   });
 
@@ -50,7 +53,10 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) =>
-                HomeScreen(workoutState: widget.workoutState),
+                HomeScreen(
+                  workoutState: widget.workoutState,
+                  homeState: widget.homeState,
+                ),
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) {
               return FadeTransition(

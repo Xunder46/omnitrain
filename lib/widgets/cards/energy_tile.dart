@@ -95,7 +95,7 @@ class _EnergyTileState extends State<EnergyTile> {
               size: 70,
               color: OmniTheme.textPrimary,
             ),
-            if (shouldShowText) const SizedBox(height: 20),
+            if (shouldShowText) const SizedBox(height: 10),
             // Title text
             if (shouldShowText)
               Flexible(
