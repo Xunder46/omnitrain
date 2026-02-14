@@ -1009,7 +1009,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary,
+                        color: theme.colorScheme.primary.withOpacity(0.8),
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
@@ -1342,7 +1342,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
+                      color: theme.colorScheme.primary.withOpacity(0.8),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
@@ -1498,7 +1498,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     color: isExpired
                         ? theme.colorScheme.error
                         : (_effortRunning[timerKey] ?? false
-                            ? theme.colorScheme.primary
+                            ? theme.colorScheme.primary.withOpacity(0.8)
                             : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
@@ -1550,7 +1550,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     color: isExpired
                         ? theme.colorScheme.error
                         : (_effortRunning[timerKey] ?? false
-                            ? theme.colorScheme.primary
+                            ? theme.colorScheme.primary.withOpacity(0.8)
                             : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
@@ -1597,7 +1597,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     color: isExpired
                         ? theme.colorScheme.error
                         : (_effortRunning[timerKey] ?? false
-                            ? theme.colorScheme.primary
+                            ? theme.colorScheme.primary.withOpacity(0.8)
                             : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
@@ -1726,7 +1726,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isCompleted && !isSkipped
-                      ? theme.colorScheme.primary
+                      ? theme.colorScheme.primary.withOpacity(0.8)
                       : isCurrent
                         ? theme.colorScheme.primary.withAlpha((0.5 * 255).round())
                         : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
@@ -1824,7 +1824,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         child: Material(
           shape: const CircleBorder(),
           color: isEnabled
-              ? (isPrimary ? theme.colorScheme.primary : theme.colorScheme.onSurface.withAlpha((0.1 * 255).round()))
+              ? (isPrimary ? theme.colorScheme.primary.withOpacity(0.8) : theme.colorScheme.onSurface.withAlpha((0.1 * 255).round()))
               : theme.colorScheme.onSurface.withAlpha((0.05 * 255).round()),
           child: InkWell(
             onTap: onPressed,

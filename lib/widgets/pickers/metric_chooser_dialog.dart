@@ -172,7 +172,7 @@ class _MetricOption extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
+                  color: theme.colorScheme.primary.withOpacity(0.8),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(

@@ -36,7 +36,7 @@ class MyApp extends StatelessWidget {
       brightness: Brightness.dark,
       background: Color(0xFF0B0F14),
       surface: Color(0xFF121826),
-      primary: Color(0xFF2DE2E6),
+      primary: Color.fromARGB(207, 45, 227, 230),
       secondary: Color(0xFF1B9AAA),
       textPrimary: Color(0xFFE6EDF3),
       textSecondary: Color(0xFF9BA4B5),
