@@ -445,11 +445,17 @@ class MockWorkoutRepository implements WorkoutRepository {
     // For modalities that map to multiple categories (e.g., sports = martial arts + sports),
     // filter exercises to match the relevant categories
     if (modality != null) {
-      final categoryIds = Modality.modalityToCategoryIds[modality];
-      if (categoryIds != null && categoryIds.isNotEmpty) {
+      var categoryIds = Modality.modalityToCategoryIds[modality] ?? [];
+      
+      // For isometric_stretching, also include resistance exercises (many isometric exercises are in calisthenics)
+      if (modality == 'isometric_stretching') {
+        categoryIds = [...categoryIds, 'category-resistance'];
+      }
+      
+      if (categoryIds.isNotEmpty) {
         results = results.where((e) {
           if (e.disciplineId == null) return false;
-          final discipline = _disciplines[e.disciplineId];
+            final discipline = _disciplines[e.disciplineId];
           return discipline != null && categoryIds.contains(discipline.categoryId);
         });
       }

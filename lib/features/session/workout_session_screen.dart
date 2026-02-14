@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/timer_alert_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
@@ -44,6 +45,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   final Map<String, bool> _effortRunning = {};
   final Map<String, int> _effortElapsed = {}; // Elapsed seconds
   final Map<String, int> _effortElapsedBase = {}; // Base elapsed time when timer started (for offset)
+  final Map<String, bool> _effortAlerted = {}; // Timer expiry alert fired
+  final Map<String, int> _effortTargetDuration = {}; // Target seconds for countdown/expiry
 
   // Rest timer state
   Timer? _restTimer;
@@ -97,6 +100,78 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
   }
 
+  Map<String, dynamic>? _getExerciseById(String effortId) {
+    try {
+      return _exercises.firstWhere((exercise) => exercise['id'] == effortId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, dynamic>? _getEntryData(String effortId, int entryIndex) {
+    final exercise = _getExerciseById(effortId);
+    if (exercise == null) return null;
+    final entries = exercise['entries'] as List<Map<String, dynamic>>? ?? [];
+    if (entryIndex < 0 || entryIndex >= entries.length) return null;
+    return entries[entryIndex];
+  }
+
+  String _getEffortKind(String effortId) {
+    final exercise = _getExerciseById(effortId);
+    return exercise?['effortKind'] as String? ?? 'set';
+  }
+
+  int _getEffortTargetDuration(String effortId, int entryIndex, String effortKind) {
+    final timerKey = '$effortId-$entryIndex';
+    final cachedTarget = _effortTargetDuration[timerKey];
+    if (cachedTarget != null) return cachedTarget;
+    final entry = _getEntryData(effortId, entryIndex);
+    if (entry == null) return 0;
+    switch (effortKind) {
+      case 'timed':
+      case 'drill':
+        return entry['duration'] as int? ?? 0;
+      case 'round':
+        return entry['round-duration'] as int? ?? 0;
+      default:
+        return 0;
+    }
+  }
+
+  bool _isEffortExpired(String effortId, int entryIndex, String effortKind) {
+    final timerKey = '$effortId-$entryIndex';
+    final target = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    final elapsed = _effortElapsed[timerKey] ?? 0;
+    final isRunning = _effortRunning[timerKey] ?? false;
+    return target > 0 && elapsed >= target && !isRunning;
+  }
+
+  void _resetEffortAlertState(String effortId, int entryIndex) {
+    final timerKey = '$effortId-$entryIndex';
+    _effortAlerted[timerKey] = false;
+  }
+
+  void _handleEffortTimerExpired(
+    String effortId,
+    int entryIndex,
+    String effortKind,
+    int targetSeconds,
+  ) {
+    final timerKey = '$effortId-$entryIndex';
+    if (_effortAlerted[timerKey] == true) return;
+
+    _effortAlerted[timerKey] = true;
+    _effortElapsed[timerKey] = targetSeconds;
+    _effortElapsedBase[timerKey] = targetSeconds;
+
+    if (mounted) {
+      setState(() {});
+    }
+
+    _pauseEffortTimer(effortId, entryIndex, effortKindOverride: effortKind);
+    unawaited(TimerAlertService.fireTimerExpiredAlert());
+  }
+
   void _logSet() {
     if (_exercises.isEmpty) return;
 
@@ -112,7 +187,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     // For timer-based exercises, capture elapsed time
     if (effortKind == 'timed' || effortKind == 'drill') {
-      currentEntry['duration'] = _effortElapsed[effortId] ?? 0;
+      final timerKey = '$effortId-${_currentSet - 1}';
+      currentEntry['duration'] = _effortElapsed[timerKey] ?? 0;
     }
 
     // Persist entry values based on effort kind
@@ -127,8 +203,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     // User must explicitly start timer for next entry
     if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
       _pauseEffortTimer(effortId, _currentSet - 1);
-      _effortStopwatches[effortId]?.reset();
-      _effortElapsed[effortId] = 0;
+      final timerKey = '$effortId-${_currentSet - 1}';
+      _effortStopwatches[timerKey]?.reset();
+      _effortElapsed[timerKey] = 0;
+      _effortElapsedBase[timerKey] = 0;
+      _effortTargetDuration.remove(timerKey);
+      _effortAlerted[timerKey] = false;
     }
 
     // Start rest timer after logging a set
@@ -164,6 +244,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       if (_effortRunning[timerKey] == true) {
         _pauseEffortTimer(effortId, _currentSet - 1);
       }
+      _resetEffortAlertState(effortId, _currentSet - 1);
     }
 
     // Simply move back to previous set without clearing values
@@ -194,7 +275,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _skippedSets.putIfAbsent(effortId, () => {}).add(_currentSet - 1);
 
     // Reset timer
-    _effortElapsed[effortId] = 0;
+    final skippedKey = '$effortId-${_currentSet - 1}';
+    _effortElapsed[skippedKey] = 0;
+    _effortElapsedBase[skippedKey] = 0;
+    _effortTargetDuration.remove(skippedKey);
+    _effortAlerted[skippedKey] = false;
 
     // Just advance to next set, don't auto-finish
     setState(() {
@@ -234,7 +319,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           effortId,
           entryIndex,
           'duration',
-          _effortElapsed[effortId] ?? (currentEntry['duration'] as int? ?? 0),
+          _effortElapsed['$effortId-$entryIndex'] ?? (currentEntry['duration'] as int? ?? 0),
         );
         widget.workoutState.updateEntryValue(
           effortId,
@@ -264,7 +349,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           effortId,
           entryIndex,
           'duration',
-          _effortElapsed[effortId] ?? (currentEntry['duration'] as int? ?? 0),
+          _effortElapsed['$effortId-$entryIndex'] ?? (currentEntry['duration'] as int? ?? 0),
         );
         widget.workoutState.updateEntryValue(
           effortId,
@@ -357,6 +442,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         if (metricKey == 'duration') {
           _effortElapsed[timerKey] = entry['duration'] as int? ?? 0;
           _effortElapsedBase[timerKey] = entry['duration'] as int? ?? 0;
+          _effortTargetDuration[timerKey] = entry['duration'] as int? ?? 0;
+          _effortAlerted[timerKey] = false;
+        }
+        if (metricKey == 'round-duration') {
+          _effortTargetDuration[timerKey] = entry['round-duration'] as int? ?? 0;
+          _effortAlerted[timerKey] = false;
         }
       }
     }
@@ -365,14 +456,41 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   void _toggleEffortTimer(String effortId) {
     final entryIndex = _currentSet - 1;
     final timerKey = '$effortId-$entryIndex';
+    final effortKind = _getEffortKind(effortId);
+    final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    final isExpired = targetSeconds > 0 && (_effortElapsed[timerKey] ?? 0) >= targetSeconds;
+
     if (_effortRunning[timerKey] == true) {
       _pauseEffortTimer(effortId, entryIndex);
     } else {
-      if ((_effortElapsed[timerKey] ?? 0) == 0) {
+      if (isExpired) {
+        _effortElapsed[timerKey] = 0;
+        _effortElapsedBase[timerKey] = 0;
+        _effortAlerted[timerKey] = false;
+        _startEffortTimer(effortId, entryIndex);
+      } else if ((_effortElapsed[timerKey] ?? 0) == 0) {
         _startEffortTimer(effortId, entryIndex);
       } else {
         _resumeEffortTimer(effortId, entryIndex);
       }
+    }
+  }
+
+  void _onEffortTick(String effortId, int entryIndex) {
+    final timerKey = '$effortId-$entryIndex';
+    final elapsed = (_effortElapsedBase[timerKey] ?? 0) + (_effortStopwatches[timerKey]?.elapsed.inSeconds ?? 0);
+    final effortKind = _getEffortKind(effortId);
+    final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+
+    if (targetSeconds > 0 && elapsed >= targetSeconds) {
+      _handleEffortTimerExpired(effortId, entryIndex, effortKind, targetSeconds);
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _effortElapsed[timerKey] = elapsed;
+      });
     }
   }
 
@@ -387,20 +505,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     
     // Store the current elapsed value as the base (so timer counts up from this point)
     _effortElapsedBase[timerKey] = _effortElapsed[timerKey] ?? 0;
+
+    final effortKind = _getEffortKind(effortId);
+    _effortTargetDuration[timerKey] = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    _effortAlerted[timerKey] = false;
     
     _effortStopwatches.putIfAbsent(timerKey, () => Stopwatch()).start();
 
     _effortTimers[timerKey]?.cancel();
-    _effortTimers[timerKey] =
-        Timer.periodic(_timerUpdateInterval, (_) {
-          setState(() {
-            // Total elapsed = base value + time elapsed since timer started
-            _effortElapsed[timerKey] = (_effortElapsedBase[timerKey] ?? 0) + (_effortStopwatches[timerKey]?.elapsed.inSeconds ?? 0);
-          });
-        });
+    _effortTimers[timerKey] = Timer.periodic(
+      _timerUpdateInterval,
+      (_) => _onEffortTick(effortId, entryIndex),
+    );
   }
 
-  void _pauseEffortTimer(String effortId, int entryIndex) {
+  void _pauseEffortTimer(
+    String effortId,
+    int entryIndex, {
+    String? effortKindOverride,
+  }) {
     final timerKey = '$effortId-$entryIndex';
     _effortRunning[timerKey] = false;
     _effortStopwatches[timerKey]?.stop();
@@ -409,17 +532,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     // Save the elapsed time as the new duration value
     // Only for timed and drill (which show elapsed time counting UP)
     // NOT for round (which shows remaining time counting DOWN)
-    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
-      final exercise = _exercises[_currentExerciseIndex];
-      final effortKind = exercise['effortKind'] as String? ?? 'set';
-      
-      if (effortKind == 'timed' || effortKind == 'drill') {
-        final elapsedTime = _effortElapsed[timerKey] ?? 0;
-        final metricKey = effortKind == 'drill' ? 'duration' : 'duration';
-        _updateMetricValue(effortId, entryIndex, metricKey, elapsedTime);
-      }
-      // For 'round', do NOT save - the countdown value shouldn't overwrite the duration
+    final effortKind = effortKindOverride ?? _getEffortKind(effortId);
+
+    if (effortKind == 'timed' || effortKind == 'drill') {
+      final elapsedTime = _effortElapsed[timerKey] ?? 0;
+      final metricKey = effortKind == 'drill' ? 'duration' : 'duration';
+      _updateMetricValue(effortId, entryIndex, metricKey, elapsedTime);
     }
+    // For 'round', do NOT save - the countdown value shouldn't overwrite the duration
   }
 
   void _resumeEffortTimer(String effortId, int entryIndex) {
@@ -433,20 +553,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _effortStopwatches[timerKey]?.reset();
     _effortStopwatches[timerKey]?.start();
 
+    final effortKind = _getEffortKind(effortId);
+    _effortTargetDuration[timerKey] = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+
     _effortTimers[timerKey]?.cancel();
-    _effortTimers[timerKey] =
-        Timer.periodic(_timerUpdateInterval, (_) {
-          setState(() {
-            // Total elapsed = base value + time elapsed since timer resumed
-            _effortElapsed[timerKey] = (_effortElapsedBase[timerKey] ?? 0) + (_effortStopwatches[timerKey]?.elapsed.inSeconds ?? 0);
-          });
-        });
+    _effortTimers[timerKey] = Timer.periodic(
+      _timerUpdateInterval,
+      (_) => _onEffortTick(effortId, entryIndex),
+    );
   }
 
   void _jumpToSet(int setNumber) {
     setState(() {
       _currentSet = setNumber;
     });
+
+    if (_exercises.isEmpty || _currentExerciseIndex >= _exercises.length) return;
+    final exercise = _exercises[_currentExerciseIndex];
+    final effortId = exercise['id'] as String;
+    _resetEffortAlertState(effortId, _currentSet - 1);
   }
 
   void _switchExercise(int delta) {
@@ -842,7 +967,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   children: [
                     _buildHeader(theme),
 
-                    const SizedBox(height: 48),
+                    const SizedBox(height: 0),
 
                     Expanded(
                       child: SingleChildScrollView(
@@ -975,6 +1100,124 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Widget _buildListView(ThemeData theme) {
+    if (_exercises.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: Stack(
+            children: [
+              // Full screen center for text
+              Center(
+                child: Text(
+                  'No exercises',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: OmniTheme.textPrimary,
+                  ),
+                ),
+              ),
+              // Header and controls overlay
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildHeader(theme),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: OmniTheme.surfaceColor.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Session Time',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    color: OmniTheme.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _elapsedFormatted,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        color: OmniTheme.textPrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Spacer(),
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 10,
+                bottom: 110,
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: FilledButton(
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      onPressed: _addExercise,
+                      child: const Icon(Icons.add),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 10,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: FilledButton(
+                        onPressed: _showFinishSessionDialog,
+                        child: const Text('Finish Workout'),
+                        style: ButtonStyle(
+                          shape: MaterialStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: OmniGradientBackground(
@@ -995,15 +1238,28 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                             color: OmniTheme.surfaceColor.withOpacity(0.5),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Row(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
-                              const SizedBox(width: 8),
                               Text(
-                                _elapsedFormatted,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  color: OmniTheme.textPrimary,
+                                'Session Time',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: OmniTheme.textSecondary,
                                 ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _elapsedFormatted,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      color: OmniTheme.textPrimary,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -1011,77 +1267,67 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
                   Expanded(
-                    child: _exercises.isEmpty
-                        ? Center(
-                            child: Text(
-                              'No exercises',
-                              style: theme.textTheme.headlineSmall?.copyWith(
+                    child: ListView.separated(
+                      itemCount: _exercises.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final ex = _exercises[index];
+                        final entries = ex['entries'] as List<dynamic>? ?? [];
+                        final effortKind = ex['effortKind'] as String? ?? 'set';
+                        
+                        String subtitle;
+                        switch (effortKind) {
+                          case 'set':
+                            subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
+                            break;
+                          case 'timed':
+                            final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
+                            final minutes = totalDuration ~/ 60;
+                            final seconds = totalDuration % 60;
+                            subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+                            break;
+                          case 'round':
+                            subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
+                            break;
+                          case 'drill':
+                            subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+                            break;
+                          default:
+                            subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
+                        }
+                        
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: OmniTheme.surfaceColor.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: OmniTheme.surfaceBorderColor),
+                          ),
+                          child: ListTile(
+                            title: Text(
+                              ex['name'] as String,
+                              style: theme.textTheme.titleMedium?.copyWith(
                                 color: OmniTheme.textPrimary,
                               ),
                             ),
-                          )
-                        : ListView.separated(
-                            itemCount: _exercises.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final ex = _exercises[index];
-                              final entries = ex['entries'] as List<dynamic>? ?? [];
-                              final effortKind = ex['effortKind'] as String? ?? 'set';
-                              
-                              String subtitle;
-                              switch (effortKind) {
-                                case 'set':
-                                  subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
-                                  break;
-                                case 'timed':
-                                  final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
-                                  final minutes = totalDuration ~/ 60;
-                                  final seconds = totalDuration % 60;
-                                  subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
-                                  break;
-                                case 'round':
-                                  subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
-                                  break;
-                                case 'drill':
-                                  subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
-                                  break;
-                                default:
-                                  subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
-                              }
-                              
-                              return Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: OmniTheme.surfaceColor.withOpacity(0.7),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: OmniTheme.surfaceBorderColor),
-                                ),
-                                child: ListTile(
-                                  title: Text(
-                                    ex['name'] as String,
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      color: OmniTheme.textPrimary,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    subtitle,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: OmniTheme.textSecondary,
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    setState(() {
-                                      _currentExerciseIndex = index;
-                                      _currentSet = 1;
-                                      _showListView = false;
-                                    });
-                                  },
-                                ),
-                              );
+                            subtitle: Text(
+                              subtitle,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: OmniTheme.textSecondary,
+                              ),
+                            ),
+                            onTap: () {
+                              setState(() {
+                                _currentExerciseIndex = index;
+                                _currentSet = 1;
+                                _showListView = false;
+                              });
                             },
                           ),
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -1169,6 +1415,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     child: FilledButton(
                       onPressed: _showFinishSessionDialog,
                       child: const Text('Finish Workout'),
+                      style: ButtonStyle(
+                          shape: MaterialStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                     ),
                   ),
                 ),
@@ -1197,13 +1450,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 20),
             InlineMetricEditor(
               metricType: 'reps',
               currentValue: reps,
               unitLabel: 'REPS',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'reps', value),
             ),
-            const SizedBox(height: 16),
             InlineMetricEditor(
               metricType: 'weight',
               currentValue: weight,
@@ -1216,11 +1469,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       case 'timed':
         final duration = entryData['duration'] as int? ?? 0;
         final timerKey = '$effortId-$entryIndex';
-        final displayValue = (_effortRunning[timerKey] ?? false) ? (_effortElapsed[timerKey] ?? 0) : duration;
+        final elapsed = _effortElapsed[timerKey] ?? 0;
+        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+        final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
+        final displayValue = (_effortRunning[timerKey] ?? false)
+            ? elapsed
+            : (isExpired ? targetSeconds : duration);
         
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 48),
             InlineMetricEditor(
               metricType: 'duration',
               currentValue: displayValue,
@@ -1232,11 +1491,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED',
+                  isExpired
+                      ? 'DONE!'
+                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: _effortRunning[timerKey] ?? false
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                    color: isExpired
+                        ? theme.colorScheme.error
+                        : (_effortRunning[timerKey] ?? false
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
                 ),
@@ -1250,11 +1513,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final roundDuration = entryData['round-duration'] as int? ?? 180;
         final timerKey = '$effortId-$entryIndex';
         final elapsed = _effortElapsed[timerKey] ?? 0;
-        final remaining = (roundDuration - elapsed).clamp(0, roundDuration);
+        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+        final effectiveTarget = targetSeconds > 0 ? targetSeconds : roundDuration;
+        final remaining = (effectiveTarget - elapsed).clamp(0, effectiveTarget);
+        final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
         
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 48),
             // Round count (read-only, controlled by add/delete buttons)
             Text(
               'ROUND $rounds',
@@ -1268,7 +1535,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             // Scrollable round duration control
             InlineMetricEditor(
               metricType: 'duration',
-              currentValue: _effortRunning[timerKey] ?? false ? remaining : roundDuration,
+              currentValue: _effortRunning[timerKey] ?? false ? remaining : (isExpired ? 0 : roundDuration),
               unitLabel: _effortRunning[timerKey] ?? false ? 'TIME REMAINING' : 'DURATION',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'round-duration', value),
             ),
@@ -1276,11 +1543,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED',
+                  isExpired
+                      ? 'TIME!'
+                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: _effortRunning[timerKey] ?? false
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                    color: isExpired
+                        ? theme.colorScheme.error
+                        : (_effortRunning[timerKey] ?? false
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
                 ),
@@ -1293,7 +1564,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final duration = entryData['duration'] as int? ?? 0;
         final rpe = entryData['rpe'] as int? ?? 5;
         final timerKey = '$effortId-$entryIndex';
-        final displayValue = (_effortRunning[timerKey] ?? false) ? (_effortElapsed[timerKey] ?? 0) : duration;
+        final elapsed = _effortElapsed[timerKey] ?? 0;
+        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+        final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
+        final displayValue = (_effortRunning[timerKey] ?? false)
+            ? elapsed
+            : (isExpired ? targetSeconds : duration);
         
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -1304,23 +1580,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               unitLabel: _effortRunning[timerKey] ?? false ? 'ELAPSED' : 'HOLD TIME',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'duration', value),
             ),
-            const SizedBox(height: 16),
             InlineMetricEditor(
               metricType: 'rpe',
               currentValue: rpe,
               unitLabel: 'RPE',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'rpe', value),
             ),
-            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED',
+                  isExpired
+                      ? 'DONE!'
+                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: _effortRunning[timerKey] ?? false
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                    color: isExpired
+                        ? theme.colorScheme.error
+                        : (_effortRunning[timerKey] ?? false
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
                 ),
