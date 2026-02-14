@@ -13,6 +13,8 @@ class MetricChooserDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final capabilities = exercise.capabilities;
+    final dialogWidth = MediaQuery.of(context).size.width * 0.85;
+    final dialogMaxHeight = MediaQuery.of(context).size.height * 0.75;
 
     if (capabilities.isEmpty) {
       return AlertDialog(
@@ -28,57 +30,69 @@ class MetricChooserDialog extends StatelessWidget {
     }
 
     return Dialog(
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.85,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'How to track?',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              exercise.name,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Choose tracking method:',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.8),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // List of metric options
-            ...capabilities.map((capability) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _MetricOption(
-                  capability: capability,
-                  onTap: () => Navigator.of(context).pop(capability),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: dialogWidth,
+          maxHeight: dialogMaxHeight,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'How to track?',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
-              );
-            }),
-            
-            const SizedBox(height: 16),
-            
-            // Cancel button
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                exercise.name,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Choose tracking method:',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.8),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      ...capabilities.map((capability) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _MetricOption(
+                            capability: capability,
+                            onTap: () => Navigator.of(context).pop(capability),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Cancel button
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
