@@ -2,6 +2,34 @@ PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
 
 -- ============================================================================
+-- UNIFIED SPORTS MODALITY (Feb 2026 Refactor)
+-- ============================================================================
+-- The 'sports' modality now combines martial arts and sports exercises.
+-- Home screen shows unified "Sports" tile with martial arts icon (sports_martial_arts).
+-- 
+-- MODALITY FEATURE SUPPORT:
+-- - Primary metric: time (round/period duration)
+-- - Secondary metrics: rounds (periods, halves, quarters, or rounds)
+-- - Optional metrics: distance, rpe
+-- - Default input type: segment_timer (for period/round-based tracking)
+-- - Structure: segmented
+-- - Effort kind: round
+--
+-- EXERCISE RANKING FOR SPORTS:
+-- When SqliteWorkoutRepository.getExercisesRankedForModality('sports',...) is called:
+-- 1. Filter: exercises whose discipline.category_id IN ('category-martial-arts', 'category-sports')
+-- 2. Score: by capability matchagains ModalityConfig(sports).primaryCapabilities = ['time', 'rounds']
+-- 3. Return: sorted by relevance score (capabilities-based affinity)
+--
+-- CATEGORIES INVOLVED:
+--   category-martial-arts: Boxing, BJJ, Muay Thai, wrestling, karate  
+--   category-sports: Soccer, basketball, tennis, team sports
+--   (Also seeded with martial arts exercises for unified experience)
+--
+-- See lib/core/constants/modality.dart Modality.modalityToCategoryIds mapping:
+--   sports: ['category-martial-arts', 'category-sports']
+--
+-- ============================================================================
 -- EXERCISE CAPABILITY SEEDING NOTES
 -- ============================================================================
 -- When implementing SqliteWorkoutRepository.getExercisesRankedForModality(),
@@ -150,18 +178,21 @@ SELECT m.id, 'drill' FROM app_metric_definition m WHERE m.key = 'reps';
 INSERT OR IGNORE INTO app_metric_applicability (metric_id, effort_kind)
 SELECT m.id, 'drill' FROM app_metric_definition m WHERE m.key = 'quality';
 
--- Categories (aligned with 6 home screen modality tiles)
+-- Categories (aligned with 5 home screen modality tiles after Feb 2026 restructure)
 -- Note: Keys match Modality constants in lib/core/constants/modality.dart
+-- NOTE: sports modality now includes both 'sports' and 'martial_arts' categories
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'cardio_endurance', 'Cardio / Endurance', 'Running, cycling, swimming, rowing', 'directions_run', 1, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'resistance_lifting', 'Resistance / Lifting', 'Weightlifting, bodybuilding, powerlifting, strength training', 'fitness_center', 2, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+-- Martial Arts category (part of unified sports modality, kept for exercise classification)
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
-VALUES (lower(hex(randomblob(16))), 'martial_arts', 'Martial Arts', 'Boxing, BJJ, Muay Thai, wrestling, karate', 'sports_mma', 3, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+VALUES (lower(hex(randomblob(16))), 'martial_arts', 'Martial Arts', 'Boxing, BJJ, Muay Thai, wrestling, karate - part of unified Sports tile', 'sports_mma', 3, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'isometric_stretching', 'Isometric / Stretching', 'Yoga, static holds, stretching, flexibility work', 'self_improvement', 4, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+-- Sports category (combined with martial arts in unified sports modality)
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
-VALUES (lower(hex(randomblob(16))), 'sports', 'Sports', 'Soccer, basketball, tennis, team sports', 'sports_soccer', 5, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
+VALUES (lower(hex(randomblob(16))), 'sports', 'Sports', 'Boxing, BJJ, Muay Thai, wrestling, soccer, basketball, tennis, team sports', 'sports_soccer', 5, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 -- Legacy category (kept for backward compatibility)
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'recovery_rehab', 'Recovery / Rehab', 'Active recovery, physical therapy, rehab', 'spa', 10, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));

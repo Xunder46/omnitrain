@@ -2,72 +2,90 @@ import 'package:flutter/material.dart';
 import 'modality.dart';
 
 /// Configuration for home screen modality tiles with cosmic aesthetic
-/// Defines the 6 primary entry points for workout sessions
+/// Defines the 5 primary entry points for workout sessions + My Routines
+/// Layout: 3 rows × 2 columns (grid with bottom row special)
 class HomeTileConfig {
   final String key;
   final String label;
   final IconData iconData;
   final List<Color> gradientColors;
-  final String? modality; // null = Free Training (no modality preset)
+  final Color accentColor;
+  final String? modality; // null = special tile (Free Training, My Routines)
 
   const HomeTileConfig({
     required this.key,
     required this.label,
     required this.iconData,
     required this.gradientColors,
+    required this.accentColor,
     this.modality,
   });
 }
 
-/// The 6 primary home screen tiles in display order (3 rows × 2 columns)
+/// The 6 home screen tiles in display order (3 rows × 2 columns)
+/// Changed Feb 2026: Combined martial arts & sports → unified Sports tile
+/// Unified Sports supports both martial arts and sports exercises with time+rounds tracking
 class HomeTiles {
   static const List<HomeTileConfig> all = [
     // Row 1
+    // Cardio / Endurance — grass green (Feb 2026: changed from cyan to green)
     HomeTileConfig(
       key: 'cardio',
       label: 'Cardio / Endurance',
       iconData: Icons.directions_run,
-      gradientColors: [Color(0xFF1ED7C6), Color(0xFF0E5E6F)],
+      gradientColors: [Color(0xFF1A2F47), Color(0xFF0D2818)],
+      accentColor: Color(0xFF43A047),
       modality: Modality.cardioEndurance,
     ),
+    // Resistance / Lifting — steel blue (strength/weight)
     HomeTileConfig(
       key: 'resistance',
       label: 'Resistance / Lifting',
       iconData: Icons.fitness_center,
-      gradientColors: [Color(0xFF4FC3F7), Color(0xFF1A3A5F)],
+      gradientColors: [Color(0xFF1A2F47), Color(0xFF152F42)],
+      accentColor: Color(0xFF5B9BD5),
       modality: Modality.resistanceLifting,
     ),
     
     // Row 2
+    // Sports — unified martial arts + sports (Feb 2026: combined with martial arts icon and color)
+    // Icon: martial arts, Color: ember red, Modality: sports (includes both categories)
     HomeTileConfig(
-      key: 'martial_arts',
-      label: 'Martial Arts',
-      iconData: Icons.sports_mma,
-      gradientColors: [Color(0xFFE53935), Color(0xFF5C1A1A)],
-      modality: Modality.martialArts,
+      key: 'sports',
+      label: 'Sports',
+      iconData: Icons.sports_martial_arts,
+      gradientColors: [Color(0xFF2A1E24), Color(0xFF3A1F2A)],
+      accentColor: Color(0xFFE63946),
+      modality: Modality.sports,
     ),
+    // Isometric / Stretching — amber (warm/hold)
     HomeTileConfig(
       key: 'isometric',
       label: 'Isometric / Stretching',
       iconData: Icons.accessibility,
-      gradientColors: [Color(0xFFFFC107), Color(0xFF5C4A1A)],
+      gradientColors: [Color(0xFF2F2A1E), Color(0xFF3D3424)],
+      accentColor: Color(0xFFFFA726),
       modality: Modality.isometricStretching,
     ),
     
     // Row 3
-    HomeTileConfig(
-      key: 'sports',
-      label: 'Sports',
-      iconData: Icons.sports_soccer,
-      gradientColors: [Color(0xFF43A047), Color(0xFF1B3A22)],
-      modality: Modality.sports,
-    ),
+    // Free Training — violet (open/flexible, user chooses metrics per exercise)
     HomeTileConfig(
       key: 'free_training',
       label: 'Free Training',
       iconData: Icons.play_arrow,
-      gradientColors: [Color(0xFF3F51B5), Color(0xFF1A1F4A)],
+      gradientColors: [Color(0xFF24222A), Color(0xFF2A2433)],
+      accentColor: Color(0xFF7E57C2),
       modality: null, // No modality preset
+    ),
+    // My Routines — neutral grey (placeholder for routine management feature)
+    HomeTileConfig(
+      key: 'my_routines',
+      label: 'My Routines',
+      iconData: Icons.folder_open,
+      gradientColors: [Color(0xFF252525), Color(0xFF1C1C1C)],
+      accentColor: Color(0xFF9E9E9E),
+      modality: null, // Special tile, not a workout modality
     ),
   ];
 }

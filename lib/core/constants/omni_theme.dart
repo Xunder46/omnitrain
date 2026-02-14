@@ -71,4 +71,50 @@ class OmniTheme {
   static const Duration animationDuration = Duration(milliseconds: 180);
   static const Curve animationCurve = Curves.easeInOut;
   static const double pressedScale = 0.96;
+  
+  // ═══════════════════════════════════════════════════════════
+  // ZEN HALO LOGO
+  // ═══════════════════════════════════════════════════════════
+  
+  /// Zen Halo gradient colors (aqua cyan sweep)
+  static const List<Color> zenHaloColors = [
+    Color(0xE600F5FF), // #00F5FF @ 90% opacity
+    Color(0xE600C2FF), // #00C2FF @ 90% opacity
+    Color(0xE600A8FF), // #00A8FF @ 90% opacity
+    Color(0xE600F5FF), // #00F5FF @ 90% (loop)
+  ];
+  
+  /// Zen Halo stroke width
+  static const double zenHaloStrokeWidth = 7.0;
+  
+  /// Zen Halo default display size
+  static const double zenHaloSize = 160.0;
+  
+  /// Event horizon core glow color
+  static const Color zenCoreGlowColor = Color(0xFF00CFFF);
+  
+  /// Splash screen display duration
+  static const Duration splashDuration = Duration(milliseconds: 2800);
+  
+  /// Zen Halo stroke draw animation duration
+  static const Duration strokeDrawDuration = Duration(milliseconds: 1200);
+  
+  /// Zen Halo breathing cycle duration
+  static const Duration breathingDuration = Duration(milliseconds: 3000);
+  
+  /// Zen Halo rotation cycle duration
+  static const Duration rotationDuration = Duration(milliseconds: 8000);
+  
+  // ═══════════════════════════════════════════════════════════
+  // BACKGROUND TEXTURE
+  // ═══════════════════════════════════════════════════════════
+  
+  /// Film grain noise overlay opacity (2.5% white - subtle but perceptible)
+  static const double backgroundNoiseOpacity = 0.025;
+  
+  /// Film grain noise scale in pixels (organic grain size)
+  static const double backgroundNoiseScale = 2.0;
+  
+  /// Enable background noise texture for premium finish
+  static const bool enableBackgroundNoise = false;
 }

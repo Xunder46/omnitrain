@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
-import '../layout/omni_surface.dart';
-import 'energy_core.dart';
 
 /// Premium training category tile with energy core visualization
 /// Features biomechanical aesthetic with depth and subtle animations
@@ -9,6 +7,7 @@ class EnergyTile extends StatefulWidget {
   final String title;
   final IconData icon;
   final List<Color> gradientColors;
+  final Color accentColor;
   final VoidCallback onTap;
   final bool isActive;
 
@@ -17,6 +16,7 @@ class EnergyTile extends StatefulWidget {
     required this.title,
     required this.icon,
     required this.gradientColors,
+    required this.accentColor,
     required this.onTap,
     this.isActive = false,
   });
@@ -49,65 +49,73 @@ class _EnergyTileState extends State<EnergyTile> {
   }
 
   Widget _buildSurface() {
-    // Active tile has enhanced border and glow effect
-    if (widget.isActive) {
-      return Container(
-        decoration: BoxDecoration(
-          color: OmniTheme.surfaceColor,
-          borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
-          // Active border - brightened and thicker
-          border: Border.all(
-            color: Colors.white.withOpacity(0.15),
-            width: 2.0,
-          ),
-          boxShadow: [
-            OmniTheme.deepShadow,
-            // Additional glow for active state
-            BoxShadow(
-              color: widget.gradientColors.first.withOpacity(0.25),
-              blurRadius: 10,
-              spreadRadius: 5,
-            ),
-          ],
+    final baseDecoration = BoxDecoration(
+      borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
+      gradient: LinearGradient(
+        colors: widget.gradientColors,
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      boxShadow: [
+        OmniTheme.deepShadow,
+        // Accent glow - ambient color effect
+        BoxShadow(
+          color: widget.accentColor.withOpacity(0.35),
+          blurRadius: 40,
+          spreadRadius: -10,
         ),
-        padding: const EdgeInsets.all(20),
-        child: _buildContent(),
-      );
-    }
+        // Enhanced glow when active
+        if (widget.isActive)
+          BoxShadow(
+            color: widget.accentColor.withOpacity(0.55),
+            blurRadius: 24,
+            spreadRadius: 2,
+          ),
+      ],
+    );
 
-    // Inactive tile uses standard OmniSurface
-    return OmniSurface(
+    return Container(
+      decoration: baseDecoration,
+      padding: const EdgeInsets.all(20),
       child: _buildContent(),
     );
   }
 
   Widget _buildContent() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Energy core with enhanced glow when active
-        EnergyCore(
-          icon: widget.icon,
-          gradientColors: widget.gradientColors,
-          glowColor: widget.gradientColors.first,
-          isActive: _isPressed || widget.isActive,
-        ),
-        const SizedBox(height: 20),
-        // Title text
-        Text(
-          widget.title,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: OmniTheme.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            letterSpacing: OmniTheme.titleLetterSpacing,
-            height: 1.3,
-          ),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Hide text if width is too small (less than 150 pixels)
+        final shouldShowText = constraints.maxWidth > 100;
+        
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              widget.icon,
+              size: 70,
+              color: OmniTheme.textPrimary,
+            ),
+            if (shouldShowText) const SizedBox(height: 20),
+            // Title text
+            if (shouldShowText)
+              Flexible(
+                child: Text(
+                  widget.title,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.clip,
+                  style: TextStyle(
+                    color: OmniTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: OmniTheme.titleLetterSpacing,
+                    height: 1,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

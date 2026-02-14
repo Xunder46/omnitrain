@@ -19,9 +19,10 @@ class Modality {
   static const String recoveryRehab = 'recovery_rehab';
   static const String competitionMatch = 'competition_match';
 
-  /// Maps modality keys to their corresponding SportCategory IDs.
+  /// Maps modality keys to their primary SportCategory ID.
   /// Used for exercise ranking - disciplines belong to categories, which map to modalities.
   /// Example: Running discipline (discipline-running) → category-cardio → cardio_endurance modality
+  /// NOTE: Some modalities map to multiple categories (see modalityToCategoryIds)
   static const Map<String, String> modalityToCategoryId = {
     cardioEndurance: 'category-cardio',
     resistanceLifting: 'category-resistance',
@@ -30,12 +31,23 @@ class Modality {
     sports: 'category-sports',
   };
 
+  /// Maps modality keys to ALL associated SportCategory IDs (plural).
+  /// Used when a modality encompasses multiple disciplines/categories.
+  /// Example: sports modality includes exercises from both category-martial-arts and category-sports
+  static const Map<String, List<String>> modalityToCategoryIds = {
+    cardioEndurance: ['category-cardio'],
+    resistanceLifting: ['category-resistance'],
+    martialArts: ['category-martial-arts'],
+    isometricStretching: ['category-isometric'],
+    sports: ['category-martial-arts', 'category-sports'], // Combined martial arts + sports
+  };
+
   static const List<String> primaryHomeTiles = [
     cardioEndurance,
     resistanceLifting,
-    martialArts,
+    // martialArts is now unified with sports in the sports modality
     isometricStretching,
-    sports,
+    sports, // Unified Sports tile (includes martial arts + sports)
     // Note: Free Training = null modality
   ];
 

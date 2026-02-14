@@ -2,11 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import '../../core/constants/omni_theme.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
+import '../../widgets/layout/omni_gradient_background.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -680,50 +682,54 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: const Center(
-          child: CircularProgressIndicator(),
+        backgroundColor: Colors.transparent,
+        body: const OmniGradientBackground(
+          child: Center(
+            child: CircularProgressIndicator(),
+          ),
         ),
       );
     }
 
     if (_hasError) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 64,
-                  color: theme.colorScheme.error,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Error Loading Session',
-                  style: theme.textTheme.headlineMedium?.copyWith(
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
                     color: theme.colorScheme.error,
                   ),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    _errorMessage,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withAlpha((0.7 * 255).round()),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error Loading Session',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: theme.colorScheme.error,
                     ),
                   ),
-                ),
-                const SizedBox(height: 32),
-                FilledButton(
-                  onPressed: _loadExercises,
-                  child: const Text('Retry'),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      _errorMessage,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: OmniTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    onPressed: _loadExercises,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -732,30 +738,34 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     if (_hasError) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Error Loading Session',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    color: theme.colorScheme.error,
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Error Loading Session',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _errorMessage,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 32),
-                FilledButton(
-                  onPressed: _loadExercises,
-                  child: const Text('Retry'),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Text(
+                    _errorMessage,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: OmniTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    onPressed: _loadExercises,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -768,22 +778,26 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     if (_exercises.isEmpty) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'No exercises yet',
-                  style: theme.textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 32),
-                FilledButton(
-                  onPressed: _addExercise,
-                  child: const Text('Add First Exercise'),
-                ),
-              ],
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'No exercises yet',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: OmniTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    onPressed: _addExercise,
+                    child: const Text('Add First Exercise'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -798,73 +812,286 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         : (effortKind == 'set' ? {'reps': 0, 'weight': 0.0} : {'duration': 0});
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          // Left swipe = skip set; right swipe = previous set (only in detail view)
-          if (details.primaryVelocity! > 200) {
-            // Right swipe with sufficient velocity = previous set
-            _skipSet();
-          } else if (details.primaryVelocity! < -200) {
-            // Left swipe with sufficient velocity = skip set
-            _previousSet();
-          }
-        },
-        onVerticalDragEnd: (details) {
-          // Up swipe = next exercise; down swipe = previous exercise
-          if (details.primaryVelocity! < -200) {
-            // Swipe up = next exercise
-            _switchExercise(1);
-          } else if (details.primaryVelocity! > 200) {
-            // Swipe down = previous exercise
-            _switchExercise(-1);
-          }
-        },
+      backgroundColor: Colors.transparent,
+      body: OmniGradientBackground(
+        child: GestureDetector(
+          onHorizontalDragEnd: (details) {
+            // Left swipe = skip set; right swipe = previous set (only in detail view)
+            if (details.primaryVelocity! > 200) {
+              // Right swipe with sufficient velocity = previous set
+              _skipSet();
+            } else if (details.primaryVelocity! < -200) {
+              // Left swipe with sufficient velocity = skip set
+              _previousSet();
+            }
+          },
+          onVerticalDragEnd: (details) {
+            // Up swipe = next exercise; down swipe = previous exercise
+            if (details.primaryVelocity! < -200) {
+              // Swipe up = next exercise
+              _switchExercise(1);
+            } else if (details.primaryVelocity! > 200) {
+              // Swipe down = previous exercise
+              _switchExercise(-1);
+            }
+          },
+          child: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildHeader(theme),
+
+                    const SizedBox(height: 48),
+
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildMetricWidget(exercise, currentEntry, effortKind, theme),
+                              const SizedBox(height: 24),
+                              _buildSetProgress(entries.length, effortKind, theme),
+                              const SizedBox(height: 16),
+                              _buildPreviousSetStats(exercise, effortKind, theme),
+                              const SizedBox(height: 16),
+                              _buildSetIndicator(entries.length, effortKind, theme),
+                              const SizedBox(height: 24),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _buildSetControls(theme),
+                    ),
+
+                    const SizedBox(height: 32),
+                  ],
+                ),
+              ),
+              // Rest timer overlay in lower half (hide when exercise timer is running)
+              if (_restElapsedSeconds > 0 && !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ?? false))
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 110,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.self_improvement,
+                            size: 24,
+                            color: theme.colorScheme.onPrimary,
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _restFormatted,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  color: theme.colorScheme.onPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: OmniTheme.textPrimary),
+            onPressed: () {
+              // If in detail view, return to list view
+              // If in list view, pop navigation (exit to home)
+              if (!_showListView) {
+                setState(() {
+                  _showListView = true;
+                });
+              } else {
+                Navigator.of(context).pop();
+              }
+            },
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _showListView ? 'Exercises' : (_exercises.isNotEmpty ? _exercises[_currentExerciseIndex]['name'] as String : ''),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: OmniTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _showListView ? '${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}' : (_exercises.isNotEmpty ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}' : ''),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: OmniTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListView(ThemeData theme) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: OmniGradientBackground(
         child: Stack(
           children: [
             SafeArea(
               child: Column(
                 children: [
                   _buildHeader(theme),
-
-                  const SizedBox(height: 48),
-
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildMetricWidget(exercise, currentEntry, effortKind, theme),
-                            const SizedBox(height: 24),
-                            _buildSetProgress(entries.length, effortKind, theme),
-                            const SizedBox(height: 16),
-                            _buildPreviousSetStats(exercise, effortKind, theme),
-                            const SizedBox(height: 16),
-                            _buildSetIndicator(entries.length, effortKind, theme),
-                            const SizedBox(height: 24),
-                          ],
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: OmniTheme.surfaceColor.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
+                              const SizedBox(width: 8),
+                              Text(
+                                _elapsedFormatted,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: OmniTheme.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
-
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildSetControls(theme),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: _exercises.isEmpty
+                        ? Center(
+                            child: Text(
+                              'No exercises',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                color: OmniTheme.textPrimary,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: _exercises.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final ex = _exercises[index];
+                              final entries = ex['entries'] as List<dynamic>? ?? [];
+                              final effortKind = ex['effortKind'] as String? ?? 'set';
+                              
+                              String subtitle;
+                              switch (effortKind) {
+                                case 'set':
+                                  subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
+                                  break;
+                                case 'timed':
+                                  final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
+                                  final minutes = totalDuration ~/ 60;
+                                  final seconds = totalDuration % 60;
+                                  subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+                                  break;
+                                case 'round':
+                                  subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
+                                  break;
+                                case 'drill':
+                                  subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+                                  break;
+                                default:
+                                  subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
+                              }
+                              
+                              return Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: OmniTheme.surfaceColor.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: OmniTheme.surfaceBorderColor),
+                                ),
+                                child: ListTile(
+                                  title: Text(
+                                    ex['name'] as String,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      color: OmniTheme.textPrimary,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    subtitle,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: OmniTheme.textSecondary,
+                                    ),
+                                  ),
+                                  onTap: () {
+                                    setState(() {
+                                      _currentExerciseIndex = index;
+                                      _currentSet = 1;
+                                      _showListView = false;
+                                    });
+                                  },
+                                ),
+                              );
+                            },
+                          ),
                   ),
-
-                  const SizedBox(height: 32),
                 ],
               ),
             ),
-            // Rest timer overlay in lower half (hide when exercise timer is running)
-            if (_restElapsedSeconds > 0 && !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ?? false))
+            // Rest timer overlay (hide when exercise timer is running)
+            if (_restElapsedSeconds > 0 && !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ?? false))
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: 125,
+                bottom: 110,
                 child: Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -906,227 +1133,49 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   ),
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Row(
-        children: [
-          IconButton(
-            icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
-            onPressed: () {
-              // If in detail view, return to list view
-              // If in list view, pop navigation (exit to home)
-              if (!_showListView) {
-                setState(() {
-                  _showListView = true;
-                });
-              } else {
-                Navigator.of(context).pop();
-              }
-            },
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _showListView ? 'Exercises' : (_exercises.isNotEmpty ? _exercises[_currentExerciseIndex]['name'] as String : ''),
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _showListView ? '${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}' : (_exercises.isNotEmpty ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}' : ''),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildListView(ThemeData theme) {
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Column(
-              children: [
-                _buildHeader(theme),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.onSurface.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.timer, size: 16, color: theme.colorScheme.onSurface.withOpacity(0.9)),
-                            const SizedBox(width: 8),
-                            Text(_elapsedFormatted, style: theme.textTheme.titleMedium),
-                          ],
+            Positioned(
+              right: 10,
+              bottom: 110,
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  width: 60,
+                  height: 60,
+                  child: FilledButton(
+                    style: ButtonStyle(
+                      shape: WidgetStateProperty.all(
+                        RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                    ],
+                    ),
+                    onPressed: _addExercise,
+                    child: const Icon(Icons.add),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: _exercises.isEmpty
-                      ? Center(child: Text('No exercises', style: theme.textTheme.headlineSmall))
-                      : ListView.separated(
-                          itemCount: _exercises.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final ex = _exercises[index];
-                            final entries = ex['entries'] as List<dynamic>? ?? [];
-                            final effortKind = ex['effortKind'] as String? ?? 'set';
-                            
-                            String subtitle;
-                            switch (effortKind) {
-                              case 'set':
-                                subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
-                                break;
-                              case 'timed':
-                                final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
-                                final minutes = totalDuration ~/ 60;
-                                final seconds = totalDuration % 60;
-                                subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
-                                break;
-                              case 'round':
-                                subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
-                                break;
-                              case 'drill':
-                                subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
-                                break;
-                              default:
-                                subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
-                            }
-                            
-                            return ListTile(
-                              title: Text(ex['name'] as String),
-                              subtitle: Text(subtitle),
-                              onTap: () {
-                                setState(() {
-                                  _currentExerciseIndex = index;
-                                  _currentSet = 1;
-                                  _showListView = false;
-                                });
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
+              ),
             ),
-          ),
-          // Rest timer overlay (hide when exercise timer is running)
-          if (_restElapsedSeconds > 0 && !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ?? false))
             Positioned(
               left: 0,
               right: 0,
-              bottom: 125,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.self_improvement,
-                        size: 24,
-                        color: theme.colorScheme.onPrimary,
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _restFormatted,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              color: theme.colorScheme.onPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          Positioned(
-            right: 10,
-            bottom: 110,
-            child: SafeArea(
-              top: false,
-              child: SizedBox(
-                width: 60,
-                height: 60,
-                child: FilledButton(
-                  style: ButtonStyle(
-                    shape: WidgetStateProperty.all(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+              bottom: 10,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: FilledButton(
+                      onPressed: _showFinishSessionDialog,
+                      child: const Text('Finish Workout'),
                     ),
                   ),
-                  onPressed: _addExercise,
-                  child: const Icon(Icons.add),
                 ),
               ),
             ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 10,
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(10),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: FilledButton(
-                    onPressed: _showFinishSessionDialog,
-                    child: const Text('Finish Workout'),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1215,7 +1264,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 fontSize: theme.textTheme.displayMedium?.fontSize
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 15),
             // Scrollable round duration control
             InlineMetricEditor(
               metricType: 'duration',
@@ -1223,7 +1272,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               unitLabel: _effortRunning[timerKey] ?? false ? 'TIME REMAINING' : 'DURATION',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'round-duration', value),
             ),
-            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

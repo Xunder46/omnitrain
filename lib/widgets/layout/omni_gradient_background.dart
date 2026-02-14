@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import 'noise_overlay_painter.dart';
 
 /// Reusable cosmic gradient background with optional radial highlight
 /// Used throughout OMNITRAIN for consistent atmosphere
@@ -27,20 +28,49 @@ class OmniGradientBackground extends StatelessWidget {
         ),
       ),
       child: showRadialHighlight
-          ? Container(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.topCenter,
-                  radius: 1.5,
-                  colors: [
-                    Colors.white.withOpacity(0.03),
-                    Colors.transparent,
-                  ],
+          ? Stack(
+              children: [
+                // Radial highlight overlay
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment.topCenter,
+                      radius: 1.5,
+                      colors: [
+                        Colors.white.withOpacity(0.05),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              child: child,
+                // Film grain noise overlay (if enabled)
+                if (OmniTheme.enableBackgroundNoise)
+                  CustomPaint(
+                    painter: NoiseOverlayPainter(
+                      opacity: OmniTheme.backgroundNoiseOpacity,
+                      scale: OmniTheme.backgroundNoiseScale,
+                    ),
+                    child: Container(),
+                  ),
+                // Content
+                child,
+              ],
             )
-          : child,
+          : Stack(
+              children: [
+                // Film grain noise overlay (if enabled)
+                if (OmniTheme.enableBackgroundNoise)
+                  CustomPaint(
+                    painter: NoiseOverlayPainter(
+                      opacity: OmniTheme.backgroundNoiseOpacity,
+                      scale: OmniTheme.backgroundNoiseScale,
+                    ),
+                    child: Container(),
+                  ),
+                // Content
+                child,
+              ],
+            ),
     );
   }
 }

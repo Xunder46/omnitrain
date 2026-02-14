@@ -3,6 +3,21 @@ BEGIN TRANSACTION;
 
 -- Note: IDs are TEXT (UUID hex), timestamps in INTEGER (ms), booleans as INTEGER (0/1).
 --
+-- UNIFIED SPORTS MODALITY (Feb 2026 Refactor):
+-- ============================================== 
+-- The 'sports' modality now encompasses both martial arts and sports exercises.
+-- Home screen shows a unified "Sports" tile combining martial arts icon with sports modality.
+-- Exercise ranking for sports modality pulls exercises from BOTH:
+--   - category-martial-arts (Boxing, BJJ, Muay Thai, wrestling)
+--   - category-sports (Soccer, basketball, tennis, team sports)
+-- Feature constraints supported by sports modality:
+--   - Primary metric: time (round duration)
+--   - Secondary metrics: rounds (periods/halves/rounds)
+--   - Optional metrics: distance, rpe
+-- See Modality.modalityToCategoryIds in lib/core/constants/modality.dart
+-- Migration: SqliteWorkoutRepository.getExercisesRankedForModality() must filter by
+--   categoryIds IN ('category-martial-arts', 'category-sports') when modality='sports'
+--
 -- DELETE OPERATIONS (Phase 1 Implementation - Feb 2026):
 -- =========================================================
 -- The repository interface now supports deletion operations for session management:

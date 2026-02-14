@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'state/workout/workout_state.dart';
+import 'features/splash/omni_splash_screen.dart';
 import 'features/home/home_screen.dart';
 
 class MyApp extends StatelessWidget {
@@ -42,6 +43,8 @@ class MyApp extends StatelessWidget {
       theme: abyssalNeonDark.copyWith(
         textTheme: textTheme,
       ),
+      // Splash screen temporarily disabled - showing home screen directly
+      // home: OmniSplashScreen(workoutState: workoutState),
       home: HomeScreen(workoutState: workoutState),
     );
   }

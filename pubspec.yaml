@@ -68,6 +68,7 @@ flutter:
   assets:
     - scripts/sqlite_schema.sql
     - scripts/sqlite_seed.sql
+    - assets/icon/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
