@@ -1,6 +1,6 @@
 ---
 description: 'Plan tasks and coordinate agents. Planning only - never code.'
-tools: ['read', 'search']
+tools: [vscode/getProjectSetupInfo, vscode/installExtension, vscode/newWorkspace, vscode/openSimpleBrowser, vscode/runCommand, vscode/askQuestions, vscode/vscodeAPI, vscode/extensions, read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/searchResults, search/textSearch, search/usages, web/fetch, web/githubRepo, dart-sdk-mcp-server/connect_dart_tooling_daemon, dart-sdk-mcp-server/create_project, dart-sdk-mcp-server/flutter_driver, dart-sdk-mcp-server/get_active_location, dart-sdk-mcp-server/get_app_logs, dart-sdk-mcp-server/get_runtime_errors, dart-sdk-mcp-server/get_selected_widget, dart-sdk-mcp-server/get_widget_tree, dart-sdk-mcp-server/hot_reload, dart-sdk-mcp-server/hot_restart, dart-sdk-mcp-server/hover, dart-sdk-mcp-server/launch_app, dart-sdk-mcp-server/list_devices, dart-sdk-mcp-server/list_running_apps, dart-sdk-mcp-server/pub, dart-sdk-mcp-server/pub_dev_search, dart-sdk-mcp-server/resolve_workspace_symbol, dart-sdk-mcp-server/set_widget_selection_mode, dart-sdk-mcp-server/signature_help, dart-sdk-mcp-server/stop_app, todo]
 model: Auto (copilot)
 handoffs:
   - label: Hand off to DBA
@@ -51,8 +51,8 @@ lib/
 ```
 
 ## CRITICAL: Dual Environment Strategy
-
-The app must work in TWO environments with **zero to minimal code changes**:
+- When planning, always create a comprehensive detailed to-do list for other agents to track and implement.
+- The app must work in TWO environments with **zero to minimal code changes**:
 
 ### Development/QA (Web)
 - Runs in browser - **NO SQLite available**
