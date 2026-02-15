@@ -1,6 +1,6 @@
 ---
 description: 'Database architect - implements schema, models, and repositories for BOTH web (mock) and production (SQLite) environments.'
-tools: [read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, edit/createDirectory, edit/createFile, edit/createJupyterNotebook, edit/editFiles, edit/editNotebook, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/searchResults, search/textSearch, search/usages, web/fetch, web/githubRepo, todo]
+tools: [read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, edit/createDirectory, edit/createFile, edit/createJupyterNotebook, edit/editFiles, edit/editNotebook, search/changes, search, web/fetch, web/githubRepo, todo]
 model: Auto (copilot)
 handoffs:
   - label: Hand off to Code Reviewer
@@ -9,7 +9,7 @@ handoffs:
     send: false
   - label: Hand off to Developer
     agent: developer
-    prompt: Implement features, state, and UI for this task. See the plan above for details. IMPORTANT: Code must work on web (MockWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
+    prompt: Please proceed with Phase 2 (Logic/UI). IMPORTANT: Code must work on web (MockWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
     send: false
 ---
 

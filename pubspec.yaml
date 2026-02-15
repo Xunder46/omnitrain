@@ -32,6 +32,8 @@ dependencies:
     sdk: flutter
   sqflite: ^2.2.8+4      # SQLite for offline storage
   path_provider: ^2.1.5 # for DB file path
+  hive: ^2.2.3          # web-friendly local persistence
+  hive_flutter: ^1.1.0  # Flutter integration for Hive
   fl_chart: ^0.60.0      # dynamic charts
   uuid: ^4.0.0              # unique IDs
   path: ^1.8.4              # file paths

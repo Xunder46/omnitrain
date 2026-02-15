@@ -5,11 +5,11 @@ model: Auto (copilot)
 handoffs:
   - label: Hand off to DBA
     agent: dba
-    prompt: Create/update database schema, models, and repositories for this task. See the plan above for details. IMPORTANT! Implement for BOTH environments: MockWorkoutRepository (web-compatible, in-memory) and future SqliteWorkoutRepository (production, persistent)
+    prompt: Proceed with Phase 1 (Data Layer). See the plan above for details. IMPORTANT! Implement for BOTH environments: HiveWorkoutRepository (web-compatible, in-memory) and future SqliteWorkoutRepository (production, persistent)
     send: false
   - label: Hand off to Developer
     agent: developer
-    prompt: Implement features, state, and UI for this task. See the plan above for details. IMPORTANT: Code must work on web (MockWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
+    prompt: Please proceed with Phase 1 (Logic/UI). See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
     send: false
   - label: Hand off to Code Reviewer
     agent: code-reviewer
@@ -229,7 +229,7 @@ OR
 ## Remember
 
 - You analyze and plan - never write code
+- Always create actionable todo items with acceptance criteria
 - Always consider both web and production environments
 - Break complex tasks into clear phases
 - Ask questions when requirements are unclear
-- Create actionable todo items with acceptance criteria
