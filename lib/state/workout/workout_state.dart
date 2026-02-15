@@ -36,7 +36,7 @@ class WorkoutState extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasSession => _currentSession != null;
-  bool get hasActiveSession => _currentSession != null && _efforts.values.any((list) => list.isNotEmpty);
+  bool get hasActiveSession => _currentSession != null && _currentSession!.endedAtMs == null && _efforts.values.any((list) => list.isNotEmpty);
   List<Exercise> get allExercises => List.unmodifiable(_allExercises);
   List<MuscleGroup> get muscleGroups => List.unmodifiable(_muscleGroups);
   List<Discipline> get disciplines => List.unmodifiable(_disciplines);

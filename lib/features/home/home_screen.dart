@@ -110,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           children: [
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(30.0, 30.0, 16.0, 0.0),
+                padding: const EdgeInsets.fromLTRB(30.0, 15.0, 16.0, 0.0),
                 child: Column(
                   children: [
                     Text(
@@ -129,7 +129,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 30),
                     // Grid view with training modalities
                     Expanded(
                       child: ListenableBuilder(
@@ -394,12 +394,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildMaintenanceGrid(BuildContext context) {
     final items = [
       _MaintenanceItem(
-        title: 'Profile',
-        icon: Icons.person_outline,
+        title: 'Calendar',
+        icon: Icons.calendar_today,
         onTap: () => _openPlaceholder(
           context,
-          title: 'Profile',
-          description: 'Manage your identity, preferences, and security layer',
+          title: 'Calendar',
+          description: 'View and manage your training schedule',
         ),
       ),
       _MaintenanceItem(
@@ -409,6 +409,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           context,
           title: 'Stats',
           description: 'Review performance trends and training history',
+        ),
+      ),
+      _MaintenanceItem(
+        title: 'Profile',
+        icon: Icons.person_outline,
+        onTap: () => _openPlaceholder(
+          context,
+          title: 'Profile',
+          description: 'Manage your identity, preferences, and security layer',
         ),
       ),
       _MaintenanceItem(
