@@ -1,0 +1,94 @@
+# Exercise Ranking / Recommended Sorting — Technical Notes
+
+This document describes how exercises are ranked and sorted for a given session modality in the codebase.
+
+## Purpose
+
+- Provide a concise, technical description of the inputs, algorithm, and outputs for exercise ranking used by the UI.
+- Help future implementers port, tune, or convert the ranking algorithm to other repositories (e.g. SQLite implementation).
+
+## Where to look in the code
+
+- Repository entrypoint: `lib/data/repositories/mock_workout_repository.dart` — implements `getExercisesRankedForModality(...)` for the mock data source.
+- Public state wrapper: `lib/state/workout/workout_state.dart` — delegates to the repository and exposes `getExercisesRankedForModality` to UI code.
+- Modality configuration & scoring helpers: `lib/core/constants/modality_config.dart` — defines `ModalityConfig` and contains the scoring logic (`calculateRelevanceScore`).
+- Consumer/UI: `lib/widgets/pickers/exercise_picker_dialog.dart` — previously partitioned the returned list into sections; UI now consumes the repository-sorted list.
+
+## Inputs
+
+- `modality` (String?) — the session modality key (e.g. `cardio_endurance`, `resistance_lifting`, `sports`). When `null` this is Free Training mode.
+- Optional filters: `searchText`, `disciplineId`, `muscleGroupIds`.
+- Static reference data: disciplines, sport categories, exercise capability mappings.
+
+## High-level flow (repository)
+
+1. Start from all non-archived exercises (apply basic filters: text, discipline, muscle groups).
+2. If `modality == null` (Free Training):
+   - Return alphabetically sorted exercises (by name).
+3. Otherwise (modality present):
+   - Resolve `ModalityConfig` for the modality (primary/secondary/anti capabilities, category id, etc.).
+   - For each candidate exercise:
+     - Attach the exercise capabilities (from seed data / capability map).
+     - Resolve the exercise discipline -> category id (if present) for affinity scoring.
+     - Compute a numeric relevance score using `ModalityConfig.calculateRelevanceScore(...)`.
+   - Sort exercises by: `score DESC`, then `name ASC` (alphabetical tie-breaker).
+   - Return the sorted list of `Exercise` objects (capabilities attached).
+
+## Scoring (conceptual)
+
+- The `ModalityConfig` encapsulates what matters for a modality:
+  - `primaryCapabilities`: strong positive signals (e.g. `reps` for resistance, `time` for cardio/sports)
+  - `secondaryCapabilities`: weaker positive signals
+  - `antiCapabilities`: negative signals that reduce relevance
+  - `categoryId`: discipline-category affinity increases score when an exercise's discipline belongs to the modality's category
+
+- `calculateRelevanceScore(...)` combines capability matches and category affinity into a single floating point score. Typical components:
+  - +X if exercise supports a primary capability
+  - +Y for each matching secondary capability
+  - -Z for anti-capabilities present
+  - +W if discipline.categoryId == modality.categoryId (affinity bonus)
+
+Note: the precise numeric weights live in `ModalityConfig.forModality` / `calculateRelevanceScore` and can be tuned there.
+
+## UI considerations
+
+- The UI (`ExercisePickerDialog`) requests `getExercisesRankedForModality(modality, ...)` and receives a sorted list.
+- Previously the dialog partitioned results into "Recommended" (exercises supporting the modality's primary metric) and "Other exercises"; that partitioning has been removed and the list is displayed in the repository's sorted order.
+
+## Example pseudocode
+
+```dart
+// Repository-side
+final candidates = applyFilters(allExercises, searchText, disciplineId, muscleGroupIds);
+if (modality == null) return candidates..sort((a,b) => a.name.compareTo(b.name));
+
+final config = ModalityConfig.forModality(modality);
+final scored = candidates.map((ex) {
+  final caps = exerciseCapabilities[ex.id] ?? [];
+  final categoryId = disciplines[ex.disciplineId]?.categoryId;
+  final score = config.calculateRelevanceScore(exerciseCapabilities: caps, exerciseCategoryId: categoryId);
+  return (ex.copyWith(capabilities: caps), score);
+}).toList();
+
+scored.sort((a, b) {
+  final scoreDiff = b.score.compareTo(a.score);
+  return scoreDiff != 0 ? scoreDiff : a.exercise.name.compareTo(b.exercise.name);
+});
+
+return scored.map((s) => s.exercise).toList();
+```
+
+## Recommended extension points
+
+- Expose the numeric score on the `Exercise` model (transient field) for UI display (badges, thresholds).
+- Persist computed scores (or use SQL window functions) in a production SQLite implementation for faster ranking.
+- Add configuration flags or per-modality thresholds for multi-tiered UI grouping (e.g., Best/Compatible/Others).
+
+## Files to update when tuning behavior
+
+- `lib/core/constants/modality_config.dart` — adjust primary/secondary/anti capability lists and weights.
+- `lib/data/repositories/mock_workout_repository.dart` — port to SQLite: the same input/output contract should be preserved.
+- `lib/widgets/pickers/exercise_picker_dialog.dart` — decide whether to reintroduce UI grouping by thresholds or display score badges.
+
+---
+Generated: automated documentation added to repository.
