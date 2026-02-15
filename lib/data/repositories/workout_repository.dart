@@ -2,6 +2,9 @@ import '../models/models.dart';
 
 /// Abstract interface for workout data operations
 abstract class WorkoutRepository {
+  /// Initialize the repository (load seed data, open database, etc.)
+  /// Must be called before any other operations
+  Future<void> initialize();
   // Exercises
   Future<List<Exercise>> getExercises();
   Future<Exercise?> getExerciseById(String id);

@@ -367,18 +367,8 @@ class WorkoutState extends ChangeNotifier {
     _clearError();
 
     try {
-      // Map metric keys to metric IDs
-      final metricIdMap = {
-        'reps': 'metric-reps',
-        'weight': 'metric-weight',
-        'duration': 'metric-duration',
-        'distance': 'metric-distance',
-        'rounds': 'metric-rounds',
-        'round-duration': 'metric-round-duration',
-        'rpe': 'metric-rpe',
-      };
-
-      final metricId = metricIdMap[metricKey];
+      // Use centralized MetricIds.keyToMetricId mapping for consistency
+      final metricId = MetricIds.keyToMetricId[metricKey];
       if (metricId == null) return;
 
       // Find the observation for this entry index and metric

@@ -1,7 +1,7 @@
 import '../models/models.dart';
 import '../../mock/seed_data.dart';
 import '../../core/constants/modality_config.dart';
-import '../../core/constants/modality.dart';
+import '../../core/utils/exercise_helpers.dart';
 import 'workout_repository.dart';
 
 /// In-memory mock implementation of WorkoutRepository for development/testing.
@@ -444,25 +444,6 @@ class MockWorkoutRepository implements WorkoutRepository {
         final exerciseMuscles = _exerciseMuscleGroups[e.id] ?? [];
         return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
       });
-    }
-
-    // For modalities that map to multiple categories (e.g., sports = martial arts + sports),
-    // filter exercises to match the relevant categories
-    if (modality != null) {
-      var categoryIds = Modality.modalityToCategoryIds[modality] ?? [];
-      
-      // For isometric_stretching, also include resistance exercises (many isometric exercises are in calisthenics)
-      if (modality == 'isometric_stretching') {
-        categoryIds = [...categoryIds, 'category-resistance'];
-      }
-      
-      if (categoryIds.isNotEmpty) {
-        results = results.where((e) {
-          if (e.disciplineId == null) return false;
-            final discipline = _disciplines[e.disciplineId];
-          return discipline != null && categoryIds.contains(discipline.categoryId);
-        });
-      }
     }
 
     final allExercises = results.toList();

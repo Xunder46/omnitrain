@@ -122,40 +122,10 @@ class Exercise {
         'created_at_ms': createdAtMs,
         'updated_at_ms': updatedAtMs
       };
-
-  /// Check if exercise supports a specific capability
-  bool supports(String capability) => capabilities.contains(capability);
-
-  /// Check if exercise supports any of the given capabilities
-  bool supportsAny(List<String> caps) => caps.any((c) => capabilities.contains(c));
-
-  /// Create a copy with updated fields
-  Exercise copyWith({
-    String? id,
-    String? ownerUserId,
-    String? disciplineId,
-    String? name,
-    String? description,
-    String? movementPattern,
-    bool? isArchived,
-    int? createdAtMs,
-    int? updatedAtMs,
-    List<String>? capabilities,
-  }) {
-    return Exercise(
-      id: id ?? this.id,
-      ownerUserId: ownerUserId ?? this.ownerUserId,
-      disciplineId: disciplineId ?? this.disciplineId,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      movementPattern: movementPattern ?? this.movementPattern,
-      isArchived: isArchived ?? this.isArchived,
-      createdAtMs: createdAtMs ?? this.createdAtMs,
-      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
-      capabilities: capabilities ?? this.capabilities,
-    );
-  }
 }
+
+// Extension methods (supports, supportsAny, copyWith) are in lib/core/utils/exercise_helpers.dart
+// Models remain pure data - no business logic
 
 class Equipment {
   final String id;
@@ -607,32 +577,5 @@ class MetricApplicability {
       };
 }
 
-// Lightweight SetRow used by UI for logging sets. Kept separate from the
-// typed observation rows in the DB layer for simplicity.
-class SetRow {
-  final String id;
-  final String exerciseId;
-  int reps;
-  double weight;
-  int duration; // seconds
-  final int timestamp;
-
-  SetRow({required this.id, required this.exerciseId, required this.reps, required this.weight, required this.duration, required this.timestamp});
-
-  factory SetRow.fromMap(Map<String, dynamic> m) => SetRow(
-      id: m['id'] as String,
-      exerciseId: m['exercise_id'] as String,
-      reps: m['reps'] as int,
-      weight: (m['weight'] as num).toDouble(),
-      duration: m['duration'] as int,
-      timestamp: m['timestamp'] as int);
-
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'exercise_id': exerciseId,
-        'reps': reps,
-        'weight': weight,
-        'duration': duration,
-        'timestamp': timestamp
-      };
-}
+// UI-specific set data structures moved to lib/core/utils/exercise_helpers.dart
+// Models layer reserved for persistence entities only
