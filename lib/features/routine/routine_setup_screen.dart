@@ -639,6 +639,7 @@ class ExerciseCard extends StatelessWidget {
                 color: theme.colorScheme.surface,
                 itemBuilder: (context) => [
                   PopupMenuItem(
+                    onTap: onChangeTracking,
                     child: Row(
                       children: [
                         Icon(Icons.tune, size: 18, color: theme.colorScheme.primary),
@@ -646,9 +647,9 @@ class ExerciseCard extends StatelessWidget {
                         const Text('Change Tracking'),
                       ],
                     ),
-                    onTap: onChangeTracking,
                   ),
                   PopupMenuItem(
+                    onTap: onDelete,
                     child: Row(
                       children: [
                         const Icon(Icons.delete, size: 18, color: Colors.red),
@@ -656,7 +657,6 @@ class ExerciseCard extends StatelessWidget {
                         const Text('Remove'),
                       ],
                     ),
-                    onTap: onDelete,
                   ),
                 ],
               ),

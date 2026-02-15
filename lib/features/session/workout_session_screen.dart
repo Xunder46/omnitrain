@@ -385,12 +385,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 Navigator.of(context).pop();
               }
             },
-            child: const Text('Finish'),
             style: ButtonStyle(
-              shape: MaterialStateProperty.all(RoundedRectangleBorder(
+              shape: WidgetStateProperty.all(RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               )),
             ),
+            child: const Text('Finish'),
           ),
         ],
       ),
@@ -727,12 +727,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Finish'),
             style: ButtonStyle(
-              shape: MaterialStateProperty.all(RoundedRectangleBorder(
+              shape: WidgetStateProperty.all(RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               )),
             ),
+            child: const Text('Finish'),
           ),
         ],
       ),
@@ -1209,14 +1209,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       height: 56,
                       child: FilledButton(
                         onPressed: _showFinishSessionDialog,
-                        child: const Text('Finish Workout'),
                         style: ButtonStyle(
-                          shape: MaterialStateProperty.all(
+                          shape: WidgetStateProperty.all(
                             RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                         ),
+                        child: const Text('Finish Workout'),
                       ),
                     ),
                   ),
@@ -1424,14 +1424,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     height: 56,
                     child: FilledButton(
                       onPressed: _showFinishSessionDialog,
-                      child: const Text('Finish Workout'),
                       style: ButtonStyle(
-                          shape: MaterialStateProperty.all(
+                          shape: WidgetStateProperty.all(
                             RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                         ),
+                      child: const Text('Finish Workout'),
                     ),
                   ),
                 ),

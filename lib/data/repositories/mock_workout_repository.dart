@@ -35,6 +35,7 @@ class MockWorkoutRepository implements WorkoutRepository {
   bool _initialized = false;
 
   /// Initializes the repository with seed data from mock/seed_data.dart
+  @override
   Future<void> initialize() async {
     if (_initialized) return;
 

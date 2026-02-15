@@ -7,9 +7,9 @@ class ModalityPickerDialog extends StatelessWidget {
   final String? initialModality;
 
   const ModalityPickerDialog({
-    Key? key,
+    super.key,
     this.initialModality,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

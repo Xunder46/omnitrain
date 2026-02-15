@@ -232,12 +232,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Start New'),
               style: ButtonStyle(
-                shape: MaterialStateProperty.all(RoundedRectangleBorder(
+                shape: WidgetStateProperty.all(RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 )),
               ),
+              child: const Text('Start New'),
             ),
           ],
         ),

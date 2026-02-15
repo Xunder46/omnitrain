@@ -1,5 +1,6 @@
 /// Exercise utility functions and extensions
 /// Keeps models pure data while providing convenience methods for business logic
+library;
 
 import '../../data/models/models.dart';
 
