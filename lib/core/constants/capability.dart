@@ -63,11 +63,9 @@ class ExerciseCapability {
       case hold:
         return 'Isometric contraction (plank, wall sit)';
       case reps:
-        return 'Repetition counting';
       case sets:
-        return 'Grouped sets of work';
       case load:
-        return 'External weight or resistance';
+        return 'Repetitions with optional weight and set grouping';
       case distance:
         return 'Distance covered';
       case rounds:

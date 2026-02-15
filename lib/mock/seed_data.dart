@@ -1213,42 +1213,6 @@ class SeedData {
     'exercise-lacrosse-game': ['time', 'rounds'],
   };
 
-  /// Sample workout templates
-  static final List<WorkoutTemplate> sampleTemplates = [
-    WorkoutTemplate(
-      id: 'template-upper-strength',
-      name: 'Upper Body Strength',
-      primaryDisciplineId: 'discipline-powerlifting',
-      note: 'Classic upper body strength session',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-    WorkoutTemplate(
-      id: 'template-easy-run',
-      name: 'Easy Run',
-      primaryDisciplineId: 'discipline-running',
-      note: 'Easy endurance run',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-    WorkoutTemplate(
-      id: 'template-boxing-rounds',
-      name: 'Boxing Rounds',
-      primaryDisciplineId: 'discipline-boxing',
-      note: 'Heavy bag and shadowboxing rounds',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-    WorkoutTemplate(
-      id: 'template-mobility',
-      name: 'Full Body Stretch',
-      primaryDisciplineId: 'discipline-stretching',
-      note: 'Comprehensive stretching routine',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-  ];
-
   /// Template segments for sample templates
   static final List<TemplateSegment> sampleTemplateSegments = [
     // Upper Body Strength template segments
@@ -1352,6 +1316,7 @@ class SeedData {
       id: 'ttar-bench-sets',
       templateEffortId: 'teff-upper-bench',
       metricId: 'metric-reps',
+      setIndex: 0,
       targetInt: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
@@ -1360,6 +1325,7 @@ class SeedData {
       id: 'ttar-run-duration',
       templateEffortId: 'teff-run-main',
       metricId: 'metric-duration',
+      setIndex: 0,
       targetInt: 1800, // 30 minutes in seconds
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
@@ -1368,6 +1334,7 @@ class SeedData {
       id: 'ttar-boxing-rounds',
       templateEffortId: 'teff-boxing-bag',
       metricId: 'metric-rounds',
+      setIndex: 0,
       targetInt: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
@@ -1375,6 +1342,7 @@ class SeedData {
       id: 'ttar-boxing-duration',
       templateEffortId: 'teff-boxing-bag',
       metricId: 'metric-round-duration',
+      setIndex: 0,
       targetInt: 180, // 3 minutes in seconds
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
@@ -1383,6 +1351,7 @@ class SeedData {
       id: 'ttar-stretch-duration',
       templateEffortId: 'teff-mobility-stretch',
       metricId: 'metric-duration',
+      setIndex: 0,
       targetMin: 30.0,
       targetMax: 60.0,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,

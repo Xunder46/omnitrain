@@ -3,6 +3,7 @@ import 'app.dart';
 import 'data/repositories/mock_workout_repository.dart';
 import 'state/workout/workout_state.dart';
 import 'state/home/home_state.dart';
+import 'state/routine/routine_state.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,10 +15,12 @@ void main() async {
     // Create state with repository
     final workoutState = WorkoutState(repository);
     final homeState = HomeState();
+    final routineState = RoutineState(repository);
 
     runApp(MyApp(
       workoutState: workoutState,
       homeState: homeState,
+      routineState: routineState,
     ));
   } catch (e) {
     print('Error initializing app: $e');

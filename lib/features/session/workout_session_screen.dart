@@ -386,6 +386,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               }
             },
             child: const Text('Finish'),
+            style: ButtonStyle(
+              shape: MaterialStateProperty.all(RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              )),
+            ),
           ),
         ],
       ),
@@ -723,6 +728,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Finish'),
+            style: ButtonStyle(
+              shape: MaterialStateProperty.all(RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              )),
+            ),
           ),
         ],
       ),

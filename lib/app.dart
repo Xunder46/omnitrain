@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'state/workout/workout_state.dart';
 import 'state/home/home_state.dart';
-import 'features/splash/omni_splash_screen.dart';
+import 'state/routine/routine_state.dart';
+
 import 'features/home/home_screen.dart';
 
 class MyApp extends StatelessWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
+  final RoutineState routineState;
 
   const MyApp({
     super.key,
     required this.workoutState,
     required this.homeState,
+    required this.routineState,
   });
 
   @override
@@ -54,6 +57,7 @@ class MyApp extends StatelessWidget {
       home: HomeScreen(
         workoutState: workoutState,
         homeState: homeState,
+        routineState: routineState,
       ),
     );
   }

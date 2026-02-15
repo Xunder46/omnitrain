@@ -9,10 +9,27 @@ class MetricChooserDialog extends StatelessWidget {
 
   const MetricChooserDialog({super.key, required this.exercise});
 
+  /// Deduplicate reps/sets/load capabilities into a single reps option
+  List<String> _deduplicateCapabilities(List<String> capabilities) {
+    final strSet = capabilities.toSet();
+    final repsLoadSetVariants = {'reps', 'sets', 'load'};
+    
+    // Remove sets and load if any of the reps/sets/load variants exist
+    if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+      strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
+      // Ensure 'reps' is included as the canonical value
+      if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+        strSet.add('reps');
+      }
+    }
+    
+    return strSet.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final capabilities = exercise.capabilities;
+    final capabilities = _deduplicateCapabilities(exercise.capabilities);
     final dialogWidth = MediaQuery.of(context).size.width * 0.85;
     final dialogMaxHeight = MediaQuery.of(context).size.height * 0.75;
 
@@ -136,11 +153,9 @@ class _MetricOption extends StatelessWidget {
       case 'hold':
         return 'Track by Hold Time';
       case 'reps':
-        return 'Track by Reps & Sets';
       case 'sets':
-        return 'Track by Sets';
       case 'load':
-        return 'Track by Weight';
+        return 'Track by Reps & Sets';
       case 'distance':
         return 'Track by Distance';
       case 'rounds':

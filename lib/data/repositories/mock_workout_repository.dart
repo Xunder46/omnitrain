@@ -78,11 +78,6 @@ class MockWorkoutRepository implements WorkoutRepository {
       _metrics[metric.id] = metric;
     }
 
-    // Load templates
-    for (final template in SeedData.sampleTemplates) {
-      _templates[template.id] = template;
-    }
-
     // Load template segments
     for (final segment in SeedData.sampleTemplateSegments) {
       _templateSegments[segment.id] = segment;
@@ -125,12 +120,21 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<List<Exercise>> getExercises() async {
-    return _exercises.values.where((e) => !e.isArchived).toList();
+    return _exercises.values
+        .where((e) => !e.isArchived)
+        .map((e) {
+          final caps = _exerciseCapabilities[e.id] ?? [];
+          return e.copyWith(capabilities: caps);
+        })
+        .toList();
   }
 
   @override
   Future<Exercise?> getExerciseById(String id) async {
-    return _exercises[id];
+    final exercise = _exercises[id];
+    if (exercise == null) return null;
+    final caps = _exerciseCapabilities[exercise.id] ?? [];
+    return exercise.copyWith(capabilities: caps);
   }
 
   @override
@@ -537,11 +541,61 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<String> createTemplate(WorkoutTemplate template) async {
+    _templates[template.id] = template;
+    return template.id;
+  }
+
+  @override
+  Future<void> updateTemplate(WorkoutTemplate template) async {
+    _templates[template.id] = template;
+  }
+
+  @override
+  Future<void> deleteTemplate(String id) async {
+    final segmentIds = _templateSegments.values
+        .where((segment) => segment.templateId == id)
+        .map((segment) => segment.id)
+        .toList();
+
+    for (final segmentId in segmentIds) {
+      await deleteTemplateSegment(segmentId);
+    }
+
+    _templates.remove(id);
+  }
+
+  @override
   Future<List<TemplateSegment>> getTemplateSegments(String templateId) async {
     return _templateSegments.values
         .where((s) => s.templateId == templateId)
         .toList()
       ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+  }
+
+  @override
+  Future<String> createTemplateSegment(TemplateSegment segment) async {
+    _templateSegments[segment.id] = segment;
+    return segment.id;
+  }
+
+  @override
+  Future<void> updateTemplateSegment(TemplateSegment segment) async {
+    _templateSegments[segment.id] = segment;
+  }
+
+  @override
+  Future<void> deleteTemplateSegment(String id) async {
+    final effortIds = _templateEfforts.values
+        .where((effort) => effort.templateSegmentId == id)
+        .map((effort) => effort.id)
+        .toList();
+
+    for (final effortId in effortIds) {
+      await deleteTemplateEffort(effortId);
+    }
+
+    _templateSegments.remove(id);
   }
 
   @override
@@ -553,10 +607,50 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<String> createTemplateEffort(TemplateEffort effort) async {
+    _templateEfforts[effort.id] = effort;
+    return effort.id;
+  }
+
+  @override
+  Future<void> updateTemplateEffort(TemplateEffort effort) async {
+    _templateEfforts[effort.id] = effort;
+  }
+
+  @override
+  Future<void> deleteTemplateEffort(String id) async {
+    await deleteTemplateTargetsForEffort(id);
+    _templateEfforts.remove(id);
+  }
+
+  @override
   Future<List<TemplateTarget>> getTemplateTargets(String templateEffortId) async {
     return _templateTargets.values
         .where((t) => t.templateEffortId == templateEffortId)
         .toList();
+  }
+
+  @override
+  Future<String> createTemplateTarget(TemplateTarget target) async {
+    _templateTargets[target.id] = target;
+    return target.id;
+  }
+
+  @override
+  Future<void> updateTemplateTarget(TemplateTarget target) async {
+    _templateTargets[target.id] = target;
+  }
+
+  @override
+  Future<void> deleteTemplateTarget(String id) async {
+    _templateTargets.remove(id);
+  }
+
+  @override
+  Future<void> deleteTemplateTargetsForEffort(String templateEffortId) async {
+    _templateTargets.removeWhere(
+      (id, target) => target.templateEffortId == templateEffortId,
+    );
   }
 
   // ===== UTILITY METHODS =====

@@ -457,17 +457,28 @@ class TemplateEffort {
   final String templateSegmentId;
   final int orderIndex;
   final String effortKind;
+  final String? modality;
   final String? exerciseId;
   final String? note;
   final int createdAtMs;
 
-  TemplateEffort({required this.id, required this.templateSegmentId, required this.orderIndex, required this.effortKind, this.exerciseId, this.note, required this.createdAtMs});
+  TemplateEffort({
+    required this.id,
+    required this.templateSegmentId,
+    required this.orderIndex,
+    required this.effortKind,
+    this.modality,
+    this.exerciseId,
+    this.note,
+    required this.createdAtMs,
+  });
 
   factory TemplateEffort.fromMap(Map<String, dynamic> m) => TemplateEffort(
       id: m['id'] as String,
       templateSegmentId: m['template_segment_id'] as String,
       orderIndex: m['order_index'] as int,
       effortKind: m['effort_kind'] as String,
+      modality: m['modality'] as String?,
       exerciseId: m['exercise_id'] as String?,
       note: m['note'] as String?,
       createdAtMs: m['created_at_ms'] as int);
@@ -477,6 +488,7 @@ class TemplateEffort {
         'template_segment_id': templateSegmentId,
         'order_index': orderIndex,
         'effort_kind': effortKind,
+        'modality': modality,
         'exercise_id': exerciseId,
         'note': note,
         'created_at_ms': createdAtMs
@@ -487,6 +499,7 @@ class TemplateTarget {
   final String id;
   final String templateEffortId;
   final String metricId;
+  final int? setIndex;
   final String? unitId;
   final double? targetMin;
   final double? targetMax;
@@ -494,12 +507,13 @@ class TemplateTarget {
   final String? targetText;
   final int createdAtMs;
 
-  TemplateTarget({required this.id, required this.templateEffortId, required this.metricId, this.unitId, this.targetMin, this.targetMax, this.targetInt, this.targetText, required this.createdAtMs});
+  TemplateTarget({required this.id, required this.templateEffortId, required this.metricId, this.setIndex, this.unitId, this.targetMin, this.targetMax, this.targetInt, this.targetText, required this.createdAtMs});
 
   factory TemplateTarget.fromMap(Map<String, dynamic> m) => TemplateTarget(
       id: m['id'] as String,
       templateEffortId: m['template_effort_id'] as String,
       metricId: m['metric_id'] as String,
+      setIndex: m['set_index'] as int?,
       unitId: m['unit_id'] as String?,
       targetMin: (m['target_min'] as num?)?.toDouble(),
       targetMax: (m['target_max'] as num?)?.toDouble(),
@@ -511,6 +525,7 @@ class TemplateTarget {
         'id': id,
         'template_effort_id': templateEffortId,
         'metric_id': metricId,
+        'set_index': setIndex,
         'unit_id': unitId,
         'target_min': targetMin,
         'target_max': targetMax,

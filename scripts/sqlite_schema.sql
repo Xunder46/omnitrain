@@ -336,6 +336,7 @@ CREATE TABLE app_template_effort (
   template_segment_id TEXT NOT NULL,
   order_index INTEGER NOT NULL,
   effort_kind TEXT NOT NULL,
+  modality TEXT, -- Optional per-exercise modality for routine tracking
   exercise_id TEXT,
   note TEXT,
   created_at_ms INTEGER NOT NULL,
@@ -347,6 +348,7 @@ CREATE TABLE app_template_target (
   id TEXT NOT NULL PRIMARY KEY,
   template_effort_id TEXT NOT NULL,
   metric_id TEXT NOT NULL,
+  set_index INTEGER, -- 0-based set index for per-set targets
   unit_id TEXT,
   target_min REAL,
   target_max REAL,

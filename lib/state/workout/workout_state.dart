@@ -60,7 +60,9 @@ class WorkoutState extends ChangeNotifier {
   /// Create a new workout session
   /// [modality] - Optional training modality (e.g., 'cardio_endurance', 'resistance_lifting').
   ///              If null, creates a 'Free Training' session with no modality preset.
-  Future<void> createNewSession({String? modality}) async {
+  /// [title] - Optional session title (used for routine sessions).
+  /// [intent] - Optional session intent (e.g., 'routine').
+  Future<void> createNewSession({String? modality, String? title, String? intent}) async {
     _setLoading(true);
     _clearError();
 
@@ -72,7 +74,9 @@ class WorkoutState extends ChangeNotifier {
         id: sessionId,
         ownerUserId: 'user-1',
         startedAtMs: now,
+        title: title,
         modality: modality,
+        intent: intent,
         createdAtMs: now,
         updatedAtMs: now,
       );
@@ -151,7 +155,12 @@ class WorkoutState extends ChangeNotifier {
   /// Add an exercise to the current session
   /// [exercise] - The exercise from the library to add
   /// [chosenMetric] - Optional metric chosen by user (for Free Training only)
-  Future<String> addExerciseToSession(Exercise exercise, {String? chosenMetric}) async {
+  /// [effortKindOverride] - Optional explicit effort kind (used for routines)
+  Future<String> addExerciseToSession(
+    Exercise exercise, {
+    String? chosenMetric,
+    String? effortKindOverride,
+  }) async {
     if (_segments.isEmpty) return '';
 
     _clearError();
@@ -160,9 +169,11 @@ class WorkoutState extends ChangeNotifier {
       final segment = _segments.first;
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      // Determine effort kind from modality or chosen metric
+      // Determine effort kind from override, modality, or chosen metric
       String effortKind;
-      if (_currentModalityConfig != null && _currentSession?.modality != null) {
+      if (effortKindOverride != null) {
+        effortKind = effortKindOverride;
+      } else if (_currentModalityConfig != null && _currentSession?.modality != null) {
         // Use modality config
         effortKind = _currentModalityConfig!.effortKind;
       } else if (chosenMetric != null) {

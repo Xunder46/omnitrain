@@ -71,9 +71,22 @@ abstract class WorkoutRepository {
   // Templates
   Future<List<WorkoutTemplate>> getTemplates();
   Future<WorkoutTemplate?> getTemplateById(String id);
+  Future<String> createTemplate(WorkoutTemplate template);
+  Future<void> updateTemplate(WorkoutTemplate template);
+  Future<void> deleteTemplate(String id);
   Future<List<TemplateSegment>> getTemplateSegments(String templateId);
+  Future<String> createTemplateSegment(TemplateSegment segment);
+  Future<void> updateTemplateSegment(TemplateSegment segment);
+  Future<void> deleteTemplateSegment(String id);
   Future<List<TemplateEffort>> getTemplateEfforts(String templateSegmentId);
+  Future<String> createTemplateEffort(TemplateEffort effort);
+  Future<void> updateTemplateEffort(TemplateEffort effort);
+  Future<void> deleteTemplateEffort(String id);
   Future<List<TemplateTarget>> getTemplateTargets(String templateEffortId);
+  Future<String> createTemplateTarget(TemplateTarget target);
+  Future<void> updateTemplateTarget(TemplateTarget target);
+  Future<void> deleteTemplateTarget(String id);
+  Future<void> deleteTemplateTargetsForEffort(String templateEffortId);
 
   // Exercise Capabilities
   Future<List<String>> getExerciseCapabilities(String exerciseId);

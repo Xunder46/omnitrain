@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
+import '../../state/routine/routine_state.dart';
 import '../../core/constants/home_tiles.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
@@ -13,11 +14,13 @@ import 'maintenance_placeholder_screen.dart';
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
+  final RoutineState routineState;
 
   const HomeScreen({
     super.key,
     required this.workoutState,
     required this.homeState,
+    required this.routineState,
   });
 
   @override
@@ -139,10 +142,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             childAspectRatio: 1.0,
                             children: HomeTiles.all.map((tile) {
                               // Determine if this tile is the currently active session
-                              final isActive =
-                                  widget.workoutState.hasActiveSession &&
-                                      widget.workoutState.currentSession?.modality ==
-                                          tile.modality;
+                              final session = widget.workoutState.currentSession;
+                              final isRoutineSession = session?.intent == 'routine';
+                              final isActive = widget.workoutState.hasActiveSession &&
+                                (tile.key == 'my_routines'
+                                  ? isRoutineSession
+                                  : tile.modality == null
+                                    ? session?.modality == null && !isRoutineSession
+                                    : session?.modality == tile.modality);
 
                               return EnergyTile(
                                 title: tile.label,
@@ -179,11 +186,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   ) async {
     // Special case: My Routines tile navigates to routine screen
     if (tile.key == 'my_routines') {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const MyRoutinesScreen(),
-        ),
-      );
+      if (isActive) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState),
+          ),
+        );
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MyRoutinesScreen(
+              routineState: widget.routineState,
+              workoutState: widget.workoutState,
+            ),
+          ),
+        );
+      }
       return;
     }
 
@@ -215,6 +233,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               child: const Text('Start New'),
+              style: ButtonStyle(
+                shape: MaterialStateProperty.all(RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                )),
+              ),
             ),
           ],
         ),
@@ -371,12 +394,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildMaintenanceGrid(BuildContext context) {
     final items = [
       _MaintenanceItem(
-        title: 'Create Routine',
-        icon: Icons.add_task,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const MyRoutinesScreen(),
-          ),
+        title: 'Profile',
+        icon: Icons.person_outline,
+        onTap: () => _openPlaceholder(
+          context,
+          title: 'Profile',
+          description: 'Manage your identity, preferences, and security layer',
         ),
       ),
       _MaintenanceItem(
@@ -386,15 +409,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           context,
           title: 'Stats',
           description: 'Review performance trends and training history',
-        ),
-      ),
-      _MaintenanceItem(
-        title: 'Profile',
-        icon: Icons.person_outline,
-        onTap: () => _openPlaceholder(
-          context,
-          title: 'Profile',
-          description: 'Manage your identity, preferences, and security layer',
         ),
       ),
       _MaintenanceItem(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
+import '../../state/routine/routine_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/logo/animated_zen_halo.dart';
 import '../home/home_screen.dart';
@@ -12,12 +13,14 @@ import '../home/home_screen.dart';
 class OmniSplashScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
+  final RoutineState routineState;
   final Duration duration;
 
   const OmniSplashScreen({
     super.key,
     required this.workoutState,
     required this.homeState,
+    required this.routineState,
     this.duration = OmniTheme.splashDuration,
   });
 
@@ -56,6 +59,7 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
                 HomeScreen(
                   workoutState: widget.workoutState,
                   homeState: widget.homeState,
+                  routineState: widget.routineState,
                 ),
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) {
