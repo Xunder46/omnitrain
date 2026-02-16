@@ -56,6 +56,10 @@ class _EnergyTileState extends State<EnergyTile> {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
+      border: Border.all(
+        color: OmniTheme.surfaceBorderColor,
+        width: OmniTheme.surfaceBorderWidth,
+      ),
       boxShadow: [
         OmniTheme.deepShadow,
         // Accent glow - ambient color effect
@@ -76,6 +80,19 @@ class _EnergyTileState extends State<EnergyTile> {
 
     return Container(
       decoration: baseDecoration,
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            widget.accentColor.withOpacity(0.08),
+            Colors.transparent,
+            Colors.black.withOpacity(0.12),
+          ],
+          stops: const [0.0, 0.55, 1.0],
+        ),
+      ),
       padding: const EdgeInsets.all(20),
       child: _buildContent(),
     );

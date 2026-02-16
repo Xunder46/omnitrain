@@ -21,6 +21,7 @@ class RoutineState extends ChangeNotifier {
   List<TemplateTarget> _currentTargets = [];
 
   Timer? _autosaveTimer;
+  bool _autosaveEnabled = true;
 
   bool _isLoading = false;
   String? _error;
@@ -37,6 +38,13 @@ class RoutineState extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasUnsavedChanges => _currentTemplate != null;
+
+  void setAutosaveEnabled(bool enabled) {
+    _autosaveEnabled = enabled;
+    if (!enabled) {
+      _autosaveTimer?.cancel();
+    }
+  }
 
   // ===== ROUTINE MANAGEMENT =====
 
@@ -734,6 +742,7 @@ class RoutineState extends ChangeNotifier {
   }
 
   void _scheduleAutosave() {
+    if (!_autosaveEnabled) return;
     _autosaveTimer?.cancel();
     _autosaveTimer = Timer(const Duration(milliseconds: 600), () async {
       await _persistDraft();

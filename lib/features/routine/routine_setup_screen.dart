@@ -49,6 +49,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   @override
   void initState() {
     super.initState();
+    widget.routineState.setAutosaveEnabled(false);
     _nameController = TextEditingController();
     _descriptionController = TextEditingController();
     _loadRoutine();
@@ -56,6 +57,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
   @override
   void dispose() {
+    widget.routineState.setAutosaveEnabled(true);
     _nameController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -104,11 +106,14 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     return ListenableBuilder(
       listenable: widget.routineState,
       builder: (context, child) {
-        if (_showListView || widget.routineState.currentEfforts.isEmpty) {
-          return _buildListView(theme);
-        }
+        final content = (_showListView || widget.routineState.currentEfforts.isEmpty)
+            ? _buildListView(theme)
+            : _buildDetailView(theme);
 
-        return _buildDetailView(theme);
+        return WillPopScope(
+          onWillPop: _handleWillPop,
+          child: content,
+        );
       },
     );
   }
@@ -133,7 +138,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
               if (!_showListView) {
                 setState(() => _showListView = true);
               } else {
-                Navigator.of(context).pop();
+                _discardAndPop();
               }
             },
           ),
@@ -466,15 +471,27 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       left: 0,
       right: 0,
       bottom: 10,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 20, 12, 1),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              theme.colorScheme.background.withOpacity(0.95),
+              theme.colorScheme.background,
+            ],
+            stops: const [0.0, 0.3, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          top: false,
           child: Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: _discardAndPop,
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.7)),
                     padding: const EdgeInsets.symmetric(vertical: 24),
@@ -939,6 +956,21 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     );
 
     Navigator.pop(context);
+  }
+
+  Future<bool> _handleWillPop() async {
+    if (!_showListView) {
+      setState(() => _showListView = true);
+      return false;
+    }
+
+    widget.routineState.clearCurrentRoutine();
+    return true;
+  }
+
+  void _discardAndPop() {
+    widget.routineState.clearCurrentRoutine();
+    Navigator.of(context).pop();
   }
 }
 
