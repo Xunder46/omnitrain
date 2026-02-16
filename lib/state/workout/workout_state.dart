@@ -3,6 +3,7 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/metric_ids.dart';
+import '../../core/models/routine_session_manifest.dart';
 import '../../core/utils/observation_grouper.dart';
 
 /// State holder for workout session data.
@@ -68,6 +69,7 @@ class WorkoutState extends ChangeNotifier {
     String? title,
     String? intent,
     String? routineTemplateId,
+    bool includeDefaultSegment = true,
   }) async {
     _setLoading(true);
     _clearError();
@@ -92,20 +94,22 @@ class WorkoutState extends ChangeNotifier {
       _currentSession = session;
       _currentModalityConfig = ModalityConfig.forModality(modality);
 
-      // Create default segment
-      final segmentId = 'segment-$now';
-      final segment = SessionSegment(
-        id: segmentId,
-        sessionId: sessionId,
-        orderIndex: 0,
-        segmentType: 'workout',
-        name: 'Main Workout',
-        createdAtMs: now,
-        updatedAtMs: now,
-      );
+      if (includeDefaultSegment) {
+        // Create default segment
+        final segmentId = 'segment-$now';
+        final segment = SessionSegment(
+          id: segmentId,
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'workout',
+          name: 'Main Workout',
+          createdAtMs: now,
+          updatedAtMs: now,
+        );
 
-      await _repository.createSegment(segment);
-      _segments.add(segment);
+        await _repository.createSegment(segment);
+        _segments.add(segment);
+      }
 
       notifyListeners();
     } catch (e) {
@@ -164,9 +168,7 @@ class WorkoutState extends ChangeNotifier {
   /// and populates the current session with all exercises, targets, and rest timers.
   /// 
   /// Prerequisites: Must have an active session (call createNewSession first).
-  Future<void> populateSessionFromManifest(dynamic manifest) async {
-    // Import dynamically to avoid circular dependency
-    // Type is RoutineSessionManifest from core/models/routine_session_manifest.dart
+  Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) async {
     if (_currentSession == null) {
       throw Exception('No active session to populate');
     }
@@ -174,57 +176,80 @@ class WorkoutState extends ChangeNotifier {
     _clearError();
 
     try {
-      // Access manifest fields dynamically
-      final exercises = manifest.exercises as List;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      var segmentCounter = 0;
 
-      for (final entry in exercises) {
-        // Access entry fields dynamically
-        final exercise = entry.exercise;
-        final effortKind = entry.effortKind as String;
-        final setCount = entry.setCount as int;
-        final targets = entry.targets as List;
+      for (final segmentEntry in manifest.segments) {
+        final templateSegment = segmentEntry.segment;
+        final segmentId = 'segment-${_currentSession!.id}-$segmentCounter-$now';
+        segmentCounter += 1;
 
-        // Add exercise to session with explicit effort kind
-        final effortId = await addExerciseToSession(
-          exercise,
-          effortKindOverride: effortKind,
+        final sessionSegment = SessionSegment(
+          id: segmentId,
+          sessionId: _currentSession!.id,
+          orderIndex: templateSegment.orderIndex,
+          segmentType: templateSegment.segmentType,
+          disciplineId: templateSegment.disciplineId,
+          name: templateSegment.name,
+          note: templateSegment.note,
+          createdAtMs: now,
+          updatedAtMs: now,
         );
 
-        if (effortId.isEmpty) continue;
+        await _repository.createSegment(sessionSegment);
+        _segments.add(sessionSegment);
+        _efforts.putIfAbsent(segmentId, () => []);
 
-        // Add additional entries (sets) beyond the first
-        for (int i = 1; i < setCount; i++) {
-          await addEntry(effortId);
-        }
+        for (final entry in segmentEntry.exercises) {
+          final exercise = entry.exercise;
+          final effortKind = entry.effortKind;
+          final setCount = entry.setCount;
+          final targets = entry.targets;
 
-        // Apply targets from template
-        for (final target in targets) {
-          final entryIndex = target.setIndex ?? 0;
-          final metricKey = MetricIds.metricIdToKey[target.metricId] ?? target.metricId;
-          
-          // Get value from target
-          dynamic value;
-          if (target.targetValue != null) {
-            value = target.targetValue;
-          } else if (target.targetValueMin != null) {
-            value = target.targetValueMin; // Use min as default
-          } else if (target.targetValueMax != null) {
-            value = target.targetValueMax;
+          final effortId = await addExerciseToSession(
+            exercise,
+            effortKindOverride: effortKind,
+            segmentId: segmentId,
+          );
+
+          if (effortId.isEmpty) continue;
+
+          // Add additional entries (sets) beyond the first
+          for (int i = 1; i < setCount; i++) {
+            await addEntry(effortId);
           }
 
-          if (value == null) continue;
+          // Apply targets from template
+          for (final target in targets) {
+            final entryIndex = target.setIndex ?? 0;
+            final metricKey = MetricIds.metricIdToKey[target.metricId] ?? target.metricId;
 
-          // Convert to appropriate type
-          if (metricKey == 'reps' || metricKey == 'rounds' || metricKey == 'duration') {
-            value = value is int ? value : (value as double).toInt();
-          } else {
-            value = value is double ? value : (value as int).toDouble();
-          }
+            // Get value from target
+            dynamic value;
+            if (target.targetInt != null) {
+              value = target.targetInt;
+            } else if (target.targetMin != null) {
+              value = target.targetMin;
+            } else if (target.targetMax != null) {
+              value = target.targetMax;
+            } else if (target.targetText != null) {
+              value = target.targetText;
+            }
 
-          try {
-            await updateEntryValue(effortId, entryIndex, metricKey, value);
-          } catch (e) {
-            // Silently skip if metric doesn't exist for this effort
+            if (value == null) continue;
+
+            // Convert to appropriate type
+            if (metricKey == 'reps' || metricKey == 'rounds' || metricKey == 'duration') {
+              value = value is int ? value : (value as double).toInt();
+            } else {
+              value = value is double ? value : (value as int).toDouble();
+            }
+
+            try {
+              await updateEntryValue(effortId, entryIndex, metricKey, value);
+            } catch (e) {
+              // Silently skip if metric doesn't exist for this effort
+            }
           }
         }
       }
@@ -244,13 +269,19 @@ class WorkoutState extends ChangeNotifier {
     Exercise exercise, {
     String? chosenMetric,
     String? effortKindOverride,
+    String? segmentId,
   }) async {
     if (_segments.isEmpty) return '';
 
     _clearError();
 
     try {
-      final segment = _segments.first;
+      final segment = segmentId != null
+          ? _segments.firstWhere(
+              (s) => s.id == segmentId,
+              orElse: () => _segments.first,
+            )
+          : _segments.first;
       final now = DateTime.now().millisecondsSinceEpoch;
 
       // Determine effort kind from override, modality, or chosen metric
@@ -634,6 +665,10 @@ class WorkoutState extends ChangeNotifier {
           'name': exerciseName,
           'effortKind': effort.effortKind,
           'entries': entries,
+          'segmentId': segment.id,
+          'segmentName': segment.name ?? 'Block ${segment.orderIndex + 1}',
+          'segmentType': segment.segmentType,
+          'segmentOrder': segment.orderIndex,
         });
       }
     }

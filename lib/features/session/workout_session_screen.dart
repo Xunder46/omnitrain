@@ -1064,6 +1064,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Widget _buildHeader(ThemeData theme) {
+    final currentSegmentName = !_showListView && _exercises.isNotEmpty
+        ? _exercises[_currentExerciseIndex]['segmentName'] as String?
+        : null;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
@@ -1101,10 +1105,33 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     color: OmniTheme.textSecondary,
                   ),
                 ),
+                if (!_showListView && (currentSegmentName?.isNotEmpty ?? false))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      currentSegmentName!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: OmniTheme.textSecondary,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSegmentHeader(String name, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Text(
+        name,
+        style: theme.textTheme.titleSmall?.copyWith(
+          color: OmniTheme.textSecondary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1278,21 +1305,26 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     ),
                   ),
                   Expanded(
-                    child: ListView.separated(
+                    child: ListView.builder(
                       itemCount: _exercises.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         final ex = _exercises[index];
                         final entries = ex['entries'] as List<dynamic>? ?? [];
                         final effortKind = ex['effortKind'] as String? ?? 'set';
-                        
+                        final segmentName = ex['segmentName'] as String? ?? 'Block';
+                        final isFirstInSegment = index == 0 ||
+                            ex['segmentId'] != _exercises[index - 1]['segmentId'];
+
                         String subtitle;
                         switch (effortKind) {
                           case 'set':
                             subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
                             break;
                           case 'timed':
-                            final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
+                            final totalDuration = entries.fold<int>(
+                              0,
+                              (sum, e) => sum + ((e['duration'] as int?) ?? 0),
+                            );
                             final minutes = totalDuration ~/ 60;
                             final seconds = totalDuration % 60;
                             subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
@@ -1306,35 +1338,42 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                           default:
                             subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
                         }
-                        
-                        return Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: OmniTheme.surfaceColor.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: OmniTheme.surfaceBorderColor),
-                          ),
-                          child: ListTile(
-                            title: Text(
-                              ex['name'] as String,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: OmniTheme.textPrimary,
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (isFirstInSegment) _buildSegmentHeader(segmentName, theme),
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: OmniTheme.surfaceColor.withOpacity(0.7),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: OmniTheme.surfaceBorderColor),
+                              ),
+                              child: ListTile(
+                                title: Text(
+                                  ex['name'] as String,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: OmniTheme.textPrimary,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  subtitle,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: OmniTheme.textSecondary,
+                                  ),
+                                ),
+                                onTap: () {
+                                  setState(() {
+                                    _currentExerciseIndex = index;
+                                    _currentSet = 1;
+                                    _showListView = false;
+                                  });
+                                },
                               ),
                             ),
-                            subtitle: Text(
-                              subtitle,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: OmniTheme.textSecondary,
-                              ),
-                            ),
-                            onTap: () {
-                              setState(() {
-                                _currentExerciseIndex = index;
-                                _currentSet = 1;
-                                _showListView = false;
-                              });
-                            },
-                          ),
+                            const SizedBox(height: 8),
+                          ],
                         );
                       },
                     ),

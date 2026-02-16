@@ -257,6 +257,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
         title: manifest.template.name,
         intent: 'routine',
         routineTemplateId: manifest.template.id,
+        includeDefaultSegment: false,
       );
 
       // Step 3: Load session data

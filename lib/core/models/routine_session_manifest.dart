@@ -8,17 +8,35 @@ import '../../data/models/models.dart';
 /// Contains all data needed to populate a new session without further queries
 class RoutineSessionManifest {
   final WorkoutTemplate template;
-  final List<SessionExerciseEntry> exercises;
+  final List<SessionSegmentEntry> segments;
 
   RoutineSessionManifest({
     required this.template,
-    required this.exercises,
+    required this.segments,
   });
+
+  /// Flattened list of exercises across all blocks.
+  List<SessionExerciseEntry> get exercises =>
+      segments.expand((segment) => segment.exercises).toList();
 
   /// Total number of exercises across all blocks
   int get totalExercises => exercises.length;
 
   /// Check if manifest has any exercises
+  bool get isEmpty => segments.isEmpty;
+}
+
+/// A segment (block) in the session manifest
+/// Groups exercises under their routine block metadata
+class SessionSegmentEntry {
+  final TemplateSegment segment;
+  final List<SessionExerciseEntry> exercises;
+
+  SessionSegmentEntry({
+    required this.segment,
+    required this.exercises,
+  });
+
   bool get isEmpty => exercises.isEmpty;
 }
 

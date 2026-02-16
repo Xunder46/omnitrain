@@ -40,11 +40,13 @@ class RoutineSessionService {
     }
 
     // Process each segment and build exercise entries
-    final List<SessionExerciseEntry> exerciseEntries = [];
+    final List<SessionSegmentEntry> segmentEntries = [];
+    final orderedSegments = [...segments]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
 
-    for (final segment in segments) {
+    for (final segment in orderedSegments) {
       // Load efforts for this segment
       final efforts = await _repository.getTemplateEfforts(segment.id);
+      final List<SessionExerciseEntry> exerciseEntries = [];
 
       for (final effort in efforts) {
         // Skip efforts without exercise reference
@@ -70,15 +72,22 @@ class RoutineSessionService {
           restType: effort.restType,
         ));
       }
+
+      if (exerciseEntries.isNotEmpty) {
+        segmentEntries.add(SessionSegmentEntry(
+          segment: segment,
+          exercises: exerciseEntries,
+        ));
+      }
     }
 
-    if (exerciseEntries.isEmpty) {
+    if (segmentEntries.isEmpty) {
       throw Exception('Template has no exercises: $templateId');
     }
 
     return RoutineSessionManifest(
       template: template,
-      exercises: exerciseEntries,
+      segments: segmentEntries,
     );
   }
 
