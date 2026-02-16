@@ -53,6 +53,10 @@ abstract class WorkoutRepository {
   // Muscle Groups
   Future<List<MuscleGroup>> getMuscleGroups();
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId);
+  Future<void> setExerciseMuscleGroups(
+    String exerciseId,
+    List<String> muscleGroupIds,
+  );
 
   // Equipment
   Future<List<Equipment>> getEquipment();

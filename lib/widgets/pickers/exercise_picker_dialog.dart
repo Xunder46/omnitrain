@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
+import '../../features/exercise/exercise_editor_screen.dart';
 
 /// Dialog for selecting an exercise with search and filters
 class ExercisePickerDialog extends StatefulWidget {
@@ -127,6 +128,22 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
     _searchExercises();
   }
 
+  Future<void> _openCreateExercise() async {
+    final created = await Navigator.of(context).push<Exercise>(
+      MaterialPageRoute(
+        builder: (_) => ExerciseEditorScreen(
+          workoutState: widget.workoutState,
+        ),
+      ),
+    );
+
+    if (created == null) return;
+
+    _exerciseMuscleGroupsCache.remove(created.id);
+    _searchController.text = created.name;
+    await _searchExercises();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -155,6 +172,22 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openCreateExercise,
+                icon: const Icon(Icons.add),
+                label: const Text('Add Custom Exercise'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: theme.colorScheme.primary,
+                  side: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
 
@@ -189,9 +222,18 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                     initialValue: _selectedDisciplineId,
                     isExpanded: true,
                     decoration: InputDecoration(
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Colors.white),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Colors.white),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       labelText: 'Discipline',
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.white),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       isDense: true,
@@ -218,9 +260,18 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                     initialValue: _selectedMuscleGroupId,
                     isExpanded: true,
                     decoration: InputDecoration(
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Colors.white),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: Colors.white),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       labelText: 'Muscle',
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.white),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       isDense: true,

@@ -5,6 +5,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/utils/observation_grouper.dart';
+import '../../core/utils/exercise_helpers.dart';
 
 /// State holder for workout session data.
 /// Uses ChangeNotifier pattern and talks ONLY to repositories.
@@ -686,6 +687,51 @@ class WorkoutState extends ChangeNotifier {
     _exerciseCache.clear();
     _clearError();
     notifyListeners();
+  }
+
+  /// Create a custom exercise in the library
+  Future<Exercise?> createCustomExercise({
+    required String name,
+    String? description,
+    String? disciplineId,
+    List<String> capabilities = const [],
+    List<String> muscleGroupIds = const [],
+  }) async {
+    _clearError();
+
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      _setError('Exercise name is required');
+      return null;
+    }
+
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final exerciseId = 'exercise-$now';
+      final exercise = Exercise(
+        id: exerciseId,
+        ownerUserId: 'user-1',
+        disciplineId: disciplineId,
+        name: trimmedName,
+        description: description?.trim().isEmpty == true ? null : description,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+
+      await _repository.createExercise(exercise);
+      await _repository.setExerciseCapabilities(exerciseId, capabilities);
+      await _repository.setExerciseMuscleGroups(exerciseId, muscleGroupIds);
+
+      final exerciseWithCaps = exercise.copyWith(capabilities: capabilities);
+      _exerciseCache[exerciseId] = exerciseWithCaps;
+      _allExercises = [..._allExercises.where((e) => e.id != exerciseId), exerciseWithCaps];
+
+      notifyListeners();
+      return exerciseWithCaps;
+    } catch (e) {
+      _setError('Failed to create exercise: $e');
+      return null;
+    }
   }
 
   /// Load all exercises from repository

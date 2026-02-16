@@ -409,6 +409,17 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .toList();
   }
 
+  @override
+  Future<void> setExerciseMuscleGroups(
+    String exerciseId,
+    List<String> muscleGroupIds,
+  ) async {
+    await _exerciseMuscleGroupsBox.put(
+      exerciseId,
+      List<String>.from(muscleGroupIds),
+    );
+  }
+
   // ===== EQUIPMENT =====
 
   @override

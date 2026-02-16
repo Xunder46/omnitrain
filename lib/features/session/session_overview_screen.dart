@@ -15,6 +15,23 @@ class SessionOverviewScreen extends StatefulWidget {
   State<SessionOverviewScreen> createState() => _SessionOverviewScreenState();
 }
 
+/// Deduplicate reps/sets/load capabilities into a single reps option
+List<String> _deduplicateCapabilities(List<String> capabilities) {
+  final strSet = capabilities.toSet();
+  final repsLoadSetVariants = {'reps', 'sets', 'load'};
+  
+  // Remove sets and load if any of the reps/sets/load variants exist
+  if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+    strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
+    // Ensure 'reps' is included as the canonical value
+    if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+      strSet.add('reps');
+    }
+  }
+  
+  return strSet.toList();
+}
+
 class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
   bool _isLoading = true;
 
@@ -54,12 +71,18 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
       
       // If Free Training (null modality), show metric chooser
       if (modality == null) {
-        chosenMetric = await showDialog<String>(
-          context: context,
-          builder: (context) => MetricChooserDialog(exercise: selectedExercise),
-        );
-        
-        if (chosenMetric == null) return; // User cancelled
+        // If exercise has only one capability, auto-select it
+        final deduped = _deduplicateCapabilities(selectedExercise.capabilities);
+        if (deduped.length == 1) {
+          chosenMetric = deduped.first;
+        } else {
+          chosenMetric = await showDialog<String>(
+            context: context,
+            builder: (context) => MetricChooserDialog(exercise: selectedExercise),
+          );
+          
+          if (chosenMetric == null) return; // User cancelled
+        }
       }
       
       try {

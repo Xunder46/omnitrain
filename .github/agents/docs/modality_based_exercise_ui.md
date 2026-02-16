@@ -364,6 +364,14 @@ HomeScreen → My Routines tile
 8. System determines `effortKind = 'timed'` from chosen metric
 9. UI renders timer + duration editor
 
+### Create Custom Exercise (Picker)
+
+1. User taps "Add Custom Exercise" in `ExercisePickerDialog`
+2. App opens `ExerciseEditorScreen` (form with name, description, discipline, capabilities, muscle groups)
+3. User saves → `WorkoutState.createCustomExercise(...)` persists the new exercise
+4. Editor closes and returns the new `Exercise`
+5. Picker refreshes results and pre-fills search with the new exercise name
+
 ---
 
 ## State Persistence Strategy
@@ -576,9 +584,10 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 ---
 
 **Document Version**: 1.0  
-**Last Updated**: February 8, 2026  
+**Last Updated**: February 15, 2026  
 **Author**: Automated documentation generated from codebase analysis  
 **Related Docs**: 
 - [modality_tracking.md](.github/agents/docs/modality_tracking.md) — Data layer + business logic
 - [exercise_ranking.md](.github/agents/docs/exercise_ranking.md) — Exercise picker sorting algorithm
+- [create_new_exercise.md](.github/agents/docs/create_new_exercise.md) — Create custom exercises from the picker
 - [my_routines.md](.github/agents/docs/my_routines.md) — Reusable workout template system

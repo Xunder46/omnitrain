@@ -589,7 +589,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     });
   }
 
-  Future<void> _addExercise() async {
+  Future<void> _addExercise({String? segmentId}) async {
     final modality = widget.workoutState.currentSession?.modality;
     
     final selectedExercise = await showDialog<Exercise>(
@@ -605,12 +605,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       
       // If Free Training (null modality), show metric chooser
       if (modality == null) {
-        chosenMetric = await showDialog<String>(
-          context: context,
-          builder: (context) => MetricChooserDialog(exercise: selectedExercise),
-        );
-        
-        if (chosenMetric == null) return; // User cancelled metric selection
+        // If exercise has only one capability, auto-select it
+        final deduped = _deduplicateCapabilities(selectedExercise.capabilities);
+        if (deduped.length == 1) {
+          chosenMetric = deduped.first;
+        } else {
+          chosenMetric = await showDialog<String>(
+            context: context,
+            builder: (context) => MetricChooserDialog(exercise: selectedExercise),
+          );
+          
+          if (chosenMetric == null) return; // User cancelled metric selection
+        }
       }
       
       String effortId = '';
@@ -618,6 +624,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         effortId = await widget.workoutState.addExerciseToSession(
           selectedExercise,
           chosenMetric: chosenMetric,
+          segmentId: segmentId,
         );
       } catch (e) {
         if (mounted) {
@@ -1136,8 +1143,111 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
+  Widget _buildSegmentHeaderRow(
+    SessionSegment segment,
+    ThemeData theme, {
+    required bool showAddButton,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              segment.name ?? 'Block ${segment.orderIndex + 1}',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: OmniTheme.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (showAddButton)
+            OutlinedButton.icon(
+              onPressed: () => _addExercise(segmentId: segment.id),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Exercise'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                side: BorderSide(color: theme.colorScheme.primary),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _buildExerciseSubtitle(Map<String, dynamic> exercise) {
+    final entries = exercise['entries'] as List<dynamic>? ?? [];
+    final effortKind = exercise['effortKind'] as String? ?? 'set';
+
+    switch (effortKind) {
+      case 'set':
+        return '${entries.length} set${entries.length != 1 ? 's' : ''}';
+      case 'timed':
+        final totalDuration = entries.fold<int>(
+          0,
+          (sum, e) => sum + ((e['duration'] as int?) ?? 0),
+        );
+        final minutes = totalDuration ~/ 60;
+        final seconds = totalDuration % 60;
+        return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+      case 'round':
+        return '${entries.length} round${entries.length != 1 ? 's' : ''}';
+      case 'drill':
+        return '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+      default:
+        return '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
+    }
+  }
+
+  Widget _buildExerciseTile(Map<String, dynamic> exercise, ThemeData theme) {
+    final subtitle = _buildExerciseSubtitle(exercise);
+    final effortId = exercise['id'] as String;
+    final idx = _exercises.indexWhere((e) => e['id'] == effortId);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: OmniTheme.surfaceColor.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: OmniTheme.surfaceBorderColor),
+      ),
+      child: ListTile(
+        title: Text(
+          exercise['name'] as String,
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: OmniTheme.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: OmniTheme.textSecondary,
+          ),
+        ),
+        onTap: idx == -1
+            ? null
+            : () {
+                setState(() {
+                  _currentExerciseIndex = idx;
+                  _currentSet = 1;
+                  _showListView = false;
+                });
+              },
+      ),
+    );
+  }
+
   Widget _buildListView(ThemeData theme) {
-    if (_exercises.isEmpty) {
+    final segments = widget.workoutState.segments.toList()
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    final showPerBlockAdd = widget.workoutState.currentSession?.intent == 'routine' &&
+        segments.length > 1;
+
+    if (_exercises.isEmpty && !showPerBlockAdd) {
       return Scaffold(
         backgroundColor: Colors.transparent,
         body: OmniGradientBackground(
@@ -1305,77 +1415,43 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     ),
                   ),
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: _exercises.length,
-                      itemBuilder: (context, index) {
-                        final ex = _exercises[index];
-                        final entries = ex['entries'] as List<dynamic>? ?? [];
-                        final effortKind = ex['effortKind'] as String? ?? 'set';
-                        final segmentName = ex['segmentName'] as String? ?? 'Block';
-                        final isFirstInSegment = index == 0 ||
-                            ex['segmentId'] != _exercises[index - 1]['segmentId'];
-
-                        String subtitle;
-                        switch (effortKind) {
-                          case 'set':
-                            subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
-                            break;
-                          case 'timed':
-                            final totalDuration = entries.fold<int>(
-                              0,
-                              (sum, e) => sum + ((e['duration'] as int?) ?? 0),
-                            );
-                            final minutes = totalDuration ~/ 60;
-                            final seconds = totalDuration % 60;
-                            subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
-                            break;
-                          case 'round':
-                            subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
-                            break;
-                          case 'drill':
-                            subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
-                            break;
-                          default:
-                            subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
-                        }
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (isFirstInSegment) _buildSegmentHeader(segmentName, theme),
-                            Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 16),
-                              decoration: BoxDecoration(
-                                color: OmniTheme.surfaceColor.withOpacity(0.7),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: OmniTheme.surfaceBorderColor),
-                              ),
-                              child: ListTile(
-                                title: Text(
-                                  ex['name'] as String,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    color: OmniTheme.textPrimary,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  subtitle,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
+                    child: ListView(
+                      padding: const EdgeInsets.only(bottom: 140),
+                      children: [
+                        if (showPerBlockAdd)
+                          for (final segment in segments) ...[
+                            _buildSegmentHeaderRow(
+                              segment,
+                              theme,
+                              showAddButton: true,
+                            ),
+                            if (_exercises.where((e) => e['segmentId'] == segment.id).isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                                child: Text(
+                                  'No exercises in this block yet.',
+                                  style: theme.textTheme.bodySmall?.copyWith(
                                     color: OmniTheme.textSecondary,
                                   ),
                                 ),
-                                onTap: () {
-                                  setState(() {
-                                    _currentExerciseIndex = index;
-                                    _currentSet = 1;
-                                    _showListView = false;
-                                  });
-                                },
                               ),
-                            ),
+                            for (final ex in _exercises.where((e) => e['segmentId'] == segment.id)) ...[
+                              _buildExerciseTile(ex, theme),
+                              const SizedBox(height: 8),
+                            ],
+                          ]
+                        else
+                          for (int index = 0; index < _exercises.length; index++) ...[
+                            if (index == 0 || _exercises[index]['segmentId'] != _exercises[index - 1]['segmentId'])
+                              _buildSegmentHeader(
+                                _exercises[index]['segmentName'] as String? ?? 'Block',
+                                theme,
+                              ),
+                            _buildExerciseTile(_exercises[index], theme),
                             const SizedBox(height: 8),
                           ],
-                        );
-                      },
+                        const SizedBox(height: 8),
+                      ],
                     ),
                   ),
                 ],
@@ -1428,28 +1504,29 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   ),
                 ),
               ),
-            Positioned(
-              right: 10,
-              bottom: 110,
-              child: SafeArea(
-                top: false,
-                child: SizedBox(
-                  width: 60,
-                  height: 60,
-                  child: FilledButton(
-                    style: ButtonStyle(
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+            if (!showPerBlockAdd)
+              Positioned(
+                right: 10,
+                bottom: 110,
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: FilledButton(
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                       ),
+                      onPressed: () => _addExercise(),
+                      child: const Icon(Icons.add),
                     ),
-                    onPressed: _addExercise,
-                    child: const Icon(Icons.add),
                   ),
                 ),
               ),
-            ),
             Positioned(
               left: 0,
               right: 0,
@@ -1914,4 +1991,21 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       ),
     );
   }
+}
+
+/// Deduplicate reps/sets/load capabilities into a single reps option
+List<String> _deduplicateCapabilities(List<String> capabilities) {
+  final strSet = capabilities.toSet();
+  final repsLoadSetVariants = {'reps', 'sets', 'load'};
+  
+  // Remove sets and load if any of the reps/sets/load variants exist
+  if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+    strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
+    // Ensure 'reps' is included as the canonical value
+    if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+      strSet.add('reps');
+    }
+  }
+  
+  return strSet.toList();
 }

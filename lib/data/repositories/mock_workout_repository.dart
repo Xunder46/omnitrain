@@ -341,6 +341,14 @@ class MockWorkoutRepository implements WorkoutRepository {
         .toList();
   }
 
+  @override
+  Future<void> setExerciseMuscleGroups(
+    String exerciseId,
+    List<String> muscleGroupIds,
+  ) async {
+    _exerciseMuscleGroups[exerciseId] = List.from(muscleGroupIds);
+  }
+
   // ===== EQUIPMENT =====
 
   @override

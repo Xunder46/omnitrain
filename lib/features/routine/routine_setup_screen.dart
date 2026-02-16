@@ -658,12 +658,20 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     _exerciseCache[exercise.id] = exercise;
 
     // Step 2: Pick tracking method
-    final chosenMetric = await showDialog<String>(
-      context: context,
-      builder: (_) => MetricChooserDialog(exercise: exercise),
-    );
+    // If exercise has only one capability, auto-select it
+    final deduped = _deduplicateCapabilities(exercise.capabilities);
+    String? chosenMetric;
+    
+    if (deduped.length == 1) {
+      chosenMetric = deduped.first;
+    } else {
+      chosenMetric = await showDialog<String>(
+        context: context,
+        builder: (_) => MetricChooserDialog(exercise: exercise),
+      );
 
-    if (chosenMetric == null) return;
+      if (chosenMetric == null) return;
+    }
 
     final effortKind = ModalityConfig.effortKindFromMetric(chosenMetric);
 
@@ -739,12 +747,20 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   ) async {
     if (exercise == null) return;
 
-    final chosenMetric = await showDialog<String>(
-      context: context,
-      builder: (_) => MetricChooserDialog(exercise: exercise),
-    );
+    // If exercise has only one capability, auto-select it
+    final deduped = _deduplicateCapabilities(exercise.capabilities);
+    String? chosenMetric;
+    
+    if (deduped.length == 1) {
+      chosenMetric = deduped.first;
+    } else {
+      chosenMetric = await showDialog<String>(
+        context: context,
+        builder: (_) => MetricChooserDialog(exercise: exercise),
+      );
 
-    if (chosenMetric == null) return;
+      if (chosenMetric == null) return;
+    }
 
     final effortKind = ModalityConfig.effortKindFromMetric(chosenMetric);
     await widget.routineState.updateEffortKind(effort.id, effortKind);
@@ -1512,4 +1528,21 @@ extension on _RoutineSetupScreenState {
       _currentSet = 1;
     });
   }
+}
+
+/// Deduplicate reps/sets/load capabilities into a single reps option
+List<String> _deduplicateCapabilities(List<String> capabilities) {
+  final strSet = capabilities.toSet();
+  final repsLoadSetVariants = {'reps', 'sets', 'load'};
+  
+  // Remove sets and load if any of the reps/sets/load variants exist
+  if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+    strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
+    // Ensure 'reps' is included as the canonical value
+    if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+      strSet.add('reps');
+    }
+  }
+  
+  return strSet.toList();
 }
