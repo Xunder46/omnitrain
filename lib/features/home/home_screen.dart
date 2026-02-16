@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/services/routine_session_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -15,12 +16,14 @@ class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
   final RoutineState routineState;
+  final RoutineSessionService routineSessionService;
 
   const HomeScreen({
     super.key,
     required this.workoutState,
     required this.homeState,
     required this.routineState,
+    required this.routineSessionService,
   });
 
   @override
@@ -198,6 +201,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             builder: (_) => MyRoutinesScreen(
               routineState: widget.routineState,
               workoutState: widget.workoutState,
+              routineSessionService: widget.routineSessionService,
             ),
           ),
         );

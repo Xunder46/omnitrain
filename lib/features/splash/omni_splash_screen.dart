@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/services/routine_session_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -14,6 +15,7 @@ class OmniSplashScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
   final RoutineState routineState;
+  final RoutineSessionService routineSessionService;
   final Duration duration;
 
   const OmniSplashScreen({
@@ -21,6 +23,7 @@ class OmniSplashScreen extends StatefulWidget {
     required this.workoutState,
     required this.homeState,
     required this.routineState,
+    required this.routineSessionService,
     this.duration = OmniTheme.splashDuration,
   });
 
@@ -60,6 +63,7 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
                   workoutState: widget.workoutState,
                   homeState: widget.homeState,
                   routineState: widget.routineState,
+                  routineSessionService: widget.routineSessionService,
                 ),
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) {

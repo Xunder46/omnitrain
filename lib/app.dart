@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'core/services/routine_session_service.dart';
 import 'state/workout/workout_state.dart';
 import 'state/home/home_state.dart';
 import 'state/routine/routine_state.dart';
@@ -9,12 +10,14 @@ class MyApp extends StatelessWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
   final RoutineState routineState;
+  final RoutineSessionService routineSessionService;
 
   const MyApp({
     super.key,
     required this.workoutState,
     required this.homeState,
     required this.routineState,
+    required this.routineSessionService,
   });
 
   @override
@@ -58,6 +61,7 @@ class MyApp extends StatelessWidget {
         workoutState: workoutState,
         homeState: homeState,
         routineState: routineState,
+        routineSessionService: routineSessionService,
       ),
     );
   }

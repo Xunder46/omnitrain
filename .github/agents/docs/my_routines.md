@@ -50,10 +50,13 @@ MyRoutinesScreen → Tap FAB (+)
 ### 3. Starting a Routine as a Session
 ```
 MyRoutinesScreen → Tap a routine card
-  → System calls startRoutineAsSession()
-    → Creates a new TrainingSession (intent: 'routine')
+  → System builds session manifest via RoutineSessionService
+    → Service queries repository for template + segments + efforts + targets + exercises
+    → Returns RoutineSessionManifest (pure data structure)
+  → WorkoutState creates new TrainingSession (intent: 'routine')
+  → WorkoutState populates session from manifest
     → Pre-populates all exercises, sets, and target values
-    → Navigates to WorkoutSessionScreen
+  → Navigates to WorkoutSessionScreen
   → User tracks workout as normal (log sets, adjust values)
 ```
 
@@ -156,7 +159,9 @@ Additionally, `app_plan_day_template` is a join table for future training plan s
 
 ### State Management
 
-**`RoutineState`** (`lib/state/routine/routine_state.dart`) is the central `ChangeNotifier` for routine CRUD and session creation.
+**`RoutineState`** (`lib/state/routine/routine_state.dart`) is the central `ChangeNotifier` for routine template CRUD operations (create, read, update, delete).
+
+**Note**: As of Phase 1 refactoring (Feb 2026), `RoutineState` no longer depends on `WorkoutState`. Session creation is now handled by `RoutineSessionService` and orchestrated by the UI.
 
 #### Key State Fields
 | Field | Type | Purpose |
@@ -174,14 +179,90 @@ Additionally, `app_plan_day_template` is a join table for future training plan s
 | **CRUD** | `loadRoutines()`, `createNewRoutine(name)`, `updateRoutineName(name)`, `saveRoutine()`, `deleteRoutine(id)`, `loadRoutineForEditing(id)` |
 | **Exercises** | `addExerciseToRoutine(exercise, effortKind)`, `removeExerciseFromRoutine(id)`, `reorderExercises(old, new)`, `updateEffortKind(id, kind)` |
 | **Targets** | `setTargetValue(...)`, `getEffortTargets(id)`, `addSetForEffort(id, kind)`, `removeLastSetForEffort(id)` |
-| **Session** | `startRoutineAsSession(workoutState, templateId)` |
 
-#### `startRoutineAsSession` Flow
-1. Loads `WorkoutTemplate` + its segments, efforts, and targets from repository
-2. Creates a new `TrainingSession` via `WorkoutState` with `intent: 'routine'`
-3. For each `TemplateEffort`, adds the referenced `Exercise` to the session as a `SegmentEffort`
-4. Creates the correct number of sets (entries) based on `TemplateTarget.setIndex`
-5. Pre-fills observation values from `TemplateTarget` values (reps, weight, duration, etc.)
+**Note**: Session creation (`startRoutineAsSession`) was removed in Phase 1 refactoring (Feb 15, 2026). This responsibility is now handled by `RoutineSessionService` (see Service Layer section below).
+
+### Service Layer
+
+**`RoutineSessionService`** (`lib/core/services/routine_session_service.dart`) orchestrates template-to-session conversion without depending on state classes.
+
+#### Purpose
+- **Decouples** `RoutineState` from `WorkoutState`
+- Provides **pure business logic** for building session manifests
+- Ensures **testability** (no state dependencies)
+- Maintains **web compatibility** (uses repository interface only)
+
+#### Key Method
+
+**`buildSessionFromTemplate(String templateId)`**
+
+**Returns**: `Future<RoutineSessionManifest>`
+
+**Flow**:
+1. Loads `WorkoutTemplate` from repository
+2. Loads all `TemplateSegment` entities for template
+3. Loads all `TemplateEffort` entities for each segment
+4. Loads all `TemplateTarget` entities for each effort
+5. Loads all referenced `Exercise` entities
+6. Constructs a `RoutineSessionManifest` containing:
+   - The template metadata
+   - List of `SessionExerciseEntry` objects (exercise + effort kind + set count + targets)
+
+**Throws**: `Exception` if template not found or has no exercises
+
+#### Manifest Data Structures
+
+**`RoutineSessionManifest`** (`lib/core/models/routine_session_manifest.dart`)
+
+Pure data structure (no logic) for passing template-derived session data:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `template` | `WorkoutTemplate` | Source template |
+| `exercises` | `List<SessionExerciseEntry>` | Exercise list with targets |
+
+**Helper Methods**:
+- `totalExercises` → `int`
+- `isEmpty` → `bool`
+- `getTargetsForSet(int setIndex)` → `List<TemplateTarget>`
+
+**`SessionExerciseEntry`**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `exercise` | `Exercise` | Exercise entity |
+| `effortKind` | `String` | Tracking type (`set`, `timed`, etc.) |
+| `setCount` | `int` | Number of sets |
+| `targets` | `List<TemplateTarget>` | Per-set metric targets |
+| `restSeconds` | `int?` | Rest duration |
+| `restType` | `String?` | Rest type |
+
+#### Integration Pattern
+
+```dart
+// UI orchestrates service + state (no state-to-state coupling)
+final manifest = await routineSessionService.buildSessionFromTemplate(templateId);
+await workoutState.createNewSession(
+  title: manifest.template.name,
+  intent: 'routine',
+  routineTemplateId: manifest.template.id,
+);
+await workoutState.loadSessionData();
+await workoutState.populateSessionFromManifest(manifest);
+```
+
+**WorkoutState.populateSessionFromManifest()**
+
+New method in `WorkoutState` that consumes a `RoutineSessionManifest`:
+
+**Flow**:
+1. For each `SessionExerciseEntry` in manifest:
+   - Adds exercise to session with explicit `effortKind`
+   - Creates additional sets (entries) beyond the first
+   - Applies target values from `TemplateTarget` entities
+2. Notifies listeners when complete
+
+**Throws**: `Exception` if no active session exists
 
 ### Repository Layer
 
@@ -347,16 +428,26 @@ The My Routines tile glows active when the current session's `intent == 'routine
 
 | Concern | File |
 |---------|------|
-| Home tile config | `lib/core/constants/home_tiles.dart` |
-| Home screen routing | `lib/features/home/home_screen.dart` |
+| **Service Layer** | |
+| Session manifest service | `lib/core/services/routine_session_service.dart` |
+| Manifest data models | `lib/core/models/routine_session_manifest.dart` |
+| **State Management** | |
+| Routine CRUD state | `lib/state/routine/routine_state.dart` |
+| Workout session state | `lib/state/workout/workout_state.dart` |
+| **UI Screens** | |
 | Routine list screen | `lib/features/routine/my_routines_screen.dart` |
 | Routine setup screen | `lib/features/routine/routine_setup_screen.dart` |
-| State management | `lib/state/routine/routine_state.dart` |
+| Home screen routing | `lib/features/home/home_screen.dart` |
+| Home tile config | `lib/core/constants/home_tiles.dart` |
+| **Data Layer** | |
 | Repository interface | `lib/data/repositories/workout_repository.dart` |
+| Hive implementation | `lib/data/repositories/hive_workout_repository.dart` |
 | Mock implementation | `lib/data/repositories/mock_workout_repository.dart` |
-| Data models | `lib/data/models/models.dart` |
+| Domain models | `lib/data/models/models.dart` |
 | SQLite schema | `scripts/sqlite_schema.sql` |
+| **Constants** | |
 | Metric IDs | `lib/core/constants/metric_ids.dart` |
+| Effort defaults | `lib/core/constants/effort_defaults.dart` |
 | Modality config | `lib/core/constants/modality_config.dart` |
 
 ---
@@ -390,6 +481,26 @@ The My Routines tile glows active when the current session's `intent == 'routine
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: February 14, 2026
+## Architecture Evolution
+
+### Phase 1: Service Layer Decoupling (Feb 15, 2026)
+
+**Problem**: `RoutineState` directly imported and orchestrated `WorkoutState` methods, creating tight coupling that made testing difficult and violated separation of concerns.
+
+**Solution**: Introduced `RoutineSessionService` as an intermediary:
+- **RoutineState**: Template CRUD only (no session creation logic)
+- **RoutineSessionService**: Template → manifest conversion (pure business logic)
+- **WorkoutState**: Manifest → session population (session management only)
+- **UI**: Orchestrates service + state (explicit flow)
+
+**Benefits**:
+- ✅ Clean separation of concerns (templates vs. sessions)
+- ✅ Improved testability (no state mocking required)
+- ✅ Web/native compatibility (service uses repository interface)
+- ✅ Reusable manifest structures (can be used for APIs, exports, etc.)
+
+---
+
+**Document Version**: 1.1
+**Last Updated**: February 15, 2026
 **Author**: Automated documentation generated from codebase analysis

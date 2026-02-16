@@ -49,6 +49,7 @@ class DBHelper {
       CREATE TABLE app_training_session (
         id TEXT NOT NULL PRIMARY KEY,
         owner_user_id TEXT NOT NULL,
+        routine_template_id TEXT,
         started_at_ms INTEGER NOT NULL,
         ended_at_ms INTEGER,
         title TEXT,

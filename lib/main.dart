@@ -1,8 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'app.dart';
+import 'core/services/routine_session_service.dart';
 import 'data/repositories/hive_workout_repository.dart';
-import 'data/repositories/mock_workout_repository.dart';
 import 'data/repositories/workout_repository.dart';
 import 'state/workout/workout_state.dart';
 import 'state/home/home_state.dart';
@@ -16,12 +15,9 @@ import 'state/routine/routine_state.dart';
 /// This pattern allows easy switching between environments without platform checks
 /// scattered throughout the codebase
 Future<WorkoutRepository> _createRepository() async {
-  if (kIsWeb) {
-    return HiveWorkoutRepository();
-  }
-
-  // TODO: Replace with SqliteWorkoutRepository when implemented.
-  return MockWorkoutRepository();
+  // Use Hive for local persistence across web and native.
+  // SqliteWorkoutRepository can replace this on native later.
+  return HiveWorkoutRepository();
 }
 
 void main() async {
@@ -35,11 +31,15 @@ void main() async {
     final workoutState = WorkoutState(repository);
     final homeState = HomeState();
     final routineState = RoutineState(repository);
+    
+    // Create service with repository
+    final routineSessionService = RoutineSessionService(repository);
 
     runApp(MyApp(
       workoutState: workoutState,
       homeState: homeState,
       routineState: routineState,
+      routineSessionService: routineSessionService,
     ));
   } catch (e) {
     print('Error initializing app: $e');

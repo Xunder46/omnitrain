@@ -1223,6 +1223,7 @@ class SeedData {
       segmentType: 'strength_sets',
       name: 'Main Lifts',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Easy Run template segments
     TemplateSegment(
@@ -1232,6 +1233,7 @@ class SeedData {
       segmentType: 'timed_activity',
       name: 'Main Run',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Boxing template segments
     TemplateSegment(
@@ -1241,6 +1243,7 @@ class SeedData {
       segmentType: 'round_based',
       name: 'Heavy Bag Work',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Mobility template segments
     TemplateSegment(
@@ -1250,6 +1253,7 @@ class SeedData {
       segmentType: 'drill_skill',
       name: 'Stretching Routine',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
   ];
 
@@ -1319,6 +1323,7 @@ class SeedData {
       setIndex: 0,
       targetInt: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Easy Run: 30 minutes
     TemplateTarget(
@@ -1328,6 +1333,7 @@ class SeedData {
       setIndex: 0,
       targetInt: 1800, // 30 minutes in seconds
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Boxing: 5 rounds x 3 minutes
     TemplateTarget(
@@ -1337,6 +1343,7 @@ class SeedData {
       setIndex: 0,
       targetInt: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     TemplateTarget(
       id: 'ttar-boxing-duration',
@@ -1345,6 +1352,7 @@ class SeedData {
       setIndex: 0,
       targetInt: 180, // 3 minutes in seconds
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Stretching: 30-60 seconds per stretch
     TemplateTarget(
@@ -1355,6 +1363,7 @@ class SeedData {
       targetMin: 30.0,
       targetMax: 60.0,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
   ];
 }

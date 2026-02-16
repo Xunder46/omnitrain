@@ -37,4 +37,16 @@ class MetricIds {
     'round-duration': roundDuration,
     'rpe': rpe,
   };
+
+  /// Reverse map: metric IDs back to shorthand keys
+  /// Used by RoutineState and other code that needs to convert metric IDs to display keys
+  static const Map<String, String> metricIdToKey = {
+    reps: 'reps',
+    weight: 'weight',
+    duration: 'duration',
+    distance: 'distance',
+    rounds: 'rounds',
+    roundDuration: 'round-duration',
+    rpe: 'rpe',
+  };
 }

@@ -62,7 +62,13 @@ class WorkoutState extends ChangeNotifier {
   ///              If null, creates a 'Free Training' session with no modality preset.
   /// [title] - Optional session title (used for routine sessions).
   /// [intent] - Optional session intent (e.g., 'routine').
-  Future<void> createNewSession({String? modality, String? title, String? intent}) async {
+  /// [routineTemplateId] - Optional routine template reference for lineage.
+  Future<void> createNewSession({
+    String? modality,
+    String? title,
+    String? intent,
+    String? routineTemplateId,
+  }) async {
     _setLoading(true);
     _clearError();
 
@@ -73,6 +79,7 @@ class WorkoutState extends ChangeNotifier {
       final session = TrainingSession(
         id: sessionId,
         ownerUserId: 'user-1',
+        routineTemplateId: routineTemplateId,
         startedAtMs: now,
         title: title,
         modality: modality,
@@ -149,6 +156,83 @@ class WorkoutState extends ChangeNotifier {
       _setError('Failed to load session data: $e');
     } finally {
       _setLoading(false);
+    }
+  }
+
+  /// Populate the current session from a routine session manifest
+  /// This method consumes a RoutineSessionManifest (returned by RoutineSessionService)
+  /// and populates the current session with all exercises, targets, and rest timers.
+  /// 
+  /// Prerequisites: Must have an active session (call createNewSession first).
+  Future<void> populateSessionFromManifest(dynamic manifest) async {
+    // Import dynamically to avoid circular dependency
+    // Type is RoutineSessionManifest from core/models/routine_session_manifest.dart
+    if (_currentSession == null) {
+      throw Exception('No active session to populate');
+    }
+
+    _clearError();
+
+    try {
+      // Access manifest fields dynamically
+      final exercises = manifest.exercises as List;
+
+      for (final entry in exercises) {
+        // Access entry fields dynamically
+        final exercise = entry.exercise;
+        final effortKind = entry.effortKind as String;
+        final setCount = entry.setCount as int;
+        final targets = entry.targets as List;
+
+        // Add exercise to session with explicit effort kind
+        final effortId = await addExerciseToSession(
+          exercise,
+          effortKindOverride: effortKind,
+        );
+
+        if (effortId.isEmpty) continue;
+
+        // Add additional entries (sets) beyond the first
+        for (int i = 1; i < setCount; i++) {
+          await addEntry(effortId);
+        }
+
+        // Apply targets from template
+        for (final target in targets) {
+          final entryIndex = target.setIndex ?? 0;
+          final metricKey = MetricIds.metricIdToKey[target.metricId] ?? target.metricId;
+          
+          // Get value from target
+          dynamic value;
+          if (target.targetValue != null) {
+            value = target.targetValue;
+          } else if (target.targetValueMin != null) {
+            value = target.targetValueMin; // Use min as default
+          } else if (target.targetValueMax != null) {
+            value = target.targetValueMax;
+          }
+
+          if (value == null) continue;
+
+          // Convert to appropriate type
+          if (metricKey == 'reps' || metricKey == 'rounds' || metricKey == 'duration') {
+            value = value is int ? value : (value as double).toInt();
+          } else {
+            value = value is double ? value : (value as int).toDouble();
+          }
+
+          try {
+            await updateEntryValue(effortId, entryIndex, metricKey, value);
+          } catch (e) {
+            // Silently skip if metric doesn't exist for this effort
+          }
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to populate session from manifest: $e');
+      rethrow;
     }
   }
 
@@ -416,10 +500,20 @@ class WorkoutState extends ChangeNotifier {
     _clearError();
 
     try {
-      // Each entry is typically 2 observations (reps+weight, duration+distance, etc.)
-      // Calculate the observation indices for this entry
-      final startIndex = entryIndex * 2;
-      final endIndex = startIndex + 2;
+      // Find the effort to determine metrics per entry
+      SegmentEffort? effort;
+      for (final effortList in _efforts.values) {
+        effort = effortList.firstWhere((e) => e.id == effortId, orElse: () => SegmentEffort(
+          id: '', segmentId: '', orderIndex: 0, effortKind: '', createdAtMs: 0, updatedAtMs: 0,
+        ));
+        if (effort.id == effortId) break;
+      }
+      if (effort == null) return;
+
+      // Get observations for this entry based on effort kind
+      final metricsPerEntry = _getMetricsPerEntry(effort.effortKind);
+      final startIndex = entryIndex * metricsPerEntry;
+      final endIndex = startIndex + metricsPerEntry;
 
       if (startIndex >= observations.length) return;
 
@@ -439,6 +533,23 @@ class WorkoutState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _setError('Failed to delete entry: $e');
+    }
+  }
+
+  /// Get the number of observations per entry for a given effort kind
+  /// Used to calculate entry boundaries when deleting or updating entries
+  int _getMetricsPerEntry(String effortKind) {
+    switch (effortKind) {
+      case 'set': // reps + weight
+        return 2;
+      case 'timed': // duration + distance
+        return 2;
+      case 'round': // rounds + round-duration
+        return 2;
+      case 'drill': // duration + rpe
+        return 2;
+      default:
+        return 2; // Fallback
     }
   }
 
@@ -478,6 +589,7 @@ class WorkoutState extends ChangeNotifier {
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
         ownerUserId: _currentSession!.ownerUserId,
+        routineTemplateId: _currentSession!.routineTemplateId,
         startedAtMs: _currentSession!.startedAtMs,
         endedAtMs: now,
         title: _currentSession!.title,

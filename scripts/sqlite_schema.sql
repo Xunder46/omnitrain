@@ -123,6 +123,7 @@ CREATE TABLE app_exercise_equipment (
 CREATE TABLE app_training_session (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT NOT NULL,
+  routine_template_id TEXT,
   started_at_ms INTEGER NOT NULL,
   ended_at_ms INTEGER,
   title TEXT,
@@ -311,6 +312,8 @@ CREATE TABLE app_workout_template (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT,
   name TEXT NOT NULL,
+  description TEXT,
+  focus_modality TEXT,
   primary_discipline_id TEXT,
   note TEXT,
   created_at_ms INTEGER NOT NULL,
@@ -327,6 +330,7 @@ CREATE TABLE app_template_segment (
   name TEXT,
   note TEXT,
   created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
   FOREIGN KEY(template_id) REFERENCES app_workout_template(id),
   FOREIGN KEY(discipline_id) REFERENCES app_discipline(id)
 );
@@ -339,8 +343,10 @@ CREATE TABLE app_template_effort (
   modality TEXT, -- Optional per-exercise modality for routine tracking
   exercise_id TEXT,
   note TEXT,
+  rest_seconds INTEGER,
+  rest_type TEXT,
   created_at_ms INTEGER NOT NULL,
-  FOREIGN KEY(template_segment_id) REFERENCES app_template_segment(id),
+  FOREIGN KEY(template_segment_id) REFERENCES app_template_segment(id) ON DELETE CASCADE,
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
 );
 
@@ -355,7 +361,8 @@ CREATE TABLE app_template_target (
   target_int INTEGER,
   target_text TEXT,
   created_at_ms INTEGER NOT NULL,
-  FOREIGN KEY(template_effort_id) REFERENCES app_template_effort(id),
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(template_effort_id) REFERENCES app_template_effort(id) ON DELETE CASCADE,
   FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
   FOREIGN KEY(unit_id) REFERENCES app_unit(id)
 );

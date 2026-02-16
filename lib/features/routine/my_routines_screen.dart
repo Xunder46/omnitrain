@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/services/routine_session_service.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -11,11 +12,13 @@ import '../session/workout_session_screen.dart';
 class MyRoutinesScreen extends StatefulWidget {
   final RoutineState routineState;
   final WorkoutState? workoutState; // Optional for starting session
+  final RoutineSessionService routineSessionService;
 
   const MyRoutinesScreen({
     super.key,
     required this.routineState,
     this.workoutState,
+    required this.routineSessionService,
   });
 
   @override
@@ -245,11 +248,22 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
     }
 
     try {
-      // Pre-load the routine into a new workout session
-      await widget.routineState.startRoutineAsSession(
-        widget.workoutState!,
-        templateId,
+      // Step 1: Build session manifest from template (via service)
+      final manifest = await widget.routineSessionService.buildSessionFromTemplate(templateId);
+
+      // Step 2: Create new workout session with routine metadata
+      await widget.workoutState!.createNewSession(
+        modality: null, // Mixed modality for routines
+        title: manifest.template.name,
+        intent: 'routine',
+        routineTemplateId: manifest.template.id,
       );
+
+      // Step 3: Load session data
+      await widget.workoutState!.loadSessionData();
+
+      // Step 4: Populate session from manifest
+      await widget.workoutState!.populateSessionFromManifest(manifest);
 
       // Navigate to workout session
       Navigator.popUntil(context, (route) => route.isFirst);

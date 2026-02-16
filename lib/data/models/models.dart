@@ -142,6 +142,7 @@ class Equipment {
 class TrainingSession {
   final String id;
   final String ownerUserId;
+  final String? routineTemplateId;
   final int startedAtMs;
   final int? endedAtMs;
   final String? title;
@@ -156,6 +157,7 @@ class TrainingSession {
   TrainingSession({
     required this.id,
     required this.ownerUserId,
+    this.routineTemplateId,
     required this.startedAtMs,
     this.endedAtMs,
     this.title,
@@ -171,6 +173,7 @@ class TrainingSession {
   factory TrainingSession.fromMap(Map<String, dynamic> m) => TrainingSession(
       id: m['id'] as String,
       ownerUserId: m['owner_user_id'] as String,
+      routineTemplateId: m['routine_template_id'] as String?,
       startedAtMs: m['started_at_ms'] as int,
       endedAtMs: m['ended_at_ms'] as int?,
       title: m['title'] as String?,
@@ -185,6 +188,7 @@ class TrainingSession {
   Map<String, dynamic> toMap() => {
         'id': id,
         'owner_user_id': ownerUserId,
+      'routine_template_id': routineTemplateId,
         'started_at_ms': startedAtMs,
         'ended_at_ms': endedAtMs,
         'title': title,
@@ -361,17 +365,31 @@ class WorkoutTemplate {
   final String id;
   final String? ownerUserId;
   final String name;
+  final String? description;
+  final String? focusModality;
   final String? primaryDisciplineId;
   final String? note;
   final int createdAtMs;
   final int updatedAtMs;
 
-  WorkoutTemplate({required this.id, this.ownerUserId, required this.name, this.primaryDisciplineId, this.note, required this.createdAtMs, required this.updatedAtMs});
+  WorkoutTemplate({
+    required this.id,
+    this.ownerUserId,
+    required this.name,
+    this.description,
+    this.focusModality,
+    this.primaryDisciplineId,
+    this.note,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
   factory WorkoutTemplate.fromMap(Map<String, dynamic> m) => WorkoutTemplate(
       id: m['id'] as String,
       ownerUserId: m['owner_user_id'] as String?,
       name: m['name'] as String,
+      description: m['description'] as String?,
+      focusModality: m['focus_modality'] as String?,
       primaryDisciplineId: m['primary_discipline_id'] as String?,
       note: m['note'] as String?,
       createdAtMs: m['created_at_ms'] as int,
@@ -381,6 +399,8 @@ class WorkoutTemplate {
         'id': id,
         'owner_user_id': ownerUserId,
         'name': name,
+      'description': description,
+      'focus_modality': focusModality,
         'primary_discipline_id': primaryDisciplineId,
         'note': note,
         'created_at_ms': createdAtMs,
@@ -397,8 +417,9 @@ class TemplateSegment {
   final String? name;
   final String? note;
   final int createdAtMs;
+  final int updatedAtMs;
 
-  TemplateSegment({required this.id, required this.templateId, required this.orderIndex, required this.segmentType, this.disciplineId, this.name, this.note, required this.createdAtMs});
+  TemplateSegment({required this.id, required this.templateId, required this.orderIndex, required this.segmentType, this.disciplineId, this.name, this.note, required this.createdAtMs, required this.updatedAtMs});
 
   factory TemplateSegment.fromMap(Map<String, dynamic> m) => TemplateSegment(
       id: m['id'] as String,
@@ -408,7 +429,8 @@ class TemplateSegment {
       disciplineId: m['discipline_id'] as String?,
       name: m['name'] as String?,
       note: m['note'] as String?,
-      createdAtMs: m['created_at_ms'] as int);
+      createdAtMs: m['created_at_ms'] as int,
+      updatedAtMs: (m['updated_at_ms'] as int?) ?? (m['created_at_ms'] as int));
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -418,7 +440,8 @@ class TemplateSegment {
         'discipline_id': disciplineId,
         'name': name,
         'note': note,
-        'created_at_ms': createdAtMs
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs
       };
 }
 
@@ -430,6 +453,8 @@ class TemplateEffort {
   final String? modality;
   final String? exerciseId;
   final String? note;
+  final int? restSeconds;
+  final String? restType;
   final int createdAtMs;
 
   TemplateEffort({
@@ -440,6 +465,8 @@ class TemplateEffort {
     this.modality,
     this.exerciseId,
     this.note,
+    this.restSeconds,
+    this.restType,
     required this.createdAtMs,
   });
 
@@ -451,6 +478,8 @@ class TemplateEffort {
       modality: m['modality'] as String?,
       exerciseId: m['exercise_id'] as String?,
       note: m['note'] as String?,
+      restSeconds: m['rest_seconds'] as int?,
+      restType: m['rest_type'] as String?,
       createdAtMs: m['created_at_ms'] as int);
 
   Map<String, dynamic> toMap() => {
@@ -461,6 +490,8 @@ class TemplateEffort {
         'modality': modality,
         'exercise_id': exerciseId,
         'note': note,
+      'rest_seconds': restSeconds,
+      'rest_type': restType,
         'created_at_ms': createdAtMs
       };
 }
@@ -476,8 +507,9 @@ class TemplateTarget {
   final int? targetInt;
   final String? targetText;
   final int createdAtMs;
+  final int updatedAtMs;
 
-  TemplateTarget({required this.id, required this.templateEffortId, required this.metricId, this.setIndex, this.unitId, this.targetMin, this.targetMax, this.targetInt, this.targetText, required this.createdAtMs});
+  TemplateTarget({required this.id, required this.templateEffortId, required this.metricId, this.setIndex, this.unitId, this.targetMin, this.targetMax, this.targetInt, this.targetText, required this.createdAtMs, required this.updatedAtMs});
 
   factory TemplateTarget.fromMap(Map<String, dynamic> m) => TemplateTarget(
       id: m['id'] as String,
@@ -489,7 +521,8 @@ class TemplateTarget {
       targetMax: (m['target_max'] as num?)?.toDouble(),
       targetInt: m['target_int'] as int?,
       targetText: m['target_text'] as String?,
-      createdAtMs: m['created_at_ms'] as int);
+      createdAtMs: m['created_at_ms'] as int,
+      updatedAtMs: (m['updated_at_ms'] as int?) ?? (m['created_at_ms'] as int));
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -501,7 +534,8 @@ class TemplateTarget {
         'target_max': targetMax,
         'target_int': targetInt,
         'target_text': targetText,
-        'created_at_ms': createdAtMs
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs
       };
 }
 
