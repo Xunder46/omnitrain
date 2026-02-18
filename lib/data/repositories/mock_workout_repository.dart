@@ -507,8 +507,8 @@ class MockWorkoutRepository implements WorkoutRepository {
       return a.$1.name.compareTo(b.$1.name); // Alphabetical for ties
     });
 
-    // Return only the exercises (scores were for ranking, UI will partition at threshold)
-    return scoredExercises.map((e) => e.$1).toList();
+    // Attach scores to exercises for UI partitioning (Recommended vs Other)
+    return scoredExercises.map((e) => e.$1.copyWith(relevanceScore: e.$2)).toList();
   }
 
   // ===== METRICS =====

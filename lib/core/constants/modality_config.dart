@@ -3,6 +3,13 @@
 /// Pure Dart - no platform dependencies.
 library;
 
+/// Threshold score for determining "Recommended" exercises during exercise selection.
+/// Exercises with relevanceScore >= this threshold are considered well-suited for the modality.
+/// Scoring range is 0-100. A threshold of 50.0 means:
+/// - Exercise has good discipline affinity + primary capability match, OR
+/// - Multiple secondary capabilities + affinity bonus
+const double RECOMMENDED_SCORE_THRESHOLD = 50.0;
+
 class ModalityConfig {
   final String? primaryMetric;
   final List<String> secondaryMetrics;
@@ -184,6 +191,7 @@ class ModalityConfig {
   /// - Discipline affinity (0-40): Exercise's category matches this modality's category
   /// - Primary capability match (0-30): Fraction of primary capabilities matched
   /// - Secondary capability bonus (0-10): Fraction of secondary capabilities matched
+  /// - Isometric nature bonus (0-15): Special recognition for isometric exercises in isometric modalities
   /// - Anti-capability penalty (0 to -20): Fraction of anti-capabilities present
   /// - No-overlap penalty (0 or -10): Zero primary matches AND different category
   ///
@@ -215,7 +223,16 @@ class ModalityConfig {
       score += (secondaryMatches / secondaryCapabilities.length) * 10.0;
     }
 
-    // 4. Anti-capability penalty: 0 to -20 points
+    // 4. Isometric nature bonus: 0-15 points
+    // Special recognition for isometric exercises (hold + time) in isometric_stretching modality
+    // This allows cross-category isometric exercises (e.g., calisthenics planks) to score well
+    if (primaryCapabilities.contains('hold') && 
+        exerciseCapabilities.contains('hold') && 
+        exerciseCapabilities.contains('time')) {
+      score += 15.0;
+    }
+
+    // 5. Anti-capability penalty: 0 to -20 points
     if (antiCapabilities.isNotEmpty) {
       final antiMatches = antiCapabilities
           .where((cap) => exerciseCapabilities.contains(cap))
@@ -223,7 +240,7 @@ class ModalityConfig {
       score -= (antiMatches / antiCapabilities.length) * 20.0;
     }
 
-    // 5. No-overlap penalty: 0 or -10 points
+    // 6. No-overlap penalty: 0 or -10 points
     // If no primary capabilities match and it doesn't belong to the category, it's a bad fit
     if (primaryMatches == 0 && exerciseCategoryId != categoryId) {
       score -= 10.0;

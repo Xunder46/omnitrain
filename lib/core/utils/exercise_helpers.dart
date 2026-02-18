@@ -13,7 +13,7 @@ extension ExerciseCapabilities on Exercise {
   bool supportsAny(List<String> caps) => caps.any((c) => capabilities.contains(c));
 
   /// Create a copy with updated fields
-  /// Preserves immutability pattern and allows for transient field updates
+  /// Preserves immutability pattern and allows for transient field updates (e.g. relevanceScore)
   Exercise copyWith({
     String? id,
     String? ownerUserId,
@@ -25,6 +25,7 @@ extension ExerciseCapabilities on Exercise {
     int? createdAtMs,
     int? updatedAtMs,
     List<String>? capabilities,
+    double? relevanceScore,
   }) {
     return Exercise(
       id: id ?? this.id,
@@ -37,6 +38,7 @@ extension ExerciseCapabilities on Exercise {
       createdAtMs: createdAtMs ?? this.createdAtMs,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
       capabilities: capabilities ?? this.capabilities,
+      relevanceScore: relevanceScore ?? this.relevanceScore,
     );
   }
 }
