@@ -86,6 +86,7 @@ class Exercise {
   final int createdAtMs;
   final int updatedAtMs;
   final List<String> capabilities;
+  final double? relevanceScore; // Transient field: populated only by ranked queries
 
   Exercise({
     required this.id,
@@ -98,6 +99,7 @@ class Exercise {
     required this.createdAtMs,
     required this.updatedAtMs,
     this.capabilities = const [],
+    this.relevanceScore,
   });
 
   factory Exercise.fromMap(Map<String, dynamic> m) => Exercise(
@@ -109,7 +111,8 @@ class Exercise {
       movementPattern: m['movement_pattern'] as String?,
       isArchived: (m['is_archived'] as int?) == 1,
       createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int);
+      updatedAtMs: m['updated_at_ms'] as int,
+      relevanceScore: m['relevance_score'] as double?);
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -120,7 +123,8 @@ class Exercise {
         'movement_pattern': movementPattern,
         'is_archived': isArchived ? 1 : 0,
         'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
+        'updated_at_ms': updatedAtMs,
+        'relevance_score': relevanceScore
       };
 }
 

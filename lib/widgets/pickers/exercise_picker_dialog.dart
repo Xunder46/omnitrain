@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 import '../../features/exercise/exercise_editor_screen.dart';
+import '../../core/constants/modality_config.dart';
 
 /// Dialog for selecting an exercise with search and filters
 class ExercisePickerDialog extends StatefulWidget {
@@ -24,6 +25,8 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
   Timer? _debounce;
 
   List<Exercise> _filteredExercises = [];
+  List<Exercise> _recommendedExercises = []; // Exercises with score >= threshold
+  List<Exercise> _otherExercises = []; // Exercises with score < threshold
   List<MuscleGroup> _muscleGroups = [];
   List<Discipline> _disciplines = [];
   final Map<String, List<MuscleGroup>> _exerciseMuscleGroupsCache = {};
@@ -83,7 +86,9 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
     // Load initial filtered exercises
     await _searchExercises();
 
-    setState(() => _isLoading = false);
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
 
   void _onSearchChanged() {
@@ -112,6 +117,9 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
       }
     }
 
+    // Partition exercises into Recommended and Other based on relevance score
+    _partitionExercises(results);
+
     if (mounted) {
       setState(() {
         _filteredExercises = results;
@@ -126,6 +134,25 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
       _selectedMuscleGroupId = null;
     });
     _searchExercises();
+  }
+
+  /// Partition exercises into Recommended and Other sections based on modality and score
+  void _partitionExercises(List<Exercise> exercises) {
+    // In Free Training mode (no modality) or if scores not available, don't partition
+    if (widget.sessionModality == null) {
+      _recommendedExercises = [];
+      _otherExercises = [];
+      return;
+    }
+
+    // Partition by relevance score threshold
+    _recommendedExercises = exercises
+        .where((e) => e.relevanceScore != null && e.relevanceScore! >= RECOMMENDED_SCORE_THRESHOLD)
+        .toList();
+
+    _otherExercises = exercises
+        .where((e) => e.relevanceScore == null || e.relevanceScore! < RECOMMENDED_SCORE_THRESHOLD)
+        .toList();
   }
 
   Future<void> _openCreateExercise() async {
@@ -358,13 +385,61 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
 
 
   Widget _buildExerciseList(ThemeData theme) {
-    // Repository returns exercises sorted by relevance for the modality
-    // Just display them in order without section headers
+    // In Free Training mode or when no modality, show simple unsorted list
+    if (widget.sessionModality == null) {
+      return ListView.builder(
+        itemCount: _filteredExercises.length,
+        itemBuilder: (context, index) {
+          return _buildExerciseTile(context, theme, _filteredExercises[index]);
+        },
+      );
+    }
+
+    // With modality: build sectioned list with proper index handling
+    final List<({String? headerTitle, Exercise? exercise})> listItems = [];
+
+    // Add Recommended section if non-empty
+    if (_recommendedExercises.isNotEmpty) {
+      listItems.add((headerTitle: 'Recommended', exercise: null));
+      for (final exercise in _recommendedExercises) {
+        listItems.add((headerTitle: null, exercise: exercise));
+      }
+    }
+
+    // Add Other section if non-empty
+    if (_otherExercises.isNotEmpty) {
+      listItems.add((headerTitle: 'Other', exercise: null));
+      for (final exercise in _otherExercises) {
+        listItems.add((headerTitle: null, exercise: exercise));
+      }
+    }
+
+    if (listItems.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return ListView.builder(
-      itemCount: _filteredExercises.length,
+      itemCount: listItems.length,
       itemBuilder: (context, index) {
-        return _buildExerciseTile(context, theme, _filteredExercises[index]);
+        final item = listItems[index];
+        if (item.headerTitle != null) {
+          return _buildSectionHeader(theme, item.headerTitle!);
+        }
+        return _buildExerciseTile(context, theme, item.exercise!);
       },
+    );
+  }
+
+  Widget _buildSectionHeader(ThemeData theme, String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Text(
+        title,
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.primary,
+        ),
+      ),
     );
   }
 

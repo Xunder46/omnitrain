@@ -420,11 +420,17 @@ CREATE TABLE app_exercise_tag (
 --   2. Primary capability match (0-30): What fraction of modality's core capabilities does the exercise support?
 --      - E.g., cardio_endurance has primary ['time', 'distance']; exercise with ['time'] gets 15 points
 --   3. Secondary capability bonus (0-10): What fraction of modality's bonus capabilities matched?
---   4. Anti-capability penalty (0 to -20): Does the exercise have capabilities from conflicting modalities?
+--   4. Isometric nature bonus (0-15): Special recognition for isometric exercises (hold + time capabilities)
+--      - Allows cross-category isometric exercises (e.g., calisthenics planks) to score well in isometric_stretching
+--   5. Anti-capability penalty (0 to -20): Does the exercise have capabilities from conflicting modalities?
 --      - E.g., 'load' capability in cardio context suggests strength focus, reduces score
---   5. No-overlap penalty (0 or -10): No primary capabilities matched AND different category
+--   6. No-overlap penalty (0 or -10): No primary capabilities matched AND different category
 --
--- Recommendation threshold: Score >= 50.0 puts exercise in "Recommended" section of picker
+-- Recommendation threshold: RECOMMENDED_SCORE_THRESHOLD = 50.0 (lib/core/constants/modality_config.dart)
+-- Feature: Exercise relevance score is now attached to Exercise objects returned by getExercisesRankedForModality()
+-- The score is transient (computed at query time, never persisted) and used for UI partitioning:
+--   - "Recommended" section: score >= 50.0
+--   - "Other" section: score < 50.0
 --
 -- Modality configurations (lib/core/constants/modality_config.dart):
 --   cardio_endurance:
@@ -457,9 +463,21 @@ CREATE TABLE app_exercise_tag (
 --   In resistance_lifting:  Score = 40 (discipline) + 30 (all 3 primary) + 0 (secondary) + 0 (no anti) = 70 → Recommended
 --   In cardio_endurance:    Score = 0 (different category) + 0 (no primary) + 0 (no secondary) + -20 (load anti) = -20 → clamp to 0 → Others
 --
+-- Example: Plank Hold (calisthenics discipline) with capabilities ['hold', 'time', 'sets']
+--   In isometric_stretching: Score = 0 (category-resistance ≠ category-isometric) + 30 (primary 'hold', 'time')
+--                                     + 10 (secondary 'sets') + 15 (isometric nature bonus) + 0 (no anti) = 55 → Recommended
+--   In resistance_lifting:   Score = 0 (different category) + 0 (no primary reps/load) + 0 (no secondary)
+--                                     + 0 (no isometric bonus - no 'load' primary) + 0 (no anti) + -10 (no-overlap) = -10 → clamp to 0 → Others
+--
+-- Isometric Nature Bonus Rationale:
+-- Isometric exercises (plank, dead hang, wall sit, etc.) are bodyweight/calisthenics movements, not
+-- stretching exercises. However, they share the isometric nature (hold + time capabilities) with the
+-- isometric_stretching modality. The +15 point bonus recognizes this cross-category affinity, allowing
+-- calisthenics isometric holds to appear in "Recommended" when creating a workout in isometric_stretching mode.
+--
 -- Note: The 'time' capability is present on almost all exercises because virtually anything can be
--- done for duration. This is why discipline affinity (0-40) is the strongest signal—it prevents
--- pure strength exercises from appearing as "Recommended" in cardio just because they support 'time'.
+-- done for duration. This is why the isometric nature bonus specifically checks for BOTH 'hold' AND 'time'
+-- and only applies in modalities that list 'hold' as a primary capability (currently: isometric_stretching).
 CREATE TABLE app_exercise_capability (
   exercise_id TEXT NOT NULL,
   capability TEXT NOT NULL,
