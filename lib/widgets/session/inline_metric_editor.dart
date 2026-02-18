@@ -115,7 +115,6 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
               displayText,
               textAlign: TextAlign.center,
               style: theme.textTheme.displayLarge?.copyWith(
-                fontSize: 72,
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
               ),

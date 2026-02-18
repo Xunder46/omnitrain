@@ -1,6 +1,7 @@
 /// Modality configuration - maps session modalities to their metric requirements and exercise ranking.
 /// Supports both UI (metric tracking) and data layer (exercise ranking by capability affinity).
 /// Pure Dart - no platform dependencies.
+library;
 
 class ModalityConfig {
   final String? primaryMetric;

@@ -28,7 +28,7 @@ class SeedData {
       id: 'category-martial-arts',
       key: 'martial_arts',
       name: 'Martial Arts',
-      description: 'Boxing, BJJ, Muay Thai, wrestling, karate',
+      description: 'Boxing, BJJ, Muay Thai, wrestling, karate - part of unified Sports tile',
       iconName: 'sports_mma',
       sortOrder: 3,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -48,7 +48,7 @@ class SeedData {
       id: 'category-sports',
       key: 'sports',
       name: 'Sports',
-      description: 'Soccer, basketball, tennis, team sports',
+      description: 'Boxing, BJJ, Muay Thai, wrestling, soccer, basketball, tennis, team sports',
       iconName: 'sports_soccer',
       sortOrder: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -1213,42 +1213,6 @@ class SeedData {
     'exercise-lacrosse-game': ['time', 'rounds'],
   };
 
-  /// Sample workout templates
-  static final List<WorkoutTemplate> sampleTemplates = [
-    WorkoutTemplate(
-      id: 'template-upper-strength',
-      name: 'Upper Body Strength',
-      primaryDisciplineId: 'discipline-powerlifting',
-      note: 'Classic upper body strength session',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-    WorkoutTemplate(
-      id: 'template-easy-run',
-      name: 'Easy Run',
-      primaryDisciplineId: 'discipline-running',
-      note: 'Easy endurance run',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-    WorkoutTemplate(
-      id: 'template-boxing-rounds',
-      name: 'Boxing Rounds',
-      primaryDisciplineId: 'discipline-boxing',
-      note: 'Heavy bag and shadowboxing rounds',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-    WorkoutTemplate(
-      id: 'template-mobility',
-      name: 'Full Body Stretch',
-      primaryDisciplineId: 'discipline-stretching',
-      note: 'Comprehensive stretching routine',
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-  ];
-
   /// Template segments for sample templates
   static final List<TemplateSegment> sampleTemplateSegments = [
     // Upper Body Strength template segments
@@ -1259,6 +1223,7 @@ class SeedData {
       segmentType: 'strength_sets',
       name: 'Main Lifts',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Easy Run template segments
     TemplateSegment(
@@ -1268,6 +1233,7 @@ class SeedData {
       segmentType: 'timed_activity',
       name: 'Main Run',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Boxing template segments
     TemplateSegment(
@@ -1277,6 +1243,7 @@ class SeedData {
       segmentType: 'round_based',
       name: 'Heavy Bag Work',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Mobility template segments
     TemplateSegment(
@@ -1286,6 +1253,7 @@ class SeedData {
       segmentType: 'drill_skill',
       name: 'Stretching Routine',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
   ];
 
@@ -1352,40 +1320,50 @@ class SeedData {
       id: 'ttar-bench-sets',
       templateEffortId: 'teff-upper-bench',
       metricId: 'metric-reps',
+      setIndex: 0,
       targetInt: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Easy Run: 30 minutes
     TemplateTarget(
       id: 'ttar-run-duration',
       templateEffortId: 'teff-run-main',
       metricId: 'metric-duration',
+      setIndex: 0,
       targetInt: 1800, // 30 minutes in seconds
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Boxing: 5 rounds x 3 minutes
     TemplateTarget(
       id: 'ttar-boxing-rounds',
       templateEffortId: 'teff-boxing-bag',
       metricId: 'metric-rounds',
+      setIndex: 0,
       targetInt: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     TemplateTarget(
       id: 'ttar-boxing-duration',
       templateEffortId: 'teff-boxing-bag',
       metricId: 'metric-round-duration',
+      setIndex: 0,
       targetInt: 180, // 3 minutes in seconds
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Stretching: 30-60 seconds per stretch
     TemplateTarget(
       id: 'ttar-stretch-duration',
       templateEffortId: 'teff-mobility-stretch',
       metricId: 'metric-duration',
+      setIndex: 0,
       targetMin: 30.0,
       targetMax: 60.0,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
   ];
 }

@@ -9,10 +9,29 @@ class MetricChooserDialog extends StatelessWidget {
 
   const MetricChooserDialog({super.key, required this.exercise});
 
+  /// Deduplicate reps/sets/load capabilities into a single reps option
+  List<String> _deduplicateCapabilities(List<String> capabilities) {
+    final strSet = capabilities.toSet();
+    final repsLoadSetVariants = {'reps', 'sets', 'load'};
+    
+    // Remove sets and load if any of the reps/sets/load variants exist
+    if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+      strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
+      // Ensure 'reps' is included as the canonical value
+      if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+        strSet.add('reps');
+      }
+    }
+    
+    return strSet.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final capabilities = exercise.capabilities;
+    final capabilities = _deduplicateCapabilities(exercise.capabilities);
+    final dialogWidth = MediaQuery.of(context).size.width * 0.85;
+    final dialogMaxHeight = MediaQuery.of(context).size.height * 0.75;
 
     if (capabilities.isEmpty) {
       return AlertDialog(
@@ -28,57 +47,69 @@ class MetricChooserDialog extends StatelessWidget {
     }
 
     return Dialog(
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.85,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'How to track?',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              exercise.name,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Choose tracking method:',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.8),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // List of metric options
-            ...capabilities.map((capability) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _MetricOption(
-                  capability: capability,
-                  onTap: () => Navigator.of(context).pop(capability),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: dialogWidth,
+          maxHeight: dialogMaxHeight,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'How to track?',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
-              );
-            }),
-            
-            const SizedBox(height: 16),
-            
-            // Cancel button
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                exercise.name,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Choose tracking method:',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.8),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      ...capabilities.map((capability) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _MetricOption(
+                            capability: capability,
+                            onTap: () => Navigator.of(context).pop(capability),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Cancel button
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -122,11 +153,9 @@ class _MetricOption extends StatelessWidget {
       case 'hold':
         return 'Track by Hold Time';
       case 'reps':
-        return 'Track by Reps & Sets';
       case 'sets':
-        return 'Track by Sets';
       case 'load':
-        return 'Track by Weight';
+        return 'Track by Reps & Sets';
       case 'distance':
         return 'Track by Distance';
       case 'rounds':
@@ -155,15 +184,15 @@ class _MetricOption extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
+                  color: theme.colorScheme.primary.withOpacity(0.8),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   _getIcon(),
-                  color: theme.colorScheme.onPrimaryContainer,
+                  color: theme.colorScheme.onPrimary,
                   size: 24,
                 ),
               ),

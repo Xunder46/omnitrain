@@ -122,40 +122,10 @@ class Exercise {
         'created_at_ms': createdAtMs,
         'updated_at_ms': updatedAtMs
       };
-
-  /// Check if exercise supports a specific capability
-  bool supports(String capability) => capabilities.contains(capability);
-
-  /// Check if exercise supports any of the given capabilities
-  bool supportsAny(List<String> caps) => caps.any((c) => capabilities.contains(c));
-
-  /// Create a copy with updated fields
-  Exercise copyWith({
-    String? id,
-    String? ownerUserId,
-    String? disciplineId,
-    String? name,
-    String? description,
-    String? movementPattern,
-    bool? isArchived,
-    int? createdAtMs,
-    int? updatedAtMs,
-    List<String>? capabilities,
-  }) {
-    return Exercise(
-      id: id ?? this.id,
-      ownerUserId: ownerUserId ?? this.ownerUserId,
-      disciplineId: disciplineId ?? this.disciplineId,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      movementPattern: movementPattern ?? this.movementPattern,
-      isArchived: isArchived ?? this.isArchived,
-      createdAtMs: createdAtMs ?? this.createdAtMs,
-      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
-      capabilities: capabilities ?? this.capabilities,
-    );
-  }
 }
+
+// Extension methods (supports, supportsAny, copyWith) are in lib/core/utils/exercise_helpers.dart
+// Models remain pure data - no business logic
 
 class Equipment {
   final String id;
@@ -172,6 +142,7 @@ class Equipment {
 class TrainingSession {
   final String id;
   final String ownerUserId;
+  final String? routineTemplateId;
   final int startedAtMs;
   final int? endedAtMs;
   final String? title;
@@ -186,6 +157,7 @@ class TrainingSession {
   TrainingSession({
     required this.id,
     required this.ownerUserId,
+    this.routineTemplateId,
     required this.startedAtMs,
     this.endedAtMs,
     this.title,
@@ -201,6 +173,7 @@ class TrainingSession {
   factory TrainingSession.fromMap(Map<String, dynamic> m) => TrainingSession(
       id: m['id'] as String,
       ownerUserId: m['owner_user_id'] as String,
+      routineTemplateId: m['routine_template_id'] as String?,
       startedAtMs: m['started_at_ms'] as int,
       endedAtMs: m['ended_at_ms'] as int?,
       title: m['title'] as String?,
@@ -215,6 +188,7 @@ class TrainingSession {
   Map<String, dynamic> toMap() => {
         'id': id,
         'owner_user_id': ownerUserId,
+      'routine_template_id': routineTemplateId,
         'started_at_ms': startedAtMs,
         'ended_at_ms': endedAtMs,
         'title': title,
@@ -391,17 +365,31 @@ class WorkoutTemplate {
   final String id;
   final String? ownerUserId;
   final String name;
+  final String? description;
+  final String? focusModality;
   final String? primaryDisciplineId;
   final String? note;
   final int createdAtMs;
   final int updatedAtMs;
 
-  WorkoutTemplate({required this.id, this.ownerUserId, required this.name, this.primaryDisciplineId, this.note, required this.createdAtMs, required this.updatedAtMs});
+  WorkoutTemplate({
+    required this.id,
+    this.ownerUserId,
+    required this.name,
+    this.description,
+    this.focusModality,
+    this.primaryDisciplineId,
+    this.note,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
   factory WorkoutTemplate.fromMap(Map<String, dynamic> m) => WorkoutTemplate(
       id: m['id'] as String,
       ownerUserId: m['owner_user_id'] as String?,
       name: m['name'] as String,
+      description: m['description'] as String?,
+      focusModality: m['focus_modality'] as String?,
       primaryDisciplineId: m['primary_discipline_id'] as String?,
       note: m['note'] as String?,
       createdAtMs: m['created_at_ms'] as int,
@@ -411,6 +399,8 @@ class WorkoutTemplate {
         'id': id,
         'owner_user_id': ownerUserId,
         'name': name,
+      'description': description,
+      'focus_modality': focusModality,
         'primary_discipline_id': primaryDisciplineId,
         'note': note,
         'created_at_ms': createdAtMs,
@@ -427,8 +417,9 @@ class TemplateSegment {
   final String? name;
   final String? note;
   final int createdAtMs;
+  final int updatedAtMs;
 
-  TemplateSegment({required this.id, required this.templateId, required this.orderIndex, required this.segmentType, this.disciplineId, this.name, this.note, required this.createdAtMs});
+  TemplateSegment({required this.id, required this.templateId, required this.orderIndex, required this.segmentType, this.disciplineId, this.name, this.note, required this.createdAtMs, required this.updatedAtMs});
 
   factory TemplateSegment.fromMap(Map<String, dynamic> m) => TemplateSegment(
       id: m['id'] as String,
@@ -438,7 +429,8 @@ class TemplateSegment {
       disciplineId: m['discipline_id'] as String?,
       name: m['name'] as String?,
       note: m['note'] as String?,
-      createdAtMs: m['created_at_ms'] as int);
+      createdAtMs: m['created_at_ms'] as int,
+      updatedAtMs: (m['updated_at_ms'] as int?) ?? (m['created_at_ms'] as int));
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -448,7 +440,8 @@ class TemplateSegment {
         'discipline_id': disciplineId,
         'name': name,
         'note': note,
-        'created_at_ms': createdAtMs
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs
       };
 }
 
@@ -457,19 +450,36 @@ class TemplateEffort {
   final String templateSegmentId;
   final int orderIndex;
   final String effortKind;
+  final String? modality;
   final String? exerciseId;
   final String? note;
+  final int? restSeconds;
+  final String? restType;
   final int createdAtMs;
 
-  TemplateEffort({required this.id, required this.templateSegmentId, required this.orderIndex, required this.effortKind, this.exerciseId, this.note, required this.createdAtMs});
+  TemplateEffort({
+    required this.id,
+    required this.templateSegmentId,
+    required this.orderIndex,
+    required this.effortKind,
+    this.modality,
+    this.exerciseId,
+    this.note,
+    this.restSeconds,
+    this.restType,
+    required this.createdAtMs,
+  });
 
   factory TemplateEffort.fromMap(Map<String, dynamic> m) => TemplateEffort(
       id: m['id'] as String,
       templateSegmentId: m['template_segment_id'] as String,
       orderIndex: m['order_index'] as int,
       effortKind: m['effort_kind'] as String,
+      modality: m['modality'] as String?,
       exerciseId: m['exercise_id'] as String?,
       note: m['note'] as String?,
+      restSeconds: m['rest_seconds'] as int?,
+      restType: m['rest_type'] as String?,
       createdAtMs: m['created_at_ms'] as int);
 
   Map<String, dynamic> toMap() => {
@@ -477,8 +487,11 @@ class TemplateEffort {
         'template_segment_id': templateSegmentId,
         'order_index': orderIndex,
         'effort_kind': effortKind,
+        'modality': modality,
         'exercise_id': exerciseId,
         'note': note,
+      'rest_seconds': restSeconds,
+      'rest_type': restType,
         'created_at_ms': createdAtMs
       };
 }
@@ -487,36 +500,42 @@ class TemplateTarget {
   final String id;
   final String templateEffortId;
   final String metricId;
+  final int? setIndex;
   final String? unitId;
   final double? targetMin;
   final double? targetMax;
   final int? targetInt;
   final String? targetText;
   final int createdAtMs;
+  final int updatedAtMs;
 
-  TemplateTarget({required this.id, required this.templateEffortId, required this.metricId, this.unitId, this.targetMin, this.targetMax, this.targetInt, this.targetText, required this.createdAtMs});
+  TemplateTarget({required this.id, required this.templateEffortId, required this.metricId, this.setIndex, this.unitId, this.targetMin, this.targetMax, this.targetInt, this.targetText, required this.createdAtMs, required this.updatedAtMs});
 
   factory TemplateTarget.fromMap(Map<String, dynamic> m) => TemplateTarget(
       id: m['id'] as String,
       templateEffortId: m['template_effort_id'] as String,
       metricId: m['metric_id'] as String,
+      setIndex: m['set_index'] as int?,
       unitId: m['unit_id'] as String?,
       targetMin: (m['target_min'] as num?)?.toDouble(),
       targetMax: (m['target_max'] as num?)?.toDouble(),
       targetInt: m['target_int'] as int?,
       targetText: m['target_text'] as String?,
-      createdAtMs: m['created_at_ms'] as int);
+      createdAtMs: m['created_at_ms'] as int,
+      updatedAtMs: (m['updated_at_ms'] as int?) ?? (m['created_at_ms'] as int));
 
   Map<String, dynamic> toMap() => {
         'id': id,
         'template_effort_id': templateEffortId,
         'metric_id': metricId,
+        'set_index': setIndex,
         'unit_id': unitId,
         'target_min': targetMin,
         'target_max': targetMax,
         'target_int': targetInt,
         'target_text': targetText,
-        'created_at_ms': createdAtMs
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs
       };
 }
 
@@ -592,32 +611,5 @@ class MetricApplicability {
       };
 }
 
-// Lightweight SetRow used by UI for logging sets. Kept separate from the
-// typed observation rows in the DB layer for simplicity.
-class SetRow {
-  final String id;
-  final String exerciseId;
-  int reps;
-  double weight;
-  int duration; // seconds
-  final int timestamp;
-
-  SetRow({required this.id, required this.exerciseId, required this.reps, required this.weight, required this.duration, required this.timestamp});
-
-  factory SetRow.fromMap(Map<String, dynamic> m) => SetRow(
-      id: m['id'] as String,
-      exerciseId: m['exercise_id'] as String,
-      reps: m['reps'] as int,
-      weight: (m['weight'] as num).toDouble(),
-      duration: m['duration'] as int,
-      timestamp: m['timestamp'] as int);
-
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'exercise_id': exerciseId,
-        'reps': reps,
-        'weight': weight,
-        'duration': duration,
-        'timestamp': timestamp
-      };
-}
+// UI-specific set data structures moved to lib/core/utils/exercise_helpers.dart
+// Models layer reserved for persistence entities only

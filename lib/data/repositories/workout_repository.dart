@@ -2,6 +2,9 @@ import '../models/models.dart';
 
 /// Abstract interface for workout data operations
 abstract class WorkoutRepository {
+  /// Initialize the repository (load seed data, open database, etc.)
+  /// Must be called before any other operations
+  Future<void> initialize();
   // Exercises
   Future<List<Exercise>> getExercises();
   Future<Exercise?> getExerciseById(String id);
@@ -50,6 +53,10 @@ abstract class WorkoutRepository {
   // Muscle Groups
   Future<List<MuscleGroup>> getMuscleGroups();
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId);
+  Future<void> setExerciseMuscleGroups(
+    String exerciseId,
+    List<String> muscleGroupIds,
+  );
 
   // Equipment
   Future<List<Equipment>> getEquipment();
@@ -71,9 +78,22 @@ abstract class WorkoutRepository {
   // Templates
   Future<List<WorkoutTemplate>> getTemplates();
   Future<WorkoutTemplate?> getTemplateById(String id);
+  Future<String> createTemplate(WorkoutTemplate template);
+  Future<void> updateTemplate(WorkoutTemplate template);
+  Future<void> deleteTemplate(String id);
   Future<List<TemplateSegment>> getTemplateSegments(String templateId);
+  Future<String> createTemplateSegment(TemplateSegment segment);
+  Future<void> updateTemplateSegment(TemplateSegment segment);
+  Future<void> deleteTemplateSegment(String id);
   Future<List<TemplateEffort>> getTemplateEfforts(String templateSegmentId);
+  Future<String> createTemplateEffort(TemplateEffort effort);
+  Future<void> updateTemplateEffort(TemplateEffort effort);
+  Future<void> deleteTemplateEffort(String id);
   Future<List<TemplateTarget>> getTemplateTargets(String templateEffortId);
+  Future<String> createTemplateTarget(TemplateTarget target);
+  Future<void> updateTemplateTarget(TemplateTarget target);
+  Future<void> deleteTemplateTarget(String id);
+  Future<void> deleteTemplateTargetsForEffort(String templateEffortId);
 
   // Exercise Capabilities
   Future<List<String>> getExerciseCapabilities(String exerciseId);

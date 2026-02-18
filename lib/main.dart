@@ -1,19 +1,46 @@
 import 'package:flutter/material.dart';
 import 'app.dart';
-import 'data/repositories/mock_workout_repository.dart';
+import 'core/services/routine_session_service.dart';
+import 'data/repositories/hive_workout_repository.dart';
+import 'data/repositories/workout_repository.dart';
 import 'state/workout/workout_state.dart';
+import 'state/home/home_state.dart';
+import 'state/routine/routine_state.dart';
+
+/// Create the appropriate repository based on platform
+/// 
+/// Web: Always uses MockWorkoutRepository (in-memory, no persistence)
+/// Native (iOS/Android): Would use SqliteWorkoutRepository when implemented
+/// 
+/// This pattern allows easy switching between environments without platform checks
+/// scattered throughout the codebase
+Future<WorkoutRepository> _createRepository() async {
+  // Use Hive for local persistence across web and native.
+  // SqliteWorkoutRepository can replace this on native later.
+  return HiveWorkoutRepository();
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    // Initialize repository (web-compatible, in-memory)
-    final repository = MockWorkoutRepository();
+    // Initialize repository (injectable, can be swapped per environment)
+    final repository = await _createRepository();
     await repository.initialize();
 
     // Create state with repository
     final workoutState = WorkoutState(repository);
+    final homeState = HomeState();
+    final routineState = RoutineState(repository);
+    
+    // Create service with repository
+    final routineSessionService = RoutineSessionService(repository);
 
-    runApp(MyApp(workoutState: workoutState));
+    runApp(MyApp(
+      workoutState: workoutState,
+      homeState: homeState,
+      routineState: routineState,
+      routineSessionService: routineSessionService,
+    ));
   } catch (e) {
     print('Error initializing app: $e');
     runApp(const MaterialApp(

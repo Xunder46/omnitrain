@@ -1,5 +1,6 @@
 /// Block type constants for segment_type and effort_kind
 /// These define how work is structured and which metrics are logged
+library;
 
 class BlockTypes {
   // Segment types (used in app_session_segment.segment_type)

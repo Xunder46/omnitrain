@@ -3,6 +3,21 @@ BEGIN TRANSACTION;
 
 -- Note: IDs are TEXT (UUID hex), timestamps in INTEGER (ms), booleans as INTEGER (0/1).
 --
+-- UNIFIED SPORTS MODALITY (Feb 2026 Refactor):
+-- ============================================== 
+-- The 'sports' modality now encompasses both martial arts and sports exercises.
+-- Home screen shows a unified "Sports" tile combining martial arts icon with sports modality.
+-- Exercise ranking for sports modality pulls exercises from BOTH:
+--   - category-martial-arts (Boxing, BJJ, Muay Thai, wrestling)
+--   - category-sports (Soccer, basketball, tennis, team sports)
+-- Feature constraints supported by sports modality:
+--   - Primary metric: time (round duration)
+--   - Secondary metrics: rounds (periods/halves/rounds)
+--   - Optional metrics: distance, rpe
+-- See Modality.modalityToCategoryIds in lib/core/constants/modality.dart
+-- Migration: SqliteWorkoutRepository.getExercisesRankedForModality() must filter by
+--   categoryIds IN ('category-martial-arts', 'category-sports') when modality='sports'
+--
 -- DELETE OPERATIONS (Phase 1 Implementation - Feb 2026):
 -- =========================================================
 -- The repository interface now supports deletion operations for session management:
@@ -108,6 +123,7 @@ CREATE TABLE app_exercise_equipment (
 CREATE TABLE app_training_session (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT NOT NULL,
+  routine_template_id TEXT,
   started_at_ms INTEGER NOT NULL,
   ended_at_ms INTEGER,
   title TEXT,
@@ -296,6 +312,8 @@ CREATE TABLE app_workout_template (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT,
   name TEXT NOT NULL,
+  description TEXT,
+  focus_modality TEXT,
   primary_discipline_id TEXT,
   note TEXT,
   created_at_ms INTEGER NOT NULL,
@@ -312,6 +330,7 @@ CREATE TABLE app_template_segment (
   name TEXT,
   note TEXT,
   created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
   FOREIGN KEY(template_id) REFERENCES app_workout_template(id),
   FOREIGN KEY(discipline_id) REFERENCES app_discipline(id)
 );
@@ -321,10 +340,13 @@ CREATE TABLE app_template_effort (
   template_segment_id TEXT NOT NULL,
   order_index INTEGER NOT NULL,
   effort_kind TEXT NOT NULL,
+  modality TEXT, -- Optional per-exercise modality for routine tracking
   exercise_id TEXT,
   note TEXT,
+  rest_seconds INTEGER,
+  rest_type TEXT,
   created_at_ms INTEGER NOT NULL,
-  FOREIGN KEY(template_segment_id) REFERENCES app_template_segment(id),
+  FOREIGN KEY(template_segment_id) REFERENCES app_template_segment(id) ON DELETE CASCADE,
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
 );
 
@@ -332,13 +354,15 @@ CREATE TABLE app_template_target (
   id TEXT NOT NULL PRIMARY KEY,
   template_effort_id TEXT NOT NULL,
   metric_id TEXT NOT NULL,
+  set_index INTEGER, -- 0-based set index for per-set targets
   unit_id TEXT,
   target_min REAL,
   target_max REAL,
   target_int INTEGER,
   target_text TEXT,
   created_at_ms INTEGER NOT NULL,
-  FOREIGN KEY(template_effort_id) REFERENCES app_template_effort(id),
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(template_effort_id) REFERENCES app_template_effort(id) ON DELETE CASCADE,
   FOREIGN KEY(metric_id) REFERENCES app_metric_definition(id),
   FOREIGN KEY(unit_id) REFERENCES app_unit(id)
 );
@@ -458,6 +482,8 @@ CREATE TABLE app_exercise_muscle_group (
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id),
   FOREIGN KEY(muscle_group_id) REFERENCES app_muscle_group(id)
 );
+-- SqliteWorkoutRepository.setExerciseMuscleGroups(exerciseId, ids)
+-- should replace existing rows for exercise_id and insert the new set.
 
 CREATE TABLE app_sync_event (
   event_id TEXT NOT NULL PRIMARY KEY,

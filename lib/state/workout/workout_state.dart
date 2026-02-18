@@ -3,7 +3,9 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/metric_ids.dart';
+import '../../core/models/routine_session_manifest.dart';
 import '../../core/utils/observation_grouper.dart';
+import '../../core/utils/exercise_helpers.dart';
 
 /// State holder for workout session data.
 /// Uses ChangeNotifier pattern and talks ONLY to repositories.
@@ -36,7 +38,7 @@ class WorkoutState extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasSession => _currentSession != null;
-  bool get hasActiveSession => _currentSession != null && _efforts.values.any((list) => list.isNotEmpty);
+  bool get hasActiveSession => _currentSession != null && _currentSession!.endedAtMs == null && _efforts.values.any((list) => list.isNotEmpty);
   List<Exercise> get allExercises => List.unmodifiable(_allExercises);
   List<MuscleGroup> get muscleGroups => List.unmodifiable(_muscleGroups);
   List<Discipline> get disciplines => List.unmodifiable(_disciplines);
@@ -60,19 +62,31 @@ class WorkoutState extends ChangeNotifier {
   /// Create a new workout session
   /// [modality] - Optional training modality (e.g., 'cardio_endurance', 'resistance_lifting').
   ///              If null, creates a 'Free Training' session with no modality preset.
-  Future<void> createNewSession({String? modality}) async {
+  /// [title] - Optional session title (used for routine sessions).
+  /// [intent] - Optional session intent (e.g., 'routine').
+  /// [routineTemplateId] - Optional routine template reference for lineage.
+  Future<void> createNewSession({
+    String? modality,
+    String? title,
+    String? intent,
+    String? routineTemplateId,
+    bool includeDefaultSegment = true,
+  }) async {
     _setLoading(true);
     _clearError();
 
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final sessionId = 'session-${now}';
+      final sessionId = 'session-$now';
 
       final session = TrainingSession(
         id: sessionId,
         ownerUserId: 'user-1',
+        routineTemplateId: routineTemplateId,
         startedAtMs: now,
+        title: title,
         modality: modality,
+        intent: intent,
         createdAtMs: now,
         updatedAtMs: now,
       );
@@ -81,20 +95,22 @@ class WorkoutState extends ChangeNotifier {
       _currentSession = session;
       _currentModalityConfig = ModalityConfig.forModality(modality);
 
-      // Create default segment
-      final segmentId = 'segment-${now}';
-      final segment = SessionSegment(
-        id: segmentId,
-        sessionId: sessionId,
-        orderIndex: 0,
-        segmentType: 'workout',
-        name: 'Main Workout',
-        createdAtMs: now,
-        updatedAtMs: now,
-      );
+      if (includeDefaultSegment) {
+        // Create default segment
+        final segmentId = 'segment-$now';
+        final segment = SessionSegment(
+          id: segmentId,
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'workout',
+          name: 'Main Workout',
+          createdAtMs: now,
+          updatedAtMs: now,
+        );
 
-      await _repository.createSegment(segment);
-      _segments.add(segment);
+        await _repository.createSegment(segment);
+        _segments.add(segment);
+      }
 
       notifyListeners();
     } catch (e) {
@@ -148,21 +164,132 @@ class WorkoutState extends ChangeNotifier {
     }
   }
 
+  /// Populate the current session from a routine session manifest
+  /// This method consumes a RoutineSessionManifest (returned by RoutineSessionService)
+  /// and populates the current session with all exercises, targets, and rest timers.
+  /// 
+  /// Prerequisites: Must have an active session (call createNewSession first).
+  Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) async {
+    if (_currentSession == null) {
+      throw Exception('No active session to populate');
+    }
+
+    _clearError();
+
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      var segmentCounter = 0;
+
+      for (final segmentEntry in manifest.segments) {
+        final templateSegment = segmentEntry.segment;
+        final segmentId = 'segment-${_currentSession!.id}-$segmentCounter-$now';
+        segmentCounter += 1;
+
+        final sessionSegment = SessionSegment(
+          id: segmentId,
+          sessionId: _currentSession!.id,
+          orderIndex: templateSegment.orderIndex,
+          segmentType: templateSegment.segmentType,
+          disciplineId: templateSegment.disciplineId,
+          name: templateSegment.name,
+          note: templateSegment.note,
+          createdAtMs: now,
+          updatedAtMs: now,
+        );
+
+        await _repository.createSegment(sessionSegment);
+        _segments.add(sessionSegment);
+        _efforts.putIfAbsent(segmentId, () => []);
+
+        for (final entry in segmentEntry.exercises) {
+          final exercise = entry.exercise;
+          final effortKind = entry.effortKind;
+          final setCount = entry.setCount;
+          final targets = entry.targets;
+
+          final effortId = await addExerciseToSession(
+            exercise,
+            effortKindOverride: effortKind,
+            segmentId: segmentId,
+          );
+
+          if (effortId.isEmpty) continue;
+
+          // Add additional entries (sets) beyond the first
+          for (int i = 1; i < setCount; i++) {
+            await addEntry(effortId);
+          }
+
+          // Apply targets from template
+          for (final target in targets) {
+            final entryIndex = target.setIndex ?? 0;
+            final metricKey = MetricIds.metricIdToKey[target.metricId] ?? target.metricId;
+
+            // Get value from target
+            dynamic value;
+            if (target.targetInt != null) {
+              value = target.targetInt;
+            } else if (target.targetMin != null) {
+              value = target.targetMin;
+            } else if (target.targetMax != null) {
+              value = target.targetMax;
+            } else if (target.targetText != null) {
+              value = target.targetText;
+            }
+
+            if (value == null) continue;
+
+            // Convert to appropriate type
+            if (metricKey == 'reps' || metricKey == 'rounds' || metricKey == 'duration') {
+              value = value is int ? value : (value as double).toInt();
+            } else {
+              value = value is double ? value : (value as int).toDouble();
+            }
+
+            try {
+              await updateEntryValue(effortId, entryIndex, metricKey, value);
+            } catch (e) {
+              // Silently skip if metric doesn't exist for this effort
+            }
+          }
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to populate session from manifest: $e');
+      rethrow;
+    }
+  }
+
   /// Add an exercise to the current session
   /// [exercise] - The exercise from the library to add
   /// [chosenMetric] - Optional metric chosen by user (for Free Training only)
-  Future<String> addExerciseToSession(Exercise exercise, {String? chosenMetric}) async {
+  /// [effortKindOverride] - Optional explicit effort kind (used for routines)
+  Future<String> addExerciseToSession(
+    Exercise exercise, {
+    String? chosenMetric,
+    String? effortKindOverride,
+    String? segmentId,
+  }) async {
     if (_segments.isEmpty) return '';
 
     _clearError();
 
     try {
-      final segment = _segments.first;
+      final segment = segmentId != null
+          ? _segments.firstWhere(
+              (s) => s.id == segmentId,
+              orElse: () => _segments.first,
+            )
+          : _segments.first;
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      // Determine effort kind from modality or chosen metric
+      // Determine effort kind from override, modality, or chosen metric
       String effortKind;
-      if (_currentModalityConfig != null && _currentSession?.modality != null) {
+      if (effortKindOverride != null) {
+        effortKind = effortKindOverride;
+      } else if (_currentModalityConfig != null && _currentSession?.modality != null) {
         // Use modality config
         effortKind = _currentModalityConfig!.effortKind;
       } else if (chosenMetric != null) {
@@ -177,7 +304,7 @@ class WorkoutState extends ChangeNotifier {
       _exerciseCache[exercise.id] = exercise;
 
       // Create effort
-      final effortId = 'effort-${now}';
+      final effortId = 'effort-$now';
       final currentEfforts = _efforts[segment.id] ?? [];
       final effort = SegmentEffort(
         id: effortId,
@@ -356,18 +483,8 @@ class WorkoutState extends ChangeNotifier {
     _clearError();
 
     try {
-      // Map metric keys to metric IDs
-      final metricIdMap = {
-        'reps': 'metric-reps',
-        'weight': 'metric-weight',
-        'duration': 'metric-duration',
-        'distance': 'metric-distance',
-        'rounds': 'metric-rounds',
-        'round-duration': 'metric-round-duration',
-        'rpe': 'metric-rpe',
-      };
-
-      final metricId = metricIdMap[metricKey];
+      // Use centralized MetricIds.keyToMetricId mapping for consistency
+      final metricId = MetricIds.keyToMetricId[metricKey];
       if (metricId == null) return;
 
       // Find the observation for this entry index and metric
@@ -415,10 +532,20 @@ class WorkoutState extends ChangeNotifier {
     _clearError();
 
     try {
-      // Each entry is typically 2 observations (reps+weight, duration+distance, etc.)
-      // Calculate the observation indices for this entry
-      final startIndex = entryIndex * 2;
-      final endIndex = startIndex + 2;
+      // Find the effort to determine metrics per entry
+      SegmentEffort? effort;
+      for (final effortList in _efforts.values) {
+        effort = effortList.firstWhere((e) => e.id == effortId, orElse: () => SegmentEffort(
+          id: '', segmentId: '', orderIndex: 0, effortKind: '', createdAtMs: 0, updatedAtMs: 0,
+        ));
+        if (effort.id == effortId) break;
+      }
+      if (effort == null) return;
+
+      // Get observations for this entry based on effort kind
+      final metricsPerEntry = _getMetricsPerEntry(effort.effortKind);
+      final startIndex = entryIndex * metricsPerEntry;
+      final endIndex = startIndex + metricsPerEntry;
 
       if (startIndex >= observations.length) return;
 
@@ -438,6 +565,23 @@ class WorkoutState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _setError('Failed to delete entry: $e');
+    }
+  }
+
+  /// Get the number of observations per entry for a given effort kind
+  /// Used to calculate entry boundaries when deleting or updating entries
+  int _getMetricsPerEntry(String effortKind) {
+    switch (effortKind) {
+      case 'set': // reps + weight
+        return 2;
+      case 'timed': // duration + distance
+        return 2;
+      case 'round': // rounds + round-duration
+        return 2;
+      case 'drill': // duration + rpe
+        return 2;
+      default:
+        return 2; // Fallback
     }
   }
 
@@ -477,6 +621,7 @@ class WorkoutState extends ChangeNotifier {
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
         ownerUserId: _currentSession!.ownerUserId,
+        routineTemplateId: _currentSession!.routineTemplateId,
         startedAtMs: _currentSession!.startedAtMs,
         endedAtMs: now,
         title: _currentSession!.title,
@@ -521,6 +666,10 @@ class WorkoutState extends ChangeNotifier {
           'name': exerciseName,
           'effortKind': effort.effortKind,
           'entries': entries,
+          'segmentId': segment.id,
+          'segmentName': segment.name ?? 'Block ${segment.orderIndex + 1}',
+          'segmentType': segment.segmentType,
+          'segmentOrder': segment.orderIndex,
         });
       }
     }
@@ -538,6 +687,51 @@ class WorkoutState extends ChangeNotifier {
     _exerciseCache.clear();
     _clearError();
     notifyListeners();
+  }
+
+  /// Create a custom exercise in the library
+  Future<Exercise?> createCustomExercise({
+    required String name,
+    String? description,
+    String? disciplineId,
+    List<String> capabilities = const [],
+    List<String> muscleGroupIds = const [],
+  }) async {
+    _clearError();
+
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      _setError('Exercise name is required');
+      return null;
+    }
+
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final exerciseId = 'exercise-$now';
+      final exercise = Exercise(
+        id: exerciseId,
+        ownerUserId: 'user-1',
+        disciplineId: disciplineId,
+        name: trimmedName,
+        description: description?.trim().isEmpty == true ? null : description,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+
+      await _repository.createExercise(exercise);
+      await _repository.setExerciseCapabilities(exerciseId, capabilities);
+      await _repository.setExerciseMuscleGroups(exerciseId, muscleGroupIds);
+
+      final exerciseWithCaps = exercise.copyWith(capabilities: capabilities);
+      _exerciseCache[exerciseId] = exerciseWithCaps;
+      _allExercises = [..._allExercises.where((e) => e.id != exerciseId), exerciseWithCaps];
+
+      notifyListeners();
+      return exerciseWithCaps;
+    } catch (e) {
+      _setError('Failed to create exercise: $e');
+      return null;
+    }
   }
 
   /// Load all exercises from repository

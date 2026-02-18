@@ -2,11 +2,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import '../../core/constants/omni_theme.dart';
+import '../../core/utils/timer_alert_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
+import '../../widgets/layout/omni_gradient_background.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -33,7 +36,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Track skipped sets per effort (UI-only state)
   final Map<String, Set<int>> _skippedSets = {};
 
-  late final Stopwatch _stopwatch;
   Timer? _ticker;
   String _elapsedFormatted = '00:00';
 
@@ -43,6 +45,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   final Map<String, bool> _effortRunning = {};
   final Map<String, int> _effortElapsed = {}; // Elapsed seconds
   final Map<String, int> _effortElapsedBase = {}; // Base elapsed time when timer started (for offset)
+  final Map<String, bool> _effortAlerted = {}; // Timer expiry alert fired
+  final Map<String, int> _effortTargetDuration = {}; // Target seconds for countdown/expiry
 
   // Rest timer state
   Timer? _restTimer;
@@ -53,7 +57,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   @override
   void initState() {
     super.initState();
-    _stopwatch = Stopwatch()..start();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     _tick();
     _loadExercises();
@@ -97,6 +100,78 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
   }
 
+  Map<String, dynamic>? _getExerciseById(String effortId) {
+    try {
+      return _exercises.firstWhere((exercise) => exercise['id'] == effortId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, dynamic>? _getEntryData(String effortId, int entryIndex) {
+    final exercise = _getExerciseById(effortId);
+    if (exercise == null) return null;
+    final entries = exercise['entries'] as List<Map<String, dynamic>>? ?? [];
+    if (entryIndex < 0 || entryIndex >= entries.length) return null;
+    return entries[entryIndex];
+  }
+
+  String _getEffortKind(String effortId) {
+    final exercise = _getExerciseById(effortId);
+    return exercise?['effortKind'] as String? ?? 'set';
+  }
+
+  int _getEffortTargetDuration(String effortId, int entryIndex, String effortKind) {
+    final timerKey = '$effortId-$entryIndex';
+    final cachedTarget = _effortTargetDuration[timerKey];
+    if (cachedTarget != null) return cachedTarget;
+    final entry = _getEntryData(effortId, entryIndex);
+    if (entry == null) return 0;
+    switch (effortKind) {
+      case 'timed':
+      case 'drill':
+        return entry['duration'] as int? ?? 0;
+      case 'round':
+        return entry['round-duration'] as int? ?? 0;
+      default:
+        return 0;
+    }
+  }
+
+  bool _isEffortExpired(String effortId, int entryIndex, String effortKind) {
+    final timerKey = '$effortId-$entryIndex';
+    final target = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    final elapsed = _effortElapsed[timerKey] ?? 0;
+    final isRunning = _effortRunning[timerKey] ?? false;
+    return target > 0 && elapsed >= target && !isRunning;
+  }
+
+  void _resetEffortAlertState(String effortId, int entryIndex) {
+    final timerKey = '$effortId-$entryIndex';
+    _effortAlerted[timerKey] = false;
+  }
+
+  void _handleEffortTimerExpired(
+    String effortId,
+    int entryIndex,
+    String effortKind,
+    int targetSeconds,
+  ) {
+    final timerKey = '$effortId-$entryIndex';
+    if (_effortAlerted[timerKey] == true) return;
+
+    _effortAlerted[timerKey] = true;
+    _effortElapsed[timerKey] = targetSeconds;
+    _effortElapsedBase[timerKey] = targetSeconds;
+
+    if (mounted) {
+      setState(() {});
+    }
+
+    _pauseEffortTimer(effortId, entryIndex, effortKindOverride: effortKind);
+    unawaited(TimerAlertService.fireTimerExpiredAlert());
+  }
+
   void _logSet() {
     if (_exercises.isEmpty) return;
 
@@ -112,7 +187,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     // For timer-based exercises, capture elapsed time
     if (effortKind == 'timed' || effortKind == 'drill') {
-      currentEntry['duration'] = _effortElapsed[effortId] ?? 0;
+      final timerKey = '$effortId-${_currentSet - 1}';
+      currentEntry['duration'] = _effortElapsed[timerKey] ?? 0;
     }
 
     // Persist entry values based on effort kind
@@ -127,8 +203,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     // User must explicitly start timer for next entry
     if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
       _pauseEffortTimer(effortId, _currentSet - 1);
-      _effortStopwatches[effortId]?.reset();
-      _effortElapsed[effortId] = 0;
+      final timerKey = '$effortId-${_currentSet - 1}';
+      _effortStopwatches[timerKey]?.reset();
+      _effortElapsed[timerKey] = 0;
+      _effortElapsedBase[timerKey] = 0;
+      _effortTargetDuration.remove(timerKey);
+      _effortAlerted[timerKey] = false;
     }
 
     // Start rest timer after logging a set
@@ -164,6 +244,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       if (_effortRunning[timerKey] == true) {
         _pauseEffortTimer(effortId, _currentSet - 1);
       }
+      _resetEffortAlertState(effortId, _currentSet - 1);
     }
 
     // Simply move back to previous set without clearing values
@@ -194,7 +275,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _skippedSets.putIfAbsent(effortId, () => {}).add(_currentSet - 1);
 
     // Reset timer
-    _effortElapsed[effortId] = 0;
+    final skippedKey = '$effortId-${_currentSet - 1}';
+    _effortElapsed[skippedKey] = 0;
+    _effortElapsedBase[skippedKey] = 0;
+    _effortTargetDuration.remove(skippedKey);
+    _effortAlerted[skippedKey] = false;
 
     // Just advance to next set, don't auto-finish
     setState(() {
@@ -234,7 +319,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           effortId,
           entryIndex,
           'duration',
-          _effortElapsed[effortId] ?? (currentEntry['duration'] as int? ?? 0),
+          _effortElapsed['$effortId-$entryIndex'] ?? (currentEntry['duration'] as int? ?? 0),
         );
         widget.workoutState.updateEntryValue(
           effortId,
@@ -264,7 +349,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           effortId,
           entryIndex,
           'duration',
-          _effortElapsed[effortId] ?? (currentEntry['duration'] as int? ?? 0),
+          _effortElapsed['$effortId-$entryIndex'] ?? (currentEntry['duration'] as int? ?? 0),
         );
         widget.workoutState.updateEntryValue(
           effortId,
@@ -300,6 +385,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 Navigator.of(context).pop();
               }
             },
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              )),
+            ),
             child: const Text('Finish'),
           ),
         ],
@@ -357,6 +447,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         if (metricKey == 'duration') {
           _effortElapsed[timerKey] = entry['duration'] as int? ?? 0;
           _effortElapsedBase[timerKey] = entry['duration'] as int? ?? 0;
+          _effortTargetDuration[timerKey] = entry['duration'] as int? ?? 0;
+          _effortAlerted[timerKey] = false;
+        }
+        if (metricKey == 'round-duration') {
+          _effortTargetDuration[timerKey] = entry['round-duration'] as int? ?? 0;
+          _effortAlerted[timerKey] = false;
         }
       }
     }
@@ -365,14 +461,41 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   void _toggleEffortTimer(String effortId) {
     final entryIndex = _currentSet - 1;
     final timerKey = '$effortId-$entryIndex';
+    final effortKind = _getEffortKind(effortId);
+    final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    final isExpired = targetSeconds > 0 && (_effortElapsed[timerKey] ?? 0) >= targetSeconds;
+
     if (_effortRunning[timerKey] == true) {
       _pauseEffortTimer(effortId, entryIndex);
     } else {
-      if ((_effortElapsed[timerKey] ?? 0) == 0) {
+      if (isExpired) {
+        _effortElapsed[timerKey] = 0;
+        _effortElapsedBase[timerKey] = 0;
+        _effortAlerted[timerKey] = false;
+        _startEffortTimer(effortId, entryIndex);
+      } else if ((_effortElapsed[timerKey] ?? 0) == 0) {
         _startEffortTimer(effortId, entryIndex);
       } else {
         _resumeEffortTimer(effortId, entryIndex);
       }
+    }
+  }
+
+  void _onEffortTick(String effortId, int entryIndex) {
+    final timerKey = '$effortId-$entryIndex';
+    final elapsed = (_effortElapsedBase[timerKey] ?? 0) + (_effortStopwatches[timerKey]?.elapsed.inSeconds ?? 0);
+    final effortKind = _getEffortKind(effortId);
+    final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+
+    if (targetSeconds > 0 && elapsed >= targetSeconds) {
+      _handleEffortTimerExpired(effortId, entryIndex, effortKind, targetSeconds);
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _effortElapsed[timerKey] = elapsed;
+      });
     }
   }
 
@@ -387,20 +510,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     
     // Store the current elapsed value as the base (so timer counts up from this point)
     _effortElapsedBase[timerKey] = _effortElapsed[timerKey] ?? 0;
+
+    final effortKind = _getEffortKind(effortId);
+    _effortTargetDuration[timerKey] = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    _effortAlerted[timerKey] = false;
     
-    _effortStopwatches.putIfAbsent(timerKey, () => Stopwatch())..start();
+    _effortStopwatches.putIfAbsent(timerKey, () => Stopwatch()).start();
 
     _effortTimers[timerKey]?.cancel();
-    _effortTimers[timerKey] =
-        Timer.periodic(_timerUpdateInterval, (_) {
-          setState(() {
-            // Total elapsed = base value + time elapsed since timer started
-            _effortElapsed[timerKey] = (_effortElapsedBase[timerKey] ?? 0) + (_effortStopwatches[timerKey]?.elapsed.inSeconds ?? 0);
-          });
-        });
+    _effortTimers[timerKey] = Timer.periodic(
+      _timerUpdateInterval,
+      (_) => _onEffortTick(effortId, entryIndex),
+    );
   }
 
-  void _pauseEffortTimer(String effortId, int entryIndex) {
+  void _pauseEffortTimer(
+    String effortId,
+    int entryIndex, {
+    String? effortKindOverride,
+  }) {
     final timerKey = '$effortId-$entryIndex';
     _effortRunning[timerKey] = false;
     _effortStopwatches[timerKey]?.stop();
@@ -409,17 +537,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     // Save the elapsed time as the new duration value
     // Only for timed and drill (which show elapsed time counting UP)
     // NOT for round (which shows remaining time counting DOWN)
-    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
-      final exercise = _exercises[_currentExerciseIndex];
-      final effortKind = exercise['effortKind'] as String? ?? 'set';
-      
-      if (effortKind == 'timed' || effortKind == 'drill') {
-        final elapsedTime = _effortElapsed[timerKey] ?? 0;
-        final metricKey = effortKind == 'drill' ? 'duration' : 'duration';
-        _updateMetricValue(effortId, entryIndex, metricKey, elapsedTime);
-      }
-      // For 'round', do NOT save - the countdown value shouldn't overwrite the duration
+    final effortKind = effortKindOverride ?? _getEffortKind(effortId);
+
+    if (effortKind == 'timed' || effortKind == 'drill') {
+      final elapsedTime = _effortElapsed[timerKey] ?? 0;
+      final metricKey = effortKind == 'drill' ? 'duration' : 'duration';
+      _updateMetricValue(effortId, entryIndex, metricKey, elapsedTime);
     }
+    // For 'round', do NOT save - the countdown value shouldn't overwrite the duration
   }
 
   void _resumeEffortTimer(String effortId, int entryIndex) {
@@ -433,20 +558,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _effortStopwatches[timerKey]?.reset();
     _effortStopwatches[timerKey]?.start();
 
+    final effortKind = _getEffortKind(effortId);
+    _effortTargetDuration[timerKey] = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+
     _effortTimers[timerKey]?.cancel();
-    _effortTimers[timerKey] =
-        Timer.periodic(_timerUpdateInterval, (_) {
-          setState(() {
-            // Total elapsed = base value + time elapsed since timer resumed
-            _effortElapsed[timerKey] = (_effortElapsedBase[timerKey] ?? 0) + (_effortStopwatches[timerKey]?.elapsed.inSeconds ?? 0);
-          });
-        });
+    _effortTimers[timerKey] = Timer.periodic(
+      _timerUpdateInterval,
+      (_) => _onEffortTick(effortId, entryIndex),
+    );
   }
 
   void _jumpToSet(int setNumber) {
     setState(() {
       _currentSet = setNumber;
     });
+
+    if (_exercises.isEmpty || _currentExerciseIndex >= _exercises.length) return;
+    final exercise = _exercises[_currentExerciseIndex];
+    final effortId = exercise['id'] as String;
+    _resetEffortAlertState(effortId, _currentSet - 1);
   }
 
   void _switchExercise(int delta) {
@@ -459,7 +589,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     });
   }
 
-  Future<void> _addExercise() async {
+  Future<void> _addExercise({String? segmentId}) async {
     final modality = widget.workoutState.currentSession?.modality;
     
     final selectedExercise = await showDialog<Exercise>(
@@ -475,12 +605,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       
       // If Free Training (null modality), show metric chooser
       if (modality == null) {
-        chosenMetric = await showDialog<String>(
-          context: context,
-          builder: (context) => MetricChooserDialog(exercise: selectedExercise),
-        );
-        
-        if (chosenMetric == null) return; // User cancelled metric selection
+        // If exercise has only one capability, auto-select it
+        final deduped = _deduplicateCapabilities(selectedExercise.capabilities);
+        if (deduped.length == 1) {
+          chosenMetric = deduped.first;
+        } else {
+          chosenMetric = await showDialog<String>(
+            context: context,
+            builder: (context) => MetricChooserDialog(exercise: selectedExercise),
+          );
+          
+          if (chosenMetric == null) return; // User cancelled metric selection
+        }
       }
       
       String effortId = '';
@@ -488,6 +624,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         effortId = await widget.workoutState.addExerciseToSession(
           selectedExercise,
           chosenMetric: chosenMetric,
+          segmentId: segmentId,
         );
       } catch (e) {
         if (mounted) {
@@ -513,9 +650,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   void _tick() {
-    final elapsed = _stopwatch.elapsed;
-    final mm = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final ss = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+    // Calculate elapsed time from session start time (not from a local stopwatch)
+    // This ensures the timer doesn't reset when navigating away and back
+    final session = widget.workoutState.currentSession;
+    if (session == null) return;
+    
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - session.startedAtMs;
+    final elapsedSeconds = (elapsedMs / 1000).toInt();
+    final mm = (elapsedSeconds ~/ 60).remainder(60).toString().padLeft(2, '0');
+    final ss = (elapsedSeconds % 60).toString().padLeft(2, '0');
     if (mounted) {
       setState(() {
         _elapsedFormatted = '$mm:$ss';
@@ -544,10 +687,124 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _restStopwatch?.stop();
   }
 
+  Future<void> _showFinishSessionDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Finish Workout?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You have completed:',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '• ${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '• Elapsed time: $_elapsedFormatted',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'This action will save and close the workout session.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              )),
+            ),
+            child: const Text('Finish'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _finishSession();
+    }
+  }
+
+  Future<void> _finishSession() async {
+    try {
+      // Show loading indicator
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Call state method to end session (goes through repository interface)
+      await widget.workoutState.endSession();
+      
+      // Clear the session from state so it's no longer accessible
+      widget.workoutState.clearSession();
+
+      if (!mounted) return;
+
+      // Close loading dialog
+      Navigator.pop(context);
+
+      // Navigate back to home (pop until first route)
+      Navigator.of(context).popUntil((route) => route.isFirst);
+
+      // Show success feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Workout session saved successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      // Close loading dialog if open
+      Navigator.pop(context);
+
+      // Show error feedback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saving session: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _ticker?.cancel();
-    _stopwatch.stop();
     // Cancel all effort timers
     for (final timer in _effortTimers.values) {
       timer?.cancel();
@@ -567,50 +824,54 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: const Center(
-          child: CircularProgressIndicator(),
+        backgroundColor: Colors.transparent,
+        body: const OmniGradientBackground(
+          child: Center(
+            child: CircularProgressIndicator(),
+          ),
         ),
       );
     }
 
     if (_hasError) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 64,
-                  color: theme.colorScheme.error,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Error Loading Session',
-                  style: theme.textTheme.headlineMedium?.copyWith(
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
                     color: theme.colorScheme.error,
                   ),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    _errorMessage,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withAlpha((0.7 * 255).round()),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error Loading Session',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: theme.colorScheme.error,
                     ),
                   ),
-                ),
-                const SizedBox(height: 32),
-                FilledButton(
-                  onPressed: _loadExercises,
-                  child: const Text('Retry'),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      _errorMessage,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: OmniTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    onPressed: _loadExercises,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -619,30 +880,34 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     if (_hasError) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Error Loading Session',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    color: theme.colorScheme.error,
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Error Loading Session',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _errorMessage,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 32),
-                FilledButton(
-                  onPressed: _loadExercises,
-                  child: const Text('Retry'),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Text(
+                    _errorMessage,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: OmniTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    onPressed: _loadExercises,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -655,22 +920,26 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     if (_exercises.isEmpty) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'No exercises yet',
-                  style: theme.textTheme.headlineMedium,
-                ),
-                const SizedBox(height: 32),
-                FilledButton(
-                  onPressed: _addExercise,
-                  child: const Text('Add First Exercise'),
-                ),
-              ],
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: SafeArea(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'No exercises yet',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: OmniTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton(
+                    onPressed: _addExercise,
+                    child: const Text('Add First Exercise'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -685,136 +954,133 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         : (effortKind == 'set' ? {'reps': 0, 'weight': 0.0} : {'duration': 0});
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          // Left swipe = skip set; right swipe = previous set (only in detail view)
-          if (details.primaryVelocity! > 500) {
-            // Right swipe with sufficient velocity = previous set
-            _previousSet();
-          } else if (details.primaryVelocity! < -500) {
-            // Left swipe with sufficient velocity = skip set
-            _skipSet();
-          }
-        },
-        onVerticalDragEnd: (details) {
-          // Up swipe = next exercise; down swipe = previous exercise
-          if (details.primaryVelocity! < -300) {
-            // Swipe up = next exercise
-            _switchExercise(1);
-          } else if (details.primaryVelocity! > 300) {
-            // Swipe down = previous exercise
-            _switchExercise(-1);
-          }
-        },
-        child: Stack(
-          children: [
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(theme),
+      backgroundColor: Colors.transparent,
+      body: OmniGradientBackground(
+        child: GestureDetector(
+          onHorizontalDragEnd: (details) {
+            // Left swipe = skip set; right swipe = previous set (only in detail view)
+            if (details.primaryVelocity! > 200) {
+              // Right swipe with sufficient velocity = previous set
+              _skipSet();
+            } else if (details.primaryVelocity! < -200) {
+              // Left swipe with sufficient velocity = skip set
+              _previousSet();
+            }
+          },
+          onVerticalDragEnd: (details) {
+            // Up swipe = next exercise; down swipe = previous exercise
+            if (details.primaryVelocity! < -200) {
+              // Swipe up = next exercise
+              _switchExercise(1);
+            } else if (details.primaryVelocity! > 200) {
+              // Swipe down = previous exercise
+              _switchExercise(-1);
+            }
+          },
+          child: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildHeader(theme),
 
-                  const SizedBox(height: 48),
+                    const SizedBox(height: 0),
 
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildMetricWidget(exercise, currentEntry, effortKind, theme),
-                            const SizedBox(height: 24),
-                            _buildSetProgress(entries.length, effortKind, theme),
-                            const SizedBox(height: 16),
-                            _buildPreviousSetStats(exercise, effortKind, theme),
-                            const SizedBox(height: 16),
-                            _buildSetIndicator(entries.length, effortKind, theme),
-                            const SizedBox(height: 24),
-                          ],
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildMetricWidget(exercise, currentEntry, effortKind, theme),
+                              const SizedBox(height: 24),
+                              _buildSetProgress(entries.length, effortKind, theme),
+                              const SizedBox(height: 16),
+                              _buildPreviousSetStats(exercise, effortKind, theme),
+                              const SizedBox(height: 16),
+                              _buildSetIndicator(entries.length, effortKind, theme),
+                              const SizedBox(height: 24),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
 
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _buildSetControls(theme),
-                  ),
-
-                  const SizedBox(height: 32),
-                ],
-              ),
-            ),
-            // Rest timer overlay in lower half (hide when exercise timer is running)
-            if (_restElapsedSeconds > 0 && !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ?? false))
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 125,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: theme.colorScheme.primary.withAlpha((0.3 * 255).round()),
-                          blurRadius: 12,
-                          spreadRadius: 2,
-                        ),
-                      ],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _buildSetControls(theme),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.self_improvement,
-                          size: 24,
-                          color: theme.colorScheme.onPrimaryContainer,
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _restFormatted,
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                color: theme.colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 20,
+
+                    const SizedBox(height: 32),
+                  ],
+                ),
+              ),
+              // Rest timer overlay in lower half (hide when exercise timer is running)
+              if (_restElapsedSeconds > 0 && !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ?? false))
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 110,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.self_improvement,
+                            size: 24,
+                            color: theme.colorScheme.onPrimary,
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _restFormatted,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  color: theme.colorScheme.onPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            Text(
-                              'Rest',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onPrimaryContainer,
-                                letterSpacing: 2,
-                                fontSize: 20,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildHeader(ThemeData theme) {
+    final currentSegmentName = !_showListView && _exercises.isNotEmpty
+        ? _exercises[_currentExerciseIndex]['segmentName'] as String?
+        : null;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
         children: [
           IconButton(
-            icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
+            icon: const Icon(Icons.arrow_back, color: OmniTheme.textPrimary),
             onPressed: () {
               // If in detail view, return to list view
               // If in list view, pop navigation (exit to home)
@@ -836,15 +1102,26 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   _showListView ? 'Exercises' : (_exercises.isNotEmpty ? _exercises[_currentExerciseIndex]['name'] as String : ''),
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w600,
+                    color: OmniTheme.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   _showListView ? '${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}' : (_exercises.isNotEmpty ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}' : ''),
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                    color: OmniTheme.textSecondary,
                   ),
                 ),
+                if (!_showListView && (currentSegmentName?.isNotEmpty ?? false))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      currentSegmentName!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: OmniTheme.textSecondary,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -853,150 +1130,432 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
-  Widget _buildListView(ThemeData theme) {
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      body: Stack(
+  Widget _buildSegmentHeader(String name, ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Text(
+        name,
+        style: theme.textTheme.titleSmall?.copyWith(
+          color: OmniTheme.textSecondary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSegmentHeaderRow(
+    SessionSegment segment,
+    ThemeData theme, {
+    required bool showAddButton,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Row(
         children: [
-          SafeArea(
-            child: Column(
-              children: [
-                _buildHeader(theme),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.onSurface.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.timer, size: 16, color: theme.colorScheme.onSurface.withOpacity(0.9)),
-                            const SizedBox(width: 8),
-                            Text(_elapsedFormatted, style: theme.textTheme.titleMedium),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: _exercises.isEmpty
-                      ? Center(child: Text('No exercises', style: theme.textTheme.headlineSmall))
-                      : ListView.separated(
-                          itemCount: _exercises.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final ex = _exercises[index];
-                            final entries = ex['entries'] as List<dynamic>? ?? [];
-                            final effortKind = ex['effortKind'] as String? ?? 'set';
-                            
-                            String subtitle;
-                            switch (effortKind) {
-                              case 'set':
-                                subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
-                                break;
-                              case 'timed':
-                                final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
-                                final minutes = totalDuration ~/ 60;
-                                final seconds = totalDuration % 60;
-                                subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
-                                break;
-                              case 'round':
-                                subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
-                                break;
-                              case 'drill':
-                                subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
-                                break;
-                              default:
-                                subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
-                            }
-                            
-                            return ListTile(
-                              title: Text(ex['name'] as String),
-                              subtitle: Text(subtitle),
-                              onTap: () {
-                                setState(() {
-                                  _currentExerciseIndex = index;
-                                  _currentSet = 1;
-                                  _showListView = false;
-                                });
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
+          Expanded(
+            child: Text(
+              segment.name ?? 'Block ${segment.orderIndex + 1}',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: OmniTheme.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          // Rest timer overlay (hide when exercise timer is running)
-          if (_restElapsedSeconds > 0 && !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ?? false))
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 125,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.colorScheme.primary.withAlpha((0.3 * 255).round()),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.self_improvement,
-                        size: 24,
-                        color: theme.colorScheme.onPrimaryContainer,
-                      ),
-                      const SizedBox(width: 12),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _restFormatted,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              color: theme.colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 20,
-                            ),
-                          ),
-                          Text(
-                            'Rest',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onPrimaryContainer,
-                              letterSpacing: 2,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+          if (showAddButton)
+            OutlinedButton.icon(
+              onPressed: () => _addExercise(segmentId: segment.id),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Exercise'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                side: BorderSide(color: theme.colorScheme.primary),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
             ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addExercise,
-        child: const Icon(Icons.add),
+    );
+  }
+
+  String _buildExerciseSubtitle(Map<String, dynamic> exercise) {
+    final entries = exercise['entries'] as List<dynamic>? ?? [];
+    final effortKind = exercise['effortKind'] as String? ?? 'set';
+
+    switch (effortKind) {
+      case 'set':
+        return '${entries.length} set${entries.length != 1 ? 's' : ''}';
+      case 'timed':
+        final totalDuration = entries.fold<int>(
+          0,
+          (sum, e) => sum + ((e['duration'] as int?) ?? 0),
+        );
+        final minutes = totalDuration ~/ 60;
+        final seconds = totalDuration % 60;
+        return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+      case 'round':
+        return '${entries.length} round${entries.length != 1 ? 's' : ''}';
+      case 'drill':
+        return '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+      default:
+        return '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
+    }
+  }
+
+  Widget _buildExerciseTile(Map<String, dynamic> exercise, ThemeData theme) {
+    final subtitle = _buildExerciseSubtitle(exercise);
+    final effortId = exercise['id'] as String;
+    final idx = _exercises.indexWhere((e) => e['id'] == effortId);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: OmniTheme.surfaceColor.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: OmniTheme.surfaceBorderColor),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      child: ListTile(
+        title: Text(
+          exercise['name'] as String,
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: OmniTheme.textPrimary,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: OmniTheme.textSecondary,
+          ),
+        ),
+        onTap: idx == -1
+            ? null
+            : () {
+                setState(() {
+                  _currentExerciseIndex = idx;
+                  _currentSet = 1;
+                  _showListView = false;
+                });
+              },
+      ),
+    );
+  }
+
+  Widget _buildListView(ThemeData theme) {
+    final segments = widget.workoutState.segments.toList()
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    final showPerBlockAdd = widget.workoutState.currentSession?.intent == 'routine' &&
+        segments.length > 1;
+
+    if (_exercises.isEmpty && !showPerBlockAdd) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: Stack(
+            children: [
+              // Full screen center for text
+              Center(
+                child: Text(
+                  'No exercises',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: OmniTheme.textPrimary,
+                  ),
+                ),
+              ),
+              // Header and controls overlay
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildHeader(theme),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: OmniTheme.surfaceColor.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Session Time',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    color: OmniTheme.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _elapsedFormatted,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        color: OmniTheme.textPrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Spacer(),
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 10,
+                bottom: 110,
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: FilledButton(
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      onPressed: _addExercise,
+                      child: const Icon(Icons.add),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 10,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: FilledButton(
+                        onPressed: _showFinishSessionDialog,
+                        style: ButtonStyle(
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                        child: const Text('Finish Workout'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: OmniGradientBackground(
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(theme),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: OmniTheme.surfaceColor.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Session Time',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: OmniTheme.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _elapsedFormatted,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      color: OmniTheme.textPrimary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.only(bottom: 140),
+                      children: [
+                        if (showPerBlockAdd)
+                          for (final segment in segments) ...[
+                            _buildSegmentHeaderRow(
+                              segment,
+                              theme,
+                              showAddButton: true,
+                            ),
+                            if (_exercises.where((e) => e['segmentId'] == segment.id).isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                                child: Text(
+                                  'No exercises in this block yet.',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: OmniTheme.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            for (final ex in _exercises.where((e) => e['segmentId'] == segment.id)) ...[
+                              _buildExerciseTile(ex, theme),
+                              const SizedBox(height: 8),
+                            ],
+                          ]
+                        else
+                          for (int index = 0; index < _exercises.length; index++) ...[
+                            if (index == 0 || _exercises[index]['segmentId'] != _exercises[index - 1]['segmentId'])
+                              _buildSegmentHeader(
+                                _exercises[index]['segmentName'] as String? ?? 'Block',
+                                theme,
+                              ),
+                            _buildExerciseTile(_exercises[index], theme),
+                            const SizedBox(height: 8),
+                          ],
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Rest timer overlay (hide when exercise timer is running)
+            if (_restElapsedSeconds > 0 && !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ?? false))
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 110,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withOpacity(0.8),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.self_improvement,
+                          size: 24,
+                          color: theme.colorScheme.onPrimary,
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _restFormatted,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                color: theme.colorScheme.onPrimary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            if (!showPerBlockAdd)
+              Positioned(
+                right: 10,
+                bottom: 110,
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: FilledButton(
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      onPressed: () => _addExercise(),
+                      child: const Icon(Icons.add),
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 10,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: FilledButton(
+                      onPressed: _showFinishSessionDialog,
+                      style: ButtonStyle(
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      child: const Text('Finish Workout'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1017,13 +1576,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 20),
             InlineMetricEditor(
               metricType: 'reps',
               currentValue: reps,
               unitLabel: 'REPS',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'reps', value),
             ),
-            const SizedBox(height: 16),
             InlineMetricEditor(
               metricType: 'weight',
               currentValue: weight,
@@ -1036,11 +1595,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       case 'timed':
         final duration = entryData['duration'] as int? ?? 0;
         final timerKey = '$effortId-$entryIndex';
-        final displayValue = (_effortRunning[timerKey] ?? false) ? (_effortElapsed[timerKey] ?? 0) : duration;
+        final elapsed = _effortElapsed[timerKey] ?? 0;
+        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+        final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
+        final displayValue = (_effortRunning[timerKey] ?? false)
+            ? elapsed
+            : (isExpired ? targetSeconds : duration);
         
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 48),
             InlineMetricEditor(
               metricType: 'duration',
               currentValue: displayValue,
@@ -1052,11 +1617,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED',
+                  isExpired
+                      ? 'DONE!'
+                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: _effortRunning[timerKey] ?? false
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                    color: isExpired
+                        ? theme.colorScheme.error
+                        : (_effortRunning[timerKey] ?? false
+                            ? theme.colorScheme.primary.withOpacity(0.8)
+                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
                 ),
@@ -1070,38 +1639,45 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final roundDuration = entryData['round-duration'] as int? ?? 180;
         final timerKey = '$effortId-$entryIndex';
         final elapsed = _effortElapsed[timerKey] ?? 0;
-        final remaining = (roundDuration - elapsed).clamp(0, roundDuration);
+        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+        final effectiveTarget = targetSeconds > 0 ? targetSeconds : roundDuration;
+        final remaining = (effectiveTarget - elapsed).clamp(0, effectiveTarget);
+        final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
         
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 48),
             // Round count (read-only, controlled by add/delete buttons)
             Text(
               'ROUND $rounds',
               style: theme.textTheme.displayLarge?.copyWith(
-                fontSize: 72,
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
+                fontSize: theme.textTheme.displayMedium?.fontSize
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 15),
             // Scrollable round duration control
             InlineMetricEditor(
               metricType: 'duration',
-              currentValue: _effortRunning[timerKey] ?? false ? remaining : roundDuration,
+              currentValue: _effortRunning[timerKey] ?? false ? remaining : (isExpired ? 0 : roundDuration),
               unitLabel: _effortRunning[timerKey] ?? false ? 'TIME REMAINING' : 'DURATION',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'round-duration', value),
             ),
-            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED',
+                  isExpired
+                      ? 'TIME!'
+                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: _effortRunning[timerKey] ?? false
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                    color: isExpired
+                        ? theme.colorScheme.error
+                        : (_effortRunning[timerKey] ?? false
+                            ? theme.colorScheme.primary.withOpacity(0.8)
+                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
                 ),
@@ -1114,7 +1690,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final duration = entryData['duration'] as int? ?? 0;
         final rpe = entryData['rpe'] as int? ?? 5;
         final timerKey = '$effortId-$entryIndex';
-        final displayValue = (_effortRunning[timerKey] ?? false) ? (_effortElapsed[timerKey] ?? 0) : duration;
+        final elapsed = _effortElapsed[timerKey] ?? 0;
+        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+        final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
+        final displayValue = (_effortRunning[timerKey] ?? false)
+            ? elapsed
+            : (isExpired ? targetSeconds : duration);
         
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -1125,23 +1706,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               unitLabel: _effortRunning[timerKey] ?? false ? 'ELAPSED' : 'HOLD TIME',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'duration', value),
             ),
-            const SizedBox(height: 16),
             InlineMetricEditor(
               metricType: 'rpe',
               currentValue: rpe,
               unitLabel: 'RPE',
               onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'rpe', value),
             ),
-            const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED',
+                  isExpired
+                      ? 'DONE!'
+                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: _effortRunning[timerKey] ?? false
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                    color: isExpired
+                        ? theme.colorScheme.error
+                        : (_effortRunning[timerKey] ?? false
+                            ? theme.colorScheme.primary.withOpacity(0.8)
+                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
                     letterSpacing: 1,
                   ),
                 ),
@@ -1269,7 +1852,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: isCompleted && !isSkipped
-                      ? theme.colorScheme.primary
+                      ? theme.colorScheme.primary.withOpacity(0.8)
                       : isCurrent
                         ? theme.colorScheme.primary.withAlpha((0.5 * 255).round())
                         : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
@@ -1367,7 +1950,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         child: Material(
           shape: const CircleBorder(),
           color: isEnabled
-              ? (isPrimary ? theme.colorScheme.primary : theme.colorScheme.onSurface.withAlpha((0.1 * 255).round()))
+              ? (isPrimary ? theme.colorScheme.primary.withOpacity(0.8) : theme.colorScheme.onSurface.withAlpha((0.1 * 255).round()))
               : theme.colorScheme.onSurface.withAlpha((0.05 * 255).round()),
           child: InkWell(
             onTap: onPressed,
@@ -1408,4 +1991,21 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       ),
     );
   }
+}
+
+/// Deduplicate reps/sets/load capabilities into a single reps option
+List<String> _deduplicateCapabilities(List<String> capabilities) {
+  final strSet = capabilities.toSet();
+  final repsLoadSetVariants = {'reps', 'sets', 'load'};
+  
+  // Remove sets and load if any of the reps/sets/load variants exist
+  if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+    strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
+    // Ensure 'reps' is included as the canonical value
+    if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+      strSet.add('reps');
+    }
+  }
+  
+  return strSet.toList();
 }
