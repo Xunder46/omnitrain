@@ -4,6 +4,8 @@ import '../../data/repositories/workout_repository.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/models/routine_session_manifest.dart';
+import '../../core/models/session_summary.dart';
+import '../../core/constants/effort_defaults.dart';
 import '../../core/utils/observation_grouper.dart';
 import '../../core/utils/exercise_helpers.dart';
 
@@ -38,7 +40,10 @@ class WorkoutState extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasSession => _currentSession != null;
-  bool get hasActiveSession => _currentSession != null && _currentSession!.endedAtMs == null && _efforts.values.any((list) => list.isNotEmpty);
+  bool get hasActiveSession =>
+      _currentSession != null &&
+      _currentSession!.endedAtMs == null &&
+      _efforts.values.any((list) => list.isNotEmpty);
   List<Exercise> get allExercises => List.unmodifiable(_allExercises);
   List<MuscleGroup> get muscleGroups => List.unmodifiable(_muscleGroups);
   List<Discipline> get disciplines => List.unmodifiable(_disciplines);
@@ -132,7 +137,9 @@ class WorkoutState extends ChangeNotifier {
 
     try {
       // Load segments
-      final segments = await _repository.getSessionSegments(_currentSession!.id);
+      final segments = await _repository.getSessionSegments(
+        _currentSession!.id,
+      );
       _segments.clear();
       _segments.addAll(segments);
 
@@ -143,12 +150,17 @@ class WorkoutState extends ChangeNotifier {
 
         // Load observations for each effort
         for (final effort in efforts) {
-          final observations = await _repository.getEffortObservations(effort.id);
+          final observations = await _repository.getEffortObservations(
+            effort.id,
+          );
           _observations[effort.id] = observations;
 
           // Cache exercise if present
-          if (effort.exerciseId != null && !_exerciseCache.containsKey(effort.exerciseId)) {
-            final exercise = await _repository.getExerciseById(effort.exerciseId!);
+          if (effort.exerciseId != null &&
+              !_exerciseCache.containsKey(effort.exerciseId)) {
+            final exercise = await _repository.getExerciseById(
+              effort.exerciseId!,
+            );
             if (exercise != null) {
               _exerciseCache[effort.exerciseId!] = exercise;
             }
@@ -167,9 +179,11 @@ class WorkoutState extends ChangeNotifier {
   /// Populate the current session from a routine session manifest
   /// This method consumes a RoutineSessionManifest (returned by RoutineSessionService)
   /// and populates the current session with all exercises, targets, and rest timers.
-  /// 
+  ///
   /// Prerequisites: Must have an active session (call createNewSession first).
-  Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) async {
+  Future<void> populateSessionFromManifest(
+    RoutineSessionManifest manifest,
+  ) async {
     if (_currentSession == null) {
       throw Exception('No active session to populate');
     }
@@ -223,7 +237,8 @@ class WorkoutState extends ChangeNotifier {
           // Apply targets from template
           for (final target in targets) {
             final entryIndex = target.setIndex ?? 0;
-            final metricKey = MetricIds.metricIdToKey[target.metricId] ?? target.metricId;
+            final metricKey =
+                MetricIds.metricIdToKey[target.metricId] ?? target.metricId;
 
             // Get value from target
             dynamic value;
@@ -240,7 +255,9 @@ class WorkoutState extends ChangeNotifier {
             if (value == null) continue;
 
             // Convert to appropriate type
-            if (metricKey == 'reps' || metricKey == 'rounds' || metricKey == 'duration') {
+            if (metricKey == 'reps' ||
+                metricKey == 'rounds' ||
+                metricKey == 'duration') {
               value = value is int ? value : (value as double).toInt();
             } else {
               value = value is double ? value : (value as int).toDouble();
@@ -289,7 +306,8 @@ class WorkoutState extends ChangeNotifier {
       String effortKind;
       if (effortKindOverride != null) {
         effortKind = effortKindOverride;
-      } else if (_currentModalityConfig != null && _currentSession?.modality != null) {
+      } else if (_currentModalityConfig != null &&
+          _currentSession?.modality != null) {
         // Use modality config
         effortKind = _currentModalityConfig!.effortKind;
       } else if (chosenMetric != null) {
@@ -333,14 +351,20 @@ class WorkoutState extends ChangeNotifier {
   /// Add an entry (set/round/hold/etc.) to an effort
   /// Creates appropriate observations based on effort kind
   /// [previousValues] - Optional map of metric values to pre-fill from previous entry
-  Future<void> addEntry(String effortId, {Map<String, dynamic>? previousValues}) async {
+  Future<void> addEntry(
+    String effortId, {
+    Map<String, dynamic>? previousValues,
+  }) async {
     _clearError();
 
     try {
       // Find the effort to get its kind
       SegmentEffort? effort;
       for (final effortList in _efforts.values) {
-        effort = effortList.firstWhere((e) => e.id == effortId, orElse: () => effortList.first);
+        effort = effortList.firstWhere(
+          (e) => e.id == effortId,
+          orElse: () => effortList.first,
+        );
         if (effort.id == effortId) break;
       }
       if (effort == null) {
@@ -349,108 +373,128 @@ class WorkoutState extends ChangeNotifier {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final entryIndex = (_observations[effortId]?.length ?? 0) ~/ 2; // Rough index for grouping
+      final entryIndex =
+          (_observations[effortId]?.length ?? 0) ~/
+          2; // Rough index for grouping
 
       final observations = <EffortObservation>[];
 
       // Create observations based on effort kind
       switch (effort.effortKind) {
         case 'set': // Resistance training
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-reps',
-            effortId: effortId,
-            metricId: MetricIds.reps,
-            unitId: MetricIds.unitReps,
-            valueInt: (previousValues?['reps'] as int?) ?? 10,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-weight',
-            effortId: effortId,
-            metricId: MetricIds.weight,
-            unitId: MetricIds.unitKg,
-            valueReal: (previousValues?['weight'] as double?) ?? 0.0,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-reps',
+              effortId: effortId,
+              metricId: MetricIds.reps,
+              unitId: MetricIds.unitReps,
+              valueInt: (previousValues?['reps'] as int?) ?? 10,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-weight',
+              effortId: effortId,
+              metricId: MetricIds.weight,
+              unitId: MetricIds.unitKg,
+              valueReal: (previousValues?['weight'] as double?) ?? 0.0,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
           break;
 
         case 'timed': // Cardio/endurance
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-duration',
-            effortId: effortId,
-            metricId: MetricIds.duration,
-            unitId: MetricIds.unitSeconds,
-            valueInt: (previousValues?['duration'] as int?) ?? 0,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-duration',
+              effortId: effortId,
+              metricId: MetricIds.duration,
+              unitId: MetricIds.unitSeconds,
+              valueInt: (previousValues?['duration'] as int?) ?? 0,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
           // Optional distance
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-distance',
-            effortId: effortId,
-            metricId: MetricIds.distance,
-            unitId: MetricIds.unitMeters,
-            valueReal: (previousValues?['distance'] as double?) ?? 0.0,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-distance',
+              effortId: effortId,
+              metricId: MetricIds.distance,
+              unitId: MetricIds.unitMeters,
+              valueReal: (previousValues?['distance'] as double?) ?? 0.0,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
           break;
 
         case 'round': // Martial arts / Sports
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-rounds',
-            effortId: effortId,
-            metricId: MetricIds.rounds,
-            unitId: MetricIds.unitRounds,
-            valueInt: (previousValues?['rounds'] as int?) ?? 1,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-round-duration',
-            effortId: effortId,
-            metricId: MetricIds.roundDuration,
-            unitId: MetricIds.unitSeconds,
-            valueInt: (previousValues?['round-duration'] as int?) ?? 180,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-rounds',
+              effortId: effortId,
+              metricId: MetricIds.rounds,
+              unitId: MetricIds.unitRounds,
+              valueInt: (previousValues?['rounds'] as int?) ?? 1,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-round-duration',
+              effortId: effortId,
+              metricId: MetricIds.roundDuration,
+              unitId: MetricIds.unitSeconds,
+              valueInt: (previousValues?['round-duration'] as int?) ?? 180,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
           break;
 
         case 'drill': // Isometric / holds
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-duration',
-            effortId: effortId,
-            metricId: MetricIds.duration,
-            unitId: MetricIds.unitSeconds,
-            valueInt: (previousValues?['duration'] as int?) ?? 0,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-duration',
+              effortId: effortId,
+              metricId: MetricIds.duration,
+              unitId: MetricIds.unitSeconds,
+              valueInt: (previousValues?['duration'] as int?) ?? 0,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
           // Optional RPE
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-rpe',
-            effortId: effortId,
-            metricId: MetricIds.rpe,
-            valueInt: (previousValues?['rpe'] as int?) ?? 5,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-rpe',
+              effortId: effortId,
+              metricId: MetricIds.rpe,
+              valueInt: (previousValues?['rpe'] as int?) ?? 5,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
           break;
 
         default:
           // Fallback to set-based
-          observations.add(EffortObservation(
-            id: 'obs-$effortId-$entryIndex-reps',
-            effortId: effortId,
-            metricId: MetricIds.reps,
-            unitId: MetricIds.unitReps,
-            valueInt: 10,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          observations.add(
+            EffortObservation(
+              id: 'obs-$effortId-$entryIndex-reps',
+              effortId: effortId,
+              metricId: MetricIds.reps,
+              unitId: MetricIds.unitReps,
+              valueInt: 10,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
       }
 
       // Save all observations
@@ -535,9 +579,17 @@ class WorkoutState extends ChangeNotifier {
       // Find the effort to determine metrics per entry
       SegmentEffort? effort;
       for (final effortList in _efforts.values) {
-        effort = effortList.firstWhere((e) => e.id == effortId, orElse: () => SegmentEffort(
-          id: '', segmentId: '', orderIndex: 0, effortKind: '', createdAtMs: 0, updatedAtMs: 0,
-        ));
+        effort = effortList.firstWhere(
+          (e) => e.id == effortId,
+          orElse: () => SegmentEffort(
+            id: '',
+            segmentId: '',
+            orderIndex: 0,
+            effortKind: '',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+        );
         if (effort.id == effortId) break;
       }
       if (effort == null) return;
@@ -560,7 +612,10 @@ class WorkoutState extends ChangeNotifier {
       }
 
       // Remove from local cache
-      observations.removeRange(startIndex, endIndex.clamp(0, observations.length));
+      observations.removeRange(
+        startIndex,
+        endIndex.clamp(0, observations.length),
+      );
 
       notifyListeners();
     } catch (e) {
@@ -641,6 +696,242 @@ class WorkoutState extends ChangeNotifier {
     } catch (e) {
       _setError('Failed to end session: $e');
     }
+  }
+
+  /// Update the current session note and persist immediately
+  Future<void> updateSessionNote(String note) async {
+    if (_currentSession == null) return;
+
+    _clearError();
+
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updatedSession = TrainingSession(
+        id: _currentSession!.id,
+        ownerUserId: _currentSession!.ownerUserId,
+        routineTemplateId: _currentSession!.routineTemplateId,
+        startedAtMs: _currentSession!.startedAtMs,
+        endedAtMs: _currentSession!.endedAtMs,
+        title: _currentSession!.title,
+        note: note,
+        locationText: _currentSession!.locationText,
+        modality: _currentSession!.modality,
+        intent: _currentSession!.intent,
+        perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        createdAtMs: _currentSession!.createdAtMs,
+        updatedAtMs: now,
+      );
+
+      await _repository.updateSession(updatedSession);
+      _currentSession = updatedSession;
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update session note: $e');
+    }
+  }
+
+  /// Compute summary metrics from the current session state
+  SessionSummary computeSessionSummary() {
+    if (_currentSession == null) {
+      throw Exception('No active session to summarize');
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final endedAt = _currentSession!.endedAtMs ?? now;
+    final durationMs = endedAt - _currentSession!.startedAtMs;
+
+    double totalVolume = 0;
+    int totalSets = 0;
+    final exerciseSummaries = <ExerciseSummary>[];
+
+    for (final segment in _segments) {
+      final segmentEfforts = _efforts[segment.id] ?? [];
+
+      for (final effort in segmentEfforts) {
+        final exerciseId = effort.exerciseId ?? 'unknown';
+        final exerciseName =
+            _exerciseCache[exerciseId]?.name ?? 'Unknown Exercise';
+        final observations = _observations[effort.id] ?? [];
+        final grouped = _groupObservationsByEntry(observations);
+
+        int setsCompleted = 0;
+        double? bestWeight;
+
+        if (effort.effortKind == 'set') {
+          for (final entry in grouped.values) {
+            final repsObs = entry.firstWhere(
+              (o) => o.metricId == MetricIds.reps,
+              orElse: () => EffortObservation(
+                id: '',
+                effortId: '',
+                metricId: MetricIds.reps,
+                createdAtMs: 0,
+                updatedAtMs: 0,
+              ),
+            );
+            final weightObs = entry.firstWhere(
+              (o) => o.metricId == MetricIds.weight,
+              orElse: () => EffortObservation(
+                id: '',
+                effortId: '',
+                metricId: MetricIds.weight,
+                createdAtMs: 0,
+                updatedAtMs: 0,
+              ),
+            );
+
+            final reps = repsObs.id.isEmpty
+                ? null
+                : (repsObs.valueInt ?? repsObs.valueReal?.toInt());
+            final weight = weightObs.id.isEmpty
+                ? null
+                : (weightObs.valueReal ?? weightObs.valueInt?.toDouble());
+
+            if (reps != null) {
+              setsCompleted += 1;
+            }
+
+            if (reps != null && weight != null) {
+              totalVolume += reps * weight;
+            }
+
+            if (weight != null) {
+              if (bestWeight == null || weight > bestWeight) {
+                bestWeight = weight;
+              }
+            }
+          }
+
+          totalSets += setsCompleted;
+        } else {
+          setsCompleted = grouped.length;
+        }
+
+        exerciseSummaries.add(
+          ExerciseSummary(
+            exerciseId: exerciseId,
+            name: exerciseName,
+            effortKind: effort.effortKind,
+            setsCompleted: setsCompleted,
+            bestWeight: bestWeight,
+          ),
+        );
+      }
+    }
+
+    final title =
+        _currentSession!.title ??
+        (_currentSession!.modality == null
+            ? 'Free Training'
+            : _currentSession!.modality!);
+
+    return SessionSummary(
+      sessionId: _currentSession!.id,
+      title: title,
+      startedAtMs: _currentSession!.startedAtMs,
+      endedAtMs: _currentSession!.endedAtMs,
+      totalDurationMs: durationMs,
+      totalVolume: totalVolume,
+      totalSets: totalSets,
+      exercises: exerciseSummaries,
+    );
+  }
+
+  /// Build a routine draft from the current session exercises
+  List<SessionTemplateExercise> buildTemplateDraftExercises() {
+    final drafts = <SessionTemplateExercise>[];
+
+    for (final segment in _segments) {
+      final segmentEfforts = _efforts[segment.id] ?? [];
+
+      for (final effort in segmentEfforts) {
+        final exerciseId = effort.exerciseId ?? 'unknown';
+        final exerciseName =
+            _exerciseCache[exerciseId]?.name ?? 'Unknown Exercise';
+        final observations = _observations[effort.id] ?? [];
+
+        final targets = _buildTemplateTargetsFromObservations(
+          observations,
+          effort.effortKind,
+        );
+
+        drafts.add(
+          SessionTemplateExercise(
+            exerciseId: exerciseId,
+            name: exerciseName,
+            effortKind: effort.effortKind,
+            targets: targets,
+          ),
+        );
+      }
+    }
+
+    return drafts;
+  }
+
+  Future<List<TrainingSession>> getSessionsByDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    return _repository.getSessionsByDateRange(fromMs, toMs);
+  }
+
+  List<TemplateTargetDraft> _buildTemplateTargetsFromObservations(
+    List<EffortObservation> observations,
+    String effortKind,
+  ) {
+    if (observations.isEmpty) {
+      final defaults = EffortDefaults.getDefaultTargets(effortKind);
+      return defaults.entries
+          .map(
+            (entry) => TemplateTargetDraft(
+              metricId: entry.key,
+              setIndex: 0,
+              unitId: null,
+              valueReal: entry.value is double ? entry.value as double : null,
+              valueInt: entry.value is int ? entry.value as int : null,
+              valueText: entry.value is String ? entry.value as String : null,
+            ),
+          )
+          .toList();
+    }
+
+    final grouped = _groupObservationsByEntry(observations);
+    final targets = <TemplateTargetDraft>[];
+
+    for (final entry in grouped.entries) {
+      for (final observation in entry.value) {
+        targets.add(
+          TemplateTargetDraft(
+            metricId: observation.metricId,
+            setIndex: entry.key,
+            unitId: observation.unitId,
+            valueReal: observation.valueReal,
+            valueInt: observation.valueInt,
+            valueText: observation.valueText,
+          ),
+        );
+      }
+    }
+
+    return targets;
+  }
+
+  Map<int, List<EffortObservation>> _groupObservationsByEntry(
+    List<EffortObservation> observations,
+  ) {
+    final grouped = <int, List<EffortObservation>>{};
+    for (final observation in observations) {
+      final entryIndex = _parseEntryIndex(observation.id) ?? 0;
+      grouped.putIfAbsent(entryIndex, () => []).add(observation);
+    }
+    return grouped;
+  }
+
+  int? _parseEntryIndex(String observationId) {
+    final parts = observationId.split('-');
+    if (parts.length < 3) return null;
+    return int.tryParse(parts[parts.length - 2]);
   }
 
   /// Get exercises with their entries for display (modality-aware)
@@ -724,7 +1015,10 @@ class WorkoutState extends ChangeNotifier {
 
       final exerciseWithCaps = exercise.copyWith(capabilities: capabilities);
       _exerciseCache[exerciseId] = exerciseWithCaps;
-      _allExercises = [..._allExercises.where((e) => e.id != exerciseId), exerciseWithCaps];
+      _allExercises = [
+        ..._allExercises.where((e) => e.id != exerciseId),
+        exerciseWithCaps,
+      ];
 
       notifyListeners();
       return exerciseWithCaps;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/services/routine_session_service.dart';
+import '../../core/services/session_summary_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -17,6 +18,7 @@ class HomeScreen extends StatefulWidget {
   final HomeState homeState;
   final RoutineState routineState;
   final RoutineSessionService routineSessionService;
+  final SessionSummaryService sessionSummaryService;
 
   const HomeScreen({
     super.key,
@@ -24,6 +26,7 @@ class HomeScreen extends StatefulWidget {
     required this.homeState,
     required this.routineState,
     required this.routineSessionService,
+    required this.sessionSummaryService,
   });
 
   @override
@@ -50,20 +53,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
-    _hintOffset = TweenSequence<double>(
-      [
-        TweenSequenceItem(
-          tween: Tween(begin: 0.0, end: -5.0)
-              .chain(CurveTween(curve: Curves.easeOut)),
-          weight: 50,
-        ),
-        TweenSequenceItem(
-          tween: Tween(begin: -5.0, end: 0.0)
-              .chain(CurveTween(curve: Curves.easeIn)),
-          weight: 50,
-        ),
-      ],
-    ).animate(_hintController);
+    _hintOffset = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.0,
+          end: -5.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 50,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: -5.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 50,
+      ),
+    ]).animate(_hintController);
 
     if (widget.homeState.shouldShowMaintenanceHint) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -138,21 +143,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       child: ListenableBuilder(
                         listenable: widget.workoutState,
                         builder: (context, child) {
-                          return GridView.count(          
+                          return GridView.count(
                             crossAxisCount: 2,
                             mainAxisSpacing: 16,
                             crossAxisSpacing: 16,
                             childAspectRatio: 1.0,
                             children: HomeTiles.all.map((tile) {
                               // Determine if this tile is the currently active session
-                              final session = widget.workoutState.currentSession;
-                              final isRoutineSession = session?.intent == 'routine';
-                              final isActive = widget.workoutState.hasActiveSession &&
-                                (tile.key == 'my_routines'
-                                  ? isRoutineSession
-                                  : tile.modality == null
-                                    ? session?.modality == null && !isRoutineSession
-                                    : session?.modality == tile.modality);
+                              final session =
+                                  widget.workoutState.currentSession;
+                              final isRoutineSession =
+                                  session?.intent == 'routine';
+                              final isActive =
+                                  widget.workoutState.hasActiveSession &&
+                                  (tile.key == 'my_routines'
+                                      ? isRoutineSession
+                                      : tile.modality == null
+                                      ? session?.modality == null &&
+                                            !isRoutineSession
+                                      : session?.modality == tile.modality);
 
                               return EnergyTile(
                                 title: tile.label,
@@ -192,7 +201,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (isActive) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState),
+            builder: (_) => WorkoutSessionScreen(
+              workoutState: widget.workoutState,
+              routineState: widget.routineState,
+              sessionSummaryService: widget.sessionSummaryService,
+            ),
           ),
         );
       } else {
@@ -202,6 +215,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               routineState: widget.routineState,
               workoutState: widget.workoutState,
               routineSessionService: widget.routineSessionService,
+              sessionSummaryService: widget.sessionSummaryService,
             ),
           ),
         );
@@ -214,7 +228,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (isActive) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState),
+          builder: (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+          ),
         ),
       );
       return;
@@ -237,9 +255,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               style: ButtonStyle(
-                shape: WidgetStateProperty.all(RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                )),
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
               ),
               child: const Text('Start New'),
             ),
@@ -258,7 +278,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (context.mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState),
+          builder: (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+          ),
         ),
       );
     }
@@ -309,9 +333,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 child: CustomScrollView(
                   controller: scrollController,
                   slivers: [
-                    SliverToBoxAdapter(
-                      child: _buildHandle(),
-                    ),
+                    SliverToBoxAdapter(child: _buildHandle()),
                     SliverToBoxAdapter(
                       child: IgnorePointer(
                         ignoring: contentOpacity < 0.05,
@@ -465,8 +487,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   double _extentToProgress(double extent) {
-    final t = (extent - _minSheetExtent) /
-        (_maxSheetExtent - _minSheetExtent);
+    final t = (extent - _minSheetExtent) / (_maxSheetExtent - _minSheetExtent);
     return t.clamp(0.0, 1.0);
   }
 

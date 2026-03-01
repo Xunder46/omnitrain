@@ -244,6 +244,71 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<List<TrainingSession>> getAllSessions() async {
+    final sessions = _sessionsBox.values
+        .map((raw) => TrainingSession.fromMap(_asStringMap(raw)))
+        .toList();
+    sessions.sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
+    return sessions;
+  }
+
+  @override
+  Future<List<TrainingSession>> getSessionsByDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final sessions = _sessionsBox.values
+        .map((raw) => TrainingSession.fromMap(_asStringMap(raw)))
+        .where((s) => s.startedAtMs >= fromMs && s.startedAtMs <= toMs)
+        .toList();
+    sessions.sort((a, b) => a.startedAtMs.compareTo(b.startedAtMs));
+    return sessions;
+  }
+
+  @override
+  Future<double?> getPersonalRecordCandidates(
+    String exerciseId, {
+    String? metricId,
+  }) async {
+    final sessionsById = <String, TrainingSession>{};
+    for (final raw in _sessionsBox.values) {
+      final session = TrainingSession.fromMap(_asStringMap(raw));
+      sessionsById[session.id] = session;
+    }
+
+    final segmentSessionIds = <String, String>{};
+    for (final raw in _segmentsBox.values) {
+      final segment = SessionSegment.fromMap(_asStringMap(raw));
+      segmentSessionIds[segment.id] = segment.sessionId;
+    }
+
+    final validEffortIds = <String>{};
+    for (final raw in _effortsBox.values) {
+      final effort = SegmentEffort.fromMap(_asStringMap(raw));
+      if (effort.exerciseId != exerciseId) continue;
+      final sessionId = segmentSessionIds[effort.segmentId];
+      if (sessionId == null) continue;
+      final session = sessionsById[sessionId];
+      if (session == null || session.endedAtMs == null) continue;
+      validEffortIds.add(effort.id);
+    }
+
+    double? best;
+    for (final raw in _observationsBox.values) {
+      final observation = EffortObservation.fromMap(_asStringMap(raw));
+      if (!validEffortIds.contains(observation.effortId)) continue;
+      if (metricId != null && observation.metricId != metricId) continue;
+      final value = observation.valueReal ?? observation.valueInt?.toDouble();
+      if (value == null) continue;
+      if (best == null || value > best) {
+        best = value;
+      }
+    }
+
+    return best;
+  }
+
+  @override
   Future<String> createSession(TrainingSession session) async {
     await _sessionsBox.put(session.id, session.toMap());
     return session.id;

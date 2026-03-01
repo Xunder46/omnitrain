@@ -10,12 +10,23 @@ import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
+import '../../state/routine/routine_state.dart';
+import '../../core/services/session_summary_service.dart';
+import 'session_summary_screen.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
+  final RoutineState routineState;
+  final SessionSummaryService sessionSummaryService;
   final String? initialFocusId;
 
-  const WorkoutSessionScreen({super.key, required this.workoutState, this.initialFocusId});
+  const WorkoutSessionScreen({
+    super.key,
+    required this.workoutState,
+    required this.routineState,
+    required this.sessionSummaryService,
+    this.initialFocusId,
+  });
 
   @override
   State<WorkoutSessionScreen> createState() => _WorkoutSessionScreenState();
@@ -29,7 +40,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   int _currentExerciseIndex = 0;
   int _currentSet = 1;
   bool _isLoading = true;
-  bool _showListView = true; // Toggle between list view and detail view - default to list
+  bool _showListView =
+      true; // Toggle between list view and detail view - default to list
   bool _hasError = false;
   String _errorMessage = '';
 
@@ -44,9 +56,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   final Map<String, Stopwatch> _effortStopwatches = {};
   final Map<String, bool> _effortRunning = {};
   final Map<String, int> _effortElapsed = {}; // Elapsed seconds
-  final Map<String, int> _effortElapsedBase = {}; // Base elapsed time when timer started (for offset)
+  final Map<String, int> _effortElapsedBase =
+      {}; // Base elapsed time when timer started (for offset)
   final Map<String, bool> _effortAlerted = {}; // Timer expiry alert fired
-  final Map<String, int> _effortTargetDuration = {}; // Target seconds for countdown/expiry
+  final Map<String, int> _effortTargetDuration =
+      {}; // Target seconds for countdown/expiry
 
   // Rest timer state
   Timer? _restTimer;
@@ -78,11 +92,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           if (idx != -1) {
             _currentExerciseIndex = idx;
             _currentSet = 1;
-            _showListView = false; // Show detail view when focusing a specific exercise
+            _showListView =
+                false; // Show detail view when focusing a specific exercise
           }
         }
 
-        if (_currentExerciseIndex >= _exercises.length && _exercises.isNotEmpty) {
+        if (_currentExerciseIndex >= _exercises.length &&
+            _exercises.isNotEmpty) {
           _currentExerciseIndex = 0;
           _currentSet = 1;
         }
@@ -121,7 +137,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     return exercise?['effortKind'] as String? ?? 'set';
   }
 
-  int _getEffortTargetDuration(String effortId, int entryIndex, String effortKind) {
+  int _getEffortTargetDuration(
+    String effortId,
+    int entryIndex,
+    String effortKind,
+  ) {
     final timerKey = '$effortId-$entryIndex';
     final cachedTarget = _effortTargetDuration[timerKey];
     if (cachedTarget != null) return cachedTarget;
@@ -201,7 +221,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     // For timer-based exercises, stop and reset timer
     // User must explicitly start timer for next entry
-    if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
+    if (effortKind == 'timed' ||
+        effortKind == 'drill' ||
+        effortKind == 'round') {
       _pauseEffortTimer(effortId, _currentSet - 1);
       final timerKey = '$effortId-${_currentSet - 1}';
       _effortStopwatches[timerKey]?.reset();
@@ -239,7 +261,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final effortKind = exercise['effortKind'] as String? ?? 'set';
 
     // Stop timer for the current set if it's running
-    if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
+    if (effortKind == 'timed' ||
+        effortKind == 'drill' ||
+        effortKind == 'round') {
       final timerKey = '$effortId-${_currentSet - 1}';
       if (_effortRunning[timerKey] == true) {
         _pauseEffortTimer(effortId, _currentSet - 1);
@@ -264,7 +288,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final effortKind = exercise['effortKind'] as String? ?? 'set';
 
     // Stop timer if running
-    if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
+    if (effortKind == 'timed' ||
+        effortKind == 'drill' ||
+        effortKind == 'round') {
       final timerKey = '$effortId-${_currentSet - 1}';
       if (_effortRunning[timerKey] == true) {
         _pauseEffortTimer(effortId, _currentSet - 1);
@@ -319,7 +345,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           effortId,
           entryIndex,
           'duration',
-          _effortElapsed['$effortId-$entryIndex'] ?? (currentEntry['duration'] as int? ?? 0),
+          _effortElapsed['$effortId-$entryIndex'] ??
+              (currentEntry['duration'] as int? ?? 0),
         );
         widget.workoutState.updateEntryValue(
           effortId,
@@ -349,7 +376,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           effortId,
           entryIndex,
           'duration',
-          _effortElapsed['$effortId-$entryIndex'] ?? (currentEntry['duration'] as int? ?? 0),
+          _effortElapsed['$effortId-$entryIndex'] ??
+              (currentEntry['duration'] as int? ?? 0),
         );
         widget.workoutState.updateEntryValue(
           effortId,
@@ -386,9 +414,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               }
             },
             style: ButtonStyle(
-              shape: WidgetStateProperty.all(RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              )),
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
             ),
             child: const Text('Finish'),
           ),
@@ -428,12 +456,22 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     });
   }
 
-  Future<void> _updateMetricValue(String effortId, int entryIndex, String metricKey, dynamic value) async {
-    await widget.workoutState.updateEntryValue(effortId, entryIndex, metricKey, value);
-    
+  Future<void> _updateMetricValue(
+    String effortId,
+    int entryIndex,
+    String metricKey,
+    dynamic value,
+  ) async {
+    await widget.workoutState.updateEntryValue(
+      effortId,
+      entryIndex,
+      metricKey,
+      value,
+    );
+
     // Reload exercises to reflect updated values
     await _loadExercises();
-    
+
     // Sync the local _effortElapsed state with the newly loaded value
     // This ensures the timer starts from the user-set value, not the old one
     if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
@@ -442,7 +480,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       if (entries.isNotEmpty && entryIndex < entries.length) {
         final entry = entries[entryIndex];
         final timerKey = '$effortId-$entryIndex';
-        
+
         // Update _effortElapsed to match the newly persisted value
         if (metricKey == 'duration') {
           _effortElapsed[timerKey] = entry['duration'] as int? ?? 0;
@@ -451,7 +489,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           _effortAlerted[timerKey] = false;
         }
         if (metricKey == 'round-duration') {
-          _effortTargetDuration[timerKey] = entry['round-duration'] as int? ?? 0;
+          _effortTargetDuration[timerKey] =
+              entry['round-duration'] as int? ?? 0;
           _effortAlerted[timerKey] = false;
         }
       }
@@ -462,8 +501,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final entryIndex = _currentSet - 1;
     final timerKey = '$effortId-$entryIndex';
     final effortKind = _getEffortKind(effortId);
-    final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
-    final isExpired = targetSeconds > 0 && (_effortElapsed[timerKey] ?? 0) >= targetSeconds;
+    final targetSeconds = _getEffortTargetDuration(
+      effortId,
+      entryIndex,
+      effortKind,
+    );
+    final isExpired =
+        targetSeconds > 0 && (_effortElapsed[timerKey] ?? 0) >= targetSeconds;
 
     if (_effortRunning[timerKey] == true) {
       _pauseEffortTimer(effortId, entryIndex);
@@ -483,12 +527,23 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
   void _onEffortTick(String effortId, int entryIndex) {
     final timerKey = '$effortId-$entryIndex';
-    final elapsed = (_effortElapsedBase[timerKey] ?? 0) + (_effortStopwatches[timerKey]?.elapsed.inSeconds ?? 0);
+    final elapsed =
+        (_effortElapsedBase[timerKey] ?? 0) +
+        (_effortStopwatches[timerKey]?.elapsed.inSeconds ?? 0);
     final effortKind = _getEffortKind(effortId);
-    final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    final targetSeconds = _getEffortTargetDuration(
+      effortId,
+      entryIndex,
+      effortKind,
+    );
 
     if (targetSeconds > 0 && elapsed >= targetSeconds) {
-      _handleEffortTimerExpired(effortId, entryIndex, effortKind, targetSeconds);
+      _handleEffortTimerExpired(
+        effortId,
+        entryIndex,
+        effortKind,
+        targetSeconds,
+      );
       return;
     }
 
@@ -507,14 +562,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _stopRestTimer();
 
     _effortRunning[timerKey] = true;
-    
+
     // Store the current elapsed value as the base (so timer counts up from this point)
     _effortElapsedBase[timerKey] = _effortElapsed[timerKey] ?? 0;
 
     final effortKind = _getEffortKind(effortId);
-    _effortTargetDuration[timerKey] = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    _effortTargetDuration[timerKey] = _getEffortTargetDuration(
+      effortId,
+      entryIndex,
+      effortKind,
+    );
     _effortAlerted[timerKey] = false;
-    
+
     _effortStopwatches.putIfAbsent(timerKey, () => Stopwatch()).start();
 
     _effortTimers[timerKey]?.cancel();
@@ -533,7 +592,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _effortRunning[timerKey] = false;
     _effortStopwatches[timerKey]?.stop();
     _effortTimers[timerKey]?.cancel();
-    
+
     // Save the elapsed time as the new duration value
     // Only for timed and drill (which show elapsed time counting UP)
     // NOT for round (which shows remaining time counting DOWN)
@@ -550,16 +609,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   void _resumeEffortTimer(String effortId, int entryIndex) {
     final timerKey = '$effortId-$entryIndex';
     _effortRunning[timerKey] = true;
-    
+
     // Store the current elapsed value as the new base (so timer continues from current value)
     _effortElapsedBase[timerKey] = _effortElapsed[timerKey] ?? 0;
-    
+
     // Reset stopwatch to track time since resume
     _effortStopwatches[timerKey]?.reset();
     _effortStopwatches[timerKey]?.start();
 
     final effortKind = _getEffortKind(effortId);
-    _effortTargetDuration[timerKey] = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+    _effortTargetDuration[timerKey] = _getEffortTargetDuration(
+      effortId,
+      entryIndex,
+      effortKind,
+    );
 
     _effortTimers[timerKey]?.cancel();
     _effortTimers[timerKey] = Timer.periodic(
@@ -573,7 +636,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       _currentSet = setNumber;
     });
 
-    if (_exercises.isEmpty || _currentExerciseIndex >= _exercises.length) return;
+    if (_exercises.isEmpty || _currentExerciseIndex >= _exercises.length)
+      return;
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
     _resetEffortAlertState(effortId, _currentSet - 1);
@@ -591,7 +655,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
   Future<void> _addExercise({String? segmentId}) async {
     final modality = widget.workoutState.currentSession?.modality;
-    
+
     final selectedExercise = await showDialog<Exercise>(
       context: context,
       builder: (context) => ExercisePickerDialog(
@@ -602,7 +666,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     if (selectedExercise != null) {
       String? chosenMetric;
-      
+
       // If Free Training (null modality), show metric chooser
       if (modality == null) {
         // If exercise has only one capability, auto-select it
@@ -612,13 +676,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         } else {
           chosenMetric = await showDialog<String>(
             context: context,
-            builder: (context) => MetricChooserDialog(exercise: selectedExercise),
+            builder: (context) =>
+                MetricChooserDialog(exercise: selectedExercise),
           );
-          
+
           if (chosenMetric == null) return; // User cancelled metric selection
         }
       }
-      
+
       String effortId = '';
       try {
         effortId = await widget.workoutState.addExerciseToSession(
@@ -628,9 +693,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         );
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to add exercise: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
         }
       }
 
@@ -654,8 +719,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     // This ensures the timer doesn't reset when navigating away and back
     final session = widget.workoutState.currentSession;
     if (session == null) return;
-    
-    final elapsedMs = DateTime.now().millisecondsSinceEpoch - session.startedAtMs;
+
+    final elapsedMs =
+        DateTime.now().millisecondsSinceEpoch - session.startedAtMs;
     final elapsedSeconds = (elapsedMs / 1000).toInt();
     final mm = (elapsedSeconds ~/ 60).remainder(60).toString().padLeft(2, '0');
     final ss = (elapsedSeconds % 60).toString().padLeft(2, '0');
@@ -722,7 +788,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             Text(
               'This action will save and close the workout session.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withAlpha((0.6 * 255).round()),
               ),
             ),
           ],
@@ -735,9 +803,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: ButtonStyle(
-              shape: WidgetStateProperty.all(RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              )),
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
             ),
             child: const Text('Finish'),
           ),
@@ -751,55 +819,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Future<void> _finishSession() async {
-    try {
-      // Show loading indicator
-      if (!mounted) return;
-      
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SessionSummaryScreen(
+          workoutState: widget.workoutState,
+          routineState: widget.routineState,
+          sessionSummaryService: widget.sessionSummaryService,
         ),
-      );
-
-      // Call state method to end session (goes through repository interface)
-      await widget.workoutState.endSession();
-      
-      // Clear the session from state so it's no longer accessible
-      widget.workoutState.clearSession();
-
-      if (!mounted) return;
-
-      // Close loading dialog
-      Navigator.pop(context);
-
-      // Navigate back to home (pop until first route)
-      Navigator.of(context).popUntil((route) => route.isFirst);
-
-      // Show success feedback
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Workout session saved successfully'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      // Close loading dialog if open
-      Navigator.pop(context);
-
-      // Show error feedback
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saving session: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
+      ),
+    );
   }
 
   @override
@@ -826,9 +856,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       return Scaffold(
         backgroundColor: Colors.transparent,
         body: const OmniGradientBackground(
-          child: Center(
-            child: CircularProgressIndicator(),
-          ),
+          child: Center(child: CircularProgressIndicator()),
         ),
       );
     }
@@ -993,13 +1021,30 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _buildMetricWidget(exercise, currentEntry, effortKind, theme),
+                              _buildMetricWidget(
+                                exercise,
+                                currentEntry,
+                                effortKind,
+                                theme,
+                              ),
                               const SizedBox(height: 24),
-                              _buildSetProgress(entries.length, effortKind, theme),
+                              _buildSetProgress(
+                                entries.length,
+                                effortKind,
+                                theme,
+                              ),
                               const SizedBox(height: 16),
-                              _buildPreviousSetStats(exercise, effortKind, theme),
+                              _buildPreviousSetStats(
+                                exercise,
+                                effortKind,
+                                theme,
+                              ),
                               const SizedBox(height: 16),
-                              _buildSetIndicator(entries.length, effortKind, theme),
+                              _buildSetIndicator(
+                                entries.length,
+                                effortKind,
+                                theme,
+                              ),
                               const SizedBox(height: 24),
                             ],
                           ),
@@ -1017,20 +1062,27 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ),
               ),
               // Rest timer overlay in lower half (hide when exercise timer is running)
-              if (_restElapsedSeconds > 0 && !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ?? false))
+              if (_restElapsedSeconds > 0 &&
+                  !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ??
+                      false))
                 Positioned(
                   left: 0,
                   right: 0,
                   bottom: 110,
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary.withOpacity(0.8),
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
+                            color: theme.colorScheme.primary.withAlpha(
+                              (0.2 * 255).round(),
+                            ),
                             blurRadius: 12,
                             spreadRadius: 2,
                           ),
@@ -1099,7 +1151,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _showListView ? 'Exercises' : (_exercises.isNotEmpty ? _exercises[_currentExerciseIndex]['name'] as String : ''),
+                  _showListView
+                      ? 'Exercises'
+                      : (_exercises.isNotEmpty
+                            ? _exercises[_currentExerciseIndex]['name']
+                                  as String
+                            : ''),
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: OmniTheme.textPrimary,
@@ -1107,7 +1164,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _showListView ? '${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}' : (_exercises.isNotEmpty ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}' : ''),
+                  _showListView
+                      ? '${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}'
+                      : (_exercises.isNotEmpty
+                            ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}'
+                            : ''),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: OmniTheme.textSecondary,
                   ),
@@ -1167,7 +1228,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               icon: const Icon(Icons.add, size: 16),
               label: const Text('Add Exercise'),
               style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 side: BorderSide(color: theme.colorScheme.primary),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -1244,7 +1308,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Widget _buildListView(ThemeData theme) {
     final segments = widget.workoutState.segments.toList()
       ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
-    final showPerBlockAdd = widget.workoutState.currentSession?.intent == 'routine' &&
+    final showPerBlockAdd =
+        widget.workoutState.currentSession?.intent == 'routine' &&
         segments.length > 1;
 
     if (_exercises.isEmpty && !showPerBlockAdd) {
@@ -1273,7 +1338,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: OmniTheme.surfaceColor.withOpacity(0.5),
                               borderRadius: BorderRadius.circular(8),
@@ -1291,13 +1359,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
-                                    const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
+                                    const Icon(
+                                      Icons.timer,
+                                      size: 16,
+                                      color: OmniTheme.textSecondary,
+                                    ),
                                     const SizedBox(width: 8),
                                     Text(
                                       _elapsedFormatted,
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        color: OmniTheme.textPrimary,
-                                      ),
+                                      style: theme.textTheme.titleMedium
+                                          ?.copyWith(
+                                            color: OmniTheme.textPrimary,
+                                          ),
                                     ),
                                   ],
                                 ),
@@ -1380,7 +1453,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     child: Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: OmniTheme.surfaceColor.withOpacity(0.5),
                             borderRadius: BorderRadius.circular(8),
@@ -1398,13 +1474,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
+                                  const Icon(
+                                    Icons.timer,
+                                    size: 16,
+                                    color: OmniTheme.textSecondary,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     _elapsedFormatted,
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      color: OmniTheme.textPrimary,
-                                    ),
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(
+                                          color: OmniTheme.textPrimary,
+                                        ),
                                   ),
                                 ],
                               ),
@@ -1425,9 +1506,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                               theme,
                               showAddButton: true,
                             ),
-                            if (_exercises.where((e) => e['segmentId'] == segment.id).isEmpty)
+                            if (_exercises
+                                .where((e) => e['segmentId'] == segment.id)
+                                .isEmpty)
                               Padding(
-                                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  0,
+                                  20,
+                                  12,
+                                ),
                                 child: Text(
                                   'No exercises in this block yet.',
                                   style: theme.textTheme.bodySmall?.copyWith(
@@ -1435,16 +1523,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                                   ),
                                 ),
                               ),
-                            for (final ex in _exercises.where((e) => e['segmentId'] == segment.id)) ...[
+                            for (final ex in _exercises.where(
+                              (e) => e['segmentId'] == segment.id,
+                            )) ...[
                               _buildExerciseTile(ex, theme),
                               const SizedBox(height: 8),
                             ],
                           ]
                         else
-                          for (int index = 0; index < _exercises.length; index++) ...[
-                            if (index == 0 || _exercises[index]['segmentId'] != _exercises[index - 1]['segmentId'])
+                          for (
+                            int index = 0;
+                            index < _exercises.length;
+                            index++
+                          ) ...[
+                            if (index == 0 ||
+                                _exercises[index]['segmentId'] !=
+                                    _exercises[index - 1]['segmentId'])
                               _buildSegmentHeader(
-                                _exercises[index]['segmentName'] as String? ?? 'Block',
+                                _exercises[index]['segmentName'] as String? ??
+                                    'Block',
                                 theme,
                               ),
                             _buildExerciseTile(_exercises[index], theme),
@@ -1458,20 +1555,27 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               ),
             ),
             // Rest timer overlay (hide when exercise timer is running)
-            if (_restElapsedSeconds > 0 && !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ?? false))
+            if (_restElapsedSeconds > 0 &&
+                !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ??
+                    false))
               Positioned(
                 left: 0,
                 right: 0,
                 bottom: 110,
                 child: Center(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withOpacity(0.8),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
+                          color: theme.colorScheme.primary.withAlpha(
+                            (0.2 * 255).round(),
+                          ),
                           blurRadius: 12,
                           spreadRadius: 2,
                         ),
@@ -1541,12 +1645,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     child: FilledButton(
                       onPressed: _showFinishSessionDialog,
                       style: ButtonStyle(
-                          shape: WidgetStateProperty.all(
-                            RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
+                      ),
                       child: const Text('Finish Workout'),
                     ),
                   ),
@@ -1572,7 +1676,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       case 'set':
         final reps = entryData['reps'] as int? ?? 0;
         final weight = entryData['weight'] as double? ?? 0.0;
-        
+
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1581,13 +1685,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               metricType: 'reps',
               currentValue: reps,
               unitLabel: 'REPS',
-              onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'reps', value),
+              onValueChanged: (value) =>
+                  _updateMetricValue(effortId, entryIndex, 'reps', value),
             ),
             InlineMetricEditor(
               metricType: 'weight',
               currentValue: weight,
               unitLabel: 'LBS',
-              onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'weight', value),
+              onValueChanged: (value) =>
+                  _updateMetricValue(effortId, entryIndex, 'weight', value),
             ),
           ],
         );
@@ -1596,12 +1702,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final duration = entryData['duration'] as int? ?? 0;
         final timerKey = '$effortId-$entryIndex';
         final elapsed = _effortElapsed[timerKey] ?? 0;
-        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+        final targetSeconds = _getEffortTargetDuration(
+          effortId,
+          entryIndex,
+          effortKind,
+        );
         final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
         final displayValue = (_effortRunning[timerKey] ?? false)
             ? elapsed
             : (isExpired ? targetSeconds : duration);
-        
+
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1610,7 +1720,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               metricType: 'duration',
               currentValue: displayValue,
               unitLabel: _effortRunning[timerKey] ?? false ? 'ELAPSED' : 'TIME',
-              onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'duration', value),
+              onValueChanged: (value) =>
+                  _updateMetricValue(effortId, entryIndex, 'duration', value),
             ),
             const SizedBox(height: 32),
             Row(
@@ -1619,13 +1730,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 Text(
                   isExpired
                       ? 'DONE!'
-                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
+                      : (_effortRunning[timerKey] ?? false
+                            ? 'RUNNING'
+                            : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: isExpired
                         ? theme.colorScheme.error
                         : (_effortRunning[timerKey] ?? false
-                            ? theme.colorScheme.primary.withOpacity(0.8)
-                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
+                              ? theme.colorScheme.primary.withOpacity(0.8)
+                              : theme.colorScheme.onSurface.withAlpha(
+                                  (0.5 * 255).round(),
+                                )),
                     letterSpacing: 1,
                   ),
                 ),
@@ -1639,11 +1754,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final roundDuration = entryData['round-duration'] as int? ?? 180;
         final timerKey = '$effortId-$entryIndex';
         final elapsed = _effortElapsed[timerKey] ?? 0;
-        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
-        final effectiveTarget = targetSeconds > 0 ? targetSeconds : roundDuration;
+        final targetSeconds = _getEffortTargetDuration(
+          effortId,
+          entryIndex,
+          effortKind,
+        );
+        final effectiveTarget = targetSeconds > 0
+            ? targetSeconds
+            : roundDuration;
         final remaining = (effectiveTarget - elapsed).clamp(0, effectiveTarget);
         final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
-        
+
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1654,16 +1775,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               style: theme.textTheme.displayLarge?.copyWith(
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
-                fontSize: theme.textTheme.displayMedium?.fontSize
+                fontSize: theme.textTheme.displayMedium?.fontSize,
               ),
             ),
             const SizedBox(height: 15),
             // Scrollable round duration control
             InlineMetricEditor(
               metricType: 'duration',
-              currentValue: _effortRunning[timerKey] ?? false ? remaining : (isExpired ? 0 : roundDuration),
-              unitLabel: _effortRunning[timerKey] ?? false ? 'TIME REMAINING' : 'DURATION',
-              onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'round-duration', value),
+              currentValue: _effortRunning[timerKey] ?? false
+                  ? remaining
+                  : (isExpired ? 0 : roundDuration),
+              unitLabel: _effortRunning[timerKey] ?? false
+                  ? 'TIME REMAINING'
+                  : 'DURATION',
+              onValueChanged: (value) => _updateMetricValue(
+                effortId,
+                entryIndex,
+                'round-duration',
+                value,
+              ),
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1671,13 +1801,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 Text(
                   isExpired
                       ? 'TIME!'
-                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
+                      : (_effortRunning[timerKey] ?? false
+                            ? 'RUNNING'
+                            : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: isExpired
                         ? theme.colorScheme.error
                         : (_effortRunning[timerKey] ?? false
-                            ? theme.colorScheme.primary.withOpacity(0.8)
-                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
+                              ? theme.colorScheme.primary.withOpacity(0.8)
+                              : theme.colorScheme.onSurface.withAlpha(
+                                  (0.5 * 255).round(),
+                                )),
                     letterSpacing: 1,
                   ),
                 ),
@@ -1691,26 +1825,34 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final rpe = entryData['rpe'] as int? ?? 5;
         final timerKey = '$effortId-$entryIndex';
         final elapsed = _effortElapsed[timerKey] ?? 0;
-        final targetSeconds = _getEffortTargetDuration(effortId, entryIndex, effortKind);
+        final targetSeconds = _getEffortTargetDuration(
+          effortId,
+          entryIndex,
+          effortKind,
+        );
         final isExpired = _isEffortExpired(effortId, entryIndex, effortKind);
         final displayValue = (_effortRunning[timerKey] ?? false)
             ? elapsed
             : (isExpired ? targetSeconds : duration);
-        
+
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             InlineMetricEditor(
               metricType: 'duration',
               currentValue: displayValue,
-              unitLabel: _effortRunning[timerKey] ?? false ? 'ELAPSED' : 'HOLD TIME',
-              onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'duration', value),
+              unitLabel: _effortRunning[timerKey] ?? false
+                  ? 'ELAPSED'
+                  : 'HOLD TIME',
+              onValueChanged: (value) =>
+                  _updateMetricValue(effortId, entryIndex, 'duration', value),
             ),
             InlineMetricEditor(
               metricType: 'rpe',
               currentValue: rpe,
               unitLabel: 'RPE',
-              onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'rpe', value),
+              onValueChanged: (value) =>
+                  _updateMetricValue(effortId, entryIndex, 'rpe', value),
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1718,13 +1860,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 Text(
                   isExpired
                       ? 'DONE!'
-                      : (_effortRunning[timerKey] ?? false ? 'RUNNING' : 'STOPPED'),
+                      : (_effortRunning[timerKey] ?? false
+                            ? 'RUNNING'
+                            : 'STOPPED'),
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: isExpired
                         ? theme.colorScheme.error
                         : (_effortRunning[timerKey] ?? false
-                            ? theme.colorScheme.primary.withOpacity(0.8)
-                            : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())),
+                              ? theme.colorScheme.primary.withOpacity(0.8)
+                              : theme.colorScheme.onSurface.withAlpha(
+                                  (0.5 * 255).round(),
+                                )),
                     letterSpacing: 1,
                   ),
                 ),
@@ -1734,14 +1880,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         );
 
       default:
-        return Text(
-          '—',
-          style: theme.textTheme.displayLarge,
-        );
+        return Text('—', style: theme.textTheme.displayLarge);
     }
   }
 
-  Widget _buildSetProgress(int totalEntries, String effortKind, ThemeData theme) {
+  Widget _buildSetProgress(
+    int totalEntries,
+    String effortKind,
+    ThemeData theme,
+  ) {
     String label;
     switch (effortKind) {
       case 'set':
@@ -1761,7 +1908,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       default:
         label = 'Set $_currentSet of $totalEntries';
     }
-    
+
     return Text(
       label,
       style: theme.textTheme.titleMedium?.copyWith(
@@ -1794,28 +1941,32 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       case 'set':
         final prevReps = previousEntry['reps'] as int? ?? 0;
         final prevWeight = previousEntry['weight'] as double? ?? 0.0;
-        statsText = 'Previous: $prevReps reps @ ${prevWeight.toStringAsFixed(1)} lbs';
+        statsText =
+            'Previous: $prevReps reps @ ${prevWeight.toStringAsFixed(1)} lbs';
         break;
       case 'timed':
         final prevDuration = previousEntry['duration'] as int? ?? 0;
         final prevDistance = previousEntry['distance'] as double? ?? 0.0;
         final mins = prevDuration ~/ 60;
         final secs = prevDuration % 60;
-        statsText = 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} @ ${prevDistance.toStringAsFixed(1)} m';
+        statsText =
+            'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} @ ${prevDistance.toStringAsFixed(1)} m';
         break;
       case 'round':
         final prevRounds = previousEntry['rounds'] as int? ?? 1;
         final prevRoundDur = previousEntry['round-duration'] as int? ?? 180;
         final mins = prevRoundDur ~/ 60;
         final secs = prevRoundDur % 60;
-        statsText = 'Previous: $prevRounds rounds @ ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+        statsText =
+            'Previous: $prevRounds rounds @ ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
         break;
       case 'drill':
         final prevDuration = previousEntry['duration'] as int? ?? 0;
         final prevRpe = previousEntry['rpe'] as int? ?? 5;
         final mins = prevDuration ~/ 60;
         final secs = prevDuration % 60;
-        statsText = 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ RPE $prevRpe';
+        statsText =
+            'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ RPE $prevRpe';
         break;
       default:
         return const SizedBox.shrink();
@@ -1841,8 +1992,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           children: List.generate(totalSets, (index) {
             final isCompleted = index < _currentSet - 1;
             final isCurrent = index == _currentSet - 1;
-            final isSkipped = _skippedSets[_exercises[_currentExerciseIndex]['id']]?.contains(index) ?? false;
-            
+            final isSkipped =
+                _skippedSets[_exercises[_currentExerciseIndex]['id']]?.contains(
+                  index,
+                ) ??
+                false;
+
             return GestureDetector(
               onTap: () => _jumpToSet(index + 1),
               child: Container(
@@ -1854,8 +2009,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   color: isCompleted && !isSkipped
                       ? theme.colorScheme.primary.withOpacity(0.8)
                       : isCurrent
-                        ? theme.colorScheme.primary.withAlpha((0.5 * 255).round())
-                        : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+                      ? theme.colorScheme.primary.withAlpha((0.5 * 255).round())
+                      : theme.colorScheme.onSurface.withAlpha(
+                          (0.2 * 255).round(),
+                        ),
                 ),
               ),
             );
@@ -1871,7 +2028,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
     final effortKind = exercise['effortKind'] as String? ?? 'set';
-    final isTimerBased = effortKind == 'timed' || effortKind == 'round' || effortKind == 'drill';
+    final isTimerBased =
+        effortKind == 'timed' || effortKind == 'round' || effortKind == 'drill';
     final timerKey = '$effortId-${_currentSet - 1}';
     final isTimerRunning = _effortRunning[timerKey] ?? false;
 
@@ -1887,7 +2045,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           theme: theme,
           isPrimary: false,
         ),
-        
+
         // Center controls (add, delete, play/pause)
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1923,7 +2081,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         // Log/checkmark button (right side) - CRITICAL ACTION
         _buildArrowButton(
           icon: Icons.check,
-          label: 'Log Set',          
+          label: 'Log Set',
           isEnabled: true,
           onPressed: _logSet,
           theme: theme,
@@ -1944,13 +2102,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     return Tooltip(
       message: label,
       child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle),
         child: Material(
           shape: const CircleBorder(),
           color: isEnabled
-              ? (isPrimary ? theme.colorScheme.primary.withOpacity(0.8) : theme.colorScheme.onSurface.withAlpha((0.1 * 255).round()))
+              ? (isPrimary
+                    ? theme.colorScheme.primary.withOpacity(0.8)
+                    : theme.colorScheme.onSurface.withAlpha(
+                        (0.1 * 255).round(),
+                      ))
               : theme.colorScheme.onSurface.withAlpha((0.05 * 255).round()),
           child: InkWell(
             onTap: onPressed,
@@ -1961,8 +2121,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 icon,
                 size: isPrimary ? 28 : 24,
                 color: isEnabled
-                    ? (isPrimary ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()))
-                    : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+                    ? (isPrimary
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurface.withAlpha(
+                              (0.5 * 255).round(),
+                            ))
+                    : theme.colorScheme.onSurface.withAlpha(
+                        (0.2 * 255).round(),
+                      ),
               ),
             ),
           ),
@@ -1970,10 +2136,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       ),
     );
   }
-
-
-
-
 
   Widget _buildIconButton(
     IconData icon,
@@ -1997,15 +2159,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 List<String> _deduplicateCapabilities(List<String> capabilities) {
   final strSet = capabilities.toSet();
   final repsLoadSetVariants = {'reps', 'sets', 'load'};
-  
+
   // Remove sets and load if any of the reps/sets/load variants exist
   if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
     strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
     // Ensure 'reps' is included as the canonical value
-    if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+    if (!strSet.contains('reps') &&
+        strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
       strSet.add('reps');
     }
   }
-  
+
   return strSet.toList();
 }

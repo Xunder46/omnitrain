@@ -196,6 +196,58 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<List<TrainingSession>> getAllSessions() async {
+    final sessions = _sessions.values.toList();
+    sessions.sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
+    return sessions;
+  }
+
+  @override
+  Future<List<TrainingSession>> getSessionsByDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final sessions = _sessions.values
+        .where((s) => s.startedAtMs >= fromMs && s.startedAtMs <= toMs)
+        .toList();
+    sessions.sort((a, b) => a.startedAtMs.compareTo(b.startedAtMs));
+    return sessions;
+  }
+
+  @override
+  Future<double?> getPersonalRecordCandidates(
+    String exerciseId, {
+    String? metricId,
+  }) async {
+    final segmentSessionIds = <String, String>{
+      for (final segment in _segments.values) segment.id: segment.sessionId,
+    };
+
+    final validEffortIds = <String>{};
+    for (final effort in _efforts.values) {
+      if (effort.exerciseId != exerciseId) continue;
+      final sessionId = segmentSessionIds[effort.segmentId];
+      if (sessionId == null) continue;
+      final session = _sessions[sessionId];
+      if (session == null || session.endedAtMs == null) continue;
+      validEffortIds.add(effort.id);
+    }
+
+    double? best;
+    for (final observation in _observations.values) {
+      if (!validEffortIds.contains(observation.effortId)) continue;
+      if (metricId != null && observation.metricId != metricId) continue;
+      final value = observation.valueReal ?? observation.valueInt?.toDouble();
+      if (value == null) continue;
+      if (best == null || value > best) {
+        best = value;
+      }
+    }
+
+    return best;
+  }
+
+  @override
   Future<String> createSession(TrainingSession session) async {
     _sessions[session.id] = session;
     return session.id;

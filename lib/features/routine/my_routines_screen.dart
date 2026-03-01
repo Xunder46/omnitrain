@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/services/routine_session_service.dart';
+import '../../core/services/session_summary_service.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -13,12 +14,14 @@ class MyRoutinesScreen extends StatefulWidget {
   final RoutineState routineState;
   final WorkoutState? workoutState; // Optional for starting session
   final RoutineSessionService routineSessionService;
+  final SessionSummaryService sessionSummaryService;
 
   const MyRoutinesScreen({
     super.key,
     required this.routineState,
     this.workoutState,
     required this.routineSessionService,
+    required this.sessionSummaryService,
   });
 
   @override
@@ -150,7 +153,11 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                             PopupMenuItem(
                               child: Row(
                                 children: [
-                                  Icon(Icons.edit, size: 20, color: theme.colorScheme.primary),
+                                  Icon(
+                                    Icons.edit,
+                                    size: 20,
+                                    color: theme.colorScheme.primary,
+                                  ),
                                   SizedBox(width: 8),
                                   Text('Edit'),
                                 ],
@@ -160,7 +167,11 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                             PopupMenuItem(
                               child: Row(
                                 children: [
-                                  Icon(Icons.delete, size: 20, color: Colors.red),
+                                  Icon(
+                                    Icons.delete,
+                                    size: 20,
+                                    color: Colors.red,
+                                  ),
                                   SizedBox(width: 8),
                                   Text('Delete'),
                                 ],
@@ -234,9 +245,11 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               style: ButtonStyle(
-                shape: WidgetStateProperty.all(RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                )),
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
               ),
               child: const Text('Start New'),
             ),
@@ -249,7 +262,8 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
 
     try {
       // Step 1: Build session manifest from template (via service)
-      final manifest = await widget.routineSessionService.buildSessionFromTemplate(templateId);
+      final manifest = await widget.routineSessionService
+          .buildSessionFromTemplate(templateId);
 
       // Step 2: Create new workout session with routine metadata
       await widget.workoutState!.createNewSession(
@@ -271,13 +285,17 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState!),
+          builder: (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState!,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+          ),
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error starting routine: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error starting routine: $e')));
     }
   }
 

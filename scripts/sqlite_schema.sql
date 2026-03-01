@@ -141,6 +141,21 @@ CREATE TABLE app_training_session (
 CREATE INDEX IF NOT EXISTS IX_session_started_at ON app_training_session(started_at_ms);
 CREATE INDEX IF NOT EXISTS IX_session_owner_dirty ON app_training_session(owner_user_id, is_dirty);
 
+-- SESSION HISTORY QUERY NOTES (Feb 2026):
+-- - WorkoutRepository.getAllSessions():
+--   SELECT * FROM app_training_session ORDER BY started_at_ms DESC;
+-- - WorkoutRepository.getSessionsByDateRange(fromMs, toMs):
+--   SELECT * FROM app_training_session WHERE started_at_ms BETWEEN ? AND ? ORDER BY started_at_ms ASC;
+-- - WorkoutRepository.getPersonalRecordCandidates(exerciseId, metricId?):
+--   SELECT MAX(COALESCE(o.value_real, o.value_int))
+--   FROM app_effort_observation o
+--   JOIN app_segment_effort e ON e.id = o.effort_id
+--   JOIN app_session_segment s ON s.id = e.segment_id
+--   JOIN app_training_session t ON t.id = s.session_id
+--   WHERE e.exercise_id = ?
+--     AND t.ended_at_ms IS NOT NULL
+--     AND (? IS NULL OR o.metric_id = ?);
+
 CREATE TABLE app_session_discipline (
   session_id TEXT NOT NULL,
   discipline_id TEXT NOT NULL,

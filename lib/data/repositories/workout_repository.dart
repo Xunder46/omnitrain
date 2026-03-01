@@ -19,6 +19,12 @@ abstract class WorkoutRepository {
 
   // Sessions
   Future<TrainingSession?> getSession(String id);
+  Future<List<TrainingSession>> getAllSessions();
+  Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs);
+  Future<double?> getPersonalRecordCandidates(
+    String exerciseId, {
+    String? metricId,
+  });
   Future<String> createSession(TrainingSession session);
   Future<void> updateSession(TrainingSession session);
 

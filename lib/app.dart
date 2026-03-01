@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/services/routine_session_service.dart';
+import 'core/services/session_summary_service.dart';
 import 'state/workout/workout_state.dart';
 import 'state/home/home_state.dart';
 import 'state/routine/routine_state.dart';
@@ -11,6 +12,7 @@ class MyApp extends StatelessWidget {
   final HomeState homeState;
   final RoutineState routineState;
   final RoutineSessionService routineSessionService;
+  final SessionSummaryService sessionSummaryService;
 
   const MyApp({
     super.key,
@@ -18,6 +20,7 @@ class MyApp extends StatelessWidget {
     required this.homeState,
     required this.routineState,
     required this.routineSessionService,
+    required this.sessionSummaryService,
   });
 
   @override
@@ -27,13 +30,13 @@ class MyApp extends StatelessWidget {
       labelSmall: const TextStyle(
         fontSize: 18,
         letterSpacing: 2,
-        color: Colors.white
+        color: Colors.white,
       ),
       labelLarge: const TextStyle(
         fontSize: 18,
         letterSpacing: 2,
         color: Colors.white,
-        decorationColor: Colors.white
+        decorationColor: Colors.white,
       ),
     );
 
@@ -52,9 +55,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Omnitrain',
       debugShowCheckedModeBanner: false,
-      theme: abyssalNeonDark.copyWith(
-        textTheme: textTheme,
-      ),
+      theme: abyssalNeonDark.copyWith(textTheme: textTheme),
       // Splash screen temporarily disabled - showing home screen directly
       // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
       home: HomeScreen(
@@ -62,6 +63,7 @@ class MyApp extends StatelessWidget {
         homeState: homeState,
         routineState: routineState,
         routineSessionService: routineSessionService,
+        sessionSummaryService: sessionSummaryService,
       ),
     );
   }
