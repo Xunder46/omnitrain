@@ -4,6 +4,7 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
 import '../models/session_summary.dart';
+import '../utils/observation_grouper.dart';
 
 class SessionSummaryService {
   final WorkoutRepository _repository;
@@ -148,29 +149,36 @@ class SessionSummaryService {
       for (final effort in efforts) {
         if (effort.effortKind != 'set') continue;
         final observations = await _repository.getEffortObservations(effort.id);
-        total += _computeVolumeFromObservations(observations);
+        total += _computeVolumeFromObservations(
+          effort.effortKind,
+          observations,
+        );
       }
     }
 
     return total;
   }
 
-  double _computeVolumeFromObservations(List<EffortObservation> observations) {
-    final entries = <int, Map<String, double>>{};
+  double _computeVolumeFromObservations(
+    String effortKind,
+    List<EffortObservation> observations,
+  ) {
+    final sorted = List<EffortObservation>.from(observations)
+      ..sort((a, b) {
+        final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+        if (createdCompare != 0) return createdCompare;
+        return _metricOrderForEffort(
+          effortKind,
+          a.metricId,
+        ).compareTo(_metricOrderForEffort(effortKind, b.metricId));
+      });
 
-    for (final observation in observations) {
-      final entryIndex = _parseEntryIndex(observation.id) ?? 0;
-      final value = observation.valueReal ?? observation.valueInt?.toDouble();
-      if (value == null) continue;
-
-      final entry = entries.putIfAbsent(entryIndex, () => {});
-      entry[observation.metricId] = value;
-    }
+    final entries = ObservationGrouper.groupByEffortKind(effortKind, sorted);
 
     double total = 0;
-    for (final entry in entries.values) {
-      final reps = entry[MetricIds.reps];
-      final weight = entry[MetricIds.weight];
+    for (final entry in entries) {
+      final reps = entry['reps'] as int?;
+      final weight = entry['weight'] as double?;
       if (reps == null || weight == null) continue;
       total += reps * weight;
     }
@@ -178,9 +186,18 @@ class SessionSummaryService {
     return total;
   }
 
-  int? _parseEntryIndex(String observationId) {
-    final parts = observationId.split('-');
-    if (parts.length < 3) return null;
-    return int.tryParse(parts[parts.length - 2]);
+  int _metricOrderForEffort(String effortKind, String metricId) {
+    switch (effortKind) {
+      case 'set':
+        return metricId == MetricIds.reps ? 0 : 1;
+      case 'timed':
+        return metricId == MetricIds.duration ? 0 : 1;
+      case 'round':
+        return metricId == MetricIds.rounds ? 0 : 1;
+      case 'drill':
+        return metricId == MetricIds.duration ? 0 : 1;
+      default:
+        return 0;
+    }
   }
 }

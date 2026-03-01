@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/omni_theme.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
@@ -300,6 +301,11 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                       label: const Text('Add Exercise'),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            OmniTheme.buttonBorderRadius,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -323,6 +329,11 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                           : null,
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            OmniTheme.buttonBorderRadius,
+                          ),
+                        ),
                       ),
                       child: const Text('Start Workout'),
                     ),

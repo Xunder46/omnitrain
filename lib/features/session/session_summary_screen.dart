@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../core/constants/omni_theme.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/models/session_summary.dart';
@@ -41,6 +42,35 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   int _daysInMonth = 30;
 
   List<SessionTemplateExercise> _draftExercises = [];
+
+  // ──── Modality grouping constants (presentation only) ────────────────────
+
+  /// Fixed render order for modality groups on the summary screen.
+  static const _groupOrder = ['strength', 'cardio', 'rounds', 'isometric'];
+
+  /// Display labels for each group (per design spec).
+  static const _groupLabels = {
+    'strength': 'Strength',
+    'cardio': 'Cardio',
+    'rounds': 'Rounds',
+    'isometric': 'Intervals',
+  };
+
+  /// Maps effortKind → canonical group key used for grouping/display.
+  static String _groupForEffort(String effortKind) {
+    switch (effortKind) {
+      case 'set':
+        return 'strength';
+      case 'timed':
+        return 'cardio';
+      case 'round':
+        return 'rounds';
+      case 'drill':
+        return 'isometric';
+      default:
+        return 'strength';
+    }
+  }
 
   @override
   void initState() {
@@ -161,14 +191,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-    for (final segment in widget.workoutState.segments) {
-      final efforts = widget.workoutState.getEffortsForSegment(segment.id);
-      for (final effort in efforts) {
-        await widget.workoutState.removeExerciseFromSession(effort.id);
-      }
-    }
-
-    widget.workoutState.clearSession();
+    await widget.workoutState.discardCurrentSession();
 
     if (!mounted) return;
 
@@ -253,6 +276,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   builder: (context) =>
                       MetricChooserDialog(exercise: selectedExercise),
                 );
+
+                if (chosenMetric == null) return;
               }
 
               final effortKind = modality != null
@@ -415,9 +440,22 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               top: BorderSide(color: Colors.white.withOpacity(0.06)),
             ),
           ),
-          child: FilledButton(
-            onPressed: _finishAndSaveSession,
-            child: const Text('Done'),
+          child: SizedBox(
+            width: double.infinity,
+            height: OmniTheme.buttonPrimaryHeight,
+            child: FilledButton(
+              onPressed: _finishAndSaveSession,
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonBorderRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Done'),
+            ),
           ),
         ),
       ),
@@ -463,6 +501,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     _buildHeaderCard(theme),
                     const SizedBox(height: 16),
                     _buildStatsCard(theme),
+                    const SizedBox(height: 16),
+                    _buildExerciseListSection(theme),
                     const SizedBox(height: 16),
                     _buildVolumeComparison(theme),
                     if (_prs.isNotEmpty) ...[
@@ -542,21 +582,209 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildStatsCard(ThemeData theme) {
+    final pills = <Widget>[
+      _StatPill(
+        label: 'Duration',
+        value: _formatDuration(_summary.totalDurationMs),
+      ),
+      _StatPill(
+        label: 'Exercises',
+        value: _summary.exercises.length.toString(),
+      ),
+    ];
+
+    if (_summary.totalSets > 0) {
+      pills.add(_StatPill(label: 'Sets', value: _summary.totalSets.toString()));
+    }
+    if (_summary.totalRounds > 0) {
+      pills.add(
+        _StatPill(label: 'Rounds', value: _summary.totalRounds.toString()),
+      );
+    }
+    if (_summary.totalCardioDurationMs > 0) {
+      pills.add(
+        _StatPill(
+          label: 'Cardio',
+          value: _formatDuration(_summary.totalCardioDurationMs),
+        ),
+      );
+    }
+
     return _SummaryCard(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Wrap(spacing: 24, runSpacing: 12, children: pills),
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Exercise list section
+  // ──────────────────────────────────────────────────────────────────────────
+
+  Widget _buildExerciseListSection(ThemeData theme) {
+    final exercises = _summary.exercises;
+    if (exercises.isEmpty) return const SizedBox.shrink();
+
+    // Bucket exercises into groups, preserving arrival order within each.
+    final Map<String, List<ExerciseSummary>> groups = {};
+    for (final ex in exercises) {
+      final key = _groupForEffort(ex.effortKind);
+      groups.putIfAbsent(key, () => []).add(ex);
+    }
+
+    // Sort within each group by execution order (defensive; should already be ordered).
+    for (final list in groups.values) {
+      list.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
+    }
+
+    final isMultiModality = groups.length > 1;
+    final orderedGroupKeys = _groupOrder.where(groups.containsKey).toList();
+
+    final items = <Widget>[];
+
+    if (isMultiModality) {
+      for (int g = 0; g < orderedGroupKeys.length; g++) {
+        final key = orderedGroupKeys[g];
+        final groupExercises = groups[key]!;
+
+        items.add(_buildExerciseGroupHeader(theme, key, groupExercises));
+        items.add(const SizedBox(height: 8));
+
+        for (int i = 0; i < groupExercises.length; i++) {
+          items.add(_buildExerciseTile(theme, groupExercises[i]));
+          if (i < groupExercises.length - 1) {
+            items.add(const SizedBox(height: 6));
+          }
+        }
+
+        if (g < orderedGroupKeys.length - 1) {
+          items.add(const SizedBox(height: 16));
+          items.add(Divider(color: Colors.white.withOpacity(0.06), height: 1));
+          items.add(const SizedBox(height: 16));
+        }
+      }
+    } else {
+      // Single modality — flat list, no headers.
+      for (int i = 0; i < exercises.length; i++) {
+        items.add(_buildExerciseTile(theme, exercises[i]));
+        if (i < exercises.length - 1) {
+          items.add(const SizedBox(height: 6));
+        }
+      }
+    }
+
+    return _SummaryCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _StatPill(
-            label: 'Duration',
-            value: _formatDuration(_summary.totalDurationMs),
-          ),
-          _StatPill(label: 'Sets', value: _summary.totalSets.toString()),
-          _StatPill(
-            label: 'Volume',
-            value: '${_formatNumber(_summary.totalVolume)} kg',
-          ),
+          Text('Exercises', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 12),
+          ...items,
         ],
       ),
+    );
+  }
+
+  Widget _buildExerciseGroupHeader(
+    ThemeData theme,
+    String groupKey,
+    List<ExerciseSummary> exercises,
+  ) {
+    final label = _groupLabels[groupKey] ?? groupKey;
+    String aggregate = '';
+
+    switch (groupKey) {
+      case 'strength':
+        final totalSets = exercises.fold(0, (s, e) => s + e.setsCompleted);
+        aggregate = '$totalSets set${totalSets != 1 ? 's' : ''}';
+        break;
+      case 'cardio':
+        final totalMs = exercises.fold<int>(
+          0,
+          (s, e) => s + (e.totalDurationMs ?? 0),
+        );
+        aggregate = _formatDuration(totalMs);
+        break;
+      case 'rounds':
+        final totalRounds = exercises.fold(0, (s, e) => s + e.totalRounds);
+        aggregate = '$totalRounds round${totalRounds != 1 ? 's' : ''}';
+        break;
+      case 'isometric':
+        final totalMs = exercises.fold<int>(
+          0,
+          (s, e) => s + (e.totalDurationMs ?? 0),
+        );
+        aggregate = _formatDuration(totalMs);
+        break;
+    }
+
+    return Row(
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 1.5,
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (aggregate.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Text(
+            '· $aggregate',
+            style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 0.5,
+              color: theme.colorScheme.onSurface.withOpacity(0.5),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildExerciseTile(ThemeData theme, ExerciseSummary exercise) {
+    final String subtitle;
+    switch (exercise.effortKind) {
+      case 'set':
+        final sets =
+            '${exercise.setsCompleted} set${exercise.setsCompleted != 1 ? 's' : ''}';
+        if (exercise.bestWeight != null && exercise.bestWeight! > 0) {
+          subtitle = '$sets · Best ${_formatNumber(exercise.bestWeight!)} kg';
+        } else {
+          subtitle = sets;
+        }
+        break;
+      case 'timed':
+        final ms = exercise.totalDurationMs ?? 0;
+        subtitle = ms > 0 ? _formatDuration(ms) : '—';
+        break;
+      case 'round':
+        final r = exercise.totalRounds;
+        subtitle = '$r round${r != 1 ? 's' : ''}';
+        break;
+      case 'drill':
+        final ms = exercise.totalDurationMs ?? 0;
+        subtitle = ms > 0 ? _formatDuration(ms) : '—';
+        break;
+      default:
+        subtitle = '${exercise.setsCompleted} entries';
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            exercise.name,
+            style: theme.textTheme.bodyMedium,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          subtitle,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
+          ),
+        ),
+      ],
     );
   }
 

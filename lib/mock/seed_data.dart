@@ -964,6 +964,16 @@ class SeedData {
       isCore: true,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
+    // Isometric / drill companion metric
+    MetricDefinition(
+      id: 'metric-extra-weight',
+      key: 'extra-weight',
+      name: 'Extra Weight',
+      dataType: 'real',
+      defaultUnitId: 'unit-kg',
+      isCore: true,
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
     MetricDefinition(
       id: 'metric-pace',
       key: 'pace',
@@ -1056,6 +1066,7 @@ class SeedData {
     MetricApplicability(metricId: 'metric-duration', effortKind: 'drill'),
     MetricApplicability(metricId: 'metric-reps', effortKind: 'drill'),
     MetricApplicability(metricId: 'metric-quality', effortKind: 'drill'),
+    MetricApplicability(metricId: 'metric-extra-weight', effortKind: 'drill'),
   ];
 
   /// Maps exercise IDs to muscle group IDs

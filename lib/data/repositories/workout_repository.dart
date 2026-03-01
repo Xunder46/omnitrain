@@ -27,6 +27,7 @@ abstract class WorkoutRepository {
   });
   Future<String> createSession(TrainingSession session);
   Future<void> updateSession(TrainingSession session);
+  Future<void> deleteSession(String id);
 
   // Segments
   Future<List<SessionSegment>> getSessionSegments(String sessionId);
@@ -103,7 +104,61 @@ abstract class WorkoutRepository {
 
   // Exercise Capabilities
   Future<List<String>> getExerciseCapabilities(String exerciseId);
-  Future<void> setExerciseCapabilities(String exerciseId, List<String> capabilities);
+  Future<void> setExerciseCapabilities(
+    String exerciseId,
+    List<String> capabilities,
+  );
+
+  // Round Instances
+  //
+  // Stores the full lifecycle of each timed round for effortKind == 'round' efforts.
+  // Each RoundInstance captures: planned duration, wall-clock timestamps, actual
+  // elapsed time, and whether the round completed naturally vs was cut short.
+  // This replaces the old metric-rounds + metric-round-duration observation-pair pattern.
+
+  /// Get all round instances for a round-based effort, ordered by roundIndex ascending.
+  Future<List<RoundInstance>> getRoundInstances(String effortId);
+
+  /// Persist a newly created round instance (startedAtMs = 0, not yet begun).
+  Future<String> createRoundInstance(RoundInstance instance);
+
+  /// Update an existing round instance.
+  /// Used to set startedAtMs, finishedAtMs, actualDurationSecs, and completed flag.
+  Future<void> updateRoundInstance(RoundInstance instance);
+
+  /// Delete a single round instance by ID.
+  Future<void> deleteRoundInstance(String id);
+
+  /// Delete all round instances belonging to an effort.
+  /// Call this before deleting the effort to maintain referential integrity
+  /// (or rely on ON DELETE CASCADE in the SQLite schema).
+  Future<void> deleteRoundInstancesForEffort(String effortId);
+
+  // Timed Instances
+  //
+  // Stores the full lifecycle of each timed entry for effortKind == 'timed' or 'drill' efforts.
+  // Each TimedInstance captures: target duration (0 = open-ended), wall-clock timestamps,
+  // actual elapsed time, and explicit lifecycle state.
+  // The companion metric (distance for timed, extra weight for drill) remains as an EffortObservation.
+  // This replaces the old duration EffortObservation for these effort kinds.
+
+  /// Get all timed instances for a timed/drill effort, ordered by entryIndex ascending.
+  Future<List<TimedInstance>> getTimedInstances(String effortId);
+
+  /// Persist a newly created timed instance (startedAtMs = 0, not yet begun).
+  Future<String> createTimedInstance(TimedInstance instance);
+
+  /// Update an existing timed instance.
+  /// Used to set startedAtMs, finishedAtMs, actualDurationSecs, state, and pause fields.
+  Future<void> updateTimedInstance(TimedInstance instance);
+
+  /// Delete a single timed instance by ID.
+  Future<void> deleteTimedInstance(String id);
+
+  /// Delete all timed instances belonging to an effort.
+  /// Call this before deleting the effort to maintain referential integrity
+  /// (or rely on ON DELETE CASCADE in the SQLite schema).
+  Future<void> deleteTimedInstancesForEffort(String effortId);
 
   // Modality-ranked exercise retrieval
   /// Retrieve exercises ranked by relevance to a given modality.
@@ -160,4 +215,3 @@ abstract class WorkoutRepository {
     List<String>? muscleGroupIds,
   });
 }
-

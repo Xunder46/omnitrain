@@ -273,7 +273,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: DropdownButtonFormField<String?>(
-        value: _selectedFocusModality,
+        initialValue: _selectedFocusModality,
         decoration: InputDecoration(
           labelText: 'Focus Modality',
           labelStyle: const TextStyle(color: Colors.grey),
@@ -479,8 +479,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             end: Alignment.bottomCenter,
             colors: [
               Colors.transparent,
-              theme.colorScheme.background.withOpacity(0.95),
-              theme.colorScheme.background,
+              theme.colorScheme.surface.withOpacity(0.95),
+              theme.colorScheme.surface,
             ],
             stops: const [0.0, 0.3, 1.0],
           ),
@@ -787,7 +787,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: selectedType,
+              initialValue: selectedType,
               items: _segmentTypes
                   .map((type) => DropdownMenuItem(
                         value: type,
@@ -915,7 +915,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: restType,
+              initialValue: restType,
               items: const [
                 DropdownMenuItem(
                   value: 'between_sets',
@@ -1249,7 +1249,7 @@ extension on _RoutineSetupScreenState {
         );
       case 'drill':
         final duration = _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
-        final rpe = _getTargetInt(targets, MetricIds.rpe, setIndex) ?? 5;
+        final extraWeight = _getTargetDouble(targets, MetricIds.extraWeight, setIndex);
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1266,15 +1266,15 @@ extension on _RoutineSetupScreenState {
               ),
             ),
             InlineMetricEditor(
-              metricType: 'rpe',
-              currentValue: rpe,
-              unitLabel: 'RPE',
+              metricType: 'extra-weight',
+              currentValue: extraWeight,
+              unitLabel: 'EXTRA WEIGHT',
               onValueChanged: (value) => widget.routineState.setTargetValue(
                 effort.id,
-                MetricIds.rpe,
-                null,
+                MetricIds.extraWeight,
+                MetricIds.unitKg,
                 setIndex: setIndex,
-                targetInt: value as int,
+                targetMin: value as double,
               ),
             ),
           ],
@@ -1345,10 +1345,11 @@ extension on _RoutineSetupScreenState {
         break;
       case 'drill':
         final duration = _getTargetInt(targets, MetricIds.duration, previousIndex) ?? 0;
-        final rpe = _getTargetInt(targets, MetricIds.rpe, previousIndex) ?? 5;
+        final extraWeight = _getTargetDouble(targets, MetricIds.extraWeight, previousIndex);
         final mins = duration ~/ 60;
         final secs = duration % 60;
-        statsText = 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ RPE $rpe';
+        final ewSign = extraWeight > 0 ? '+' : '';
+        statsText = 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ $ewSign${extraWeight.toStringAsFixed(1)} lbs';
         break;
       default:
         return const SizedBox.shrink();

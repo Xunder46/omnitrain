@@ -615,5 +615,387 @@ class MetricApplicability {
       };
 }
 
+// Sentinel used by RoundInstance.copyWith() to distinguish "explicit null" from "not provided"
+// for nullable fields (finishedAtMs, pausedAtMs).
+const _roundCopyWithUnset = Object();
+
+/// Explicit lifecycle state for a timed round.
+///
+/// Allowed transitions:
+///   NotStarted → Active
+///   Active     → Paused
+///   Active     → Finished
+///   Paused     → Active
+///   Paused     → Finished
+///
+/// Finished is terminal — no further transitions are permitted.
+enum RoundState {
+  notStarted, // Round created; timer has never been started
+  active,     // Timer running; countdown in progress
+  paused,     // Timer paused mid-countdown; pausedAtMs is set
+  finished,   // Terminal — round completed naturally or ended early
+}
+
+/// Represents one timed round within a round-based effort (effortKind == 'round').
+///
+/// Replaces the old metric-rounds + metric-round-duration observation pair pattern.
+/// Each RoundInstance captures the full lifecycle of a single round: planned duration,
+/// wall-clock start/finish timestamps, accumulated pause duration, actual elapsed time,
+/// explicit state, and completion flag.
+///
+/// Lifecycle:
+///   1. Created:          state = NotStarted, startedAtMs = 0, totalPausedDurationMs = 0
+///   2. Started:          state = Active, startedAtMs = now
+///   3. Paused:           state = Paused, pausedAtMs = now
+///   4. Resumed:          state = Active, totalPausedDurationMs += (now - pausedAtMs), pausedAtMs = null
+///   5. Natural finish:   state = Finished, completed = true,
+///                        actualDurationSecs = plannedDurationSecs,
+///                        finishedAtMs = startedAtMs + (plannedDurationSecs * 1000) + totalPausedDurationMs
+///   6. Early finish:     state = Finished, completed = false,
+///                        actualDurationSecs = elapsed (derived from timestamps),
+///                        finishedAtMs = now
+///   7. Session close:    same as early finish (via _persistActiveRounds safety net)
+///
+/// Rules:
+///   - completed is ONLY set to true when the countdown naturally reaches zero.
+///   - Finished is terminal — no transitions from Finished are allowed.
+///   - elapsed = now - startedAtMs - totalPausedDurationMs (NEVER inferred from stored duration).
+///   - Countdown is presentation-only; only elapsed is stored.
+///   - Partial rounds are never discarded.
+class RoundInstance {
+  final String id;
+  final String effortId;
+  final int roundIndex;               // 0-based round number within the effort
+  final int plannedDurationSecs;      // Countdown target; user-configurable (default 180)
+  final int actualDurationSecs;       // Final elapsed time in secs; 0 while in-progress
+  final int startedAtMs;              // Wall-clock epoch ms; 0 if not yet started
+  final int? finishedAtMs;            // Wall-clock epoch ms; null if not finished
+  final bool completed;               // true ONLY if countdown naturally reached zero
+  final RoundState state;             // Explicit lifecycle state
+  final int? pausedAtMs;              // Wall-clock epoch ms when paused; null if not paused
+  final int totalPausedDurationMs;    // Accumulated pause time in ms across all pause/resume cycles
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  RoundInstance({
+    required this.id,
+    required this.effortId,
+    required this.roundIndex,
+    this.plannedDurationSecs = 180,
+    this.actualDurationSecs = 0,
+    this.startedAtMs = 0,
+    this.finishedAtMs,
+    this.completed = false,
+    this.state = RoundState.notStarted,
+    this.pausedAtMs,
+    this.totalPausedDurationMs = 0,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  /// Parses a RoundState from its persisted name string.
+  /// Falls back to inferring state from existing timestamp fields for backward
+  /// compatibility with records created before the state column was introduced.
+  static RoundState _stateFromMap(Map<String, dynamic> m) {
+    final raw = m['state'] as String?;
+    if (raw != null && raw.isNotEmpty) {
+      for (final s in RoundState.values) {
+        if (s.name == raw) return s;
+      }
+    }
+    // Backward-compat inference: no 'state' column in old records
+    if (m['finished_at_ms'] != null) return RoundState.finished;
+    if ((m['started_at_ms'] as int? ?? 0) > 0) return RoundState.active;
+    return RoundState.notStarted;
+  }
+
+  factory RoundInstance.fromMap(Map<String, dynamic> m) => RoundInstance(
+        id: m['id'] as String,
+        effortId: m['effort_id'] as String,
+        roundIndex: m['round_index'] as int,
+        plannedDurationSecs: m['planned_duration_secs'] as int? ?? 180,
+        actualDurationSecs: m['actual_duration_secs'] as int? ?? 0,
+        startedAtMs: m['started_at_ms'] as int? ?? 0,
+        finishedAtMs: m['finished_at_ms'] as int?,
+        completed: (m['completed'] as int?) == 1,
+        state: _stateFromMap(m),
+        pausedAtMs: m['paused_at_ms'] as int?,
+        totalPausedDurationMs: m['total_paused_duration_ms'] as int? ?? 0,
+        createdAtMs: m['created_at_ms'] as int,
+        updatedAtMs: m['updated_at_ms'] as int,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'effort_id': effortId,
+        'round_index': roundIndex,
+        'planned_duration_secs': plannedDurationSecs,
+        'actual_duration_secs': actualDurationSecs,
+        'started_at_ms': startedAtMs,
+        'finished_at_ms': finishedAtMs,
+        'completed': completed ? 1 : 0,
+        'state': state.name,
+        'paused_at_ms': pausedAtMs,
+        'total_paused_duration_ms': totalPausedDurationMs,
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs,
+      };
+
+  /// Returns a copy with the specified fields replaced.
+  /// For nullable fields [finishedAtMs] and [pausedAtMs], pass the sentinel
+  /// [_roundCopyWithUnset] (the default) to preserve the current value, or
+  /// pass an explicit [int?] (including null) to override it.
+  RoundInstance copyWith({
+    String? id,
+    String? effortId,
+    int? roundIndex,
+    int? plannedDurationSecs,
+    int? actualDurationSecs,
+    int? startedAtMs,
+    Object? finishedAtMs = _roundCopyWithUnset,
+    bool? completed,
+    RoundState? state,
+    Object? pausedAtMs = _roundCopyWithUnset,
+    int? totalPausedDurationMs,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) =>
+      RoundInstance(
+        id: id ?? this.id,
+        effortId: effortId ?? this.effortId,
+        roundIndex: roundIndex ?? this.roundIndex,
+        plannedDurationSecs: plannedDurationSecs ?? this.plannedDurationSecs,
+        actualDurationSecs: actualDurationSecs ?? this.actualDurationSecs,
+        startedAtMs: startedAtMs ?? this.startedAtMs,
+        finishedAtMs: finishedAtMs == _roundCopyWithUnset
+            ? this.finishedAtMs
+            : finishedAtMs as int?,
+        completed: completed ?? this.completed,
+        state: state ?? this.state,
+        pausedAtMs: pausedAtMs == _roundCopyWithUnset
+            ? this.pausedAtMs
+            : pausedAtMs as int?,
+        totalPausedDurationMs:
+            totalPausedDurationMs ?? this.totalPausedDurationMs,
+        createdAtMs: createdAtMs ?? this.createdAtMs,
+        updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      );
+
+  // ─── Computed time helpers ───────────────────────────────────────────────
+
+  /// Elapsed time in milliseconds, derived purely from wall-clock timestamps.
+  ///
+  ///   NotStarted → 0
+  ///   Active     → now - startedAtMs - totalPausedDurationMs
+  ///   Paused     → pausedAtMs - startedAtMs - totalPausedDurationMs  (frozen)
+  ///   Finished   → actualDurationSecs * 1000  (final stored value)
+  ///
+  /// Never use this for a Finished round to re-derive time; use [actualDurationSecs].
+  int get elapsedMs {
+    if (startedAtMs == 0 || state == RoundState.notStarted) return 0;
+    if (state == RoundState.finished) return actualDurationSecs * 1000;
+    // Use pausedAtMs as the reference point when paused (freezes the value);
+    // otherwise use the current wall clock.
+    final referenceMs =
+        (state == RoundState.paused && pausedAtMs != null)
+            ? pausedAtMs!
+            : DateTime.now().millisecondsSinceEpoch;
+    return (referenceMs - startedAtMs - totalPausedDurationMs)
+        .clamp(0, plannedDurationSecs * 2000); // cap at 2× planned as sanity guard
+  }
+
+  /// Remaining milliseconds before the countdown completes.
+  /// Always 0 for a Finished round.
+  int get remainingMs {
+    final planned = plannedDurationSecs * 1000;
+    return (planned - elapsedMs).clamp(0, planned);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TimedInstance — Wall-clock tracked duration for timed / drill efforts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _timedCopyWithUnset = Object();
+
+/// Explicit lifecycle state for a timed / drill entry.
+///
+/// Allowed transitions (same rules as RoundState):
+///   NotStarted → Active
+///   Active     → Paused
+///   Active     → Finished
+///   Paused     → Active
+///   Paused     → Finished
+///
+/// Finished is terminal — no further transitions are permitted.
+enum TimedState {
+  notStarted, // Entry created; timer has never been started
+  active,     // Timer running; counting up
+  paused,     // Timer paused mid-effort; pausedAtMs is set
+  finished,   // Terminal — entry completed (naturally or early)
+}
+
+/// Represents one timed entry within a timed or drill effort
+/// (effortKind == 'timed' or effortKind == 'drill').
+///
+/// Replaces the old duration EffortObservation for these effort kinds.
+/// Each TimedInstance captures the full lifecycle of a single timed entry:
+/// wall-clock start/finish timestamps, accumulated pause duration, actual
+/// elapsed time, explicit state, and optional target duration for alert/expiry.
+///
+/// The companion metrics (distance for timed, extra weight for drill) remain as
+/// EffortObservation records — only the duration aspect is tracked here.
+///
+/// Lifecycle:
+///   1. Created:          state = NotStarted, startedAtMs = 0, totalPausedDurationMs = 0
+///   2. Started:          state = Active, startedAtMs = now
+///   3. Paused:           state = Paused, pausedAtMs = now
+///   4. Resumed:          state = Active, totalPausedDurationMs += (now - pausedAtMs), pausedAtMs = null
+///   5. Finished:         state = Finished, actualDurationSecs = elapsed (derived from timestamps),
+///                        finishedAtMs = now
+///   6. Session close:    same as finish (via _persistActiveTimedEntries safety net)
+///
+/// Rules:
+///   - Finished is terminal — no transitions from Finished are allowed.
+///   - elapsed = now - startedAtMs - totalPausedDurationMs (NEVER inferred from stored duration).
+///   - Partial entries are never discarded.
+///   - targetDurationSecs == 0 means open-ended (no alert/expiry).
+class TimedInstance {
+  final String id;
+  final String effortId;
+  final int entryIndex;               // 0-based entry number within the effort
+  final int targetDurationSecs;       // User-set target; 0 = open-ended (no alert)
+  final int actualDurationSecs;       // Final elapsed secs; 0 while in-progress
+  final int startedAtMs;              // Wall-clock epoch ms; 0 if not yet started
+  final int? finishedAtMs;            // Wall-clock epoch ms; null if not finished
+  final TimedState state;             // Explicit lifecycle state
+  final int? pausedAtMs;              // Wall-clock epoch ms when paused; null if not paused
+  final int totalPausedDurationMs;    // Accumulated pause time in ms across all pause/resume cycles
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  TimedInstance({
+    required this.id,
+    required this.effortId,
+    required this.entryIndex,
+    this.targetDurationSecs = 0,
+    this.actualDurationSecs = 0,
+    this.startedAtMs = 0,
+    this.finishedAtMs,
+    this.state = TimedState.notStarted,
+    this.pausedAtMs,
+    this.totalPausedDurationMs = 0,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  /// Parses a TimedState from its persisted name string.
+  /// Falls back to inferring state from existing timestamp fields for backward
+  /// compatibility with records created before the state column was introduced.
+  static TimedState _stateFromMap(Map<String, dynamic> m) {
+    final raw = m['state'] as String?;
+    if (raw != null && raw.isNotEmpty) {
+      for (final s in TimedState.values) {
+        if (s.name == raw) return s;
+      }
+    }
+    // Backward-compat inference: no 'state' column in old records
+    if (m['finished_at_ms'] != null) return TimedState.finished;
+    if ((m['started_at_ms'] as int? ?? 0) > 0) return TimedState.active;
+    return TimedState.notStarted;
+  }
+
+  factory TimedInstance.fromMap(Map<String, dynamic> m) => TimedInstance(
+        id: m['id'] as String,
+        effortId: m['effort_id'] as String,
+        entryIndex: m['entry_index'] as int,
+        targetDurationSecs: m['target_duration_secs'] as int? ?? 0,
+        actualDurationSecs: m['actual_duration_secs'] as int? ?? 0,
+        startedAtMs: m['started_at_ms'] as int? ?? 0,
+        finishedAtMs: m['finished_at_ms'] as int?,
+        state: _stateFromMap(m),
+        pausedAtMs: m['paused_at_ms'] as int?,
+        totalPausedDurationMs: m['total_paused_duration_ms'] as int? ?? 0,
+        createdAtMs: m['created_at_ms'] as int,
+        updatedAtMs: m['updated_at_ms'] as int,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'effort_id': effortId,
+        'entry_index': entryIndex,
+        'target_duration_secs': targetDurationSecs,
+        'actual_duration_secs': actualDurationSecs,
+        'started_at_ms': startedAtMs,
+        'finished_at_ms': finishedAtMs,
+        'state': state.name,
+        'paused_at_ms': pausedAtMs,
+        'total_paused_duration_ms': totalPausedDurationMs,
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs,
+      };
+
+  /// Returns a copy with the specified fields replaced.
+  /// For nullable fields [finishedAtMs] and [pausedAtMs], pass the sentinel
+  /// [_timedCopyWithUnset] (the default) to preserve the current value, or
+  /// pass an explicit [int?] (including null) to override it.
+  TimedInstance copyWith({
+    String? id,
+    String? effortId,
+    int? entryIndex,
+    int? targetDurationSecs,
+    int? actualDurationSecs,
+    int? startedAtMs,
+    Object? finishedAtMs = _timedCopyWithUnset,
+    TimedState? state,
+    Object? pausedAtMs = _timedCopyWithUnset,
+    int? totalPausedDurationMs,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) =>
+      TimedInstance(
+        id: id ?? this.id,
+        effortId: effortId ?? this.effortId,
+        entryIndex: entryIndex ?? this.entryIndex,
+        targetDurationSecs: targetDurationSecs ?? this.targetDurationSecs,
+        actualDurationSecs: actualDurationSecs ?? this.actualDurationSecs,
+        startedAtMs: startedAtMs ?? this.startedAtMs,
+        finishedAtMs: finishedAtMs == _timedCopyWithUnset
+            ? this.finishedAtMs
+            : finishedAtMs as int?,
+        state: state ?? this.state,
+        pausedAtMs: pausedAtMs == _timedCopyWithUnset
+            ? this.pausedAtMs
+            : pausedAtMs as int?,
+        totalPausedDurationMs:
+            totalPausedDurationMs ?? this.totalPausedDurationMs,
+        createdAtMs: createdAtMs ?? this.createdAtMs,
+        updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+      );
+
+  // ─── Computed time helpers ───────────────────────────────────────────────
+
+  /// Elapsed time in milliseconds, derived purely from wall-clock timestamps.
+  ///
+  ///   NotStarted → 0
+  ///   Active     → now - startedAtMs - totalPausedDurationMs
+  ///   Paused     → pausedAtMs - startedAtMs - totalPausedDurationMs  (frozen)
+  ///   Finished   → actualDurationSecs * 1000  (final stored value)
+  ///
+  /// Open-ended: no upper clamp (timed/drill count UP, unlike round countdowns).
+  int get elapsedMs {
+    if (startedAtMs == 0 || state == TimedState.notStarted) return 0;
+    if (state == TimedState.finished) return actualDurationSecs * 1000;
+    // Use pausedAtMs as the reference point when paused (freezes the value);
+    // otherwise use the current wall clock.
+    final referenceMs =
+        (state == TimedState.paused && pausedAtMs != null)
+            ? pausedAtMs!
+            : DateTime.now().millisecondsSinceEpoch;
+    return (referenceMs - startedAtMs - totalPausedDurationMs)
+        .clamp(0, 86400000); // cap at 24 hours as sanity guard
+  }
+}
+
 // UI-specific set data structures moved to lib/core/utils/exercise_helpers.dart
 // Models layer reserved for persistence entities only

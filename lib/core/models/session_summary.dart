@@ -8,6 +8,15 @@ class SessionSummary {
   final int totalSets;
   final List<ExerciseSummary> exercises;
 
+  /// Total rounds across all round-based exercises.
+  final int totalRounds;
+
+  /// Total duration in ms for all cardio/timed exercises.
+  final int totalCardioDurationMs;
+
+  /// Total duration in ms for all drill/isometric exercises.
+  final int totalDrillDurationMs;
+
   SessionSummary({
     required this.sessionId,
     required this.title,
@@ -17,6 +26,9 @@ class SessionSummary {
     required this.totalVolume,
     required this.totalSets,
     required this.exercises,
+    this.totalRounds = 0,
+    this.totalCardioDurationMs = 0,
+    this.totalDrillDurationMs = 0,
   });
 }
 
@@ -27,12 +39,24 @@ class ExerciseSummary {
   final int setsCompleted;
   final double? bestWeight;
 
+  /// Positional index preserving original execution order (0-based).
+  final int executionOrder;
+
+  /// Total duration in milliseconds for timed/drill efforts; null for set/round.
+  final int? totalDurationMs;
+
+  /// Number of rounds completed for round-based efforts; 0 otherwise.
+  final int totalRounds;
+
   ExerciseSummary({
     required this.exerciseId,
     required this.name,
     required this.effortKind,
     required this.setsCompleted,
     required this.bestWeight,
+    required this.executionOrder,
+    this.totalDurationMs,
+    this.totalRounds = 0,
   });
 }
 

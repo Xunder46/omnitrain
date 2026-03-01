@@ -53,6 +53,30 @@ BEGIN TRANSACTION;
 -- - For production sync/history preservation, consider using deleted_at_ms field
 -- - Current implementation uses hard deletes (removes from Maps in MockWorkoutRepository)
 -- - Future SqliteWorkoutRepository can implement soft deletes for sync conflict resolution
+--
+-- SESSION SUMMARY COMPUTATION (Feb 2026):
+-- =========================================
+-- SessionSummary and ExerciseSummary are computed in-memory models (not persisted tables).
+-- Future SqliteWorkoutRepository.computeSessionSummary() should derive these aggregates via:
+--
+-- Per-exercise (ExerciseSummary):
+--   executionOrder  → ROW_NUMBER() OVER (ORDER BY ss.order_index, se.order_index)
+--   totalDurationMs → SUM(eo.value_int) * 1000 WHERE eo.metric_id = 'metric-duration'
+--                      (for effortKind IN ('timed', 'drill') only)
+--   totalRounds     → COUNT(*) FROM app_round_instance WHERE effort_id = se.id
+--                      (for effortKind = 'round' only)
+--
+-- Session-level aggregates (SessionSummary):
+--   totalRounds          → SUM of per-effort round counts
+--   totalCardioDurationMs → SUM of totalDurationMs for effortKind = 'timed'
+--   totalDrillDurationMs  → SUM of totalDurationMs for effortKind = 'drill'
+--
+-- These aggregates power modality-grouped exercise display on the summary screen.
+-- Grouping logic maps effortKind → modality group:
+--   'set'   → Strength
+--   'timed' → Cardio
+--   'round' → Rounds
+--   'drill' → Intervals (Isometric)
 CREATE TABLE app_sport_category (
   id TEXT NOT NULL PRIMARY KEY,
   key TEXT NOT NULL UNIQUE,
@@ -500,6 +524,146 @@ CREATE TABLE app_exercise_capability (
   FOREIGN KEY(exercise_id) REFERENCES app_exercise(id)
 );
 CREATE INDEX IF NOT EXISTS IX_exercise_capability_cap ON app_exercise_capability(capability);
+
+-- ROUND INSTANCES (Feb 2026 Refactor — updated with explicit state model):
+-- ==========================================
+-- Replaces the metric-rounds + metric-round-duration observation pair pattern for round
+-- (effortKind == 'round') exercises. Each row is a single timed round of one effort.
+--
+-- Lifecycle / state transitions:
+--   1. Created on addRound():
+--        state = 'notStarted', started_at_ms = 0, total_paused_duration_ms = 0
+--   2. Started on startRound():
+--        state = 'active', started_at_ms = wall-clock epoch ms
+--   3. Paused on pauseRound():
+--        state = 'paused', paused_at_ms = wall-clock epoch ms
+--   4. Resumed on resumeRound():
+--        state = 'active', total_paused_duration_ms += (now - paused_at_ms), paused_at_ms = NULL
+--   5. Completed naturally (countdown → 0):
+--        state = 'finished', completed = 1,
+--        actual_duration_secs = planned_duration_secs,
+--        finished_at_ms = started_at_ms + (planned_duration_secs * 1000) + total_paused_duration_ms
+--   6. Ended early (manual log) or session close:
+--        state = 'finished', completed = 0,
+--        actual_duration_secs = elapsed (now - started_at_ms - total_paused_duration_ms) / 1000,
+--        finished_at_ms = now
+--
+-- Allowed state transitions:
+--   notStarted → active
+--   active     → paused | finished
+--   paused     → active | finished
+--   finished   → (none — terminal)
+--
+-- Rules:
+--   - completed = 1 ONLY when countdown naturally reaches zero (never inferred from duration)
+--   - elapsed = now - started_at_ms - total_paused_duration_ms  (always derived from timestamps)
+--   - actual_duration_secs stores final elapsed; countdown is UI-only presentation
+--   - Partial rounds are never discarded
+--   - finished is terminal — no further mutations allowed
+--   - ON DELETE CASCADE ensures automatic cleanup when the parent effort is deleted
+--
+-- Backward compatibility:
+--   Existing rows without state/paused_at_ms/total_paused_duration_ms columns use
+--   SQLite column defaults ('notStarted' / NULL / 0). The Dart fromMap() infers
+--   state from finished_at_ms and started_at_ms when the state column is missing.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getRoundInstances(effortId):
+--     SELECT * FROM app_round_instance WHERE effort_id = ? ORDER BY round_index ASC;
+--   createRoundInstance(instance):
+--     INSERT INTO app_round_instance VALUES (...);
+--   updateRoundInstance(instance):
+--     UPDATE app_round_instance SET
+--       planned_duration_secs=?, actual_duration_secs=?, started_at_ms=?,
+--       finished_at_ms=?, completed=?, state=?, paused_at_ms=?,
+--       total_paused_duration_ms=?, updated_at_ms=?
+--     WHERE id = ?;
+--   deleteRoundInstance(id):
+--     DELETE FROM app_round_instance WHERE id = ?;
+--   deleteRoundInstancesForEffort(effortId):
+--     DELETE FROM app_round_instance WHERE effort_id = ?;
+--
+-- Migration (for existing production databases — add new columns with safe defaults):
+--   ALTER TABLE app_round_instance ADD COLUMN state TEXT NOT NULL DEFAULT 'notStarted';
+--   ALTER TABLE app_round_instance ADD COLUMN paused_at_ms INTEGER;
+--   ALTER TABLE app_round_instance ADD COLUMN total_paused_duration_ms INTEGER NOT NULL DEFAULT 0;
+--   -- Back-fill state from existing fields:
+--   UPDATE app_round_instance SET state = 'finished' WHERE finished_at_ms IS NOT NULL;
+--   UPDATE app_round_instance SET state = 'active'
+--     WHERE finished_at_ms IS NULL AND started_at_ms > 0;
+CREATE TABLE app_round_instance (
+  id TEXT NOT NULL PRIMARY KEY,
+  effort_id TEXT NOT NULL,
+  round_index INTEGER NOT NULL,                        -- 0-based round number within the effort
+  planned_duration_secs INTEGER NOT NULL DEFAULT 180,  -- User-configurable countdown target
+  actual_duration_secs INTEGER NOT NULL DEFAULT 0,     -- Final elapsed secs; 0 while in-progress
+  started_at_ms INTEGER NOT NULL DEFAULT 0,            -- 0 = not yet started
+  finished_at_ms INTEGER,                              -- NULL = not finished
+  completed INTEGER NOT NULL DEFAULT 0,                -- 1 = countdown reached zero naturally
+  state TEXT NOT NULL DEFAULT 'notStarted',            -- RoundState: notStarted|active|paused|finished
+  paused_at_ms INTEGER,                                -- Wall-clock ms when paused; NULL if not paused
+  total_paused_duration_ms INTEGER NOT NULL DEFAULT 0, -- Accumulated pause time in ms
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS IX_round_instance_effort ON app_round_instance(effort_id, round_index);
+
+-- TIMED INSTANCES (Feb 2026)
+-- ==========================
+-- Stores the full lifecycle of each timed entry for effortKind == 'timed' or 'drill' efforts.
+-- Replaces the old duration EffortObservation for these effort kinds.
+-- Companion metrics (distance for timed, extra weight for drill) remain as EffortObservation records.
+--
+-- Design mirrors app_round_instance but with key differences:
+--   - entry_index instead of round_index (same semantics, different naming)
+--   - target_duration_secs instead of planned_duration_secs (0 = open-ended, no alert)
+--   - No completed flag (timed/drill count UP; no natural completion concept)
+--   - elapsed counts up without upper clamp (rounds count down)
+--
+-- Lifecycle:
+--   1. Created:   state = 'notStarted', started_at_ms = 0
+--   2. Started:   state = 'active', started_at_ms = now
+--   3. Paused:    state = 'paused', paused_at_ms = now
+--   4. Resumed:   state = 'active', total_paused_duration_ms += (now - paused_at_ms), paused_at_ms = NULL
+--   5. Finished:  state = 'finished', actual_duration_secs = derived from timestamps, finished_at_ms = now
+--   6. Session close: same as finish (via _persistActiveTimedEntries safety net)
+--
+-- Rules:
+--   - finished is terminal — no further mutations allowed
+--   - ON DELETE CASCADE ensures automatic cleanup when the parent effort is deleted
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getTimedInstances(effortId):
+--     SELECT * FROM app_timed_instance WHERE effort_id = ? ORDER BY entry_index ASC;
+--   createTimedInstance(instance):
+--     INSERT INTO app_timed_instance VALUES (...);
+--   updateTimedInstance(instance):
+--     UPDATE app_timed_instance SET
+--       target_duration_secs=?, actual_duration_secs=?, started_at_ms=?,
+--       finished_at_ms=?, state=?, paused_at_ms=?,
+--       total_paused_duration_ms=?, updated_at_ms=?
+--     WHERE id = ?;
+--   deleteTimedInstance(id):
+--     DELETE FROM app_timed_instance WHERE id = ?;
+--   deleteTimedInstancesForEffort(effortId):
+--     DELETE FROM app_timed_instance WHERE effort_id = ?;
+CREATE TABLE app_timed_instance (
+  id TEXT NOT NULL PRIMARY KEY,
+  effort_id TEXT NOT NULL,
+  entry_index INTEGER NOT NULL,                        -- 0-based entry number within the effort
+  target_duration_secs INTEGER NOT NULL DEFAULT 0,     -- User-set target; 0 = open-ended (no alert)
+  actual_duration_secs INTEGER NOT NULL DEFAULT 0,     -- Final elapsed secs; 0 while in-progress
+  started_at_ms INTEGER NOT NULL DEFAULT 0,            -- 0 = not yet started
+  finished_at_ms INTEGER,                              -- NULL = not finished
+  state TEXT NOT NULL DEFAULT 'notStarted',            -- TimedState: notStarted|active|paused|finished
+  paused_at_ms INTEGER,                                -- Wall-clock ms when paused; NULL if not paused
+  total_paused_duration_ms INTEGER NOT NULL DEFAULT 0, -- Accumulated pause time in ms
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS IX_timed_instance_effort ON app_timed_instance(effort_id, entry_index);
 
 CREATE TABLE app_muscle_group (
   id TEXT NOT NULL PRIMARY KEY,

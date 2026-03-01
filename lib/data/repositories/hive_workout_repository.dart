@@ -29,6 +29,14 @@ class HiveWorkoutRepository implements WorkoutRepository {
   late Box<Map> _templateEffortsBox;
   late Box<Map> _templateTargetsBox;
 
+  // Round instances box: key = RoundInstance.id, value = RoundInstance.toMap()
+  // effortId-level lookup is done by scanning (same pattern as observations).
+  late Box<Map> _roundInstancesBox;
+
+  // Timed instances box: key = TimedInstance.id, value = TimedInstance.toMap()
+  // Stores wall-clock tracked durations for timed/drill efforts.
+  late Box<Map> _timedInstancesBox;
+
   late Box<List> _exerciseMuscleGroupsBox;
   late Box<List> _exerciseEquipmentBox;
   late Box<List> _exerciseTagsBox;
@@ -63,11 +71,19 @@ class HiveWorkoutRepository implements WorkoutRepository {
     _templateEffortsBox = await Hive.openBox<Map>('template_efforts');
     _templateTargetsBox = await Hive.openBox<Map>('template_targets');
 
-    _exerciseMuscleGroupsBox = await Hive.openBox<List>('exercise_muscle_groups');
+    _roundInstancesBox = await Hive.openBox<Map>('round_instances');
+
+    _timedInstancesBox = await Hive.openBox<Map>('timed_instances');
+
+    _exerciseMuscleGroupsBox = await Hive.openBox<List>(
+      'exercise_muscle_groups',
+    );
     _exerciseEquipmentBox = await Hive.openBox<List>('exercise_equipment');
     _exerciseTagsBox = await Hive.openBox<List>('exercise_tags');
     _metricEffortKindsBox = await Hive.openBox<List>('metric_effort_kinds');
-    _exerciseCapabilitiesBox = await Hive.openBox<List>('exercise_capabilities');
+    _exerciseCapabilitiesBox = await Hive.openBox<List>(
+      'exercise_capabilities',
+    );
 
     final seedLoaded = _metaBox.get(_seedLoadedKey) as bool? ?? false;
     if (!seedLoaded) {
@@ -212,8 +228,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
       final lowerSearch = searchText.toLowerCase();
       results = results.where((e) {
         final nameMatch = e.name.toLowerCase().contains(lowerSearch);
-        final descMatch = e.description?.toLowerCase().contains(lowerSearch) ??
-            false;
+        final descMatch =
+            e.description?.toLowerCase().contains(lowerSearch) ?? false;
         return nameMatch || descMatch;
       });
     }
@@ -319,6 +335,48 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _sessionsBox.put(session.id, session.toMap());
   }
 
+  @override
+  Future<void> deleteSession(String id) async {
+    final segmentIds = <dynamic>[];
+    for (final entry in _segmentsBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (raw['session_id'] == id) {
+        segmentIds.add(entry.key);
+      }
+    }
+
+    final effortIds = <dynamic>[];
+    for (final entry in _effortsBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (segmentIds.contains(raw['segment_id'])) {
+        effortIds.add(entry.key);
+      }
+    }
+
+    final observationIds = <dynamic>[];
+    for (final entry in _observationsBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (effortIds.contains(raw['effort_id'])) {
+        observationIds.add(entry.key);
+      }
+    }
+
+    // Also delete round instances for all affected efforts
+    final roundInstanceIds = <dynamic>[];
+    for (final entry in _roundInstancesBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (effortIds.contains(raw['effort_id'])) {
+        roundInstanceIds.add(entry.key);
+      }
+    }
+    await _roundInstancesBox.deleteAll(roundInstanceIds);
+
+    await _observationsBox.deleteAll(observationIds);
+    await _effortsBox.deleteAll(effortIds);
+    await _segmentsBox.deleteAll(segmentIds);
+    await _sessionsBox.delete(id);
+  }
+
   // ===== SEGMENTS =====
 
   @override
@@ -400,7 +458,89 @@ class HiveWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> deleteEffort(String id) async {
     await deleteObservationsForEffort(id);
+    await deleteRoundInstancesForEffort(id);
+    await deleteTimedInstancesForEffort(id);
     await _effortsBox.delete(id);
+  }
+
+  // ===== ROUND INSTANCES =====
+
+  @override
+  Future<List<RoundInstance>> getRoundInstances(String effortId) async {
+    final instances = _roundInstancesBox.values
+        .map((raw) => RoundInstance.fromMap(_asStringMap(raw)))
+        .where((r) => r.effortId == effortId)
+        .toList();
+    instances.sort((a, b) => a.roundIndex.compareTo(b.roundIndex));
+    return instances;
+  }
+
+  @override
+  Future<String> createRoundInstance(RoundInstance instance) async {
+    await _roundInstancesBox.put(instance.id, instance.toMap());
+    return instance.id;
+  }
+
+  @override
+  Future<void> updateRoundInstance(RoundInstance instance) async {
+    await _roundInstancesBox.put(instance.id, instance.toMap());
+  }
+
+  @override
+  Future<void> deleteRoundInstance(String id) async {
+    await _roundInstancesBox.delete(id);
+  }
+
+  @override
+  Future<void> deleteRoundInstancesForEffort(String effortId) async {
+    final idsToDelete = <dynamic>[];
+    for (final entry in _roundInstancesBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (raw['effort_id'] == effortId) {
+        idsToDelete.add(entry.key);
+      }
+    }
+    await _roundInstancesBox.deleteAll(idsToDelete);
+  }
+
+  // ===== TIMED INSTANCES =====
+
+  @override
+  Future<List<TimedInstance>> getTimedInstances(String effortId) async {
+    final instances = _timedInstancesBox.values
+        .map((raw) => TimedInstance.fromMap(_asStringMap(raw)))
+        .where((t) => t.effortId == effortId)
+        .toList();
+    instances.sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+    return instances;
+  }
+
+  @override
+  Future<String> createTimedInstance(TimedInstance instance) async {
+    await _timedInstancesBox.put(instance.id, instance.toMap());
+    return instance.id;
+  }
+
+  @override
+  Future<void> updateTimedInstance(TimedInstance instance) async {
+    await _timedInstancesBox.put(instance.id, instance.toMap());
+  }
+
+  @override
+  Future<void> deleteTimedInstance(String id) async {
+    await _timedInstancesBox.delete(id);
+  }
+
+  @override
+  Future<void> deleteTimedInstancesForEffort(String effortId) async {
+    final idsToDelete = <dynamic>[];
+    for (final entry in _timedInstancesBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (raw['effort_id'] == effortId) {
+        idsToDelete.add(entry.key);
+      }
+    }
+    await _timedInstancesBox.deleteAll(idsToDelete);
   }
 
   // ===== SPORT CATEGORIES =====
@@ -465,8 +605,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
-    final muscleGroupIds =
-        _asStringList(_exerciseMuscleGroupsBox.get(exerciseId));
+    final muscleGroupIds = _asStringList(
+      _exerciseMuscleGroupsBox.get(exerciseId),
+    );
     return muscleGroupIds
         .map((id) => _muscleGroupsBox.get(id))
         .whereType<Map>()
@@ -496,8 +637,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<List<Equipment>> getExerciseEquipment(String exerciseId) async {
-    final equipmentIds =
-        _asStringList(_exerciseEquipmentBox.get(exerciseId));
+    final equipmentIds = _asStringList(_exerciseEquipmentBox.get(exerciseId));
     return equipmentIds
         .map((id) => _equipmentBox.get(id))
         .whereType<Map>()
@@ -612,8 +752,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
       final lowerSearch = searchText.toLowerCase();
       results = results.where((e) {
         final nameMatch = e.name.toLowerCase().contains(lowerSearch);
-        final descMatch = e.description?.toLowerCase().contains(lowerSearch) ??
-            false;
+        final descMatch =
+            e.description?.toLowerCase().contains(lowerSearch) ?? false;
         return nameMatch || descMatch;
       });
     }
@@ -678,7 +818,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
     });
 
     // Attach scores to exercises for UI partitioning (Recommended vs Other)
-    return scoredExercises.map((e) => e.$1.copyWith(relevanceScore: e.$2)).toList();
+    return scoredExercises
+        .map((e) => e.$1.copyWith(relevanceScore: e.$2))
+        .toList();
   }
 
   // ===== TEMPLATES =====
@@ -836,6 +978,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _segmentsBox.clear();
     await _effortsBox.clear();
     await _observationsBox.clear();
+    await _roundInstancesBox.clear();
+    await _timedInstancesBox.clear();
     await _unitsBox.clear();
     await _metricsBox.clear();
     await _muscleGroupsBox.clear();

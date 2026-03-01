@@ -18,6 +18,9 @@ class MetricIds {
   static const String rpe = 'metric-rpe'; // Rate of Perceived Exertion
   static const String rest = 'metric-rest';
 
+  // Isometric / drill companion metric
+  static const String extraWeight = 'metric-extra-weight';
+
   // Unit IDs
   static const String unitReps = 'unit-reps';
   static const String unitKg = 'unit-kg';
@@ -36,6 +39,7 @@ class MetricIds {
     'rounds': rounds,
     'round-duration': roundDuration,
     'rpe': rpe,
+    'extra-weight': extraWeight,
   };
 
   /// Reverse map: metric IDs back to shorthand keys
@@ -48,5 +52,6 @@ class MetricIds {
     rounds: 'rounds',
     roundDuration: 'round-duration',
     rpe: 'rpe',
+    extraWeight: 'extra-weight',
   };
 }

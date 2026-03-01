@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/services/routine_session_service.dart';
+import '../../core/services/session_summary_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -16,6 +17,7 @@ class OmniSplashScreen extends StatefulWidget {
   final HomeState homeState;
   final RoutineState routineState;
   final RoutineSessionService routineSessionService;
+  final SessionSummaryService sessionSummaryService;
   final Duration duration;
 
   const OmniSplashScreen({
@@ -24,6 +26,7 @@ class OmniSplashScreen extends StatefulWidget {
     required this.homeState,
     required this.routineState,
     required this.routineSessionService,
+    required this.sessionSummaryService,
     this.duration = OmniTheme.splashDuration,
   });
 
@@ -58,20 +61,17 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                HomeScreen(
-                  workoutState: widget.workoutState,
-                  homeState: widget.homeState,
-                  routineState: widget.routineState,
-                  routineSessionService: widget.routineSessionService,
-                ),
+            pageBuilder: (context, animation, secondaryAnimation) => HomeScreen(
+              workoutState: widget.workoutState,
+              homeState: widget.homeState,
+              routineState: widget.routineState,
+              routineSessionService: widget.routineSessionService,
+              sessionSummaryService: widget.sessionSummaryService,
+            ),
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) {
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
-            },
+                  return FadeTransition(opacity: animation, child: child);
+                },
             transitionDuration: const Duration(milliseconds: 600),
           ),
         );
@@ -96,9 +96,7 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Zen Event Horizon Logo
-                const AnimatedZenHalo(
-                  size: 160.0,
-                ),
+                const AnimatedZenHalo(size: 160.0),
                 const SizedBox(height: 32),
                 // App Name
                 Text(

@@ -29,10 +29,10 @@ class EffortDefaults {
           MetricIds.roundDuration: 180,
         };
       case 'drill':
-        // Isometric / holds / skill work: duration + RPE
+        // Isometric / holds / skill work: duration + extra weight (negative = band assist, positive = added load)
         return {
           MetricIds.duration: 0,
-          MetricIds.rpe: 5,
+          MetricIds.extraWeight: 0.0,
         };
       case 'interval':
         // Distance intervals: distance + optional duration
@@ -79,7 +79,7 @@ class EffortDefaults {
       case 'round':
         return [];
       case 'drill':
-        return [MetricIds.rpe]; // Optional RPE for subjective difficulty
+        return [MetricIds.extraWeight]; // Extra load carried/worn during the hold (negative = band assist, positive = added load)
       case 'interval':
         return [MetricIds.duration]; // Optional duration for intervals
       default:
