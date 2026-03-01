@@ -87,6 +87,11 @@ class Exercise {
   final int updatedAtMs;
   final List<String> capabilities;
   final double? relevanceScore; // Transient field: populated only by ranked queries
+  /// Sport-specific default duration per round/period (in seconds).
+  /// Null = use the app-wide default (WorkoutConstants.defaultRoundDurationSecs = 180).
+  /// Only meaningful for effortKind == 'round' exercises (martial arts, sports).
+  /// Examples: Soccer Match = 2700 (45-min half), Ice Hockey = 1200 (20-min period).
+  final int? defaultRoundDurationSecs;
 
   Exercise({
     required this.id,
@@ -100,6 +105,7 @@ class Exercise {
     required this.updatedAtMs,
     this.capabilities = const [],
     this.relevanceScore,
+    this.defaultRoundDurationSecs,
   });
 
   factory Exercise.fromMap(Map<String, dynamic> m) => Exercise(
@@ -112,7 +118,8 @@ class Exercise {
       isArchived: (m['is_archived'] as int?) == 1,
       createdAtMs: m['created_at_ms'] as int,
       updatedAtMs: m['updated_at_ms'] as int,
-      relevanceScore: m['relevance_score'] as double?);
+      relevanceScore: m['relevance_score'] as double?,
+      defaultRoundDurationSecs: m['default_round_duration_secs'] as int?);
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -124,7 +131,8 @@ class Exercise {
         'is_archived': isArchived ? 1 : 0,
         'created_at_ms': createdAtMs,
         'updated_at_ms': updatedAtMs,
-        'relevance_score': relevanceScore
+        'relevance_score': relevanceScore,
+        'default_round_duration_secs': defaultRoundDurationSecs,
       };
 }
 

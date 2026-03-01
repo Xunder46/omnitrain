@@ -642,6 +642,8 @@ class SeedData {
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     // Sports exercises
+    // defaultRoundDurationSecs = real-world period/half/set length for the sport.
+    // Boxing exercises omit this field and fall back to the 180s app-wide default.
     Exercise(
       id: 'exercise-tennis-match',
       name: 'Tennis Match',
@@ -649,6 +651,7 @@ class SeedData {
       disciplineId: 'discipline-tennis',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 1200, // 20-min set
     ),
     Exercise(
       id: 'exercise-tennis-drill',
@@ -657,6 +660,7 @@ class SeedData {
       disciplineId: 'discipline-tennis',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 600, // 10-min drill block
     ),
     Exercise(
       id: 'exercise-volleyball-match',
@@ -665,6 +669,7 @@ class SeedData {
       disciplineId: 'discipline-volleyball',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 1500, // 25-min set
     ),
     Exercise(
       id: 'exercise-volleyball-drill',
@@ -673,6 +678,7 @@ class SeedData {
       disciplineId: 'discipline-volleyball',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 600, // 10-min drill block
     ),
     Exercise(
       id: 'exercise-badminton-match',
@@ -681,6 +687,7 @@ class SeedData {
       disciplineId: 'discipline-badminton',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 1200, // 20-min game segment
     ),
     Exercise(
       id: 'exercise-table-tennis-match',
@@ -689,6 +696,7 @@ class SeedData {
       disciplineId: 'discipline-table-tennis',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 900, // 15-min game
     ),
     Exercise(
       id: 'exercise-cricket-match',
@@ -697,6 +705,7 @@ class SeedData {
       disciplineId: 'discipline-cricket',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 1800, // 30-min innings segment
     ),
     Exercise(
       id: 'exercise-ice-hockey-match',
@@ -705,6 +714,7 @@ class SeedData {
       disciplineId: 'discipline-ice-hockey',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 1200, // 20-min period
     ),
     Exercise(
       id: 'exercise-baseball-game',
@@ -713,6 +723,7 @@ class SeedData {
       disciplineId: 'discipline-baseball',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 1800, // ~30-min inning estimate
     ),
     Exercise(
       id: 'exercise-american-football-game',
@@ -721,6 +732,7 @@ class SeedData {
       disciplineId: 'discipline-american-football',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 900, // 15-min quarter
     ),
     Exercise(
       id: 'exercise-rugby-match',
@@ -729,6 +741,7 @@ class SeedData {
       disciplineId: 'discipline-rugby',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 2400, // 40-min half
     ),
     Exercise(
       id: 'exercise-lacrosse-game',
@@ -737,6 +750,7 @@ class SeedData {
       disciplineId: 'discipline-lacrosse',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      defaultRoundDurationSecs: 720, // 12-min quarter
     ),
   ];
 

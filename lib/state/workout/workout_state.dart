@@ -411,13 +411,19 @@ class WorkoutState extends ChangeNotifier {
           2; // Rough index for grouping
 
       // Round efforts use RoundInstance records — not EffortObservation pairs.
-      // Inherit planned duration from the last round if one exists, else use the
-      // previousValues hint or the default duration.
+      // Priority chain for planned duration (highest → lowest):
+      //   1. Previous round in this session (user may have adjusted it mid-session)
+      //   2. Caller-supplied previousValues hint (e.g. from template targets)
+      //   3. Exercise-specific default (e.g. 2700 s for a 45-min soccer half)
+      //   4. App-wide global default (180 s / 3-min boxing round)
       if (effort.effortKind == 'round') {
         final existingRounds = _roundInstances[effortId] ?? [];
+        final exerciseDefault =
+            _exerciseCache[effort.exerciseId]?.defaultRoundDurationSecs;
         final previousDuration = existingRounds.isNotEmpty
             ? existingRounds.last.plannedDurationSecs
             : (previousValues?['round-duration'] as int?) ??
+                  exerciseDefault ??
                   WorkoutConstants.defaultRoundDurationSecs;
         await addRound(effortId, plannedDurationSecs: previousDuration);
         return;
@@ -1557,7 +1563,7 @@ class WorkoutState extends ChangeNotifier {
           // Use targetDurationSecs from first timed instance, or default to 300s (5 min).
           final timedInstances = _timedInstances[effort.id] ?? [];
           final targetDuration = timedInstances.isNotEmpty
-              ? (timedInstances.first.targetDurationSecs ?? 300)
+              ? timedInstances.first.targetDurationSecs
               : 300;
           targets = [
             TemplateTargetDraft(

@@ -111,14 +111,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               final instance = _getTimedInstance(effortId, i);
               if (instance == null) continue;
 
-              _effortTargetDuration[timerKey] =
-                  instance.targetDurationSecs ?? 0;
+                _effortTargetDuration[timerKey] = instance.targetDurationSecs;
 
               switch (instance.state) {
                 case TimedState.active:
                   // Derive elapsed from wall-clock timestamps
                   final elapsedSecs = (instance.elapsedMs / 1000).round();
-                  final targetSecs = instance.targetDurationSecs ?? 0;
+                  final targetSecs = instance.targetDurationSecs;
                   if (targetSecs > 0 && elapsedSecs >= targetSecs) {
                     // Should have finished while app was backgrounded — auto-finish.
                     unawaited(
@@ -140,10 +139,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   break;
                 case TimedState.finished:
                   _effortElapsed[timerKey] =
-                      instance.actualDurationSecs ??
-                      (instance.elapsedMs / 1000).round();
+                    instance.actualDurationSecs;
                   _effortAlerted[timerKey] =
-                      (instance.targetDurationSecs ?? 0) > 0;
+                    instance.targetDurationSecs > 0;
                   break;
                 case TimedState.notStarted:
                   _effortElapsed[timerKey] = 0;
@@ -830,36 +828,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
   }
 
-  void _startEffortTimer(String effortId, int entryIndex) {
-    final timerKey = '$effortId-$entryIndex';
-    if (_effortRunning[timerKey] == true) return;
-
-    // Stop rest timer when starting to work
-    _stopRestTimer();
-
-    _effortRunning[timerKey] = true;
-
-    final effortKind = _getEffortKind(effortId);
-    _effortAlerted[timerKey] = false;
-
-    if (effortKind == 'round') {
-      // All round state transitions (start, pause, resume) are dispatched directly
-      // from _toggleEffortTimer. _startEffortTimer is never called for rounds.
-      assert(
-        false,
-        '_startEffortTimer must not be called for round efforts; use _toggleEffortTimer instead',
-      );
-      return;
-    }
-
-    // Timed/drill: all state transitions are dispatched directly from _toggleEffortTimer.
-    // _startEffortTimer must not be called for timed/drill entries.
-    assert(
-      false,
-      '_startEffortTimer must not be called for timed/drill; use _toggleEffortTimer instead',
-    );
-  }
-
   void _pauseEffortTimer(
     String effortId,
     int entryIndex, {
@@ -882,30 +850,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     if (effortKind == 'timed' || effortKind == 'drill') {
       unawaited(widget.workoutState.pauseTimedEntry(effortId, entryIndex));
     }
-  }
-
-  void _resumeEffortTimer(String effortId, int entryIndex) {
-    final timerKey = '$effortId-$entryIndex';
-    _effortRunning[timerKey] = true;
-
-    final effortKind = _getEffortKind(effortId);
-
-    if (effortKind == 'round') {
-      // Resume is handled by WorkoutState.resumeRound() — just restart the tick timer.
-      _effortTimers[timerKey]?.cancel();
-      _effortTimers[timerKey] = Timer.periodic(
-        _timerUpdateInterval,
-        (_) => _onEffortTick(effortId, entryIndex),
-      );
-      return;
-    }
-
-    // Timed/drill resume is dispatched directly from _toggleEffortTimer.
-    // _resumeEffortTimer must not be called for timed/drill entries.
-    assert(
-      false,
-      '_resumeEffortTimer must not be called for timed/drill; use _toggleEffortTimer instead',
-    );
   }
 
   void _jumpToSet(int setNumber) {
@@ -2032,11 +1976,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         //   finished              → actualDurationSecs, COMPLETED label
         final timedTimerKey = '$effortId-$entryIndex';
         final timedElapsed = _effortElapsed[timedTimerKey] ?? 0;
-        final timedTargetSecs = _getEffortTargetDuration(
-          effortId,
-          entryIndex,
-          effortKind,
-        );
         final timedIsRunning = _effortRunning[timedTimerKey] ?? false;
         final timedInstance = _getTimedInstance(effortId, entryIndex);
         final timedEntryState = timedInstance?.state ?? TimedState.notStarted;
@@ -2204,11 +2143,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         // Extra-weight editor remains always editable (independent of timer state).
         final drillTimerKey = '$effortId-$entryIndex';
         final drillElapsed = _effortElapsed[drillTimerKey] ?? 0;
-        final drillTargetSecs = _getEffortTargetDuration(
-          effortId,
-          entryIndex,
-          effortKind,
-        );
         final drillIsRunning = _effortRunning[drillTimerKey] ?? false;
         final drillInstance = _getTimedInstance(effortId, entryIndex);
         final drillEntryState = drillInstance?.state ?? TimedState.notStarted;

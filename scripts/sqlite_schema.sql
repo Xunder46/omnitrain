@@ -116,6 +116,11 @@ CREATE TABLE app_exercise (
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   deleted_at_ms INTEGER,
+  -- Default duration (seconds) for a single round/period when effortKind == 'round'.
+  -- NULL = use app-wide default (WorkoutConstants.defaultRoundDurationSecs = 180).
+  -- Set per-sport: e.g. Soccer Match = 2700 (45-min half), Ice Hockey = 1200 (20-min period).
+  -- Migration note: ALTER TABLE app_exercise ADD COLUMN default_round_duration_secs INTEGER;
+  default_round_duration_secs INTEGER,
   row_version INTEGER NOT NULL DEFAULT 0,
   is_dirty INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY(discipline_id) REFERENCES app_discipline(id)

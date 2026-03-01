@@ -11,6 +11,8 @@ import 'workout_repository.dart';
 class HiveWorkoutRepository implements WorkoutRepository {
   static const String _metaBoxName = 'meta';
   static const String _seedLoadedKey = 'seed_loaded';
+  static const String _exerciseRoundDefaultsMigrationKey =
+      'exercise_round_defaults_migrated_v1';
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -91,6 +93,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
       await _metaBox.put(_seedLoadedKey, true);
     }
 
+    await _migrateExerciseRoundDefaults();
+
     _initialized = true;
   }
 
@@ -168,6 +172,38 @@ class HiveWorkoutRepository implements WorkoutRepository {
           .add(applicability.effortKind);
     }
     await _metricEffortKindsBox.putAll(metricEffortKinds);
+  }
+
+  /// Backfills `default_round_duration_secs` for existing Hive installs that
+  /// were seeded before this field was introduced.
+  ///
+  /// Why needed:
+  /// - Existing users already have `_seed_loaded == true`, so `_seedData()` no
+  ///   longer runs and older exercise rows remain without this key.
+  /// - Missing key means `Exercise.defaultRoundDurationSecs == null`, causing
+  ///   round efforts to fall back to 180s globally.
+  ///
+  /// This migration is idempotent and only writes when the stored value is null.
+  Future<void> _migrateExerciseRoundDefaults() async {
+    final migrated =
+        _metaBox.get(_exerciseRoundDefaultsMigrationKey) as bool? ?? false;
+    if (migrated) return;
+
+    for (final seedExercise in SeedData.sampleExercises) {
+      final defaultSecs = seedExercise.defaultRoundDurationSecs;
+      if (defaultSecs == null) continue;
+
+      final raw = _exercisesBox.get(seedExercise.id);
+      if (raw == null) continue;
+
+      final exerciseMap = _asStringMap(raw);
+      if (exerciseMap['default_round_duration_secs'] != null) continue;
+
+      exerciseMap['default_round_duration_secs'] = defaultSecs;
+      await _exercisesBox.put(seedExercise.id, exerciseMap);
+    }
+
+    await _metaBox.put(_exerciseRoundDefaultsMigrationKey, true);
   }
 
   Map<String, dynamic> _asStringMap(dynamic raw) {
