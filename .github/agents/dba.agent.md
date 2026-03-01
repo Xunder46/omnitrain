@@ -30,20 +30,20 @@ You are the database architect responsible for the data layer. You implement cha
 
 Every data change must work in BOTH environments:
 
-### 1. Development/QA (Web) - PRIMARY FOCUS NOW
-- **Platform**: Browser - NO SQLite, NO dart:io
-- **Implementation**: `MockWorkoutRepository`
-- **Storage**: In-memory `Map<String, Model>`
-- **Data**: Loaded from `lib/mock/seed_data.dart` on `initialize()`
-- **Persistence**: None (resets on refresh)
-- **Location**: `lib/data/repositories/mock_workout_repository.dart`
+### 1. Current (All Platforms) - PRIMARY FOCUS NOW
+- **Implementation**: `HiveWorkoutRepository` (Hive boxes, persistent)
+- **Storage**: Hive boxes (Map-based, no TypeAdapters)
+- **Data**: Seeds from `lib/mock/seed_data.dart` on first run (tracked via `meta` box)
+- **Persistence**: Full local storage (persists across restarts)
+- **Location**: `lib/data/repositories/hive_workout_repository.dart`
+- **Note**: `MockWorkoutRepository` (`lib/data/repositories/mock_workout_repository.dart`) also exists for in-memory testing
 
-### 2. Production (Mobile/Desktop) - FUTURE
+### 2. Production Optimization (Mobile/Desktop) - FUTURE
 - **Platform**: Native (iOS/Android/Desktop)
 - **Implementation**: `SqliteWorkoutRepository` (not yet created)
 - **Storage**: SQLite via sqflite package
 - **Data**: Loaded from `scripts/sqlite_seed.sql`
-- **Persistence**: Full local storage
+- **Persistence**: Full local storage with indexed queries
 - **Schema**: `scripts/sqlite_schema.sql`
 
 ### The Strategy

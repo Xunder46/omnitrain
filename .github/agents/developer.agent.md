@@ -25,17 +25,16 @@ You implement application logic, UI features, and state management. Your code mu
 
 Your code runs in TWO environments without changes:
 
-### Current: Web (Development/QA)
-- Browser environment
-- Uses `MockWorkoutRepository` (in-memory)
-- No persistence between sessions
+### Current: All Platforms
+- Uses `HiveWorkoutRepository` (Hive boxes, persistent)
+- Works on web and native
+- Seeds reference data on first run from `SeedData`
 - Hot reload works
 
-### Future: Native (Production)
+### Future: Native Optimization
 - iOS/Android/Desktop
-- Uses `SqliteWorkoutRepository`
-- Persistent local storage
-- Same code, different repository
+- Will use `SqliteWorkoutRepository` for better performance
+- Same interface, same state code, different storage
 
 ### How to Achieve This
 
@@ -219,7 +218,38 @@ Before implementing or modifying features, consult the relevant documentation in
 - **`docs/exercise_ranking.md`** — Exercise ranking algorithm: scoring, ModalityConfig, relevance calculation
 - **`docs/my_routines.md`** — My Routines: template data model, RoutineState, routine-to-session conversion, RoutineSetupScreen UI
 - **`docs/db_integration.md`** — Database setup, schema, migrations
-- **`docs/design_system.md`** — Color tokens, typography, spacing, animation rules, component patterns
+- **`docs/design_system.md`** — Color tokens, typography, spacing, animation rules, component patterns, **button specification**
+
+## Button Rules (MANDATORY)
+
+Every button in a new or modified screen MUST follow the Button spec in `docs/design_system.md`.
+
+**Always set `shape` explicitly** — never rely on Material 3 defaults.
+
+| Use case | Widget | Radius token |
+|----------|--------|-------------|
+| Full-width CTA ("Finish Workout") | `FilledButton` + `SizedBox(height: OmniTheme.buttonPrimaryHeight, width: double.infinity)` | `OmniTheme.buttonBorderRadius` (12) |
+| Side-by-side pair ("Start Workout" + "Add Exercise") | `Expanded` `FilledButton` / `OutlinedButton` | `OmniTheme.buttonBorderRadius` (12) |
+| Inline compact action ("+ Add Block") | `OutlinedButton.icon` | `OmniTheme.buttonUtilityRadius` (8) |
+| Icon-only square ("+ add" FAB-style) | `FilledButton` + `SizedBox(OmniTheme.buttonIconSize)` | `OmniTheme.buttonIconRadius` (10) |
+| Dialog cancel/confirm | `TextButton` / `FilledButton` | `OmniTheme.buttonUtilityRadius` (8) |
+
+```dart
+// ✅ Minimum viable correct button
+FilledButton(
+  style: ButtonStyle(
+    shape: WidgetStateProperty.all(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+      ),
+    ),
+  ),
+  onPressed: onPressed,
+  child: const Text('Label'),
+)
+```
+
+❌ **Any `FilledButton`, `OutlinedButton`, or `TextButton` without an explicit `shape:` override is a build error** — patch immediately during code review.
 
 ## Workflow Checklist
 

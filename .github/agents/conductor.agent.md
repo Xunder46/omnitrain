@@ -55,14 +55,14 @@ lib/
 - The app must work in TWO environments with **zero to minimal code changes**:
 
 ### Development/QA (Web)
-- Runs in browser - **NO SQLite available**
-- Uses `MockWorkoutRepository` (in-memory Maps)
-- Loads seed data from `lib/mock/seed_data.dart`
-- Data doesn't persist (lost on refresh)
+- Runs in browser
+- Uses `HiveWorkoutRepository` (Hive boxes, persistent)
+- Loads seed data from `lib/mock/seed_data.dart` on first run
+- `MockWorkoutRepository` also exists for in-memory testing
 
 ### Production (Mobile/Desktop)
-- Full SQLite via sqflite package
-- Uses `SqliteWorkoutRepository` (same interface)
+- Full SQLite via sqflite package planned
+- Will use `SqliteWorkoutRepository` (same interface)
 - Persistent local storage
 - Schema in `scripts/sqlite_schema.sql`
 
@@ -70,11 +70,13 @@ lib/
 - Repository pattern abstracts storage
 - State classes depend on `WorkoutRepository` interface
 - At app startup, inject appropriate implementation:
-  - `MockWorkoutRepository()` for web
-  - `SqliteWorkoutRepository()` for native
+  - `HiveWorkoutRepository()` for current builds (web + native)
+  - `SqliteWorkoutRepository()` for future native optimization
 - **Same state, same UI, different data source**
 
 ## Key Feature Documentation
+
+For a complete index and reading guide, see **`docs/README.md`**.
 
 For comprehensive technical and business context on implemented features, refer to:
 
@@ -83,8 +85,14 @@ For comprehensive technical and business context on implemented features, refer 
 - **`docs/modality_based_exercise_ui.md`**: Adaptive workout session screen - per-modality UI rendering, timer state management, set navigation, InlineMetricEditor interaction, and swipe gesture patterns
 - **`docs/exercise_ranking.md`**: Exercise ranking and recommended sorting - scoring algorithm, ModalityConfig inputs, relevance score calculation, and repository-level sorting
 - **`docs/my_routines.md`**: My Routines feature - reusable workout template system, template data model hierarchy, RoutineState management, routine-to-session conversion flow, and RoutineSetupScreen dual-view UI
+- **`docs/session_summary.md`**: Post-workout analytics - PRs, volume comparison, save-as-routine
 - **`docs/db_integration.md`**: Database integration strategy and patterns
 - **`docs/design_system.md`**: Complete design system — color tokens, typography, spacing, animation rules, component patterns, accessibility requirements, and visual identity guidelines
+- **`docs/navigation_and_screens.md`**: Complete screen map, navigation flow, dependency injection pattern
+- **`docs/state_management.md`**: ChangeNotifier classes, service classes, dependency graph
+- **`docs/data_models.md`**: All domain models — sessions, exercises, templates, measurements
+- **`docs/constants_reference.md`**: Modalities, capabilities, metrics, effort kinds, intents, design tokens
+- **`docs/widget_catalog.md`**: Reusable UI components — layout primitives, tiles, pickers, metric editors
 
 When planning changes to the modality system (exercises, metrics, observations, or UI rendering), **always reference `modality_tracking.md` and `modality_based_exercise_ui.md`** to understand the capability flags, effort kind relationships, and adaptive UI patterns.
 

@@ -25,4 +25,19 @@ Notes
 
 - The DB files are registered as Flutter assets and loaded via `rootBundle`.
 - The `DatabaseProvider` supports an `inMemory` mode for deterministic tests.
-- Migrations should be added to `lib/src/data/migrations.dart`.
+- Migrations should be added to `lib/data/datasources/migrations.dart`.
+- The web/cross-platform build uses `HiveWorkoutRepository` (Hive boxes) for persistence.
+- The native build will use `SqliteWorkoutRepository` via `DatabaseProvider` (sqflite).
+- Both implementations share the `WorkoutRepository` interface in `lib/data/repositories/workout_repository.dart`.
+
+Hive migration note (March 2026)
+
+- `HiveWorkoutRepository.initialize()` runs an idempotent backfill migration for
+  `default_round_duration_secs` on exercises seeded before per-sport round defaults
+  were introduced.
+- Migration method: `_migrateExerciseRoundDefaults()`
+- Meta key: `exercise_round_defaults_migrated_v1`
+- Behavior: only fills missing values; does not overwrite existing stored values.
+- Effect: new round entries for sports can use sport-specific defaults on existing
+  installs instead of always falling back to 180 seconds.
+- Existing already-created round entries remain unchanged (non-retroactive).

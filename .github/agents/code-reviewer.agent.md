@@ -33,15 +33,21 @@ You review completed work for quality, DRY compliance, and architecture adherenc
 
 ## Feature Documentation
 
-Before reviewing, consult the relevant documentation in `docs/` for context:
+Before reviewing, consult the relevant documentation in `docs/` for context. See **`docs/README.md`** for the full index.
 
 - **`docs/app_philosophy.md`** — Product goals and architectural decisions
 - **`docs/modality_tracking.md`** — Modality system architecture and data model
 - **`docs/modality_based_exercise_ui.md`** — Workout session screen patterns
 - **`docs/exercise_ranking.md`** — Exercise ranking algorithm
 - **`docs/my_routines.md`** — Routine/template feature architecture
+- **`docs/session_summary.md`** — Post-workout analytics and save-as-routine
 - **`docs/db_integration.md`** — Database integration patterns
 - **`docs/design_system.md`** — Design system tokens and component patterns
+- **`docs/navigation_and_screens.md`** — Screen flow and DI pattern
+- **`docs/state_management.md`** — State classes and services
+- **`docs/data_models.md`** — All domain models
+- **`docs/constants_reference.md`** — Constants and configuration
+- **`docs/widget_catalog.md`** — Reusable widget components
 
 ## Review Checklist
 
@@ -75,6 +81,14 @@ Before reviewing, consult the relevant documentation in `docs/` for context:
 - [ ] No direct storage access
 - [ ] Business logic is in state, not UI
 - [ ] Uses ListenableBuilder or similar to react to state
+
+#### Buttons (CRITICAL — check every screen)
+- [ ] Every `FilledButton`, `OutlinedButton`, `TextButton` has an explicit `shape:` override
+- [ ] `borderRadius` uses `OmniTheme.button*Radius` token, not hardcoded value
+- [ ] No `StadiumBorder` or missing-shape button (Material 3 default) in any screen
+- [ ] Full-width CTAs use `SizedBox(height: OmniTheme.buttonPrimaryHeight, width: double.infinity)`
+- [ ] Icon-only buttons use `SizedBox(OmniTheme.buttonIconSize × OmniTheme.buttonIconSize)`
+- [ ] Button colours derived from `theme.colorScheme`, never hardcoded
 
 #### Widgets (`lib/widgets/`)
 - [ ] Reusable components only
