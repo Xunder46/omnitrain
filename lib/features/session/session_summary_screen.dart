@@ -12,7 +12,7 @@ import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
-import 'session_overview_screen.dart';
+import 'workout_session_screen.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -226,10 +226,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Future<void> _openEditSession() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SessionOverviewScreen(
+        builder: (_) => WorkoutSessionScreen(
           workoutState: widget.workoutState,
           routineState: widget.routineState,
           sessionSummaryService: widget.sessionSummaryService,
+          editMode: true,
         ),
       ),
     );
