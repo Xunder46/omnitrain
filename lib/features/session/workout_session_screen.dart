@@ -192,6 +192,22 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           }
         }
 
+        // Pre-populate _loggedSetKeys from persisted data to prevent rest timer
+        // resets when navigating through already-completed exercises.
+        for (final exercise in _exercises) {
+          final effortId = exercise['id'] as String;
+          final effortKind = exercise['effortKind'] as String? ?? 'set';
+          final entries =
+              exercise['entries'] as List<Map<String, dynamic>>? ?? [];
+
+          for (int i = 0; i < entries.length; i++) {
+            final logKey = '$effortId-$i';
+            if (_isSetLogged(effortId, i, effortKind)) {
+              _loggedSetKeys.add(logKey);
+            }
+          }
+        }
+
         // Restore focus to the exercise and set number if requested
         final initialId = widget.initialFocusId;
         if (initialId != null && initialId.isNotEmpty) {
@@ -262,6 +278,37 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   String _getEffortKind(String effortId) {
     final exercise = _getExerciseById(effortId);
     return exercise?['effortKind'] as String? ?? 'set';
+  }
+
+  /// Check if a set/entry has been logged (completed) based on persisted state.
+  /// Used to pre-populate _loggedSetKeys and prevent rest timer resets.
+  bool _isSetLogged(String effortId, int entryIndex, String effortKind) {
+    if (effortKind == 'set') {
+      // Set is logged if reps > 0 (zero reps = skipped set, not logged)
+      final entry = _getEntryData(effortId, entryIndex);
+      final reps = entry?['reps'] as int?;
+      return reps != null && reps > 0;
+    } else if (effortKind == 'timed' || effortKind == 'drill') {
+      // Timed/drill is logged if TimedInstance is finished
+      final instance = _getTimedInstance(effortId, entryIndex);
+      return instance?.state == TimedState.finished;
+    } else if (effortKind == 'round') {
+      // Round is logged if RoundInstance is finished
+      final round = _getRoundInstance(effortId, entryIndex);
+      return round?.state == RoundState.finished;
+    }
+    return false;
+  }
+
+  /// Reset all timer UI state for a specific effort entry.
+  /// Called after logging a set to prepare for the next entry.
+  void _resetTimerState(String effortId, int entryIndex) {
+    final timerKey = '$effortId-$entryIndex';
+    _effortTimers[timerKey]?.cancel();
+    _effortRunning[timerKey] = false;
+    _effortElapsed[timerKey] = 0;
+    _effortTargetDuration.remove(timerKey);
+    _effortAlerted[timerKey] = false;
   }
 
   int _getEffortTargetDuration(
@@ -349,6 +396,27 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final entries = exercise['entries'] as List<Map<String, dynamic>>;
     final effortKind = exercise['effortKind'] as String? ?? 'set';
 
+    // If this set was already logged (navigating through completed exercises),
+    // just advance without re-persisting or resetting the rest timer.
+    final logKey = '$effortId-${_currentSet - 1}';
+    if (_loggedSetKeys.contains(logKey)) {
+      setState(() {
+        if (_currentSet < entries.length) {
+          _currentSet++;
+        } else {
+          // Move to next exercise
+          if (_currentExerciseIndex < _exercises.length - 1) {
+            _currentExerciseIndex++;
+            _currentSet = 1;
+          } else {
+            // All exercises complete - show finish option
+            _showFinishDialog();
+          }
+        }
+      });
+      return;
+    }
+
     // Get current entry data to persist
     final currentEntry = _currentSet <= entries.length
         ? entries[_currentSet - 1]
@@ -371,12 +439,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         // End early if not already finished
         unawaited(widget.workoutState.endRoundEarly(effortId, _currentSet - 1));
       }
-      // Clear timer state
-      final timerKey = '$effortId-${_currentSet - 1}';
-      _effortTimers[timerKey]?.cancel();
-      _effortRunning[timerKey] = false;
-      _effortElapsed[timerKey] = 0;
-      _effortAlerted[timerKey] = false;
     }
 
     // Persist observation-based entries (set / timed / drill only; round uses RoundInstance)
@@ -390,28 +452,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
 
     // Stop and reset timer UI state; user must explicitly start timer for the next entry.
-    if (effortKind == 'timed' || effortKind == 'drill') {
-      // Cancel tick timer and clear UI display state (TimedInstance is already finished).
-      final timerKey = '$effortId-${_currentSet - 1}';
-      _effortTimers[timerKey]?.cancel();
-      _effortRunning[timerKey] = false;
-      _effortElapsed[timerKey] = 0;
-      _effortTargetDuration.remove(timerKey);
-      _effortAlerted[timerKey] = false;
-    } else if (effortKind == 'round') {
-      // Cancel the tick timer and clear round timer state for this entry.
-      final timerKey = '$effortId-${_currentSet - 1}';
-      _effortTimers[timerKey]?.cancel();
-      _effortRunning[timerKey] = false;
-      _effortElapsed[timerKey] = 0;
-      _effortTargetDuration.remove(timerKey);
-      _effortAlerted[timerKey] = false;
+    if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
+      _resetTimerState(effortId, _currentSet - 1);
     }
 
     // Start rest timer only on the first log of this particular set.
     // Navigating back and re-pressing forward through an already-logged set
     // must NOT reset the timer.
-    final logKey = '$effortId-${_currentSet - 1}';
     if (!_loggedSetKeys.contains(logKey)) {
       _loggedSetKeys.add(logKey);
       _startRestTimer();
