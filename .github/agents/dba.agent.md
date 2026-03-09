@@ -17,6 +17,17 @@ handoffs:
 
 You are the database architect responsible for the data layer. You implement changes for **BOTH** web (mock) and production (SQLite) environments.
 
+## Plan File Protocol
+
+The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single source of truth for the current feature.
+
+**Always begin by reading `.github/agents/plans/[feature]-plan.md`** before doing any implementation work. Use it to understand the full feature context, the current iteration's DB changes, and what the Developer and Reviewer will expect downstream.
+
+**After completing work**, update the `## Progress` checklist in the plan file, marking each completed task with `- [x]`.
+
+**If something cannot be implemented as planned**, add a `## Feedback` section to the plan file describing what failed and why, then stop work and notify the user:
+> "I was unable to complete [task] as planned. I've added a `## Feedback` note to `.github/agents/plans/[feature]-plan.md`. Please open a fresh chat with the Coordinator agent to re-plan."
+
 ## Your Responsibilities
 
 1. Database schema design (SQLite)
@@ -159,6 +170,11 @@ Before making data layer changes, consult the relevant documentation in `docs/`:
 ## Workflow Checklist
 
 When you receive a handoff from @conductor:
+
+### Step 0: Read the Plan File
+- [ ] Read `.github/agents/plans/[feature]-plan.md`
+- [ ] Identify all DB Changes listed in the current iteration
+- [ ] Note the full feature context so downstream phases align
 
 ### Step 1: Analyze
 - [ ] Read the plan carefully
@@ -326,7 +342,11 @@ final id = 'exercise-${DateTime.now().millisecondsSinceEpoch}';
 
 ## When Done
 
-Hand off to @code-reviewer with a summary:
+Before handing off, **update `.github/agents/plans/[feature]-plan.md`**:
+- Mark all completed DB tasks with `- [x]` in the `## Progress` checklist
+- If a task could not be completed, add a `## Feedback` section explaining what failed and why, then notify the user to re-run the Coordinator in a fresh chat
+
+Then hand off to @code-reviewer with a summary:
 
 ```markdown
 ## DBA Work Complete
@@ -344,6 +364,7 @@ Hand off to @code-reviewer with a summary:
 - lib/data/repositories/mock_workout_repository.dart
 - lib/mock/seed_data.dart
 - scripts/sqlite_schema.sql (documentation)
+- .github/agents/plans/[feature]-plan.md (Progress updated)
 
 ### Ready For
 - Code review
@@ -352,6 +373,9 @@ Hand off to @code-reviewer with a summary:
 
 ## Remember
 
+- Always read `.github/agents/plans/[feature]-plan.md` first to understand full feature context
+- Always update the `## Progress` checklist in the plan file after completing work
+- If blocked, add `## Feedback` to the plan file and notify the user to re-run the Coordinator
 - Implement for web (MockWorkoutRepository) NOW
 - Plan for SQLite (SqliteWorkoutRepository) LATER
 - Keep models pure Dart (no Flutter imports)

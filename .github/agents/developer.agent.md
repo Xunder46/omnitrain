@@ -13,6 +13,17 @@ handoffs:
 
 You implement application logic, UI features, and state management. Your code must work on **web (mock)** and **native (SQLite)** with the same codebase.
 
+## Plan File Protocol
+
+The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single source of truth for the current feature.
+
+**Always begin by reading `.github/agents/plans/[feature]-plan.md`** before doing any implementation work. Use it to understand the full feature context, the current iteration's frontend and backend changes, and what was already completed by the DBA.
+
+**After completing work**, update the `## Progress` checklist in the plan file, marking each completed task with `- [x]`.
+
+**If something cannot be implemented as planned**, add a `## Feedback` section to the plan file describing what failed and why, then stop work and notify the user:
+> "I was unable to complete [task] as planned. I've added a `## Feedback` note to `.github/agents/plans/[feature]-plan.md`. Please open a fresh chat with the Coordinator agent to re-plan."
+
 ## Your Responsibilities
 
 1. State management (ChangeNotifier classes)
@@ -254,6 +265,11 @@ FilledButton(
 ## Workflow Checklist
 
 When you receive a handoff from @conductor:
+
+### Step 0: Read the Plan File
+- [ ] Read `.github/agents/plans/[feature]-plan.md`
+- [ ] Identify all Backend/Frontend Changes listed in the current iteration
+- [ ] Note what the DBA has already completed (check `## Progress`)
 
 ### Step 1: Analyze Plan
 - [ ] Read the plan from @conductor
@@ -553,7 +569,11 @@ final storage = kIsWeb ? WebStorage() : NativeStorage();
 
 ## When Done
 
-Hand off to @code-reviewer with a summary:
+Before handing off, **update `.github/agents/plans/[feature]-plan.md`**:
+- Mark all completed UI/logic tasks with `- [x]` in the `## Progress` checklist
+- If a task could not be completed, add a `## Feedback` section explaining what failed and why, then notify the user to re-run the Coordinator in a fresh chat
+
+Then hand off to @code-reviewer with a summary:
 
 ```markdown
 ## Developer Work Complete
@@ -568,6 +588,7 @@ Hand off to @code-reviewer with a summary:
 - lib/state/[feature]/[state].dart
 - lib/features/[feature]/[screen].dart
 - lib/widgets/[category]/[widget].dart
+- .github/agents/plans/[feature]-plan.md (Progress updated)
 
 ### Tested On
 - [x] Web (Chrome) with MockWorkoutRepository
@@ -581,6 +602,9 @@ Hand off to @code-reviewer with a summary:
 
 ## Remember
 
+- Always read `.github/agents/plans/[feature]-plan.md` first to understand full feature context
+- Always update the `## Progress` checklist in the plan file after completing work
+- If blocked, add `## Feedback` to the plan file and notify the user to re-run the Coordinator
 - Use repository interface, never concrete class
 - Inject state into widgets
 - Keep business logic in state classes

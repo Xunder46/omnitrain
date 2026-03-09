@@ -77,6 +77,37 @@ BEGIN TRANSACTION;
 --   'timed' → Cardio
 --   'round' → Rounds
 --   'drill' → Intervals (Isometric)
+--
+-- EDIT-MODE SNAPSHOT / ROLLBACK (Mar 2026):
+-- ==========================================
+-- When the user enters edit mode from the summary screen (SessionSummaryScreen →
+-- Edit Session → WorkoutSessionScreen(editMode: true)), structural mutations
+-- (add/remove exercise via addExerciseToSession/removeExerciseFromSession, and
+-- add/remove sets via addEntry/deleteEntry) are persisted to the repository
+-- immediately — they bypass the metric _editBuffer.
+--
+-- If the user presses Back without saving, WorkoutState.restoreSessionSnapshot()
+-- rolls back these changes using the following repository primitives (all already
+-- implemented in both HiveWorkoutRepository and future SqliteWorkoutRepository):
+--
+--   deleteEffort(effortId)           → DELETE FROM app_segment_effort WHERE id = ?
+--   createEffort(effort)             → INSERT INTO app_segment_effort ...
+--   deleteObservationsForEffort(id)  → DELETE FROM app_effort_observation WHERE effort_id = ?
+--   createObservation(obs)           → INSERT INTO app_effort_observation ...
+--   deleteRoundInstancesForEffort(id)→ DELETE FROM app_round_instance WHERE effort_id = ?
+--   createRoundInstance(ri)          → INSERT INTO app_round_instance ...
+--   deleteTimedInstancesForEffort(id)→ DELETE FROM app_timed_instance WHERE effort_id = ?
+--   createTimedInstance(ti)          → INSERT INTO app_timed_instance ...
+--
+-- No new repository methods are required. WorkoutState.restoreSessionSnapshot()
+-- orchestrates the restore entirely through the above existing abstract interface
+-- methods. SqliteWorkoutRepository only needs correct ON DELETE CASCADE foreign
+-- keys (already present in schema below) for deleteEffort cascade to work.
+--
+-- Snapshot is stored in-memory in WorkoutSessionScreen as a SessionEditSnapshot
+-- (lib/core/models/session_edit_snapshot.dart). It is discarded on Save;
+-- used for rollback on Back without Save.
+--
 CREATE TABLE app_sport_category (
   id TEXT NOT NULL PRIMARY KEY,
   key TEXT NOT NULL UNIQUE,

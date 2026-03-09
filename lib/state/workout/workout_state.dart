@@ -5,6 +5,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/constants/workout_constants.dart';
 import '../../core/models/routine_session_manifest.dart';
+import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/constants/effort_defaults.dart';
 import '../../core/utils/observation_grouper.dart';
@@ -1394,6 +1395,139 @@ class WorkoutState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _setError('Failed to update session note: $e');
+    }
+  }
+
+  // ── Edit-mode snapshot / rollback ──────────────────────────────────────
+
+  /// Captures the current in-memory session state as an immutable snapshot.
+  ///
+  /// Call this immediately before opening edit mode so that structural mutations
+  /// (add/remove exercise, add/remove set) can be rolled back if the user exits
+  /// edit mode without saving.
+  ///
+  /// Returns `null` when there is no active session.
+  SessionEditSnapshot? snapshotSessionState() {
+    if (_currentSession == null) return null;
+
+    return SessionEditSnapshot(
+      sessionId: _currentSession!.id,
+      segments: List<SessionSegment>.from(_segments),
+      efforts: {
+        for (final entry in _efforts.entries)
+          entry.key: List<SegmentEffort>.from(entry.value),
+      },
+      observations: {
+        for (final entry in _observations.entries)
+          entry.key: List<EffortObservation>.from(entry.value),
+      },
+      roundInstances: {
+        for (final entry in _roundInstances.entries)
+          entry.key: List<RoundInstance>.from(entry.value),
+      },
+      timedInstances: {
+        for (final entry in _timedInstances.entries)
+          entry.key: List<TimedInstance>.from(entry.value),
+      },
+      exerciseCache: Map<String, Exercise>.from(_exerciseCache),
+    );
+  }
+
+  /// Restores the session to the given [snapshot], undoing all structural changes
+  /// made during a cancelled edit session.
+  ///
+  /// **What is restored:**
+  /// - Efforts added after the snapshot are deleted (cascade removes their children).
+  /// - Efforts removed during editing are recreated along with their observations
+  ///   and instances.
+  /// - For efforts present in both states, observations / round instances / timed
+  ///   instances are reset to their snapshot values (undoes add-set / delete-set).
+  ///
+  /// **Implementation note (both environments):**
+  /// The restore is orchestrated entirely through existing abstract repository
+  /// primitives (`deleteEffort`, `createEffort`, `createObservation`, etc.), so
+  /// both [HiveWorkoutRepository] (web/current) and the future
+  /// [SqliteWorkoutRepository] (production) work without any additional methods.
+  ///
+  /// After all writes, [loadSessionData] is called to sync in-memory state.
+  Future<void> restoreSessionSnapshot(SessionEditSnapshot snapshot) async {
+    _clearError();
+
+    try {
+      // Collect current and snapshot effort ID sets.
+      final currentEffortIds = <String>{
+        for (final effortList in _efforts.values)
+          for (final effort in effortList) effort.id,
+      };
+      final snapshotEffortIds = <String>{
+        for (final effortList in snapshot.efforts.values)
+          for (final effort in effortList) effort.id,
+      };
+
+      // 1. Delete efforts that were ADDED during editing (not present in snapshot).
+      //    deleteEffort() cascades to observations, round instances, and timed instances.
+      for (final effortId in currentEffortIds) {
+        if (!snapshotEffortIds.contains(effortId)) {
+          await _repository.deleteEffort(effortId);
+        }
+      }
+
+      // 2. Recreate efforts that were REMOVED during editing (in snapshot but missing now).
+      for (final segmentId in snapshot.efforts.keys) {
+        for (final effort in snapshot.efforts[segmentId]!) {
+          if (!currentEffortIds.contains(effort.id)) {
+            await _repository.createEffort(effort);
+            for (final obs in snapshot.observations[effort.id] ?? []) {
+              await _repository.createObservation(obs);
+            }
+            for (final ri in snapshot.roundInstances[effort.id] ?? []) {
+              await _repository.createRoundInstance(ri);
+            }
+            for (final ti in snapshot.timedInstances[effort.id] ?? []) {
+              await _repository.createTimedInstance(ti);
+            }
+          }
+        }
+      }
+
+      // 3. For efforts present in BOTH states, restore their children to snapshot
+      //    values to undo add-set / delete-set operations.
+      for (final effortId in currentEffortIds) {
+        if (!snapshotEffortIds.contains(effortId)) continue; // already deleted above
+
+        // Restore observations (set-based efforts).
+        await _repository.deleteObservationsForEffort(effortId);
+        for (final obs in snapshot.observations[effortId] ?? []) {
+          await _repository.createObservation(obs);
+        }
+
+        // Restore round instances (round-based efforts).
+        if (snapshot.roundInstances.containsKey(effortId)) {
+          await _repository.deleteRoundInstancesForEffort(effortId);
+          for (final ri in snapshot.roundInstances[effortId]!) {
+            await _repository.createRoundInstance(ri);
+          }
+        }
+
+        // Restore timed instances (timed/drill efforts).
+        if (snapshot.timedInstances.containsKey(effortId)) {
+          await _repository.deleteTimedInstancesForEffort(effortId);
+          for (final ti in snapshot.timedInstances[effortId]!) {
+            await _repository.createTimedInstance(ti);
+          }
+        }
+      }
+
+      // 4. Restore exercise cache so removed-then-restored efforts resolve correctly.
+      _exerciseCache
+        ..clear()
+        ..addAll(snapshot.exerciseCache);
+
+      // 5. Reload from repository to sync in-memory state.
+      await loadSessionData();
+    } catch (e) {
+      _setError('Failed to restore session snapshot: $e');
+      rethrow;
     }
   }
 

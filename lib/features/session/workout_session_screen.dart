@@ -13,7 +13,12 @@ import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
+import '../../core/models/session_edit_snapshot.dart';
 import 'session_summary_screen.dart';
+
+/// Actions surfaced by the "Unsaved changes" dialog shown when the user
+/// tries to leave edit mode without saving.
+enum _EditBackAction { save, discard, cancel }
 
 class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -86,6 +91,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Key: 'effortId-entryIndex', Value: map of metricKey -> value.
   // Changes are flushed to the repository only when Save is clicked.
   final Map<String, Map<String, dynamic>> _editBuffer = {};
+
+  // Edit-mode snapshot captured once after session data first loads.
+  // Used by _discardEditChanges() to roll back structural mutations
+  // (add/remove exercise, add/remove set) that bypass the edit buffer.
+  // Null when not in edit mode or after a successful Save.
+  SessionEditSnapshot? _editSnapshot;
+
+  // True when any structural change (add/remove exercise, add/remove set)
+  // was made during this edit session. Combined with _editBuffer to decide
+  // whether to show the "Discard changes?" dialog on back.
+  bool _hasStructuralChanges = false;
 
   @override
   void initState() {
@@ -243,6 +259,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         }
         _isLoading = false;
       });
+
+      // Capture a rollback snapshot the FIRST time _loadExercises() completes
+      // in edit mode.  Subsequent re-runs (after add/remove set) must NOT
+      // overwrite it — the null-check guard ensures the snapshot always
+      // reflects the state the user started editing from, not a mid-edit reload.
+      if (widget.editMode && _editSnapshot == null) {
+        _editSnapshot = widget.workoutState.snapshotSessionState();
+      }
     } catch (e) {
       print('Error loading exercises: $e');
       if (mounted) {
@@ -665,6 +689,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
 
+    // Mark structural change so the discard-confirmation fires on Back.
+    if (widget.editMode) _hasStructuralChanges = true;
     await widget.workoutState.addEntry(effortId);
     await _loadExercises();
   }
@@ -731,6 +757,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       if (confirmed != true) return;
 
       // Delete the entry and remove the exercise
+      if (widget.editMode) _hasStructuralChanges = true;
       await widget.workoutState.deleteEntry(effortId, entries.length - 1);
       await widget.workoutState.removeExerciseFromSession(effortId);
       await _loadExercises();
@@ -747,6 +774,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
 
     // Not the last entry - delete normally
+    if (widget.editMode) _hasStructuralChanges = true;
     await widget.workoutState.deleteEntry(effortId, entries.length - 1);
     await _loadExercises();
 
@@ -1084,6 +1112,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         }
       }
 
+      // Mark structural change AFTER we know the add succeeded.
+      if (widget.editMode && effortId.isNotEmpty) _hasStructuralChanges = true;
       await _loadExercises();
 
       if (effortId.isNotEmpty) {
@@ -1163,19 +1193,126 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     });
   }
 
-  /// Save all buffered changes from edit mode and navigate back.
-  Future<void> _saveEditChanges() async {
-    if (_editBuffer.isEmpty) {
-      // No changes to save, just pop
+  // ── Edit-mode navigation helpers ────────────────────────────────────────
+
+  /// Handles the Back gesture / arrow-button press while in edit mode.
+  ///
+  /// Pops immediately when nothing has changed. Otherwise shows a three-option
+  /// dialog: Keep editing / Discard / Save.
+  Future<void> _handleEditModeBack() async {
+    final hasUnsaved = _editBuffer.isNotEmpty || _hasStructuralChanges;
+    if (!hasUnsaved) {
       Navigator.of(context).pop();
       return;
     }
 
-    // Persist all buffered changes to the repository
+    final action = await showDialog<_EditBackAction>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Unsaved changes'),
+        content: const Text(
+          'You have unsaved edits. Save them or discard to return to the summary.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, _EditBackAction.cancel),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Keep editing'),
+          ),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, _EditBackAction.discard),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _EditBackAction.save),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    switch (action) {
+      case _EditBackAction.save:
+        await _saveEditChanges();
+      case _EditBackAction.discard:
+        await _discardEditChanges();
+      case null:
+      case _EditBackAction.cancel:
+        break; // stay on screen
+    }
+  }
+
+  /// Rolls back all changes made during this edit session and pops to the
+  /// summary screen.
+  ///
+  /// Metric-value changes buffered in [_editBuffer] are simply dropped — they
+  /// were never written to the repository.  Structural changes (added/removed
+  /// exercises, added/removed sets) are reversed by restoring [_editSnapshot]
+  /// through [WorkoutState.restoreSessionSnapshot], which uses only existing
+  /// abstract repository primitives and therefore works identically on both
+  /// HiveWorkoutRepository (web) and the future SqliteWorkoutRepository.
+  Future<void> _discardEditChanges() async {
+    _editBuffer.clear();
+
+    final snapshot = _editSnapshot;
+    if (snapshot != null && _hasStructuralChanges) {
+      if (!mounted) return;
+      // Show a progress indicator while the async rollback completes.
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      try {
+        await widget.workoutState.restoreSessionSnapshot(snapshot);
+      } finally {
+        if (mounted) Navigator.of(context).pop(); // dismiss progress indicator
+      }
+    }
+
+    _hasStructuralChanges = false;
+    _editSnapshot = null;
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Save all buffered metric changes from edit mode and navigate back.
+  ///
+  /// Structural changes (add/remove exercise, add/remove set) were already
+  /// persisted immediately to the repository when they occurred, so only the
+  /// metric edit buffer needs to be flushed here.
+  Future<void> _saveEditChanges() async {
+    // Persist all buffered metric changes to the repository.
     for (final entry in _editBuffer.entries) {
       final parts = entry.key.split('-');
       if (parts.length < 2) continue;
-      // Reconstruct effortId (may contain hyphens)
+      // Reconstruct effortId (may contain hyphens; entryIndex is always last)
       final effortId = parts.sublist(0, parts.length - 1).join('-');
       final entryIndex = int.tryParse(parts.last);
       if (entryIndex == null) continue;
@@ -1191,11 +1328,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       }
     }
 
-    // Clear buffer and navigate back
+    // Commit: clear rollback state so the snapshot is never used accidentally.
     _editBuffer.clear();
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    _hasStructuralChanges = false;
+    _editSnapshot = null;
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _showFinishSessionDialog() async {
@@ -1345,7 +1482,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // In edit mode, intercept the system back gesture so we can show the
+    // "Unsaved changes" dialog before popping.  Non-edit sessions pop freely.
+    final content = _buildContent(theme);
+    if (!widget.editMode) return content;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
+        if (didPop) return;
+        if (!_showListView) {
+          setState(() => _showListView = true);
+        } else {
+          _handleEditModeBack();
+        }
+      },
+      child: content,
+    );
+  }
 
+  Widget _buildContent(ThemeData theme) {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: Colors.transparent,
@@ -1657,12 +1812,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           IconButton(
             icon: const Icon(Icons.arrow_back, color: OmniTheme.textPrimary),
             onPressed: () {
-              // If in detail view, return to list view
-              // If in list view, pop navigation (exit to home)
+              // Detail view → back to list view
+              // List view   → exit (with unsaved-changes check in edit mode)
               if (!_showListView) {
                 setState(() {
                   _showListView = true;
                 });
+              } else if (widget.editMode) {
+                _handleEditModeBack();
               } else {
                 Navigator.of(context).pop();
               }
