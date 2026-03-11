@@ -214,4 +214,58 @@ abstract class WorkoutRepository {
     String? disciplineId,
     List<String>? muscleGroupIds,
   });
+
+  // ─── Planned Sessions ─────────────────────────────────────────────────────
+
+  /// Get all planned sessions, ordered by scheduled_date_ms ascending.
+  Future<List<PlannedSession>> getPlannedSessions();
+
+  /// Get planned sessions within [fromMs]..[toMs] inclusive.
+  /// Matches sessions where scheduled_date_ms falls within the range.
+  Future<List<PlannedSession>> getPlannedSessionsForDateRange(
+    int fromMs,
+    int toMs,
+  );
+
+  /// Persist a new planned session; returns its ID.
+  Future<String> createPlannedSession(PlannedSession session);
+
+  /// Update an existing planned session (e.g. mark completed, change modality).
+  Future<void> updatePlannedSession(PlannedSession session);
+
+  /// Delete a planned session by ID.
+  Future<void> deletePlannedSession(String id);
+
+  /// Get all planned sessions linked to a specific routine template.
+  Future<List<PlannedSession>> getPlannedSessionsByTemplateId(
+    String templateId,
+  );
+
+  /// Delete all planned sessions linked to a specific routine template.
+  /// Used during routine deletion cascade.
+  Future<void> deletePlannedSessionsByTemplateId(String templateId);
+
+  // ─── Training Periods ─────────────────────────────────────────────────────
+
+  /// Get all training periods, ordered by start_date_ms ascending.
+  Future<List<TrainingPeriod>> getPeriods();
+
+  /// Get a single training period by ID; null if not found.
+  Future<TrainingPeriod?> getPeriodById(String id);
+
+  /// Persist a new training period; returns its ID.
+  Future<String> createPeriod(TrainingPeriod period);
+
+  /// Update an existing training period.
+  Future<void> updatePeriod(TrainingPeriod period);
+
+  /// Delete a training period by ID.
+  Future<void> deletePeriod(String id);
+
+  /// Returns true if [startMs]..[endMs] overlaps any existing period.
+  ///
+  /// Overlap rule: startMs <= existing.endDateMs AND endMs >= existing.startDateMs
+  ///
+  /// [excludeId]: when editing an existing period, pass its ID to skip it.
+  Future<bool> hasPeriodOverlap(int startMs, int endMs, {String? excludeId});
 }

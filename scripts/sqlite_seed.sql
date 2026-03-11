@@ -1,6 +1,10 @@
 PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
 
+-- Calendar placeholder policy (Mar 2026 cleanup):
+--   Do not seed demo rows into app_planned_session or app_training_period.
+--   These tables must start empty and be populated only by user actions.
+
 -- ============================================================================
 -- UNIFIED SPORTS MODALITY (Feb 2026 Refactor)
 -- ============================================================================

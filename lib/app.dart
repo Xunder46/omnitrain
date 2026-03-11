@@ -4,6 +4,8 @@ import 'core/services/session_summary_service.dart';
 import 'state/workout/workout_state.dart';
 import 'state/home/home_state.dart';
 import 'state/routine/routine_state.dart';
+import 'state/calendar/calendar_state.dart';
+import 'state/period/period_state.dart';
 
 import 'features/home/home_screen.dart';
 
@@ -13,6 +15,8 @@ class MyApp extends StatelessWidget {
   final RoutineState routineState;
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
+  final CalendarState calendarState;
+  final PeriodState periodState;
 
   const MyApp({
     super.key,
@@ -21,6 +25,8 @@ class MyApp extends StatelessWidget {
     required this.routineState,
     required this.routineSessionService,
     required this.sessionSummaryService,
+    required this.calendarState,
+    required this.periodState,
   });
 
   @override
@@ -64,6 +70,8 @@ class MyApp extends StatelessWidget {
         routineState: routineState,
         routineSessionService: routineSessionService,
         sessionSummaryService: sessionSummaryService,
+        calendarState: calendarState,
+        periodState: periodState,
       ),
     );
   }

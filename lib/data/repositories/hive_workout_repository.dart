@@ -13,6 +13,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
   static const String _seedLoadedKey = 'seed_loaded';
   static const String _exerciseRoundDefaultsMigrationKey =
       'exercise_round_defaults_migrated_v1';
+  static const String _calendarDataMigrationKey = 'calendar_data_seeded_v1';
+  static const String _calendarSeedPurgeMigrationKey =
+      'calendar_seed_purged_v1';
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -38,6 +41,12 @@ class HiveWorkoutRepository implements WorkoutRepository {
   // Timed instances box: key = TimedInstance.id, value = TimedInstance.toMap()
   // Stores wall-clock tracked durations for timed/drill efforts.
   late Box<Map> _timedInstancesBox;
+
+  // Planned sessions box: key = PlannedSession.id, value = PlannedSession.toMap()
+  late Box<Map> _plannedSessionsBox;
+
+  // Training periods box: key = TrainingPeriod.id, value = TrainingPeriod.toMap()
+  late Box<Map> _periodsBox;
 
   late Box<List> _exerciseMuscleGroupsBox;
   late Box<List> _exerciseEquipmentBox;
@@ -77,6 +86,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
     _timedInstancesBox = await Hive.openBox<Map>('timed_instances');
 
+    _plannedSessionsBox = await Hive.openBox<Map>('planned_sessions');
+    _periodsBox = await Hive.openBox<Map>('training_periods');
+
     _exerciseMuscleGroupsBox = await Hive.openBox<List>(
       'exercise_muscle_groups',
     );
@@ -94,6 +106,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
 
     await _migrateExerciseRoundDefaults();
+    await _seedCalendarData();
+    await _purgeCalendarSeedData();
 
     _initialized = true;
   }
@@ -172,6 +186,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
           .add(applicability.effortKind);
     }
     await _metricEffortKindsBox.putAll(metricEffortKinds);
+
   }
 
   /// Backfills `default_round_duration_secs` for existing Hive installs that
@@ -204,6 +219,49 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
 
     await _metaBox.put(_exerciseRoundDefaultsMigrationKey, true);
+  }
+
+  /// Legacy no-op migration key from the initial Calendar & Periods rollout.
+  ///
+  /// Historical note: this originally seeded demo planned sessions/periods for
+  /// old installs. The placeholders were removed, but we preserve the key so
+  /// existing meta data remains compatible.
+  Future<void> _seedCalendarData() async {
+    final migrated =
+        _metaBox.get(_calendarDataMigrationKey) as bool? ?? false;
+    if (migrated) return;
+    await _metaBox.put(_calendarDataMigrationKey, true);
+  }
+
+  /// Removes historical calendar demo seed rows from existing installs.
+  ///
+  /// Deletes only known placeholder IDs to avoid touching user-created data.
+  /// Idempotent: guarded by [_calendarSeedPurgeMigrationKey] in the meta box.
+  Future<void> _purgeCalendarSeedData() async {
+    final purged =
+        _metaBox.get(_calendarSeedPurgeMigrationKey) as bool? ?? false;
+    if (purged) return;
+
+    const plannedSeedIds = <String>[
+      'planned-session-1',
+      'planned-session-2',
+      'planned-session-3',
+      'planned-session-4',
+      'planned-session-5',
+      'planned-session-6',
+      'planned-session-7',
+      'planned-session-8',
+    ];
+    const periodSeedIds = <String>['period-1', 'period-2'];
+
+    for (final id in plannedSeedIds) {
+      await _plannedSessionsBox.delete(id);
+    }
+    for (final id in periodSeedIds) {
+      await _periodsBox.delete(id);
+    }
+
+    await _metaBox.put(_calendarSeedPurgeMigrationKey, true);
   }
 
   Map<String, dynamic> _asStringMap(dynamic raw) {
@@ -1032,6 +1090,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _exerciseTagsBox.clear();
     await _metricEffortKindsBox.clear();
     await _exerciseCapabilitiesBox.clear();
+    await _plannedSessionsBox.clear();
+    await _periodsBox.clear();
     await _metaBox.delete(_seedLoadedKey);
     _initialized = false;
   }
@@ -1039,5 +1099,113 @@ class HiveWorkoutRepository implements WorkoutRepository {
   Future<void> reset() async {
     await clear();
     await initialize();
+  }
+
+  // ===== PLANNED SESSIONS =====
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessions() async {
+    final list = _plannedSessionsBox.values
+        .map((raw) => PlannedSession.fromMap(_asStringMap(raw)))
+        .toList();
+    list.sort((a, b) => a.scheduledDateMs.compareTo(b.scheduledDateMs));
+    return list;
+  }
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessionsForDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final list = _plannedSessionsBox.values
+        .map((raw) => PlannedSession.fromMap(_asStringMap(raw)))
+        .where((s) => s.scheduledDateMs >= fromMs && s.scheduledDateMs <= toMs)
+        .toList();
+    list.sort((a, b) => a.scheduledDateMs.compareTo(b.scheduledDateMs));
+    return list;
+  }
+
+  @override
+  Future<String> createPlannedSession(PlannedSession session) async {
+    await _plannedSessionsBox.put(session.id, session.toMap());
+    return session.id;
+  }
+
+  @override
+  Future<void> updatePlannedSession(PlannedSession session) async {
+    await _plannedSessionsBox.put(session.id, session.toMap());
+  }
+
+  @override
+  Future<void> deletePlannedSession(String id) async {
+    await _plannedSessionsBox.delete(id);
+  }
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessionsByTemplateId(
+    String templateId,
+  ) async {
+    return _plannedSessionsBox.values
+        .map((raw) => PlannedSession.fromMap(_asStringMap(raw)))
+        .where((s) => s.routineTemplateId == templateId)
+        .toList();
+  }
+
+  @override
+  Future<void> deletePlannedSessionsByTemplateId(String templateId) async {
+    final toDelete = _plannedSessionsBox.keys.where((key) {
+      final raw = _plannedSessionsBox.get(key);
+      if (raw == null) return false;
+      final m = _asStringMap(raw);
+      return m['routine_template_id'] == templateId;
+    }).toList();
+    await _plannedSessionsBox.deleteAll(toDelete);
+  }
+
+  // ===== TRAINING PERIODS =====
+
+  @override
+  Future<List<TrainingPeriod>> getPeriods() async {
+    final list = _periodsBox.values
+        .map((raw) => TrainingPeriod.fromMap(_asStringMap(raw)))
+        .toList();
+    list.sort((a, b) => a.startDateMs.compareTo(b.startDateMs));
+    return list;
+  }
+
+  @override
+  Future<TrainingPeriod?> getPeriodById(String id) async {
+    final raw = _periodsBox.get(id);
+    if (raw == null) return null;
+    return TrainingPeriod.fromMap(_asStringMap(raw));
+  }
+
+  @override
+  Future<String> createPeriod(TrainingPeriod period) async {
+    await _periodsBox.put(period.id, period.toMap());
+    return period.id;
+  }
+
+  @override
+  Future<void> updatePeriod(TrainingPeriod period) async {
+    await _periodsBox.put(period.id, period.toMap());
+  }
+
+  @override
+  Future<void> deletePeriod(String id) async {
+    await _periodsBox.delete(id);
+  }
+
+  @override
+  Future<bool> hasPeriodOverlap(
+    int startMs,
+    int endMs, {
+    String? excludeId,
+  }) async {
+    return _periodsBox.values.any((raw) {
+      final p = TrainingPeriod.fromMap(_asStringMap(raw));
+      if (p.id == excludeId) return false;
+      return startMs <= p.endDateMs && endMs >= p.startDateMs;
+    });
   }
 }

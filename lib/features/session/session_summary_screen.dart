@@ -18,12 +18,14 @@ class SessionSummaryScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final RoutineState routineState;
   final SessionSummaryService sessionSummaryService;
+  final Future<void> Function(String sessionId)? onSessionSaved;
 
   const SessionSummaryScreen({
     super.key,
     required this.workoutState,
     required this.routineState,
     required this.sessionSummaryService,
+    this.onSessionSaved,
   });
 
   @override
@@ -209,6 +211,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
 
     await widget.workoutState.endSession();
+    final completedSessionId = widget.workoutState.currentSession?.id;
+    if (completedSessionId != null && widget.onSessionSaved != null) {
+      await widget.onSessionSaved!(completedSessionId);
+    }
     widget.workoutState.clearSession();
 
     if (!mounted) return;

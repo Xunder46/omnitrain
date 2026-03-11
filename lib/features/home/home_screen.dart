@@ -4,6 +4,8 @@ import '../../core/services/session_summary_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
+import '../../state/calendar/calendar_state.dart';
+import '../../state/period/period_state.dart';
 import '../../core/constants/home_tiles.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
@@ -11,6 +13,7 @@ import '../../widgets/cards/energy_tile.dart';
 import '../../widgets/cards/maintenance_tile.dart';
 import '../session/workout_session_screen.dart';
 import '../routine/my_routines_screen.dart';
+import '../calendar/calendar_screen.dart';
 import 'maintenance_placeholder_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -19,6 +22,8 @@ class HomeScreen extends StatefulWidget {
   final RoutineState routineState;
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
+  final CalendarState calendarState;
+  final PeriodState periodState;
 
   const HomeScreen({
     super.key,
@@ -27,6 +32,8 @@ class HomeScreen extends StatefulWidget {
     required this.routineState,
     required this.routineSessionService,
     required this.sessionSummaryService,
+    required this.calendarState,
+    required this.periodState,
   });
 
   @override
@@ -422,10 +429,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Calendar',
         icon: Icons.calendar_today,
-        onTap: () => _openPlaceholder(
-          context,
-          title: 'Calendar',
-          description: 'View and manage your training schedule',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => CalendarScreen(
+              calendarState: widget.calendarState,
+              periodState: widget.periodState,
+              workoutState: widget.workoutState,
+              routineState: widget.routineState,
+              routineSessionService: widget.routineSessionService,
+              sessionSummaryService: widget.sessionSummaryService,
+            ),
+          ),
         ),
       ),
       _MaintenanceItem(

@@ -24,6 +24,7 @@ class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final RoutineState routineState;
   final SessionSummaryService sessionSummaryService;
+  final Future<void> Function(String sessionId)? onSessionSaved;
   final String? initialFocusId;
 
   /// When true the screen shows a frozen review/edit view of a completed session:
@@ -35,6 +36,7 @@ class WorkoutSessionScreen extends StatefulWidget {
     required this.workoutState,
     required this.routineState,
     required this.sessionSummaryService,
+    this.onSessionSaved,
     this.initialFocusId,
     this.editMode = false,
   });
@@ -1430,6 +1432,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           workoutState: widget.workoutState,
           routineState: widget.routineState,
           sessionSummaryService: widget.sessionSummaryService,
+          onSessionSaved: widget.onSessionSaved,
         ),
       ),
     );

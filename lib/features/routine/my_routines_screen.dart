@@ -240,6 +240,15 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
               child: const Text('Cancel'),
             ),
             FilledButton(
@@ -299,31 +308,58 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
     }
   }
 
-  void _confirmDelete(BuildContext context, String templateId) {
-    showDialog(
+  Future<void> _confirmDelete(BuildContext context, String templateId) async {
+    final plannedCount = await widget.routineState
+        .countPlannedSessionsForTemplate(templateId);
+
+    if (!context.mounted) return;
+
+    final baseMessage = 'This action cannot be undone.';
+    final warningMessage =
+        'This routine has $plannedCount planned session(s). Deleting it will also remove those planned sessions.';
+    final contentText = plannedCount > 0
+        ? '$warningMessage\n\n$baseMessage'
+        : baseMessage;
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Color(0xFF2a2a2a),
-        title: Text('Delete Routine?', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'This action cannot be undone.',
-          style: TextStyle(color: Colors.grey[300]),
-        ),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Routine?'),
+        content: Text(contentText),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              widget.routineState.deleteRoutine(templateId);
-            },
-            child: Text('Delete', style: TextStyle(color: Colors.red)),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
+
+    if (confirmed == true) {
+      await widget.routineState.deleteRoutine(templateId);
+    }
   }
 
   String _formatDate(DateTime date) {

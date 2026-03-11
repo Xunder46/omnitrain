@@ -1391,6 +1391,12 @@ class SeedData {
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
   ];
+
+  // Calendar features intentionally start empty.
+  static final List<PlannedSession> samplePlannedSessions = [];
+
+  // Calendar period demo data was removed; user-created periods only.
+  static final List<TrainingPeriod> sampleTrainingPeriods = [];
 }
 
 /// Helper class for metric-to-effort-kind relationships

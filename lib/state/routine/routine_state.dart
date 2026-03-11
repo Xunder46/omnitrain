@@ -207,11 +207,25 @@ class RoutineState extends ChangeNotifier {
     _clearError();
 
     try {
+      // Cascade-delete: remove all planned sessions linked to this template.
+      await _repository.deletePlannedSessionsByTemplateId(templateId);
+
       await _repository.deleteTemplate(templateId);
       _routines.removeWhere((r) => r.id == templateId);
       notifyListeners();
     } catch (e) {
       _setError('Failed to delete routine: $e');
+    }
+  }
+
+  /// Count planned sessions linked to a template (for delete warning UI).
+  Future<int> countPlannedSessionsForTemplate(String templateId) async {
+    try {
+      final sessions =
+          await _repository.getPlannedSessionsByTemplateId(templateId);
+      return sessions.length;
+    } catch (e) {
+      return 0;
     }
   }
 

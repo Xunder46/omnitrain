@@ -1007,3 +1007,192 @@ class TimedInstance {
 
 // UI-specific set data structures moved to lib/core/utils/exercise_helpers.dart
 // Models layer reserved for persistence entities only
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PlannedSession — Lightweight scheduling record for a future (or past) session
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A lightweight scheduling record for a session intent.
+///
+/// Unlike [TrainingSession] (which contains segments, efforts and observations),
+/// a [PlannedSession] is purely intent data: a date-tagged plan to train.
+///
+/// When a planned session is actually executed as a workout, [linkedSessionId]
+/// may be set to point to the resulting [TrainingSession].
+///
+/// Recurrence is NOT yet implemented.
+/// [recurrenceRule] is reserved for future use; always set it to null for now.
+/// Future implementation will likely use an iCalendar-style RRULE string
+/// (e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR") or a custom JSON rule object.
+///
+/// Calendar indicator rendering:
+///   isCompleted = false → outlined circle (planned, not done)
+///   isCompleted = true  → filled circle  (completed)
+///   Circle colour is derived from [modality] via ModalityColorUtils.
+class PlannedSession {
+  final String id;
+  final String ownerUserId;
+
+  /// Epoch milliseconds representing the intended training day.
+  /// Store start-of-day (midnight local time) for reliable day-level grouping.
+  final int scheduledDateMs;
+
+  /// Modality key (e.g. 'cardio_endurance', 'resistance_lifting'), or null
+  /// for Free Training.
+  final String? modality;
+
+  /// Optional short title.
+  final String? title;
+
+  /// Optional notes.
+  final String? note;
+
+  /// true = session has been completed; false = still planned.
+  final bool isCompleted;
+
+  /// Optional FK to a [TrainingSession] created when this plan was executed.
+  final String? linkedSessionId;
+
+  /// Optional FK to a [WorkoutTemplate] when this planned session is based on
+  /// a custom routine. Null means a free-training planned session (modality only).
+  final String? routineTemplateId;
+
+  /// Reserved for future recurrence support. Always null in this implementation.
+  final String? recurrenceRule;
+
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  PlannedSession({
+    required this.id,
+    required this.ownerUserId,
+    required this.scheduledDateMs,
+    this.modality,
+    this.title,
+    this.note,
+    this.isCompleted = false,
+    this.linkedSessionId,
+    this.routineTemplateId,
+    this.recurrenceRule,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  factory PlannedSession.fromMap(Map<String, dynamic> m) => PlannedSession(
+        id: m['id'] as String,
+        ownerUserId: m['owner_user_id'] as String,
+        scheduledDateMs: m['scheduled_date_ms'] as int,
+        modality: m['modality'] as String?,
+        title: m['title'] as String?,
+        note: m['note'] as String?,
+        isCompleted: (m['is_completed'] as int?) == 1,
+        linkedSessionId: m['linked_session_id'] as String?,
+        routineTemplateId: m['routine_template_id'] as String?,
+        recurrenceRule: m['recurrence_rule'] as String?,
+        createdAtMs: m['created_at_ms'] as int,
+        updatedAtMs: m['updated_at_ms'] as int,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'owner_user_id': ownerUserId,
+        'scheduled_date_ms': scheduledDateMs,
+        'modality': modality,
+        'title': title,
+        'note': note,
+        'is_completed': isCompleted ? 1 : 0,
+        'linked_session_id': linkedSessionId,
+        'routine_template_id': routineTemplateId,
+        'recurrence_rule': recurrenceRule,
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs,
+      };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TrainingPeriod — Named date range with optional modality focus
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A named training period with a date range and optional modality focus.
+///
+/// Periods provide a high-level planning view (e.g. "Competition Prep",
+/// "Off-Season Strength Block"). Periods may NOT overlap — the repository
+/// enforces the rule:
+///   newPeriod.start <= existing.end AND newPeriod.end >= existing.start
+///
+/// [focusModalities] is a list of modality keys this period targets.
+/// An empty list means all modalities / unspecified focus.
+///
+/// Storage of [focusModalities]:
+///   Persisted as a comma-separated string under the 'focus_modalities_csv'
+///   map key.  An empty list is stored as an empty string.
+///   Example: ['cardio_endurance','resistance_lifting']
+///            → 'cardio_endurance,resistance_lifting'
+class TrainingPeriod {
+  final String id;
+  final String? ownerUserId;
+  final String name;
+
+  /// Epoch ms representing the first day of the period (midnight local time).
+  final int startDateMs;
+
+  /// Epoch ms representing the last day of the period (end-of-day local time).
+  final int endDateMs;
+
+  /// Modality keys for the training focus. Empty = all/unspecified.
+  final List<String> focusModalities;
+
+  /// Optional free-text notes.
+  final String? notes;
+
+  /// Hex color string (e.g. '#4CAF50') used for calendar highlight.
+  /// Null means use the default theme accent color.
+  final String? colorHex;
+
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  TrainingPeriod({
+    required this.id,
+    this.ownerUserId,
+    required this.name,
+    required this.startDateMs,
+    required this.endDateMs,
+    this.focusModalities = const [],
+    this.notes,
+    this.colorHex,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  factory TrainingPeriod.fromMap(Map<String, dynamic> m) {
+    final csv = m['focus_modalities_csv'] as String?;
+    final modalities =
+        (csv == null || csv.isEmpty) ? <String>[] : csv.split(',');
+    return TrainingPeriod(
+      id: m['id'] as String,
+      ownerUserId: m['owner_user_id'] as String?,
+      name: m['name'] as String,
+      startDateMs: m['start_date_ms'] as int,
+      endDateMs: m['end_date_ms'] as int,
+      focusModalities: modalities,
+      notes: m['notes'] as String?,
+      colorHex: m['color_hex'] as String?,
+      createdAtMs: m['created_at_ms'] as int,
+      updatedAtMs: m['updated_at_ms'] as int,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'owner_user_id': ownerUserId,
+        'name': name,
+        'start_date_ms': startDateMs,
+        'end_date_ms': endDateMs,
+        'focus_modalities_csv': focusModalities.join(','),
+        'notes': notes,
+        'color_hex': colorHex,
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs,
+      };
+}

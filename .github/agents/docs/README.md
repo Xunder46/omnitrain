@@ -33,6 +33,7 @@ This documentation describes the architecture, features, and conventions of Omni
 | [Exercise Ranking](exercise_ranking.md) | How exercises are scored and sorted for the exercise picker |
 | [Create New Exercise](create_new_exercise.md) | Custom exercise creation from the picker |
 | [My Routines](my_routines.md) | Reusable workout template system — CRUD, template-to-session conversion, UI |
+| [Calendar & Periods](calendar_periods.md) | Month calendar planning, day-session management, and non-overlapping training periods |
 | [Session Summary](session_summary.md) | Post-workout analytics — PRs, volume comparison, save-as-routine |
 
 ### Architecture & Technical

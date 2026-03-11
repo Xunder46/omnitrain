@@ -154,6 +154,69 @@ class WorkoutState extends ChangeNotifier {
     }
   }
 
+  /// Load a historical (past) session into the in-memory state for read-only
+  /// viewing (e.g. from the Calendar screen).
+  ///
+  /// Does NOT create any new records. Clears current in-memory session state
+  /// and replaces it with the loaded session and its child records.
+  /// Should only be called when there is no active in-progress session.
+  Future<void> loadHistoricalSession(String sessionId) async {
+    _setLoading(true);
+    _clearError();
+
+    try {
+      final session = await _repository.getSession(sessionId);
+      if (session == null) {
+        _setError('Session not found.');
+        return;
+      }
+
+      _currentSession = session;
+      _currentModalityConfig = null;
+
+      // Clear prior in-memory child data.
+      _segments.clear();
+      _efforts.clear();
+      _observations.clear();
+      _roundInstances.clear();
+      _timedInstances.clear();
+
+      // Load all child records for this session.
+      final segments = await _repository.getSessionSegments(sessionId);
+      _segments.addAll(segments);
+
+      for (final segment in _segments) {
+        final efforts = await _repository.getSegmentEfforts(segment.id);
+        _efforts[segment.id] = efforts;
+
+        for (final effort in efforts) {
+          _observations[effort.id] =
+              await _repository.getEffortObservations(effort.id);
+
+          if (effort.effortKind == 'round') {
+            _roundInstances[effort.id] =
+                await _repository.getRoundInstances(effort.id);
+          }
+          if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
+            _timedInstances[effort.id] =
+                await _repository.getTimedInstances(effort.id);
+          }
+
+          if (effort.exerciseId != null) {
+            final ex = await _repository.getExerciseById(effort.exerciseId!);
+            if (ex != null) _exerciseCache[ex.id] = ex;
+          }
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to load historical session: $e');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   /// Load session data from repository
   Future<void> loadSessionData() async {
     if (_currentSession == null) {

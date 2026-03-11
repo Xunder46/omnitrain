@@ -1,0 +1,460 @@
+import 'package:flutter/material.dart';
+import '../../core/constants/omni_theme.dart';
+import '../../core/utils/date_utils.dart';
+import '../../core/utils/modality_color_utils.dart';
+import '../../state/calendar/calendar_state.dart';
+import '../../state/workout/workout_state.dart';
+import '../../state/routine/routine_state.dart';
+import '../../state/period/period_state.dart';
+import '../../core/services/routine_session_service.dart';
+import '../../core/services/session_summary_service.dart';
+import '../../data/models/models.dart';
+import '../../widgets/layout/omni_gradient_background.dart';
+import '../session/session_summary_screen.dart';
+import 'day_session_list_screen.dart';
+import '../period/period_list_screen.dart';
+
+class CalendarScreen extends StatefulWidget {
+  final CalendarState calendarState;
+  final PeriodState periodState;
+  final WorkoutState workoutState;
+  final RoutineState routineState;
+  final RoutineSessionService routineSessionService;
+  final SessionSummaryService sessionSummaryService;
+
+  const CalendarScreen({
+    super.key,
+    required this.calendarState,
+    required this.periodState,
+    required this.workoutState,
+    required this.routineState,
+    required this.routineSessionService,
+    required this.sessionSummaryService,
+  });
+
+  @override
+  State<CalendarScreen> createState() => _CalendarScreenState();
+}
+
+class _CalendarScreenState extends State<CalendarScreen> {
+  static const _weekLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  @override
+  void initState() {
+    super.initState();
+    // Init loads current month; only call if not yet initialised.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.calendarState.init();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Calendar'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: FilledButton(
+              onPressed: () => _openPeriods(context),
+              style: ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                ),
+                shape: WidgetStatePropertyAll(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonBorderRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('+'),
+            ),
+          ),
+        ],
+      ),
+      body: OmniGradientBackground(
+        child: SafeArea(
+          child: ListenableBuilder(
+            listenable: widget.calendarState,
+            builder: (context, _) {
+              return Column(
+                children: [
+                  _MonthHeader(
+                    year: widget.calendarState.year,
+                    month: widget.calendarState.month,
+                    onPrevious: widget.calendarState.goToPreviousMonth,
+                    onNext: widget.calendarState.goToNextMonth,
+                  ),
+                  _WeekDayRow(labels: _weekLabels),
+                  Expanded(
+                    child: widget.calendarState.isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _MonthGrid(
+                            year: widget.calendarState.year,
+                            month: widget.calendarState.month,
+                            entriesByDay: widget.calendarState.entriesByDay,
+                            periods: widget.calendarState.periods,
+                            onDayTap: (date) => _onDayTap(context, date),
+                          ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openPeriods(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PeriodListScreen(periodState: widget.periodState),
+      ),
+    );
+  }
+
+  Future<void> _onDayTap(BuildContext context, DateTime date) async {
+    final entries = widget.calendarState.entriesForDay(date);
+
+    if (OmniDateUtils.isPastDay(date)) {
+      if (entries.length == 1) {
+        final entry = entries.first;
+        // Single past session → open summary screen if it's a real completed session,
+        // or DaySessionListScreen for a planned-not-completed session.
+        if (entry.session != null && entry.session!.endedAtMs != null) {
+          _openSessionSummary(context, entry.session!.id);
+        } else {
+          await _openDayList(context, date);
+        }
+      } else {
+        await _openDayList(context, date);
+      }
+    } else {
+      await _openDayList(context, date);
+    }
+  }
+
+  void _openSessionSummary(BuildContext context, String sessionId) {
+    widget.workoutState.loadHistoricalSession(sessionId).then((_) {
+      if (context.mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => SessionSummaryScreen(
+              workoutState: widget.workoutState,
+              routineState: widget.routineState,
+              sessionSummaryService: widget.sessionSummaryService,
+            ),
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _openDayList(BuildContext context, DateTime date) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DaySessionListScreen(
+          date: date,
+          calendarState: widget.calendarState,
+          routineState: widget.routineState,
+          workoutState: widget.workoutState,
+          routineSessionService: widget.routineSessionService,
+          sessionSummaryService: widget.sessionSummaryService,
+        ),
+      ),
+    );
+    // Refresh calendar after returning from day list (user may have added/deleted).
+    await widget.calendarState.refresh();
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Sub-widgets
+// ────────────────────────────────────────────────────────────────────────────
+
+class _MonthHeader extends StatelessWidget {
+  final int year;
+  final int month;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+
+  const _MonthHeader({
+    required this.year,
+    required this.month,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            color: OmniTheme.textPrimary,
+            onPressed: onPrevious,
+          ),
+          Expanded(
+            child: Text(
+              '${OmniDateUtils.fullMonthName(month)} $year',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: OmniTheme.textPrimary,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            color: OmniTheme.textPrimary,
+            onPressed: onNext,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeekDayRow extends StatelessWidget {
+  final List<String> labels;
+
+  const _WeekDayRow({required this.labels});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: labels
+            .map(
+              (l) => Expanded(
+                child: Center(
+                  child: Text(
+                    l,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: OmniTheme.textSecondary.withOpacity(0.7),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _MonthGrid extends StatelessWidget {
+  final int year;
+  final int month;
+  final Map<int, List<CalendarEntry>> entriesByDay;
+  final List<TrainingPeriod> periods;
+  final void Function(DateTime) onDayTap;
+
+  const _MonthGrid({
+    required this.year,
+    required this.month,
+    required this.entriesByDay,
+    required this.periods,
+    required this.onDayTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final grid = OmniDateUtils.buildMonthGrid(year, month);
+
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 7,
+        childAspectRatio: 0.75,
+      ),
+      itemCount: grid.length,
+      itemBuilder: (context, index) {
+        final date = grid[index];
+        if (date == null) return const SizedBox.shrink();
+
+        final dayMs = OmniDateUtils.startOfDayMs(date);
+        final entries = entriesByDay[dayMs] ?? [];
+        final isToday = OmniDateUtils.isToday(date);
+
+        return _DayCell(
+          date: date,
+          entries: entries,
+          periods: periods,
+          isToday: isToday,
+          onTap: () => onDayTap(date),
+        );
+      },
+    );
+  }
+}
+
+class _DayCell extends StatelessWidget {
+  final DateTime date;
+  final List<CalendarEntry> entries;
+  final List<TrainingPeriod> periods;
+  final bool isToday;
+  final VoidCallback onTap;
+
+  const _DayCell({
+    required this.date,
+    required this.entries,
+    required this.periods,
+    required this.isToday,
+    required this.onTap,
+  });
+
+  Color _resolvePeriodHighlightColor(BuildContext context) {
+    final dayMs = OmniDateUtils.startOfDayMs(date);
+    final period = periods
+        .where((p) => p.startDateMs <= dayMs && p.endDateMs >= dayMs)
+        .firstOrNull;
+    if (period == null) {
+      return Colors.grey.withOpacity(0.08);
+    }
+
+    if (period.colorHex == null || period.colorHex!.length != 7) {
+      return Theme.of(context).colorScheme.primary.withOpacity(0.14);
+    }
+
+    final hex = period.colorHex!.replaceFirst('#', '');
+    final value = int.tryParse(hex, radix: 16);
+    if (value == null) {
+      return Theme.of(context).colorScheme.primary.withOpacity(0.14);
+    }
+
+    return Color(0xFF000000 | value).withOpacity(0.14);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final periodHighlightColor = _resolvePeriodHighlightColor(context);
+
+    return GestureDetector(
+      onTap: entries.isNotEmpty || OmniDateUtils.isTodayOrFuture(date)
+          ? onTap
+          : null,
+      child: Container(
+        margin: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: periodHighlightColor,
+          borderRadius: BorderRadius.circular(8),
+          border: isToday
+              ? Border.all(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
+                  width: 1.5,
+                )
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              '${date.day}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
+                color: isToday
+                    ? Theme.of(context).colorScheme.primary
+                    : OmniTheme.textPrimary.withOpacity(0.85),
+              ),
+            ),
+            const SizedBox(height: 3),
+            if (entries.isNotEmpty) _SessionIndicators(entries: entries),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Row 1: first 2 dots. Row 2: 3rd dot (if present) + "+N" overflow (if >3).
+class _SessionIndicators extends StatelessWidget {
+  final List<CalendarEntry> entries;
+
+  const _SessionIndicators({required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    final row1 = entries.take(2).toList();
+    final hasRow2 = entries.length > 2;
+    final third = entries.length > 2 ? entries[2] : null;
+    final overflow = entries.length > 3 ? entries.length - 3 : 0;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: row1.map((e) => _Dot(entry: e)).toList(),
+        ),
+        if (hasRow2)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (third != null) _Dot(entry: third),
+              if (overflow > 0)
+                Container(
+                  width: 14.0,
+                  height: 14.0,
+                  margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '+$overflow',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: OmniTheme.textSecondary.withOpacity(0.75),
+                      fontWeight: FontWeight.w600,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  final CalendarEntry entry;
+
+  const _Dot({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = ModalityColorUtils.colorForModality(entry.modality);
+    const size = 14.0;
+
+    return Container(
+      width: size,
+      height: size,
+      margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+      decoration: entry.isCompleted
+          ? BoxDecoration(color: color, shape: BoxShape.circle)
+          : BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 2),
+            ),
+    );
+  }
+}

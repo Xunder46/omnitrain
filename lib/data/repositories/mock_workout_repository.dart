@@ -45,6 +45,10 @@ class MockWorkoutRepository implements WorkoutRepository {
   // Stores the full lifecycle of each timed/drill entry duration.
   final Map<String, List<TimedInstance>> _timedInstances = {};
 
+  // Calendar: planned sessions and training periods
+  final Map<String, PlannedSession> _plannedSessions = {};
+  final Map<String, TrainingPeriod> _periods = {};
+
   bool _initialized = false;
 
   /// Initializes the repository with seed data from mock/seed_data.dart
@@ -126,6 +130,9 @@ class MockWorkoutRepository implements WorkoutRepository {
           .putIfAbsent(applicability.metricId, () => [])
           .add(applicability.effortKind);
     }
+
+    // Calendar maps intentionally start empty; users create planned sessions
+    // and periods through calendar/period flows.
 
     _initialized = true;
   }
@@ -845,6 +852,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     _exerciseEquipment.clear();
     _exerciseTags.clear();
     _metricEffortKinds.clear();
+    _plannedSessions.clear();
+    _periods.clear();
     _initialized = false;
   }
 
@@ -852,5 +861,100 @@ class MockWorkoutRepository implements WorkoutRepository {
   Future<void> reset() async {
     clear();
     await initialize();
+  }
+
+  // ===== PLANNED SESSIONS =====
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessions() async {
+    final list = _plannedSessions.values.toList();
+    list.sort((a, b) => a.scheduledDateMs.compareTo(b.scheduledDateMs));
+    return list;
+  }
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessionsForDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final list = _plannedSessions.values
+        .where((s) => s.scheduledDateMs >= fromMs && s.scheduledDateMs <= toMs)
+        .toList();
+    list.sort((a, b) => a.scheduledDateMs.compareTo(b.scheduledDateMs));
+    return list;
+  }
+
+  @override
+  Future<String> createPlannedSession(PlannedSession session) async {
+    _plannedSessions[session.id] = session;
+    return session.id;
+  }
+
+  @override
+  Future<void> updatePlannedSession(PlannedSession session) async {
+    _plannedSessions[session.id] = session;
+  }
+
+  @override
+  Future<void> deletePlannedSession(String id) async {
+    _plannedSessions.remove(id);
+  }
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessionsByTemplateId(
+    String templateId,
+  ) async {
+    return _plannedSessions.values
+        .where((s) => s.routineTemplateId == templateId)
+        .toList();
+  }
+
+  @override
+  Future<void> deletePlannedSessionsByTemplateId(String templateId) async {
+    _plannedSessions.removeWhere(
+      (_, s) => s.routineTemplateId == templateId,
+    );
+  }
+
+  // ===== TRAINING PERIODS =====
+
+  @override
+  Future<List<TrainingPeriod>> getPeriods() async {
+    final list = _periods.values.toList();
+    list.sort((a, b) => a.startDateMs.compareTo(b.startDateMs));
+    return list;
+  }
+
+  @override
+  Future<TrainingPeriod?> getPeriodById(String id) async {
+    return _periods[id];
+  }
+
+  @override
+  Future<String> createPeriod(TrainingPeriod period) async {
+    _periods[period.id] = period;
+    return period.id;
+  }
+
+  @override
+  Future<void> updatePeriod(TrainingPeriod period) async {
+    _periods[period.id] = period;
+  }
+
+  @override
+  Future<void> deletePeriod(String id) async {
+    _periods.remove(id);
+  }
+
+  @override
+  Future<bool> hasPeriodOverlap(
+    int startMs,
+    int endMs, {
+    String? excludeId,
+  }) async {
+    return _periods.values.any((p) {
+      if (p.id == excludeId) return false;
+      return startMs <= p.endDateMs && endMs >= p.startDateMs;
+    });
   }
 }

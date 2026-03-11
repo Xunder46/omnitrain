@@ -7,6 +7,8 @@ import 'data/repositories/workout_repository.dart';
 import 'state/workout/workout_state.dart';
 import 'state/home/home_state.dart';
 import 'state/routine/routine_state.dart';
+import 'state/calendar/calendar_state.dart';
+import 'state/period/period_state.dart';
 
 /// Create the appropriate repository based on platform
 ///
@@ -32,6 +34,8 @@ void main() async {
     final workoutState = WorkoutState(repository);
     final homeState = HomeState();
     final routineState = RoutineState(repository);
+    final calendarState = CalendarState(repository);
+    final periodState = PeriodState(repository);
 
     // Create service with repository
     final routineSessionService = RoutineSessionService(repository);
@@ -44,6 +48,8 @@ void main() async {
         routineState: routineState,
         routineSessionService: routineSessionService,
         sessionSummaryService: sessionSummaryService,
+        calendarState: calendarState,
+        periodState: periodState,
       ),
     );
   } catch (e) {

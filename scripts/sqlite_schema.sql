@@ -747,4 +747,136 @@ CREATE TABLE app_sync_op_local_example (
   pushed INTEGER NOT NULL DEFAULT 0
 );
 
+-- PLANNED SESSIONS (Calendar & Periods Feature — Mar 2026)
+-- ========================================================
+-- Lightweight scheduling records for future (or past) session intents.
+-- Unlike app_training_session (which holds full workout data), a planned
+-- session is purely intent data: a date-tagged plan to train.
+--
+-- When a planned session is actually executed, linked_session_id may be set
+-- to point to the resulting app_training_session row.
+--
+-- recurrence_rule is RESERVED for future recurrence support; store NULL now.
+-- Future implementation will likely use an iCalendar-style RRULE string
+-- (e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR") or a custom JSON rule object.
+--
+-- Calendar indicator rules (presentation only — no schema impact):
+--   is_completed = 0 → outlined circle indicator (planned, not done)
+--   is_completed = 1 → filled circle indicator   (completed)
+--   Circle colour derived from modality in Dart (ModalityColorUtils).
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getPlannedSessions():
+--     SELECT * FROM app_planned_session ORDER BY scheduled_date_ms ASC;
+--
+--   getPlannedSessionsForDateRange(fromMs, toMs):
+--     SELECT * FROM app_planned_session
+--     WHERE scheduled_date_ms >= ? AND scheduled_date_ms <= ?
+--     ORDER BY scheduled_date_ms ASC;
+--
+--   createPlannedSession(session):
+--     INSERT INTO app_planned_session VALUES (...);
+--
+--   updatePlannedSession(session):
+--     UPDATE app_planned_session
+--     SET modality=?, title=?, note=?, is_completed=?,
+--         linked_session_id=?, updated_at_ms=?
+--     WHERE id = ?;
+--
+--   deletePlannedSession(id):
+--     DELETE FROM app_planned_session WHERE id = ?;
+--
+--   Calendar demo cleanup migration (if older beta rows exist):
+--     DELETE FROM app_planned_session
+--     WHERE id IN (
+--       'planned-session-1', 'planned-session-2', 'planned-session-3',
+--       'planned-session-4', 'planned-session-5', 'planned-session-6',
+--       'planned-session-7', 'planned-session-8'
+--     );
+CREATE TABLE app_planned_session (
+  id TEXT NOT NULL PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
+  scheduled_date_ms INTEGER NOT NULL,     -- Epoch ms of the intended training day
+  modality TEXT,                          -- Modality key or NULL for Free Training
+  title TEXT,                             -- Optional short title
+  note TEXT,                              -- Optional notes
+  is_completed INTEGER NOT NULL DEFAULT 0, -- 0 = planned, 1 = completed
+  linked_session_id TEXT,                 -- FK to app_training_session when executed
+  recurrence_rule TEXT,                   -- RESERVED: NULL until recurrence is built
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(linked_session_id) REFERENCES app_training_session(id)
+);
+CREATE INDEX IF NOT EXISTS IX_planned_session_date
+  ON app_planned_session(owner_user_id, scheduled_date_ms);
+
+-- TRAINING PERIODS (Calendar & Periods Feature — Mar 2026)
+-- =========================================================
+-- Named date ranges with optional modality focus.
+-- Used for training block planning (e.g. "Competition Prep", "Off-Season Strength").
+--
+-- OVERLAP RULE (enforced in Dart, not by a SQL constraint):
+--   Periods may NOT overlap. Dart rejects creation when:
+--     newPeriod.start_date_ms <= existing.end_date_ms
+--     AND newPeriod.end_date_ms >= existing.start_date_ms
+--
+--   hasPeriodOverlap(startMs, endMs, excludeId):
+--     SELECT COUNT(*) FROM app_training_period
+--     WHERE (? IS NULL OR id != ?)   -- excludeId
+--       AND start_date_ms <= ?       -- ? = endMs
+--       AND end_date_ms   >= ?;      -- ? = startMs
+--
+-- focus_modalities_csv stores modality keys as a comma-separated string.
+-- An empty string '' means all/unspecified modalities.
+-- Example: 'cardio_endurance,resistance_lifting'
+--
+-- Future normalisation option:
+--   A junction table app_training_period_modality(period_id TEXT, modality TEXT)
+--   can replace the CSV column without changing the Dart model interface.
+--   Migration: split CSV values via a UDF or script and INSERT into the junction.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getPeriods():
+--     SELECT * FROM app_training_period ORDER BY start_date_ms ASC;
+--
+--   getPeriodById(id):
+--     SELECT * FROM app_training_period WHERE id = ?;
+--
+--   createPeriod(period):
+--     INSERT INTO app_training_period VALUES (...);
+--
+--   updatePeriod(period):
+--     UPDATE app_training_period
+--     SET name=?, start_date_ms=?, end_date_ms=?,
+--         focus_modalities_csv=?, notes=?, updated_at_ms=?
+--     WHERE id = ?;
+--
+--   deletePeriod(id):
+--     DELETE FROM app_training_period WHERE id = ?;
+--
+--   hasPeriodOverlap(startMs, endMs, excludeId):
+--     SELECT COUNT(*) FROM app_training_period
+--     WHERE (? IS NULL OR id != ?)
+--       AND start_date_ms <= ?
+--       AND end_date_ms   >= ?;
+--
+--   Calendar demo cleanup migration (if older beta rows exist):
+--     DELETE FROM app_training_period WHERE id IN ('period-1', 'period-2');
+CREATE TABLE app_training_period (
+  id TEXT NOT NULL PRIMARY KEY,
+  owner_user_id TEXT,
+  name TEXT NOT NULL,
+  start_date_ms INTEGER NOT NULL,          -- Epoch ms of first day (midnight local)
+  end_date_ms INTEGER NOT NULL,            -- Epoch ms of last day  (end-of-day local)
+  focus_modalities_csv TEXT NOT NULL DEFAULT '', -- ''-separated modality keys; '' = all
+  notes TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  CHECK (end_date_ms >= start_date_ms)
+);
+CREATE INDEX IF NOT EXISTS IX_training_period_owner
+  ON app_training_period(owner_user_id, start_date_ms);
+CREATE INDEX IF NOT EXISTS IX_training_period_range
+  ON app_training_period(start_date_ms, end_date_ms);
+
 COMMIT;
