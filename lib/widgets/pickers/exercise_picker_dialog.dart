@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../core/constants/omni_theme.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 import '../../features/exercise/exercise_editor_screen.dart';
@@ -25,7 +26,8 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
   Timer? _debounce;
 
   List<Exercise> _filteredExercises = [];
-  List<Exercise> _recommendedExercises = []; // Exercises with score >= threshold
+  List<Exercise> _recommendedExercises =
+      []; // Exercises with score >= threshold
   List<Exercise> _otherExercises = []; // Exercises with score < threshold
   List<MuscleGroup> _muscleGroups = [];
   List<Discipline> _disciplines = [];
@@ -45,7 +47,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
   @override
   void didUpdateWidget(ExercisePickerDialog oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     // If the modality changed, refresh the exercise list and clear cache
     if (oldWidget.sessionModality != widget.sessionModality) {
       // Clear muscle groups cache since ordering may change with modality
@@ -100,10 +102,13 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
 
   Future<void> _searchExercises() async {
     final searchText = _searchController.text.trim();
-    final muscleGroupIds = _selectedMuscleGroupId != null ? [_selectedMuscleGroupId!] : null;
+    final muscleGroupIds = _selectedMuscleGroupId != null
+        ? [_selectedMuscleGroupId!]
+        : null;
 
     final results = await widget.workoutState.getExercisesRankedForModality(
-      modality: widget.sessionModality, // Explicitly pass modality to ensure consistency
+      modality: widget
+          .sessionModality, // Explicitly pass modality to ensure consistency
       searchText: searchText.isEmpty ? null : searchText,
       disciplineId: _selectedDisciplineId,
       muscleGroupIds: muscleGroupIds,
@@ -112,7 +117,9 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
     // Load muscle groups for each exercise for display
     for (final exercise in results) {
       if (!_exerciseMuscleGroupsCache.containsKey(exercise.id)) {
-        final muscles = await widget.workoutState.getExerciseMuscleGroups(exercise.id);
+        final muscles = await widget.workoutState.getExerciseMuscleGroups(
+          exercise.id,
+        );
         _exerciseMuscleGroupsCache[exercise.id] = muscles;
       }
     }
@@ -147,20 +154,26 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
 
     // Partition by relevance score threshold
     _recommendedExercises = exercises
-        .where((e) => e.relevanceScore != null && e.relevanceScore! >= RECOMMENDED_SCORE_THRESHOLD)
+        .where(
+          (e) =>
+              e.relevanceScore != null &&
+              e.relevanceScore! >= RECOMMENDED_SCORE_THRESHOLD,
+        )
         .toList();
 
     _otherExercises = exercises
-        .where((e) => e.relevanceScore == null || e.relevanceScore! < RECOMMENDED_SCORE_THRESHOLD)
+        .where(
+          (e) =>
+              e.relevanceScore == null ||
+              e.relevanceScore! < RECOMMENDED_SCORE_THRESHOLD,
+        )
         .toList();
   }
 
   Future<void> _openCreateExercise() async {
     final created = await Navigator.of(context).push<Exercise>(
       MaterialPageRoute(
-        builder: (_) => ExerciseEditorScreen(
-          workoutState: widget.workoutState,
-        ),
+        builder: (_) => ExerciseEditorScreen(workoutState: widget.workoutState),
       ),
     );
 
@@ -209,9 +222,14 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                 label: const Text('Add Custom Exercise'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: theme.colorScheme.primary,
-                  side: BorderSide(color: theme.colorScheme.primary, width: 1.5),
+                  side: BorderSide(
+                    color: theme.colorScheme.primary,
+                    width: 1.5,
+                  ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
                   ),
                 ),
               ),
@@ -236,7 +254,10 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -262,18 +283,20 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                         borderSide: const BorderSide(color: Colors.white),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       isDense: true,
                     ),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('All')),
-                      ..._disciplines.map((d) => DropdownMenuItem(
-                            value: d.id,
-                            child: Text(
-                              d.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          )),
+                      ..._disciplines.map(
+                        (d) => DropdownMenuItem(
+                          value: d.id,
+                          child: Text(d.name, overflow: TextOverflow.ellipsis),
+                        ),
+                      ),
                     ],
                     onChanged: (value) {
                       setState(() => _selectedDisciplineId = value);
@@ -300,18 +323,20 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                         borderSide: const BorderSide(color: Colors.white),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       isDense: true,
                     ),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('All')),
-                      ..._muscleGroups.map((mg) => DropdownMenuItem(
-                            value: mg.id,
-                            child: Text(
-                              mg.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          )),
+                      ..._muscleGroups.map(
+                        (mg) => DropdownMenuItem(
+                          value: mg.id,
+                          child: Text(mg.name, overflow: TextOverflow.ellipsis),
+                        ),
+                      ),
                     ],
                     onChanged: (value) {
                       setState(() => _selectedMuscleGroupId = value);
@@ -323,7 +348,9 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
             ),
 
             // Clear filters button (only show when filters are active)
-            if (_selectedDisciplineId != null || _selectedMuscleGroupId != null || _searchController.text.isNotEmpty)
+            if (_selectedDisciplineId != null ||
+                _selectedMuscleGroupId != null ||
+                _searchController.text.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: TextButton.icon(
@@ -349,40 +376,43 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredExercises.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.search_off,
-                                size: 64,
-                                color: theme.colorScheme.onSurface.withOpacity(0.3),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No exercises found',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface.withOpacity(0.6),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Try adjusting your filters',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface.withOpacity(0.5),
-                                ),
-                              ),
-                            ],
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off,
+                            size: 64,
+                            color: theme.colorScheme.onSurface.withOpacity(0.3),
                           ),
-                        )
-                      : _buildExerciseList(theme),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No exercises found',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withOpacity(
+                                0.6,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Try adjusting your filters',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withOpacity(
+                                0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _buildExerciseList(theme),
             ),
           ],
         ),
       ),
     );
   }
-
 
   Widget _buildExerciseList(ThemeData theme) {
     // In Free Training mode or when no modality, show simple unsorted list
@@ -443,7 +473,11 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
     );
   }
 
-  Widget _buildExerciseTile(BuildContext context, ThemeData theme, Exercise exercise) {
+  Widget _buildExerciseTile(
+    BuildContext context,
+    ThemeData theme,
+    Exercise exercise,
+  ) {
     final muscleGroups = _exerciseMuscleGroupsCache[exercise.id] ?? [];
     final discipline = _disciplines.firstWhere(
       (d) => d.id == exercise.disciplineId,
@@ -468,7 +502,8 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (exercise.description != null && exercise.description!.isNotEmpty) ...[
+          if (exercise.description != null &&
+              exercise.description!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               exercise.description!,
@@ -493,18 +528,20 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   visualDensity: VisualDensity.compact,
                 ),
-              ...muscleGroups.map((mg) => Chip(
-                    label: Text(
-                      mg.name,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSecondary,
-                      ),
+              ...muscleGroups.map(
+                (mg) => Chip(
+                  label: Text(
+                    mg.name,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSecondary,
                     ),
-                    backgroundColor: theme.colorScheme.secondary.withOpacity(0.8),
-                    padding: EdgeInsets.zero,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                  )),
+                  ),
+                  backgroundColor: theme.colorScheme.secondary.withOpacity(0.8),
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
             ],
           ),
         ],

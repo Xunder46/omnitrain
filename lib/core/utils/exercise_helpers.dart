@@ -26,6 +26,7 @@ extension ExerciseCapabilities on Exercise {
     int? updatedAtMs,
     List<String>? capabilities,
     double? relevanceScore,
+    int? defaultRoundDurationSecs,
   }) {
     return Exercise(
       id: id ?? this.id,
@@ -39,6 +40,8 @@ extension ExerciseCapabilities on Exercise {
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
       capabilities: capabilities ?? this.capabilities,
       relevanceScore: relevanceScore ?? this.relevanceScore,
+      defaultRoundDurationSecs:
+          defaultRoundDurationSecs ?? this.defaultRoundDurationSecs,
     );
   }
 }

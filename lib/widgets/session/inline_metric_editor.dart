@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 /// Scrollable metric editor for quick value adjustment via vertical drag.
-/// Supports reps, weight, duration, and rpe.
+/// Supports reps, weight, duration, rpe, and extra-weight.
 /// Changes persist immediately via callback.
 class InlineMetricEditor extends StatefulWidget {
-  /// The metric type: 'reps', 'weight', 'duration', 'rpe'
+  /// The metric type: 'reps', 'weight', 'duration', 'rpe', 'extra-weight'
   final String metricType;
 
   /// Current value to display
@@ -12,6 +12,14 @@ class InlineMetricEditor extends StatefulWidget {
 
   /// Unit label to display (e.g., 'lbs', 'seconds')
   final String unitLabel;
+
+  /// Whether user interaction (drag) is disabled.
+  /// When true the widget renders as read-only: drags are ignored and the
+  /// value text is dimmed to signal that editing is not available.
+  final bool isReadOnly;
+
+  /// Optional override color for the unit label.
+  final Color? unitLabelColor;
 
   /// Called when value changes, passes new value
   final Function(dynamic) onValueChanged;
@@ -21,6 +29,8 @@ class InlineMetricEditor extends StatefulWidget {
     required this.metricType,
     required this.currentValue,
     required this.unitLabel,
+    this.isReadOnly = false,
+    this.unitLabelColor,
     required this.onValueChanged,
   });
 
@@ -46,6 +56,10 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
         return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
       case 'rpe':
         return (widget.currentValue as int?)?.toString() ?? '5';
+      case 'extra-weight':
+        final ew = (widget.currentValue as double?) ?? 0.0;
+        final sign = ew > 0 ? '+' : '';
+        return '$sign${ew.toStringAsFixed(1)}';
       default:
         return widget.currentValue.toString();
     }
@@ -55,7 +69,7 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     // Negative deltaY = swipe up = increase
     // Positive deltaY = swipe down = decrease
     final change = -deltaY;
-    
+
     switch (widget.metricType) {
       case 'reps':
         final current = (widget.currentValue as int?) ?? 0;
@@ -64,17 +78,31 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
       case 'weight':
         final current = (widget.currentValue as double?) ?? 0.0;
         final increment = 2.5; // 2.5 lbs per swipe unit
-        final newValue = (current + (change / 10) * increment).clamp(0.0, 999.0);
+        final newValue = (current + (change / 10) * increment).clamp(
+          0.0,
+          999.0,
+        );
         return double.parse(newValue.toStringAsFixed(1));
       case 'duration':
         final current = (widget.currentValue as int?) ?? 0;
         final increment = 5; // 5 seconds per swipe unit
-        final newValue = (current + (change / 10).round() * increment).clamp(0, 3600);
+        final newValue = (current + (change / 10).round() * increment).clamp(
+          0,
+          3600,
+        );
         return newValue;
       case 'rpe':
         final current = (widget.currentValue as int?) ?? 5;
         final newValue = (current + (change / 20).round()).clamp(1, 10);
         return newValue;
+      case 'extra-weight':
+        final current = (widget.currentValue as double?) ?? 0.0;
+        final increment = 2.5; // 2.5 lbs/kg per swipe unit
+        final newValue = (current + (change / 10) * increment).clamp(
+          -100.0,
+          200.0,
+        );
+        return double.parse(newValue.toStringAsFixed(1));
       default:
         return widget.currentValue;
     }
@@ -86,25 +114,29 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     final displayText = _formatValue();
 
     return GestureDetector(
-      onVerticalDragUpdate: (details) {
-        setState(() {
-          _accumulatedDelta += details.delta.dy;
-          
-          // Update value every 10 pixels of drag
-          if (_accumulatedDelta.abs() >= 10) {
-            final newValue = _calculateNewValue(_accumulatedDelta);
-            if (newValue != widget.currentValue) {
-              widget.onValueChanged(newValue);
-            }
-            _accumulatedDelta = 0;
-          }
-        });
-      },
-      onVerticalDragEnd: (_) {
-        setState(() {
-          _accumulatedDelta = 0;
-        });
-      },
+      onVerticalDragUpdate: widget.isReadOnly
+          ? null
+          : (details) {
+              setState(() {
+                _accumulatedDelta += details.delta.dy;
+
+                // Update value every 10 pixels of drag
+                if (_accumulatedDelta.abs() >= 10) {
+                  final newValue = _calculateNewValue(_accumulatedDelta);
+                  if (newValue != widget.currentValue) {
+                    widget.onValueChanged(newValue);
+                  }
+                  _accumulatedDelta = 0;
+                }
+              });
+            },
+      onVerticalDragEnd: widget.isReadOnly
+          ? null
+          : (_) {
+              setState(() {
+                _accumulatedDelta = 0;
+              });
+            },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
         child: Column(
@@ -117,6 +149,11 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
               style: theme.textTheme.displayLarge?.copyWith(
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
+                color: widget.isReadOnly
+                    ? theme.colorScheme.onSurface.withAlpha(
+                        (0.45 * 255).round(),
+                      )
+                    : null,
               ),
             ),
             const SizedBox(height: 16),
@@ -125,7 +162,9 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
               widget.unitLabel.toUpperCase(),
               style: theme.textTheme.labelMedium?.copyWith(
                 letterSpacing: 1,
-                color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+                color:
+                    widget.unitLabelColor ??
+                    theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
               ),
             ),
           ],

@@ -139,6 +139,101 @@ The aesthetic is **spacecraft interior** — not cosmic/outer-space, but the con
 
 ---
 
+## Buttons
+
+Buttons use a **slightly-rounded rectangle**, never a pill (StadiumBorder). Material 3 default `StadiumBorder` must always be overridden. The aesthetic reads as precision instrument controls — weighted, tactile, a scalpel handle, not a bubble.
+
+### Reference Buttons
+- **Primary**: "Finish Workout" — full-width, bottom of screen
+- **Utility**: "+ Add Exercise" — inline in a row beside other controls
+
+### Button Variants
+
+| Variant | Widget | Height | Radius | Padding | Width |
+|---------|--------|--------|--------|---------|-------|
+| Primary | `FilledButton` | 56 dp | 12 | `symmetric(horizontal: 24)` | Full-width (`double.infinity`) |
+| Row-pair | `FilledButton` / `OutlinedButton` | 56 dp | 12 | `symmetric(vertical: 16)` | `Expanded` (50/50 split) |
+| Utility | `OutlinedButton.icon` | ≥48 dp | 8 | `symmetric(horizontal: 12, vertical: 8)` | Content-width |
+| Icon-only | `FilledButton` + icon | 60 × 60 dp | 10 | None | 60 × 60 dp |
+| Dialog | `TextButton` / `FilledButton` | Std | 8 | Default | Content-width |
+
+### Shape Rule (MANDATORY)
+
+Every `FilledButton`, `OutlinedButton`, or `TextButton` MUST explicitly set `shape`. Never rely on Material 3 defaults.
+
+```dart
+// ✅ Correct — shape always explicit
+FilledButton(
+  style: ButtonStyle(
+    shape: WidgetStateProperty.all(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+      ),
+    ),
+  ),
+  onPressed: onPressed,
+  child: const Text('Finish Workout'),
+)
+
+// ❌ Wrong — Material 3 default StadiumBorder fires
+FilledButton(
+  style: FilledButton.styleFrom(padding: EdgeInsets.symmetric(vertical: 16)),
+  onPressed: onPressed,
+  child: const Text('Start Workout'),
+)
+```
+
+### Press Feedback
+
+All buttons use the same press-scale system as tiles:
+
+```dart
+GestureDetector(
+  onTapDown: (_) => setState(() => _isPressed = true),
+  onTapUp: (_) => setState(() => _isPressed = false),
+  onTapCancel: () => setState(() => _isPressed = false),
+  child: AnimatedScale(
+    scale: _isPressed ? OmniTheme.pressedScale : 1.0,  // 0.96
+    duration: OmniTheme.animationDuration,              // 180ms
+    curve: OmniTheme.animationCurve,                   // easeInOut
+    child: /* button */,
+  ),
+)
+```
+
+> Note: `FilledButton` / `OutlinedButton` already provide their own ink press feedback. Wrap in `AnimatedScale` only for high-prominence primary buttons where visceral feedback matters (e.g. "Finish Workout", "Start Workout"). Skip for utility and dialog buttons.
+
+### Colour
+
+| Variant | Fill | Border | Text/Icon |
+|---------|------|--------|-----------|
+| Primary / Row-pair `FilledButton` | `theme.colorScheme.primary` (neon cyan) | — | `Colors.black` (auto via `onPrimary`) |
+| Row-pair `OutlinedButton` | Transparent | `theme.colorScheme.primary` | `theme.colorScheme.primary` |
+| Utility `OutlinedButton.icon` | Transparent | `theme.colorScheme.primary` | `theme.colorScheme.primary` |
+| Icon-only `FilledButton` | `theme.colorScheme.primary` | — | `Colors.black` |
+
+Never hardcode button colours. Always derive from `theme.colorScheme`.
+
+### Destructive Actions
+
+Destructive buttons (delete, discard) use `FilledButton` with `backgroundColor: Colors.red.shade700`, same radius rules, never a different shape.
+
+### Dialog Buttons
+
+`TextButton` is acceptable inside `AlertDialog` for Cancel/Dismiss. It must still set `shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius))`. Do not use `OutlinedButton` inside dialogs.
+
+### OmniTheme Tokens
+
+```dart
+OmniTheme.buttonBorderRadius        // 12.0 — primary, row-pair
+OmniTheme.buttonUtilityRadius       // 8.0  — utility, dialog
+OmniTheme.buttonIconRadius          // 10.0 — icon-only square
+OmniTheme.buttonPrimaryHeight       // 56.0 — full-width and row-pair height
+OmniTheme.buttonIconSize            // 60.0 — icon-only button size
+```
+
+---
+
 ## Component Patterns
 
 ### Naming Conventions
@@ -185,5 +280,4 @@ GestureDetector (press tracking)
 ## Known Inconsistencies (To Resolve)
 
 1. **Dual color definitions** — `OmniTheme` surface/text colors diverge slightly from Material `buildTheme()` values. Custom widgets use `OmniTheme` directly; Material components use the theme. These should be unified.
-2. **Buttons directory empty** — no standardized button components yet; button patterns should be derived from the tile interaction model.
-3. **Hardcoded icon sizes** — 70px tile icon, 40% core percentage. Should become `OmniTheme` tokens.
+2. **Hardcoded icon sizes** — 70px tile icon, 40% core percentage. Should become `OmniTheme` tokens.

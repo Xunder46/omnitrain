@@ -18,7 +18,7 @@ A **context-aware UI** that automatically configures its tracking controls, metr
 - Rep/weight editors for resistance training
 - Duration timers for cardio work
 - Round counters for martial arts
-- Hold timers with RPE for isometric work
+- Hold timers with extra weight tracking for isometric work
 
 ### Key Benefits
 1. **Zero Configuration**: Users never manually select tracking modes; the UI adapts automatically
@@ -85,7 +85,7 @@ The `effortKind` field on each `SegmentEffort` drives UI rendering. Determined b
 | **set** | Reps, Weight | Scrollers | "Set X of Y" | Resistance Lifting |
 | **timed** | Duration, Distance | Timer + Scroller | "Interval X of Y" | Cardio Endurance, Sports (free time) |
 | **round** | Rounds, Round Duration | Timer + Round Count | "Round X of Y" or "Period X of Y" | Martial Arts, Sports (segmented) |
-| **drill** | Hold Duration, RPE | Timer + RPE Scroller | "Hold X of Y" | Isometric/Stretching |
+| **drill** | Hold Duration, Extra Weight | Timer + Extra Weight Scroller | "Hold X of Y" | Isometric/Stretching |
 
 ### Metric Widget Rendering
 
@@ -135,13 +135,13 @@ Column(
 Column(
   children: [
     InlineMetricEditor(metricType: 'duration', ...), // Hold time timer
-    InlineMetricEditor(metricType: 'rpe', ...),      // Rate of Perceived Exertion
+    InlineMetricEditor(metricType: 'extra-weight', ...), // Extra load (negative = band assist, positive = added load)
     Play/Pause Button,
     Status Text (RUNNING/STOPPED),
   ]
 )
 ```
-**User Flow**: Start timer for hold → release and stop timer → adjust RPE → log entry
+**User Flow**: Start timer for hold → release and stop timer → adjust extra weight → log entry
 
 ---
 
@@ -159,9 +159,9 @@ Column(
 **Implementation Details**:
 ```dart
 class InlineMetricEditor extends StatefulWidget {
-  final String metricType;        // 'reps', 'weight', 'duration', 'rpe'
+  final String metricType;        // 'reps', 'weight', 'duration', 'rpe', 'extra-weight'
   final dynamic currentValue;     // Current value to display
-  final String unitLabel;         // 'REPS', 'LBS', 'TIME', 'RPE'
+  final String unitLabel;         // 'REPS', 'LBS', 'TIME', 'EXTRA WEIGHT'
   final Function(dynamic) onValueChanged; // Immediate callback
 }
 ```
@@ -173,6 +173,7 @@ class InlineMetricEditor extends StatefulWidget {
 | `weight` | ±2.5 lbs | 0.0–999.0 |
 | `duration` | ±5 seconds | 0–3600 |
 | `rpe` | ±1 point | 1–10 |
+| `extra-weight` | ±2.5 | -100.0–200.0 |
 
 **Visual Design**:
 - 72pt display value (massive for glanceability)
@@ -183,26 +184,57 @@ class InlineMetricEditor extends StatefulWidget {
 
 **Challenge**: Multiple exercises with multiple sets, each potentially with independent timers.
 
-**Solution**: Map-based state keyed by `effortId-entryIndex`:
+**Solution**: Two parallel timer strategies depending on effort kind.
 
+#### Stopwatch-Based Timers (set / timed / drill efforts)
+Keyed by `effortId-entryIndex`:
 ```dart
-final Map<String, Timer?> _effortTimers = {};          // Active timers
+final Map<String, Timer?> _effortTimers = {};          // Active periodic timers
 final Map<String, Stopwatch> _effortStopwatches = {};  // Elapsed time trackers
 final Map<String, bool> _effortRunning = {};           // Running state flags
 final Map<String, int> _effortElapsed = {};            // Elapsed seconds (UI display)
 final Map<String, int> _effortElapsedBase = {};        // Base time (for pause/resume offset)
 ```
 
-**Timer Lifecycle**:
+**Stopwatch Timer Lifecycle**:
 1. **Start**: Create stopwatch, start periodic timer, set `_effortRunning[key] = true`
 2. **Pause**: Stop stopwatch, cancel timer, persist elapsed time to repository
 3. **Resume**: Store current elapsed as new base, reset stopwatch, restart timer
 4. **Log Set**: Persist final value, stop timer, reset stopwatch
 
-**Countdown Timers (Round-based)**:
-- Display value = `roundDuration - elapsed`
-- Clamp to [0, roundDuration] (never negative)
-- Future: Play sound when countdown reaches 0:00
+#### Wall-Clock Timers (round efforts only)
+Keyed by `effortId-entryIndex` (same key convention as all other timers).
+
+Round elapsed time is **not** tracked in UI maps. It is derived on-demand from `RoundInstance` timestamp fields persisted in the repository:
+
+```dart
+// Elapsed formula (implemented as RoundInstance.elapsedMs getter):
+// - active:      now - startedAtMs - totalPausedDurationMs
+// - paused:      pausedAtMs - startedAtMs - totalPausedDurationMs  (frozen)
+// - finished:    actualDurationSecs * 1000
+// - notStarted:  0
+final elapsedMs = round.elapsedMs;
+final elapsedSecs = (elapsedMs / 1000).toInt();
+```
+
+The UI tick timer reads `round.elapsedMs` on each 1-second tick (`_onEffortTick`) and updates `_effortElapsed[timerKey]` for display only. No separate round-specific UI maps exist.
+
+**Why wall-clock?** If the OS suspends the app mid-round, a `Stopwatch` stops counting but epoch time keeps advancing. On resume, `now - startedAtMs - totalPausedDurationMs` correctly reflects real-world elapsed time, preventing the timer from appearing frozen.
+
+**Round State Machine**:
+Round lifecycle is enforced by `RoundState` enum in `RoundInstance`:
+- `notStarted` → `active` (via `WorkoutState.startRound`)
+- `active` → `paused` (via `WorkoutState.pauseRound`)
+- `paused` → `active` (via `WorkoutState.resumeRound`; folds pause into `totalPausedDurationMs`)
+- `active` / `paused` → `finished` (via `completeRound` / `endRoundEarly`)
+- `finished` is terminal — no further transitions allowed
+
+Transitions are validated by `_isValidRoundTransition()` in `WorkoutState`. Rapid-tap protection is provided by the `_pendingRoundTransitions` set in `WorkoutSessionScreen`, which blocks duplicate dispatches while a write is in-flight.
+
+**Round Countdown Display**:
+- Display value = `round.remainingMs / 1000` (i.e. `plannedDurationSecs - elapsedSecs`)
+- Clamped to [0, plannedDurationSecs] by the `remainingMs` getter — never negative
+- Actual duration capped at `plannedDurationSecs * WorkoutConstants.roundActualDurationCapFactor` on persist
 
 ### 3. Set Progress Visualization
 
@@ -236,7 +268,7 @@ switch (effortKind) {
 - **set**: "Previous: 10 reps @ 135.0 lbs"
 - **timed**: "Previous: 05:30 @ 1200.0 m"
 - **round**: "Previous: 3 rounds @ 03:00"
-- **drill**: "Previous: 00:45 hold @ RPE 7"
+- **drill**: "Previous: 00:45 hold @ +5.0 lbs" (negative values shown as e.g. "-2.5 lbs" for band assist)
 
 **Visibility**: Hidden when current set is the first set.
 
@@ -402,9 +434,16 @@ await widget.workoutState.updateEntryValue(
 3. User taps "Log Set" → Mark complete, move to next set, start rest timer
 
 ### Timer Value Persistence
-- **timed/drill efforts**: Save `_effortElapsed[key]` on pause/log
-- **round efforts**: Do NOT save countdown value (save preset `round-duration` only)
-- Reason: Countdown is derived display value, not actual metric
+- **timed/drill efforts**: Save `_effortElapsed[key]` (seconds) on pause/log via `updateEntryValue`
+- **round efforts**: Write a `RoundInstance` record — never raw observations. Fields persisted:
+  - `state` — `RoundState` enum (`notStarted` | `active` | `paused` | `finished`); `finished` is terminal
+  - `startedAtMs` — wall-clock epoch ms when timer started (0 when `notStarted`)
+  - `pausedAtMs` — epoch ms when most recent pause occurred (`null` when not paused)
+  - `totalPausedDurationMs` — cumulative pause time folded in on each `resumeRound` call
+  - `finishedAtMs` — epoch ms when round ended (0 when not yet finished)
+  - `actualDurationSecs` — clamped to `plannedDurationSecs * WorkoutConstants.roundActualDurationCapFactor`
+  - `completed` — `true` only when round ends via natural countdown (`completeRound`); `false` otherwise
+  - `plannedDurationSecs` — target round length (default: `WorkoutConstants.defaultRoundDurationSecs = 180`)
 
 ---
 
@@ -545,8 +584,13 @@ theme.colorScheme.primaryContainer
 3. **Timer Cleanup**: Always cancel timers in `dispose()`
    - Memory leak risk if timers survive widget lifecycle
 
-4. **Round Countdown**: Never persist countdown value
-   - Persist `round-duration` (preset), derive countdown in UI
+4. **Round Persistence**: Round efforts use `RoundInstance` records, not observations
+   - Never call `updateEntryValue` for round metrics — use `WorkoutState.startRound`, `pauseRound`, `resumeRound`, `endRoundEarly`, `completeRound`
+   - Elapsed is always derived at read time via `RoundInstance.elapsedMs` getter — never stored as a raw counter
+   - The display value comes from `_getRoundInstance(...).elapsedMs`, not from dedicated round UI maps
+   - State transitions are strictly enforced by `_isValidRoundTransition()` in `WorkoutState`; `finished` is terminal
+   - Rapid-tap protection: `_pendingRoundTransitions` set in `WorkoutSessionScreen` prevents concurrent duplicate transitions
+   - See `WorkoutConstants.roundActualDurationCapFactor` for the safety cap on `actualDurationSecs`
 
 ### Code Organization
 ```
@@ -583,8 +627,8 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: February 15, 2026  
+**Document Version**: 1.2  
+**Last Updated**: February 28, 2026  
 **Author**: Automated documentation generated from codebase analysis  
 **Related Docs**: 
 - [modality_tracking.md](.github/agents/docs/modality_tracking.md) — Data layer + business logic

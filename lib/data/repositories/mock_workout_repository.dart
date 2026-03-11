@@ -24,13 +24,30 @@ class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, TemplateSegment> _templateSegments = {};
   final Map<String, TemplateEffort> _templateEfforts = {};
   final Map<String, TemplateTarget> _templateTargets = {};
-  
+
   // Relationship maps
-  final Map<String, List<String>> _exerciseMuscleGroups = {}; // exerciseId -> List<muscleGroupId>
-  final Map<String, List<String>> _exerciseEquipment = {}; // exerciseId -> List<equipmentId>
-  final Map<String, List<String>> _exerciseTags = {}; // exerciseId -> List<tagId>
-  final Map<String, List<String>> _metricEffortKinds = {}; // metricId -> List<effortKind>
-  final Map<String, List<String>> _exerciseCapabilities = {}; // exerciseId -> List<capability>
+  final Map<String, List<String>> _exerciseMuscleGroups =
+      {}; // exerciseId -> List<muscleGroupId>
+  final Map<String, List<String>> _exerciseEquipment =
+      {}; // exerciseId -> List<equipmentId>
+  final Map<String, List<String>> _exerciseTags =
+      {}; // exerciseId -> List<tagId>
+  final Map<String, List<String>> _metricEffortKinds =
+      {}; // metricId -> List<effortKind>
+  final Map<String, List<String>> _exerciseCapabilities =
+      {}; // exerciseId -> List<capability>
+
+  // Round instances: effortId -> List<RoundInstance> (ordered by roundIndex)
+  // Stores the full lifecycle of each timed round for effortKind == 'round' efforts.
+  final Map<String, List<RoundInstance>> _roundInstances = {};
+
+  // Timed instances: effortId -> List<TimedInstance> (ordered by entryIndex)
+  // Stores the full lifecycle of each timed/drill entry duration.
+  final Map<String, List<TimedInstance>> _timedInstances = {};
+
+  // Calendar: planned sessions and training periods
+  final Map<String, PlannedSession> _plannedSessions = {};
+  final Map<String, TrainingPeriod> _periods = {};
 
   bool _initialized = false;
 
@@ -114,6 +131,9 @@ class MockWorkoutRepository implements WorkoutRepository {
           .add(applicability.effortKind);
     }
 
+    // Calendar maps intentionally start empty; users create planned sessions
+    // and periods through calendar/period flows.
+
     _initialized = true;
   }
 
@@ -121,13 +141,10 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<List<Exercise>> getExercises() async {
-    return _exercises.values
-        .where((e) => !e.isArchived)
-        .map((e) {
-          final caps = _exerciseCapabilities[e.id] ?? [];
-          return e.copyWith(capabilities: caps);
-        })
-        .toList();
+    return _exercises.values.where((e) => !e.isArchived).map((e) {
+      final caps = _exerciseCapabilities[e.id] ?? [];
+      return e.copyWith(capabilities: caps);
+    }).toList();
   }
 
   @override
@@ -167,7 +184,8 @@ class MockWorkoutRepository implements WorkoutRepository {
       final lowerSearch = searchText.toLowerCase();
       results = results.where((e) {
         final nameMatch = e.name.toLowerCase().contains(lowerSearch);
-        final descMatch = e.description?.toLowerCase().contains(lowerSearch) ?? false;
+        final descMatch =
+            e.description?.toLowerCase().contains(lowerSearch) ?? false;
         return nameMatch || descMatch;
       });
     }
@@ -196,6 +214,58 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<List<TrainingSession>> getAllSessions() async {
+    final sessions = _sessions.values.toList();
+    sessions.sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
+    return sessions;
+  }
+
+  @override
+  Future<List<TrainingSession>> getSessionsByDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final sessions = _sessions.values
+        .where((s) => s.startedAtMs >= fromMs && s.startedAtMs <= toMs)
+        .toList();
+    sessions.sort((a, b) => a.startedAtMs.compareTo(b.startedAtMs));
+    return sessions;
+  }
+
+  @override
+  Future<double?> getPersonalRecordCandidates(
+    String exerciseId, {
+    String? metricId,
+  }) async {
+    final segmentSessionIds = <String, String>{
+      for (final segment in _segments.values) segment.id: segment.sessionId,
+    };
+
+    final validEffortIds = <String>{};
+    for (final effort in _efforts.values) {
+      if (effort.exerciseId != exerciseId) continue;
+      final sessionId = segmentSessionIds[effort.segmentId];
+      if (sessionId == null) continue;
+      final session = _sessions[sessionId];
+      if (session == null || session.endedAtMs == null) continue;
+      validEffortIds.add(effort.id);
+    }
+
+    double? best;
+    for (final observation in _observations.values) {
+      if (!validEffortIds.contains(observation.effortId)) continue;
+      if (metricId != null && observation.metricId != metricId) continue;
+      final value = observation.valueReal ?? observation.valueInt?.toDouble();
+      if (value == null) continue;
+      if (best == null || value > best) {
+        best = value;
+      }
+    }
+
+    return best;
+  }
+
+  @override
   Future<String> createSession(TrainingSession session) async {
     _sessions[session.id] = session;
     return session.id;
@@ -206,13 +276,33 @@ class MockWorkoutRepository implements WorkoutRepository {
     _sessions[session.id] = session;
   }
 
+  @override
+  Future<void> deleteSession(String id) async {
+    final segmentIds = _segments.values
+        .where((s) => s.sessionId == id)
+        .map((s) => s.id)
+        .toList();
+
+    final effortIds = _efforts.values
+        .where((e) => segmentIds.contains(e.segmentId))
+        .map((e) => e.id)
+        .toList();
+
+    for (final effortId in effortIds) {
+      _observations.removeWhere((_, obs) => obs.effortId == effortId);
+      _roundInstances.remove(effortId);
+      _efforts.remove(effortId);
+    }
+
+    _segments.removeWhere((_, segment) => segment.sessionId == id);
+    _sessions.remove(id);
+  }
+
   // ===== SEGMENTS =====
 
   @override
   Future<List<SessionSegment>> getSessionSegments(String sessionId) async {
-    return _segments.values
-        .where((s) => s.sessionId == sessionId)
-        .toList()
+    return _segments.values.where((s) => s.sessionId == sessionId).toList()
       ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
   }
 
@@ -226,9 +316,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<List<SegmentEffort>> getSegmentEfforts(String segmentId) async {
-    return _efforts.values
-        .where((e) => e.segmentId == segmentId)
-        .toList()
+    return _efforts.values.where((e) => e.segmentId == segmentId).toList()
       ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
   }
 
@@ -273,8 +361,88 @@ class MockWorkoutRepository implements WorkoutRepository {
   Future<void> deleteEffort(String id) async {
     // First delete all observations for this effort
     await deleteObservationsForEffort(id);
+    // Delete all round instances for this effort
+    await deleteRoundInstancesForEffort(id);
+    // Delete all timed instances for this effort
+    await deleteTimedInstancesForEffort(id);
     // Then remove the effort itself
     _efforts.remove(id);
+  }
+
+  // ===== ROUND INSTANCES =====
+
+  @override
+  Future<List<RoundInstance>> getRoundInstances(String effortId) async {
+    final list = _roundInstances[effortId] ?? [];
+    // Return a sorted copy so roundIndex ordering is always guaranteed
+    return List<RoundInstance>.from(list)
+      ..sort((a, b) => a.roundIndex.compareTo(b.roundIndex));
+  }
+
+  @override
+  Future<String> createRoundInstance(RoundInstance instance) async {
+    _roundInstances
+        .putIfAbsent(instance.effortId, () => [])
+        .add(instance);
+    return instance.id;
+  }
+
+  @override
+  Future<void> updateRoundInstance(RoundInstance instance) async {
+    final list = _roundInstances[instance.effortId];
+    if (list == null) return;
+    final idx = list.indexWhere((r) => r.id == instance.id);
+    if (idx != -1) list[idx] = instance;
+  }
+
+  @override
+  Future<void> deleteRoundInstance(String id) async {
+    for (final list in _roundInstances.values) {
+      list.removeWhere((r) => r.id == id);
+    }
+  }
+
+  @override
+  Future<void> deleteRoundInstancesForEffort(String effortId) async {
+    _roundInstances.remove(effortId);
+  }
+
+  // ===== TIMED INSTANCES =====
+
+  @override
+  Future<List<TimedInstance>> getTimedInstances(String effortId) async {
+    final list = _timedInstances[effortId] ?? [];
+    // Return a sorted copy so entryIndex ordering is always guaranteed
+    return List<TimedInstance>.from(list)
+      ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+  }
+
+  @override
+  Future<String> createTimedInstance(TimedInstance instance) async {
+    _timedInstances
+        .putIfAbsent(instance.effortId, () => [])
+        .add(instance);
+    return instance.id;
+  }
+
+  @override
+  Future<void> updateTimedInstance(TimedInstance instance) async {
+    final list = _timedInstances[instance.effortId];
+    if (list == null) return;
+    final idx = list.indexWhere((t) => t.id == instance.id);
+    if (idx != -1) list[idx] = instance;
+  }
+
+  @override
+  Future<void> deleteTimedInstance(String id) async {
+    for (final list in _timedInstances.values) {
+      list.removeWhere((t) => t.id == id);
+    }
+  }
+
+  @override
+  Future<void> deleteTimedInstancesForEffort(String effortId) async {
+    _timedInstances.remove(effortId);
   }
 
   // ===== SPORT CATEGORIES =====
@@ -292,16 +460,19 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<SportCategory?> getSportCategoryByKey(String key) async {
-    return _sportCategories.values.firstWhere(
-      (c) => c.key == key,
-      orElse: () => SportCategory(
-        id: '',
-        key: key,
-        name: '',
-        createdAtMs: 0,
-        updatedAtMs: 0,
-      ),
-    ).id.isEmpty
+    return _sportCategories.values
+            .firstWhere(
+              (c) => c.key == key,
+              orElse: () => SportCategory(
+                id: '',
+                key: key,
+                name: '',
+                createdAtMs: 0,
+                updatedAtMs: 0,
+              ),
+            )
+            .id
+            .isEmpty
         ? null
         : _sportCategories.values.firstWhere((c) => c.key == key);
   }
@@ -398,12 +569,14 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<List<MetricDefinition>> getMetricsForEffortKind(String effortKind) async {
+  Future<List<MetricDefinition>> getMetricsForEffortKind(
+    String effortKind,
+  ) async {
     final metricIds = _metricEffortKinds.entries
         .where((entry) => entry.value.contains(effortKind))
         .map((entry) => entry.key)
         .toList();
-    
+
     return metricIds
         .map((id) => _metrics[id])
         .whereType<MetricDefinition>()
@@ -418,7 +591,10 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<void> setExerciseCapabilities(String exerciseId, List<String> capabilities) async {
+  Future<void> setExerciseCapabilities(
+    String exerciseId,
+    List<String> capabilities,
+  ) async {
     _exerciseCapabilities[exerciseId] = List.from(capabilities);
   }
 
@@ -437,7 +613,8 @@ class MockWorkoutRepository implements WorkoutRepository {
       final lowerSearch = searchText.toLowerCase();
       results = results.where((e) {
         final nameMatch = e.name.toLowerCase().contains(lowerSearch);
-        final descMatch = e.description?.toLowerCase().contains(lowerSearch) ?? false;
+        final descMatch =
+            e.description?.toLowerCase().contains(lowerSearch) ?? false;
         return nameMatch || descMatch;
       });
     }
@@ -508,7 +685,9 @@ class MockWorkoutRepository implements WorkoutRepository {
     });
 
     // Attach scores to exercises for UI partitioning (Recommended vs Other)
-    return scoredExercises.map((e) => e.$1.copyWith(relevanceScore: e.$2)).toList();
+    return scoredExercises
+        .map((e) => e.$1.copyWith(relevanceScore: e.$2))
+        .toList();
   }
 
   // ===== METRICS =====
@@ -589,7 +768,9 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<List<TemplateEffort>> getTemplateEfforts(String templateSegmentId) async {
+  Future<List<TemplateEffort>> getTemplateEfforts(
+    String templateSegmentId,
+  ) async {
     return _templateEfforts.values
         .where((e) => e.templateSegmentId == templateSegmentId)
         .toList()
@@ -614,7 +795,9 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<List<TemplateTarget>> getTemplateTargets(String templateEffortId) async {
+  Future<List<TemplateTarget>> getTemplateTargets(
+    String templateEffortId,
+  ) async {
     return _templateTargets.values
         .where((t) => t.templateEffortId == templateEffortId)
         .toList();
@@ -652,6 +835,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     _segments.clear();
     _efforts.clear();
     _observations.clear();
+    _roundInstances.clear();
+    _timedInstances.clear();
     _units.clear();
     _metrics.clear();
     _muscleGroups.clear();
@@ -667,6 +852,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     _exerciseEquipment.clear();
     _exerciseTags.clear();
     _metricEffortKinds.clear();
+    _plannedSessions.clear();
+    _periods.clear();
     _initialized = false;
   }
 
@@ -674,5 +861,100 @@ class MockWorkoutRepository implements WorkoutRepository {
   Future<void> reset() async {
     clear();
     await initialize();
+  }
+
+  // ===== PLANNED SESSIONS =====
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessions() async {
+    final list = _plannedSessions.values.toList();
+    list.sort((a, b) => a.scheduledDateMs.compareTo(b.scheduledDateMs));
+    return list;
+  }
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessionsForDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final list = _plannedSessions.values
+        .where((s) => s.scheduledDateMs >= fromMs && s.scheduledDateMs <= toMs)
+        .toList();
+    list.sort((a, b) => a.scheduledDateMs.compareTo(b.scheduledDateMs));
+    return list;
+  }
+
+  @override
+  Future<String> createPlannedSession(PlannedSession session) async {
+    _plannedSessions[session.id] = session;
+    return session.id;
+  }
+
+  @override
+  Future<void> updatePlannedSession(PlannedSession session) async {
+    _plannedSessions[session.id] = session;
+  }
+
+  @override
+  Future<void> deletePlannedSession(String id) async {
+    _plannedSessions.remove(id);
+  }
+
+  @override
+  Future<List<PlannedSession>> getPlannedSessionsByTemplateId(
+    String templateId,
+  ) async {
+    return _plannedSessions.values
+        .where((s) => s.routineTemplateId == templateId)
+        .toList();
+  }
+
+  @override
+  Future<void> deletePlannedSessionsByTemplateId(String templateId) async {
+    _plannedSessions.removeWhere(
+      (_, s) => s.routineTemplateId == templateId,
+    );
+  }
+
+  // ===== TRAINING PERIODS =====
+
+  @override
+  Future<List<TrainingPeriod>> getPeriods() async {
+    final list = _periods.values.toList();
+    list.sort((a, b) => a.startDateMs.compareTo(b.startDateMs));
+    return list;
+  }
+
+  @override
+  Future<TrainingPeriod?> getPeriodById(String id) async {
+    return _periods[id];
+  }
+
+  @override
+  Future<String> createPeriod(TrainingPeriod period) async {
+    _periods[period.id] = period;
+    return period.id;
+  }
+
+  @override
+  Future<void> updatePeriod(TrainingPeriod period) async {
+    _periods[period.id] = period;
+  }
+
+  @override
+  Future<void> deletePeriod(String id) async {
+    _periods.remove(id);
+  }
+
+  @override
+  Future<bool> hasPeriodOverlap(
+    int startMs,
+    int endMs, {
+    String? excludeId,
+  }) async {
+    return _periods.values.any((p) {
+      if (p.id == excludeId) return false;
+      return startMs <= p.endDateMs && endMs >= p.startDateMs;
+    });
   }
 }

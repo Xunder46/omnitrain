@@ -4,11 +4,18 @@
 library;
 
 import 'metric_ids.dart';
+import 'workout_constants.dart';
 
 class EffortDefaults {
-  /// Default metric IDs and their initial values for each effort kind
-  /// Used when creating new entries/sets or adding new efforts to routines
-  static Map<String, dynamic> getDefaultTargets(String effortKind) {
+  /// Default metric IDs and their initial values for each effort kind.
+  ///
+  /// [exerciseDefaultRoundDurationSecs] — when provided, overrides the global
+  /// 180 s default for `'round'` efforts. Pass
+  /// `Exercise.defaultRoundDurationSecs` here when the exercise is known.
+  static Map<String, dynamic> getDefaultTargets(
+    String effortKind, {
+    int? exerciseDefaultRoundDurationSecs,
+  }) {
     switch (effortKind) {
       case 'set':
         // Resistance training: reps + weight
@@ -23,16 +30,20 @@ class EffortDefaults {
           MetricIds.distance: 0.0,
         };
       case 'round':
-        // Martial arts / sports: rounds + round duration
+        // Martial arts / sports: rounds + round duration.
+        // Use the exercise-specific default when available (e.g. 45-min soccer
+        // half = 2700 s), otherwise fall back to the global 3-min boxing default.
         return {
           MetricIds.rounds: 1,
-          MetricIds.roundDuration: 180,
+          MetricIds.roundDuration:
+              exerciseDefaultRoundDurationSecs ??
+              WorkoutConstants.defaultRoundDurationSecs,
         };
       case 'drill':
-        // Isometric / holds / skill work: duration + RPE
+        // Isometric / holds / skill work: duration + extra weight (negative = band assist, positive = added load)
         return {
           MetricIds.duration: 0,
-          MetricIds.rpe: 5,
+          MetricIds.extraWeight: 0.0,
         };
       case 'interval':
         // Distance intervals: distance + optional duration
@@ -79,7 +90,7 @@ class EffortDefaults {
       case 'round':
         return [];
       case 'drill':
-        return [MetricIds.rpe]; // Optional RPE for subjective difficulty
+        return [MetricIds.extraWeight]; // Extra load carried/worn during the hold (negative = band assist, positive = added load)
       case 'interval':
         return [MetricIds.duration]; // Optional duration for intervals
       default:

@@ -1,6 +1,10 @@
 PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
 
+-- Calendar placeholder policy (Mar 2026 cleanup):
+--   Do not seed demo rows into app_planned_session or app_training_period.
+--   These tables must start empty and be populated only by user actions.
+
 -- ============================================================================
 -- UNIFIED SPORTS MODALITY (Feb 2026 Refactor)
 -- ============================================================================
@@ -423,6 +427,29 @@ AND NOT EXISTS (
   SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
 );
 
+-- Sports exercises (team sports & racket sports with round/period-based tracking)
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'tennis' AS disc, 'Tennis Match' AS name, 'Full tennis match or practice game' AS description UNION ALL
+  SELECT 'tennis', 'Tennis Drill', 'Targeted tennis technique and footwork drills' UNION ALL
+  SELECT 'volleyball', 'Volleyball Match', 'Full volleyball game or scrimmage' UNION ALL
+  SELECT 'volleyball', 'Volleyball Drill', 'Passing, setting, and spiking drills' UNION ALL
+  SELECT 'badminton', 'Badminton Match', 'Full badminton game or rally practice' UNION ALL
+  SELECT 'table_tennis', 'Table Tennis Match', 'Full table tennis game or practice' UNION ALL
+  SELECT 'cricket', 'Cricket Match', 'Cricket match or practice session' UNION ALL
+  SELECT 'ice_hockey', 'Ice Hockey Match', 'Full ice hockey game or scrimmage' UNION ALL
+  SELECT 'baseball', 'Baseball Game', 'Full baseball game or practice' UNION ALL
+  SELECT 'american_football', 'American Football Game', 'Full American football game or scrimmage' UNION ALL
+  SELECT 'rugby', 'Rugby Match', 'Full rugby game or practice match' UNION ALL
+  SELECT 'lacrosse', 'Lacrosse Game', 'Full lacrosse game or scrimmage'
+) e ON d.key = e.disc
+WHERE NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
 -- Exercise-Muscle Group relationships
 -- Bench Press: Chest (primary), Triceps, Shoulders
 INSERT OR IGNORE INTO app_exercise_muscle_group (exercise_id, muscle_group_id, is_primary)
@@ -564,5 +591,55 @@ SELECT e.id, 'sets' FROM app_exercise e WHERE e.name IN (
   'Hollow Body Hold', 'Glute Bridge Hold', 'L-Sit Hold',
   'Isometric Push-Up Hold', 'Calf Raise Hold', 'Split Squat Hold'
 ) AND e.owner_user_id IS NULL;
+
+-- Sports exercises: time + rounds (periods/halves/sets)
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'time' FROM app_exercise e WHERE e.name IN (
+  'Tennis Match', 'Tennis Drill', 'Volleyball Match', 'Volleyball Drill',
+  'Badminton Match', 'Table Tennis Match', 'Cricket Match', 'Ice Hockey Match',
+  'Baseball Game', 'American Football Game', 'Rugby Match', 'Lacrosse Game'
+) AND e.owner_user_id IS NULL;
+
+INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
+SELECT e.id, 'rounds' FROM app_exercise e WHERE e.name IN (
+  'Tennis Match', 'Tennis Drill', 'Volleyball Match', 'Volleyball Drill',
+  'Badminton Match', 'Table Tennis Match', 'Cricket Match', 'Ice Hockey Match',
+  'Baseball Game', 'American Football Game', 'Rugby Match', 'Lacrosse Game'
+) AND e.owner_user_id IS NULL;
+
+-- ============================================================================
+-- DEFAULT ROUND DURATIONS
+-- ============================================================================
+-- Sets the sport-specific default period/half/set length for round-based exercises.
+-- NULL = use app-wide default (180s / 3 min). Only set for sports where the natural
+-- playing unit differs meaningfully from a 3-min boxing round.
+-- See Exercise.defaultRoundDurationSecs in lib/data/models/models.dart.
+-- Boxing exercises intentionally left as NULL (they use the 3-min default).
+
+-- Team sports — period / half / set lengths
+UPDATE app_exercise SET default_round_duration_secs = 1200  -- 20-min set
+  WHERE name = 'Tennis Match'            AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min drill
+  WHERE name = 'Tennis Drill'            AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 1500  -- 25-min set
+  WHERE name = 'Volleyball Match'        AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min drill
+  WHERE name = 'Volleyball Drill'        AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 1200  -- 20-min game
+  WHERE name = 'Badminton Match'         AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min game
+  WHERE name = 'Table Tennis Match'      AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 1800  -- 30-min innings segment
+  WHERE name = 'Cricket Match'           AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 1200  -- 20-min period
+  WHERE name = 'Ice Hockey Match'        AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 1800  -- ~30-min inning
+  WHERE name = 'Baseball Game'           AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min quarter
+  WHERE name = 'American Football Game'  AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 2400  -- 40-min half
+  WHERE name = 'Rugby Match'             AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 720   -- 12-min quarter
+  WHERE name = 'Lacrosse Game'           AND owner_user_id IS NULL;
 
 COMMIT;

@@ -199,6 +199,8 @@ Used for:
 - **Modality tiles** (5): Start a new session with a preset modality. Tapping an active modality tile resumes the session.
 - **My Routines tile** (1): Navigates to routine management (`MyRoutinesScreen`). If a routine session is active, navigates directly to `WorkoutSessionScreen`.
 
+See [Navigation & Screens](navigation_and_screens.md) for the complete screen flow and [Session Summary](session_summary.md) for what happens after a workout ends.
+
 ### Maintenance Sheet
 A draggable bottom sheet provides access to system features (Profile, Stats, Settings) as placeholder screens. The sheet snaps to three extents: collapsed (7%), mid (45%), and expanded (92%).
 

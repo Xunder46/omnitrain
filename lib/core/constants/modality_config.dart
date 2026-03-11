@@ -94,7 +94,7 @@ class ModalityConfig {
     'isometric_stretching': ModalityConfig(
       primaryMetric: 'hold',
       secondaryMetrics: [],
-      optionalMetrics: ['rpe'],
+      optionalMetrics: ['extra-weight'],
       defaultInputType: 'hold_timer',
       structure: 'hold_based',
       effortKind: 'drill',

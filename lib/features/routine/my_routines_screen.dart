@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/services/routine_session_service.dart';
+import '../../core/services/session_summary_service.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -13,12 +14,14 @@ class MyRoutinesScreen extends StatefulWidget {
   final RoutineState routineState;
   final WorkoutState? workoutState; // Optional for starting session
   final RoutineSessionService routineSessionService;
+  final SessionSummaryService sessionSummaryService;
 
   const MyRoutinesScreen({
     super.key,
     required this.routineState,
     this.workoutState,
     required this.routineSessionService,
+    required this.sessionSummaryService,
   });
 
   @override
@@ -150,7 +153,11 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                             PopupMenuItem(
                               child: Row(
                                 children: [
-                                  Icon(Icons.edit, size: 20, color: theme.colorScheme.primary),
+                                  Icon(
+                                    Icons.edit,
+                                    size: 20,
+                                    color: theme.colorScheme.primary,
+                                  ),
                                   SizedBox(width: 8),
                                   Text('Edit'),
                                 ],
@@ -160,7 +167,11 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                             PopupMenuItem(
                               child: Row(
                                 children: [
-                                  Icon(Icons.delete, size: 20, color: Colors.red),
+                                  Icon(
+                                    Icons.delete,
+                                    size: 20,
+                                    color: Colors.red,
+                                  ),
                                   SizedBox(width: 8),
                                   Text('Delete'),
                                 ],
@@ -229,14 +240,25 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
               style: ButtonStyle(
-                shape: WidgetStateProperty.all(RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                )),
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
               ),
               child: const Text('Start New'),
             ),
@@ -249,7 +271,8 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
 
     try {
       // Step 1: Build session manifest from template (via service)
-      final manifest = await widget.routineSessionService.buildSessionFromTemplate(templateId);
+      final manifest = await widget.routineSessionService
+          .buildSessionFromTemplate(templateId);
 
       // Step 2: Create new workout session with routine metadata
       await widget.workoutState!.createNewSession(
@@ -271,41 +294,72 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(workoutState: widget.workoutState!),
+          builder: (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState!,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+          ),
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error starting routine: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error starting routine: $e')));
     }
   }
 
-  void _confirmDelete(BuildContext context, String templateId) {
-    showDialog(
+  Future<void> _confirmDelete(BuildContext context, String templateId) async {
+    final plannedCount = await widget.routineState
+        .countPlannedSessionsForTemplate(templateId);
+
+    if (!context.mounted) return;
+
+    final baseMessage = 'This action cannot be undone.';
+    final warningMessage =
+        'This routine has $plannedCount planned session(s). Deleting it will also remove those planned sessions.';
+    final contentText = plannedCount > 0
+        ? '$warningMessage\n\n$baseMessage'
+        : baseMessage;
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Color(0xFF2a2a2a),
-        title: Text('Delete Routine?', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'This action cannot be undone.',
-          style: TextStyle(color: Colors.grey[300]),
-        ),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Routine?'),
+        content: Text(contentText),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              widget.routineState.deleteRoutine(templateId);
-            },
-            child: Text('Delete', style: TextStyle(color: Colors.red)),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
+
+    if (confirmed == true) {
+      await widget.routineState.deleteRoutine(templateId);
+    }
   }
 
   String _formatDate(DateTime date) {

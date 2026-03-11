@@ -19,8 +19,15 @@ abstract class WorkoutRepository {
 
   // Sessions
   Future<TrainingSession?> getSession(String id);
+  Future<List<TrainingSession>> getAllSessions();
+  Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs);
+  Future<double?> getPersonalRecordCandidates(
+    String exerciseId, {
+    String? metricId,
+  });
   Future<String> createSession(TrainingSession session);
   Future<void> updateSession(TrainingSession session);
+  Future<void> deleteSession(String id);
 
   // Segments
   Future<List<SessionSegment>> getSessionSegments(String sessionId);
@@ -97,7 +104,61 @@ abstract class WorkoutRepository {
 
   // Exercise Capabilities
   Future<List<String>> getExerciseCapabilities(String exerciseId);
-  Future<void> setExerciseCapabilities(String exerciseId, List<String> capabilities);
+  Future<void> setExerciseCapabilities(
+    String exerciseId,
+    List<String> capabilities,
+  );
+
+  // Round Instances
+  //
+  // Stores the full lifecycle of each timed round for effortKind == 'round' efforts.
+  // Each RoundInstance captures: planned duration, wall-clock timestamps, actual
+  // elapsed time, and whether the round completed naturally vs was cut short.
+  // This replaces the old metric-rounds + metric-round-duration observation-pair pattern.
+
+  /// Get all round instances for a round-based effort, ordered by roundIndex ascending.
+  Future<List<RoundInstance>> getRoundInstances(String effortId);
+
+  /// Persist a newly created round instance (startedAtMs = 0, not yet begun).
+  Future<String> createRoundInstance(RoundInstance instance);
+
+  /// Update an existing round instance.
+  /// Used to set startedAtMs, finishedAtMs, actualDurationSecs, and completed flag.
+  Future<void> updateRoundInstance(RoundInstance instance);
+
+  /// Delete a single round instance by ID.
+  Future<void> deleteRoundInstance(String id);
+
+  /// Delete all round instances belonging to an effort.
+  /// Call this before deleting the effort to maintain referential integrity
+  /// (or rely on ON DELETE CASCADE in the SQLite schema).
+  Future<void> deleteRoundInstancesForEffort(String effortId);
+
+  // Timed Instances
+  //
+  // Stores the full lifecycle of each timed entry for effortKind == 'timed' or 'drill' efforts.
+  // Each TimedInstance captures: target duration (0 = open-ended), wall-clock timestamps,
+  // actual elapsed time, and explicit lifecycle state.
+  // The companion metric (distance for timed, extra weight for drill) remains as an EffortObservation.
+  // This replaces the old duration EffortObservation for these effort kinds.
+
+  /// Get all timed instances for a timed/drill effort, ordered by entryIndex ascending.
+  Future<List<TimedInstance>> getTimedInstances(String effortId);
+
+  /// Persist a newly created timed instance (startedAtMs = 0, not yet begun).
+  Future<String> createTimedInstance(TimedInstance instance);
+
+  /// Update an existing timed instance.
+  /// Used to set startedAtMs, finishedAtMs, actualDurationSecs, state, and pause fields.
+  Future<void> updateTimedInstance(TimedInstance instance);
+
+  /// Delete a single timed instance by ID.
+  Future<void> deleteTimedInstance(String id);
+
+  /// Delete all timed instances belonging to an effort.
+  /// Call this before deleting the effort to maintain referential integrity
+  /// (or rely on ON DELETE CASCADE in the SQLite schema).
+  Future<void> deleteTimedInstancesForEffort(String effortId);
 
   // Modality-ranked exercise retrieval
   /// Retrieve exercises ranked by relevance to a given modality.
@@ -153,5 +214,58 @@ abstract class WorkoutRepository {
     String? disciplineId,
     List<String>? muscleGroupIds,
   });
-}
 
+  // ─── Planned Sessions ─────────────────────────────────────────────────────
+
+  /// Get all planned sessions, ordered by scheduled_date_ms ascending.
+  Future<List<PlannedSession>> getPlannedSessions();
+
+  /// Get planned sessions within [fromMs]..[toMs] inclusive.
+  /// Matches sessions where scheduled_date_ms falls within the range.
+  Future<List<PlannedSession>> getPlannedSessionsForDateRange(
+    int fromMs,
+    int toMs,
+  );
+
+  /// Persist a new planned session; returns its ID.
+  Future<String> createPlannedSession(PlannedSession session);
+
+  /// Update an existing planned session (e.g. mark completed, change modality).
+  Future<void> updatePlannedSession(PlannedSession session);
+
+  /// Delete a planned session by ID.
+  Future<void> deletePlannedSession(String id);
+
+  /// Get all planned sessions linked to a specific routine template.
+  Future<List<PlannedSession>> getPlannedSessionsByTemplateId(
+    String templateId,
+  );
+
+  /// Delete all planned sessions linked to a specific routine template.
+  /// Used during routine deletion cascade.
+  Future<void> deletePlannedSessionsByTemplateId(String templateId);
+
+  // ─── Training Periods ─────────────────────────────────────────────────────
+
+  /// Get all training periods, ordered by start_date_ms ascending.
+  Future<List<TrainingPeriod>> getPeriods();
+
+  /// Get a single training period by ID; null if not found.
+  Future<TrainingPeriod?> getPeriodById(String id);
+
+  /// Persist a new training period; returns its ID.
+  Future<String> createPeriod(TrainingPeriod period);
+
+  /// Update an existing training period.
+  Future<void> updatePeriod(TrainingPeriod period);
+
+  /// Delete a training period by ID.
+  Future<void> deletePeriod(String id);
+
+  /// Returns true if [startMs]..[endMs] overlaps any existing period.
+  ///
+  /// Overlap rule: startMs <= existing.endDateMs AND endMs >= existing.startDateMs
+  ///
+  /// [excludeId]: when editing an existing period, pass its ID to skip it.
+  Future<bool> hasPeriodOverlap(int startMs, int endMs, {String? excludeId});
+}

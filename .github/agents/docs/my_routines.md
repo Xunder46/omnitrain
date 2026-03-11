@@ -332,7 +332,7 @@ Dual-view screen for building/editing a routine.
   - `set` → Reps + Weight scrollers
   - `timed` → Duration scroller
   - `round` → Round counter + Duration scroller
-  - `drill` → Hold Time + RPE scrollers
+  - `drill` → Hold Time + Extra Weight scrollers
 - **Set navigation**: Previous Set / Next Set arrows, set dots indicator
 - **Set management**: Add Set (+) / Delete Last Set (trash) buttons
 - **Previous set stats**: Shows last set's values for reference (e.g., "Previous: 10 reps @ 135.0 lbs")
@@ -345,13 +345,13 @@ When adding a set, targets auto-fill from the previous set:
 - `set`: Copy reps + weight from previous set
 - `timed`: Copy duration
 - `round`: Copy round duration
-- `drill`: Copy hold time + RPE
+- `drill`: Copy hold time + extra weight
 
 When adding a new exercise, default targets depend on effort kind:
 - `set`: 10 reps, 0 weight
 - `timed`: 0 seconds
 - `round`: 180 seconds (3 min), 1 round
-- `drill`: 0 seconds, RPE 5
+- `drill`: 0 seconds, 0.0 extra weight
 
 ### Exercise Addition Flow (Routine Context)
 
@@ -441,8 +441,8 @@ The My Routines tile glows active when the current session's `intent == 'routine
 | Home tile config | `lib/core/constants/home_tiles.dart` |
 | **Data Layer** | |
 | Repository interface | `lib/data/repositories/workout_repository.dart` |
-| Hive implementation | `lib/data/repositories/hive_workout_repository.dart` |
-| Mock implementation | `lib/data/repositories/mock_workout_repository.dart` |
+| Hive implementation (current) | `lib/data/repositories/hive_workout_repository.dart` |
+| Mock implementation (testing) | `lib/data/repositories/mock_workout_repository.dart` |
 | Domain models | `lib/data/models/models.dart` |
 | SQLite schema | `scripts/sqlite_schema.sql` |
 | **Constants** | |

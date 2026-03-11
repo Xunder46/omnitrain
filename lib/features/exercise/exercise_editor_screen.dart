@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/omni_theme.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 
@@ -34,10 +35,16 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.initialExercise?.name ?? '');
-    _descriptionController = TextEditingController(text: widget.initialExercise?.description ?? '');
+    _nameController = TextEditingController(
+      text: widget.initialExercise?.name ?? '',
+    );
+    _descriptionController = TextEditingController(
+      text: widget.initialExercise?.description ?? '',
+    );
     _selectedDisciplineId = widget.initialExercise?.disciplineId;
-    _selectedCapabilities.addAll(widget.initialExercise?.capabilities ?? const []);
+    _selectedCapabilities.addAll(
+      widget.initialExercise?.capabilities ?? const [],
+    );
     _loadReferenceData();
   }
 
@@ -60,8 +67,9 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     _muscleGroups = widget.workoutState.muscleGroups;
 
     if (widget.initialExercise != null) {
-      final muscles = await widget.workoutState
-          .getExerciseMuscleGroups(widget.initialExercise!.id);
+      final muscles = await widget.workoutState.getExerciseMuscleGroups(
+        widget.initialExercise!.id,
+      );
       _selectedMuscleGroupIds.addAll(muscles.map((m) => m.id));
     }
 
@@ -95,9 +103,9 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
 
     if (created == null) {
       final error = widget.workoutState.error ?? 'Failed to create exercise.';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       setState(() {
         _isSaving = false;
       });
@@ -113,18 +121,13 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
 
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('New Exercise'),
-        ),
+        appBar: AppBar(title: const Text('New Exercise')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('New Exercise'),
-        actions: [],
-      ),
+      appBar: AppBar(title: const Text('New Exercise'), actions: []),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
@@ -158,7 +161,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String?>(
-                  value: _selectedDisciplineId,
+                  initialValue: _selectedDisciplineId,
                   decoration: const InputDecoration(
                     labelText: 'Discipline',
                     border: OutlineInputBorder(),
@@ -182,16 +185,15 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                   },
                 ),
                 const SizedBox(height: 20),
-                Text(
-                  'Capabilities',
-                  style: theme.textTheme.titleMedium,
-                ),
+                Text('Capabilities', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: _capabilityOptions.map((option) {
-                    final isSelected = _selectedCapabilities.contains(option.id);
+                    final isSelected = _selectedCapabilities.contains(
+                      option.id,
+                    );
                     return FilterChip(
                       label: Text(option.label),
                       selected: isSelected,
@@ -208,16 +210,15 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
                   }).toList(),
                 ),
                 const SizedBox(height: 20),
-                Text(
-                  'Muscle groups',
-                  style: theme.textTheme.titleMedium,
-                ),
+                Text('Muscle groups', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: _muscleGroups.map((muscle) {
-                    final isSelected = _selectedMuscleGroupIds.contains(muscle.id);
+                    final isSelected = _selectedMuscleGroupIds.contains(
+                      muscle.id,
+                    );
                     return FilterChip(
                       label: Text(muscle.name),
                       selected: isSelected,
@@ -248,12 +249,16 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
             child: FilledButton(
               onPressed: _isSaving ? null : _save,
               style: ButtonStyle(
-                shape: MaterialStateProperty.all(
+                shape: WidgetStateProperty.all(
                   RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonBorderRadius,
+                    ),
                   ),
                 ),
-                backgroundColor: MaterialStateProperty.all(theme.colorScheme.primary.withOpacity(0.8)),
+                backgroundColor: WidgetStateProperty.all(
+                  theme.colorScheme.primary.withOpacity(0.8),
+                ),
               ),
               child: const Text('Save exercise'),
             ),

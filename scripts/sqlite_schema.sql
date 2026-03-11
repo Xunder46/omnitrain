@@ -53,6 +53,61 @@ BEGIN TRANSACTION;
 -- - For production sync/history preservation, consider using deleted_at_ms field
 -- - Current implementation uses hard deletes (removes from Maps in MockWorkoutRepository)
 -- - Future SqliteWorkoutRepository can implement soft deletes for sync conflict resolution
+--
+-- SESSION SUMMARY COMPUTATION (Feb 2026):
+-- =========================================
+-- SessionSummary and ExerciseSummary are computed in-memory models (not persisted tables).
+-- Future SqliteWorkoutRepository.computeSessionSummary() should derive these aggregates via:
+--
+-- Per-exercise (ExerciseSummary):
+--   executionOrder  → ROW_NUMBER() OVER (ORDER BY ss.order_index, se.order_index)
+--   totalDurationMs → SUM(eo.value_int) * 1000 WHERE eo.metric_id = 'metric-duration'
+--                      (for effortKind IN ('timed', 'drill') only)
+--   totalRounds     → COUNT(*) FROM app_round_instance WHERE effort_id = se.id
+--                      (for effortKind = 'round' only)
+--
+-- Session-level aggregates (SessionSummary):
+--   totalRounds          → SUM of per-effort round counts
+--   totalCardioDurationMs → SUM of totalDurationMs for effortKind = 'timed'
+--   totalDrillDurationMs  → SUM of totalDurationMs for effortKind = 'drill'
+--
+-- These aggregates power modality-grouped exercise display on the summary screen.
+-- Grouping logic maps effortKind → modality group:
+--   'set'   → Strength
+--   'timed' → Cardio
+--   'round' → Rounds
+--   'drill' → Intervals (Isometric)
+--
+-- EDIT-MODE SNAPSHOT / ROLLBACK (Mar 2026):
+-- ==========================================
+-- When the user enters edit mode from the summary screen (SessionSummaryScreen →
+-- Edit Session → WorkoutSessionScreen(editMode: true)), structural mutations
+-- (add/remove exercise via addExerciseToSession/removeExerciseFromSession, and
+-- add/remove sets via addEntry/deleteEntry) are persisted to the repository
+-- immediately — they bypass the metric _editBuffer.
+--
+-- If the user presses Back without saving, WorkoutState.restoreSessionSnapshot()
+-- rolls back these changes using the following repository primitives (all already
+-- implemented in both HiveWorkoutRepository and future SqliteWorkoutRepository):
+--
+--   deleteEffort(effortId)           → DELETE FROM app_segment_effort WHERE id = ?
+--   createEffort(effort)             → INSERT INTO app_segment_effort ...
+--   deleteObservationsForEffort(id)  → DELETE FROM app_effort_observation WHERE effort_id = ?
+--   createObservation(obs)           → INSERT INTO app_effort_observation ...
+--   deleteRoundInstancesForEffort(id)→ DELETE FROM app_round_instance WHERE effort_id = ?
+--   createRoundInstance(ri)          → INSERT INTO app_round_instance ...
+--   deleteTimedInstancesForEffort(id)→ DELETE FROM app_timed_instance WHERE effort_id = ?
+--   createTimedInstance(ti)          → INSERT INTO app_timed_instance ...
+--
+-- No new repository methods are required. WorkoutState.restoreSessionSnapshot()
+-- orchestrates the restore entirely through the above existing abstract interface
+-- methods. SqliteWorkoutRepository only needs correct ON DELETE CASCADE foreign
+-- keys (already present in schema below) for deleteEffort cascade to work.
+--
+-- Snapshot is stored in-memory in WorkoutSessionScreen as a SessionEditSnapshot
+-- (lib/core/models/session_edit_snapshot.dart). It is discarded on Save;
+-- used for rollback on Back without Save.
+--
 CREATE TABLE app_sport_category (
   id TEXT NOT NULL PRIMARY KEY,
   key TEXT NOT NULL UNIQUE,
@@ -92,6 +147,11 @@ CREATE TABLE app_exercise (
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   deleted_at_ms INTEGER,
+  -- Default duration (seconds) for a single round/period when effortKind == 'round'.
+  -- NULL = use app-wide default (WorkoutConstants.defaultRoundDurationSecs = 180).
+  -- Set per-sport: e.g. Soccer Match = 2700 (45-min half), Ice Hockey = 1200 (20-min period).
+  -- Migration note: ALTER TABLE app_exercise ADD COLUMN default_round_duration_secs INTEGER;
+  default_round_duration_secs INTEGER,
   row_version INTEGER NOT NULL DEFAULT 0,
   is_dirty INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY(discipline_id) REFERENCES app_discipline(id)
@@ -140,6 +200,21 @@ CREATE TABLE app_training_session (
 );
 CREATE INDEX IF NOT EXISTS IX_session_started_at ON app_training_session(started_at_ms);
 CREATE INDEX IF NOT EXISTS IX_session_owner_dirty ON app_training_session(owner_user_id, is_dirty);
+
+-- SESSION HISTORY QUERY NOTES (Feb 2026):
+-- - WorkoutRepository.getAllSessions():
+--   SELECT * FROM app_training_session ORDER BY started_at_ms DESC;
+-- - WorkoutRepository.getSessionsByDateRange(fromMs, toMs):
+--   SELECT * FROM app_training_session WHERE started_at_ms BETWEEN ? AND ? ORDER BY started_at_ms ASC;
+-- - WorkoutRepository.getPersonalRecordCandidates(exerciseId, metricId?):
+--   SELECT MAX(COALESCE(o.value_real, o.value_int))
+--   FROM app_effort_observation o
+--   JOIN app_segment_effort e ON e.id = o.effort_id
+--   JOIN app_session_segment s ON s.id = e.segment_id
+--   JOIN app_training_session t ON t.id = s.session_id
+--   WHERE e.exercise_id = ?
+--     AND t.ended_at_ms IS NOT NULL
+--     AND (? IS NULL OR o.metric_id = ?);
 
 CREATE TABLE app_session_discipline (
   session_id TEXT NOT NULL,
@@ -486,6 +561,146 @@ CREATE TABLE app_exercise_capability (
 );
 CREATE INDEX IF NOT EXISTS IX_exercise_capability_cap ON app_exercise_capability(capability);
 
+-- ROUND INSTANCES (Feb 2026 Refactor — updated with explicit state model):
+-- ==========================================
+-- Replaces the metric-rounds + metric-round-duration observation pair pattern for round
+-- (effortKind == 'round') exercises. Each row is a single timed round of one effort.
+--
+-- Lifecycle / state transitions:
+--   1. Created on addRound():
+--        state = 'notStarted', started_at_ms = 0, total_paused_duration_ms = 0
+--   2. Started on startRound():
+--        state = 'active', started_at_ms = wall-clock epoch ms
+--   3. Paused on pauseRound():
+--        state = 'paused', paused_at_ms = wall-clock epoch ms
+--   4. Resumed on resumeRound():
+--        state = 'active', total_paused_duration_ms += (now - paused_at_ms), paused_at_ms = NULL
+--   5. Completed naturally (countdown → 0):
+--        state = 'finished', completed = 1,
+--        actual_duration_secs = planned_duration_secs,
+--        finished_at_ms = started_at_ms + (planned_duration_secs * 1000) + total_paused_duration_ms
+--   6. Ended early (manual log) or session close:
+--        state = 'finished', completed = 0,
+--        actual_duration_secs = elapsed (now - started_at_ms - total_paused_duration_ms) / 1000,
+--        finished_at_ms = now
+--
+-- Allowed state transitions:
+--   notStarted → active
+--   active     → paused | finished
+--   paused     → active | finished
+--   finished   → (none — terminal)
+--
+-- Rules:
+--   - completed = 1 ONLY when countdown naturally reaches zero (never inferred from duration)
+--   - elapsed = now - started_at_ms - total_paused_duration_ms  (always derived from timestamps)
+--   - actual_duration_secs stores final elapsed; countdown is UI-only presentation
+--   - Partial rounds are never discarded
+--   - finished is terminal — no further mutations allowed
+--   - ON DELETE CASCADE ensures automatic cleanup when the parent effort is deleted
+--
+-- Backward compatibility:
+--   Existing rows without state/paused_at_ms/total_paused_duration_ms columns use
+--   SQLite column defaults ('notStarted' / NULL / 0). The Dart fromMap() infers
+--   state from finished_at_ms and started_at_ms when the state column is missing.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getRoundInstances(effortId):
+--     SELECT * FROM app_round_instance WHERE effort_id = ? ORDER BY round_index ASC;
+--   createRoundInstance(instance):
+--     INSERT INTO app_round_instance VALUES (...);
+--   updateRoundInstance(instance):
+--     UPDATE app_round_instance SET
+--       planned_duration_secs=?, actual_duration_secs=?, started_at_ms=?,
+--       finished_at_ms=?, completed=?, state=?, paused_at_ms=?,
+--       total_paused_duration_ms=?, updated_at_ms=?
+--     WHERE id = ?;
+--   deleteRoundInstance(id):
+--     DELETE FROM app_round_instance WHERE id = ?;
+--   deleteRoundInstancesForEffort(effortId):
+--     DELETE FROM app_round_instance WHERE effort_id = ?;
+--
+-- Migration (for existing production databases — add new columns with safe defaults):
+--   ALTER TABLE app_round_instance ADD COLUMN state TEXT NOT NULL DEFAULT 'notStarted';
+--   ALTER TABLE app_round_instance ADD COLUMN paused_at_ms INTEGER;
+--   ALTER TABLE app_round_instance ADD COLUMN total_paused_duration_ms INTEGER NOT NULL DEFAULT 0;
+--   -- Back-fill state from existing fields:
+--   UPDATE app_round_instance SET state = 'finished' WHERE finished_at_ms IS NOT NULL;
+--   UPDATE app_round_instance SET state = 'active'
+--     WHERE finished_at_ms IS NULL AND started_at_ms > 0;
+CREATE TABLE app_round_instance (
+  id TEXT NOT NULL PRIMARY KEY,
+  effort_id TEXT NOT NULL,
+  round_index INTEGER NOT NULL,                        -- 0-based round number within the effort
+  planned_duration_secs INTEGER NOT NULL DEFAULT 180,  -- User-configurable countdown target
+  actual_duration_secs INTEGER NOT NULL DEFAULT 0,     -- Final elapsed secs; 0 while in-progress
+  started_at_ms INTEGER NOT NULL DEFAULT 0,            -- 0 = not yet started
+  finished_at_ms INTEGER,                              -- NULL = not finished
+  completed INTEGER NOT NULL DEFAULT 0,                -- 1 = countdown reached zero naturally
+  state TEXT NOT NULL DEFAULT 'notStarted',            -- RoundState: notStarted|active|paused|finished
+  paused_at_ms INTEGER,                                -- Wall-clock ms when paused; NULL if not paused
+  total_paused_duration_ms INTEGER NOT NULL DEFAULT 0, -- Accumulated pause time in ms
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS IX_round_instance_effort ON app_round_instance(effort_id, round_index);
+
+-- TIMED INSTANCES (Feb 2026)
+-- ==========================
+-- Stores the full lifecycle of each timed entry for effortKind == 'timed' or 'drill' efforts.
+-- Replaces the old duration EffortObservation for these effort kinds.
+-- Companion metrics (distance for timed, extra weight for drill) remain as EffortObservation records.
+--
+-- Design mirrors app_round_instance but with key differences:
+--   - entry_index instead of round_index (same semantics, different naming)
+--   - target_duration_secs instead of planned_duration_secs (0 = open-ended, no alert)
+--   - No completed flag (timed/drill count UP; no natural completion concept)
+--   - elapsed counts up without upper clamp (rounds count down)
+--
+-- Lifecycle:
+--   1. Created:   state = 'notStarted', started_at_ms = 0
+--   2. Started:   state = 'active', started_at_ms = now
+--   3. Paused:    state = 'paused', paused_at_ms = now
+--   4. Resumed:   state = 'active', total_paused_duration_ms += (now - paused_at_ms), paused_at_ms = NULL
+--   5. Finished:  state = 'finished', actual_duration_secs = derived from timestamps, finished_at_ms = now
+--   6. Session close: same as finish (via _persistActiveTimedEntries safety net)
+--
+-- Rules:
+--   - finished is terminal — no further mutations allowed
+--   - ON DELETE CASCADE ensures automatic cleanup when the parent effort is deleted
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getTimedInstances(effortId):
+--     SELECT * FROM app_timed_instance WHERE effort_id = ? ORDER BY entry_index ASC;
+--   createTimedInstance(instance):
+--     INSERT INTO app_timed_instance VALUES (...);
+--   updateTimedInstance(instance):
+--     UPDATE app_timed_instance SET
+--       target_duration_secs=?, actual_duration_secs=?, started_at_ms=?,
+--       finished_at_ms=?, state=?, paused_at_ms=?,
+--       total_paused_duration_ms=?, updated_at_ms=?
+--     WHERE id = ?;
+--   deleteTimedInstance(id):
+--     DELETE FROM app_timed_instance WHERE id = ?;
+--   deleteTimedInstancesForEffort(effortId):
+--     DELETE FROM app_timed_instance WHERE effort_id = ?;
+CREATE TABLE app_timed_instance (
+  id TEXT NOT NULL PRIMARY KEY,
+  effort_id TEXT NOT NULL,
+  entry_index INTEGER NOT NULL,                        -- 0-based entry number within the effort
+  target_duration_secs INTEGER NOT NULL DEFAULT 0,     -- User-set target; 0 = open-ended (no alert)
+  actual_duration_secs INTEGER NOT NULL DEFAULT 0,     -- Final elapsed secs; 0 while in-progress
+  started_at_ms INTEGER NOT NULL DEFAULT 0,            -- 0 = not yet started
+  finished_at_ms INTEGER,                              -- NULL = not finished
+  state TEXT NOT NULL DEFAULT 'notStarted',            -- TimedState: notStarted|active|paused|finished
+  paused_at_ms INTEGER,                                -- Wall-clock ms when paused; NULL if not paused
+  total_paused_duration_ms INTEGER NOT NULL DEFAULT 0, -- Accumulated pause time in ms
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS IX_timed_instance_effort ON app_timed_instance(effort_id, entry_index);
+
 CREATE TABLE app_muscle_group (
   id TEXT NOT NULL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
@@ -531,5 +746,137 @@ CREATE TABLE app_sync_op_local_example (
   payload TEXT NOT NULL,
   pushed INTEGER NOT NULL DEFAULT 0
 );
+
+-- PLANNED SESSIONS (Calendar & Periods Feature — Mar 2026)
+-- ========================================================
+-- Lightweight scheduling records for future (or past) session intents.
+-- Unlike app_training_session (which holds full workout data), a planned
+-- session is purely intent data: a date-tagged plan to train.
+--
+-- When a planned session is actually executed, linked_session_id may be set
+-- to point to the resulting app_training_session row.
+--
+-- recurrence_rule is RESERVED for future recurrence support; store NULL now.
+-- Future implementation will likely use an iCalendar-style RRULE string
+-- (e.g. "FREQ=WEEKLY;BYDAY=MO,WE,FR") or a custom JSON rule object.
+--
+-- Calendar indicator rules (presentation only — no schema impact):
+--   is_completed = 0 → outlined circle indicator (planned, not done)
+--   is_completed = 1 → filled circle indicator   (completed)
+--   Circle colour derived from modality in Dart (ModalityColorUtils).
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getPlannedSessions():
+--     SELECT * FROM app_planned_session ORDER BY scheduled_date_ms ASC;
+--
+--   getPlannedSessionsForDateRange(fromMs, toMs):
+--     SELECT * FROM app_planned_session
+--     WHERE scheduled_date_ms >= ? AND scheduled_date_ms <= ?
+--     ORDER BY scheduled_date_ms ASC;
+--
+--   createPlannedSession(session):
+--     INSERT INTO app_planned_session VALUES (...);
+--
+--   updatePlannedSession(session):
+--     UPDATE app_planned_session
+--     SET modality=?, title=?, note=?, is_completed=?,
+--         linked_session_id=?, updated_at_ms=?
+--     WHERE id = ?;
+--
+--   deletePlannedSession(id):
+--     DELETE FROM app_planned_session WHERE id = ?;
+--
+--   Calendar demo cleanup migration (if older beta rows exist):
+--     DELETE FROM app_planned_session
+--     WHERE id IN (
+--       'planned-session-1', 'planned-session-2', 'planned-session-3',
+--       'planned-session-4', 'planned-session-5', 'planned-session-6',
+--       'planned-session-7', 'planned-session-8'
+--     );
+CREATE TABLE app_planned_session (
+  id TEXT NOT NULL PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
+  scheduled_date_ms INTEGER NOT NULL,     -- Epoch ms of the intended training day
+  modality TEXT,                          -- Modality key or NULL for Free Training
+  title TEXT,                             -- Optional short title
+  note TEXT,                              -- Optional notes
+  is_completed INTEGER NOT NULL DEFAULT 0, -- 0 = planned, 1 = completed
+  linked_session_id TEXT,                 -- FK to app_training_session when executed
+  recurrence_rule TEXT,                   -- RESERVED: NULL until recurrence is built
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(linked_session_id) REFERENCES app_training_session(id)
+);
+CREATE INDEX IF NOT EXISTS IX_planned_session_date
+  ON app_planned_session(owner_user_id, scheduled_date_ms);
+
+-- TRAINING PERIODS (Calendar & Periods Feature — Mar 2026)
+-- =========================================================
+-- Named date ranges with optional modality focus.
+-- Used for training block planning (e.g. "Competition Prep", "Off-Season Strength").
+--
+-- OVERLAP RULE (enforced in Dart, not by a SQL constraint):
+--   Periods may NOT overlap. Dart rejects creation when:
+--     newPeriod.start_date_ms <= existing.end_date_ms
+--     AND newPeriod.end_date_ms >= existing.start_date_ms
+--
+--   hasPeriodOverlap(startMs, endMs, excludeId):
+--     SELECT COUNT(*) FROM app_training_period
+--     WHERE (? IS NULL OR id != ?)   -- excludeId
+--       AND start_date_ms <= ?       -- ? = endMs
+--       AND end_date_ms   >= ?;      -- ? = startMs
+--
+-- focus_modalities_csv stores modality keys as a comma-separated string.
+-- An empty string '' means all/unspecified modalities.
+-- Example: 'cardio_endurance,resistance_lifting'
+--
+-- Future normalisation option:
+--   A junction table app_training_period_modality(period_id TEXT, modality TEXT)
+--   can replace the CSV column without changing the Dart model interface.
+--   Migration: split CSV values via a UDF or script and INSERT into the junction.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getPeriods():
+--     SELECT * FROM app_training_period ORDER BY start_date_ms ASC;
+--
+--   getPeriodById(id):
+--     SELECT * FROM app_training_period WHERE id = ?;
+--
+--   createPeriod(period):
+--     INSERT INTO app_training_period VALUES (...);
+--
+--   updatePeriod(period):
+--     UPDATE app_training_period
+--     SET name=?, start_date_ms=?, end_date_ms=?,
+--         focus_modalities_csv=?, notes=?, updated_at_ms=?
+--     WHERE id = ?;
+--
+--   deletePeriod(id):
+--     DELETE FROM app_training_period WHERE id = ?;
+--
+--   hasPeriodOverlap(startMs, endMs, excludeId):
+--     SELECT COUNT(*) FROM app_training_period
+--     WHERE (? IS NULL OR id != ?)
+--       AND start_date_ms <= ?
+--       AND end_date_ms   >= ?;
+--
+--   Calendar demo cleanup migration (if older beta rows exist):
+--     DELETE FROM app_training_period WHERE id IN ('period-1', 'period-2');
+CREATE TABLE app_training_period (
+  id TEXT NOT NULL PRIMARY KEY,
+  owner_user_id TEXT,
+  name TEXT NOT NULL,
+  start_date_ms INTEGER NOT NULL,          -- Epoch ms of first day (midnight local)
+  end_date_ms INTEGER NOT NULL,            -- Epoch ms of last day  (end-of-day local)
+  focus_modalities_csv TEXT NOT NULL DEFAULT '', -- ''-separated modality keys; '' = all
+  notes TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  CHECK (end_date_ms >= start_date_ms)
+);
+CREATE INDEX IF NOT EXISTS IX_training_period_owner
+  ON app_training_period(owner_user_id, start_date_ms);
+CREATE INDEX IF NOT EXISTS IX_training_period_range
+  ON app_training_period(start_date_ms, end_date_ms);
 
 COMMIT;

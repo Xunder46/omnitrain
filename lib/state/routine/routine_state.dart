@@ -20,6 +20,13 @@ class RoutineState extends ChangeNotifier {
   final Map<String, List<TemplateEffort>> _segmentEfforts = {};
   List<TemplateTarget> _currentTargets = [];
 
+  /// Cache of exercises keyed by exercise ID.
+  /// Populated when an exercise is added to the routine, or when a routine is
+  /// loaded for editing. Used to look up Exercise.defaultRoundDurationSecs so
+  /// that the first set of a round-based effort starts with the sport-correct
+  /// period/half/round length rather than the generic 3-min boxing default.
+  final Map<String, Exercise> _exerciseCache = {};
+
   Timer? _autosaveTimer;
   bool _autosaveEnabled = true;
 
@@ -94,6 +101,7 @@ class RoutineState extends ChangeNotifier {
       _segmentEfforts.clear();
       _segmentEfforts[segmentId] = [];
       _currentTargets = [];
+      _exerciseCache.clear();
 
       _scheduleAutosave();
       notifyListeners();
@@ -199,11 +207,25 @@ class RoutineState extends ChangeNotifier {
     _clearError();
 
     try {
+      // Cascade-delete: remove all planned sessions linked to this template.
+      await _repository.deletePlannedSessionsByTemplateId(templateId);
+
       await _repository.deleteTemplate(templateId);
       _routines.removeWhere((r) => r.id == templateId);
       notifyListeners();
     } catch (e) {
       _setError('Failed to delete routine: $e');
+    }
+  }
+
+  /// Count planned sessions linked to a template (for delete warning UI).
+  Future<int> countPlannedSessionsForTemplate(String templateId) async {
+    try {
+      final sessions =
+          await _repository.getPlannedSessionsByTemplateId(templateId);
+      return sessions.length;
+    } catch (e) {
+      return 0;
     }
   }
 
@@ -225,6 +247,7 @@ class RoutineState extends ChangeNotifier {
       _currentSegments = segments;
       _segmentEfforts.clear();
       _currentTargets = [];
+      _exerciseCache.clear();
 
       for (final segment in segments) {
         final efforts = await _repository.getTemplateEfforts(segment.id);
@@ -233,6 +256,14 @@ class RoutineState extends ChangeNotifier {
         for (final effort in efforts) {
           final targets = await _repository.getTemplateTargets(effort.id);
           _currentTargets.addAll(targets);
+
+          // Pre-load the exercise into the cache so defaultRoundDurationSecs
+          // is available when the user adds sets to round-based efforts.
+          if (effort.exerciseId != null &&
+              !_exerciseCache.containsKey(effort.exerciseId)) {
+            final ex = await _repository.getExerciseById(effort.exerciseId!);
+            if (ex != null) _exerciseCache[ex.id] = ex;
+          }
         }
       }
 
@@ -399,6 +430,10 @@ class RoutineState extends ChangeNotifier {
       );
 
       _segmentEfforts[resolvedSegmentId] = [...segmentEfforts, effort];
+
+      // Cache the exercise so addSetForEffort can read defaultRoundDurationSecs.
+      _exerciseCache[exercise.id] = exercise;
+
       _scheduleAutosave();
       notifyListeners();
 
@@ -607,7 +642,19 @@ class RoutineState extends ChangeNotifier {
           ? getEffortTargetsForSet(templateEffortId, lastSetIndex)
           : <TemplateTarget>[];
 
-      final defaults = _defaultTargetsForEffortKind(effortKind);
+      // Look up the exercise-specific default round duration (sport period length)
+      // so the first set of a round effort starts with the correct default rather
+      // than the generic 3-min boxing fallback.
+      final exerciseId = _findEffortById(templateEffortId)?.exerciseId;
+      final exerciseDefault =
+          exerciseId != null
+          ? _exerciseCache[exerciseId]?.defaultRoundDurationSecs
+          : null;
+
+      final defaults = _defaultTargetsForEffortKind(
+        effortKind,
+        exerciseDefaultRoundDurationSecs: exerciseDefault,
+      );
 
       for (final entry in defaults.entries) {
         final metricId = entry.key;
@@ -663,10 +710,27 @@ class RoutineState extends ChangeNotifier {
 
   // ===== HELPERS =====
 
-  /// Get default targets for an effort kind
-  /// Uses centralized configuration from EffortDefaults for consistency
-  Map<String, dynamic> _defaultTargetsForEffortKind(String effortKind) {
-    return EffortDefaults.getDefaultTargets(effortKind);
+  /// Flat-search _segmentEfforts for an effort with a given ID.
+  TemplateEffort? _findEffortById(String templateEffortId) {
+    for (final efforts in _segmentEfforts.values) {
+      for (final e in efforts) {
+        if (e.id == templateEffortId) return e;
+      }
+    }
+    return null;
+  }
+
+  /// Get default targets for an effort kind.
+  /// Pass [exerciseDefaultRoundDurationSecs] to override the global 3-min
+  /// boxing default for sport exercises (e.g. 2700 s for a soccer half).
+  Map<String, dynamic> _defaultTargetsForEffortKind(
+    String effortKind, {
+    int? exerciseDefaultRoundDurationSecs,
+  }) {
+    return EffortDefaults.getDefaultTargets(
+      effortKind,
+      exerciseDefaultRoundDurationSecs: exerciseDefaultRoundDurationSecs,
+    );
   }
 
   int _getMaxSetIndex(List<TemplateTarget> targets) {

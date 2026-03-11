@@ -13,6 +13,17 @@ handoffs:
 
 You implement application logic, UI features, and state management. Your code must work on **web (mock)** and **native (SQLite)** with the same codebase.
 
+## Plan File Protocol
+
+The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single source of truth for the current feature.
+
+**Always begin by reading `.github/agents/plans/[feature]-plan.md`** before doing any implementation work. Use it to understand the full feature context, the current iteration's frontend and backend changes, and what was already completed by the DBA.
+
+**After completing work**, update the `## Progress` checklist in the plan file, marking each completed task with `- [x]`.
+
+**If something cannot be implemented as planned**, add a `## Feedback` section to the plan file describing what failed and why, then stop work and notify the user:
+> "I was unable to complete [task] as planned. I've added a `## Feedback` note to `.github/agents/plans/[feature]-plan.md`. Please open a fresh chat with the Coordinator agent to re-plan."
+
 ## Your Responsibilities
 
 1. State management (ChangeNotifier classes)
@@ -25,17 +36,16 @@ You implement application logic, UI features, and state management. Your code mu
 
 Your code runs in TWO environments without changes:
 
-### Current: Web (Development/QA)
-- Browser environment
-- Uses `MockWorkoutRepository` (in-memory)
-- No persistence between sessions
+### Current: All Platforms
+- Uses `HiveWorkoutRepository` (Hive boxes, persistent)
+- Works on web and native
+- Seeds reference data on first run from `SeedData`
 - Hot reload works
 
-### Future: Native (Production)
+### Future: Native Optimization
 - iOS/Android/Desktop
-- Uses `SqliteWorkoutRepository`
-- Persistent local storage
-- Same code, different repository
+- Will use `SqliteWorkoutRepository` for better performance
+- Same interface, same state code, different storage
 
 ### How to Achieve This
 
@@ -219,11 +229,47 @@ Before implementing or modifying features, consult the relevant documentation in
 - **`docs/exercise_ranking.md`** — Exercise ranking algorithm: scoring, ModalityConfig, relevance calculation
 - **`docs/my_routines.md`** — My Routines: template data model, RoutineState, routine-to-session conversion, RoutineSetupScreen UI
 - **`docs/db_integration.md`** — Database setup, schema, migrations
-- **`docs/design_system.md`** — Color tokens, typography, spacing, animation rules, component patterns
+- **`docs/design_system.md`** — Color tokens, typography, spacing, animation rules, component patterns, **button specification**
+
+## Button Rules (MANDATORY)
+
+Every button in a new or modified screen MUST follow the Button spec in `docs/design_system.md`.
+
+**Always set `shape` explicitly** — never rely on Material 3 defaults.
+
+| Use case | Widget | Radius token |
+|----------|--------|-------------|
+| Full-width CTA ("Finish Workout") | `FilledButton` + `SizedBox(height: OmniTheme.buttonPrimaryHeight, width: double.infinity)` | `OmniTheme.buttonBorderRadius` (12) |
+| Side-by-side pair ("Start Workout" + "Add Exercise") | `Expanded` `FilledButton` / `OutlinedButton` | `OmniTheme.buttonBorderRadius` (12) |
+| Inline compact action ("+ Add Block") | `OutlinedButton.icon` | `OmniTheme.buttonUtilityRadius` (8) |
+| Icon-only square ("+ add" FAB-style) | `FilledButton` + `SizedBox(OmniTheme.buttonIconSize)` | `OmniTheme.buttonIconRadius` (10) |
+| Dialog cancel/confirm | `TextButton` / `FilledButton` | `OmniTheme.buttonUtilityRadius` (8) |
+
+```dart
+// ✅ Minimum viable correct button
+FilledButton(
+  style: ButtonStyle(
+    shape: WidgetStateProperty.all(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+      ),
+    ),
+  ),
+  onPressed: onPressed,
+  child: const Text('Label'),
+)
+```
+
+❌ **Any `FilledButton`, `OutlinedButton`, or `TextButton` without an explicit `shape:` override is a build error** — patch immediately during code review.
 
 ## Workflow Checklist
 
 When you receive a handoff from @conductor:
+
+### Step 0: Read the Plan File
+- [ ] Read `.github/agents/plans/[feature]-plan.md`
+- [ ] Identify all Backend/Frontend Changes listed in the current iteration
+- [ ] Note what the DBA has already completed (check `## Progress`)
 
 ### Step 1: Analyze Plan
 - [ ] Read the plan from @conductor
@@ -523,7 +569,11 @@ final storage = kIsWeb ? WebStorage() : NativeStorage();
 
 ## When Done
 
-Hand off to @code-reviewer with a summary:
+Before handing off, **update `.github/agents/plans/[feature]-plan.md`**:
+- Mark all completed UI/logic tasks with `- [x]` in the `## Progress` checklist
+- If a task could not be completed, add a `## Feedback` section explaining what failed and why, then notify the user to re-run the Coordinator in a fresh chat
+
+Then hand off to @code-reviewer with a summary:
 
 ```markdown
 ## Developer Work Complete
@@ -538,6 +588,7 @@ Hand off to @code-reviewer with a summary:
 - lib/state/[feature]/[state].dart
 - lib/features/[feature]/[screen].dart
 - lib/widgets/[category]/[widget].dart
+- .github/agents/plans/[feature]-plan.md (Progress updated)
 
 ### Tested On
 - [x] Web (Chrome) with MockWorkoutRepository
@@ -551,6 +602,9 @@ Hand off to @code-reviewer with a summary:
 
 ## Remember
 
+- Always read `.github/agents/plans/[feature]-plan.md` first to understand full feature context
+- Always update the `## Progress` checklist in the plan file after completing work
+- If blocked, add `## Feedback` to the plan file and notify the user to re-run the Coordinator
 - Use repository interface, never concrete class
 - Inject state into widgets
 - Keep business logic in state classes

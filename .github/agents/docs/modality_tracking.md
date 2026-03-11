@@ -53,7 +53,7 @@ Internal classification for UI rendering:
 - **set** - Reps + weight pairs (strength training)
 - **timed** - Duration + distance (cardio)
 - **round** - Rounds + round duration (martial arts/sports)
-- **drill** - Hold duration + RPE (isometric/stretching)
+- **drill** - Hold duration + extra weight (isometric/stretching)
 
 ---
 
@@ -180,13 +180,43 @@ class WorkoutState extends ChangeNotifier {
   
   Future<void> addEntry(String effortId) {
     // Creates observations based on effort kind:
-    // - 'set' → reps + weight observations
+    // - 'set'   → reps + weight observations
     // - 'timed' → duration + distance observations
-    // - 'round' → rounds + round-duration observations
-    // - 'drill' → duration + RPE observations
+    // - 'round' → RoundInstance record (NOT observations — see "Round-Based Tracking" section)
+    // - 'drill' → duration + extra weight observations
   }
+
+  // Round duration resolution order in addEntry() for effortKind == 'round':
+  //   1. Last round in current effort (inherit user-adjusted duration)
+  //   2. previousValues['round-duration'] hint (template/session context)
+  //   3. Exercise.defaultRoundDurationSecs (sport-specific default)
+  //   4. WorkoutConstants.defaultRoundDurationSecs (global fallback = 180)
+
+  // Round-specific lifecycle methods:
+  Future<void> addRound(String effortId, {int plannedDurationSecs = WorkoutConstants.defaultRoundDurationSecs});
+  Future<void> startRound(String effortId, int roundIndex);              // notStarted → active
+  Future<void> pauseRound(String effortId, int roundIndex);              // active → paused
+  Future<void> resumeRound(String effortId, int roundIndex);             // paused → active (folds pause duration)
+  Future<void> endRoundEarly(String effortId, int roundIndex);           // active|paused → finished (derives elapsed from timestamps)
+  Future<void> completeRound(String effortId, int roundIndex);           // active → finished (completed=true, natural countdown)
+  Future<void> updateRoundPlannedDuration(String effortId, int roundIndex, int plannedDurationSecs);
+  Future<void> deleteRound(String effortId, int roundIndex);
+  Future<List<RoundInstance>> getRoundsForEffort(String effortId);
 }
 ```
+
+### Exercise Defaults for Sports Rounds
+
+`Exercise` now supports an optional `defaultRoundDurationSecs` field (serialized as
+`default_round_duration_secs`). This enables sport-specific defaults such as soccer
+halves, hockey periods, or rugby halves instead of forcing a universal 3-minute round.
+
+- `null` means: use app-wide fallback (`WorkoutConstants.defaultRoundDurationSecs = 180`).
+- Non-null means: use exercise-specific default when creating new round entries.
+
+Important behavior:
+- Existing `RoundInstance` rows are not rewritten retroactively.
+- New rounds created after this change use the duration resolution order above.
 
 ### UI Layer
 
@@ -277,6 +307,7 @@ class MetricIds {
   static const String rounds = 'metric-rounds';
   static const String roundDuration = 'metric-round-duration';
   static const String rpe = 'metric-rpe';
+  static const String extraWeight = 'metric-extra-weight'; // Drill companion: negative = band assist, positive = added load
 }
 ```
 
@@ -290,12 +321,54 @@ class ObservationGrouper {
     switch (effortKind) {
       case 'set': return _groupSetObservations(observations);
       case 'timed': return _groupTimedObservations(observations);
+      // ⚠ LEGACY (Phase 2 complete): Round efforts now use RoundInstance records.
+      // WorkoutState.getExercisesWithEntries() no longer calls this for 'round'.
+      // Retained for backward compatibility with any pre-Phase-2 persisted data only.
       case 'round': return _groupRoundObservations(observations);
       case 'drill': return _groupDrillObservations(observations);
     }
   }
 }
 ```
+
+#### WorkoutConstants
+```dart
+// lib/core/constants/workout_constants.dart
+class WorkoutConstants {
+  /// Default planned duration for round-based exercises (3 minutes).
+  static const int defaultRoundDurationSecs = 180;
+
+  /// Safety cap multiplier for wall-clock round duration.
+  /// Actual duration is clamped to plannedDurationSecs * this value
+  /// to guard against device sleep, pause-time rounding, and clock skew.
+  static const int roundActualDurationCapFactor = 2;
+}
+```
+
+#### RoundInstance
+```dart
+// Part of lib/data/models/models.dart
+enum RoundState { notStarted, active, paused, finished }
+
+class RoundInstance {
+  final String effortId;              // Parent SegmentEffort ID
+  final int roundIndex;               // 0-based position (used for ordering)
+  final int plannedDurationSecs;      // Target round length (e.g. 180)
+  final int actualDurationSecs;       // How long the round actually ran (capped)
+  final RoundState state;             // Current lifecycle state (finished is terminal)
+  final int startedAtMs;              // Wall-clock epoch ms when timer started (0 = notStarted)
+  final int? pausedAtMs;              // Epoch ms of most recent pause (null when not paused)
+  final int totalPausedDurationMs;    // Cumulative pause time folded in on each resumeRound
+  final int finishedAtMs;             // Wall-clock epoch ms when round ended (0 = not finished)
+  final bool completed;               // true only when ended via completeRound (natural countdown)
+
+  // Computed getters
+  int get elapsedMs;    // Derived from timestamps; 0 for notStarted; frozen when paused
+  int get remainingMs;  // (plannedDurationSecs * 1000 - elapsedMs).clamp(0, planned)
+}
+```
+
+> **Why wall-clock timestamps?** Round timers use `DateTime.now().millisecondsSinceEpoch` rather than a `Stopwatch`. This makes elapsed time background-resilient: if the app is suspended, the timer continues ticking because elapsed = `now - startedAtMs` instead of depending on Dart's isolate uptime.
 
 ### Seed Data Example
 40 exercises with hand-curated capabilities:
@@ -324,9 +397,12 @@ static final Map<String, List<String>> exerciseCapabilityRelationships = {
 
 ## Web Compatibility Strategy
 
-### Mock Repository (Development/Web)
+### Hive Repository (Current — Web/Native)
+
+The current implementation uses `HiveWorkoutRepository` (Hive boxes) for persistence across all platforms. A `MockWorkoutRepository` also exists for in-memory testing.
+
 ```dart
-class MockWorkoutRepository implements WorkoutRepository {
+class HiveWorkoutRepository implements WorkoutRepository {
   final Map<String, List<String>> _exerciseCapabilities = {};
   
   Future<void> initialize() async {
@@ -356,7 +432,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 }
 ```
 
-### Future SQLite Repository (Native)
+### Future SQLite Repository (Native — Planned)
 Schema is ready. Implementation will:
 1. Join `app_exercise` with `app_exercise_capability` table
 2. Use same ranking algorithm as mock
@@ -427,11 +503,16 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 
 ## Future Enhancements
 
-### Phase 2 (Deferred)
+### Phase 2 (Completed — February 2026)
+✅ **Round-Based Tracking Refactor**: `round` efforts store `RoundInstance` records (not observations). Full lifecycle methods in `WorkoutState`. Wall-clock timestamps for background resilience.
+✅ **RoundState Enum + Strict Transitions**: `RoundInstance` carries a `RoundState` field (`notStarted` → `active` ⇄ `paused` → `finished`). `finished` is terminal. `WorkoutState._isValidRoundTransition()` enforces all transitions. Elapsed time is derived from timestamps at read time via `RoundInstance.elapsedMs` — never stored as a counter.
+✅ **Pause Support for Rounds**: `pauseRound()` and `resumeRound()` added to `WorkoutState`. Each pause start is stamped to `pausedAtMs`; on resume, `(now - pausedAtMs)` is folded into `totalPausedDurationMs` and `pausedAtMs` is cleared. The elapsed formula subtracts `totalPausedDurationMs` so paused time is never counted as work. UI-level rapid-tap guard (`_pendingRoundTransitions` set) prevents concurrent duplicate transitions.
+✅ **Delete Exercise from Session**: `removeExerciseFromSession` implemented in `WorkoutState`.
+
+### Phase 2 (Still Deferred)
 1. **User-Created Exercise Capabilities**: UI to tag custom exercises with capabilities
-2. **Delete Exercise from Session**: Remove exercises after adding them
-3. **Mid-Session Modality Re-mapping**: Preserve exercises when changing modality, prompt for new tracking method
-4. **Capability Auto-Detection**: Suggest capabilities based on exercise name/description (ML-assisted)
+2. **Mid-Session Modality Re-mapping**: Preserve exercises when changing modality, prompt for new tracking method
+3. **Capability Auto-Detection**: Suggest capabilities based on exercise name/description (ML-assisted)
 
 ### Phase 3 (Research)
 1. **Hybrid Modalities**: Mix effort kinds in one session (e.g., "Crossfit" with both timed and set-based)
@@ -486,7 +567,7 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 ## References
 
 ### Code Locations
-- **Constants**: `lib/core/constants/` (capability.dart, modality_config.dart, metric_ids.dart, modality_display.dart)
+- **Constants**: `lib/core/constants/` (capability.dart, modality_config.dart, metric_ids.dart, modality_display.dart, modality.dart, block_types.dart, intent.dart, workout_constants.dart, effort_defaults.dart)
 - **Models**: `lib/data/models/models.dart` (Exercise with capabilities field)
 - **Repositories**: `lib/data/repositories/` (workout_repository.dart, mock_workout_repository.dart)
 - **State**: `lib/state/workout/workout_state.dart` (WorkoutState with modality awareness)
@@ -497,6 +578,11 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 - **Seed Data**: `lib/mock/seed_data.dart`, `scripts/sqlite_seed.sql`
 
 ### Related Documentation
-- [App Philosophy](app_philosophy.md) - Core design principles and entity model
-- [DB Integration](db_integration.md) - Database schema and patterns
+- [App Philosophy](app_philosophy.md) — Core design principles and entity model
+- [DB Integration](db_integration.md) — Database schema and patterns
+- [Session Summary](session_summary.md) — Post-workout analytics
+- [Navigation & Screens](navigation_and_screens.md) — Screen flow and DI pattern
+- [State Management](state_management.md) — WorkoutState and service classes
+- [Data Models](data_models.md) — Full model reference
+- [Constants Reference](constants_reference.md) — All constant definitions
 - [My Routines](my_routines.md) - Reusable workout template system

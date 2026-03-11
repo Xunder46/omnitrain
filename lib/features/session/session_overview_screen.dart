@@ -1,15 +1,25 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/omni_theme.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../core/constants/modality_display.dart';
 import '../../data/models/models.dart';
+import '../../state/routine/routine_state.dart';
+import '../../core/services/session_summary_service.dart';
 import 'workout_session_screen.dart';
 
 class SessionOverviewScreen extends StatefulWidget {
   final WorkoutState workoutState;
+  final RoutineState routineState;
+  final SessionSummaryService sessionSummaryService;
 
-  const SessionOverviewScreen({super.key, required this.workoutState});
+  const SessionOverviewScreen({
+    super.key,
+    required this.workoutState,
+    required this.routineState,
+    required this.sessionSummaryService,
+  });
 
   @override
   State<SessionOverviewScreen> createState() => _SessionOverviewScreenState();
@@ -19,16 +29,17 @@ class SessionOverviewScreen extends StatefulWidget {
 List<String> _deduplicateCapabilities(List<String> capabilities) {
   final strSet = capabilities.toSet();
   final repsLoadSetVariants = {'reps', 'sets', 'load'};
-  
+
   // Remove sets and load if any of the reps/sets/load variants exist
   if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
     strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
     // Ensure 'reps' is included as the canonical value
-    if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+    if (!strSet.contains('reps') &&
+        strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
       strSet.add('reps');
     }
   }
-  
+
   return strSet.toList();
 }
 
@@ -57,7 +68,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
   Future<void> _addExercise() async {
     final modality = widget.workoutState.currentSession?.modality;
-    
+
     final selectedExercise = await showDialog<Exercise>(
       context: context,
       builder: (context) => ExercisePickerDialog(
@@ -68,7 +79,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     if (selectedExercise != null) {
       String? chosenMetric;
-      
+
       // If Free Training (null modality), show metric chooser
       if (modality == null) {
         // If exercise has only one capability, auto-select it
@@ -78,32 +89,37 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
         } else {
           chosenMetric = await showDialog<String>(
             context: context,
-            builder: (context) => MetricChooserDialog(exercise: selectedExercise),
+            builder: (context) =>
+                MetricChooserDialog(exercise: selectedExercise),
           );
-          
+
           if (chosenMetric == null) return; // User cancelled
         }
       }
-      
+
       try {
         final effortId = await widget.workoutState.addExerciseToSession(
           selectedExercise,
           chosenMetric: chosenMetric,
         );
         if (effortId.isNotEmpty) {
-          await Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => WorkoutSessionScreen(
-              workoutState: widget.workoutState,
-              initialFocusId: effortId,
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => WorkoutSessionScreen(
+                workoutState: widget.workoutState,
+                routineState: widget.routineState,
+                sessionSummaryService: widget.sessionSummaryService,
+                initialFocusId: effortId,
+              ),
             ),
-          ));
+          );
         }
         await _initializeSession();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to add exercise: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Failed to add exercise: $e')));
         }
       }
     }
@@ -116,9 +132,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: theme.colorScheme.surface,
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -160,7 +174,9 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
               Text(
                 '${exercises.length} exercise${exercises.length != 1 ? 's' : ''} planned',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+                  color: theme.colorScheme.onSurface.withAlpha(
+                    (0.6 * 255).round(),
+                  ),
                 ),
               ),
               const SizedBox(height: 32),
@@ -173,7 +189,9 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                             Icon(
                               Icons.fitness_center,
                               size: 64,
-                              color: theme.colorScheme.onSurface.withAlpha((0.3 * 255).round()),
+                              color: theme.colorScheme.onSurface.withAlpha(
+                                (0.3 * 255).round(),
+                              ),
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -184,7 +202,9 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                             Text(
                               'Add your first exercise to get started',
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+                                color: theme.colorScheme.onSurface.withAlpha(
+                                  (0.6 * 255).round(),
+                                ),
                               ),
                             ),
                           ],
@@ -194,30 +214,41 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                         itemCount: exercises.length,
                         itemBuilder: (context, index) {
                           final exercise = exercises[index];
-                          final entries = exercise['entries'] as List<Map<String, dynamic>>;
-                          final effortKind = exercise['effortKind'] as String? ?? 'set';
-                          
+                          final entries =
+                              exercise['entries'] as List<Map<String, dynamic>>;
+                          final effortKind =
+                              exercise['effortKind'] as String? ?? 'set';
+
                           String subtitle;
                           switch (effortKind) {
                             case 'set':
-                              subtitle = '${entries.length} set${entries.length != 1 ? 's' : ''}';
+                              subtitle =
+                                  '${entries.length} set${entries.length != 1 ? 's' : ''}';
                               break;
                             case 'timed':
-                              final totalDuration = entries.fold<int>(0, (sum, e) => sum + ((e['duration'] as int?) ?? 0));
+                              final totalDuration = entries.fold<int>(
+                                0,
+                                (sum, e) =>
+                                    sum + ((e['duration'] as int?) ?? 0),
+                              );
                               final minutes = totalDuration ~/ 60;
                               final seconds = totalDuration % 60;
-                              subtitle = '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
+                              subtitle =
+                                  '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
                               break;
                             case 'round':
-                              subtitle = '${entries.length} round${entries.length != 1 ? 's' : ''}';
+                              subtitle =
+                                  '${entries.length} round${entries.length != 1 ? 's' : ''}';
                               break;
                             case 'drill':
-                              subtitle = '${entries.length} hold${entries.length != 1 ? 's' : ''}';
+                              subtitle =
+                                  '${entries.length} hold${entries.length != 1 ? 's' : ''}';
                               break;
                             default:
-                              subtitle = '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
+                              subtitle =
+                                  '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
                           }
-                          
+
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             child: ListTile(
@@ -231,21 +262,26 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                     context: context,
                                     builder: (context) => AlertDialog(
                                       title: const Text('Remove Exercise'),
-                                      content: Text('Remove ${exercise['name']} from this workout?'),
+                                      content: Text(
+                                        'Remove ${exercise['name']} from this workout?',
+                                      ),
                                       actions: [
                                         TextButton(
-                                          onPressed: () => Navigator.pop(context, false),
+                                          onPressed: () =>
+                                              Navigator.pop(context, false),
                                           child: const Text('Cancel'),
                                         ),
                                         FilledButton(
-                                          onPressed: () => Navigator.pop(context, true),
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
                                           child: const Text('Remove'),
                                         ),
                                       ],
                                     ),
                                   );
                                   if (confirmed == true && mounted) {
-                                    await widget.workoutState.removeExerciseFromSession(effortId);
+                                    await widget.workoutState
+                                        .removeExerciseFromSession(effortId);
                                     await _initializeSession();
                                   }
                                 },
@@ -265,6 +301,11 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                       label: const Text('Add Exercise'),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            OmniTheme.buttonBorderRadius,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -277,6 +318,9 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                 MaterialPageRoute(
                                   builder: (_) => WorkoutSessionScreen(
                                     workoutState: widget.workoutState,
+                                    routineState: widget.routineState,
+                                    sessionSummaryService:
+                                        widget.sessionSummaryService,
                                   ),
                                 ),
                               );
@@ -285,6 +329,11 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                           : null,
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            OmniTheme.buttonBorderRadius,
+                          ),
+                        ),
                       ),
                       child: const Text('Start Workout'),
                     ),
