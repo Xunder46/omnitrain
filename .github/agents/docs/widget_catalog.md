@@ -166,7 +166,15 @@ Modal dialog for choosing a tracking method. Shown in Free Training mode and rou
 
 **File**: `lib/widgets/pickers/modality_picker_dialog.dart`
 
-Modal dialog for selecting a modality. Used in routine-related contexts where a modality hint is needed.
+Modal dialog for selecting a modality for an exercise being added to a null-modality (Free Training or Routine) session.
+
+**Key features**:
+- Shows all five modalities plus a "General" option
+- Returns `(true, String? modality)` record when the user picks an option:
+  - Specific modality: `(true, 'cardio_endurance')` etc.
+  - "General": `(true, null)`
+- Returns `null` when the user cancels (so callers can distinguish cancel from "General")
+- Callers use `showDialog<(bool, String?)>` and check for `null` before destructuring
 
 ---
 

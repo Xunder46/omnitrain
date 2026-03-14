@@ -180,16 +180,38 @@ Default target values when creating new sets/entries:
 
 **File**: `lib/core/constants/home_tiles.dart`
 
-Defines the 6-tile grid as `HomeTileConfig` objects:
+Defines the 6-tile grid as `HomeTileConfig` objects. Each tile's `accentColor` is sourced from `ModalityColors` (see below). Tile labels shown on screen are short forms; full display names are in `ModalityDisplay`.
 
-| Key | Label | Modality | Gradient Colors |
-|-----|-------|----------|----------------|
-| `cardio` | Cardio / Endurance | `cardio_endurance` | Orange tones |
-| `resistance` | Resistance / Lifting | `resistance_lifting` | Blue tones |
-| `sports` | Sports | `sports` | Red tones |
-| `isometric` | Isometric / Stretching | `isometric_stretching` | Green tones |
-| `free_training` | Free Training | `null` | Purple tones |
-| `my_routines` | My Routines | `null` (special) | Grey tones |
+| Key | Short Label | Full Label | Modality | Gradient Colors |
+|-----|-------------|------------|----------|----------------|
+| `cardio` | Cardio | Cardio / Endurance | `cardio_endurance` | Dark green tones |
+| `resistance` | Resistance | Resistance / Lifting | `resistance_lifting` | Blue tones |
+| `sports` | Sports | Sports | `sports` | Red tones |
+| `isometric` | Isometric | Isometric / Stretching | `isometric_stretching` | Amber tones |
+| `free_training` | Free | Free Training | `null` | Purple tones |
+| `my_routines` | Routines | My Routines | `null` (special) | Grey tones |
+
+---
+
+## Modality Colors
+
+**File**: `lib/core/constants/modality_colors.dart`
+
+> **Single source of truth** for modality accent colors. All modality-specific UI must import from this file instead of redefining color hex values.
+
+| Constant | Color | Used for |
+|----------|-------|----------|
+| `ModalityColors.cardioEndurance` | `#43A047` (grass green) | Cardio sessions, calendar dots, chips |
+| `ModalityColors.resistanceLifting` | `#5B9BD5` (steel blue) | Strength sessions, calendar dots, chips |
+| `ModalityColors.sports` | `#E63946` (ember red) | Sports/martial arts sessions, calendar dots, chips |
+| `ModalityColors.isometricStretching` | `#FFA726` (amber) | Isometric sessions, calendar dots, chips |
+| `ModalityColors.freeTraining` | `#7E57C2` (violet) | Free Training / fallback |
+
+**Helper methods**:
+- `ModalityColors.forModality(String? modality)` — returns accent for a modality key; null → `freeTraining`
+- `ModalityColors.forSummaryGroupLabel(String groupKey)` — returns accent for a session summary group key (`'strength'`, `'cardio'`, `'rounds'`, `'isometric'`)
+
+`ModalityColorUtils.colorForModality(String? modality)` (in `lib/core/utils/modality_color_utils.dart`) is a thin wrapper around `ModalityColors.forModality` kept for backward compatibility.
 
 ---
 

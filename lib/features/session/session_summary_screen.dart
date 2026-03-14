@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/modality_display.dart';
+import '../../core/constants/modality_colors.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/constants/modality_config.dart';
@@ -38,7 +39,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Timer? _noteDebounce;
   bool _isLoading = true;
 
-  VolumeComparison? _volumeComparison;
+  Map<String, GroupDelta> _groupDeltas = {};
   List<PRAchievement> _prs = [];
   Set<int> _workoutDays = {};
   int _daysInMonth = 30;
@@ -54,7 +55,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   static const _groupLabels = {
     'strength': 'Strength',
     'cardio': 'Cardio',
-    'rounds': 'Rounds',
+    'rounds': 'Sports',
     'isometric': 'Intervals',
   };
 
@@ -97,8 +98,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     final currentSession = widget.workoutState.currentSession;
     if (currentSession != null) {
-      final comparison = await widget.sessionSummaryService
-          .compareToPreviousSession(currentSession, _summary.totalVolume);
+      final groupDeltas = await widget.sessionSummaryService
+          .compareGroupsToPreviousSession(currentSession, _summary);
       final prs = await widget.sessionSummaryService.computePRs(
         _summary.exercises,
       );
@@ -107,7 +108,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (!mounted) return;
 
       setState(() {
-        _volumeComparison = comparison;
+        _groupDeltas = groupDeltas;
         _prs = prs;
         _isLoading = false;
       });
@@ -510,8 +511,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     _buildStatsCard(theme),
                     const SizedBox(height: 16),
                     _buildExerciseListSection(theme),
-                    const SizedBox(height: 16),
-                    _buildVolumeComparison(theme),
                     if (_prs.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       _buildPrsCard(theme),
@@ -589,36 +588,41 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildStatsCard(ThemeData theme) {
-    final pills = <Widget>[
-      _StatPill(
-        label: 'Duration',
-        value: _formatDuration(_summary.totalDurationMs),
-      ),
-      _StatPill(
-        label: 'Exercises',
-        value: _summary.exercises.length.toString(),
-      ),
+    final stats = <_StatItem>[
+      _StatItem(label: 'Duration', value: _formatDuration(_summary.totalDurationMs)),
+      _StatItem(label: 'Exercises', value: _summary.exercises.length.toString()),
+      _StatItem(label: 'Sets', value: _summary.totalSets.toString()),
+      _StatItem(label: 'Rounds', value: _summary.totalRounds.toString()),
     ];
 
-    if (_summary.totalSets > 0) {
-      pills.add(_StatPill(label: 'Sets', value: _summary.totalSets.toString()));
-    }
-    if (_summary.totalRounds > 0) {
-      pills.add(
-        _StatPill(label: 'Rounds', value: _summary.totalRounds.toString()),
-      );
-    }
-    if (_summary.totalCardioDurationMs > 0) {
-      pills.add(
-        _StatPill(
-          label: 'Cardio',
-          value: _formatDuration(_summary.totalCardioDurationMs),
-        ),
-      );
-    }
-
     return _SummaryCard(
-      child: Wrap(spacing: 24, runSpacing: 12, children: pills),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _StatPill(label: stats[0].label, value: stats[0].value),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _StatPill(label: stats[1].label, value: stats[1].value),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _StatPill(label: stats[2].label, value: stats[2].value),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _StatPill(label: stats[3].label, value: stats[3].value),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -642,39 +646,35 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       list.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
     }
 
-    final isMultiModality = groups.length > 1;
     final orderedGroupKeys = _groupOrder.where(groups.containsKey).toList();
 
     final items = <Widget>[];
 
-    if (isMultiModality) {
-      for (int g = 0; g < orderedGroupKeys.length; g++) {
-        final key = orderedGroupKeys[g];
-        final groupExercises = groups[key]!;
+    for (int g = 0; g < orderedGroupKeys.length; g++) {
+      final key = orderedGroupKeys[g];
+      final groupExercises = groups[key]!;
 
-        items.add(_buildExerciseGroupHeader(theme, key, groupExercises));
-        items.add(const SizedBox(height: 8));
+      items.add(
+        _buildExerciseGroupHeader(
+          theme,
+          key,
+          groupExercises,
+          _groupDeltas[key],
+        ),
+      );
+      items.add(const SizedBox(height: 8));
 
-        for (int i = 0; i < groupExercises.length; i++) {
-          items.add(_buildExerciseTile(theme, groupExercises[i]));
-          if (i < groupExercises.length - 1) {
-            items.add(const SizedBox(height: 6));
-          }
-        }
-
-        if (g < orderedGroupKeys.length - 1) {
-          items.add(const SizedBox(height: 16));
-          items.add(Divider(color: Colors.white.withOpacity(0.06), height: 1));
-          items.add(const SizedBox(height: 16));
-        }
-      }
-    } else {
-      // Single modality — flat list, no headers.
-      for (int i = 0; i < exercises.length; i++) {
-        items.add(_buildExerciseTile(theme, exercises[i]));
-        if (i < exercises.length - 1) {
+      for (int i = 0; i < groupExercises.length; i++) {
+        items.add(_buildExerciseTile(theme, groupExercises[i]));
+        if (i < groupExercises.length - 1) {
           items.add(const SizedBox(height: 6));
         }
+      }
+
+      if (g < orderedGroupKeys.length - 1) {
+        items.add(const SizedBox(height: 16));
+        items.add(Divider(color: Colors.white.withOpacity(0.06), height: 1));
+        items.add(const SizedBox(height: 16));
       }
     }
 
@@ -694,8 +694,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ThemeData theme,
     String groupKey,
     List<ExerciseSummary> exercises,
+    GroupDelta? delta,
   ) {
     final label = _groupLabels[groupKey] ?? groupKey;
+    final labelColor = ModalityColors.forSummaryGroupLabel(groupKey);
     String aggregate = '';
 
     switch (groupKey) {
@@ -725,26 +727,106 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     return Row(
       children: [
-        Text(
-          label.toUpperCase(),
-          style: theme.textTheme.labelSmall?.copyWith(
-            letterSpacing: 1.5,
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w600,
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  label.toUpperCase(),
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    letterSpacing: 1.5,
+                    color: labelColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (aggregate.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    '· $aggregate',
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      letterSpacing: 0.5,
+                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (aggregate.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          Text(
-            '· $aggregate',
-            style: theme.textTheme.labelSmall?.copyWith(
-              letterSpacing: 0.5,
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
-            ),
-          ),
-        ],
+        const SizedBox(width: 8),
+        _buildGroupComparisonChip(theme, delta),
       ],
     );
+  }
+
+  Widget _buildGroupComparisonChip(ThemeData theme, GroupDelta? delta) {
+    final dimColor = theme.colorScheme.onSurface.withOpacity(0.65);
+    final dimStyle = theme.textTheme.labelSmall?.copyWith(
+      color: dimColor,
+      fontWeight: FontWeight.w600,
+    );
+
+    if (delta == null || !delta.hasPrevious || delta.delta == null) {
+      return SizedBox(
+        width: 92,
+        child: Text('—', textAlign: TextAlign.right, style: dimStyle),
+      );
+    }
+
+    final d = delta.delta!;
+    if (d == 0) {
+      return SizedBox(
+        width: 92,
+        child: Text('—', textAlign: TextAlign.right, style: dimStyle),
+      );
+    }
+
+    final isPositive = d > 0;
+    final arrow = isPositive ? '↑' : '↓';
+    final sign = isPositive ? '+' : '-';
+    final arrowColor = isPositive
+        ? theme.colorScheme.primary
+        : theme.colorScheme.error.withOpacity(0.8);
+
+    final String formattedValue;
+    switch (delta.unit) {
+      case 'kg':
+        formattedValue = '${_formatNumber(d.abs())} kg';
+        break;
+      case 'ms':
+        formattedValue = _formatDurationDelta(d.abs().toInt());
+        break;
+      case 'rounds':
+        final count = d.abs().toInt();
+        formattedValue = '$count round${count != 1 ? 's' : ''}';
+        break;
+      default:
+        formattedValue = _formatNumber(d.abs());
+    }
+
+    return SizedBox(
+      width: 92,
+      child: Text(
+        '$arrow $sign$formattedValue',
+        textAlign: TextAlign.right,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: arrowColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  String _formatDurationDelta(int ms) {
+    if (ms >= 60000) {
+      final minutes = (ms / 60000).round();
+      return '$minutes min';
+    }
+    return '${(ms / 1000).round()}s';
   }
 
   Widget _buildExerciseTile(ThemeData theme, ExerciseSummary exercise) {
@@ -792,36 +874,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildVolumeComparison(ThemeData theme) {
-    final comparison = _volumeComparison;
-    String text;
-    Color color = theme.colorScheme.onSurface;
-
-    if (comparison == null || !comparison.hasPrevious) {
-      text = 'First session recorded';
-    } else {
-      final delta = comparison.delta ?? 0;
-      final sign = delta >= 0 ? '+' : '';
-      text = '$sign${_formatNumber(delta)} kg volume vs last time';
-      color = delta >= 0 ? theme.colorScheme.primary : theme.colorScheme.error;
-    }
-
-    return _SummaryCard(
-      child: Row(
-        children: [
-          Icon(Icons.trending_up, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: theme.textTheme.bodyMedium?.copyWith(color: color),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1038,6 +1090,13 @@ class _SummaryCard extends StatelessWidget {
       child: child,
     );
   }
+}
+
+class _StatItem {
+  final String label;
+  final String value;
+
+  const _StatItem({required this.label, required this.value});
 }
 
 class _StatPill extends StatelessWidget {

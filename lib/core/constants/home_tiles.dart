@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'modality.dart';
+import 'modality_colors.dart';
 
 /// Configuration for home screen modality tiles with cosmic aesthetic
 /// Defines the 5 primary entry points for workout sessions + My Routines
@@ -31,22 +32,22 @@ class HomeTiles {
     // Cardio / Endurance — grass green (Feb 2026: changed from cyan to green)
     HomeTileConfig(
       key: 'cardio',
-      label: 'Cardio / Endurance',
+      label: 'Cardio',
       iconData: Icons.directions_run,
       gradientColors: [Color(0xFF1A2F47), Color(0xFF0D2818)],
-      accentColor: Color(0xFF43A047),
+      accentColor: ModalityColors.cardioEndurance,
       modality: Modality.cardioEndurance,
     ),
     // Resistance / Lifting — steel blue (strength/weight)
     HomeTileConfig(
       key: 'resistance',
-      label: 'Resistance / Lifting',
+      label: 'Resistance',
       iconData: Icons.fitness_center,
       gradientColors: [Color(0xFF1A2F47), Color(0xFF152F42)],
-      accentColor: Color(0xFF5B9BD5),
+      accentColor: ModalityColors.resistanceLifting,
       modality: Modality.resistanceLifting,
     ),
-    
+
     // Row 2
     // Sports — unified martial arts + sports (Feb 2026: combined with martial arts icon and color)
     // Icon: martial arts, Color: ember red, Modality: sports (includes both categories)
@@ -55,33 +56,33 @@ class HomeTiles {
       label: 'Sports',
       iconData: Icons.sports_martial_arts,
       gradientColors: [Color(0xFF2A1E24), Color(0xFF3A1F2A)],
-      accentColor: Color(0xFFE63946),
+      accentColor: ModalityColors.sports,
       modality: Modality.sports,
     ),
     // Isometric / Stretching — amber (warm/hold)
     HomeTileConfig(
       key: 'isometric',
-      label: 'Isometric / Stretching',
+      label: 'Isometric',
       iconData: Icons.accessibility,
       gradientColors: [Color(0xFF2F2A1E), Color(0xFF3D3424)],
-      accentColor: Color(0xFFFFA726),
+      accentColor: ModalityColors.isometricStretching,
       modality: Modality.isometricStretching,
     ),
-    
+
     // Row 3
     // Free Training — violet (open/flexible, user chooses metrics per exercise)
     HomeTileConfig(
       key: 'free_training',
-      label: 'Free Training',
+      label: 'Free',
       iconData: Icons.play_arrow,
       gradientColors: [Color(0xFF24222A), Color(0xFF2A2433)],
-      accentColor: Color(0xFF7E57C2),
+      accentColor: ModalityColors.freeTraining,
       modality: null, // No modality preset
     ),
     // My Routines — neutral grey (placeholder for routine management feature)
     HomeTileConfig(
       key: 'my_routines',
-      label: 'My Routines',
+      label: 'Routines',
       iconData: Icons.folder_open,
       gradientColors: [Color(0xFF252525), Color(0xFF1C1C1C)],
       accentColor: Color(0xFF9E9E9E),

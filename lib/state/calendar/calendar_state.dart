@@ -151,8 +151,8 @@ class CalendarState extends ChangeNotifier {
         _entriesByDay.putIfAbsent(e.dayMs, () => []).add(e);
       }
 
-      // Load periods for calendar highlights.
-      await _loadPeriods();
+      // Load periods for calendar highlights and compute streak.
+      await Future.wait([_loadPeriods(), _computeStreak()]);
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -249,6 +249,111 @@ class CalendarState extends ChangeNotifier {
     );
     await _repository.updatePlannedSession(updated);
     await _loadMonth();
+  }
+
+  // ─── Monthly stats (derived from _entriesByDay) ──────────────────────────
+
+  /// Count of completed sessions for the loaded month.
+  int get completedSessionCount {
+    int count = 0;
+    for (final entries in _entriesByDay.values) {
+      for (final e in entries) {
+        if (e.isCompleted) count++;
+      }
+    }
+    return count;
+  }
+
+  /// Total training time (ms) for completed sessions in the loaded month.
+  int get totalTrainingMs {
+    int total = 0;
+    for (final entries in _entriesByDay.values) {
+      for (final e in entries) {
+        if (e.isCompleted &&
+            e.session != null &&
+            e.session!.endedAtMs != null) {
+          total += e.session!.endedAtMs! - e.session!.startedAtMs;
+        }
+      }
+    }
+    return total;
+  }
+
+  /// Count of completed sessions grouped by modality for the loaded month.
+  /// Null key = Free Training.
+  Map<String?, int> get modalityBreakdown {
+    final result = <String?, int>{};
+    for (final entries in _entriesByDay.values) {
+      for (final e in entries) {
+        if (e.isCompleted) {
+          result[e.modality] = (result[e.modality] ?? 0) + 1;
+        }
+      }
+    }
+    return result;
+  }
+
+  // ─── Streak ───────────────────────────────────────────────────────────────
+
+  int _streakDays = 0;
+  int get streakDays => _streakDays;
+
+  /// Computes the current consecutive-day streak of completed sessions,
+  /// looking back up to 90 days from today.
+  ///
+  /// Rules:
+  /// - If there is a session today, streak anchors on today.
+  /// - Else if there is a session yesterday, streak anchors on yesterday.
+  /// - Else streak is 0.
+  ///
+  /// Non-fatal: defaults to 0 on errors.
+  Future<void> _computeStreak() async {
+    try {
+      final now = DateTime.now();
+      final toMs = OmniDateUtils.endOfDayMs(now);
+      final fromMs = OmniDateUtils.startOfDayMs(
+        now.subtract(const Duration(days: 90)),
+      );
+      final sessions = await _repository.getSessionsByDateRange(fromMs, toMs);
+
+      final completedDays = <int>{};
+      for (final s in sessions) {
+        if (s.endedAtMs != null) {
+          completedDays.add(
+            OmniDateUtils.startOfDayMs(OmniDateUtils.fromMs(s.startedAtMs)),
+          );
+        }
+      }
+
+      final today = DateTime(now.year, now.month, now.day);
+      final yesterday = today.subtract(const Duration(days: 1));
+      final todayMs = today.millisecondsSinceEpoch;
+      final yesterdayMs = yesterday.millisecondsSinceEpoch;
+
+      DateTime? anchorDay;
+      if (completedDays.contains(todayMs)) {
+        anchorDay = today;
+      } else if (completedDays.contains(yesterdayMs)) {
+        anchorDay = yesterday;
+      }
+
+      if (anchorDay == null) {
+        _streakDays = 0;
+        return;
+      }
+
+      int streak = 0;
+      var day = anchorDay;
+      while (true) {
+        final ms = day.millisecondsSinceEpoch;
+        if (!completedDays.contains(ms)) break;
+        streak++;
+        day = day.subtract(const Duration(days: 1));
+      }
+      _streakDays = streak;
+    } catch (_) {
+      _streakDays = 0;
+    }
   }
 
   // ─── Period highlights ───────────────────────────────────────────────────────

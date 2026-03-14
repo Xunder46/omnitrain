@@ -34,6 +34,8 @@ Five training modalities are available as home screen tiles, covering the full s
 
 Additionally, **My Routines** is a special (non-modality) tile on the home screen that navigates to saved workout templates. See [My Routines](my_routines.md) for details.
 
+> Modality accent colors are centralized in `lib/core/constants/modality_colors.dart`. New UI components should import from that file rather than hardcoding modality colors.
+
 ### Exercise Capability System
 Exercises are tagged with **capabilities** (flags indicating what they can track):
 - `time` - Continuous duration
@@ -68,13 +70,18 @@ User → Selects "Resistance / Lifting" tile
      → Tracks as 3 sets × 10 reps @ 135 lbs
 ```
 
-### 2. Free Training (User-Driven)
+### 2. Free Training / Routine (User-Driven)
 ```
-User → Selects "Free Training" tile (modality=null)
-     → Adds "Barbell Squat" from exercise picker
-     → System shows metric chooser dialog
-     → User picks "Track by Time"
-     → Tracks as 8:00 continuous work
+User → Selects "Free Training" tile (modality=null) or starts a Routine session
+     → Adds an exercise from the picker
+     → System opens ModalityPickerDialog
+          Specific modality picked:
+              effortKind derived from ModalityConfig (no MetricChooserDialog needed)
+          "General" / null picked:
+              System shows MetricChooserDialog → user picks tracking method
+          Cancelled:
+              Exercise not added
+     → Tracks with the derived effort kind
 ```
 
 ### 3. Modality Change Mid-Session
@@ -167,10 +174,15 @@ class WorkoutState extends ChangeNotifier {
     // Creates session with modality field
   }
   
-  Future<String> addExerciseToSession(Exercise exercise, {String? chosenMetric}) {
-    // Determine effort kind from modality or chosen metric
+  Future<String> addExerciseToSession(Exercise exercise, {String? chosenMetric, String? effortKindOverride}) {
+    // Determine effort kind:
+    // 1. effortKindOverride (set from ModalityPickerDialog for null-modality sessions)
+    // 2. _currentModalityConfig.effortKind (set sessions)
+    // 3. ModalityConfig.effortKindFromMetric(chosenMetric) (General/Free Training fallback)
     String effortKind;
-    if (_currentModalityConfig != null) {
+    if (effortKindOverride != null) {
+      effortKind = effortKindOverride;
+    } else if (_currentModalityConfig != null) {
       effortKind = _currentModalityConfig!.effortKind;
     } else if (chosenMetric != null) {
       effortKind = ModalityConfig.effortKindFromMetric(chosenMetric);

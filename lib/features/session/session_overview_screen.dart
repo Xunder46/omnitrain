@@ -3,6 +3,8 @@ import '../../core/constants/omni_theme.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
+import '../../widgets/pickers/modality_picker_dialog.dart';
+import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../data/models/models.dart';
 import '../../state/routine/routine_state.dart';
@@ -79,21 +81,38 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     if (selectedExercise != null) {
       String? chosenMetric;
+      String? effortKindOverride;
 
-      // If Free Training (null modality), show metric chooser
+      // If Free Training or Routine session (null modality), ask user to pick a modality
       if (modality == null) {
-        // If exercise has only one capability, auto-select it
-        final deduped = _deduplicateCapabilities(selectedExercise.capabilities);
-        if (deduped.length == 1) {
-          chosenMetric = deduped.first;
-        } else {
-          chosenMetric = await showDialog<String>(
-            context: context,
-            builder: (context) =>
-                MetricChooserDialog(exercise: selectedExercise),
-          );
+        final modalityResult = await showDialog<(bool, String?)>(
+          context: context,
+          builder: (context) => const ModalityPickerDialog(),
+        );
 
-          if (chosenMetric == null) return; // User cancelled
+        if (!context.mounted || modalityResult == null) return; // user cancelled
+
+        final (_, pickedModality) = modalityResult;
+
+        if (pickedModality != null) {
+          // User picked a specific modality — derive effort kind from its config
+          effortKindOverride =
+              ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
+        } else {
+          // User picked "General" — fall back to metric chooser
+          final deduped =
+              _deduplicateCapabilities(selectedExercise.capabilities);
+          if (deduped.length == 1) {
+            chosenMetric = deduped.first;
+          } else {
+            chosenMetric = await showDialog<String>(
+              context: context,
+              builder: (context) =>
+                  MetricChooserDialog(exercise: selectedExercise),
+            );
+
+            if (chosenMetric == null) return; // User cancelled
+          }
         }
       }
 
@@ -101,6 +120,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
         final effortId = await widget.workoutState.addExerciseToSession(
           selectedExercise,
           chosenMetric: chosenMetric,
+          effortKindOverride: effortKindOverride,
         );
         if (effortId.isNotEmpty) {
           await Navigator.of(context).push(

@@ -150,36 +150,72 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       child: ListenableBuilder(
                         listenable: widget.workoutState,
                         builder: (context, child) {
-                          return GridView.count(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 16,
-                            crossAxisSpacing: 16,
-                            childAspectRatio: 1.0,
-                            children: HomeTiles.all.map((tile) {
-                              // Determine if this tile is the currently active session
-                              final session =
-                                  widget.workoutState.currentSession;
-                              final isRoutineSession =
-                                  session?.intent == 'routine';
-                              final isActive =
-                                  widget.workoutState.hasActiveSession &&
-                                  (tile.key == 'my_routines'
-                                      ? isRoutineSession
-                                      : tile.modality == null
-                                      ? session?.modality == null &&
-                                            !isRoutineSession
-                                      : session?.modality == tile.modality);
+                          const standardGridSpacing = 16.0;
+                          const utilitySectionGap = standardGridSpacing * 3;
 
-                              return EnergyTile(
-                                title: tile.label,
-                                icon: tile.iconData,
-                                gradientColors: tile.gradientColors,
-                                accentColor: tile.accentColor,
-                                isActive: isActive,
-                                onTap: () =>
-                                    _handleTileTap(context, tile, isActive),
-                              );
-                            }).toList(),
+                          final session = widget.workoutState.currentSession;
+                          final isRoutineSession = session?.intent == 'routine';
+                          final hasActiveSession =
+                              widget.workoutState.hasActiveSession;
+
+                          final tiles = HomeTiles.all
+                              .map((tile) {
+                                final isActive =
+                                    hasActiveSession &&
+                                    (tile.key == 'my_routines'
+                                        ? isRoutineSession
+                                        : tile.modality == null
+                                        ? session?.modality == null &&
+                                              !isRoutineSession
+                                        : session?.modality == tile.modality);
+
+                                return EnergyTile(
+                                  title: tile.label,
+                                  icon: tile.iconData,
+                                  gradientColors: tile.gradientColors,
+                                  accentColor: tile.accentColor,
+                                  isActive: isActive,
+                                  onTap: () =>
+                                      _handleTileTap(context, tile, isActive),
+                                );
+                              })
+                              .toList(growable: false);
+
+                          return CustomScrollView(
+                            slivers: [
+                              SliverGrid(
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: standardGridSpacing,
+                                      crossAxisSpacing: standardGridSpacing,
+                                      childAspectRatio: 1.0,
+                                    ),
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  return tiles[index];
+                                }, childCount: 4),
+                              ),
+                              const SliverToBoxAdapter(
+                                child: SizedBox(height: utilitySectionGap),
+                              ),
+                              SliverGrid(
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      crossAxisSpacing: standardGridSpacing,
+                                      childAspectRatio: 1.0,
+                                    ),
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  return tiles[index + 4];
+                                }, childCount: 2),
+                              ),
+                            ],
                           );
                         },
                       ),

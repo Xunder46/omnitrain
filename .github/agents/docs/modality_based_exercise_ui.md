@@ -384,17 +384,19 @@ HomeScreen → My Routines tile
 9. System creates `SegmentEffort` with `effortKind: 'timed'`
 10. UI renders timer + duration editor
 
-### Free Training (User-Driven)
+### Free Training / Routine Session (Null Modality)
 
-1. User selects "Free Training" tile (modality = null)
+1. User selects "Free Training" tile or starts a Routine session (modality = null)
 2. User taps FAB to add exercise
 3. System opens `ExercisePickerDialog` (no filtering)
 4. User selects exercise (e.g., "Barbell Squat")
-5. System opens `MetricChooserDialog` (user picks tracking method)
-6. User chooses "Track by Time"
-7. System calls `addExerciseToSession(exercise, chosenMetric: 'time')`
-8. System determines `effortKind = 'timed'` from chosen metric
-9. UI renders timer + duration editor
+5. System opens `ModalityPickerDialog` — user selects a modality for this exercise
+   - **Specific modality picked** (e.g., Cardio): `effortKindOverride = ModalityConfig.forModality(modality)?.effortKind`; no metric chooser shown
+   - **"General" picked** (null modality): system falls back to `MetricChooserDialog`
+   - **Cancelled**: exercise not added
+6. System calls `addExerciseToSession(exercise, chosenMetric: ..., effortKindOverride: ...)`
+7. System determines `effortKind` from override or chosen metric
+8. UI renders appropriate tracking controls
 
 ### Create Custom Exercise (Picker)
 
@@ -534,6 +536,47 @@ theme.colorScheme.primaryContainer
 - Exercises loaded once on screen mount
 - Reload only after mutations (add, delete, update)
 - No polling or background refresh
+
+---
+
+## Session Finalization
+
+### Finish Workout Flow
+
+When the user taps **Finish Workout**, the screen executes a deterministic shutdown sequence before navigating away:
+
+1. **Freeze all local UI timers** — `_ticker`, all `_effortTimers`, `_restTimer` cancelled; `_effortRunning[key]` set to `false`.
+2. **Persist all active timer-based entries** — iterates all `round`, `timed`, and `drill` efforts; calls `endRoundEarly` / `finishTimedEntry` for any `active` or `paused` instances.
+3. **End session** — `workoutState.endSession()` sets `endedAtMs` (idempotent; safe to call if already ended).
+4. **Navigate via `pushReplacement`** → `SessionSummaryScreen`; the workout screen is removed from the back-stack so pressing Back from the summary cannot return to an active-timer view.
+
+> Tick callbacks (`_onEffortTick`, `_tick`) guard against ghost updates by checking `session.endedAtMs != null` before processing.
+
+A `_isFinishingSession` flag prevents double-tap race conditions.
+
+### Edit Mode — Session Duration Editing
+
+In edit mode (`editMode: true`) the **Session Time** chip gains a tinted border, an edit icon, and becomes tappable. Tapping opens an `AlertDialog` with hours/minutes/seconds fields.
+
+- Pending duration is stored in `_pendingDurationSecs`; `_originalDurationSecs` holds the value at edit entry.
+- `_hasDurationChanged()` returns `true` if the two differ — this feeds into the **Unsaved Changes** guard.
+- On **Save**: `workoutState.updateSessionEndTime(_pendingDurationSecs!)` writes `endedAtMs = startedAtMs + durationSecs × 1000`.
+- On **Discard**: `_pendingDurationSecs` is reset to `_originalDurationSecs`; no repository write occurs.
+
+### Unsaved Changes Dialog
+
+The "Unsaved changes" dialog appears when the user attempts to leave edit mode with pending changes:
+
+| Trigger | Shown for |
+|---------|-----------|
+| `_editBuffer.isNotEmpty` | Any inline metric edit |
+| `_hasStructuralChanges` | Add/remove exercise or set |
+| `_hasDurationChanged()` | Session duration edit |
+
+Dialog layout:
+- **Close icon (×)** in title bar → keep editing (no action)
+- **Discard** (outlined button) → roll back all changes
+- **Save** (filled button) → persist all changes
 
 ---
 

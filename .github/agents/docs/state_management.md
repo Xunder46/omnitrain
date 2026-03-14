@@ -50,10 +50,12 @@ The primary state manager for active workout sessions. Manages the entire sessio
 |--------|---------|
 | `createNewSession({modality, title, intent, routineTemplateId})` | Creates session + segment |
 | `loadSessionData()` | Loads exercises, efforts, observations for current session |
-| `endSession()` | Marks session as ended (`endedAtMs`) |
+| `loadHistoricalSession(session)` | Loads a previously completed session for review/edit mode; sets `_currentModalityConfig` correctly from `session.modality` |
+| `endSession()` | Marks session as ended (`endedAtMs`); idempotent — no-op if session already has `endedAtMs` |
 | `clearSession()` | Removes session reference from state (doesn't delete data) |
 | `discardCurrentSession()` | Deletes session and all related data |
 | `updateSessionNote(note)` | Updates session note |
+| `updateSessionEndTime(durationSecs)` | Edit-mode only — sets `endedAtMs = startedAtMs + durationSecs × 1000`; no-op if `durationSecs ≤ 0` |
 
 #### Exercise Management
 
@@ -120,6 +122,31 @@ Manages routine template CRUD operations. Does **not** handle session creation (
 | **CRUD** | `loadRoutines()`, `createNewRoutine(name)`, `updateRoutineName(name)`, `saveRoutine()`, `deleteRoutine(id)`, `loadRoutineForEditing(id)` |
 | **Exercises** | `addExerciseToRoutine(exercise, effortKind)`, `removeExerciseFromRoutine(id)`, `reorderExercises(old, new)`, `updateEffortKind(id, kind)` |
 | **Targets** | `setTargetValue(...)`, `getEffortTargets(id)`, `addSetForEffort(id, kind)`, `removeLastSetForEffort(id)` |
+
+---
+
+### `CalendarState`
+
+**File**: `lib/state/calendar/calendar_state.dart`
+**Depends on**: `WorkoutRepository`
+
+Manages the calendar month view and associated monthly stats. See also [Calendar & Periods](calendar_periods.md) for full feature documentation.
+
+#### Key Responsibilities
+- Display month navigation (`goToPrevMonth`, `goToNextMonth`)
+- Load completed + planned sessions for the current month range and group by day into `_entriesByDay`
+- Compute monthly stats derived from `_entriesByDay` (pure getters — no extra caching)
+- Compute the current consecutive-day streak via `_computeStreak()` (up to 90 days of history)
+- Load period highlights for calendar background shading
+
+#### Monthly Stats Getters
+
+| Getter | Type | Description |
+|--------|------|-------------|
+| `completedSessionCount` | `int` | Completed sessions in loaded month |
+| `totalTrainingMs` | `int` | Sum of `endedAtMs − startedAtMs` for completed sessions with timing data |
+| `modalityBreakdown` | `Map<String?, int>` | Count of completed sessions grouped by modality key |
+| `streakDays` | `int` | Current consecutive-day streak (computed independently of displayed month) |
 
 ---
 
@@ -198,7 +225,7 @@ Post-workout analytics.
 
 | Method | Returns | Purpose |
 |--------|---------|---------|
-| `compareToPreviousSession(session, volume)` | `VolumeComparison` | Finds previous session, computes volume delta |
+| `compareGroupsToPreviousSession(session, summary)` | `Map<String, GroupDelta>` | Finds the most recent previous session; computes per-group stats (strength volume, cardio/isometric duration, round counts); returns delta map keyed by `'strength'`, `'cardio'`, `'rounds'`, `'isometric'` |
 | `computePRs(exerciseSummaries)` | `List<PRAchievement>` | Checks best weights against historical data |
 | `saveRoutineFromDraft(draft, {focusModality})` | `String` (template ID) | Persists a session-to-routine template |
 

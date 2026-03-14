@@ -172,7 +172,7 @@ class WorkoutState extends ChangeNotifier {
       }
 
       _currentSession = session;
-      _currentModalityConfig = null;
+      _currentModalityConfig = ModalityConfig.forModality(session.modality);
 
       // Clear prior in-memory child data.
       _segments.clear();
@@ -190,16 +190,19 @@ class WorkoutState extends ChangeNotifier {
         _efforts[segment.id] = efforts;
 
         for (final effort in efforts) {
-          _observations[effort.id] =
-              await _repository.getEffortObservations(effort.id);
+          _observations[effort.id] = await _repository.getEffortObservations(
+            effort.id,
+          );
 
           if (effort.effortKind == 'round') {
-            _roundInstances[effort.id] =
-                await _repository.getRoundInstances(effort.id);
+            _roundInstances[effort.id] = await _repository.getRoundInstances(
+              effort.id,
+            );
           }
           if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
-            _timedInstances[effort.id] =
-                await _repository.getTimedInstances(effort.id);
+            _timedInstances[effort.id] = await _repository.getTimedInstances(
+              effort.id,
+            );
           }
 
           if (effort.exerciseId != null) {
@@ -1377,6 +1380,7 @@ class WorkoutState extends ChangeNotifier {
   /// Sets the session end timestamp and persists to repository
   Future<void> endSession() async {
     if (_currentSession == null) return;
+    if (_currentSession!.endedAtMs != null) return;
 
     _clearError();
 
@@ -1458,6 +1462,45 @@ class WorkoutState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _setError('Failed to update session note: $e');
+    }
+  }
+
+  /// Overwrite the session's end time using a corrected duration (edit mode).
+  ///
+  /// Computes `endedAtMs = startedAtMs + durationSecs * 1000`.
+  /// Repository-agnostic: uses the same abstract `updateSession` path as
+  /// [updateSessionNote], so it works identically on HiveWorkoutRepository
+  /// (web/current) and the future SqliteWorkoutRepository.
+  ///
+  /// Ignored if [durationSecs] ≤ 0 or there is no current session.
+  Future<void> updateSessionEndTime(int durationSecs) async {
+    if (_currentSession == null) return;
+    if (durationSecs <= 0) return;
+    _clearError();
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final newEndedAtMs =
+          _currentSession!.startedAtMs + (durationSecs * 1000);
+      final updatedSession = TrainingSession(
+        id: _currentSession!.id,
+        ownerUserId: _currentSession!.ownerUserId,
+        routineTemplateId: _currentSession!.routineTemplateId,
+        startedAtMs: _currentSession!.startedAtMs,
+        endedAtMs: newEndedAtMs,
+        title: _currentSession!.title,
+        note: _currentSession!.note,
+        locationText: _currentSession!.locationText,
+        modality: _currentSession!.modality,
+        intent: _currentSession!.intent,
+        perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        createdAtMs: _currentSession!.createdAtMs,
+        updatedAtMs: now,
+      );
+      await _repository.updateSession(updatedSession);
+      _currentSession = updatedSession;
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update session end time: $e');
     }
   }
 
@@ -1556,7 +1599,8 @@ class WorkoutState extends ChangeNotifier {
       // 3. For efforts present in BOTH states, restore their children to snapshot
       //    values to undo add-set / delete-set operations.
       for (final effortId in currentEffortIds) {
-        if (!snapshotEffortIds.contains(effortId)) continue; // already deleted above
+        if (!snapshotEffortIds.contains(effortId))
+          continue; // already deleted above
 
         // Restore observations (set-based efforts).
         await _repository.deleteObservationsForEffort(effortId);

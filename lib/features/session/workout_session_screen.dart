@@ -8,6 +8,8 @@ import '../../core/utils/timer_alert_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
+import '../../widgets/pickers/modality_picker_dialog.dart';
+import '../../core/constants/modality_config.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
@@ -18,7 +20,7 @@ import 'session_summary_screen.dart';
 
 /// Actions surfaced by the "Unsaved changes" dialog shown when the user
 /// tries to leave edit mode without saving.
-enum _EditBackAction { save, discard, cancel }
+enum _EditBackAction { save, discard, close }
 
 class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -94,6 +96,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Changes are flushed to the repository only when Save is clicked.
   final Map<String, Map<String, dynamic>> _editBuffer = {};
 
+  // Prevent duplicate finish flows from double taps.
+  bool _isFinishingSession = false;
+
   // Edit-mode snapshot captured once after session data first loads.
   // Used by _discardEditChanges() to roll back structural mutations
   // (add/remove exercise, add/remove set) that bypass the edit buffer.
@@ -104,6 +109,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // was made during this edit session. Combined with _editBuffer to decide
   // whether to show the "Discard changes?" dialog on back.
   bool _hasStructuralChanges = false;
+
+  // Pending session-duration override in edit mode (seconds from start).
+  // Initialised from persisted timestamps when entering edit mode.
+  // Null in live (non-edit) mode.
+  int? _pendingDurationSecs;
+  int? _originalDurationSecs;
 
   @override
   void initState() {
@@ -976,6 +987,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   void _onEffortTick(String effortId, int entryIndex) {
+    final session = widget.workoutState.currentSession;
+    if (session == null || session.endedAtMs != null) {
+      return;
+    }
+
     final timerKey = '$effortId-$entryIndex';
     final effortKind = _getEffortKind(effortId);
     final targetSeconds = _getEffortTargetDuration(
@@ -1081,21 +1097,38 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     if (selectedExercise != null) {
       String? chosenMetric;
+      String? effortKindOverride;
 
-      // If Free Training (null modality), show metric chooser
+      // If Free Training or Routine session (null modality), ask user to pick a modality
       if (modality == null) {
-        // If exercise has only one capability, auto-select it
-        final deduped = _deduplicateCapabilities(selectedExercise.capabilities);
-        if (deduped.length == 1) {
-          chosenMetric = deduped.first;
-        } else {
-          chosenMetric = await showDialog<String>(
-            context: context,
-            builder: (context) =>
-                MetricChooserDialog(exercise: selectedExercise),
-          );
+        final modalityResult = await showDialog<(bool, String?)>(
+          context: context,
+          builder: (context) => const ModalityPickerDialog(),
+        );
 
-          if (chosenMetric == null) return; // User cancelled metric selection
+        if (!context.mounted || modalityResult == null) return; // user cancelled
+
+        final (_, pickedModality) = modalityResult;
+
+        if (pickedModality != null) {
+          // User picked a specific modality — derive effort kind from its config
+          effortKindOverride =
+              ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
+        } else {
+          // User picked "General" — fall back to metric chooser
+          final deduped =
+              _deduplicateCapabilities(selectedExercise.capabilities);
+          if (deduped.length == 1) {
+            chosenMetric = deduped.first;
+          } else {
+            chosenMetric = await showDialog<String>(
+              context: context,
+              builder: (context) =>
+                  MetricChooserDialog(exercise: selectedExercise),
+            );
+
+            if (chosenMetric == null) return; // User cancelled metric selection
+          }
         }
       }
 
@@ -1104,6 +1137,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         effortId = await widget.workoutState.addExerciseToSession(
           selectedExercise,
           chosenMetric: chosenMetric,
+          effortKindOverride: effortKindOverride,
           segmentId: segmentId,
         );
       } catch (e) {
@@ -1142,6 +1176,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final mm = (elapsedSeconds ~/ 60).remainder(60).toString().padLeft(2, '0');
     final ss = (elapsedSeconds % 60).toString().padLeft(2, '0');
     _elapsedFormatted = '$mm:$ss';
+    // Capture original so dirty detection and discard work correctly.
+    _pendingDurationSecs = elapsedSeconds;
+    _originalDurationSecs = elapsedSeconds;
   }
 
   /// Navigate forward in edit mode: advance to the next set/exercise without
@@ -1166,6 +1203,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     // This ensures the timer doesn't reset when navigating away and back
     final session = widget.workoutState.currentSession;
     if (session == null) return;
+    if (session.endedAtMs != null) return;
 
     final elapsedMs =
         DateTime.now().millisecondsSinceEpoch - session.startedAtMs;
@@ -1195,14 +1233,161 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     });
   }
 
+  // ── Edit-mode duration editing ───────────────────────────────────────────
+
+  bool _hasDurationChanged() =>
+      _pendingDurationSecs != null &&
+      _originalDurationSecs != null &&
+      _pendingDurationSecs != _originalDurationSecs;
+
+  void _reformatElapsed(int durationSecs) {
+    final h = durationSecs ~/ 3600;
+    final m = (durationSecs % 3600) ~/ 60;
+    final s = durationSecs % 60;
+    if (h > 0) {
+      _elapsedFormatted =
+          '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    } else {
+      _elapsedFormatted =
+          '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+  }
+
+  /// Opens a dialog letting the user correct the total session duration.
+  /// Updates [_pendingDurationSecs] and reformats the elapsed display;
+  /// the change is persisted only when the user taps "Save Changes".
+  Future<void> _editSessionDuration() async {
+    if (!widget.editMode) return;
+    final current = _pendingDurationSecs ?? 0;
+    final h = current ~/ 3600;
+    final m = (current % 3600) ~/ 60;
+    final s = current % 60;
+
+    final hhCtrl = TextEditingController(text: h.toString());
+    final mmCtrl = TextEditingController(text: m.toString().padLeft(2, '0'));
+    final ssCtrl = TextEditingController(text: s.toString().padLeft(2, '0'));
+
+    int? result;
+    try {
+      result = await showDialog<int>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Edit Session Duration'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Adjust the total duration of this session.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: OmniTheme.textSecondary,
+                    ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: hhCtrl,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        labelText: 'Hours',
+                        suffixText: 'h',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: mmCtrl,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        labelText: 'Min',
+                        suffixText: 'm',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: ssCtrl,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        labelText: 'Sec',
+                        suffixText: 's',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final hVal = int.tryParse(hhCtrl.text.trim()) ?? 0;
+                final mVal = int.tryParse(mmCtrl.text.trim()) ?? 0;
+                final sVal = int.tryParse(ssCtrl.text.trim()) ?? 0;
+                Navigator.pop(context, hVal * 3600 + mVal * 60 + sVal);
+              },
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      hhCtrl.dispose();
+      mmCtrl.dispose();
+      ssCtrl.dispose();
+    }
+
+    if (result != null && result > 0 && mounted) {
+      setState(() {
+        _pendingDurationSecs = result;
+        _reformatElapsed(result as int);
+      });
+    }
+  }
+
   // ── Edit-mode navigation helpers ────────────────────────────────────────
 
   /// Handles the Back gesture / arrow-button press while in edit mode.
   ///
-  /// Pops immediately when nothing has changed. Otherwise shows a three-option
-  /// dialog: Keep editing / Discard / Save.
+  /// Pops immediately when nothing has changed. Otherwise shows an unsaved
+  /// changes dialog with close, discard, and save actions.
   Future<void> _handleEditModeBack() async {
-    final hasUnsaved = _editBuffer.isNotEmpty || _hasStructuralChanges;
+    final hasUnsaved =
+        _editBuffer.isNotEmpty ||
+        _hasStructuralChanges ||
+        _hasDurationChanged();
     if (!hasUnsaved) {
       Navigator.of(context).pop();
       return;
@@ -1211,49 +1396,66 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final action = await showDialog<_EditBackAction>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Unsaved changes'),
+        title: Row(
+          children: [
+            const Expanded(child: Text('Unsaved changes')),
+            IconButton(
+              onPressed: () => Navigator.pop(context, _EditBackAction.close),
+              tooltip: 'Keep editing',
+              icon: const Icon(Icons.close),
+            ),
+          ],
+        ),
         content: const Text(
           'You have unsaved edits. Save them or discard to return to the summary.',
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, _EditBackAction.cancel),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
+          SizedBox(
+            width: double.infinity,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Tooltip(
+                    message: 'Discard changes',
+                    child: OutlinedButton(
+                      onPressed: () =>
+                          Navigator.pop(context, _EditBackAction.discard),
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonUtilityRadius,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: const Text('Discard'),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            child: const Text('Keep editing'),
-          ),
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context, _EditBackAction.discard),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Tooltip(
+                    message: 'Save changes',
+                    child: FilledButton(
+                      onPressed: () =>
+                          Navigator.pop(context, _EditBackAction.save),
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonUtilityRadius,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: const Text('Save'),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
-            child: const Text('Discard'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, _EditBackAction.save),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Save'),
           ),
         ],
       ),
@@ -1266,7 +1468,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       case _EditBackAction.discard:
         await _discardEditChanges();
       case null:
-      case _EditBackAction.cancel:
+      case _EditBackAction.close:
         break; // stay on screen
     }
   }
@@ -1282,6 +1484,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   /// HiveWorkoutRepository (web) and the future SqliteWorkoutRepository.
   Future<void> _discardEditChanges() async {
     _editBuffer.clear();
+
+    // Restore the pending duration to the original value captured at edit entry.
+    if (_hasDurationChanged()) {
+      _pendingDurationSecs = _originalDurationSecs;
+      if (_pendingDurationSecs != null) _reformatElapsed(_pendingDurationSecs!);
+    }
 
     final snapshot = _editSnapshot;
     if (snapshot != null && _hasStructuralChanges) {
@@ -1328,6 +1536,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           metricEntry.value,
         );
       }
+    }
+
+    // Persist session duration change if any.
+    if (_hasDurationChanged()) {
+      await widget.workoutState.updateSessionEndTime(_pendingDurationSecs!);
+      _originalDurationSecs = _pendingDurationSecs;
     }
 
     // Commit: clear rollback state so the snapshot is never used accidentally.
@@ -1416,54 +1630,97 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Future<void> _finishSession() async {
-    if (!mounted) return;
+    if (!mounted || _isFinishingSession) return;
 
-    // Persist any round timers that are still active before opening the summary.
-    // This is the primary shutdown path: cancels UI tick timers and calls
-    // endRoundEarly() for any active/paused rounds so the summary and
-    // template-builder see correct elapsed data. WorkoutState._persistActiveRounds()
-    // serves as a secondary safety net (e.g. app backgrounded) and also handles
-    // pause-state folding correctly via the same endRoundEarly() call.
-    await _persistActiveRoundTimers();
+    setState(() => _isFinishingSession = true);
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SessionSummaryScreen(
-          workoutState: widget.workoutState,
-          routineState: widget.routineState,
-          sessionSummaryService: widget.sessionSummaryService,
-          onSessionSaved: widget.onSessionSaved,
+    // Deterministic finish order:
+    // 1) freeze all local UI timers
+    // 2) persist all active timer-based entries (round + timed/drill)
+    // 3) end session (set endedAtMs)
+    // 4) replace route with summary so Back cannot resume an active session screen
+    try {
+      _freezeAllLocalTimers();
+      await _persistActiveEffortTimers();
+      await widget.workoutState.endSession();
+
+      if (!mounted) return;
+
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => SessionSummaryScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+            onSessionSaved: widget.onSessionSaved,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to finish workout: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _isFinishingSession = false);
+      }
+    }
   }
 
-  /// Ends any in-progress round timers and persists elapsed to the repository.
+  void _freezeAllLocalTimers() {
+    _ticker?.cancel();
+
+    for (final timer in _effortTimers.values) {
+      timer?.cancel();
+    }
+
+    for (final key in _effortTimers.keys) {
+      _effortRunning[key] = false;
+    }
+
+    _restTimer?.cancel();
+    _restStopwatch?.stop();
+  }
+
+  /// Ends any in-progress round/timed/drill timers and persists elapsed to
+  /// the repository.
   /// Must be called before navigating away from the session (e.g., Finish Workout).
-  Future<void> _persistActiveRoundTimers() async {
+  Future<void> _persistActiveEffortTimers() async {
     for (final exercise in _exercises) {
       final effortId = exercise['id'] as String;
       final effortKind = exercise['effortKind'] as String? ?? 'set';
-      if (effortKind != 'round') continue;
+      if (effortKind != 'round' &&
+          effortKind != 'timed' &&
+          effortKind != 'drill') {
+        continue;
+      }
 
       final entries = exercise['entries'] as List<Map<String, dynamic>>? ?? [];
       for (int i = 0; i < entries.length; i++) {
         final timerKey = '$effortId-$i';
-        final round = _getRoundInstance(effortId, i);
-        if (round == null) continue;
 
-        // Stop the tick timer
+        // Stop any local per-entry tick timer.
         _effortTimers[timerKey]?.cancel();
         _effortRunning[timerKey] = false;
 
-        if (round.state == RoundState.active ||
-            round.state == RoundState.paused) {
-          // End early — WorkoutState handles pause folding
-          await widget.workoutState.endRoundEarly(effortId, i);
+        if (effortKind == 'round') {
+          final round = _getRoundInstance(effortId, i);
+          if (round != null &&
+              (round.state == RoundState.active ||
+                  round.state == RoundState.paused)) {
+            await widget.workoutState.endRoundEarly(effortId, i);
+          }
+        } else {
+          final instance = _getTimedInstance(effortId, i);
+          if (instance != null &&
+              (instance.state == TimedState.active ||
+                  instance.state == TimedState.paused)) {
+            await widget.workoutState.finishTimedEntry(effortId, i);
+          }
         }
-        // Skip finished and notStarted rounds
 
-        // Clear round timer state
+        // Reset per-entry alert state after explicit finish.
         _effortAlerted[timerKey] = false;
       }
     }
@@ -1995,6 +2252,71 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
+  /// Session time chip used in both the empty-exercises and the normal list
+  /// views. In edit mode it gains a border, tinted text, and an edit icon,
+  /// and wraps itself in a [GestureDetector] that opens [_editSessionDuration].
+  Widget _buildSessionTimeWidget(ThemeData theme) {
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: OmniTheme.surfaceColor.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: widget.editMode
+            ? Border.all(
+                color: theme.colorScheme.primary
+                    .withAlpha((0.45 * 255).round()),
+              )
+            : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Session Time',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: OmniTheme.textSecondary,
+                ),
+              ),
+              if (widget.editMode) ...[
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.edit,
+                  size: 12,
+                  color: theme.colorScheme.primary,
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(
+                Icons.timer,
+                size: 16,
+                color: OmniTheme.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _elapsedFormatted,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: widget.editMode
+                      ? theme.colorScheme.primary
+                      : OmniTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    if (!widget.editMode) return chip;
+    return GestureDetector(onTap: _editSessionDuration, child: chip);
+  }
+
   Widget _buildListView(ThemeData theme) {
     final segments = widget.workoutState.segments.toList()
       ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
@@ -2027,46 +2349,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: OmniTheme.surfaceColor.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Session Time',
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    color: OmniTheme.textSecondary,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.timer,
-                                      size: 16,
-                                      color: OmniTheme.textSecondary,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      _elapsedFormatted,
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            color: OmniTheme.textPrimary,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
+                          _buildSessionTimeWidget(theme),
                         ],
                       ),
                     ),
@@ -2150,46 +2433,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: OmniTheme.surfaceColor.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Session Time',
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  color: OmniTheme.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.timer,
-                                    size: 16,
-                                    color: OmniTheme.textSecondary,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    _elapsedFormatted,
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                          color: OmniTheme.textPrimary,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+                        _buildSessionTimeWidget(theme),
                       ],
                     ),
                   ),

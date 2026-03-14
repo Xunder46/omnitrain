@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Dialog for selecting an exercise modality
-/// 
-/// Returns the selected modality string, or null if cancelled
+/// Dialog for selecting an exercise modality.
+///
+/// Returns `(true, modality)` when the user picks a modality (modality may be
+/// null for "General"), or `null` when the user cancels.
 class ModalityPickerDialog extends StatelessWidget {
   final String? initialModality;
 
@@ -68,7 +69,7 @@ class ModalityPickerDialog extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: () => Navigator.pop(context, modality),
+            onTap: () => Navigator.pop(context, (true, modality)),
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding: EdgeInsets.all(12),

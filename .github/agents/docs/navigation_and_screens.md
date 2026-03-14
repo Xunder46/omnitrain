@@ -35,12 +35,16 @@ HomeScreen
   ├── Modality Tile (1 of 5) ──→ SessionOverviewScreen (creates session)
   │                                  │
   │                                  ├── Add Exercise → ExercisePickerDialog
-  │                                  │                    └── [MetricChooserDialog] (if null modality)
+  │                                  │                    └── [ModalityPickerDialog] (if null modality: pick modality or General)
+  │                                  │                         └── [MetricChooserDialog] (if General picked)
   │                                  │                         └── → WorkoutSessionScreen (auto-navigate, focused on new exercise)
   │                                  │
   │                                  └── Start Workout → WorkoutSessionScreen
   │                                                        │
-  │                                                        ├── (back / finish) → SessionSummaryScreen
+  │                                                        ├── finish → **pushReplacement** → SessionSummaryScreen
+  │                                                        │   (back after finish pops to caller; cannot resume active session)
+  │                                                        │                       │
+  │                                                        ├── back → SessionSummaryScreen
   │                                                        │                       │
   │                                                        │                       ├── Edit Session → SessionOverviewScreen (push)
   │                                                        │                       ├── Save as Routine → bottom sheet
@@ -48,7 +52,8 @@ HomeScreen
   │                                                        │                       └── Done → popUntil(isFirst)
   │                                                        │
   │                                                        └── Add Exercise → ExercisePickerDialog
-  │                                                              └── [MetricChooserDialog] (if null modality)
+  │                                                              └── [ModalityPickerDialog] (if null modality: pick modality or General)
+  │                                                                    └── [MetricChooserDialog] (if General picked)
   │                                                              └── [ExerciseEditorScreen] (create custom)
   │
   ├── My Routines Tile ──→ (if routine session active) → WorkoutSessionScreen
@@ -116,8 +121,8 @@ main.dart
 | Dialog | File | Purpose |
 |--------|------|---------|
 | `ExercisePickerDialog` | `lib/widgets/pickers/exercise_picker_dialog.dart` | Search and select exercises (modality-ranked) |
-| `MetricChooserDialog` | `lib/widgets/pickers/metric_chooser_dialog.dart` | Choose tracking method for an exercise (Free Training / Routines) |
-| `ModalityPickerDialog` | `lib/widgets/pickers/modality_picker_dialog.dart` | Pick a modality (used in routine context) |
+| `MetricChooserDialog` | `lib/widgets/pickers/metric_chooser_dialog.dart` | Choose tracking method for an exercise (Free Training / General fallback) |
+| `ModalityPickerDialog` | `lib/widgets/pickers/modality_picker_dialog.dart` | Pick a modality for an exercise added to a null-modality session; returns `(bool, String?)` record or `null` (cancelled) |
 
 ---
 
@@ -141,5 +146,5 @@ When tapping a different modality tile while a session is active:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: February 28, 2026
+**Document Version**: 1.1
+**Last Updated**: March 14, 2026
