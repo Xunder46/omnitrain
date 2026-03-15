@@ -725,7 +725,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             // Picker based on mode
             if (_mode == 'free')
               DropdownButtonFormField<String?>(
-                value: _selectedModality,
+                initialValue: _selectedModality,
                 decoration: const InputDecoration(
                   labelText: 'Modality',
                   border: OutlineInputBorder(),
@@ -742,7 +742,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
               )
             else
               DropdownButtonFormField<String?>(
-                value: _selectedTemplateId,
+                initialValue: _selectedTemplateId,
                 decoration: const InputDecoration(
                   labelText: 'Routine',
                   border: OutlineInputBorder(),
