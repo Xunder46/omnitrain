@@ -27,7 +27,18 @@ abstract class WorkoutRepository {
   });
   Future<String> createSession(TrainingSession session);
   Future<void> updateSession(TrainingSession session);
+  Future<void> updateSessionFeeling(String sessionId, int feeling);
   Future<void> deleteSession(String id);
+
+  // Profile
+  Future<UserProfile?> getProfile();
+  Future<void> saveProfile(UserProfile profile);
+  Future<List<BodyMeasurementEntry>> getMeasurementHistory(
+    String measurementType,
+  );
+  Future<BodyMeasurementEntry?> getLatestMeasurement(String measurementType);
+  Future<void> saveMeasurementEntry(BodyMeasurementEntry entry);
+  Future<void> deleteMeasurementEntry(String entryId);
 
   // Segments
   Future<List<SessionSegment>> getSessionSegments(String sessionId);

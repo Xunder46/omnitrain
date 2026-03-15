@@ -170,6 +170,44 @@ Not persisted — resets on app restart.
 
 ---
 
+### `ProfileState`
+
+**File**: `lib/state/profile/profile_state.dart`
+**Depends on**: `WorkoutRepository`
+
+Manages profile identity and body-measurement flows used by `ProfileScreen`.
+
+#### Key Responsibilities
+1. Load or bootstrap a local profile (`id: 'local-user'`)
+2. Persist display name and avatar path changes
+3. Load latest measurement values per type
+4. Log new measurement entries
+5. Read measurement history for chart/list UI
+6. Delete measurement entries and refresh latest values
+
+#### Key State Fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `_profile` | `UserProfile?` | Current local profile |
+| `_isLoading` | `bool` | Loading guard for initial profile load |
+| `_error` | `String?` | Last profile/measurement error |
+| `_latestMeasurements` | `Map<String, BodyMeasurementEntry?>` | Latest entry per measurement type |
+
+#### Key Methods
+
+| Method | Purpose |
+|--------|---------|
+| `loadProfile()` | Loads profile; creates and saves `local-user` if missing; loads primary latest measurements |
+| `loadLatestMeasurements(types, {notify})` | Bulk refresh for selected types |
+| `updateDisplayName(name)` | Trims and persists display name (`null` when blank) |
+| `updateAvatarPath(path)` | Persists avatar path or clears it |
+| `logMeasurement(type, value, unitId, {recordedAtMs})` | Saves new entry; defaults timestamp to save time |
+| `getMeasurementHistory(type)` | Repository passthrough for history UI |
+| `deleteMeasurementEntry(entryId, measurementType)` | Deletes and refreshes latest value for the type |
+
+---
+
 ### `AppState`
 
 **File**: `lib/state/app_state.dart`
@@ -255,6 +293,9 @@ WorkoutRepository (interface)
   │
   ├─ WorkoutState
   ├─ RoutineState
+  ├─ CalendarState
+  ├─ PeriodState
+  ├─ ProfileState
   ├─ RoutineSessionService
   └─ SessionSummaryService
 
@@ -262,7 +303,7 @@ HomeState (standalone, no dependencies)
 AppState (standalone, singleton, minimal)
 ```
 
-All five injectable objects are created in `main.dart` and passed to `MyApp` via constructor.
+All injectable state/service objects are created in `main.dart` and passed to `MyApp` via constructor.
 
 ---
 
@@ -275,5 +316,5 @@ All five injectable objects are created in `main.dart` and passed to `MyApp` via
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: February 28, 2026
+**Document Version**: 1.1
+**Last Updated**: March 15, 2026

@@ -14,8 +14,8 @@ OmniTrain uses **imperative navigation** (`Navigator.push` / `Navigator.pop`). T
 main()
   → _createRepository() → HiveWorkoutRepository
   → repository.initialize()
-  → Creates: WorkoutState, HomeState, RoutineState, RoutineSessionService, SessionSummaryService
-  → runApp(MyApp(...))   // All 5 dependencies injected via constructor
+  → Creates: WorkoutState, HomeState, RoutineState, CalendarState, PeriodState, ProfileState, RoutineSessionService, SessionSummaryService
+  → runApp(MyApp(...))   // All dependencies injected via constructor
 ```
 
 **File**: `lib/app.dart`
@@ -67,8 +67,10 @@ HomeScreen
   ├── Free Training Tile ──→ SessionOverviewScreen (modality = null)
   │                            └── (same flow as modality tiles above)
   │
-  └── Maintenance Sheet ──→ MaintenancePlaceholderScreen
-      (Profile, Stats, Settings)     (generic "Coming Soon" placeholder)
+    └── Maintenance Sheet
+      ├── Profile ──→ ProfileScreen
+      ├── Stats ──→ MaintenancePlaceholderScreen
+      └── Settings ──→ MaintenancePlaceholderScreen
 ```
 
 ---
@@ -84,7 +86,8 @@ HomeScreen
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |
 | `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create custom exercises |
-| `MaintenancePlaceholderScreen` | `lib/features/home/maintenance_placeholder_screen.dart` | "Coming Soon" placeholder |
+| `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
+| `MaintenancePlaceholderScreen` | `lib/features/home/maintenance_placeholder_screen.dart` | Placeholder for non-implemented maintenance routes (Stats, Settings) |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
 
 ### Empty / Placeholder Directories
@@ -101,10 +104,13 @@ main.dart
   → WorkoutState(repository)
   → HomeState()
   → RoutineState(repository)
+  → CalendarState(repository)
+  → PeriodState(repository)
+  → ProfileState(repository)
   → RoutineSessionService(repository)
   → SessionSummaryService(repository)
-  → MyApp(workoutState, homeState, routineState, routineSessionService, sessionSummaryService)
-    → HomeScreen(workoutState, homeState, routineState, routineSessionService, sessionSummaryService)
+  → MyApp(workoutState, homeState, routineState, routineSessionService, sessionSummaryService, calendarState, periodState, profileState)
+    → HomeScreen(workoutState, homeState, routineState, routineSessionService, sessionSummaryService, calendarState, periodState, profileState)
       → (passes relevant subset to child screens)
 ```
 
@@ -146,5 +152,5 @@ When tapping a different modality tile while a session is active:
 
 ---
 
-**Document Version**: 1.1
-**Last Updated**: March 14, 2026
+**Document Version**: 1.2
+**Last Updated**: March 15, 2026

@@ -11,14 +11,19 @@ import 'workout_repository.dart';
 class HiveWorkoutRepository implements WorkoutRepository {
   static const String _metaBoxName = 'meta';
   static const String _seedLoadedKey = 'seed_loaded';
+  static const String _seedUnitsMigrationKey = 'seed_units_migrated_v1';
   static const String _exerciseRoundDefaultsMigrationKey =
       'exercise_round_defaults_migrated_v1';
+    static const String _sessionFeelingFieldsMigrationKey =
+      'session_feeling_fields_migrated_v1';
   static const String _calendarDataMigrationKey = 'calendar_data_seeded_v1';
   static const String _calendarSeedPurgeMigrationKey =
       'calendar_seed_purged_v1';
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
+  late Box<Map> _userProfilesBox;
+  late Box<Map> _bodyMeasurementsBox;
   late Box<Map> _segmentsBox;
   late Box<Map> _effortsBox;
   late Box<Map> _observationsBox;
@@ -67,6 +72,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     _metaBox = await Hive.openBox(_metaBoxName);
     _exercisesBox = await Hive.openBox<Map>('exercises');
     _sessionsBox = await Hive.openBox<Map>('sessions');
+    _userProfilesBox = await Hive.openBox<Map>('user_profile');
+    _bodyMeasurementsBox = await Hive.openBox<Map>('body_measurements');
     _segmentsBox = await Hive.openBox<Map>('segments');
     _effortsBox = await Hive.openBox<Map>('efforts');
     _observationsBox = await Hive.openBox<Map>('observations');
@@ -105,7 +112,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
       await _metaBox.put(_seedLoadedKey, true);
     }
 
+    await _migrateSeedUnits();
     await _migrateExerciseRoundDefaults();
+    await _migrateSessionFeelingFields();
     await _seedCalendarData();
     await _purgeCalendarSeedData();
 
@@ -189,6 +198,20 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   }
 
+  /// Backfills newly added seed units for existing installs where `_seed_loaded`
+  /// prevents `_seedData()` from running again.
+  Future<void> _migrateSeedUnits() async {
+    final migrated = _metaBox.get(_seedUnitsMigrationKey) as bool? ?? false;
+    if (migrated) return;
+
+    for (final unit in SeedData.defaultUnits) {
+      if (_unitsBox.containsKey(unit.id)) continue;
+      await _unitsBox.put(unit.id, unit.toMap());
+    }
+
+    await _metaBox.put(_seedUnitsMigrationKey, true);
+  }
+
   /// Backfills `default_round_duration_secs` for existing Hive installs that
   /// were seeded before this field was introduced.
   ///
@@ -219,6 +242,15 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
 
     await _metaBox.put(_exerciseRoundDefaultsMigrationKey, true);
+  }
+
+  /// Migration note: session_feeling_v1, quality_rating_v1 added as nullable int fields.
+  /// No backfill needed - null is the correct default for all existing sessions.
+  Future<void> _migrateSessionFeelingFields() async {
+    final migrated =
+        _metaBox.get(_sessionFeelingFieldsMigrationKey) as bool? ?? false;
+    if (migrated) return;
+    await _metaBox.put(_sessionFeelingFieldsMigrationKey, true);
   }
 
   /// Legacy no-op migration key from the initial Calendar & Periods rollout.
@@ -430,6 +462,34 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<void> updateSessionFeeling(String sessionId, int feeling) async {
+    final raw = _sessionsBox.get(sessionId);
+    if (raw == null) return;
+
+    final existing = TrainingSession.fromMap(_asStringMap(raw));
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final updated = TrainingSession(
+      id: existing.id,
+      ownerUserId: existing.ownerUserId,
+      routineTemplateId: existing.routineTemplateId,
+      startedAtMs: existing.startedAtMs,
+      endedAtMs: existing.endedAtMs,
+      title: existing.title,
+      note: existing.note,
+      locationText: existing.locationText,
+      modality: existing.modality,
+      intent: existing.intent,
+      perceivedSessionRpe: existing.perceivedSessionRpe,
+      sessionFeeling: feeling,
+      qualityRating: existing.qualityRating,
+      createdAtMs: existing.createdAtMs,
+      updatedAtMs: now,
+    );
+
+    await _sessionsBox.put(sessionId, updated.toMap());
+  }
+
+  @override
   Future<void> deleteSession(String id) async {
     final segmentIds = <dynamic>[];
     for (final entry in _segmentsBox.toMap().entries) {
@@ -469,6 +529,53 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _effortsBox.deleteAll(effortIds);
     await _segmentsBox.deleteAll(segmentIds);
     await _sessionsBox.delete(id);
+  }
+
+  // ===== PROFILE =====
+
+  @override
+  Future<UserProfile?> getProfile() async {
+    final localRaw = _userProfilesBox.get('local-user');
+    if (localRaw != null) {
+      return UserProfile.fromMap(_asStringMap(localRaw));
+    }
+    if (_userProfilesBox.isEmpty) return null;
+    return UserProfile.fromMap(_asStringMap(_userProfilesBox.values.first));
+  }
+
+  @override
+  Future<void> saveProfile(UserProfile profile) async {
+    await _userProfilesBox.put(profile.id, profile.toMap());
+  }
+
+  @override
+  Future<List<BodyMeasurementEntry>> getMeasurementHistory(
+    String measurementType,
+  ) async {
+    final entries = _bodyMeasurementsBox.values
+        .map((raw) => BodyMeasurementEntry.fromMap(_asStringMap(raw)))
+        .where((entry) => entry.measurementType == measurementType)
+        .toList();
+    entries.sort((a, b) => b.recordedAtMs.compareTo(a.recordedAtMs));
+    return entries;
+  }
+
+  @override
+  Future<BodyMeasurementEntry?> getLatestMeasurement(
+    String measurementType,
+  ) async {
+    final entries = await getMeasurementHistory(measurementType);
+    return entries.isEmpty ? null : entries.first;
+  }
+
+  @override
+  Future<void> saveMeasurementEntry(BodyMeasurementEntry entry) async {
+    await _bodyMeasurementsBox.put(entry.id, entry.toMap());
+  }
+
+  @override
+  Future<void> deleteMeasurementEntry(String entryId) async {
+    await _bodyMeasurementsBox.delete(entryId);
   }
 
   // ===== SEGMENTS =====
@@ -1069,6 +1176,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
   Future<void> clear() async {
     await _exercisesBox.clear();
     await _sessionsBox.clear();
+    await _userProfilesBox.clear();
+    await _bodyMeasurementsBox.clear();
     await _segmentsBox.clear();
     await _effortsBox.clear();
     await _observationsBox.clear();

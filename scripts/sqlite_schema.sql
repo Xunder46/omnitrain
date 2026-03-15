@@ -192,6 +192,8 @@ CREATE TABLE app_training_session (
   modality TEXT, -- Functional training type: 'cardio_endurance', 'resistance_lifting', 'martial_arts', 'isometric_stretching', 'sports', or NULL for 'Free Training'
   intent TEXT,
   perceived_session_rpe REAL,
+  session_feeling INTEGER, -- 1-5 scale, nullable (1=Rough, 5=Great)
+  quality_rating INTEGER, -- Reserved for computed session quality score, nullable
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   deleted_at_ms INTEGER,
@@ -201,11 +203,28 @@ CREATE TABLE app_training_session (
 CREATE INDEX IF NOT EXISTS IX_session_started_at ON app_training_session(started_at_ms);
 CREATE INDEX IF NOT EXISTS IX_session_owner_dirty ON app_training_session(owner_user_id, is_dirty);
 
+-- Profile data for the single-user MVP.
+-- Future SqliteWorkoutRepository contract:
+--   getProfile()            → SELECT * FROM app_user_profile WHERE id = 'local-user' LIMIT 1;
+--   saveProfile(profile)    → INSERT ... ON CONFLICT(id) DO UPDATE
+CREATE TABLE app_user_profile (
+  id TEXT NOT NULL PRIMARY KEY,
+  display_name TEXT,
+  avatar_path TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 1
+);
+
 -- SESSION HISTORY QUERY NOTES (Feb 2026):
 -- - WorkoutRepository.getAllSessions():
 --   SELECT * FROM app_training_session ORDER BY started_at_ms DESC;
 -- - WorkoutRepository.getSessionsByDateRange(fromMs, toMs):
 --   SELECT * FROM app_training_session WHERE started_at_ms BETWEEN ? AND ? ORDER BY started_at_ms ASC;
+-- - WorkoutRepository.updateSessionFeeling(sessionId, feeling):
+--   UPDATE app_training_session SET session_feeling = ?, updated_at_ms = ? WHERE id = ?;
 -- - WorkoutRepository.getPersonalRecordCandidates(exerciseId, metricId?):
 --   SELECT MAX(COALESCE(o.value_real, o.value_int))
 --   FROM app_effort_observation o
@@ -275,6 +294,30 @@ CREATE TABLE app_unit (
   created_at_ms INTEGER NOT NULL
 );
 
+-- Timestamped profile measurement history.
+-- Future SqliteWorkoutRepository contract:
+--   getMeasurementHistory(type) → filter by measurement_type, ORDER BY recorded_at_ms DESC
+--   getLatestMeasurement(type)  → same query with LIMIT 1
+CREATE TABLE app_body_measurement_entry (
+  id TEXT NOT NULL PRIMARY KEY,
+  user_profile_id TEXT NOT NULL,
+  measurement_type TEXT NOT NULL,
+  value REAL NOT NULL,
+  unit_id TEXT NOT NULL,
+  recorded_at_ms INTEGER NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  deleted_at_ms INTEGER,
+  row_version INTEGER NOT NULL DEFAULT 0,
+  is_dirty INTEGER NOT NULL DEFAULT 1,
+  FOREIGN KEY(user_profile_id) REFERENCES app_user_profile(id),
+  FOREIGN KEY(unit_id) REFERENCES app_unit(id)
+);
+CREATE INDEX IF NOT EXISTS IX_body_measurement_type_recorded
+  ON app_body_measurement_entry(measurement_type, recorded_at_ms DESC);
+CREATE INDEX IF NOT EXISTS IX_body_measurement_user_recorded
+  ON app_body_measurement_entry(user_profile_id, recorded_at_ms DESC);
+
 CREATE TABLE app_metric_definition (
   id TEXT NOT NULL PRIMARY KEY,
   key TEXT NOT NULL UNIQUE,
@@ -303,6 +346,8 @@ CREATE TABLE app_effort_observation (
   value_real REAL,
   value_text TEXT,
   value_bool INTEGER,
+  rpe_rating INTEGER, -- RPE 1-10, nullable, reserved for future use
+  rest_duration_ms INTEGER, -- Rest before this set in ms, nullable
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   deleted_at_ms INTEGER,

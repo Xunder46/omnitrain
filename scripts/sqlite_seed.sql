@@ -70,66 +70,72 @@ BEGIN TRANSACTION;
 -- Units (idempotent)
 INSERT OR IGNORE INTO app_unit (id, key, name, unit_type, created_at_ms)
 VALUES
-  (lower(hex(randomblob(16))), 'kg', 'Kilogram', 'weight', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'lb', 'Pound', 'weight', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'sec', 'Second', 'time', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'min', 'Minute', 'time', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'm', 'Meter', 'distance', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'km', 'Kilometer', 'distance', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'mi', 'Mile', 'distance', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'cal', 'Calorie', 'energy', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'bpm', 'Beats per Minute', 'heart_rate', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'reps', 'Repetitions', 'count', (strftime('%s','now') * 1000)),
-  (lower(hex(randomblob(16))), 'rounds', 'Rounds', 'count', (strftime('%s','now') * 1000));
+  ('unit-kg', 'kg', 'Kilograms', 'weight', (strftime('%s','now') * 1000)),
+  ('unit-lbs', 'lbs', 'Pounds', 'weight', (strftime('%s','now') * 1000)),
+  ('unit-cm', 'cm', 'Centimeters', 'length', (strftime('%s','now') * 1000)),
+  ('unit-pct', 'pct', 'Percent', 'ratio', (strftime('%s','now') * 1000)),
+  ('unit-sec', 'sec', 'Seconds', 'time', (strftime('%s','now') * 1000)),
+  ('unit-min', 'min', 'Minutes', 'time', (strftime('%s','now') * 1000)),
+  ('unit-m', 'm', 'Meters', 'distance', (strftime('%s','now') * 1000)),
+  ('unit-km', 'km', 'Kilometers', 'distance', (strftime('%s','now') * 1000)),
+  ('unit-mi', 'mi', 'Miles', 'distance', (strftime('%s','now') * 1000)),
+  ('unit-cal', 'cal', 'Calories', 'energy', (strftime('%s','now') * 1000)),
+  ('unit-bpm', 'bpm', 'Beats per Minute', 'heart_rate', (strftime('%s','now') * 1000)),
+  ('unit-reps', 'reps', 'Repetitions', 'count', (strftime('%s','now') * 1000)),
+  ('unit-rounds', 'rounds', 'Rounds', 'count', (strftime('%s','now') * 1000));
 
 -- Metric definitions (idempotent)
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'reps', 'Repetitions', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='reps');
+SELECT 'metric-reps', 'reps', 'Repetitions', 'int', 'unit-reps', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-reps');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'weight', 'Weight', 'real', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='weight');
+SELECT 'metric-weight', 'weight', 'Weight', 'real', 'unit-kg', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-weight');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'rpe', 'RPE (Rate of Perceived Exertion)', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='rpe');
+SELECT 'metric-rpe', 'rpe', 'RPE (Rate of Perceived Exertion)', 'int', NULL, 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-rpe');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'duration', 'Duration', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='duration');
+SELECT 'metric-duration', 'duration', 'Duration', 'int', 'unit-sec', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-duration');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'rest', 'Rest Time', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='rest');
+SELECT 'metric-rest', 'rest', 'Rest Time', 'int', 'unit-sec', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-rest');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'distance', 'Distance', 'real', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='distance');
+SELECT 'metric-distance', 'distance', 'Distance', 'real', 'unit-m', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-distance');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'pace', 'Pace (min/km)', 'real', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='pace');
+SELECT 'metric-pace', 'pace', 'Pace (min/km)', 'real', NULL, 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-pace');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'rounds', 'Rounds', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='rounds');
+SELECT 'metric-rounds', 'rounds', 'Rounds', 'int', 'unit-rounds', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-rounds');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'round_duration', 'Round Duration', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='round_duration');
+SELECT 'metric-round-duration', 'round_duration', 'Round Duration', 'int', 'unit-sec', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-round-duration');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'score', 'Score', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='score');
+SELECT 'metric-score', 'score', 'Score', 'int', NULL, 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-score');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'quality', 'Quality Rating', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='quality');
+SELECT 'metric-quality', 'quality', 'Quality Rating', 'int', NULL, 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-quality');
 
 INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
-SELECT lower(hex(randomblob(16))), 'heart_rate', 'Heart Rate', 'int', NULL, 1, (strftime('%s','now') * 1000)
-WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE key='heart_rate');
+SELECT 'metric-heart-rate', 'heart_rate', 'Heart Rate', 'int', 'unit-bpm', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-heart-rate');
+
+INSERT INTO app_metric_definition (id, key, name, data_type, default_unit_id, is_core, created_at_ms)
+SELECT 'metric-extra-weight', 'extra-weight', 'Extra Weight', 'real', 'unit-kg', 1, (strftime('%s','now') * 1000)
+WHERE NOT EXISTS (SELECT 1 FROM app_metric_definition WHERE id='metric-extra-weight');
 
 -- Metric applicability (maps metrics to effort kinds)
 INSERT OR IGNORE INTO app_metric_applicability (metric_id, effort_kind)

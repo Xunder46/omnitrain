@@ -55,7 +55,24 @@ class DBHelper {
         title TEXT,
         note TEXT,
         location_text TEXT,
+        modality TEXT,
+        intent TEXT,
         perceived_session_rpe REAL,
+        session_feeling INTEGER,
+        quality_rating INTEGER,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        deleted_at_ms INTEGER,
+        row_version INTEGER NOT NULL DEFAULT 0,
+        is_dirty INTEGER NOT NULL DEFAULT 1
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE app_user_profile (
+        id TEXT NOT NULL PRIMARY KEY,
+        display_name TEXT,
+        avatar_path TEXT,
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL,
         deleted_at_ms INTEGER,
@@ -111,6 +128,24 @@ class DBHelper {
     ''');
 
     await db.execute('''
+      CREATE TABLE app_body_measurement_entry (
+        id TEXT NOT NULL PRIMARY KEY,
+        user_profile_id TEXT NOT NULL,
+        measurement_type TEXT NOT NULL,
+        value REAL NOT NULL,
+        unit_id TEXT NOT NULL,
+        recorded_at_ms INTEGER NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        deleted_at_ms INTEGER,
+        row_version INTEGER NOT NULL DEFAULT 0,
+        is_dirty INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY(user_profile_id) REFERENCES app_user_profile(id),
+        FOREIGN KEY(unit_id) REFERENCES app_unit(id)
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE app_metric_definition (
         id TEXT NOT NULL PRIMARY KEY,
         key TEXT NOT NULL UNIQUE,
@@ -134,6 +169,8 @@ class DBHelper {
         value_real REAL,
         value_text TEXT,
         value_bool INTEGER,
+        rpe_rating INTEGER,
+        rest_duration_ms INTEGER,
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL,
         deleted_at_ms INTEGER,
@@ -151,10 +188,12 @@ class DBHelper {
 
   static Future<void> _dropTables(Database db) async {
     await db.execute('DROP TABLE IF EXISTS app_effort_observation');
+    await db.execute('DROP TABLE IF EXISTS app_body_measurement_entry');
     await db.execute('DROP TABLE IF EXISTS app_metric_definition');
     await db.execute('DROP TABLE IF EXISTS app_unit');
     await db.execute('DROP TABLE IF EXISTS app_segment_effort');
     await db.execute('DROP TABLE IF EXISTS app_session_segment');
+    await db.execute('DROP TABLE IF EXISTS app_user_profile');
     await db.execute('DROP TABLE IF EXISTS app_training_session');
     await db.execute('DROP TABLE IF EXISTS app_exercise');
   }
@@ -176,6 +215,22 @@ class DBHelper {
       'key': 'lbs',
       'name': 'Pounds',
       'unit_type': 'weight',
+      'created_at_ms': now,
+    });
+
+    await db.insert('app_unit', {
+      'id': 'unit-cm',
+      'key': 'cm',
+      'name': 'Centimeters',
+      'unit_type': 'length',
+      'created_at_ms': now,
+    });
+
+    await db.insert('app_unit', {
+      'id': 'unit-pct',
+      'key': 'pct',
+      'name': 'Percent',
+      'unit_type': 'ratio',
       'created_at_ms': now,
     });
 
@@ -240,7 +295,9 @@ class DBHelper {
     return id;
   }
 
-  static Future<String> insertEffortObservation(Map<String, dynamic> data) async {
+  static Future<String> insertEffortObservation(
+    Map<String, dynamic> data,
+  ) async {
     final db = await getDB();
     final id = data['id'] as String;
     await db.insert('app_effort_observation', data);
@@ -249,36 +306,69 @@ class DBHelper {
 
   static Future<List<Map<String, dynamic>>> getExercises() async {
     final db = await getDB();
-    return await db.query('app_exercise', where: 'is_archived = 0 AND deleted_at_ms IS NULL');
+    return await db.query(
+      'app_exercise',
+      where: 'is_archived = 0 AND deleted_at_ms IS NULL',
+    );
   }
 
   static Future<Map<String, dynamic>?> getTrainingSession(String id) async {
     final db = await getDB();
-    final results = await db.query('app_training_session', where: 'id = ?', whereArgs: [id]);
+    final results = await db.query(
+      'app_training_session',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
     return results.isNotEmpty ? results.first : null;
   }
 
-  static Future<List<Map<String, dynamic>>> getSessionSegments(String sessionId) async {
+  static Future<void> updateSessionFeeling(String sessionId, int feeling) async {
     final db = await getDB();
-    return await db.query('app_session_segment',
-        where: 'session_id = ? AND deleted_at_ms IS NULL',
-        whereArgs: [sessionId],
-        orderBy: 'order_index');
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      'app_training_session',
+      {
+        'session_feeling': feeling,
+        'updated_at_ms': now,
+      },
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
   }
 
-  static Future<List<Map<String, dynamic>>> getSegmentEfforts(String segmentId) async {
+  static Future<List<Map<String, dynamic>>> getSessionSegments(
+    String sessionId,
+  ) async {
     final db = await getDB();
-    return await db.query('app_segment_effort',
-        where: 'segment_id = ? AND deleted_at_ms IS NULL',
-        whereArgs: [segmentId],
-        orderBy: 'order_index');
+    return await db.query(
+      'app_session_segment',
+      where: 'session_id = ? AND deleted_at_ms IS NULL',
+      whereArgs: [sessionId],
+      orderBy: 'order_index',
+    );
   }
 
-  static Future<List<Map<String, dynamic>>> getEffortObservations(String effortId) async {
+  static Future<List<Map<String, dynamic>>> getSegmentEfforts(
+    String segmentId,
+  ) async {
     final db = await getDB();
-    return await db.query('app_effort_observation',
-        where: 'effort_id = ? AND deleted_at_ms IS NULL',
-        whereArgs: [effortId],
-        orderBy: 'created_at_ms');
+    return await db.query(
+      'app_segment_effort',
+      where: 'segment_id = ? AND deleted_at_ms IS NULL',
+      whereArgs: [segmentId],
+      orderBy: 'order_index',
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getEffortObservations(
+    String effortId,
+  ) async {
+    final db = await getDB();
+    return await db.query(
+      'app_effort_observation',
+      where: 'effort_id = ? AND deleted_at_ms IS NULL',
+      whereArgs: [effortId],
+      orderBy: 'created_at_ms',
+    );
   }
 }

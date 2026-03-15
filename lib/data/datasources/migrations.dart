@@ -11,5 +11,27 @@ Future<void> applyMigrations(Database db, int oldVersion, int newVersion) async 
   //   await db.execute("ALTER TABLE app_example ADD COLUMN new_col TEXT DEFAULT ''");
   // }
 
-  // No migrations yet (initial version 1)
+  if (oldVersion < 2) {
+    await db.execute(
+      'ALTER TABLE app_training_session ADD COLUMN modality TEXT',
+    );
+    await db.execute(
+      'ALTER TABLE app_training_session ADD COLUMN intent TEXT',
+    );
+  }
+
+  if (oldVersion < 3) {
+    await db.execute(
+      'ALTER TABLE app_training_session ADD COLUMN session_feeling INTEGER',
+    );
+    await db.execute(
+      'ALTER TABLE app_training_session ADD COLUMN quality_rating INTEGER',
+    );
+    await db.execute(
+      'ALTER TABLE app_effort_observation ADD COLUMN rpe_rating INTEGER',
+    );
+    await db.execute(
+      'ALTER TABLE app_effort_observation ADD COLUMN rest_duration_ms INTEGER',
+    );
+  }
 }

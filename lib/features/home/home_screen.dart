@@ -6,6 +6,7 @@ import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
+import '../../state/profile/profile_state.dart';
 import '../../core/constants/home_tiles.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
@@ -14,6 +15,7 @@ import '../../widgets/cards/maintenance_tile.dart';
 import '../session/workout_session_screen.dart';
 import '../routine/my_routines_screen.dart';
 import '../calendar/calendar_screen.dart';
+import '../profile/profile_screen.dart';
 import 'maintenance_placeholder_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,6 +26,7 @@ class HomeScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final CalendarState calendarState;
   final PeriodState periodState;
+  final ProfileState profileState;
 
   const HomeScreen({
     super.key,
@@ -34,6 +37,7 @@ class HomeScreen extends StatefulWidget {
     required this.sessionSummaryService,
     required this.calendarState,
     required this.periodState,
+    required this.profileState,
   });
 
   @override
@@ -490,10 +494,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Profile',
         icon: Icons.person_outline,
-        onTap: () => _openPlaceholder(
-          context,
-          title: 'Profile',
-          description: 'Manage your identity, preferences, and security layer',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ProfileScreen(profileState: widget.profileState),
+          ),
         ),
       ),
       _MaintenanceItem(

@@ -202,7 +202,7 @@ Used for:
 See [Navigation & Screens](navigation_and_screens.md) for the complete screen flow and [Session Summary](session_summary.md) for what happens after a workout ends.
 
 ### Maintenance Sheet
-A draggable bottom sheet provides access to system features (Profile, Stats, Settings) as placeholder screens. The sheet snaps to three extents: collapsed (7%), mid (45%), and expanded (92%).
+A draggable bottom sheet provides access to system features (Profile, Stats, Settings). Profile now routes to the implemented `ProfileScreen`; Stats and Settings remain placeholders. The sheet snaps to three extents: collapsed (7%), mid (45%), and expanded (92%).
 
 Home screen never shows individual exercises.
 

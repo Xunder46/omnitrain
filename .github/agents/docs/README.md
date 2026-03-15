@@ -35,6 +35,7 @@ This documentation describes the architecture, features, and conventions of Omni
 | [My Routines](my_routines.md) | Reusable workout template system — CRUD, template-to-session conversion, UI |
 | [Calendar & Periods](calendar_periods.md) | Month calendar planning, day-session management, and non-overlapping training periods |
 | [Session Summary](session_summary.md) | Post-workout analytics — PRs, volume comparison, save-as-routine |
+| [Profile & Measurements](profile_and_measurements.md) | Profile identity, avatar flow, body measurement logging, and history chart behavior |
 
 ### Architecture & Technical
 | Document | Description |
@@ -64,7 +65,8 @@ lib/
 │   └── repositories/     # WorkoutRepository interface + Hive implementation
 ├── features/
 │   ├── exercise/         # ExerciseEditorScreen
-│   ├── home/             # HomeScreen, MaintenancePlaceholderScreen
+│   ├── home/             # HomeScreen, maintenance sheet routes
+│   ├── profile/          # ProfileScreen + profile feature widgets
 │   ├── routine/          # MyRoutinesScreen, RoutineSetupScreen
 │   ├── session/          # SessionOverviewScreen, WorkoutSessionScreen, SessionSummaryScreen
 │   ├── splash/           # OmniSplashScreen (disabled)
@@ -73,6 +75,7 @@ lib/
 ├── state/
 │   ├── app_state.dart    # App-wide singleton (minimal)
 │   ├── home/             # HomeState (maintenance hint)
+│   ├── profile/          # ProfileState (profile + measurement flows)
 │   ├── routine/          # RoutineState (template CRUD)
 │   └── workout/          # WorkoutState (session lifecycle)
 ├── widgets/
@@ -112,6 +115,16 @@ Every metric change is persisted immediately via the repository — no "save" bu
 ### 5. Round Efforts Are Special
 Round efforts (`effortKind == 'round'`) use `RoundInstance` records with wall-clock timestamps, not observation rows. This makes them background-resilient (timer survives app suspension). They follow a strict state machine: `notStarted → active ⇄ paused → finished` (terminal).
 
+### 6. Profile Is Live In Maintenance
+The maintenance sheet no longer routes Profile to a placeholder. It now pushes `ProfileScreen`, which is backed by `ProfileState` and repository APIs for `UserProfile` and `BodyMeasurementEntry`.
+
+Profile measurement rules implemented in code:
+- Primary rows: bodyweight, height
+- Additional rows (always visible): body fat %, lean mass, waist, chest, hips, thigh, arm
+- Save-time timestamping for logs (no date input UI)
+- Chart-based history sheet with point selection and "Log New Entry" stacking behavior
+- Avatar path persistence is native-first; web degrades safely to fallback icon
+
 ---
 
 ## Agent-Specific Notes
@@ -146,4 +159,4 @@ Round efforts (`effortKind == 'round'`) use `RoundInstance` records with wall-cl
 
 ---
 
-**Last Updated**: February 28, 2026
+**Last Updated**: March 15, 2026

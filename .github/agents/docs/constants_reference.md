@@ -94,6 +94,39 @@ Additional effort kinds (less commonly used): `interval`, `amrap`, `note`
 
 ---
 
+## Profile Measurement Constants
+
+**File**: `lib/core/constants/profile_measurements.dart`
+
+Defines the canonical profile measurement vocabulary and unit mapping shared by `ProfileState`, `ProfileScreen`, and measurement history UI.
+
+### Primary Measurements
+
+| Constant | Type Value | Label | Unit ID |
+|----------|------------|-------|---------|
+| `bodyweight` | `bodyweight` | Body Weight | `unit-kg` |
+| `height` | `height` | Height | `unit-cm` |
+
+### Additional Measurements
+
+| Constant | Type Value | Label | Unit ID |
+|----------|------------|-------|---------|
+| `bodyFatPct` | `body_fat_pct` | Body Fat | `unit-pct` |
+| `leanMass` | `lean_mass` | Lean Mass | `unit-kg` |
+| `waist` | `waist_cm` | Waist | `unit-cm` |
+| `chest` | `chest_cm` | Chest | `unit-cm` |
+| `hips` | `hips_cm` | Hips | `unit-cm` |
+| `thigh` | `thigh_cm` | Thigh | `unit-cm` |
+| `arm` | `arm_cm` | Arm | `unit-cm` |
+
+### Helper APIs
+
+- `definitionFor(type)` returns the matching `ProfileMeasurementDefinition` for a measurement type string.
+- `unitLabelFor(unitId)` maps ids to display labels (`kg`, `cm`, `%`).
+- `formatValue(value)` formats whole numbers without decimals and keeps one decimal when needed.
+
+---
+
 ## Intent Constants
 
 **File**: `lib/core/constants/intent.dart`
@@ -237,5 +270,5 @@ See [Design System](design_system.md) for the full token reference. Key categori
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: February 28, 2026
+**Document Version**: 1.1
+**Last Updated**: March 15, 2026

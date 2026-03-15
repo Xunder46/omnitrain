@@ -9,6 +9,7 @@ import 'state/home/home_state.dart';
 import 'state/routine/routine_state.dart';
 import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
+import 'state/profile/profile_state.dart';
 
 /// Create the appropriate repository based on platform
 ///
@@ -36,6 +37,7 @@ void main() async {
     final routineState = RoutineState(repository);
     final calendarState = CalendarState(repository);
     final periodState = PeriodState(repository);
+    final profileState = ProfileState(repository);
 
     // Create service with repository
     final routineSessionService = RoutineSessionService(repository);
@@ -50,6 +52,7 @@ void main() async {
         sessionSummaryService: sessionSummaryService,
         calendarState: calendarState,
         periodState: periodState,
+        profileState: profileState,
       ),
     );
   } catch (e) {

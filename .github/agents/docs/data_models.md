@@ -34,6 +34,8 @@ TrainingSession
 | `endedAtMs` | `int?` | Epoch ms when session ended (`null` while active) |
 | `note` | `String?` | User-added session note |
 | `routineTemplateId` | `String?` | Links to source `WorkoutTemplate` if started from a routine |
+| `sessionFeeling` | `int?` | Optional 1-5 post-session feeling score |
+| `qualityRating` | `int?` | Reserved nullable quality field |
 
 ### SessionSegment
 
@@ -69,6 +71,8 @@ TrainingSession
 | `valueText` | `String?` | Text value |
 | `unitId` | `String?` | Unit reference (e.g., `unit-kg`) |
 | `recordedAtMs` | `int` | Timestamp |
+| `rpeRating` | `int?` | Optional RPE 1-10 value for richer observation payloads |
+| `restDurationMs` | `int?` | Optional rest duration before entry |
 
 ### RoundInstance
 
@@ -161,23 +165,45 @@ TrainingSession
 
 ## Measurement Models
 
+### UserProfile
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | Profile id (`local-user` for current single-user flow) |
+| `displayName` | `String?` | Optional display name |
+| `avatarPath` | `String?` | Native-first local file path for avatar |
+| `createdAtMs` | `int` | Creation timestamp |
+
+### BodyMeasurementEntry
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | Entry UUID |
+| `measurementType` | `String` | e.g., `bodyweight`, `height`, `body_fat_pct` |
+| `value` | `double` | Numeric measurement value |
+| `unitId` | `String` | Unit id (`unit-kg`, `unit-cm`, `unit-pct`) |
+| `recordedAtMs` | `int` | Entry timestamp (save-time by default in current UI flow) |
+
 ### MetricDefinition
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `String` | e.g., `metric-reps`, `metric-weight` |
+| `key` | `String` | Stable metric key |
 | `name` | `String` | Display name |
 | `dataType` | `String` | `int`, `real`, `text` |
 | `defaultUnitId` | `String?` | FK to `UnitModel` |
+| `isCore` | `bool` | Whether metric is part of core tracking vocabulary |
+| `appliesToEffortKind` | `String?` | Optional effort-kind hint |
 
 ### UnitModel
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String` | e.g., `unit-kg`, `unit-seconds` |
+| `id` | `String` | e.g., `unit-kg`, `unit-cm`, `unit-pct` |
+| `key` | `String` | Stable short unit key (`kg`, `cm`, `pct`) |
 | `name` | `String` | Display name |
-| `abbreviation` | `String` | Short form (e.g., "kg", "s") |
-| `metricId` | `String?` | Which metric this unit belongs to |
+| `unitType` | `String?` | Optional grouping (`weight`, `length`, `ratio`) |
 
 ### MetricApplicability
 
@@ -288,6 +314,8 @@ TrainingSession → SessionSegment → SegmentEffort → EffortObservation
                                        │            → RoundInstance (round efforts only)
                                        └──→ Exercise (FK)
 
+UserProfile → BodyMeasurementEntry
+
 WorkoutTemplate → TemplateSegment → TemplateEffort → TemplateTarget
                                        └──→ Exercise (FK)
 
@@ -317,5 +345,5 @@ MetricDefinition ←── UnitModel
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: February 28, 2026
+**Document Version**: 1.1
+**Last Updated**: March 15, 2026

@@ -7,6 +7,7 @@ import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
+import '../../state/profile/profile_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/logo/animated_zen_halo.dart';
 import '../home/home_screen.dart';
@@ -22,6 +23,7 @@ class OmniSplashScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final CalendarState calendarState;
   final PeriodState periodState;
+  final ProfileState profileState;
   final Duration duration;
 
   const OmniSplashScreen({
@@ -33,6 +35,7 @@ class OmniSplashScreen extends StatefulWidget {
     required this.sessionSummaryService,
     required this.calendarState,
     required this.periodState,
+    required this.profileState,
     this.duration = OmniTheme.splashDuration,
   });
 
@@ -75,6 +78,7 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
               sessionSummaryService: widget.sessionSummaryService,
               calendarState: widget.calendarState,
               periodState: widget.periodState,
+              profileState: widget.profileState,
             ),
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) {

@@ -6,6 +6,7 @@ import 'state/home/home_state.dart';
 import 'state/routine/routine_state.dart';
 import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
+import 'state/profile/profile_state.dart';
 
 import 'features/home/home_screen.dart';
 
@@ -17,6 +18,7 @@ class MyApp extends StatelessWidget {
   final SessionSummaryService sessionSummaryService;
   final CalendarState calendarState;
   final PeriodState periodState;
+  final ProfileState profileState;
 
   const MyApp({
     super.key,
@@ -27,6 +29,7 @@ class MyApp extends StatelessWidget {
     required this.sessionSummaryService,
     required this.calendarState,
     required this.periodState,
+    required this.profileState,
   });
 
   @override
@@ -72,6 +75,7 @@ class MyApp extends StatelessWidget {
         sessionSummaryService: sessionSummaryService,
         calendarState: calendarState,
         periodState: periodState,
+        profileState: profileState,
       ),
     );
   }
