@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/workout_constants.dart';
+import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
@@ -28,6 +29,7 @@ class WorkoutSessionScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final Future<void> Function(String sessionId)? onSessionSaved;
   final String? initialFocusId;
+  final SettingsState? settingsState;
 
   /// When true the screen shows a frozen review/edit view of a completed session:
   /// no timers run, no set logging, values remain editable for correction.
@@ -40,6 +42,7 @@ class WorkoutSessionScreen extends StatefulWidget {
     required this.sessionSummaryService,
     this.onSessionSaved,
     this.initialFocusId,
+    this.settingsState,
     this.editMode = false,
   });
 
@@ -2185,12 +2188,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Widget _buildSegmentHeader(String name, ThemeData theme) {
+    final textMuted = OmniTheme.colorsForTheme(
+      widget.settingsState?.appTheme ?? AppTheme.abyssalNeon,
+    ).textMuted;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       child: Text(
         name,
         style: theme.textTheme.titleSmall?.copyWith(
-          color: OmniTheme.textSecondary,
+          color: textMuted,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -2210,7 +2216,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             child: Text(
               segment.name ?? 'Block ${segment.orderIndex + 1}',
               style: theme.textTheme.titleSmall?.copyWith(
-                color: OmniTheme.textSecondary,
+                color: OmniTheme.colorsForTheme(
+                  widget.settingsState?.appTheme ?? AppTheme.abyssalNeon,
+                ).textMuted,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2270,12 +2278,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final effortId = exercise['id'] as String;
     final idx = _exercises.indexWhere((e) => e['id'] == effortId);
 
+    final _tileColors = OmniTheme.colorsForTheme(
+      widget.settingsState?.appTheme ?? AppTheme.abyssalNeon,
+    );
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: OmniTheme.surfaceColor.withOpacity(0.7),
+        color: _tileColors.surface.withOpacity(0.7),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: OmniTheme.surfaceBorderColor),
+        border: Border.all(color: _tileColors.surfaceBorder),
       ),
       child: ListTile(
         title: Text(
@@ -2307,10 +2318,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   /// views. In edit mode it gains a border, tinted text, and an edit icon,
   /// and wraps itself in a [GestureDetector] that opens [_editSessionDuration].
   Widget _buildSessionTimeWidget(ThemeData theme) {
+    final _chipColors = OmniTheme.colorsForTheme(
+      widget.settingsState?.appTheme ?? AppTheme.abyssalNeon,
+    );
     final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: OmniTheme.surfaceColor.withOpacity(0.5),
+        color: _chipColors.surface.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
         border: widget.editMode
             ? Border.all(

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/app.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
-import 'package:omnitrain/features/home/home_screen.dart';
-import 'package:omnitrain/features/profile/profile_screen.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
@@ -14,12 +14,15 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
 void main() {
-  testWidgets('Profile tile opens ProfileScreen', (tester) async {
+  testWidgets('MyApp reacts to theme changes through SettingsState', (
+    tester,
+  ) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
 
     final workoutState = WorkoutState(repository);
     final homeState = HomeState(repository);
+    await homeState.init();
     final routineState = RoutineState(repository);
     final calendarState = CalendarState(repository);
     final periodState = PeriodState(repository);
@@ -30,36 +33,27 @@ void main() {
     final sessionSummaryService = SessionSummaryService(repository);
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: HomeScreen(
-          workoutState: workoutState,
-          homeState: homeState,
-          routineState: routineState,
-          routineSessionService: routineSessionService,
-          sessionSummaryService: sessionSummaryService,
-          calendarState: calendarState,
-          periodState: periodState,
-          profileState: profileState,
-          settingsState: settingsState,
-        ),
+      MyApp(
+        workoutState: workoutState,
+        homeState: homeState,
+        routineState: routineState,
+        routineSessionService: routineSessionService,
+        sessionSummaryService: sessionSummaryService,
+        calendarState: calendarState,
+        periodState: periodState,
+        profileState: profileState,
+        settingsState: settingsState,
       ),
     );
-    await tester.pumpAndSettle();
 
-    final scaffoldFinder = find.byType(Scaffold).first;
-    final scaffoldSize = tester.getSize(scaffoldFinder);
-    final scaffoldTopLeft = tester.getTopLeft(scaffoldFinder);
-    final dragStart = Offset(
-      scaffoldTopLeft.dx + scaffoldSize.width / 2,
-      scaffoldTopLeft.dy + scaffoldSize.height - 24,
-    );
+    ThemeData themeData() =>
+        tester.widget<MaterialApp>(find.byType(MaterialApp)).theme!;
 
-    await tester.dragFrom(dragStart, const Offset(0, -420));
-    await tester.pumpAndSettle();
+    expect(themeData().colorScheme.primary.value, 0xFF2DE2E6);
 
-    await tester.tap(find.text('Profile'));
-    await tester.pumpAndSettle();
+    await settingsState.setAppTheme(AppTheme.obsidianVolt);
+    await tester.pump();
 
-    expect(find.byType(ProfileScreen), findsOneWidget);
+    expect(themeData().colorScheme.primary.value, 0xFFEAE000);
   });
 }

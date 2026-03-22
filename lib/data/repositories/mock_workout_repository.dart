@@ -54,7 +54,8 @@ class MockWorkoutRepository implements WorkoutRepository {
   // Calendar: planned sessions and training periods
   final Map<String, PlannedSession> _plannedSessions = {};
   final Map<String, TrainingPeriod> _periods = {};
-  final Map<String, bool> _prefs = {};
+  final Map<String, bool> _boolPrefs = {};
+  final Map<String, String> _stringPrefs = {};
 
   bool _initialized = false;
 
@@ -460,9 +461,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<String> createRoundInstance(RoundInstance instance) async {
-    _roundInstances
-        .putIfAbsent(instance.effortId, () => [])
-        .add(instance);
+    _roundInstances.putIfAbsent(instance.effortId, () => []).add(instance);
     return instance.id;
   }
 
@@ -498,9 +497,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<String> createTimedInstance(TimedInstance instance) async {
-    _timedInstances
-        .putIfAbsent(instance.effortId, () => [])
-        .add(instance);
+    _timedInstances.putIfAbsent(instance.effortId, () => []).add(instance);
     return instance.id;
   }
 
@@ -1020,9 +1017,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deletePlannedSessionsByTemplateId(String templateId) async {
-    _plannedSessions.removeWhere(
-      (_, s) => s.routineTemplateId == templateId,
-    );
+    _plannedSessions.removeWhere((_, s) => s.routineTemplateId == templateId);
   }
 
   // ===== TRAINING PERIODS =====
@@ -1068,12 +1063,28 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<bool> getPreferenceBool(String key, {bool defaultValue = false}) async {
-    return _prefs[key] ?? defaultValue;
+  Future<bool> getPreferenceBool(
+    String key, {
+    bool defaultValue = false,
+  }) async {
+    return _boolPrefs[key] ?? defaultValue;
   }
 
   @override
   Future<void> setPreferenceBool(String key, bool value) async {
-    _prefs[key] = value;
+    _boolPrefs[key] = value;
+  }
+
+  @override
+  Future<String?> getPreferenceString(
+    String key, {
+    String? defaultValue,
+  }) async {
+    return _stringPrefs[key] ?? defaultValue;
+  }
+
+  @override
+  Future<void> setPreferenceString(String key, String value) async {
+    _stringPrefs[key] = value;
   }
 }

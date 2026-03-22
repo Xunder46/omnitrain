@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
@@ -15,12 +16,14 @@ class SessionOverviewScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final RoutineState routineState;
   final SessionSummaryService sessionSummaryService;
+  final SettingsState settingsState;
 
   const SessionOverviewScreen({
     super.key,
     required this.workoutState,
     required this.routineState,
     required this.sessionSummaryService,
+    required this.settingsState,
   });
 
   @override
@@ -129,6 +132,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                 workoutState: widget.workoutState,
                 routineState: widget.routineState,
                 sessionSummaryService: widget.sessionSummaryService,
+                settingsState: widget.settingsState,
                 initialFocusId: effortId,
               ),
             ),
@@ -151,7 +155,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
+        backgroundColor: OmniTheme.colorsForTheme(widget.settingsState.appTheme).backgroundTop,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -160,8 +164,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
     final modality = widget.workoutState.currentSession?.modality;
     final modalityName = ModalityDisplay.getName(modality);
 
+    final themeColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
+
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: themeColors.backgroundTop,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -175,7 +181,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
             ),
           ],
         ),
-        backgroundColor: theme.colorScheme.surface,
+        backgroundColor: themeColors.backgroundTop,
         elevation: 0,
       ),
       body: SafeArea(
@@ -188,6 +194,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                 'Exercises',
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w600,
+                  color: themeColors.textMuted,
                 ),
               ),
               const SizedBox(height: 8),
@@ -269,8 +276,15 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                   '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
                           }
 
-                          return Card(
+                          return Container(
                             margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: themeColors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: themeColors.surfaceBorder,
+                              ),
+                            ),
                             child: ListTile(
                               title: Text(exercise['name'] as String),
                               subtitle: Text(subtitle),
@@ -341,6 +355,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                     routineState: widget.routineState,
                                     sessionSummaryService:
                                         widget.sessionSummaryService,
+                                    settingsState: widget.settingsState,
                                   ),
                                 ),
                               );

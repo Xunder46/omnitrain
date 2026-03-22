@@ -14,7 +14,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
   static const String _seedUnitsMigrationKey = 'seed_units_migrated_v1';
   static const String _exerciseRoundDefaultsMigrationKey =
       'exercise_round_defaults_migrated_v1';
-    static const String _sessionFeelingFieldsMigrationKey =
+  static const String _sessionFeelingFieldsMigrationKey =
       'session_feeling_fields_migrated_v1';
   static const String _calendarDataMigrationKey = 'calendar_data_seeded_v1';
   static const String _calendarSeedPurgeMigrationKey =
@@ -201,7 +201,6 @@ class HiveWorkoutRepository implements WorkoutRepository {
           .add(applicability.effortKind);
     }
     await _metricEffortKindsBox.putAll(metricEffortKinds);
-
   }
 
   /// Backfills newly added seed units for existing installs where `_seed_loaded`
@@ -265,8 +264,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
   /// old installs. The placeholders were removed, but we preserve the key so
   /// existing meta data remains compatible.
   Future<void> _seedCalendarData() async {
-    final migrated =
-        _metaBox.get(_calendarDataMigrationKey) as bool? ?? false;
+    final migrated = _metaBox.get(_calendarDataMigrationKey) as bool? ?? false;
     if (migrated) return;
     await _metaBox.put(_calendarDataMigrationKey, true);
   }
@@ -496,12 +494,28 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<bool> getPreferenceBool(String key, {bool defaultValue = false}) async {
+  Future<bool> getPreferenceBool(
+    String key, {
+    bool defaultValue = false,
+  }) async {
     return _metaBox.get(key) as bool? ?? defaultValue;
   }
 
   @override
   Future<void> setPreferenceBool(String key, bool value) async {
+    await _metaBox.put(key, value);
+  }
+
+  @override
+  Future<String?> getPreferenceString(
+    String key, {
+    String? defaultValue,
+  }) async {
+    return _metaBox.get(key) as String? ?? defaultValue;
+  }
+
+  @override
+  Future<void> setPreferenceString(String key, String value) async {
     await _metaBox.put(key, value);
   }
 

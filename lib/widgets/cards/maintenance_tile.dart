@@ -5,12 +5,14 @@ class MaintenanceTile extends StatefulWidget {
   final String title;
   final IconData icon;
   final VoidCallback onTap;
+  final AppTheme activeTheme;
 
   const MaintenanceTile({
     super.key,
     required this.title,
     required this.icon,
     required this.onTap,
+    this.activeTheme = AppTheme.abyssalNeon,
   });
 
   @override
@@ -41,19 +43,13 @@ class _MaintenanceTileState extends State<MaintenanceTile> {
   }
 
   Widget _buildSurface() {
+    final themeColors = OmniTheme.colorsForTheme(widget.activeTheme);
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1C2A3A),
-            Color(0xFF131C28),
-          ],
-        ),
+        color: themeColors.surface,
         border: Border.all(
-          color: OmniTheme.surfaceBorderColor,
+          color: themeColors.surfaceBorder,
           width: OmniTheme.surfaceBorderWidth,
         ),
         boxShadow: [
@@ -67,14 +63,14 @@ class _MaintenanceTileState extends State<MaintenanceTile> {
           Icon(
             widget.icon,
             size: 42,
-            color: OmniTheme.textPrimary.withOpacity(0.85),
+            color: themeColors.textMuted,
           ),
           const SizedBox(height: 16),
           Text(
             widget.title,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: OmniTheme.textPrimary.withOpacity(0.9),
+              color: themeColors.textMuted,
               fontSize: 15,
               fontWeight: FontWeight.w600,
               letterSpacing: OmniTheme.titleLetterSpacing,

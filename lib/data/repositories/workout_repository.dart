@@ -308,4 +308,10 @@ abstract class WorkoutRepository {
 
   /// Write a named boolean preference.
   Future<void> setPreferenceBool(String key, bool value);
+
+  /// Read a named string preference; returns [defaultValue] when not yet set.
+  Future<String?> getPreferenceString(String key, {String? defaultValue});
+
+  /// Write a named string preference.
+  Future<void> setPreferenceString(String key, String value);
 }

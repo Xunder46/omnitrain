@@ -8,6 +8,7 @@ import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
 import '../../state/profile/profile_state.dart';
+import '../../state/settings/settings_state.dart';
 import '../../core/constants/home_tiles.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
@@ -17,6 +18,7 @@ import '../session/workout_session_screen.dart';
 import '../routine/my_routines_screen.dart';
 import '../calendar/calendar_screen.dart';
 import '../profile/profile_screen.dart';
+import '../settings/settings_screen.dart';
 import 'maintenance_placeholder_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -28,6 +30,7 @@ class HomeScreen extends StatefulWidget {
   final CalendarState calendarState;
   final PeriodState periodState;
   final ProfileState profileState;
+  final SettingsState settingsState;
 
   const HomeScreen({
     super.key,
@@ -39,6 +42,7 @@ class HomeScreen extends StatefulWidget {
     required this.calendarState,
     required this.periodState,
     required this.profileState,
+    required this.settingsState,
   });
 
   @override
@@ -253,6 +257,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               workoutState: widget.workoutState,
               routineState: widget.routineState,
               sessionSummaryService: widget.sessionSummaryService,
+              settingsState: widget.settingsState,
             ),
           ),
         );
@@ -280,6 +285,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             workoutState: widget.workoutState,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
           ),
         ),
       );
@@ -330,6 +336,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             workoutState: widget.workoutState,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
           ),
         ),
       );
@@ -357,18 +364,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final contentOpacity = t.clamp(0.0, 1.0);
               final slideOffset = 20.0 * (1.0 - t);
 
+              final sheetColors =
+                  OmniTheme.colorsForTheme(widget.settingsState.appTheme);
               return Container(
                 decoration: BoxDecoration(
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(24),
                   ),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      OmniTheme.backgroundGradientTop,
-                      OmniTheme.backgroundGradientBottom,
-                    ],
+                  color: sheetColors.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: sheetColors.surfaceBorder,
+                      width: OmniTheme.surfaceBorderWidth,
+                    ),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -455,7 +463,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: OmniTheme.colorsForTheme(widget.settingsState.appTheme)
+                    .primary
+                    .withOpacity(0.4),
                 borderRadius: BorderRadius.circular(20),
               ),
             ),
@@ -504,10 +514,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Settings',
         icon: Icons.tune,
-        onTap: () => _openPlaceholder(
-          context,
-          title: 'Settings',
-          description: 'Control system behavior, notifications, and defaults',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => SettingsScreen(settingsState: widget.settingsState),
+          ),
         ),
       ),
     ];
@@ -528,6 +538,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           title: item.title,
           icon: item.icon,
           onTap: item.onTap,
+          activeTheme: widget.settingsState.appTheme,
         );
       },
     );
