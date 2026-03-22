@@ -7,12 +7,16 @@ import '../../core/services/session_summary_service.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/effort_defaults.dart';
+import '../../core/services/routine_session_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
+import '../../state/calendar/calendar_state.dart';
+import '../../state/period/period_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
+import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
@@ -44,6 +48,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   List<PRAchievement> _prs = [];
   Set<int> _workoutDays = {};
   int _daysInMonth = 30;
+  late final CalendarState _calendarState;
+  late final PeriodState _periodState;
+  late final RoutineSessionService _routineSessionService;
 
   List<SessionTemplateExercise> _draftExercises = [];
 
@@ -79,6 +86,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   @override
   void initState() {
     super.initState();
+    final repository = widget.workoutState.repository;
+    _calendarState = CalendarState(repository);
+    _periodState = PeriodState(repository);
+    _routineSessionService = RoutineSessionService(repository);
     _summary = widget.workoutState.computeSessionSummary();
     _noteController = TextEditingController(
       text: widget.workoutState.currentSession?.note ?? '',
@@ -290,6 +301,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (mounted) {
       await _refreshSummary();
     }
+  }
+
+  Future<void> _openCalendarScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CalendarScreen(
+          calendarState: _calendarState,
+          periodState: _periodState,
+          workoutState: widget.workoutState,
+          routineState: widget.routineState,
+          routineSessionService: _routineSessionService,
+          sessionSummaryService: widget.sessionSummaryService,
+        ),
+      ),
+    );
   }
 
   Future<void> _openSaveAsRoutineSheet() async {
@@ -531,6 +557,24 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 elevation: 0,
                 title: Text(title),
                 actions: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: TextButton.icon(
+                      onPressed: _openCalendarScreen,
+                      style: ButtonStyle(
+                        visualDensity: VisualDensity.compact,
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonUtilityRadius,
+                            ),
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                      label: const Text('Calendar'),
+                    ),
+                  ),
                   PopupMenuButton<String>(
                     onSelected: (value) {
                       switch (value) {
@@ -645,8 +689,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   Widget _buildStatsCard(ThemeData theme) {
     final stats = <_StatItem>[
-      _StatItem(label: 'Duration', value: _formatDuration(_summary.totalDurationMs)),
-      _StatItem(label: 'Exercises', value: _summary.exercises.length.toString()),
+      _StatItem(
+        label: 'Duration',
+        value: _formatDuration(_summary.totalDurationMs),
+      ),
+      _StatItem(
+        label: 'Exercises',
+        value: _summary.exercises.length.toString(),
+      ),
       _StatItem(label: 'Sets', value: _summary.totalSets.toString()),
       _StatItem(label: 'Rounds', value: _summary.totalRounds.toString()),
     ];
@@ -1081,7 +1131,37 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(monthLabel, style: theme.textTheme.titleMedium),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  monthLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonalIcon(
+                onPressed: _openCalendarScreen,
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  ),
+                  shape: WidgetStatePropertyAll(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Open Calendar'),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           _buildCalendarGrid(theme, now),
           const SizedBox(height: 12),
@@ -1243,10 +1323,7 @@ class _FeelingSheetContent extends StatefulWidget {
   final WorkoutState workoutState;
   final String? modality;
 
-  const _FeelingSheetContent({
-    required this.workoutState,
-    this.modality,
-  });
+  const _FeelingSheetContent({required this.workoutState, this.modality});
 
   @override
   State<_FeelingSheetContent> createState() => _FeelingSheetContentState();
@@ -1258,7 +1335,8 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
   @override
   Widget build(BuildContext context) {
     final accentColor = ModalityColors.forModality(widget.modality);
-    final displayName = ModalityDisplay.getName(widget.modality) ?? 'Free Training';
+    final displayName =
+        ModalityDisplay.getName(widget.modality) ?? 'Free Training';
     final subtitle = '$displayName · Today';
 
     return Container(
@@ -1291,10 +1369,9 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
           Text(
             'How did it feel?',
             textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(color: Colors.white.withOpacity(0.9)),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: Colors.white.withOpacity(0.9),
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1315,9 +1392,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
           Row(
             children: [
               for (int i = 1; i <= 5; i++) ...[
-                Expanded(
-                  child: _buildFeelingTile(i, accentColor),
-                ),
+                Expanded(child: _buildFeelingTile(i, accentColor)),
                 if (i < 5) const SizedBox(width: 10),
               ],
             ],
@@ -1364,13 +1439,9 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: isSelected
-                ? tileColor
-                : Colors.white.withOpacity(0.05),
+            color: isSelected ? tileColor : Colors.white.withOpacity(0.05),
             border: Border.all(
-              color: isSelected
-                  ? tileColor
-                  : Colors.white.withOpacity(0.12),
+              color: isSelected ? tileColor : Colors.white.withOpacity(0.12),
               width: 1.5,
             ),
             borderRadius: BorderRadius.circular(14),
@@ -1415,10 +1486,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
 
     final session = widget.workoutState.currentSession;
     if (session != null) {
-      await widget.workoutState.updateSessionFeeling(
-        session.id,
-        feeling,
-      );
+      await widget.workoutState.updateSessionFeeling(session.id, feeling);
       if (mounted) {
         Navigator.of(context).pop();
       }

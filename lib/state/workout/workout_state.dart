@@ -46,6 +46,7 @@ class WorkoutState extends ChangeNotifier {
   String? _error;
 
   // Getters
+  WorkoutRepository get repository => _repository;
   TrainingSession? get currentSession => _currentSession;
   ModalityConfig? get modalityConfig => _currentModalityConfig;
   List<SessionSegment> get segments => List.unmodifiable(_segments);
@@ -138,10 +139,7 @@ class WorkoutState extends ChangeNotifier {
       if (idx == -1) return;
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final updated = list[idx].copyWith(
-        restEndMs: now,
-        updatedAtMs: now,
-      );
+      final updated = list[idx].copyWith(restEndMs: now, updatedAtMs: now);
 
       await _repository.updateEntryRest(updated);
       list[idx] = updated;
@@ -302,9 +300,7 @@ class WorkoutState extends ChangeNotifier {
           }
 
           // Load entry rest records for all effort kinds
-          _entryRests[effort.id] = await _repository.getEntryRests(
-            effort.id,
-          );
+          _entryRests[effort.id] = await _repository.getEntryRests(effort.id);
 
           if (effort.exerciseId != null) {
             final ex = await _repository.getExerciseById(effort.exerciseId!);
@@ -1636,8 +1632,7 @@ class WorkoutState extends ChangeNotifier {
     _clearError();
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
-      final newEndedAtMs =
-          _currentSession!.startedAtMs + (durationSecs * 1000);
+      final newEndedAtMs = _currentSession!.startedAtMs + (durationSecs * 1000);
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
         ownerUserId: _currentSession!.ownerUserId,
