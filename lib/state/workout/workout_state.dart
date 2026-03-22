@@ -1406,6 +1406,8 @@ class WorkoutState extends ChangeNotifier {
         modality: _currentSession!.modality,
         intent: _currentSession!.intent,
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        sessionFeeling: _currentSession!.sessionFeeling,
+        qualityRating: _currentSession!.qualityRating,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1453,6 +1455,8 @@ class WorkoutState extends ChangeNotifier {
         modality: _currentSession!.modality,
         intent: _currentSession!.intent,
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        sessionFeeling: _currentSession!.sessionFeeling,
+        qualityRating: _currentSession!.qualityRating,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1493,6 +1497,8 @@ class WorkoutState extends ChangeNotifier {
         modality: _currentSession!.modality,
         intent: _currentSession!.intent,
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        sessionFeeling: _currentSession!.sessionFeeling,
+        qualityRating: _currentSession!.qualityRating,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1501,6 +1507,42 @@ class WorkoutState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _setError('Failed to update session end time: $e');
+    }
+  }
+
+  /// Persist session feeling (1-5) and update the in-memory session copy.
+  Future<void> updateSessionFeeling(String sessionId, int feeling) async {
+    if (feeling < 1 || feeling > 5) return;
+
+    _clearError();
+
+    try {
+      await _repository.updateSessionFeeling(sessionId, feeling);
+
+      if (_currentSession?.id == sessionId) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        _currentSession = TrainingSession(
+          id: _currentSession!.id,
+          ownerUserId: _currentSession!.ownerUserId,
+          routineTemplateId: _currentSession!.routineTemplateId,
+          startedAtMs: _currentSession!.startedAtMs,
+          endedAtMs: _currentSession!.endedAtMs,
+          title: _currentSession!.title,
+          note: _currentSession!.note,
+          locationText: _currentSession!.locationText,
+          modality: _currentSession!.modality,
+          intent: _currentSession!.intent,
+          perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+          sessionFeeling: feeling,
+          qualityRating: _currentSession!.qualityRating,
+          createdAtMs: _currentSession!.createdAtMs,
+          updatedAtMs: now,
+        );
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update session feeling: $e');
     }
   }
 
@@ -1599,8 +1641,9 @@ class WorkoutState extends ChangeNotifier {
       // 3. For efforts present in BOTH states, restore their children to snapshot
       //    values to undo add-set / delete-set operations.
       for (final effortId in currentEffortIds) {
-        if (!snapshotEffortIds.contains(effortId))
+        if (!snapshotEffortIds.contains(effortId)) {
           continue; // already deleted above
+        }
 
         // Restore observations (set-based efforts).
         await _repository.deleteObservationsForEffort(effortId);

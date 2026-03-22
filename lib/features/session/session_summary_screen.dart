@@ -38,6 +38,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   late TextEditingController _noteController;
   Timer? _noteDebounce;
   bool _isLoading = true;
+  bool _hasShownFeelingSheet = false;
 
   Map<String, GroupDelta> _groupDeltas = {};
   List<PRAchievement> _prs = [];
@@ -83,6 +84,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       text: widget.workoutState.currentSession?.note ?? '',
     );
     _draftExercises = widget.workoutState.buildTemplateDraftExercises();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showFeelingSheet(context);
+    });
     _loadAsyncData();
   }
 
@@ -159,6 +163,29 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     await _loadAsyncData();
   }
 
+  Future<void> _showFeelingSheet(BuildContext context) async {
+    if (_hasShownFeelingSheet) return;
+
+    final session = widget.workoutState.currentSession;
+    if (session == null) return;
+    if (session.sessionFeeling != null) return;
+
+    _hasShownFeelingSheet = true;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      isScrollControlled: true,
+      builder: (context) => _FeelingSheetContent(
+        workoutState: widget.workoutState,
+        modality: session.modality,
+      ),
+    );
+  }
+
   Future<void> _showDiscardDialog() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -169,10 +196,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ),
         actions: [
           TextButton(
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           TextButton(
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Discard'),
           ),
@@ -393,6 +438,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
+                        style: ButtonStyle(
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                OmniTheme.buttonBorderRadius,
+                              ),
+                            ),
+                          ),
+                        ),
                         onPressed: exercises.isEmpty
                             ? null
                             : () async {
@@ -1089,6 +1143,194 @@ class _SummaryCard extends StatelessWidget {
       ),
       child: child,
     );
+  }
+}
+
+/// Modal bottom sheet content for session feeling rating (1-5).
+class _FeelingSheetContent extends StatefulWidget {
+  final WorkoutState workoutState;
+  final String? modality;
+
+  const _FeelingSheetContent({
+    required this.workoutState,
+    this.modality,
+  });
+
+  @override
+  State<_FeelingSheetContent> createState() => _FeelingSheetContentState();
+}
+
+class _FeelingSheetContentState extends State<_FeelingSheetContent> {
+  int? _selectedFeeling;
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = ModalityColors.forModality(widget.modality);
+    final displayName = ModalityDisplay.getName(widget.modality) ?? 'Free Training';
+    final subtitle = '$displayName · Today';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1F2E),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        12,
+        24,
+        MediaQuery.of(context).padding.bottom + 40,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              margin: const EdgeInsets.only(bottom: 28),
+            ),
+          ),
+          // Title
+          Text(
+            'How did it feel?',
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(color: Colors.white.withOpacity(0.9)),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          // Subtitle
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.white.withOpacity(0.4),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 36),
+          // Number tiles row
+          Row(
+            children: [
+              for (int i = 1; i <= 5; i++) ...[
+                Expanded(
+                  child: _buildFeelingTile(i, accentColor),
+                ),
+                if (i < 5) const SizedBox(width: 10),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Range labels row
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Rough',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.0,
+                    color: Colors.white.withOpacity(0.25),
+                  ),
+                ),
+                Text(
+                  'Great',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.0,
+                    color: Colors.white.withOpacity(0.25),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeelingTile(int number, Color accentColor) {
+    final isSelected = _selectedFeeling == number;
+    final tileColor = _getFeelingColor(number);
+
+    return GestureDetector(
+      onTap: () => _selectFeeling(number),
+      child: AspectRatio(
+        aspectRatio: 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? tileColor
+                : Colors.white.withOpacity(0.05),
+            border: Border.all(
+              color: isSelected
+                  ? tileColor
+                  : Colors.white.withOpacity(0.12),
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Center(
+            child: Text(
+              number.toString(),
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w500,
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withOpacity(0.35),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Get feeling-specific color based on the number
+  Color _getFeelingColor(int number) {
+    switch (number) {
+      case 1:
+        return Colors.red;
+      case 2:
+        return Colors.orange;
+      case 3:
+        return Colors.yellow[700]!;
+      case 4:
+        return Colors.green;
+      case 5:
+        return Theme.of(context).primaryColor;
+      default:
+        return Theme.of(context).primaryColor;
+    }
+  }
+
+  Future<void> _selectFeeling(int feeling) async {
+    setState(() => _selectedFeeling = feeling);
+
+    final session = widget.workoutState.currentSession;
+    if (session != null) {
+      await widget.workoutState.updateSessionFeeling(
+        session.id,
+        feeling,
+      );
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
   }
 }
 
