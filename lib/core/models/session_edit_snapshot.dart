@@ -39,6 +39,11 @@ class SessionEditSnapshot {
   /// (so their exerciseId still resolves after restore).
   final Map<String, Exercise> exerciseCache;
 
+  // NOTE: EntryRest records are intentionally NOT included in the snapshot.
+  // Rest records are never structurally mutated during edit mode — no new rests
+  // are created, and add/remove set operations do not touch them. There is
+  // therefore nothing to roll back, and omitting them keeps the snapshot lean.
+
   const SessionEditSnapshot({
     required this.sessionId,
     required this.segments,

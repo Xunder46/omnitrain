@@ -1402,3 +1402,89 @@ class TrainingPeriod {
     'updated_at_ms': updatedAtMs,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EntryRest — Wall-clock rest record between consecutive sets/rounds/entries
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Records the actual recovery time between consecutive sets for any effort kind
+/// (set, round, timed, drill, and any future kinds).
+///
+/// A record is created with [restEndMs] == null the instant a set/round is logged
+/// ([rest_start_ms] = wall-clock epoch ms at that moment). It is closed —
+/// [restEndMs] set to the current wall-clock time — when the athlete actively
+/// begins the next set/round/timer.
+///
+/// Because all times are wall-clock epoch milliseconds, rest durations survive
+/// app backgrounding, device restarts, and navigation. The UI derives the
+/// display value from `now - restStartMs` without a Stopwatch.
+///
+/// [entryIndex] is 0-based and identifies the set/round that this rest
+/// *precedes* (i.e., the set the athlete is currently resting before).
+///
+/// Pure Dart — no Flutter imports.
+class EntryRest {
+  final String id;         // 'rest-{effortId}-{entryIndex}'
+  final String effortId;
+  final int entryIndex;    // 0-based; this rest precedes this set/round
+  final int restStartMs;  // wall-clock epoch ms when previous set was logged
+  final int? restEndMs;   // wall-clock epoch ms when this set/round began; null = still resting
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  const EntryRest({
+    required this.id,
+    required this.effortId,
+    required this.entryIndex,
+    required this.restStartMs,
+    this.restEndMs,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  /// Elapsed rest in whole seconds. Live (unbounded) while [restEndMs] is null.
+  int elapsedSeconds(int nowMs) =>
+      (((restEndMs ?? nowMs) - restStartMs) / 1000).round().clamp(0, 99999);
+
+  factory EntryRest.fromMap(Map<String, dynamic> m) => EntryRest(
+    id: m['id'] as String,
+    effortId: m['effort_id'] as String,
+    entryIndex: m['entry_index'] as int,
+    restStartMs: m['rest_start_ms'] as int,
+    restEndMs: m['rest_end_ms'] as int?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'effort_id': effortId,
+    'entry_index': entryIndex,
+    'rest_start_ms': restStartMs,
+    'rest_end_ms': restEndMs,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+
+  EntryRest copyWith({
+    String? id,
+    String? effortId,
+    int? entryIndex,
+    int? restStartMs,
+    Object? restEndMs = _entryRestCopyWithUnset,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) => EntryRest(
+    id: id ?? this.id,
+    effortId: effortId ?? this.effortId,
+    entryIndex: entryIndex ?? this.entryIndex,
+    restStartMs: restStartMs ?? this.restStartMs,
+    restEndMs: restEndMs == _entryRestCopyWithUnset
+        ? this.restEndMs
+        : restEndMs as int?,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
+}
+
+const Object _entryRestCopyWithUnset = Object();

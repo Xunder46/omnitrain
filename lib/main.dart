@@ -33,7 +33,8 @@ void main() async {
 
     // Create state with repository
     final workoutState = WorkoutState(repository);
-    final homeState = HomeState();
+    final homeState = HomeState(repository);
+    await homeState.init();
     final routineState = RoutineState(repository);
     final calendarState = CalendarState(repository);
     final periodState = PeriodState(repository);

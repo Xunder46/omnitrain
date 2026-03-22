@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
@@ -103,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _hintController.reset();
       _hintController.forward().whenComplete(() {
         if (mounted) {
-          widget.homeState.markMaintenanceHintSeen();
+          unawaited(widget.homeState.markMaintenanceHintSeen());
         }
       });
     });

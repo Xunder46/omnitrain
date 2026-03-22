@@ -171,6 +171,27 @@ abstract class WorkoutRepository {
   /// (or rely on ON DELETE CASCADE in the SQLite schema).
   Future<void> deleteTimedInstancesForEffort(String effortId);
 
+  // Entry Rests
+  //
+  // Tracks the actual recovery time between consecutive sets/rounds/entries for
+  // ANY effort kind (set, round, timed, drill, and any future kinds).
+  // Created with restEndMs == null at the moment a set is logged; closed
+  // (restEndMs set) when the athlete actively starts the next set/round/timer.
+  // All times are wall-clock epoch milliseconds — rest survives backgrounding.
+
+  /// Get all rest records for an effort, ordered by entryIndex ascending.
+  Future<List<EntryRest>> getEntryRests(String effortId);
+
+  /// Persist a newly created rest record (restEndMs = null, athlete is resting).
+  Future<String> createEntryRest(EntryRest rest);
+
+  /// Update an existing rest record (typically to set restEndMs when rest ends).
+  Future<void> updateEntryRest(EntryRest rest);
+
+  /// Delete all rest records belonging to an effort.
+  /// Called by deleteEffort() and during edit-mode rollback.
+  Future<void> deleteEntryRestsForEffort(String effortId);
+
   // Modality-ranked exercise retrieval
   /// Retrieve exercises ranked by relevance to a given modality.
   ///
@@ -279,4 +300,12 @@ abstract class WorkoutRepository {
   ///
   /// [excludeId]: when editing an existing period, pass its ID to skip it.
   Future<bool> hasPeriodOverlap(int startMs, int endMs, {String? excludeId});
+
+  // ─── Preferences ─────────────────────────────────────────────────────────
+
+  /// Read a named boolean preference; returns [defaultValue] when not yet set.
+  Future<bool> getPreferenceBool(String key, {bool defaultValue = false});
+
+  /// Write a named boolean preference.
+  Future<void> setPreferenceBool(String key, bool value);
 }

@@ -18,7 +18,7 @@ void main() {
     await repository.initialize();
 
     final workoutState = WorkoutState(repository);
-    final homeState = HomeState();
+    final homeState = HomeState(repository);
     final routineState = RoutineState(repository);
     final calendarState = CalendarState(repository);
     final periodState = PeriodState(repository);

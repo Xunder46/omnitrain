@@ -85,11 +85,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   final Set<String> _pendingRoundTransitions = {};
   final Set<String> _pendingTimedTransitions = {};
 
-  // Rest timer state
-  Timer? _restTimer;
-  Stopwatch? _restStopwatch;
-  int _restElapsedSeconds = 0;
-  String _restFormatted = '00:00';
 
   // Edit mode buffer: tracks pending changes that haven't been saved yet.
   // Key: 'effortId-entryIndex', Value: map of metricKey -> value.
@@ -471,9 +466,47 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         ? entries[_currentSet - 1]
         : <String, dynamic>{};
 
+    // Set-kind entries with zero reps are treated as skipped. In that case,
+    // keep any existing rest window running instead of closing/restarting it.
+    final isSkippedSetKindEntry = effortKind == 'set' &&
+        ((currentEntry['reps'] as int?) ?? 0) <= 0;
+
+    // For round/timed/drill, advancing without ever starting the entry is a skip.
+    // Keep the existing rest window running (do not create a new rest record).
+    final roundInstance = effortKind == 'round'
+      ? _getRoundInstance(effortId, _currentSet - 1)
+      : null;
+    final timedInstance = (effortKind == 'timed' || effortKind == 'drill')
+      ? _getTimedInstance(effortId, _currentSet - 1)
+      : null;
+    final isSkippedRoundEntry =
+      effortKind == 'round' && roundInstance?.state == RoundState.notStarted;
+    final isSkippedTimedEntry =
+      (effortKind == 'timed' || effortKind == 'drill') &&
+      timedInstance?.state == TimedState.notStarted;
+    final isSkippedEntry =
+      isSkippedSetKindEntry || isSkippedRoundEntry || isSkippedTimedEntry;
+
+    // On real set logs, close the latest open rest window first.
+    if (effortKind == 'set' && !isSkippedSetKindEntry) {
+      final rests = widget.workoutState.getEntryRests(effortId);
+      int? openRestEntryIndex;
+      for (final rest in rests) {
+        if (rest.restEndMs == null &&
+            (openRestEntryIndex == null ||
+                rest.entryIndex > openRestEntryIndex)) {
+          openRestEntryIndex = rest.entryIndex;
+        }
+      }
+      if (openRestEntryIndex != null) {
+        unawaited(widget.workoutState.recordRestEnd(effortId, openRestEntryIndex));
+      }
+    }
+
     // For timed/drill: finish the TimedInstance to persist wall-clock duration.
     // Safe no-op if already finished via timer expiry.
-    if (effortKind == 'timed' || effortKind == 'drill') {
+    if ((effortKind == 'timed' || effortKind == 'drill') &&
+        !isSkippedTimedEntry) {
       unawaited(
         widget.workoutState.finishTimedEntry(effortId, _currentSet - 1),
       );
@@ -483,7 +516,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     // If countdown completed naturally, completeRound() was already called in
     // _handleEffortTimerExpired. Otherwise, call endRoundEarly now.
     if (effortKind == 'round') {
-      final round = _getRoundInstance(effortId, _currentSet - 1);
+      final round = roundInstance;
       if (round != null && round.state != RoundState.finished) {
         // End early if not already finished
         unawaited(widget.workoutState.endRoundEarly(effortId, _currentSet - 1));
@@ -507,12 +540,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       _resetTimerState(effortId, _currentSet - 1);
     }
 
-    // Start rest timer only on the first log of this particular set.
-    // Navigating back and re-pressing forward through an already-logged set
-    // must NOT reset the timer.
-    if (!_loggedSetKeys.contains(logKey)) {
+    // Start rest tracking on first real log of this set, persisting to database.
+    // Navigating back and re-pressing forward must NOT restart rest tracking.
+    if (!_loggedSetKeys.contains(logKey) && !isSkippedEntry) {
       _loggedSetKeys.add(logKey);
-      _startRestTimer();
+      final nextEntryIndex = _currentSet; // 0-based index
+      unawaited(widget.workoutState.recordRestStart(effortId, nextEntryIndex));
     }
 
     // Advance to next set or next exercise
@@ -908,7 +941,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               .whenComplete(() => _pendingRoundTransitions.remove(timerKey));
           break;
         case RoundState.notStarted:
-          // Start fresh
+          // Start fresh round; close rest window first
           _pendingRoundTransitions.add(timerKey);
           _effortRunning[timerKey] = true;
           _effortTimers[timerKey]?.cancel();
@@ -917,6 +950,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             (_) => _onEffortTick(effortId, entryIndex),
           );
           if (mounted) setState(() {});
+          unawaited(widget.workoutState.recordRestEnd(effortId, entryIndex));
           widget.workoutState
               .startRound(effortId, entryIndex)
               .whenComplete(() => _pendingRoundTransitions.remove(timerKey));
@@ -962,7 +996,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             .whenComplete(() => _pendingTimedTransitions.remove(timerKey));
         break;
       case TimedState.notStarted:
-        // Start fresh.
+        // Start fresh timed entry; close rest window first
         _pendingTimedTransitions.add(timerKey);
         _effortRunning[timerKey] = true;
         _effortTimers[timerKey]?.cancel();
@@ -971,6 +1005,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           (_) => _onEffortTick(effortId, entryIndex),
         );
         if (mounted) setState(() {});
+        unawaited(widget.workoutState.recordRestEnd(effortId, entryIndex));
         widget.workoutState.startTimedEntry(effortId, entryIndex).whenComplete(
           () {
             _pendingTimedTransitions.remove(timerKey);
@@ -1216,21 +1251,42 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       });
     }
   }
+  String _formatRestElapsed(String effortId, int entryIndex) {
+    final secs = widget.workoutState.getRestElapsedSeconds(effortId, entryIndex);
+    final mm = (secs ~/ 60).toString().padLeft(2, '0');
+    final ss = (secs % 60).toString().padLeft(2, '0');
+    return '$mm:$ss';
+  }
 
-  void _startRestTimer() {
-    _restStopwatch?.stop();
-    _restStopwatch = Stopwatch()..start();
-    _restTimer?.cancel();
-    _restTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
-        setState(() {
-          _restElapsedSeconds = _restStopwatch?.elapsed.inSeconds ?? 0;
-          final mm = (_restElapsedSeconds ~/ 60).toString().padLeft(2, '0');
-          final ss = (_restElapsedSeconds % 60).toString().padLeft(2, '0');
-          _restFormatted = '$mm:$ss';
-        });
+  int? _getRestDisplayEntryIndex(String effortId, int currentEntryIndex) {
+    final rests = widget.workoutState.getEntryRests(effortId);
+    int? exactEntryIndex;
+    int? latestOpenEntryIndex;
+
+    for (final rest in rests) {
+      if (rest.entryIndex == currentEntryIndex) {
+        exactEntryIndex = currentEntryIndex;
       }
-    });
+      if (rest.restEndMs == null && rest.entryIndex <= currentEntryIndex) {
+        if (latestOpenEntryIndex == null ||
+            rest.entryIndex > latestOpenEntryIndex) {
+          latestOpenEntryIndex = rest.entryIndex;
+        }
+      }
+    }
+
+    return latestOpenEntryIndex ?? exactEntryIndex;
+  }
+
+  bool _hasRestToDisplay(String effortId, int currentEntryIndex) {
+    return _getRestDisplayEntryIndex(effortId, currentEntryIndex) != null;
+  }
+
+  String _formatRestElapsedForDisplay(String effortId, int currentEntryIndex) {
+    final displayEntryIndex =
+        _getRestDisplayEntryIndex(effortId, currentEntryIndex);
+    if (displayEntryIndex == null) return '00:00';
+    return _formatRestElapsed(effortId, displayEntryIndex);
   }
 
   // ── Edit-mode duration editing ───────────────────────────────────────────
@@ -1678,9 +1734,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     for (final key in _effortTimers.keys) {
       _effortRunning[key] = false;
     }
-
-    _restTimer?.cancel();
-    _restStopwatch?.stop();
   }
 
   /// Ends any in-progress round/timed/drill timers and persists elapsed to
@@ -1733,9 +1786,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     for (final timer in _effortTimers.values) {
       timer?.cancel();
     }
-    // Cancel rest timer
-    _restTimer?.cancel();
-    _restStopwatch?.stop();
     super.dispose();
   }
 
@@ -2000,7 +2050,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               ),
               // Rest timer overlay in lower half (hide in edit mode or when exercise timer is running)
               if (!widget.editMode &&
-                  _restElapsedSeconds > 0 &&
+                  _hasRestToDisplay(exercise['id'] as String, _currentSet - 1) &&
                   !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ??
                       false))
                 Positioned(
@@ -2040,7 +2090,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _restFormatted,
+                                _formatRestElapsedForDisplay(
+                                    exercise['id'] as String, _currentSet - 1),
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   color: theme.colorScheme.onPrimary,
                                   fontWeight: FontWeight.w600,
@@ -2498,7 +2549,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             ),
             // Rest timer overlay (hide in edit mode or when exercise timer is running)
             if (!widget.editMode &&
-                _restElapsedSeconds > 0 &&
+              _hasRestToDisplay(
+                _exercises[_currentExerciseIndex]['id'] as String,
+                _currentSet - 1) &&
                 !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ??
                     false))
               Positioned(
@@ -2538,7 +2591,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _restFormatted,
+                              _formatRestElapsedForDisplay(
+                                  _exercises[_currentExerciseIndex]['id']
+                                      as String,
+                                  _currentSet - 1),
                               style: theme.textTheme.titleLarge?.copyWith(
                                 color: theme.colorScheme.onPrimary,
                                 fontWeight: FontWeight.w600,

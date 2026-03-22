@@ -12,7 +12,7 @@ class DBHelper {
 
     _db = await openDatabase(
       path,
-      version: 2,
+      version: 4,
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -182,11 +182,29 @@ class DBHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE app_entry_rest (
+        id            TEXT    NOT NULL PRIMARY KEY,
+        effort_id     TEXT    NOT NULL,
+        entry_index   INTEGER NOT NULL,
+        rest_start_ms INTEGER NOT NULL,
+        rest_end_ms   INTEGER,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS UX_entry_rest_effort_index ON app_entry_rest(effort_id, entry_index)',
+    );
+
     // Insert basic units and metrics
     await _insertSeedData(db);
   }
 
   static Future<void> _dropTables(Database db) async {
+    await db.execute('DROP TABLE IF EXISTS app_entry_rest');
     await db.execute('DROP TABLE IF EXISTS app_effort_observation');
     await db.execute('DROP TABLE IF EXISTS app_body_measurement_entry');
     await db.execute('DROP TABLE IF EXISTS app_metric_definition');

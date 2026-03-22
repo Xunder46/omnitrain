@@ -47,9 +47,14 @@ class MockWorkoutRepository implements WorkoutRepository {
   // Stores the full lifecycle of each timed/drill entry duration.
   final Map<String, List<TimedInstance>> _timedInstances = {};
 
+  // Entry rests: effortId -> List<EntryRest> (ordered by entryIndex)
+  // Wall-clock rest periods between consecutive sets/rounds for all effort kinds.
+  final Map<String, List<EntryRest>> _entryRests = {};
+
   // Calendar: planned sessions and training periods
   final Map<String, PlannedSession> _plannedSessions = {};
   final Map<String, TrainingPeriod> _periods = {};
+  final Map<String, bool> _prefs = {};
 
   bool _initialized = false;
 
@@ -437,6 +442,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     await deleteRoundInstancesForEffort(id);
     // Delete all timed instances for this effort
     await deleteTimedInstancesForEffort(id);
+    // Delete all entry rest records for this effort
+    await deleteEntryRestsForEffort(id);
     // Then remove the effort itself
     _efforts.remove(id);
   }
@@ -515,6 +522,34 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> deleteTimedInstancesForEffort(String effortId) async {
     _timedInstances.remove(effortId);
+  }
+
+  // ===== ENTRY RESTS =====
+
+  @override
+  Future<List<EntryRest>> getEntryRests(String effortId) async {
+    final list = _entryRests[effortId] ?? [];
+    return List<EntryRest>.from(list)
+      ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+  }
+
+  @override
+  Future<String> createEntryRest(EntryRest rest) async {
+    _entryRests.putIfAbsent(rest.effortId, () => []).add(rest);
+    return rest.id;
+  }
+
+  @override
+  Future<void> updateEntryRest(EntryRest rest) async {
+    final list = _entryRests[rest.effortId];
+    if (list == null) return;
+    final idx = list.indexWhere((r) => r.id == rest.id);
+    if (idx != -1) list[idx] = rest;
+  }
+
+  @override
+  Future<void> deleteEntryRestsForEffort(String effortId) async {
+    _entryRests.remove(effortId);
   }
 
   // ===== SPORT CATEGORIES =====
@@ -1030,5 +1065,15 @@ class MockWorkoutRepository implements WorkoutRepository {
       if (p.id == excludeId) return false;
       return startMs <= p.endDateMs && endMs >= p.startDateMs;
     });
+  }
+
+  @override
+  Future<bool> getPreferenceBool(String key, {bool defaultValue = false}) async {
+    return _prefs[key] ?? defaultValue;
+  }
+
+  @override
+  Future<void> setPreferenceBool(String key, bool value) async {
+    _prefs[key] = value;
   }
 }

@@ -564,6 +564,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     const SizedBox(height: 16),
                     _buildStatsCard(theme),
                     const SizedBox(height: 16),
+                    _buildRpeCard(theme),
+                    const SizedBox(height: 16),
                     _buildExerciseListSection(theme),
                     if (_prs.isNotEmpty) ...[
                       const SizedBox(height: 16),
@@ -672,6 +674,96 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               const SizedBox(width: 16),
               Expanded(
                 child: _StatPill(label: stats[3].label, value: stats[3].value),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRpeCard(ThemeData theme) {
+    final session = widget.workoutState.currentSession;
+    final selected = session?.perceivedSessionRpe?.round();
+
+    return _SummaryCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Session RPE', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(
+            'How hard did this session feel overall?',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.65),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (int i = 1; i <= 10; i++)
+                GestureDetector(
+                  onTap: () async {
+                    final current = widget.workoutState.currentSession;
+                    if (current == null) return;
+                    await widget.workoutState.updateSessionRpe(
+                      current.id,
+                      i.toDouble(),
+                    );
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: selected == i
+                          ? theme.colorScheme.primary
+                          : Colors.white.withOpacity(0.05),
+                      border: Border.all(
+                        color: selected == i
+                            ? theme.colorScheme.primary
+                            : Colors.white.withOpacity(0.12),
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$i',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: selected == i
+                              ? Colors.white
+                              : theme.colorScheme.onSurface.withOpacity(0.65),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Very easy',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                ),
+              ),
+              Text(
+                'Max effort',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                ),
               ),
             ],
           ),

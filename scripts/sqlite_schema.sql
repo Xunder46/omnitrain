@@ -690,6 +690,36 @@ CREATE TABLE app_round_instance (
 );
 CREATE INDEX IF NOT EXISTS IX_round_instance_effort ON app_round_instance(effort_id, round_index);
 
+-- ENTRY REST RECORDS (March 2026)
+-- =================================
+-- Tracks the actual recovery time between consecutive sets/rounds for any effort kind.
+-- Created when a set is logged (rest_start_ms). Closed with rest_end_ms when the
+-- next set/round is actively begun. rest_end_ms IS NULL while the athlete is resting.
+-- Works uniformly for effort kinds: set, round, timed, drill, and any future kinds.
+-- On DELETE CASCADE ensures automatic cleanup when the parent effort is deleted.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getEntryRests(effortId):
+--     SELECT * FROM app_entry_rest WHERE effort_id = ? ORDER BY entry_index ASC;
+--   createEntryRest(rest):
+--     INSERT INTO app_entry_rest VALUES (...);
+--   updateEntryRest(rest):
+--     UPDATE app_entry_rest SET rest_end_ms=?, updated_at_ms=? WHERE id=?;
+--   deleteEntryRestsForEffort(effortId):
+--     DELETE FROM app_entry_rest WHERE effort_id = ?;
+CREATE TABLE app_entry_rest (
+  id            TEXT    NOT NULL PRIMARY KEY,
+  effort_id     TEXT    NOT NULL,
+  entry_index   INTEGER NOT NULL,   -- 0-based: this rest precedes this set/round
+  rest_start_ms INTEGER NOT NULL,   -- wall-clock epoch ms when previous set was logged
+  rest_end_ms   INTEGER,            -- wall-clock epoch ms when next set/round began; NULL = still resting
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS UX_entry_rest_effort_index
+  ON app_entry_rest(effort_id, entry_index);
+
 -- TIMED INSTANCES (Feb 2026)
 -- ==========================
 -- Stores the full lifecycle of each timed entry for effortKind == 'timed' or 'drill' efforts.

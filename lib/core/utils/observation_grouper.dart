@@ -59,9 +59,11 @@ class ObservationGrouper {
             ? (obs1.valueReal ?? 0.0)
             : (obs2.valueReal ?? 0.0);
         
+        final repsObs = obs1.metricId == 'metric-reps' ? obs1 : obs2;
         entries.add({
           'reps': repsValue,
           'weight': weightValue,
+          'skipped': (repsObs.valueBool as bool?) ?? false,
         });
       }
     }
