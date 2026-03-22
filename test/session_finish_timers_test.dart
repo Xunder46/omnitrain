@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
-import 'package:omnitrain/features/calendar/calendar_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -127,7 +126,7 @@ void main() {
     expect(find.byType(WorkoutSessionScreen), findsNothing);
   });
 
-  testWidgets('Session summary Open Calendar button navigates to calendar', (
+  testWidgets('Session summary Open Calendar button is hidden for now', (
     WidgetTester tester,
   ) async {
     final deps = await setupStates();
@@ -150,11 +149,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
-    expect(find.text('Open Calendar'), findsOneWidget);
-
-    await tester.tap(find.text('Open Calendar'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(CalendarScreen), findsOneWidget);
+    expect(find.text('Open Calendar'), findsNothing);
+    expect(find.text('Calendar'), findsNothing);
   });
 }

@@ -38,6 +38,8 @@ class SessionSummaryScreen extends StatefulWidget {
 }
 
 class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
+  static const bool _showCalendarActions = false;
+
   late SessionSummary _summary;
   late TextEditingController _noteController;
   Timer? _noteDebounce;
@@ -557,24 +559,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 elevation: 0,
                 title: Text(title),
                 actions: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: TextButton.icon(
-                      onPressed: _openCalendarScreen,
-                      style: ButtonStyle(
-                        visualDensity: VisualDensity.compact,
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonUtilityRadius,
+                  if (_showCalendarActions)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: TextButton.icon(
+                        onPressed: _openCalendarScreen,
+                        style: ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                OmniTheme.buttonUtilityRadius,
+                              ),
                             ),
                           ),
                         ),
+                        icon: const Icon(
+                          Icons.calendar_month_outlined,
+                          size: 18,
+                        ),
+                        label: const Text('Calendar'),
                       ),
-                      icon: const Icon(Icons.calendar_month_outlined, size: 18),
-                      label: const Text('Calendar'),
                     ),
-                  ),
                   PopupMenuButton<String>(
                     onSelected: (value) {
                       switch (value) {
@@ -1141,25 +1147,27 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   style: theme.textTheme.titleMedium,
                 ),
               ),
-              const SizedBox(width: 8),
-              FilledButton.tonalIcon(
-                onPressed: _openCalendarScreen,
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  ),
-                  shape: WidgetStatePropertyAll(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
+              if (_showCalendarActions) ...[
+                const SizedBox(width: 8),
+                FilledButton.tonalIcon(
+                  onPressed: _openCalendarScreen,
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    shape: WidgetStatePropertyAll(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonUtilityRadius,
+                        ),
                       ),
                     ),
                   ),
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('Open Calendar'),
                 ),
-                icon: const Icon(Icons.open_in_new, size: 16),
-                label: const Text('Open Calendar'),
-              ),
+              ],
             ],
           ),
           const SizedBox(height: 12),

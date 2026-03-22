@@ -72,7 +72,7 @@ Add an Open Calendar action in the Session Summary calendar header that navigate
 - [ ] Verify no regression in finish-flow navigation
 
 ## Feedback
-<!-- Leave empty until a specialist or reviewer adds notes -->
+- 2026-03-22: Per product request, Calendar and Open Calendar buttons on Session Summary are temporarily hidden in UI using a feature flag (`_showCalendarActions = false`) in `session_summary_screen.dart`. Navigation plumbing remains in place for quick re-enable.
 
 ---
 
