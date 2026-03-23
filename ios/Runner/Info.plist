@@ -46,5 +46,11 @@
 	<string>Omnitrain uses your location to track your workout movements and provide accurate distance/route data during sessions.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Omnitrain uses your location to track your workout movements and provide accurate distance/route data during sessions.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Omnitrain uses the camera so you can set a profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Omnitrain uses your photo library so you can choose a profile photo.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Omnitrain may save profile photo edits to your photo library when supported.</string>
 </dict>
 </plist>

@@ -62,6 +62,7 @@ The aesthetic is **spacecraft interior** — not cosmic/outer-space, but the con
 4. **White text** with opacity levels creates hierarchy without introducing new hues
 5. **Gradient colors** on tiles are functional — they differentiate workout categories
 6. **Glow effects** are reserved for active/selected states and brand elements
+7. **Modality accent colors** must come from `lib/core/constants/modality_colors.dart` (single source of truth) and must not be hardcoded in screens/components
 
 ---
 

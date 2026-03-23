@@ -10,6 +10,8 @@ import 'workout_repository.dart';
 class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, Exercise> _exercises = {};
   final Map<String, TrainingSession> _sessions = {};
+  final Map<String, UserProfile> _userProfiles = {};
+  final Map<String, BodyMeasurementEntry> _bodyMeasurements = {};
   final Map<String, SessionSegment> _segments = {};
   final Map<String, SegmentEffort> _efforts = {};
   final Map<String, EffortObservation> _observations = {};
@@ -45,9 +47,15 @@ class MockWorkoutRepository implements WorkoutRepository {
   // Stores the full lifecycle of each timed/drill entry duration.
   final Map<String, List<TimedInstance>> _timedInstances = {};
 
+  // Entry rests: effortId -> List<EntryRest> (ordered by entryIndex)
+  // Wall-clock rest periods between consecutive sets/rounds for all effort kinds.
+  final Map<String, List<EntryRest>> _entryRests = {};
+
   // Calendar: planned sessions and training periods
   final Map<String, PlannedSession> _plannedSessions = {};
   final Map<String, TrainingPeriod> _periods = {};
+  final Map<String, bool> _boolPrefs = {};
+  final Map<String, String> _stringPrefs = {};
 
   bool _initialized = false;
 
@@ -277,6 +285,31 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<void> updateSessionFeeling(String sessionId, int feeling) async {
+    final existing = _sessions[sessionId];
+    if (existing == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _sessions[sessionId] = TrainingSession(
+      id: existing.id,
+      ownerUserId: existing.ownerUserId,
+      routineTemplateId: existing.routineTemplateId,
+      startedAtMs: existing.startedAtMs,
+      endedAtMs: existing.endedAtMs,
+      title: existing.title,
+      note: existing.note,
+      locationText: existing.locationText,
+      modality: existing.modality,
+      intent: existing.intent,
+      perceivedSessionRpe: existing.perceivedSessionRpe,
+      sessionFeeling: feeling,
+      qualityRating: existing.qualityRating,
+      createdAtMs: existing.createdAtMs,
+      updatedAtMs: now,
+    );
+  }
+
+  @override
   Future<void> deleteSession(String id) async {
     final segmentIds = _segments.values
         .where((s) => s.sessionId == id)
@@ -291,11 +324,58 @@ class MockWorkoutRepository implements WorkoutRepository {
     for (final effortId in effortIds) {
       _observations.removeWhere((_, obs) => obs.effortId == effortId);
       _roundInstances.remove(effortId);
+      _timedInstances.remove(effortId);
+      _entryRests.remove(effortId);
       _efforts.remove(effortId);
     }
 
     _segments.removeWhere((_, segment) => segment.sessionId == id);
     _sessions.remove(id);
+  }
+
+  // ===== PROFILE =====
+
+  @override
+  Future<UserProfile?> getProfile() async {
+    if (_userProfiles.containsKey('local-user')) {
+      return _userProfiles['local-user'];
+    }
+    if (_userProfiles.isEmpty) return null;
+    return _userProfiles.values.first;
+  }
+
+  @override
+  Future<void> saveProfile(UserProfile profile) async {
+    _userProfiles[profile.id] = profile;
+  }
+
+  @override
+  Future<List<BodyMeasurementEntry>> getMeasurementHistory(
+    String measurementType,
+  ) async {
+    final entries = _bodyMeasurements.values
+        .where((entry) => entry.measurementType == measurementType)
+        .toList();
+    entries.sort((a, b) => b.recordedAtMs.compareTo(a.recordedAtMs));
+    return entries;
+  }
+
+  @override
+  Future<BodyMeasurementEntry?> getLatestMeasurement(
+    String measurementType,
+  ) async {
+    final entries = await getMeasurementHistory(measurementType);
+    return entries.isEmpty ? null : entries.first;
+  }
+
+  @override
+  Future<void> saveMeasurementEntry(BodyMeasurementEntry entry) async {
+    _bodyMeasurements[entry.id] = entry;
+  }
+
+  @override
+  Future<void> deleteMeasurementEntry(String entryId) async {
+    _bodyMeasurements.remove(entryId);
   }
 
   // ===== SEGMENTS =====
@@ -365,6 +445,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     await deleteRoundInstancesForEffort(id);
     // Delete all timed instances for this effort
     await deleteTimedInstancesForEffort(id);
+    // Delete all entry rest records for this effort
+    await deleteEntryRestsForEffort(id);
     // Then remove the effort itself
     _efforts.remove(id);
   }
@@ -381,9 +463,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<String> createRoundInstance(RoundInstance instance) async {
-    _roundInstances
-        .putIfAbsent(instance.effortId, () => [])
-        .add(instance);
+    _roundInstances.putIfAbsent(instance.effortId, () => []).add(instance);
     return instance.id;
   }
 
@@ -419,9 +499,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<String> createTimedInstance(TimedInstance instance) async {
-    _timedInstances
-        .putIfAbsent(instance.effortId, () => [])
-        .add(instance);
+    _timedInstances.putIfAbsent(instance.effortId, () => []).add(instance);
     return instance.id;
   }
 
@@ -443,6 +521,34 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> deleteTimedInstancesForEffort(String effortId) async {
     _timedInstances.remove(effortId);
+  }
+
+  // ===== ENTRY RESTS =====
+
+  @override
+  Future<List<EntryRest>> getEntryRests(String effortId) async {
+    final list = _entryRests[effortId] ?? [];
+    return List<EntryRest>.from(list)
+      ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+  }
+
+  @override
+  Future<String> createEntryRest(EntryRest rest) async {
+    _entryRests.putIfAbsent(rest.effortId, () => []).add(rest);
+    return rest.id;
+  }
+
+  @override
+  Future<void> updateEntryRest(EntryRest rest) async {
+    final list = _entryRests[rest.effortId];
+    if (list == null) return;
+    final idx = list.indexWhere((r) => r.id == rest.id);
+    if (idx != -1) list[idx] = rest;
+  }
+
+  @override
+  Future<void> deleteEntryRestsForEffort(String effortId) async {
+    _entryRests.remove(effortId);
   }
 
   // ===== SPORT CATEGORIES =====
@@ -832,6 +938,8 @@ class MockWorkoutRepository implements WorkoutRepository {
   void clear() {
     _exercises.clear();
     _sessions.clear();
+    _userProfiles.clear();
+    _bodyMeasurements.clear();
     _segments.clear();
     _efforts.clear();
     _observations.clear();
@@ -911,9 +1019,7 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deletePlannedSessionsByTemplateId(String templateId) async {
-    _plannedSessions.removeWhere(
-      (_, s) => s.routineTemplateId == templateId,
-    );
+    _plannedSessions.removeWhere((_, s) => s.routineTemplateId == templateId);
   }
 
   // ===== TRAINING PERIODS =====
@@ -956,5 +1062,31 @@ class MockWorkoutRepository implements WorkoutRepository {
       if (p.id == excludeId) return false;
       return startMs <= p.endDateMs && endMs >= p.startDateMs;
     });
+  }
+
+  @override
+  Future<bool> getPreferenceBool(
+    String key, {
+    bool defaultValue = false,
+  }) async {
+    return _boolPrefs[key] ?? defaultValue;
+  }
+
+  @override
+  Future<void> setPreferenceBool(String key, bool value) async {
+    _boolPrefs[key] = value;
+  }
+
+  @override
+  Future<String?> getPreferenceString(
+    String key, {
+    String? defaultValue,
+  }) async {
+    return _stringPrefs[key] ?? defaultValue;
+  }
+
+  @override
+  Future<void> setPreferenceString(String key, String value) async {
+    _stringPrefs[key] = value;
   }
 }

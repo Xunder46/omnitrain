@@ -24,27 +24,28 @@ class SportCategory {
   });
 
   factory SportCategory.fromMap(Map<String, dynamic> m) => SportCategory(
-      id: m['id'] as String,
-      key: m['key'] as String,
-      name: m['name'] as String,
-      description: m['description'] as String?,
-      iconName: m['icon_name'] as String?,
-      sortOrder: m['sort_order'] as int? ?? 0,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int,
-      deletedAtMs: m['deleted_at_ms'] as int?);
+    id: m['id'] as String,
+    key: m['key'] as String,
+    name: m['name'] as String,
+    description: m['description'] as String?,
+    iconName: m['icon_name'] as String?,
+    sortOrder: m['sort_order'] as int? ?? 0,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+    deletedAtMs: m['deleted_at_ms'] as int?,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'key': key,
-        'name': name,
-        'description': description,
-        'icon_name': iconName,
-        'sort_order': sortOrder,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs,
-        'deleted_at_ms': deletedAtMs
-      };
+    'id': id,
+    'key': key,
+    'name': name,
+    'description': description,
+    'icon_name': iconName,
+    'sort_order': sortOrder,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+    'deleted_at_ms': deletedAtMs,
+  };
 }
 
 class Discipline {
@@ -55,24 +56,32 @@ class Discipline {
   final int createdAtMs;
   final int updatedAtMs;
 
-  Discipline({required this.id, required this.categoryId, required this.key, required this.name, required this.createdAtMs, required this.updatedAtMs});
+  Discipline({
+    required this.id,
+    required this.categoryId,
+    required this.key,
+    required this.name,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
   factory Discipline.fromMap(Map<String, dynamic> m) => Discipline(
-      id: m['id'] as String,
-      categoryId: m['category_id'] as String,
-      key: m['key'] as String,
-      name: m['name'] as String,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int);
+    id: m['id'] as String,
+    categoryId: m['category_id'] as String,
+    key: m['key'] as String,
+    name: m['name'] as String,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'category_id': categoryId,
-        'key': key,
-        'name': name,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
-      };
+    'id': id,
+    'category_id': categoryId,
+    'key': key,
+    'name': name,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
 
 class Exercise {
@@ -86,7 +95,8 @@ class Exercise {
   final int createdAtMs;
   final int updatedAtMs;
   final List<String> capabilities;
-  final double? relevanceScore; // Transient field: populated only by ranked queries
+  final double?
+  relevanceScore; // Transient field: populated only by ranked queries
   /// Sport-specific default duration per round/period (in seconds).
   /// Null = use the app-wide default (WorkoutConstants.defaultRoundDurationSecs = 180).
   /// Only meaningful for effortKind == 'round' exercises (martial arts, sports).
@@ -109,31 +119,32 @@ class Exercise {
   });
 
   factory Exercise.fromMap(Map<String, dynamic> m) => Exercise(
-      id: m['id'] as String,
-      ownerUserId: m['owner_user_id'] as String?,
-      disciplineId: m['discipline_id'] as String?,
-      name: m['name'] as String,
-      description: m['description'] as String?,
-      movementPattern: m['movement_pattern'] as String?,
-      isArchived: (m['is_archived'] as int?) == 1,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int,
-      relevanceScore: m['relevance_score'] as double?,
-      defaultRoundDurationSecs: m['default_round_duration_secs'] as int?);
+    id: m['id'] as String,
+    ownerUserId: m['owner_user_id'] as String?,
+    disciplineId: m['discipline_id'] as String?,
+    name: m['name'] as String,
+    description: m['description'] as String?,
+    movementPattern: m['movement_pattern'] as String?,
+    isArchived: (m['is_archived'] as int?) == 1,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+    relevanceScore: m['relevance_score'] as double?,
+    defaultRoundDurationSecs: m['default_round_duration_secs'] as int?,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'owner_user_id': ownerUserId,
-        'discipline_id': disciplineId,
-        'name': name,
-        'description': description,
-        'movement_pattern': movementPattern,
-        'is_archived': isArchived ? 1 : 0,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs,
-        'relevance_score': relevanceScore,
-        'default_round_duration_secs': defaultRoundDurationSecs,
-      };
+    'id': id,
+    'owner_user_id': ownerUserId,
+    'discipline_id': disciplineId,
+    'name': name,
+    'description': description,
+    'movement_pattern': movementPattern,
+    'is_archived': isArchived ? 1 : 0,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+    'relevance_score': relevanceScore,
+    'default_round_duration_secs': defaultRoundDurationSecs,
+  };
 }
 
 // Extension methods (supports, supportsAny, copyWith) are in lib/core/utils/exercise_helpers.dart
@@ -146,9 +157,17 @@ class Equipment {
 
   Equipment({required this.id, required this.name, required this.createdAtMs});
 
-  factory Equipment.fromMap(Map<String, dynamic> m) => Equipment(id: m['id'] as String, name: m['name'] as String, createdAtMs: m['created_at_ms'] as int);
+  factory Equipment.fromMap(Map<String, dynamic> m) => Equipment(
+    id: m['id'] as String,
+    name: m['name'] as String,
+    createdAtMs: m['created_at_ms'] as int,
+  );
 
-  Map<String, dynamic> toMap() => {'id': id, 'name': name, 'created_at_ms': createdAtMs};
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'created_at_ms': createdAtMs,
+  };
 }
 
 class TrainingSession {
@@ -163,6 +182,8 @@ class TrainingSession {
   final String? modality;
   final String? intent;
   final double? perceivedSessionRpe;
+  final int? sessionFeeling; // 1-5 scale: 1=Rough, 5=Great
+  final int? qualityRating; // Reserved for future computed session quality
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -178,40 +199,108 @@ class TrainingSession {
     this.modality,
     this.intent,
     this.perceivedSessionRpe,
+    this.sessionFeeling,
+    this.qualityRating,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
 
   factory TrainingSession.fromMap(Map<String, dynamic> m) => TrainingSession(
-      id: m['id'] as String,
-      ownerUserId: m['owner_user_id'] as String,
-      routineTemplateId: m['routine_template_id'] as String?,
-      startedAtMs: m['started_at_ms'] as int,
-      endedAtMs: m['ended_at_ms'] as int?,
-      title: m['title'] as String?,
-      note: m['note'] as String?,
-      locationText: m['location_text'] as String?,
-      modality: m['modality'] as String?,
-      intent: m['intent'] as String?,
-      perceivedSessionRpe: (m['perceived_session_rpe'] as num?)?.toDouble(),
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int);
+    id: m['id'] as String,
+    ownerUserId: m['owner_user_id'] as String,
+    routineTemplateId: m['routine_template_id'] as String?,
+    startedAtMs: m['started_at_ms'] as int,
+    endedAtMs: m['ended_at_ms'] as int?,
+    title: m['title'] as String?,
+    note: m['note'] as String?,
+    locationText: m['location_text'] as String?,
+    modality: m['modality'] as String?,
+    intent: m['intent'] as String?,
+    perceivedSessionRpe: (m['perceived_session_rpe'] as num?)?.toDouble(),
+    sessionFeeling: m['session_feeling'] as int?,
+    qualityRating: m['quality_rating'] as int?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'owner_user_id': ownerUserId,
-      'routine_template_id': routineTemplateId,
-        'started_at_ms': startedAtMs,
-        'ended_at_ms': endedAtMs,
-        'title': title,
-        'note': note,
-        'location_text': locationText,
-        'modality': modality,
-        'intent': intent,
-        'perceived_session_rpe': perceivedSessionRpe,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
-      };
+    'id': id,
+    'owner_user_id': ownerUserId,
+    'routine_template_id': routineTemplateId,
+    'started_at_ms': startedAtMs,
+    'ended_at_ms': endedAtMs,
+    'title': title,
+    'note': note,
+    'location_text': locationText,
+    'modality': modality,
+    'intent': intent,
+    'perceived_session_rpe': perceivedSessionRpe,
+    'session_feeling': sessionFeeling,
+    'quality_rating': qualityRating,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+}
+
+class UserProfile {
+  final String id;
+  final String? displayName;
+  final String? avatarPath;
+  final int createdAtMs;
+
+  UserProfile({
+    required this.id,
+    this.displayName,
+    this.avatarPath,
+    required this.createdAtMs,
+  });
+
+  factory UserProfile.fromMap(Map<String, dynamic> m) => UserProfile(
+    id: m['id'] as String,
+    displayName: m['display_name'] as String?,
+    avatarPath: m['avatar_path'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'display_name': displayName,
+    'avatar_path': avatarPath,
+    'created_at_ms': createdAtMs,
+  };
+}
+
+class BodyMeasurementEntry {
+  final String id;
+  final String measurementType;
+  final double value;
+  final String unitId;
+  final int recordedAtMs;
+
+  BodyMeasurementEntry({
+    required this.id,
+    required this.measurementType,
+    required this.value,
+    required this.unitId,
+    required this.recordedAtMs,
+  });
+
+  factory BodyMeasurementEntry.fromMap(Map<String, dynamic> m) =>
+      BodyMeasurementEntry(
+        id: m['id'] as String,
+        measurementType: m['measurement_type'] as String,
+        value: (m['value'] as num).toDouble(),
+        unitId: m['unit_id'] as String,
+        recordedAtMs: m['recorded_at_ms'] as int,
+      );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'measurement_type': measurementType,
+    'value': value,
+    'unit_id': unitId,
+    'recorded_at_ms': recordedAtMs,
+  };
 }
 
 class SessionSegment {
@@ -225,30 +314,41 @@ class SessionSegment {
   final int createdAtMs;
   final int updatedAtMs;
 
-  SessionSegment({required this.id, required this.sessionId, required this.orderIndex, required this.segmentType, this.disciplineId, this.name, this.note, required this.createdAtMs, required this.updatedAtMs});
+  SessionSegment({
+    required this.id,
+    required this.sessionId,
+    required this.orderIndex,
+    required this.segmentType,
+    this.disciplineId,
+    this.name,
+    this.note,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
   factory SessionSegment.fromMap(Map<String, dynamic> m) => SessionSegment(
-      id: m['id'] as String,
-      sessionId: m['session_id'] as String,
-      orderIndex: m['order_index'] as int,
-      segmentType: m['segment_type'] as String,
-      disciplineId: m['discipline_id'] as String?,
-      name: m['name'] as String?,
-      note: m['note'] as String?,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int);
+    id: m['id'] as String,
+    sessionId: m['session_id'] as String,
+    orderIndex: m['order_index'] as int,
+    segmentType: m['segment_type'] as String,
+    disciplineId: m['discipline_id'] as String?,
+    name: m['name'] as String?,
+    note: m['note'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'session_id': sessionId,
-        'order_index': orderIndex,
-        'segment_type': segmentType,
-        'discipline_id': disciplineId,
-        'name': name,
-        'note': note,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
-      };
+    'id': id,
+    'session_id': sessionId,
+    'order_index': orderIndex,
+    'segment_type': segmentType,
+    'discipline_id': disciplineId,
+    'name': name,
+    'note': note,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
 
 class SegmentEffort {
@@ -261,28 +361,38 @@ class SegmentEffort {
   final int createdAtMs;
   final int updatedAtMs;
 
-  SegmentEffort({required this.id, required this.segmentId, required this.orderIndex, required this.effortKind, this.exerciseId, this.note, required this.createdAtMs, required this.updatedAtMs});
+  SegmentEffort({
+    required this.id,
+    required this.segmentId,
+    required this.orderIndex,
+    required this.effortKind,
+    this.exerciseId,
+    this.note,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
   factory SegmentEffort.fromMap(Map<String, dynamic> m) => SegmentEffort(
-      id: m['id'] as String,
-      segmentId: m['segment_id'] as String,
-      orderIndex: m['order_index'] as int,
-      effortKind: m['effort_kind'] as String,
-      exerciseId: m['exercise_id'] as String?,
-      note: m['note'] as String?,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int);
+    id: m['id'] as String,
+    segmentId: m['segment_id'] as String,
+    orderIndex: m['order_index'] as int,
+    effortKind: m['effort_kind'] as String,
+    exerciseId: m['exercise_id'] as String?,
+    note: m['note'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'segment_id': segmentId,
-        'order_index': orderIndex,
-        'effort_kind': effortKind,
-        'exercise_id': exerciseId,
-        'note': note,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
-      };
+    'id': id,
+    'segment_id': segmentId,
+    'order_index': orderIndex,
+    'effort_kind': effortKind,
+    'exercise_id': exerciseId,
+    'note': note,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
 
 class UnitModel {
@@ -292,11 +402,29 @@ class UnitModel {
   final String? unitType;
   final int createdAtMs;
 
-  UnitModel({required this.id, required this.key, required this.name, this.unitType, required this.createdAtMs});
+  UnitModel({
+    required this.id,
+    required this.key,
+    required this.name,
+    this.unitType,
+    required this.createdAtMs,
+  });
 
-  factory UnitModel.fromMap(Map<String, dynamic> m) => UnitModel(id: m['id'] as String, key: m['key'] as String, name: m['name'] as String, unitType: m['unit_type'] as String?, createdAtMs: m['created_at_ms'] as int);
+  factory UnitModel.fromMap(Map<String, dynamic> m) => UnitModel(
+    id: m['id'] as String,
+    key: m['key'] as String,
+    name: m['name'] as String,
+    unitType: m['unit_type'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+  );
 
-  Map<String, dynamic> toMap() => {'id': id, 'key': key, 'name': name, 'unit_type': unitType, 'created_at_ms': createdAtMs};
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'key': key,
+    'name': name,
+    'unit_type': unitType,
+    'created_at_ms': createdAtMs,
+  };
 }
 
 class MetricDefinition {
@@ -309,28 +437,38 @@ class MetricDefinition {
   final String? appliesToEffortKind;
   final int createdAtMs;
 
-  MetricDefinition({required this.id, required this.key, required this.name, required this.dataType, this.defaultUnitId, this.isCore = false, this.appliesToEffortKind, required this.createdAtMs});
+  MetricDefinition({
+    required this.id,
+    required this.key,
+    required this.name,
+    required this.dataType,
+    this.defaultUnitId,
+    this.isCore = false,
+    this.appliesToEffortKind,
+    required this.createdAtMs,
+  });
 
   factory MetricDefinition.fromMap(Map<String, dynamic> m) => MetricDefinition(
-      id: m['id'] as String,
-      key: m['key'] as String,
-      name: m['name'] as String,
-      dataType: m['data_type'] as String,
-      defaultUnitId: m['default_unit_id'] as String?,
-      isCore: (m['is_core'] as int?) == 1,
-      appliesToEffortKind: m['applies_to_effort_kind'] as String?,
-      createdAtMs: m['created_at_ms'] as int);
+    id: m['id'] as String,
+    key: m['key'] as String,
+    name: m['name'] as String,
+    dataType: m['data_type'] as String,
+    defaultUnitId: m['default_unit_id'] as String?,
+    isCore: (m['is_core'] as int?) == 1,
+    appliesToEffortKind: m['applies_to_effort_kind'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'key': key,
-        'name': name,
-        'data_type': dataType,
-        'default_unit_id': defaultUnitId,
-        'is_core': isCore ? 1 : 0,
-        'applies_to_effort_kind': appliesToEffortKind,
-        'created_at_ms': createdAtMs
-      };
+    'id': id,
+    'key': key,
+    'name': name,
+    'data_type': dataType,
+    'default_unit_id': defaultUnitId,
+    'is_core': isCore ? 1 : 0,
+    'applies_to_effort_kind': appliesToEffortKind,
+    'created_at_ms': createdAtMs,
+  };
 }
 
 class EffortObservation {
@@ -342,35 +480,56 @@ class EffortObservation {
   final double? valueReal;
   final String? valueText;
   final bool? valueBool;
+  final int? rpeRating; // RPE 1-10 scale, nullable, reserved for future use
+  final int? restDurationMs; // Actual rest taken before this set, in ms
   final int createdAtMs;
   final int updatedAtMs;
 
-  EffortObservation({required this.id, required this.effortId, required this.metricId, this.unitId, this.valueInt, this.valueReal, this.valueText, this.valueBool, required this.createdAtMs, required this.updatedAtMs});
+  EffortObservation({
+    required this.id,
+    required this.effortId,
+    required this.metricId,
+    this.unitId,
+    this.valueInt,
+    this.valueReal,
+    this.valueText,
+    this.valueBool,
+    this.rpeRating,
+    this.restDurationMs,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
-  factory EffortObservation.fromMap(Map<String, dynamic> m) => EffortObservation(
-      id: m['id'] as String,
-      effortId: m['effort_id'] as String,
-      metricId: m['metric_id'] as String,
-      unitId: m['unit_id'] as String?,
-      valueInt: m['value_int'] as int?,
-      valueReal: (m['value_real'] as num?)?.toDouble(),
-      valueText: m['value_text'] as String?,
-      valueBool: (m['value_bool'] as int?) == 1,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int);
+  factory EffortObservation.fromMap(Map<String, dynamic> m) =>
+      EffortObservation(
+        id: m['id'] as String,
+        effortId: m['effort_id'] as String,
+        metricId: m['metric_id'] as String,
+        unitId: m['unit_id'] as String?,
+        valueInt: m['value_int'] as int?,
+        valueReal: (m['value_real'] as num?)?.toDouble(),
+        valueText: m['value_text'] as String?,
+        valueBool: (m['value_bool'] as int?) == 1,
+        rpeRating: m['rpe_rating'] as int?,
+        restDurationMs: m['rest_duration_ms'] as int?,
+        createdAtMs: m['created_at_ms'] as int,
+        updatedAtMs: m['updated_at_ms'] as int,
+      );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'effort_id': effortId,
-        'metric_id': metricId,
-        'unit_id': unitId,
-        'value_int': valueInt,
-        'value_real': valueReal,
-        'value_text': valueText,
-        'value_bool': valueBool == true ? 1 : 0,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
-      };
+    'id': id,
+    'effort_id': effortId,
+    'metric_id': metricId,
+    'unit_id': unitId,
+    'value_int': valueInt,
+    'value_real': valueReal,
+    'value_text': valueText,
+    'value_bool': valueBool == true ? 1 : 0,
+    'rpe_rating': rpeRating,
+    'rest_duration_ms': restDurationMs,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
 
 class WorkoutTemplate {
@@ -397,27 +556,28 @@ class WorkoutTemplate {
   });
 
   factory WorkoutTemplate.fromMap(Map<String, dynamic> m) => WorkoutTemplate(
-      id: m['id'] as String,
-      ownerUserId: m['owner_user_id'] as String?,
-      name: m['name'] as String,
-      description: m['description'] as String?,
-      focusModality: m['focus_modality'] as String?,
-      primaryDisciplineId: m['primary_discipline_id'] as String?,
-      note: m['note'] as String?,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: m['updated_at_ms'] as int);
+    id: m['id'] as String,
+    ownerUserId: m['owner_user_id'] as String?,
+    name: m['name'] as String,
+    description: m['description'] as String?,
+    focusModality: m['focus_modality'] as String?,
+    primaryDisciplineId: m['primary_discipline_id'] as String?,
+    note: m['note'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'owner_user_id': ownerUserId,
-        'name': name,
-      'description': description,
-      'focus_modality': focusModality,
-        'primary_discipline_id': primaryDisciplineId,
-        'note': note,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
-      };
+    'id': id,
+    'owner_user_id': ownerUserId,
+    'name': name,
+    'description': description,
+    'focus_modality': focusModality,
+    'primary_discipline_id': primaryDisciplineId,
+    'note': note,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
 
 class TemplateSegment {
@@ -431,30 +591,41 @@ class TemplateSegment {
   final int createdAtMs;
   final int updatedAtMs;
 
-  TemplateSegment({required this.id, required this.templateId, required this.orderIndex, required this.segmentType, this.disciplineId, this.name, this.note, required this.createdAtMs, required this.updatedAtMs});
+  TemplateSegment({
+    required this.id,
+    required this.templateId,
+    required this.orderIndex,
+    required this.segmentType,
+    this.disciplineId,
+    this.name,
+    this.note,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
   factory TemplateSegment.fromMap(Map<String, dynamic> m) => TemplateSegment(
-      id: m['id'] as String,
-      templateId: m['template_id'] as String,
-      orderIndex: m['order_index'] as int,
-      segmentType: m['segment_type'] as String,
-      disciplineId: m['discipline_id'] as String?,
-      name: m['name'] as String?,
-      note: m['note'] as String?,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: (m['updated_at_ms'] as int?) ?? (m['created_at_ms'] as int));
+    id: m['id'] as String,
+    templateId: m['template_id'] as String,
+    orderIndex: m['order_index'] as int,
+    segmentType: m['segment_type'] as String,
+    disciplineId: m['discipline_id'] as String?,
+    name: m['name'] as String?,
+    note: m['note'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: (m['updated_at_ms'] as int?) ?? (m['created_at_ms'] as int),
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'template_id': templateId,
-        'order_index': orderIndex,
-        'segment_type': segmentType,
-        'discipline_id': disciplineId,
-        'name': name,
-        'note': note,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
-      };
+    'id': id,
+    'template_id': templateId,
+    'order_index': orderIndex,
+    'segment_type': segmentType,
+    'discipline_id': disciplineId,
+    'name': name,
+    'note': note,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
 
 class TemplateEffort {
@@ -483,29 +654,30 @@ class TemplateEffort {
   });
 
   factory TemplateEffort.fromMap(Map<String, dynamic> m) => TemplateEffort(
-      id: m['id'] as String,
-      templateSegmentId: m['template_segment_id'] as String,
-      orderIndex: m['order_index'] as int,
-      effortKind: m['effort_kind'] as String,
-      modality: m['modality'] as String?,
-      exerciseId: m['exercise_id'] as String?,
-      note: m['note'] as String?,
-      restSeconds: m['rest_seconds'] as int?,
-      restType: m['rest_type'] as String?,
-      createdAtMs: m['created_at_ms'] as int);
+    id: m['id'] as String,
+    templateSegmentId: m['template_segment_id'] as String,
+    orderIndex: m['order_index'] as int,
+    effortKind: m['effort_kind'] as String,
+    modality: m['modality'] as String?,
+    exerciseId: m['exercise_id'] as String?,
+    note: m['note'] as String?,
+    restSeconds: m['rest_seconds'] as int?,
+    restType: m['rest_type'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'template_segment_id': templateSegmentId,
-        'order_index': orderIndex,
-        'effort_kind': effortKind,
-        'modality': modality,
-        'exercise_id': exerciseId,
-        'note': note,
-      'rest_seconds': restSeconds,
-      'rest_type': restType,
-        'created_at_ms': createdAtMs
-      };
+    'id': id,
+    'template_segment_id': templateSegmentId,
+    'order_index': orderIndex,
+    'effort_kind': effortKind,
+    'modality': modality,
+    'exercise_id': exerciseId,
+    'note': note,
+    'rest_seconds': restSeconds,
+    'rest_type': restType,
+    'created_at_ms': createdAtMs,
+  };
 }
 
 class TemplateTarget {
@@ -521,34 +693,47 @@ class TemplateTarget {
   final int createdAtMs;
   final int updatedAtMs;
 
-  TemplateTarget({required this.id, required this.templateEffortId, required this.metricId, this.setIndex, this.unitId, this.targetMin, this.targetMax, this.targetInt, this.targetText, required this.createdAtMs, required this.updatedAtMs});
+  TemplateTarget({
+    required this.id,
+    required this.templateEffortId,
+    required this.metricId,
+    this.setIndex,
+    this.unitId,
+    this.targetMin,
+    this.targetMax,
+    this.targetInt,
+    this.targetText,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
 
   factory TemplateTarget.fromMap(Map<String, dynamic> m) => TemplateTarget(
-      id: m['id'] as String,
-      templateEffortId: m['template_effort_id'] as String,
-      metricId: m['metric_id'] as String,
-      setIndex: m['set_index'] as int?,
-      unitId: m['unit_id'] as String?,
-      targetMin: (m['target_min'] as num?)?.toDouble(),
-      targetMax: (m['target_max'] as num?)?.toDouble(),
-      targetInt: m['target_int'] as int?,
-      targetText: m['target_text'] as String?,
-      createdAtMs: m['created_at_ms'] as int,
-      updatedAtMs: (m['updated_at_ms'] as int?) ?? (m['created_at_ms'] as int));
+    id: m['id'] as String,
+    templateEffortId: m['template_effort_id'] as String,
+    metricId: m['metric_id'] as String,
+    setIndex: m['set_index'] as int?,
+    unitId: m['unit_id'] as String?,
+    targetMin: (m['target_min'] as num?)?.toDouble(),
+    targetMax: (m['target_max'] as num?)?.toDouble(),
+    targetInt: m['target_int'] as int?,
+    targetText: m['target_text'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: (m['updated_at_ms'] as int?) ?? (m['created_at_ms'] as int),
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'template_effort_id': templateEffortId,
-        'metric_id': metricId,
-        'set_index': setIndex,
-        'unit_id': unitId,
-        'target_min': targetMin,
-        'target_max': targetMax,
-        'target_int': targetInt,
-        'target_text': targetText,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs
-      };
+    'id': id,
+    'template_effort_id': templateEffortId,
+    'metric_id': metricId,
+    'set_index': setIndex,
+    'unit_id': unitId,
+    'target_min': targetMin,
+    'target_max': targetMax,
+    'target_int': targetInt,
+    'target_text': targetText,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
 
 class Tag {
@@ -558,9 +743,17 @@ class Tag {
 
   Tag({required this.id, required this.name, required this.createdAtMs});
 
-  factory Tag.fromMap(Map<String, dynamic> m) => Tag(id: m['id'] as String, name: m['name'] as String, createdAtMs: m['created_at_ms'] as int);
+  factory Tag.fromMap(Map<String, dynamic> m) => Tag(
+    id: m['id'] as String,
+    name: m['name'] as String,
+    createdAtMs: m['created_at_ms'] as int,
+  );
 
-  Map<String, dynamic> toMap() => {'id': id, 'name': name, 'created_at_ms': createdAtMs};
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'created_at_ms': createdAtMs,
+  };
 }
 
 class MuscleGroup {
@@ -568,11 +761,23 @@ class MuscleGroup {
   final String name;
   final int createdAtMs;
 
-  MuscleGroup({required this.id, required this.name, required this.createdAtMs});
+  MuscleGroup({
+    required this.id,
+    required this.name,
+    required this.createdAtMs,
+  });
 
-  factory MuscleGroup.fromMap(Map<String, dynamic> m) => MuscleGroup(id: m['id'] as String, name: m['name'] as String, createdAtMs: m['created_at_ms'] as int);
+  factory MuscleGroup.fromMap(Map<String, dynamic> m) => MuscleGroup(
+    id: m['id'] as String,
+    name: m['name'] as String,
+    createdAtMs: m['created_at_ms'] as int,
+  );
 
-  Map<String, dynamic> toMap() => {'id': id, 'name': name, 'created_at_ms': createdAtMs};
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'created_at_ms': createdAtMs,
+  };
 }
 
 class ExerciseAlias {
@@ -589,38 +794,36 @@ class ExerciseAlias {
   });
 
   factory ExerciseAlias.fromMap(Map<String, dynamic> m) => ExerciseAlias(
-        id: m['id'] as String,
-        exerciseId: m['exercise_id'] as String,
-        alias: m['alias'] as String,
-        createdAtMs: m['created_at_ms'] as int,
-      );
+    id: m['id'] as String,
+    exerciseId: m['exercise_id'] as String,
+    alias: m['alias'] as String,
+    createdAtMs: m['created_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'exercise_id': exerciseId,
-        'alias': alias,
-        'created_at_ms': createdAtMs,
-      };
+    'id': id,
+    'exercise_id': exerciseId,
+    'alias': alias,
+    'created_at_ms': createdAtMs,
+  };
 }
 
 class MetricApplicability {
   final String metricId;
   final String effortKind;
 
-  MetricApplicability({
-    required this.metricId,
-    required this.effortKind,
-  });
+  MetricApplicability({required this.metricId, required this.effortKind});
 
-  factory MetricApplicability.fromMap(Map<String, dynamic> m) => MetricApplicability(
+  factory MetricApplicability.fromMap(Map<String, dynamic> m) =>
+      MetricApplicability(
         metricId: m['metric_id'] as String,
         effortKind: m['effort_kind'] as String,
       );
 
   Map<String, dynamic> toMap() => {
-        'metric_id': metricId,
-        'effort_kind': effortKind,
-      };
+    'metric_id': metricId,
+    'effort_kind': effortKind,
+  };
 }
 
 // Sentinel used by RoundInstance.copyWith() to distinguish "explicit null" from "not provided"
@@ -639,9 +842,9 @@ const _roundCopyWithUnset = Object();
 /// Finished is terminal — no further transitions are permitted.
 enum RoundState {
   notStarted, // Round created; timer has never been started
-  active,     // Timer running; countdown in progress
-  paused,     // Timer paused mid-countdown; pausedAtMs is set
-  finished,   // Terminal — round completed naturally or ended early
+  active, // Timer running; countdown in progress
+  paused, // Timer paused mid-countdown; pausedAtMs is set
+  finished, // Terminal — round completed naturally or ended early
 }
 
 /// Represents one timed round within a round-based effort (effortKind == 'round').
@@ -673,15 +876,18 @@ enum RoundState {
 class RoundInstance {
   final String id;
   final String effortId;
-  final int roundIndex;               // 0-based round number within the effort
-  final int plannedDurationSecs;      // Countdown target; user-configurable (default 180)
-  final int actualDurationSecs;       // Final elapsed time in secs; 0 while in-progress
-  final int startedAtMs;              // Wall-clock epoch ms; 0 if not yet started
-  final int? finishedAtMs;            // Wall-clock epoch ms; null if not finished
-  final bool completed;               // true ONLY if countdown naturally reached zero
-  final RoundState state;             // Explicit lifecycle state
-  final int? pausedAtMs;              // Wall-clock epoch ms when paused; null if not paused
-  final int totalPausedDurationMs;    // Accumulated pause time in ms across all pause/resume cycles
+  final int roundIndex; // 0-based round number within the effort
+  final int
+  plannedDurationSecs; // Countdown target; user-configurable (default 180)
+  final int
+  actualDurationSecs; // Final elapsed time in secs; 0 while in-progress
+  final int startedAtMs; // Wall-clock epoch ms; 0 if not yet started
+  final int? finishedAtMs; // Wall-clock epoch ms; null if not finished
+  final bool completed; // true ONLY if countdown naturally reached zero
+  final RoundState state; // Explicit lifecycle state
+  final int? pausedAtMs; // Wall-clock epoch ms when paused; null if not paused
+  final int
+  totalPausedDurationMs; // Accumulated pause time in ms across all pause/resume cycles
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -718,36 +924,36 @@ class RoundInstance {
   }
 
   factory RoundInstance.fromMap(Map<String, dynamic> m) => RoundInstance(
-        id: m['id'] as String,
-        effortId: m['effort_id'] as String,
-        roundIndex: m['round_index'] as int,
-        plannedDurationSecs: m['planned_duration_secs'] as int? ?? 180,
-        actualDurationSecs: m['actual_duration_secs'] as int? ?? 0,
-        startedAtMs: m['started_at_ms'] as int? ?? 0,
-        finishedAtMs: m['finished_at_ms'] as int?,
-        completed: (m['completed'] as int?) == 1,
-        state: _stateFromMap(m),
-        pausedAtMs: m['paused_at_ms'] as int?,
-        totalPausedDurationMs: m['total_paused_duration_ms'] as int? ?? 0,
-        createdAtMs: m['created_at_ms'] as int,
-        updatedAtMs: m['updated_at_ms'] as int,
-      );
+    id: m['id'] as String,
+    effortId: m['effort_id'] as String,
+    roundIndex: m['round_index'] as int,
+    plannedDurationSecs: m['planned_duration_secs'] as int? ?? 180,
+    actualDurationSecs: m['actual_duration_secs'] as int? ?? 0,
+    startedAtMs: m['started_at_ms'] as int? ?? 0,
+    finishedAtMs: m['finished_at_ms'] as int?,
+    completed: (m['completed'] as int?) == 1,
+    state: _stateFromMap(m),
+    pausedAtMs: m['paused_at_ms'] as int?,
+    totalPausedDurationMs: m['total_paused_duration_ms'] as int? ?? 0,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'effort_id': effortId,
-        'round_index': roundIndex,
-        'planned_duration_secs': plannedDurationSecs,
-        'actual_duration_secs': actualDurationSecs,
-        'started_at_ms': startedAtMs,
-        'finished_at_ms': finishedAtMs,
-        'completed': completed ? 1 : 0,
-        'state': state.name,
-        'paused_at_ms': pausedAtMs,
-        'total_paused_duration_ms': totalPausedDurationMs,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs,
-      };
+    'id': id,
+    'effort_id': effortId,
+    'round_index': roundIndex,
+    'planned_duration_secs': plannedDurationSecs,
+    'actual_duration_secs': actualDurationSecs,
+    'started_at_ms': startedAtMs,
+    'finished_at_ms': finishedAtMs,
+    'completed': completed ? 1 : 0,
+    'state': state.name,
+    'paused_at_ms': pausedAtMs,
+    'total_paused_duration_ms': totalPausedDurationMs,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 
   /// Returns a copy with the specified fields replaced.
   /// For nullable fields [finishedAtMs] and [pausedAtMs], pass the sentinel
@@ -767,27 +973,25 @@ class RoundInstance {
     int? totalPausedDurationMs,
     int? createdAtMs,
     int? updatedAtMs,
-  }) =>
-      RoundInstance(
-        id: id ?? this.id,
-        effortId: effortId ?? this.effortId,
-        roundIndex: roundIndex ?? this.roundIndex,
-        plannedDurationSecs: plannedDurationSecs ?? this.plannedDurationSecs,
-        actualDurationSecs: actualDurationSecs ?? this.actualDurationSecs,
-        startedAtMs: startedAtMs ?? this.startedAtMs,
-        finishedAtMs: finishedAtMs == _roundCopyWithUnset
-            ? this.finishedAtMs
-            : finishedAtMs as int?,
-        completed: completed ?? this.completed,
-        state: state ?? this.state,
-        pausedAtMs: pausedAtMs == _roundCopyWithUnset
-            ? this.pausedAtMs
-            : pausedAtMs as int?,
-        totalPausedDurationMs:
-            totalPausedDurationMs ?? this.totalPausedDurationMs,
-        createdAtMs: createdAtMs ?? this.createdAtMs,
-        updatedAtMs: updatedAtMs ?? this.updatedAtMs,
-      );
+  }) => RoundInstance(
+    id: id ?? this.id,
+    effortId: effortId ?? this.effortId,
+    roundIndex: roundIndex ?? this.roundIndex,
+    plannedDurationSecs: plannedDurationSecs ?? this.plannedDurationSecs,
+    actualDurationSecs: actualDurationSecs ?? this.actualDurationSecs,
+    startedAtMs: startedAtMs ?? this.startedAtMs,
+    finishedAtMs: finishedAtMs == _roundCopyWithUnset
+        ? this.finishedAtMs
+        : finishedAtMs as int?,
+    completed: completed ?? this.completed,
+    state: state ?? this.state,
+    pausedAtMs: pausedAtMs == _roundCopyWithUnset
+        ? this.pausedAtMs
+        : pausedAtMs as int?,
+    totalPausedDurationMs: totalPausedDurationMs ?? this.totalPausedDurationMs,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
 
   // ─── Computed time helpers ───────────────────────────────────────────────
 
@@ -804,12 +1008,13 @@ class RoundInstance {
     if (state == RoundState.finished) return actualDurationSecs * 1000;
     // Use pausedAtMs as the reference point when paused (freezes the value);
     // otherwise use the current wall clock.
-    final referenceMs =
-        (state == RoundState.paused && pausedAtMs != null)
-            ? pausedAtMs!
-            : DateTime.now().millisecondsSinceEpoch;
-    return (referenceMs - startedAtMs - totalPausedDurationMs)
-        .clamp(0, plannedDurationSecs * 2000); // cap at 2× planned as sanity guard
+    final referenceMs = (state == RoundState.paused && pausedAtMs != null)
+        ? pausedAtMs!
+        : DateTime.now().millisecondsSinceEpoch;
+    return (referenceMs - startedAtMs - totalPausedDurationMs).clamp(
+      0,
+      plannedDurationSecs * 2000,
+    ); // cap at 2× planned as sanity guard
   }
 
   /// Remaining milliseconds before the countdown completes.
@@ -838,9 +1043,9 @@ const _timedCopyWithUnset = Object();
 /// Finished is terminal — no further transitions are permitted.
 enum TimedState {
   notStarted, // Entry created; timer has never been started
-  active,     // Timer running; counting up
-  paused,     // Timer paused mid-effort; pausedAtMs is set
-  finished,   // Terminal — entry completed (naturally or early)
+  active, // Timer running; counting up
+  paused, // Timer paused mid-effort; pausedAtMs is set
+  finished, // Terminal — entry completed (naturally or early)
 }
 
 /// Represents one timed entry within a timed or drill effort
@@ -871,14 +1076,15 @@ enum TimedState {
 class TimedInstance {
   final String id;
   final String effortId;
-  final int entryIndex;               // 0-based entry number within the effort
-  final int targetDurationSecs;       // User-set target; 0 = open-ended (no alert)
-  final int actualDurationSecs;       // Final elapsed secs; 0 while in-progress
-  final int startedAtMs;              // Wall-clock epoch ms; 0 if not yet started
-  final int? finishedAtMs;            // Wall-clock epoch ms; null if not finished
-  final TimedState state;             // Explicit lifecycle state
-  final int? pausedAtMs;              // Wall-clock epoch ms when paused; null if not paused
-  final int totalPausedDurationMs;    // Accumulated pause time in ms across all pause/resume cycles
+  final int entryIndex; // 0-based entry number within the effort
+  final int targetDurationSecs; // User-set target; 0 = open-ended (no alert)
+  final int actualDurationSecs; // Final elapsed secs; 0 while in-progress
+  final int startedAtMs; // Wall-clock epoch ms; 0 if not yet started
+  final int? finishedAtMs; // Wall-clock epoch ms; null if not finished
+  final TimedState state; // Explicit lifecycle state
+  final int? pausedAtMs; // Wall-clock epoch ms when paused; null if not paused
+  final int
+  totalPausedDurationMs; // Accumulated pause time in ms across all pause/resume cycles
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -914,34 +1120,34 @@ class TimedInstance {
   }
 
   factory TimedInstance.fromMap(Map<String, dynamic> m) => TimedInstance(
-        id: m['id'] as String,
-        effortId: m['effort_id'] as String,
-        entryIndex: m['entry_index'] as int,
-        targetDurationSecs: m['target_duration_secs'] as int? ?? 0,
-        actualDurationSecs: m['actual_duration_secs'] as int? ?? 0,
-        startedAtMs: m['started_at_ms'] as int? ?? 0,
-        finishedAtMs: m['finished_at_ms'] as int?,
-        state: _stateFromMap(m),
-        pausedAtMs: m['paused_at_ms'] as int?,
-        totalPausedDurationMs: m['total_paused_duration_ms'] as int? ?? 0,
-        createdAtMs: m['created_at_ms'] as int,
-        updatedAtMs: m['updated_at_ms'] as int,
-      );
+    id: m['id'] as String,
+    effortId: m['effort_id'] as String,
+    entryIndex: m['entry_index'] as int,
+    targetDurationSecs: m['target_duration_secs'] as int? ?? 0,
+    actualDurationSecs: m['actual_duration_secs'] as int? ?? 0,
+    startedAtMs: m['started_at_ms'] as int? ?? 0,
+    finishedAtMs: m['finished_at_ms'] as int?,
+    state: _stateFromMap(m),
+    pausedAtMs: m['paused_at_ms'] as int?,
+    totalPausedDurationMs: m['total_paused_duration_ms'] as int? ?? 0,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'effort_id': effortId,
-        'entry_index': entryIndex,
-        'target_duration_secs': targetDurationSecs,
-        'actual_duration_secs': actualDurationSecs,
-        'started_at_ms': startedAtMs,
-        'finished_at_ms': finishedAtMs,
-        'state': state.name,
-        'paused_at_ms': pausedAtMs,
-        'total_paused_duration_ms': totalPausedDurationMs,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs,
-      };
+    'id': id,
+    'effort_id': effortId,
+    'entry_index': entryIndex,
+    'target_duration_secs': targetDurationSecs,
+    'actual_duration_secs': actualDurationSecs,
+    'started_at_ms': startedAtMs,
+    'finished_at_ms': finishedAtMs,
+    'state': state.name,
+    'paused_at_ms': pausedAtMs,
+    'total_paused_duration_ms': totalPausedDurationMs,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 
   /// Returns a copy with the specified fields replaced.
   /// For nullable fields [finishedAtMs] and [pausedAtMs], pass the sentinel
@@ -960,26 +1166,24 @@ class TimedInstance {
     int? totalPausedDurationMs,
     int? createdAtMs,
     int? updatedAtMs,
-  }) =>
-      TimedInstance(
-        id: id ?? this.id,
-        effortId: effortId ?? this.effortId,
-        entryIndex: entryIndex ?? this.entryIndex,
-        targetDurationSecs: targetDurationSecs ?? this.targetDurationSecs,
-        actualDurationSecs: actualDurationSecs ?? this.actualDurationSecs,
-        startedAtMs: startedAtMs ?? this.startedAtMs,
-        finishedAtMs: finishedAtMs == _timedCopyWithUnset
-            ? this.finishedAtMs
-            : finishedAtMs as int?,
-        state: state ?? this.state,
-        pausedAtMs: pausedAtMs == _timedCopyWithUnset
-            ? this.pausedAtMs
-            : pausedAtMs as int?,
-        totalPausedDurationMs:
-            totalPausedDurationMs ?? this.totalPausedDurationMs,
-        createdAtMs: createdAtMs ?? this.createdAtMs,
-        updatedAtMs: updatedAtMs ?? this.updatedAtMs,
-      );
+  }) => TimedInstance(
+    id: id ?? this.id,
+    effortId: effortId ?? this.effortId,
+    entryIndex: entryIndex ?? this.entryIndex,
+    targetDurationSecs: targetDurationSecs ?? this.targetDurationSecs,
+    actualDurationSecs: actualDurationSecs ?? this.actualDurationSecs,
+    startedAtMs: startedAtMs ?? this.startedAtMs,
+    finishedAtMs: finishedAtMs == _timedCopyWithUnset
+        ? this.finishedAtMs
+        : finishedAtMs as int?,
+    state: state ?? this.state,
+    pausedAtMs: pausedAtMs == _timedCopyWithUnset
+        ? this.pausedAtMs
+        : pausedAtMs as int?,
+    totalPausedDurationMs: totalPausedDurationMs ?? this.totalPausedDurationMs,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
 
   // ─── Computed time helpers ───────────────────────────────────────────────
 
@@ -996,12 +1200,13 @@ class TimedInstance {
     if (state == TimedState.finished) return actualDurationSecs * 1000;
     // Use pausedAtMs as the reference point when paused (freezes the value);
     // otherwise use the current wall clock.
-    final referenceMs =
-        (state == TimedState.paused && pausedAtMs != null)
-            ? pausedAtMs!
-            : DateTime.now().millisecondsSinceEpoch;
-    return (referenceMs - startedAtMs - totalPausedDurationMs)
-        .clamp(0, 86400000); // cap at 24 hours as sanity guard
+    final referenceMs = (state == TimedState.paused && pausedAtMs != null)
+        ? pausedAtMs!
+        : DateTime.now().millisecondsSinceEpoch;
+    return (referenceMs - startedAtMs - totalPausedDurationMs).clamp(
+      0,
+      86400000,
+    ); // cap at 24 hours as sanity guard
   }
 }
 
@@ -1079,34 +1284,34 @@ class PlannedSession {
   });
 
   factory PlannedSession.fromMap(Map<String, dynamic> m) => PlannedSession(
-        id: m['id'] as String,
-        ownerUserId: m['owner_user_id'] as String,
-        scheduledDateMs: m['scheduled_date_ms'] as int,
-        modality: m['modality'] as String?,
-        title: m['title'] as String?,
-        note: m['note'] as String?,
-        isCompleted: (m['is_completed'] as int?) == 1,
-        linkedSessionId: m['linked_session_id'] as String?,
-        routineTemplateId: m['routine_template_id'] as String?,
-        recurrenceRule: m['recurrence_rule'] as String?,
-        createdAtMs: m['created_at_ms'] as int,
-        updatedAtMs: m['updated_at_ms'] as int,
-      );
+    id: m['id'] as String,
+    ownerUserId: m['owner_user_id'] as String,
+    scheduledDateMs: m['scheduled_date_ms'] as int,
+    modality: m['modality'] as String?,
+    title: m['title'] as String?,
+    note: m['note'] as String?,
+    isCompleted: (m['is_completed'] as int?) == 1,
+    linkedSessionId: m['linked_session_id'] as String?,
+    routineTemplateId: m['routine_template_id'] as String?,
+    recurrenceRule: m['recurrence_rule'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'owner_user_id': ownerUserId,
-        'scheduled_date_ms': scheduledDateMs,
-        'modality': modality,
-        'title': title,
-        'note': note,
-        'is_completed': isCompleted ? 1 : 0,
-        'linked_session_id': linkedSessionId,
-        'routine_template_id': routineTemplateId,
-        'recurrence_rule': recurrenceRule,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs,
-      };
+    'id': id,
+    'owner_user_id': ownerUserId,
+    'scheduled_date_ms': scheduledDateMs,
+    'modality': modality,
+    'title': title,
+    'note': note,
+    'is_completed': isCompleted ? 1 : 0,
+    'linked_session_id': linkedSessionId,
+    'routine_template_id': routineTemplateId,
+    'recurrence_rule': recurrenceRule,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1167,8 +1372,9 @@ class TrainingPeriod {
 
   factory TrainingPeriod.fromMap(Map<String, dynamic> m) {
     final csv = m['focus_modalities_csv'] as String?;
-    final modalities =
-        (csv == null || csv.isEmpty) ? <String>[] : csv.split(',');
+    final modalities = (csv == null || csv.isEmpty)
+        ? <String>[]
+        : csv.split(',');
     return TrainingPeriod(
       id: m['id'] as String,
       ownerUserId: m['owner_user_id'] as String?,
@@ -1184,15 +1390,101 @@ class TrainingPeriod {
   }
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'owner_user_id': ownerUserId,
-        'name': name,
-        'start_date_ms': startDateMs,
-        'end_date_ms': endDateMs,
-        'focus_modalities_csv': focusModalities.join(','),
-        'notes': notes,
-        'color_hex': colorHex,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs,
-      };
+    'id': id,
+    'owner_user_id': ownerUserId,
+    'name': name,
+    'start_date_ms': startDateMs,
+    'end_date_ms': endDateMs,
+    'focus_modalities_csv': focusModalities.join(','),
+    'notes': notes,
+    'color_hex': colorHex,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EntryRest — Wall-clock rest record between consecutive sets/rounds/entries
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Records the actual recovery time between consecutive sets for any effort kind
+/// (set, round, timed, drill, and any future kinds).
+///
+/// A record is created with [restEndMs] == null the instant a set/round is logged
+/// ([rest_start_ms] = wall-clock epoch ms at that moment). It is closed —
+/// [restEndMs] set to the current wall-clock time — when the athlete actively
+/// begins the next set/round/timer.
+///
+/// Because all times are wall-clock epoch milliseconds, rest durations survive
+/// app backgrounding, device restarts, and navigation. The UI derives the
+/// display value from `now - restStartMs` without a Stopwatch.
+///
+/// [entryIndex] is 0-based and identifies the set/round that this rest
+/// *precedes* (i.e., the set the athlete is currently resting before).
+///
+/// Pure Dart — no Flutter imports.
+class EntryRest {
+  final String id;         // 'rest-{effortId}-{entryIndex}'
+  final String effortId;
+  final int entryIndex;    // 0-based; this rest precedes this set/round
+  final int restStartMs;  // wall-clock epoch ms when previous set was logged
+  final int? restEndMs;   // wall-clock epoch ms when this set/round began; null = still resting
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  const EntryRest({
+    required this.id,
+    required this.effortId,
+    required this.entryIndex,
+    required this.restStartMs,
+    this.restEndMs,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  /// Elapsed rest in whole seconds. Live (unbounded) while [restEndMs] is null.
+  int elapsedSeconds(int nowMs) =>
+      (((restEndMs ?? nowMs) - restStartMs) / 1000).round().clamp(0, 99999);
+
+  factory EntryRest.fromMap(Map<String, dynamic> m) => EntryRest(
+    id: m['id'] as String,
+    effortId: m['effort_id'] as String,
+    entryIndex: m['entry_index'] as int,
+    restStartMs: m['rest_start_ms'] as int,
+    restEndMs: m['rest_end_ms'] as int?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'effort_id': effortId,
+    'entry_index': entryIndex,
+    'rest_start_ms': restStartMs,
+    'rest_end_ms': restEndMs,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+
+  EntryRest copyWith({
+    String? id,
+    String? effortId,
+    int? entryIndex,
+    int? restStartMs,
+    Object? restEndMs = _entryRestCopyWithUnset,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) => EntryRest(
+    id: id ?? this.id,
+    effortId: effortId ?? this.effortId,
+    entryIndex: entryIndex ?? this.entryIndex,
+    restStartMs: restStartMs ?? this.restStartMs,
+    restEndMs: restEndMs == _entryRestCopyWithUnset
+        ? this.restEndMs
+        : restEndMs as int?,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
+}
+
+const Object _entryRestCopyWithUnset = Object();

@@ -1,8 +1,91 @@
 import 'package:flutter/material.dart';
 
+enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen }
+
+typedef OmniThemeColors = ({
+  Color backgroundTop,
+  Color backgroundBottom,
+  Color surface,
+  Color primary,
+  Color secondary,
+  Color textMuted,
+  Color divider,
+  Color surfaceBorder,
+});
+
 /// Core theme constants for OMNITRAIN biomechanical training system
 /// Centralized color palette and design tokens
 class OmniTheme {
+  static AppTheme _activeTheme = AppTheme.abyssalNeon;
+
+  static AppTheme get activeTheme => _activeTheme;
+
+  static set activeTheme(AppTheme theme) {
+    _activeTheme = theme;
+  }
+
+  static OmniThemeColors colorsForTheme(AppTheme theme) {
+    switch (theme) {
+      case AppTheme.abyssalNeon:
+        return (
+          backgroundTop: Color(0xFF0F1F33),
+          backgroundBottom: Color(0xFF060B14),
+          surface: Color(0xFF0E223A),
+          primary: Color(0xFF2DE2E6),
+          secondary: Color(0xFF1B9AAA),
+          textMuted: Color(0xFF9BA4B5),
+          divider: Color(0xFF1F2937),
+          surfaceBorder: Color(0x0FFFFFFF),
+        );
+      case AppTheme.forgeEmber:
+        return (
+          backgroundTop: Color(0xFF1C1008),
+          backgroundBottom: Color(0xFF0A0603),
+          surface: Color(0xFF211407),
+          primary: Color(0xFFFF6B35),
+          secondary: Color(0xFFCC4A1A),
+          textMuted: Color(0xFFA07060),
+          divider: Color(0xFF2A1C10),
+          surfaceBorder: Color(0x0DFFFFFF),
+        );
+      case AppTheme.obsidianVolt:
+        return (
+          backgroundTop: Color(0xFF111111),
+          backgroundBottom: Color(0xFF050505),
+          surface: Color(0xFF161616),
+          primary: Color(0xFFEAE000),
+          secondary: Color(0xFFB8B000),
+          textMuted: Color(0xFF666666),
+          divider: Color(0xFF1F1F1F),
+          surfaceBorder: Color(0x12FFFFFF),
+        );
+      case AppTheme.circuitGreen:
+        return (
+          backgroundTop: Color(0xFF071210),
+          backgroundBottom: Color(0xFF030806),
+          surface: Color(0xFF091714),
+          primary: Color(0xFF00E676),
+          secondary: Color(0xFF00A854),
+          textMuted: Color(0xFF4A7A5A),
+          divider: Color(0xFF102018),
+          surfaceBorder: Color(0x0DFFFFFF),
+        );
+    }
+  }
+
+  static String displayNameForTheme(AppTheme theme) {
+    switch (theme) {
+      case AppTheme.abyssalNeon:
+        return 'Abyssal Neon';
+      case AppTheme.forgeEmber:
+        return 'Forge & Ember';
+      case AppTheme.obsidianVolt:
+        return 'Obsidian Volt';
+      case AppTheme.circuitGreen:
+        return 'Circuit Green';
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════
   // BACKGROUND GRADIENTS
   // ═══════════════════════════════════════════════════════════

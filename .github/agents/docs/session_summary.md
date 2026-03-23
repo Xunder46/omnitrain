@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **Session Summary** screen is displayed after a user finishes (or navigates away from) an active workout session. It provides post-workout analytics: duration, volume, personal records, volume comparison to previous sessions, a monthly training calendar, and the ability to save the completed session as a reusable routine.
+The **Session Summary** screen is displayed after a user finishes (or navigates away from) an active workout session. It provides post-workout analytics: duration, sets, per-group progress deltas vs the previous session, personal records, a monthly training calendar, and the ability to save the completed session as a reusable routine.
 
 ---
 
@@ -11,8 +11,10 @@ The **Session Summary** screen is displayed after a user finishes (or navigates 
 ```
 WorkoutSessionScreen → "Finish Workout" (or back navigation)
   → SessionSummaryScreen
+    ├── [First load, feeling == null] Session Feeling modal (non-dismissible)
+    │     └── Tap 1-5 tile → persists feeling → modal closes
     ├── View stats (duration, sets, volume)
-    ├── See volume delta vs previous session
+    ├── See per-group delta vs previous session (chips on group headers)
     ├── See new personal records (PRs)
     ├── Add/edit session note (auto-saves with 600ms debounce)
     ├── View monthly training calendar
@@ -32,11 +34,13 @@ The screen renders a `CustomScrollView` over an `OmniGradientBackground` with th
 | Section | Content |
 |---------|---------|
 | **Header** | Session title, formatted start date/time, modality badge |
-| **Stats** | Duration, total sets, total volume (kg) — rendered as `_StatPill` widgets |
-| **Volume Comparison** | Delta vs. previous session ("First session!" or "±X kg vs last session") |
+| **Stats** | Four metrics in a fixed 2×2 grid: Duration, Exercises, Sets, Rounds — always all four visible |
+| **Exercise Groups** | Always rendered group headers (even for single-modality sessions) with per-group comparison chips |
 | **PRs** | New personal records (conditional — only shown when PRs exist) |
 | **Note** | Editable `TextField` with 600ms debounce save via `workoutState.updateSessionNote()` |
 | **Calendar** | Current-month grid highlighting workout days and today |
+
+> The standalone **Volume Comparison** card was removed. Progress feedback is now embedded as per-group chips in each exercise group header.
 
 ---
 
@@ -50,14 +54,16 @@ A `StatefulWidget` receiving:
 - `WorkoutState` — session data, compute summary, end/discard session
 - `RoutineState` — reload routines after save-as-routine
 - `SessionSummaryService` — async PR/volume computations
+- `onOpenCalendar` callback — optional `VoidCallback` injected by the parent for Open Calendar navigation (currently feature-flagged off)
 
 ### Data Flow on Init
 
 1. `workoutState.computeSessionSummary()` → synchronous `SessionSummary` (duration, sets, volume, exercise list)
 2. `workoutState.buildTemplateDraftExercises()` → `List<SessionTemplateExercise>` (for save-as-routine sheet)
-3. Async: `sessionSummaryService.compareToPreviousSession(session, currentVolume)` → `VolumeComparison`
+3. Async: `sessionSummaryService.compareGroupsToPreviousSession(session, summary)` → `Map<String, GroupDelta>`
 4. Async: `sessionSummaryService.computePRs(exerciseSummaries)` → `List<PRAchievement>`
 5. Async: `_loadCalendarData()` → fetches sessions in current month date range
+6. Post-frame: if `currentSession.sessionFeeling == null` → `_showFeelingSheet(context)` (runs after first build)
 
 ### Service: `SessionSummaryService`
 
@@ -67,11 +73,12 @@ Wraps a `WorkoutRepository`. Key methods:
 
 | Method | Signature | Purpose |
 |--------|-----------|---------|
-| `compareToPreviousSession` | `Future<VolumeComparison>(TrainingSession, double)` | Finds the most recent previous session by `startedAtMs`, computes its volume, returns delta |
+| `compareGroupsToPreviousSession` | `Future<Map<String, GroupDelta>>(TrainingSession, SessionSummary)` | Finds the most recent previous session, computes per-group stats (volume/duration/rounds), returns delta map keyed by group (`'strength'`, `'cardio'`, `'rounds'`, `'isometric'`) |
 | `computePRs` | `Future<List<PRAchievement>>(List<ExerciseSummary>)` | For each `set`-type exercise, checks `bestWeight` against `repository.getPersonalRecordCandidates()` |
 | `saveRoutineFromDraft` | `Future<String>(SessionTemplateDraft, {String? focusModality})` | Creates `WorkoutTemplate` + `TemplateSegment` + N `TemplateEffort` + N×M `TemplateTarget`. Returns template ID |
 
 Private helpers:
+- `_computeGroupStats(sessionId)` — iterates segments → efforts; accumulates strength volume, cardio/isometric elapsed ms, and round counts per group key
 - `_computeSessionVolume(sessionId)` — iterates segments → efforts (set-kind only) → observations, sums reps × weight using `ObservationGrouper`
 - `_metricOrderForEffort(effortKind)` — sort-order for observation grouping per effort kind
 
@@ -83,9 +90,10 @@ Six plain-data classes (no persistence, no JSON serialization):
 
 | Class | Key Fields |
 |-------|------------|
-| `SessionSummary` | `sessionId`, `title`, `startedAtMs`, `endedAtMs`, `totalDurationMs`, `totalVolume`, `totalSets`, `List<ExerciseSummary>` |
+| `SessionSummary` | `sessionId`, `title`, `startedAtMs`, `endedAtMs`, `totalDurationMs`, `totalVolume`, `totalSets`, `totalRounds`, `totalCardioDurationMs`, `totalDrillDurationMs`, `List<ExerciseSummary>` |
 | `ExerciseSummary` | `exerciseId`, `name`, `effortKind`, `setsCompleted`, `bestWeight?` |
 | `PRAchievement` | `exerciseName`, `metricLabel`, `previousBest`, `newBest` |
+| `GroupDelta` | `delta?` (raw numeric, null = no comparison), `unit` (`'kg'`/`'ms'`/`'rounds'`), `hasPrevious` | 
 | `VolumeComparison` | `currentVolume`, `previousVolume?`, `delta?`, `hasPrevious` getter |
 | `SessionTemplateDraft` | `name`, `focusModality?`, `List<SessionTemplateExercise>` |
 | `SessionTemplateExercise` | `exerciseId`, `name`, `effortKind`, `List<TemplateTargetDraft>` (has `copyWith`) |
@@ -136,6 +144,36 @@ Only `set`-kind efforts contribute to total volume. Timed, round, and drill effo
 ### 4. Debounced Note Persistence
 Session notes auto-save with a 600ms debounce to avoid excessive repository writes during typing.
 
+### 5. Per-Group Progress Chips (replaces standalone Volume Comparison card)
+Each exercise group header row carries a right-aligned comparison chip showing the delta vs the most recent previous session:
+- `strength` → volume delta in kg (`↑ +6.6 kg` / `↓ -2 kg`)
+- `cardio` / `isometric` → duration delta in minutes/seconds (`↑ +2 min` / `↓ -30s`)
+- `rounds` → round count delta (`↑ +2 rounds`)
+- Arrow color: teal (`colorScheme.primary`) for positive, muted-red (`colorScheme.error.withOpacity(0.8)`) for negative; `—` when no comparison data.
+
+### 6. Exercise Group Headers Always Rendered
+Group headers are shown for every session, including single-modality ones. The `rounds` group header label reads **Sports** (not "Rounds"). Header label color is driven by `ModalityColors.forSummaryGroupLabel(groupKey)` from the consolidated color constants.
+
+### 7. Stats Card Fixed Layout
+The top stats card uses a deterministic 2×2 grid (Duration, Exercises, Sets, Rounds) — always all four, no conditional hiding based on zero values. This eliminates orphaned metric rows from the previous `Wrap`-based layout.
+
+### 8. Session Feeling Modal
+On first load, if `currentSession.sessionFeeling == null`, a non-dismissible bottom sheet (`_FeelingSheetContent`) appears automatically:
+- Displays a 1–5 tile row; each tile shows the number on an `AnimatedContainer` square
+- Tile accent color is the modality color (`ModalityColors.forModality(modality)`)
+- Tapping a tile calls `workoutState.updateSessionFeeling(n)` and closes the sheet immediately
+- Sheet is non-dismissible (`isDismissible: false`, `enableDrag: false`) — the athlete must pick a value
+- If the session already has a feeling value, the sheet is skipped entirely
+
+### 9. Open Calendar Button (Feature-Flagged)
+The calendar card header contains an "Open Calendar" button that navigates to `CalendarScreen`. All navigation plumbing (callback injected via `onOpenCalendar` constructor param) is in place, but the button is currently hidden behind a feature flag:
+
+```dart
+static const bool _showCalendarActions = false;
+```
+
+To re-enable, set `_showCalendarActions = true` in `session_summary_screen.dart`. No structural changes are required.
+
 ---
 
 ## Code References
@@ -159,5 +197,5 @@ Session notes auto-save with a 600ms debounce to avoid excessive repository writ
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: February 28, 2026
+**Document Version**: 1.2
+**Last Updated**: March 22, 2026

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'core/constants/omni_theme.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
 import 'state/workout/workout_state.dart';
@@ -6,6 +7,8 @@ import 'state/home/home_state.dart';
 import 'state/routine/routine_state.dart';
 import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
+import 'state/profile/profile_state.dart';
+import 'state/settings/settings_state.dart';
 
 import 'features/home/home_screen.dart';
 
@@ -17,6 +20,8 @@ class MyApp extends StatelessWidget {
   final SessionSummaryService sessionSummaryService;
   final CalendarState calendarState;
   final PeriodState periodState;
+  final ProfileState profileState;
+  final SettingsState settingsState;
 
   const MyApp({
     super.key,
@@ -27,6 +32,8 @@ class MyApp extends StatelessWidget {
     required this.sessionSummaryService,
     required this.calendarState,
     required this.periodState,
+    required this.profileState,
+    required this.settingsState,
   });
 
   @override
@@ -46,40 +53,50 @@ class MyApp extends StatelessWidget {
       ),
     );
 
-    // Active theme: abyssalNeonDark
-    final ThemeData abyssalNeonDark = buildTheme(
-      brightness: Brightness.dark,
-      background: Color(0xFF0B0F14),
-      surface: Color(0xFF121826),
-      primary: Color.fromARGB(207, 45, 227, 230),
-      secondary: Color(0xFF1B9AAA),
-      textPrimary: Color(0xFFE6EDF3),
-      textSecondary: Color(0xFF9BA4B5),
-      divider: Color(0xFF1F2937),
-    );
+    return ListenableBuilder(
+      listenable: settingsState,
+      builder: (context, child) {
+        final activeTheme = settingsState.appTheme;
+        OmniTheme.activeTheme = activeTheme;
+        final tokens = OmniTheme.colorsForTheme(activeTheme);
 
-    return MaterialApp(
-      title: 'Omnitrain',
-      debugShowCheckedModeBanner: false,
-      theme: abyssalNeonDark.copyWith(textTheme: textTheme),
-      // Splash screen temporarily disabled - showing home screen directly
-      // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
-      home: HomeScreen(
-        workoutState: workoutState,
-        homeState: homeState,
-        routineState: routineState,
-        routineSessionService: routineSessionService,
-        sessionSummaryService: sessionSummaryService,
-        calendarState: calendarState,
-        periodState: periodState,
-      ),
+        final ThemeData appTheme = buildTheme(
+          theme: activeTheme,
+          brightness: Brightness.dark,
+          background: tokens.backgroundBottom,
+          surface: tokens.surface,
+          secondary: tokens.secondary,
+          textPrimary: const Color(0xFFE6EDF3),
+          textSecondary: tokens.textMuted,
+          divider: tokens.divider,
+        );
+
+        return MaterialApp(
+          title: 'Omnitrain',
+          debugShowCheckedModeBanner: false,
+          theme: appTheme.copyWith(textTheme: textTheme),
+          // Splash screen temporarily disabled - showing home screen directly
+          // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
+          home: HomeScreen(
+            workoutState: workoutState,
+            homeState: homeState,
+            routineState: routineState,
+            routineSessionService: routineSessionService,
+            sessionSummaryService: sessionSummaryService,
+            calendarState: calendarState,
+            periodState: periodState,
+            profileState: profileState,
+            settingsState: settingsState,
+          ),
+        );
+      },
     );
   }
 }
 
 ThemeData buildTheme({
+  AppTheme theme = AppTheme.abyssalNeon,
   required Brightness brightness,
-  required Color primary,
   required Color secondary,
   required Color background,
   required Color surface,
@@ -87,6 +104,8 @@ ThemeData buildTheme({
   required Color textSecondary,
   required Color divider,
 }) {
+  final primary = OmniTheme.colorsForTheme(theme).primary;
+
   final colorScheme = ColorScheme(
     brightness: brightness,
     primary: primary,

@@ -90,10 +90,39 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
+      bottomSheet: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: SizedBox(
+            width: double.infinity,
+            height: OmniTheme.buttonPrimaryHeight,
+            child: FilledButton(
+              onPressed: _isSaving ? null : _submit,
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonBorderRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text('Save'),
+            ),
+          ),
+        ),
+      ),
       body: OmniGradientBackground(
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -250,34 +279,6 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                     alignLabelWithHint: true,
                   ),
                   maxLines: 3,
-                ),
-                const SizedBox(height: 28),
-
-                // ── Submit ────────────────────────────────────────────
-                SizedBox(
-                  height: OmniTheme.buttonPrimaryHeight,
-                  width: double.infinity,
-                  child: FilledButton(
-                    style: ButtonStyle(
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            OmniTheme.buttonBorderRadius,
-                          ),
-                        ),
-                      ),
-                    ),
-                    onPressed: _isSaving ? null : _submit,
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(widget.existingPeriod == null
-                            ? 'Create Period'
-                            : 'Save Changes'),
-                  ),
                 ),
               ],
             ),

@@ -32,11 +32,28 @@ The existing maintenance-menu Calendar entry is reused (no duplicate navigation 
 Each day can render indicators for all sessions on that date:
 - **Completed session**: filled circle
 - **Planned session**: outlined circle
-- **Color**: resolved from modality via `ModalityColorUtils`
+- **Color**: resolved from modality via `ModalityColorUtils` (delegates to `ModalityColors.forModality`)
 
 Rendering rules:
 - Up to 2 circles visible.
 - Overflow shown as `+N` where `N = total - 2`.
+
+### 3. Monthly Stats Strip
+
+A compact stats strip sits below the calendar grid and fills the remaining vertical space, keeping the entire screen non-scrollable. It shows four stats for the **currently displayed month**:
+
+| Stat | Description |
+|------|-------------|
+| **SESSIONS** | Count of completed sessions in the month; `—` if none |
+| **TIME** | Sum of `endedAtMs − startedAtMs` for completed sessions, formatted as `Xh Ym`, `Xm`, or `Xs`; `—` if zero |
+| **STREAK** | Consecutive-day streak ending today (or yesterday if no session today), computed from up to 90 days of history (not just the current month); 🔥 shown for streaks ≥ 3 |
+| **Modality dots** | One colored dot + count per modality with ≥1 completed session, sorted by count descending; uses `ModalityColorUtils.colorForModality` |
+
+Layout rules:
+- Divider separates grid from strip.
+- Strip fills all remaining vertical space below the grid via `Expanded`.
+- While the month is loading, the strip area shows `SizedBox.shrink()` to avoid flashing `—` values.
+- No scroll — grid uses `shrinkWrap: true` / `NeverScrollableScrollPhysics` so total height is bounded.
 
 ### 3. Tap a Day
 
@@ -165,6 +182,28 @@ Responsibilities:
 - Exposes period list for highlights
 - Handles planned session CRUD
 - Handles `completePlannedSession(plannedSessionId, linkedSessionId)`
+- Computes monthly stats and current streak from loaded data
+
+#### Monthly Stats Getters (derived from `_entriesByDay`)
+
+| Getter | Type | Description |
+|--------|------|-------------|
+| `completedSessionCount` | `int` | Count of entries where `isCompleted == true` |
+| `totalTrainingMs` | `int` | Sum of `endedAtMs − startedAtMs` for completed entries with a real session |
+| `modalityBreakdown` | `Map<String?, int>` | Completed session count grouped by modality key (null = Free Training) |
+| `streakDays` | `int` | Current consecutive-day streak (see below) |
+
+#### Streak Calculation (`_computeStreak`)
+
+Called concurrently with `_loadPeriods()` at the end of each `_loadMonth()`:
+
+1. Fetches sessions for the last 90 days via `repository.getSessionsByDateRange`.
+2. Builds a `Set<int>` of UTC-midnight timestamps for days that have a completed session.
+3. Anchors on **today** if today has a session, else on **yesterday** if yesterday has one.
+4. Walks backwards day-by-day counting consecutive days present in the set.
+5. Stores the result in `_streakDays` (defaults to 0 on error or no anchor day).
+
+> The 90-day window caps the displayed streak at 90. Increase the window if longer streaks are needed.
 
 ### PeriodState
 

@@ -851,6 +851,20 @@ class SeedData {
       unitType: 'weight',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
+    UnitModel(
+      id: 'unit-cm',
+      key: 'cm',
+      name: 'Centimeters',
+      unitType: 'length',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    UnitModel(
+      id: 'unit-pct',
+      key: 'pct',
+      name: 'Percent',
+      unitType: 'ratio',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
     // Time
     UnitModel(
       id: 'unit-sec',

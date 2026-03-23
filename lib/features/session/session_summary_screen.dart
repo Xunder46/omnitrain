@@ -2,16 +2,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/modality_display.dart';
+import '../../core/constants/modality_colors.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/models/session_summary.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/effort_defaults.dart';
+import '../../core/services/routine_session_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
+import '../../state/calendar/calendar_state.dart';
+import '../../state/period/period_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
+import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
@@ -33,15 +38,21 @@ class SessionSummaryScreen extends StatefulWidget {
 }
 
 class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
+  static const bool _showCalendarActions = false;
+
   late SessionSummary _summary;
   late TextEditingController _noteController;
   Timer? _noteDebounce;
   bool _isLoading = true;
+  bool _hasShownFeelingSheet = false;
 
-  VolumeComparison? _volumeComparison;
+  Map<String, GroupDelta> _groupDeltas = {};
   List<PRAchievement> _prs = [];
   Set<int> _workoutDays = {};
   int _daysInMonth = 30;
+  late final CalendarState _calendarState;
+  late final PeriodState _periodState;
+  late final RoutineSessionService _routineSessionService;
 
   List<SessionTemplateExercise> _draftExercises = [];
 
@@ -54,7 +65,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   static const _groupLabels = {
     'strength': 'Strength',
     'cardio': 'Cardio',
-    'rounds': 'Rounds',
+    'rounds': 'Sports',
     'isometric': 'Intervals',
   };
 
@@ -77,11 +88,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   @override
   void initState() {
     super.initState();
+    final repository = widget.workoutState.repository;
+    _calendarState = CalendarState(repository);
+    _periodState = PeriodState(repository);
+    _routineSessionService = RoutineSessionService(repository);
     _summary = widget.workoutState.computeSessionSummary();
     _noteController = TextEditingController(
       text: widget.workoutState.currentSession?.note ?? '',
     );
     _draftExercises = widget.workoutState.buildTemplateDraftExercises();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showFeelingSheet(context);
+    });
     _loadAsyncData();
   }
 
@@ -97,8 +115,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     final currentSession = widget.workoutState.currentSession;
     if (currentSession != null) {
-      final comparison = await widget.sessionSummaryService
-          .compareToPreviousSession(currentSession, _summary.totalVolume);
+      final groupDeltas = await widget.sessionSummaryService
+          .compareGroupsToPreviousSession(currentSession, _summary);
       final prs = await widget.sessionSummaryService.computePRs(
         _summary.exercises,
       );
@@ -107,7 +125,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       if (!mounted) return;
 
       setState(() {
-        _volumeComparison = comparison;
+        _groupDeltas = groupDeltas;
         _prs = prs;
         _isLoading = false;
       });
@@ -158,6 +176,29 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     await _loadAsyncData();
   }
 
+  Future<void> _showFeelingSheet(BuildContext context) async {
+    if (_hasShownFeelingSheet) return;
+
+    final session = widget.workoutState.currentSession;
+    if (session == null) return;
+    if (session.sessionFeeling != null) return;
+
+    _hasShownFeelingSheet = true;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      isScrollControlled: true,
+      builder: (context) => _FeelingSheetContent(
+        workoutState: widget.workoutState,
+        modality: session.modality,
+      ),
+    );
+  }
+
   Future<void> _showDiscardDialog() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -168,10 +209,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         ),
         actions: [
           TextButton(
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           TextButton(
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Discard'),
           ),
@@ -244,6 +303,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (mounted) {
       await _refreshSummary();
     }
+  }
+
+  Future<void> _openCalendarScreen() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CalendarScreen(
+          calendarState: _calendarState,
+          periodState: _periodState,
+          workoutState: widget.workoutState,
+          routineState: widget.routineState,
+          routineSessionService: _routineSessionService,
+          sessionSummaryService: widget.sessionSummaryService,
+        ),
+      ),
+    );
   }
 
   Future<void> _openSaveAsRoutineSheet() async {
@@ -392,6 +466,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
+                        style: ButtonStyle(
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                OmniTheme.buttonBorderRadius,
+                              ),
+                            ),
+                          ),
+                        ),
                         onPressed: exercises.isEmpty
                             ? null
                             : () async {
@@ -476,6 +559,28 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 elevation: 0,
                 title: Text(title),
                 actions: [
+                  if (_showCalendarActions)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: TextButton.icon(
+                        onPressed: _openCalendarScreen,
+                        style: ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                OmniTheme.buttonUtilityRadius,
+                              ),
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.calendar_month_outlined,
+                          size: 18,
+                        ),
+                        label: const Text('Calendar'),
+                      ),
+                    ),
                   PopupMenuButton<String>(
                     onSelected: (value) {
                       switch (value) {
@@ -509,9 +614,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     const SizedBox(height: 16),
                     _buildStatsCard(theme),
                     const SizedBox(height: 16),
-                    _buildExerciseListSection(theme),
+                    _buildRpeCard(theme),
                     const SizedBox(height: 16),
-                    _buildVolumeComparison(theme),
+                    _buildExerciseListSection(theme),
                     if (_prs.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       _buildPrsCard(theme),
@@ -589,36 +694,137 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildStatsCard(ThemeData theme) {
-    final pills = <Widget>[
-      _StatPill(
+    final stats = <_StatItem>[
+      _StatItem(
         label: 'Duration',
         value: _formatDuration(_summary.totalDurationMs),
       ),
-      _StatPill(
+      _StatItem(
         label: 'Exercises',
         value: _summary.exercises.length.toString(),
       ),
+      _StatItem(label: 'Sets', value: _summary.totalSets.toString()),
+      _StatItem(label: 'Rounds', value: _summary.totalRounds.toString()),
     ];
 
-    if (_summary.totalSets > 0) {
-      pills.add(_StatPill(label: 'Sets', value: _summary.totalSets.toString()));
-    }
-    if (_summary.totalRounds > 0) {
-      pills.add(
-        _StatPill(label: 'Rounds', value: _summary.totalRounds.toString()),
-      );
-    }
-    if (_summary.totalCardioDurationMs > 0) {
-      pills.add(
-        _StatPill(
-          label: 'Cardio',
-          value: _formatDuration(_summary.totalCardioDurationMs),
-        ),
-      );
-    }
+    return _SummaryCard(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _StatPill(label: stats[0].label, value: stats[0].value),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _StatPill(label: stats[1].label, value: stats[1].value),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _StatPill(label: stats[2].label, value: stats[2].value),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _StatPill(label: stats[3].label, value: stats[3].value),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRpeCard(ThemeData theme) {
+    final session = widget.workoutState.currentSession;
+    final selected = session?.perceivedSessionRpe?.round();
 
     return _SummaryCard(
-      child: Wrap(spacing: 24, runSpacing: 12, children: pills),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Session RPE', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(
+            'How hard did this session feel overall?',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.65),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (int i = 1; i <= 10; i++)
+                GestureDetector(
+                  onTap: () async {
+                    final current = widget.workoutState.currentSession;
+                    if (current == null) return;
+                    await widget.workoutState.updateSessionRpe(
+                      current.id,
+                      i.toDouble(),
+                    );
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: selected == i
+                          ? theme.colorScheme.primary
+                          : Colors.white.withOpacity(0.05),
+                      border: Border.all(
+                        color: selected == i
+                            ? theme.colorScheme.primary
+                            : Colors.white.withOpacity(0.12),
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$i',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: selected == i
+                              ? Colors.white
+                              : theme.colorScheme.onSurface.withOpacity(0.65),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Very easy',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                ),
+              ),
+              Text(
+                'Max effort',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -642,39 +848,35 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       list.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
     }
 
-    final isMultiModality = groups.length > 1;
     final orderedGroupKeys = _groupOrder.where(groups.containsKey).toList();
 
     final items = <Widget>[];
 
-    if (isMultiModality) {
-      for (int g = 0; g < orderedGroupKeys.length; g++) {
-        final key = orderedGroupKeys[g];
-        final groupExercises = groups[key]!;
+    for (int g = 0; g < orderedGroupKeys.length; g++) {
+      final key = orderedGroupKeys[g];
+      final groupExercises = groups[key]!;
 
-        items.add(_buildExerciseGroupHeader(theme, key, groupExercises));
-        items.add(const SizedBox(height: 8));
+      items.add(
+        _buildExerciseGroupHeader(
+          theme,
+          key,
+          groupExercises,
+          _groupDeltas[key],
+        ),
+      );
+      items.add(const SizedBox(height: 8));
 
-        for (int i = 0; i < groupExercises.length; i++) {
-          items.add(_buildExerciseTile(theme, groupExercises[i]));
-          if (i < groupExercises.length - 1) {
-            items.add(const SizedBox(height: 6));
-          }
-        }
-
-        if (g < orderedGroupKeys.length - 1) {
-          items.add(const SizedBox(height: 16));
-          items.add(Divider(color: Colors.white.withOpacity(0.06), height: 1));
-          items.add(const SizedBox(height: 16));
-        }
-      }
-    } else {
-      // Single modality — flat list, no headers.
-      for (int i = 0; i < exercises.length; i++) {
-        items.add(_buildExerciseTile(theme, exercises[i]));
-        if (i < exercises.length - 1) {
+      for (int i = 0; i < groupExercises.length; i++) {
+        items.add(_buildExerciseTile(theme, groupExercises[i]));
+        if (i < groupExercises.length - 1) {
           items.add(const SizedBox(height: 6));
         }
+      }
+
+      if (g < orderedGroupKeys.length - 1) {
+        items.add(const SizedBox(height: 16));
+        items.add(Divider(color: Colors.white.withOpacity(0.06), height: 1));
+        items.add(const SizedBox(height: 16));
       }
     }
 
@@ -694,8 +896,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ThemeData theme,
     String groupKey,
     List<ExerciseSummary> exercises,
+    GroupDelta? delta,
   ) {
     final label = _groupLabels[groupKey] ?? groupKey;
+    final labelColor = ModalityColors.forSummaryGroupLabel(groupKey);
     String aggregate = '';
 
     switch (groupKey) {
@@ -725,26 +929,106 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     return Row(
       children: [
-        Text(
-          label.toUpperCase(),
-          style: theme.textTheme.labelSmall?.copyWith(
-            letterSpacing: 1.5,
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w600,
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  label.toUpperCase(),
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    letterSpacing: 1.5,
+                    color: labelColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (aggregate.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    '· $aggregate',
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      letterSpacing: 0.5,
+                      color: theme.colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (aggregate.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          Text(
-            '· $aggregate',
-            style: theme.textTheme.labelSmall?.copyWith(
-              letterSpacing: 0.5,
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
-            ),
-          ),
-        ],
+        const SizedBox(width: 8),
+        _buildGroupComparisonChip(theme, delta),
       ],
     );
+  }
+
+  Widget _buildGroupComparisonChip(ThemeData theme, GroupDelta? delta) {
+    final dimColor = theme.colorScheme.onSurface.withOpacity(0.65);
+    final dimStyle = theme.textTheme.labelSmall?.copyWith(
+      color: dimColor,
+      fontWeight: FontWeight.w600,
+    );
+
+    if (delta == null || !delta.hasPrevious || delta.delta == null) {
+      return SizedBox(
+        width: 92,
+        child: Text('—', textAlign: TextAlign.right, style: dimStyle),
+      );
+    }
+
+    final d = delta.delta!;
+    if (d == 0) {
+      return SizedBox(
+        width: 92,
+        child: Text('—', textAlign: TextAlign.right, style: dimStyle),
+      );
+    }
+
+    final isPositive = d > 0;
+    final arrow = isPositive ? '↑' : '↓';
+    final sign = isPositive ? '+' : '-';
+    final arrowColor = isPositive
+        ? theme.colorScheme.primary
+        : theme.colorScheme.error.withOpacity(0.8);
+
+    final String formattedValue;
+    switch (delta.unit) {
+      case 'kg':
+        formattedValue = '${_formatNumber(d.abs())} kg';
+        break;
+      case 'ms':
+        formattedValue = _formatDurationDelta(d.abs().toInt());
+        break;
+      case 'rounds':
+        final count = d.abs().toInt();
+        formattedValue = '$count round${count != 1 ? 's' : ''}';
+        break;
+      default:
+        formattedValue = _formatNumber(d.abs());
+    }
+
+    return SizedBox(
+      width: 92,
+      child: Text(
+        '$arrow $sign$formattedValue',
+        textAlign: TextAlign.right,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: arrowColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  String _formatDurationDelta(int ms) {
+    if (ms >= 60000) {
+      final minutes = (ms / 60000).round();
+      return '$minutes min';
+    }
+    return '${(ms / 1000).round()}s';
   }
 
   Widget _buildExerciseTile(ThemeData theme, ExerciseSummary exercise) {
@@ -792,36 +1076,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildVolumeComparison(ThemeData theme) {
-    final comparison = _volumeComparison;
-    String text;
-    Color color = theme.colorScheme.onSurface;
-
-    if (comparison == null || !comparison.hasPrevious) {
-      text = 'First session recorded';
-    } else {
-      final delta = comparison.delta ?? 0;
-      final sign = delta >= 0 ? '+' : '';
-      text = '$sign${_formatNumber(delta)} kg volume vs last time';
-      color = delta >= 0 ? theme.colorScheme.primary : theme.colorScheme.error;
-    }
-
-    return _SummaryCard(
-      child: Row(
-        children: [
-          Icon(Icons.trending_up, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: theme.textTheme.bodyMedium?.copyWith(color: color),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -883,7 +1137,39 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(monthLabel, style: theme.textTheme.titleMedium),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  monthLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              if (_showCalendarActions) ...[
+                const SizedBox(width: 8),
+                FilledButton.tonalIcon(
+                  onPressed: _openCalendarScreen,
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    padding: const WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    shape: WidgetStatePropertyAll(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonUtilityRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('Open Calendar'),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: 12),
           _buildCalendarGrid(theme, now),
           const SizedBox(height: 12),
@@ -1038,6 +1324,195 @@ class _SummaryCard extends StatelessWidget {
       child: child,
     );
   }
+}
+
+/// Modal bottom sheet content for session feeling rating (1-5).
+class _FeelingSheetContent extends StatefulWidget {
+  final WorkoutState workoutState;
+  final String? modality;
+
+  const _FeelingSheetContent({required this.workoutState, this.modality});
+
+  @override
+  State<_FeelingSheetContent> createState() => _FeelingSheetContentState();
+}
+
+class _FeelingSheetContentState extends State<_FeelingSheetContent> {
+  int? _selectedFeeling;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+    final accentColor = ModalityColors.forModality(widget.modality);
+    final displayName = ModalityDisplay.getName(widget.modality);
+    final subtitle = '$displayName · Today';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: themeColors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        12,
+        24,
+        MediaQuery.of(context).padding.bottom + 40,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: themeColors.primary.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              margin: const EdgeInsets.only(bottom: 28),
+            ),
+          ),
+          // Title
+          Text(
+            'How did it feel?',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.9),
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          // Subtitle
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: themeColors.textMuted,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 36),
+          // Number tiles row
+          Row(
+            children: [
+              for (int i = 1; i <= 5; i++) ...[
+                Expanded(child: _buildFeelingTile(i, accentColor)),
+                if (i < 5) const SizedBox(width: 10),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Range labels row
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Rough',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.0,
+                    color: themeColors.textMuted,
+                  ),
+                ),
+                Text(
+                  'Great',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 1.0,
+                    color: themeColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeelingTile(int number, Color accentColor) {
+    final theme = Theme.of(context);
+    final isSelected = _selectedFeeling == number;
+    final tileColor = _getFeelingColor(number);
+
+    return GestureDetector(
+      onTap: () => _selectFeeling(number),
+      child: AspectRatio(
+        aspectRatio: 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? tileColor
+                : theme.colorScheme.surface.withOpacity(0.6),
+            border: Border.all(
+              color: isSelected
+                  ? tileColor
+                  : theme.colorScheme.onSurface.withOpacity(0.12),
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Center(
+            child: Text(
+              number.toString(),
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w500,
+                color: isSelected
+                    ? Colors.white
+                    : theme.colorScheme.onSurface.withOpacity(0.35),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Get feeling-specific color based on the number
+  Color _getFeelingColor(int number) {
+    switch (number) {
+      case 1:
+        return Colors.red;
+      case 2:
+        return Colors.orange;
+      case 3:
+        return Colors.yellow[700]!;
+      case 4:
+        return Colors.green;
+      case 5:
+        return Theme.of(context).primaryColor;
+      default:
+        return Theme.of(context).primaryColor;
+    }
+  }
+
+  Future<void> _selectFeeling(int feeling) async {
+    setState(() => _selectedFeeling = feeling);
+
+    final session = widget.workoutState.currentSession;
+    if (session != null) {
+      await widget.workoutState.updateSessionFeeling(session.id, feeling);
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+}
+
+class _StatItem {
+  final String label;
+  final String value;
+
+  const _StatItem({required this.label, required this.value});
 }
 
 class _StatPill extends StatelessWidget {

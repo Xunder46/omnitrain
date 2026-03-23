@@ -68,8 +68,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       // Load existing routine for editing
       await widget.routineState.loadRoutineForEditing(widget.templateId!);
       _nameController.text = widget.routineState.currentTemplate?.name ?? '';
-      _descriptionController.text = widget.routineState.currentTemplate?.description ?? '';
-      _selectedFocusModality = widget.routineState.currentTemplate?.focusModality;
+      _descriptionController.text =
+          widget.routineState.currentTemplate?.description ?? '';
+      _selectedFocusModality =
+          widget.routineState.currentTemplate?.focusModality;
     } else {
       // Create new routine
       await widget.routineState.createNewRoutine('New Routine');
@@ -81,7 +83,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     if (widget.workoutState != null) {
       await widget.workoutState!.loadAllExercises();
       _exerciseCache = {
-        for (final exercise in widget.workoutState!.allExercises) exercise.id: exercise,
+        for (final exercise in widget.workoutState!.allExercises)
+          exercise.id: exercise,
       };
     }
 
@@ -96,9 +99,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       return Scaffold(
         backgroundColor: Colors.transparent,
         body: OmniGradientBackground(
-          child: SafeArea(
-            child: Center(child: CircularProgressIndicator()),
-          ),
+          child: SafeArea(child: Center(child: CircularProgressIndicator())),
         ),
       );
     }
@@ -106,14 +107,12 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     return ListenableBuilder(
       listenable: widget.routineState,
       builder: (context, child) {
-        final content = (_showListView || widget.routineState.currentEfforts.isEmpty)
+        final content =
+            (_showListView || widget.routineState.currentEfforts.isEmpty)
             ? _buildListView(theme)
             : _buildDetailView(theme);
 
-        return WillPopScope(
-          onWillPop: _handleWillPop,
-          child: content,
-        );
+        return WillPopScope(onWillPop: _handleWillPop, child: content);
       },
     );
   }
@@ -123,7 +122,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     final exerciseName = _showListView || efforts.isEmpty
         ? 'Exercises'
         : (_exerciseCache[efforts[_currentExerciseIndex].exerciseId]?.name ??
-            'Unknown Exercise');
+              'Unknown Exercise');
     final subtitle = _showListView
         ? '${efforts.length} exercise${efforts.length != 1 ? 's' : ''}'
         : 'Exercise ${_currentExerciseIndex + 1} / ${efforts.length}';
@@ -243,7 +242,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: TextField(
         controller: _descriptionController,
-        onChanged: (value) => widget.routineState.updateRoutineDescription(value),
+        onChanged: (value) =>
+            widget.routineState.updateRoutineDescription(value),
         decoration: InputDecoration(
           labelText: 'Description (optional)',
           labelStyle: const TextStyle(color: Colors.grey),
@@ -311,7 +311,11 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     );
   }
 
-  Widget _buildSegmentCard(int index, TemplateSegment segment, ThemeData theme) {
+  Widget _buildSegmentCard(
+    int index,
+    TemplateSegment segment,
+    ThemeData theme,
+  ) {
     final efforts = widget.routineState.getEffortsForSegment(segment.id);
 
     return Card(
@@ -351,14 +355,21 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                   icon: const Icon(Icons.arrow_upward, size: 18),
                   color: theme.colorScheme.primary,
                   onPressed: index > 0
-                      ? () => widget.routineState.reorderSegments(index, index - 1)
+                      ? () => widget.routineState.reorderSegments(
+                          index,
+                          index - 1,
+                        )
                       : null,
                 ),
                 IconButton(
                   icon: const Icon(Icons.arrow_downward, size: 18),
                   color: theme.colorScheme.primary,
-                  onPressed: index < widget.routineState.currentSegments.length - 1
-                      ? () => widget.routineState.reorderSegments(index, index + 1)
+                  onPressed:
+                      index < widget.routineState.currentSegments.length - 1
+                      ? () => widget.routineState.reorderSegments(
+                          index,
+                          index + 1,
+                        )
                       : null,
                 ),
                 PopupMenuButton(
@@ -368,7 +379,11 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                       onTap: () => _editSegment(segment),
                       child: Row(
                         children: [
-                          Icon(Icons.edit, size: 18, color: theme.colorScheme.primary),
+                          Icon(
+                            Icons.edit,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
                           const SizedBox(width: 8),
                           const Text('Edit Block'),
                         ],
@@ -424,7 +439,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                     exercise: exercise,
                     restLabel: restLabel,
                     onDelete: () => _removeExercise(effort.id),
-                    onChangeTracking: () => _changeTracking(context, effort, exercise),
+                    onChangeTracking: () =>
+                        _changeTracking(context, effort, exercise),
                     onEditRest: () => _editRest(effort),
                     onTap: () => _openDetailForEffort(effort.id),
                   );
@@ -441,7 +457,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       side: BorderSide(color: theme.colorScheme.primary),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
@@ -493,7 +511,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                 child: OutlinedButton(
                   onPressed: _discardAndPop,
                   style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                    side: BorderSide(
+                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    ),
                     padding: const EdgeInsets.symmetric(vertical: 24),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -566,7 +586,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                     _buildHeader(theme),
                     Expanded(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -586,9 +609,14 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                             ),
                             const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withOpacity(0.2),
+                                color: theme.colorScheme.primary.withOpacity(
+                                  0.2,
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
@@ -605,16 +633,22 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                             ),
                             const SizedBox(height: 16),
                             Center(
-                              child: _buildSetProgress(setCount, effort.effortKind, theme),
+                              child: _buildSetProgress(
+                                setCount,
+                                effort.effortKind,
+                                theme,
+                              ),
                             ),
                             const SizedBox(height: 12),
                             Center(
-                              child: _buildPreviousSetStats(effort, targets, theme),
+                              child: _buildPreviousSetStats(
+                                effort,
+                                targets,
+                                theme,
+                              ),
                             ),
                             const SizedBox(height: 12),
-                            Center(
-                              child: _buildSetIndicator(setCount, theme),
-                            ),
+                            Center(child: _buildSetIndicator(setCount, theme)),
                             const SizedBox(height: 80),
                           ],
                         ),
@@ -648,9 +682,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     // Step 1: Pick exercise
     final exercise = await showDialog<Exercise>(
       context: context,
-      builder: (_) => ExercisePickerDialog(
-        workoutState: widget.workoutState!,
-      ),
+      builder: (_) => ExercisePickerDialog(workoutState: widget.workoutState!),
     );
 
     if (exercise == null) return;
@@ -661,7 +693,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     // If exercise has only one capability, auto-select it
     final deduped = _deduplicateCapabilities(exercise.capabilities);
     String? chosenMetric;
-    
+
     if (deduped.length == 1) {
       chosenMetric = deduped.first;
     } else {
@@ -750,7 +782,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     // If exercise has only one capability, auto-select it
     final deduped = _deduplicateCapabilities(exercise.capabilities);
     String? chosenMetric;
-    
+
     if (deduped.length == 1) {
       chosenMetric = deduped.first;
     } else {
@@ -789,10 +821,12 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             DropdownButtonFormField<String>(
               initialValue: selectedType,
               items: _segmentTypes
-                  .map((type) => DropdownMenuItem(
-                        value: type,
-                        child: Text(_segmentLabel(type)),
-                      ))
+                  .map(
+                    (type) => DropdownMenuItem(
+                      value: type,
+                      child: Text(_segmentLabel(type)),
+                    ),
+                  )
                   .toList(),
               onChanged: (value) {
                 if (value == null) return;
@@ -959,17 +993,17 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
   Future<void> _saveRoutine() async {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter a routine name')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Please enter a routine name')));
       return;
     }
 
     await widget.routineState.saveRoutine();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Routine saved successfully')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Routine saved successfully')));
 
     Navigator.pop(context);
   }
@@ -987,6 +1021,11 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   void _discardAndPop() {
     widget.routineState.clearCurrentRoutine();
     Navigator.of(context).pop();
+  }
+
+  void _updateUi(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
   }
 }
 
@@ -1030,7 +1069,11 @@ class ExerciseCard extends StatelessWidget {
             children: [
               ReorderableDragStartListener(
                 index: index,
-                child: const Icon(Icons.drag_indicator, color: Colors.grey, size: 20),
+                child: const Icon(
+                  Icons.drag_indicator,
+                  color: Colors.grey,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1070,7 +1113,11 @@ class ExerciseCard extends StatelessWidget {
                     onTap: onChangeTracking,
                     child: Row(
                       children: [
-                        Icon(Icons.tune, size: 18, color: theme.colorScheme.primary),
+                        Icon(
+                          Icons.tune,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
                         const SizedBox(width: 8),
                         const Text('Change Tracking'),
                       ],
@@ -1080,7 +1127,11 @@ class ExerciseCard extends StatelessWidget {
                     onTap: onEditRest,
                     child: Row(
                       children: [
-                        Icon(Icons.timer_outlined, size: 18, color: theme.colorScheme.primary),
+                        Icon(
+                          Icons.timer_outlined,
+                          size: 18,
+                          color: theme.colorScheme.primary,
+                        ),
                         const SizedBox(width: 8),
                         const Text('Edit Rest'),
                       ],
@@ -1132,7 +1183,11 @@ extension on _RoutineSetupScreenState {
     return maxIndex + 1;
   }
 
-  int? _getTargetInt(List<TemplateTarget> targets, String metricId, int setIndex) {
+  int? _getTargetInt(
+    List<TemplateTarget> targets,
+    String metricId,
+    int setIndex,
+  ) {
     for (final target in targets) {
       if (target.metricId == metricId && (target.setIndex ?? 0) == setIndex) {
         return target.targetInt;
@@ -1141,10 +1196,16 @@ extension on _RoutineSetupScreenState {
     return null;
   }
 
-  double _getTargetDouble(List<TemplateTarget> targets, String metricId, int setIndex) {
+  double _getTargetDouble(
+    List<TemplateTarget> targets,
+    String metricId,
+    int setIndex,
+  ) {
     for (final target in targets) {
       if (target.metricId == metricId && (target.setIndex ?? 0) == setIndex) {
-        return target.targetMin ?? target.targetMax ?? (target.targetInt?.toDouble() ?? 0.0);
+        return target.targetMin ??
+            target.targetMax ??
+            (target.targetInt?.toDouble() ?? 0.0);
       }
     }
     return 0.0;
@@ -1192,7 +1253,8 @@ extension on _RoutineSetupScreenState {
           ],
         );
       case 'timed':
-        final duration = _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
+        final duration =
+            _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1211,7 +1273,8 @@ extension on _RoutineSetupScreenState {
           ],
         );
       case 'round':
-        final roundDuration = _getTargetInt(targets, MetricIds.roundDuration, setIndex) ?? 180;
+        final roundDuration =
+            _getTargetInt(targets, MetricIds.roundDuration, setIndex) ?? 180;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1248,8 +1311,13 @@ extension on _RoutineSetupScreenState {
           ],
         );
       case 'drill':
-        final duration = _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
-        final extraWeight = _getTargetDouble(targets, MetricIds.extraWeight, setIndex);
+        final duration =
+            _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
+        final extraWeight = _getTargetDouble(
+          targets,
+          MetricIds.extraWeight,
+          setIndex,
+        );
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1284,7 +1352,11 @@ extension on _RoutineSetupScreenState {
     }
   }
 
-  Widget _buildSetProgress(int totalEntries, String effortKind, ThemeData theme) {
+  Widget _buildSetProgress(
+    int totalEntries,
+    String effortKind,
+    ThemeData theme,
+  ) {
     String label;
     switch (effortKind) {
       case 'set':
@@ -1328,28 +1400,42 @@ extension on _RoutineSetupScreenState {
     switch (effort.effortKind) {
       case 'set':
         final reps = _getTargetInt(targets, MetricIds.reps, previousIndex) ?? 0;
-        final weight = _getTargetDouble(targets, MetricIds.weight, previousIndex);
+        final weight = _getTargetDouble(
+          targets,
+          MetricIds.weight,
+          previousIndex,
+        );
         statsText = 'Previous: $reps reps @ ${weight.toStringAsFixed(1)} lbs';
         break;
       case 'timed':
-        final duration = _getTargetInt(targets, MetricIds.duration, previousIndex) ?? 0;
+        final duration =
+            _getTargetInt(targets, MetricIds.duration, previousIndex) ?? 0;
         final mins = duration ~/ 60;
         final secs = duration % 60;
-        statsText = 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+        statsText =
+            'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
         break;
       case 'round':
-        final roundDuration = _getTargetInt(targets, MetricIds.roundDuration, previousIndex) ?? 0;
+        final roundDuration =
+            _getTargetInt(targets, MetricIds.roundDuration, previousIndex) ?? 0;
         final mins = roundDuration ~/ 60;
         final secs = roundDuration % 60;
-        statsText = 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} per round';
+        statsText =
+            'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} per round';
         break;
       case 'drill':
-        final duration = _getTargetInt(targets, MetricIds.duration, previousIndex) ?? 0;
-        final extraWeight = _getTargetDouble(targets, MetricIds.extraWeight, previousIndex);
+        final duration =
+            _getTargetInt(targets, MetricIds.duration, previousIndex) ?? 0;
+        final extraWeight = _getTargetDouble(
+          targets,
+          MetricIds.extraWeight,
+          previousIndex,
+        );
         final mins = duration ~/ 60;
         final secs = duration % 60;
         final ewSign = extraWeight > 0 ? '+' : '';
-        statsText = 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ $ewSign${extraWeight.toStringAsFixed(1)} lbs';
+        statsText =
+            'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ $ewSign${extraWeight.toStringAsFixed(1)} lbs';
         break;
       default:
         return const SizedBox.shrink();
@@ -1429,7 +1515,7 @@ extension on _RoutineSetupScreenState {
 
   void _previousSet() {
     if (_currentSet <= 1) return;
-    setState(() => _currentSet--);
+    _updateUi(() => _currentSet--);
   }
 
   void _nextSet() {
@@ -1439,11 +1525,11 @@ extension on _RoutineSetupScreenState {
     final targets = widget.routineState.getEffortTargets(effort.id);
     final setCount = _getSetCount(effort, targets);
     if (_currentSet >= setCount) return;
-    setState(() => _currentSet++);
+    _updateUi(() => _currentSet++);
   }
 
   void _jumpToSet(int setNumber) {
-    setState(() {
+    _updateUi(() {
       _currentSet = setNumber;
     });
   }
@@ -1452,9 +1538,7 @@ extension on _RoutineSetupScreenState {
     await widget.routineState.addSetForEffort(effort.id, effort.effortKind);
     final targets = widget.routineState.getEffortTargets(effort.id);
     final setCount = _getSetCount(effort, targets);
-    if (mounted) {
-      setState(() => _currentSet = setCount);
-    }
+    _updateUi(() => _currentSet = setCount);
   }
 
   Future<void> _deleteLastSet(TemplateEffort effort) async {
@@ -1462,8 +1546,8 @@ extension on _RoutineSetupScreenState {
     final setCount = _getSetCount(effort, targets);
     if (setCount <= 1) return;
     await widget.routineState.removeLastSetForEffort(effort.id);
-    if (mounted && _currentSet > setCount - 1) {
-      setState(() => _currentSet = setCount - 1);
+    if (_currentSet > setCount - 1) {
+      _updateUi(() => _currentSet = setCount - 1);
     }
   }
 
@@ -1493,7 +1577,9 @@ extension on _RoutineSetupScreenState {
                 size: 24,
                 color: isEnabled
                     ? theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())
-                    : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+                    : theme.colorScheme.onSurface.withAlpha(
+                        (0.2 * 255).round(),
+                      ),
               ),
             ),
           ),
@@ -1524,7 +1610,7 @@ extension on _RoutineSetupScreenState {
     if (efforts.isEmpty) return;
     final newIndex = _currentExerciseIndex + delta;
     if (newIndex < 0 || newIndex >= efforts.length) return;
-    setState(() {
+    _updateUi(() {
       _currentExerciseIndex = newIndex;
       _currentSet = 1;
     });
@@ -1535,15 +1621,16 @@ extension on _RoutineSetupScreenState {
 List<String> _deduplicateCapabilities(List<String> capabilities) {
   final strSet = capabilities.toSet();
   final repsLoadSetVariants = {'reps', 'sets', 'load'};
-  
+
   // Remove sets and load if any of the reps/sets/load variants exist
   if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
     strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
     // Ensure 'reps' is included as the canonical value
-    if (!strSet.contains('reps') && strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
+    if (!strSet.contains('reps') &&
+        strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
       strSet.add('reps');
     }
   }
-  
+
   return strSet.toList();
 }

@@ -14,8 +14,8 @@ OmniTrain uses **imperative navigation** (`Navigator.push` / `Navigator.pop`). T
 main()
   → _createRepository() → HiveWorkoutRepository
   → repository.initialize()
-  → Creates: WorkoutState, HomeState, RoutineState, RoutineSessionService, SessionSummaryService
-  → runApp(MyApp(...))   // All 5 dependencies injected via constructor
+  → Creates: WorkoutState, HomeState, RoutineState, CalendarState, PeriodState, ProfileState, SettingsState, RoutineSessionService, SessionSummaryService
+  → runApp(MyApp(...))   // All dependencies injected via constructor
 ```
 
 **File**: `lib/app.dart`
@@ -35,12 +35,16 @@ HomeScreen
   ├── Modality Tile (1 of 5) ──→ SessionOverviewScreen (creates session)
   │                                  │
   │                                  ├── Add Exercise → ExercisePickerDialog
-  │                                  │                    └── [MetricChooserDialog] (if null modality)
+  │                                  │                    └── [ModalityPickerDialog] (if null modality: pick modality or General)
+  │                                  │                         └── [MetricChooserDialog] (if General picked)
   │                                  │                         └── → WorkoutSessionScreen (auto-navigate, focused on new exercise)
   │                                  │
   │                                  └── Start Workout → WorkoutSessionScreen
   │                                                        │
-  │                                                        ├── (back / finish) → SessionSummaryScreen
+  │                                                        ├── finish → **pushReplacement** → SessionSummaryScreen
+  │                                                        │   (back after finish pops to caller; cannot resume active session)
+  │                                                        │                       │
+  │                                                        ├── back → SessionSummaryScreen
   │                                                        │                       │
   │                                                        │                       ├── Edit Session → SessionOverviewScreen (push)
   │                                                        │                       ├── Save as Routine → bottom sheet
@@ -48,7 +52,8 @@ HomeScreen
   │                                                        │                       └── Done → popUntil(isFirst)
   │                                                        │
   │                                                        └── Add Exercise → ExercisePickerDialog
-  │                                                              └── [MetricChooserDialog] (if null modality)
+  │                                                              └── [ModalityPickerDialog] (if null modality: pick modality or General)
+  │                                                                    └── [MetricChooserDialog] (if General picked)
   │                                                              └── [ExerciseEditorScreen] (create custom)
   │
   ├── My Routines Tile ──→ (if routine session active) → WorkoutSessionScreen
@@ -62,8 +67,10 @@ HomeScreen
   ├── Free Training Tile ──→ SessionOverviewScreen (modality = null)
   │                            └── (same flow as modality tiles above)
   │
-  └── Maintenance Sheet ──→ MaintenancePlaceholderScreen
-      (Profile, Stats, Settings)     (generic "Coming Soon" placeholder)
+    └── Maintenance Sheet
+      ├── Profile ──→ ProfileScreen
+      ├── Stats ──→ MaintenancePlaceholderScreen
+      └── Settings ──→ SettingsScreen
 ```
 
 ---
@@ -79,7 +86,9 @@ HomeScreen
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |
 | `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create custom exercises |
-| `MaintenancePlaceholderScreen` | `lib/features/home/maintenance_placeholder_screen.dart` | "Coming Soon" placeholder |
+| `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
+| `SettingsScreen` | `lib/features/settings/settings_screen.dart` | App Appearance — theme selector |
+| `MaintenancePlaceholderScreen` | `lib/features/home/maintenance_placeholder_screen.dart` | Placeholder for non-implemented maintenance routes (Stats) |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
 
 ### Empty / Placeholder Directories
@@ -94,12 +103,16 @@ All state and service objects are created in `main.dart` and passed through the 
 ```
 main.dart
   → WorkoutState(repository)
-  → HomeState()
+  → HomeState(repository)          ← now receives repository for hint persistence
   → RoutineState(repository)
+  → CalendarState(repository)
+  → PeriodState(repository)
+  → ProfileState(repository)
+  → SettingsState()               ← uses SharedPreferences, not WorkoutRepository
   → RoutineSessionService(repository)
   → SessionSummaryService(repository)
-  → MyApp(workoutState, homeState, routineState, routineSessionService, sessionSummaryService)
-    → HomeScreen(workoutState, homeState, routineState, routineSessionService, sessionSummaryService)
+  → MyApp(workoutState, homeState, routineState, routineSessionService, sessionSummaryService, calendarState, periodState, profileState, settingsState)
+    → HomeScreen(workoutState, homeState, routineState, routineSessionService, sessionSummaryService, calendarState, periodState, profileState, settingsState)
       → (passes relevant subset to child screens)
 ```
 
@@ -116,8 +129,8 @@ main.dart
 | Dialog | File | Purpose |
 |--------|------|---------|
 | `ExercisePickerDialog` | `lib/widgets/pickers/exercise_picker_dialog.dart` | Search and select exercises (modality-ranked) |
-| `MetricChooserDialog` | `lib/widgets/pickers/metric_chooser_dialog.dart` | Choose tracking method for an exercise (Free Training / Routines) |
-| `ModalityPickerDialog` | `lib/widgets/pickers/modality_picker_dialog.dart` | Pick a modality (used in routine context) |
+| `MetricChooserDialog` | `lib/widgets/pickers/metric_chooser_dialog.dart` | Choose tracking method for an exercise (Free Training / General fallback) |
+| `ModalityPickerDialog` | `lib/widgets/pickers/modality_picker_dialog.dart` | Pick a modality for an exercise added to a null-modality session; returns `(bool, String?)` record or `null` (cancelled) |
 
 ---
 
@@ -141,5 +154,5 @@ When tapping a different modality tile while a session is active:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: February 28, 2026
+**Document Version**: 1.3
+**Last Updated**: March 22, 2026

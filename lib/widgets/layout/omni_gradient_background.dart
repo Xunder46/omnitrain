@@ -16,15 +16,14 @@ class OmniGradientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: const [
-            OmniTheme.backgroundGradientTop,
-            OmniTheme.backgroundGradientBottom,
-          ],
+          colors: [themeColors.backgroundTop, themeColors.backgroundBottom],
         ),
       ),
       child: showRadialHighlight

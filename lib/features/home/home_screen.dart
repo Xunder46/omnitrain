@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
@@ -6,6 +7,8 @@ import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
+import '../../state/profile/profile_state.dart';
+import '../../state/settings/settings_state.dart';
 import '../../core/constants/home_tiles.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
@@ -14,6 +17,8 @@ import '../../widgets/cards/maintenance_tile.dart';
 import '../session/workout_session_screen.dart';
 import '../routine/my_routines_screen.dart';
 import '../calendar/calendar_screen.dart';
+import '../profile/profile_screen.dart';
+import '../settings/settings_screen.dart';
 import 'maintenance_placeholder_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -24,6 +29,8 @@ class HomeScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final CalendarState calendarState;
   final PeriodState periodState;
+  final ProfileState profileState;
+  final SettingsState settingsState;
 
   const HomeScreen({
     super.key,
@@ -34,6 +41,8 @@ class HomeScreen extends StatefulWidget {
     required this.sessionSummaryService,
     required this.calendarState,
     required this.periodState,
+    required this.profileState,
+    required this.settingsState,
   });
 
   @override
@@ -99,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _hintController.reset();
       _hintController.forward().whenComplete(() {
         if (mounted) {
-          widget.homeState.markMaintenanceHintSeen();
+          unawaited(widget.homeState.markMaintenanceHintSeen());
         }
       });
     });
@@ -150,36 +159,72 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       child: ListenableBuilder(
                         listenable: widget.workoutState,
                         builder: (context, child) {
-                          return GridView.count(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 16,
-                            crossAxisSpacing: 16,
-                            childAspectRatio: 1.0,
-                            children: HomeTiles.all.map((tile) {
-                              // Determine if this tile is the currently active session
-                              final session =
-                                  widget.workoutState.currentSession;
-                              final isRoutineSession =
-                                  session?.intent == 'routine';
-                              final isActive =
-                                  widget.workoutState.hasActiveSession &&
-                                  (tile.key == 'my_routines'
-                                      ? isRoutineSession
-                                      : tile.modality == null
-                                      ? session?.modality == null &&
-                                            !isRoutineSession
-                                      : session?.modality == tile.modality);
+                          const standardGridSpacing = 16.0;
+                          const utilitySectionGap = standardGridSpacing * 3;
 
-                              return EnergyTile(
-                                title: tile.label,
-                                icon: tile.iconData,
-                                gradientColors: tile.gradientColors,
-                                accentColor: tile.accentColor,
-                                isActive: isActive,
-                                onTap: () =>
-                                    _handleTileTap(context, tile, isActive),
-                              );
-                            }).toList(),
+                          final session = widget.workoutState.currentSession;
+                          final isRoutineSession = session?.intent == 'routine';
+                          final hasActiveSession =
+                              widget.workoutState.hasActiveSession;
+
+                          final tiles = HomeTiles.all
+                              .map((tile) {
+                                final isActive =
+                                    hasActiveSession &&
+                                    (tile.key == 'my_routines'
+                                        ? isRoutineSession
+                                        : tile.modality == null
+                                        ? session?.modality == null &&
+                                              !isRoutineSession
+                                        : session?.modality == tile.modality);
+
+                                return EnergyTile(
+                                  title: tile.label,
+                                  icon: tile.iconData,
+                                  gradientColors: tile.gradientColors,
+                                  accentColor: tile.accentColor,
+                                  isActive: isActive,
+                                  onTap: () =>
+                                      _handleTileTap(context, tile, isActive),
+                                );
+                              })
+                              .toList(growable: false);
+
+                          return CustomScrollView(
+                            slivers: [
+                              SliverGrid(
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: standardGridSpacing,
+                                      crossAxisSpacing: standardGridSpacing,
+                                      childAspectRatio: 1.0,
+                                    ),
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  return tiles[index];
+                                }, childCount: 4),
+                              ),
+                              const SliverToBoxAdapter(
+                                child: SizedBox(height: utilitySectionGap),
+                              ),
+                              SliverGrid(
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      crossAxisSpacing: standardGridSpacing,
+                                      childAspectRatio: 1.0,
+                                    ),
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  return tiles[index + 4];
+                                }, childCount: 2),
+                              ),
+                            ],
                           );
                         },
                       ),
@@ -212,6 +257,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               workoutState: widget.workoutState,
               routineState: widget.routineState,
               sessionSummaryService: widget.sessionSummaryService,
+              settingsState: widget.settingsState,
             ),
           ),
         );
@@ -239,6 +285,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             workoutState: widget.workoutState,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
           ),
         ),
       );
@@ -289,6 +336,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             workoutState: widget.workoutState,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
           ),
         ),
       );
@@ -316,18 +364,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final contentOpacity = t.clamp(0.0, 1.0);
               final slideOffset = 20.0 * (1.0 - t);
 
+              final sheetColors =
+                  OmniTheme.colorsForTheme(widget.settingsState.appTheme);
               return Container(
                 decoration: BoxDecoration(
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(24),
                   ),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      OmniTheme.backgroundGradientTop,
-                      OmniTheme.backgroundGradientBottom,
-                    ],
+                  color: sheetColors.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: sheetColors.surfaceBorder,
+                      width: OmniTheme.surfaceBorderWidth,
+                    ),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -414,7 +463,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: OmniTheme.colorsForTheme(widget.settingsState.appTheme)
+                    .primary
+                    .withOpacity(0.4),
                 borderRadius: BorderRadius.circular(20),
               ),
             ),
@@ -454,19 +505,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Profile',
         icon: Icons.person_outline,
-        onTap: () => _openPlaceholder(
-          context,
-          title: 'Profile',
-          description: 'Manage your identity, preferences, and security layer',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ProfileScreen(profileState: widget.profileState),
+          ),
         ),
       ),
       _MaintenanceItem(
         title: 'Settings',
         icon: Icons.tune,
-        onTap: () => _openPlaceholder(
-          context,
-          title: 'Settings',
-          description: 'Control system behavior, notifications, and defaults',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => SettingsScreen(settingsState: widget.settingsState),
+          ),
         ),
       ),
     ];
@@ -487,6 +538,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           title: item.title,
           icon: item.icon,
           onTap: item.onTap,
+          activeTheme: widget.settingsState.appTheme,
         );
       },
     );

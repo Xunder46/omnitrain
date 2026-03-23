@@ -17,13 +17,15 @@ class OmniSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+
     return Container(
       padding: padding ?? const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: OmniTheme.surfaceColor,
+        color: themeColors.surface,
         borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
         border: Border.all(
-          color: OmniTheme.surfaceBorderColor,
+          color: themeColors.surfaceBorder,
           width: OmniTheme.surfaceBorderWidth,
         ),
         boxShadow: showShadow ? [OmniTheme.deepShadow] : null,

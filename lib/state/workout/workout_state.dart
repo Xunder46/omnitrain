@@ -32,6 +32,9 @@ class WorkoutState extends ChangeNotifier {
   // Duration is tracked via wall-clock timestamps; companion observations
   // (distance for timed, extra weight for drill) remain as EffortObservation records.
   final Map<String, List<TimedInstance>> _timedInstances = {};
+  // Entry rests keyed by effortId — wall-clock rest periods for all effort kinds.
+  // Stores the actual recovery time between consecutive sets/rounds for tracking and analytics.
+  final Map<String, List<EntryRest>> _entryRests = {};
   final Map<String, Exercise> _exerciseCache = {};
 
   // Exercise library data
@@ -43,6 +46,7 @@ class WorkoutState extends ChangeNotifier {
   String? _error;
 
   // Getters
+  WorkoutRepository get repository => _repository;
   TrainingSession? get currentSession => _currentSession;
   ModalityConfig? get modalityConfig => _currentModalityConfig;
   List<SessionSegment> get segments => List.unmodifiable(_segments);
@@ -75,6 +79,95 @@ class WorkoutState extends ChangeNotifier {
   /// Get timed instances for an effort (timed/drill efforts only)
   List<TimedInstance> getTimedInstancesForEffort(String effortId) {
     return List.unmodifiable(_timedInstances[effortId] ?? []);
+  }
+
+  /// Get rest records for an effort (wall-clock rest durations between sets)
+  List<EntryRest> getEntryRests(String effortId) {
+    return List.unmodifiable(_entryRests[effortId] ?? []);
+  }
+
+  /// Record the start of a rest period (called when a set/round is logged)
+  /// Creates an EntryRest with restStartMs = now, restEndMs = null.
+  Future<void> recordRestStart(String effortId, int entryIndex) async {
+    _clearError();
+
+    try {
+      final list = _entryRests.putIfAbsent(effortId, () => []);
+      if (list.any((r) => r.entryIndex == entryIndex)) {
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      // Safety: ensure only one active (open) rest exists per effort.
+      for (var i = 0; i < list.length; i++) {
+        final rest = list[i];
+        if (rest.restEndMs != null) continue;
+        final closed = rest.copyWith(restEndMs: now, updatedAtMs: now);
+        await _repository.updateEntryRest(closed);
+        list[i] = closed;
+      }
+
+      final rest = EntryRest(
+        id: 'rest-$effortId-$entryIndex',
+        effortId: effortId,
+        entryIndex: entryIndex,
+        restStartMs: now,
+        restEndMs: null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+
+      await _repository.createEntryRest(rest);
+      list.add(rest);
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to record rest start: $e');
+    }
+  }
+
+  /// Record the end of a rest period (called when the next set/round is started)
+  /// Updates the EntryRest with restEndMs = now.
+  Future<void> recordRestEnd(String effortId, int entryIndex) async {
+    _clearError();
+
+    try {
+      final list = _entryRests[effortId];
+      if (list == null) return;
+
+      final idx = list.indexWhere((r) => r.entryIndex == entryIndex);
+      if (idx == -1) return;
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = list[idx].copyWith(restEndMs: now, updatedAtMs: now);
+
+      await _repository.updateEntryRest(updated);
+      list[idx] = updated;
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to record rest end: $e');
+    }
+  }
+
+  /// Get elapsed rest time in seconds (wall-clock based, live while rest is ongoing)
+  int getRestElapsedSeconds(String effortId, int entryIndex) {
+    final list = _entryRests[effortId];
+    if (list == null) return 0;
+
+    try {
+      final rest = list.firstWhere((r) => r.entryIndex == entryIndex);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      return rest.elapsedSeconds(now);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Check if a rest record exists for this effort entry
+  bool hasRestRecord(String effortId, int entryIndex) {
+    final list = _entryRests[effortId];
+    if (list == null) return false;
+    return list.any((r) => r.entryIndex == entryIndex);
   }
 
   /// Find a SegmentEffort by its ID across all segments
@@ -172,7 +265,7 @@ class WorkoutState extends ChangeNotifier {
       }
 
       _currentSession = session;
-      _currentModalityConfig = null;
+      _currentModalityConfig = ModalityConfig.forModality(session.modality);
 
       // Clear prior in-memory child data.
       _segments.clear();
@@ -180,6 +273,7 @@ class WorkoutState extends ChangeNotifier {
       _observations.clear();
       _roundInstances.clear();
       _timedInstances.clear();
+      _entryRests.clear();
 
       // Load all child records for this session.
       final segments = await _repository.getSessionSegments(sessionId);
@@ -190,17 +284,23 @@ class WorkoutState extends ChangeNotifier {
         _efforts[segment.id] = efforts;
 
         for (final effort in efforts) {
-          _observations[effort.id] =
-              await _repository.getEffortObservations(effort.id);
+          _observations[effort.id] = await _repository.getEffortObservations(
+            effort.id,
+          );
 
           if (effort.effortKind == 'round') {
-            _roundInstances[effort.id] =
-                await _repository.getRoundInstances(effort.id);
+            _roundInstances[effort.id] = await _repository.getRoundInstances(
+              effort.id,
+            );
           }
           if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
-            _timedInstances[effort.id] =
-                await _repository.getTimedInstances(effort.id);
+            _timedInstances[effort.id] = await _repository.getTimedInstances(
+              effort.id,
+            );
           }
+
+          // Load entry rest records for all effort kinds
+          _entryRests[effort.id] = await _repository.getEntryRests(effort.id);
 
           if (effort.exerciseId != null) {
             final ex = await _repository.getExerciseById(effort.exerciseId!);
@@ -234,6 +334,7 @@ class WorkoutState extends ChangeNotifier {
       );
       _segments.clear();
       _segments.addAll(segments);
+      _entryRests.clear();
 
       // Load efforts for each segment
       for (final segment in _segments) {
@@ -258,6 +359,10 @@ class WorkoutState extends ChangeNotifier {
             final timedList = await _repository.getTimedInstances(effort.id);
             _timedInstances[effort.id] = timedList;
           }
+
+          // Load entry rest records for all effort kinds
+          final rests = await _repository.getEntryRests(effort.id);
+          _entryRests[effort.id] = rests;
 
           // Cache exercise if present
           if (effort.exerciseId != null &&
@@ -646,6 +751,8 @@ class WorkoutState extends ChangeNotifier {
       if (entryIndex < matchingObservations.length) {
         final obsIndex = matchingObservations[entryIndex].key;
         final oldObs = observations[obsIndex];
+        final shouldClearSkipMarker =
+            metricKey == 'reps' && value is int && value > 0;
         final newObs = EffortObservation(
           id: oldObs.id,
           effortId: oldObs.effortId,
@@ -654,7 +761,11 @@ class WorkoutState extends ChangeNotifier {
           valueInt: (value is int) ? value : oldObs.valueInt,
           valueReal: (value is double) ? value : oldObs.valueReal,
           valueText: (value is String) ? value : oldObs.valueText,
-          valueBool: (value is bool) ? value : oldObs.valueBool,
+          valueBool: shouldClearSkipMarker
+              ? false
+              : ((value is bool) ? value : oldObs.valueBool),
+          rpeRating: oldObs.rpeRating,
+          restDurationMs: oldObs.restDurationMs,
           createdAtMs: oldObs.createdAtMs,
           updatedAtMs: DateTime.now().millisecondsSinceEpoch,
         );
@@ -666,6 +777,47 @@ class WorkoutState extends ChangeNotifier {
       }
     } catch (e) {
       _setError('Failed to update entry: $e');
+    }
+  }
+
+  /// Delete a specific entry (set/round/hold) from an effort
+  /// Mark a set entry as skipped by setting valueBool = true on its reps
+  /// observation. Persists to the repository so the skip survives a reload.
+  Future<void> markSetSkipped(String effortId, int entryIndex) async {
+    _clearError();
+    try {
+      final observations = _observations[effortId];
+      if (observations == null) return;
+      final metricId = MetricIds.keyToMetricId['reps'];
+      if (metricId == null) return;
+      final matchingObservations = observations
+          .asMap()
+          .entries
+          .where((e) => e.value.metricId == metricId)
+          .toList();
+      if (entryIndex < matchingObservations.length) {
+        final obsIndex = matchingObservations[entryIndex].key;
+        final oldObs = observations[obsIndex];
+        final newObs = EffortObservation(
+          id: oldObs.id,
+          effortId: oldObs.effortId,
+          metricId: oldObs.metricId,
+          unitId: oldObs.unitId,
+          valueInt: 0,
+          valueReal: oldObs.valueReal,
+          valueText: oldObs.valueText,
+          valueBool: true,
+          rpeRating: oldObs.rpeRating,
+          restDurationMs: oldObs.restDurationMs,
+          createdAtMs: oldObs.createdAtMs,
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        );
+        await _repository.updateObservation(newObs);
+        observations[obsIndex] = newObs;
+        notifyListeners();
+      }
+    } catch (e) {
+      _setError('Failed to mark set as skipped: $e');
     }
   }
 
@@ -1377,6 +1529,7 @@ class WorkoutState extends ChangeNotifier {
   /// Sets the session end timestamp and persists to repository
   Future<void> endSession() async {
     if (_currentSession == null) return;
+    if (_currentSession!.endedAtMs != null) return;
 
     _clearError();
 
@@ -1402,6 +1555,8 @@ class WorkoutState extends ChangeNotifier {
         modality: _currentSession!.modality,
         intent: _currentSession!.intent,
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        sessionFeeling: _currentSession!.sessionFeeling,
+        qualityRating: _currentSession!.qualityRating,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1449,6 +1604,8 @@ class WorkoutState extends ChangeNotifier {
         modality: _currentSession!.modality,
         intent: _currentSession!.intent,
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        sessionFeeling: _currentSession!.sessionFeeling,
+        qualityRating: _currentSession!.qualityRating,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1458,6 +1615,119 @@ class WorkoutState extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _setError('Failed to update session note: $e');
+    }
+  }
+
+  /// Overwrite the session's end time using a corrected duration (edit mode).
+  ///
+  /// Computes `endedAtMs = startedAtMs + durationSecs * 1000`.
+  /// Repository-agnostic: uses the same abstract `updateSession` path as
+  /// [updateSessionNote], so it works identically on HiveWorkoutRepository
+  /// (web/current) and the future SqliteWorkoutRepository.
+  ///
+  /// Ignored if [durationSecs] ≤ 0 or there is no current session.
+  Future<void> updateSessionEndTime(int durationSecs) async {
+    if (_currentSession == null) return;
+    if (durationSecs <= 0) return;
+    _clearError();
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final newEndedAtMs = _currentSession!.startedAtMs + (durationSecs * 1000);
+      final updatedSession = TrainingSession(
+        id: _currentSession!.id,
+        ownerUserId: _currentSession!.ownerUserId,
+        routineTemplateId: _currentSession!.routineTemplateId,
+        startedAtMs: _currentSession!.startedAtMs,
+        endedAtMs: newEndedAtMs,
+        title: _currentSession!.title,
+        note: _currentSession!.note,
+        locationText: _currentSession!.locationText,
+        modality: _currentSession!.modality,
+        intent: _currentSession!.intent,
+        perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        sessionFeeling: _currentSession!.sessionFeeling,
+        qualityRating: _currentSession!.qualityRating,
+        createdAtMs: _currentSession!.createdAtMs,
+        updatedAtMs: now,
+      );
+      await _repository.updateSession(updatedSession);
+      _currentSession = updatedSession;
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update session end time: $e');
+    }
+  }
+
+  /// Persist session feeling (1-5) and update the in-memory session copy.
+  Future<void> updateSessionFeeling(String sessionId, int feeling) async {
+    if (feeling < 1 || feeling > 5) return;
+
+    _clearError();
+
+    try {
+      await _repository.updateSessionFeeling(sessionId, feeling);
+
+      if (_currentSession?.id == sessionId) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        _currentSession = TrainingSession(
+          id: _currentSession!.id,
+          ownerUserId: _currentSession!.ownerUserId,
+          routineTemplateId: _currentSession!.routineTemplateId,
+          startedAtMs: _currentSession!.startedAtMs,
+          endedAtMs: _currentSession!.endedAtMs,
+          title: _currentSession!.title,
+          note: _currentSession!.note,
+          locationText: _currentSession!.locationText,
+          modality: _currentSession!.modality,
+          intent: _currentSession!.intent,
+          perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+          sessionFeeling: feeling,
+          qualityRating: _currentSession!.qualityRating,
+          createdAtMs: _currentSession!.createdAtMs,
+          updatedAtMs: now,
+        );
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update session feeling: $e');
+    }
+  }
+
+  /// Persist session RPE (1.0-10.0) and update the in-memory session copy.
+  Future<void> updateSessionRpe(String sessionId, double rpe) async {
+    if (rpe < 1.0 || rpe > 10.0) return;
+
+    _clearError();
+
+    try {
+      if (_currentSession?.id == sessionId) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final updatedSession = TrainingSession(
+          id: _currentSession!.id,
+          ownerUserId: _currentSession!.ownerUserId,
+          routineTemplateId: _currentSession!.routineTemplateId,
+          startedAtMs: _currentSession!.startedAtMs,
+          endedAtMs: _currentSession!.endedAtMs,
+          title: _currentSession!.title,
+          note: _currentSession!.note,
+          locationText: _currentSession!.locationText,
+          modality: _currentSession!.modality,
+          intent: _currentSession!.intent,
+          perceivedSessionRpe: rpe,
+          sessionFeeling: _currentSession!.sessionFeeling,
+          qualityRating: _currentSession!.qualityRating,
+          createdAtMs: _currentSession!.createdAtMs,
+          updatedAtMs: now,
+        );
+
+        await _repository.updateSession(updatedSession);
+        _currentSession = updatedSession;
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update session RPE: $e');
     }
   }
 
@@ -1556,7 +1826,9 @@ class WorkoutState extends ChangeNotifier {
       // 3. For efforts present in BOTH states, restore their children to snapshot
       //    values to undo add-set / delete-set operations.
       for (final effortId in currentEffortIds) {
-        if (!snapshotEffortIds.contains(effortId)) continue; // already deleted above
+        if (!snapshotEffortIds.contains(effortId)) {
+          continue; // already deleted above
+        }
 
         // Restore observations (set-based efforts).
         await _repository.deleteObservationsForEffort(effortId);
@@ -1643,12 +1915,19 @@ class WorkoutState extends ChangeNotifier {
             }
           }
 
-          setsCompleted = entries.length;
-          totalSets += entries.length;
+          // Count only sets where at least one metric has been logged.
+          setsCompleted = entries
+              .where((entry) =>
+                  ((entry['reps'] as int?) ?? 0) > 0 ||
+                  ((entry['weight'] as double?) ?? 0.0) > 0)
+              .length;
+          totalSets += setsCompleted;
         } else if (effort.effortKind == 'round') {
-          // Round efforts use RoundInstance records; observations list is empty
+          // Count only completed rounds for summary totals.
           final rounds = _roundInstances[effort.id] ?? [];
-          effortRounds = rounds.length;
+          effortRounds = rounds
+              .where((round) => round.state == RoundState.finished)
+              .length;
           setsCompleted = effortRounds;
           totalRounds += effortRounds;
         } else if (effort.effortKind == 'timed') {

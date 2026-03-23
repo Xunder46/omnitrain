@@ -93,17 +93,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     onNext: widget.calendarState.goToNextMonth,
                   ),
                   _WeekDayRow(labels: _weekLabels),
-                  Expanded(
-                    child: widget.calendarState.isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _MonthGrid(
-                            year: widget.calendarState.year,
-                            month: widget.calendarState.month,
-                            entriesByDay: widget.calendarState.entriesByDay,
-                            periods: widget.calendarState.periods,
-                            onDayTap: (date) => _onDayTap(context, date),
-                          ),
-                  ),
+                  if (widget.calendarState.isLoading)
+                    const Expanded(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else ...[
+                    _MonthGrid(
+                      year: widget.calendarState.year,
+                      month: widget.calendarState.month,
+                      entriesByDay: widget.calendarState.entriesByDay,
+                      periods: widget.calendarState.periods,
+                      onDayTap: (date) => _onDayTap(context, date),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: _MonthlyStatsStrip(
+                        completedSessions:
+                            widget.calendarState.completedSessionCount,
+                        totalTrainingMs:
+                            widget.calendarState.totalTrainingMs,
+                        streakDays: widget.calendarState.streakDays,
+                        modalityBreakdown:
+                            widget.calendarState.modalityBreakdown,
+                      ),
+                    ),
+                  ],
                 ],
               );
             },
@@ -280,9 +294,13 @@ class _MonthGrid extends StatelessWidget {
 
     return GridView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 4),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 7,
-        childAspectRatio: 0.75,
+        mainAxisSpacing: 2,
+        crossAxisSpacing: 2,
+        childAspectRatio: 0.7,
       ),
       itemCount: grid.length,
       itemBuilder: (context, index) {
@@ -351,7 +369,6 @@ class _DayCell extends StatelessWidget {
           ? onTap
           : null,
       child: Container(
-        margin: const EdgeInsets.all(2),
         decoration: BoxDecoration(
           color: periodHighlightColor,
           borderRadius: BorderRadius.circular(8),
@@ -455,6 +472,149 @@ class _Dot extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: color, width: 2),
             ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Monthly stats strip
+// ────────────────────────────────────────────────────────────────────────────
+
+class _MonthlyStatsStrip extends StatelessWidget {
+  final int completedSessions;
+  final int totalTrainingMs;
+  final int streakDays;
+  final Map<String?, int> modalityBreakdown;
+
+  const _MonthlyStatsStrip({
+    required this.completedSessions,
+    required this.totalTrainingMs,
+    required this.streakDays,
+    required this.modalityBreakdown,
+  });
+
+  String _formatTrainingTime(int ms) {
+    if (ms <= 0) return '—';
+    final totalSeconds = ms ~/ 1000;
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    if (hours > 0) {
+      return minutes > 0 ? '${hours}h ${minutes}m' : '${hours}h';
+    }
+    if (minutes > 0) return '${minutes}m';
+    return '${totalSeconds}s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sortedModalities = modalityBreakdown.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final modalityChips = sortedModalities.map((entry) {
+      final color = ModalityColorUtils.colorForModality(entry.key);
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 11,
+            height: 11,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            '${entry.value}',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: OmniTheme.textSecondary.withOpacity(0.75),
+            ),
+          ),
+        ],
+      );
+    }).toList();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Divider(
+          height: 1,
+          thickness: 0.5,
+          color: OmniTheme.textSecondary.withOpacity(0.15),
+        ),
+        const SizedBox(height: 14),
+        Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _CompactStat(
+                  label: 'SESSIONS',
+                  value: completedSessions > 0
+                      ? '$completedSessions'
+                      : '—',
+                ),
+                _CompactStat(
+                  label: 'TIME',
+                  value: _formatTrainingTime(totalTrainingMs),
+                ),
+                _CompactStat(
+                  label: 'STREAK',
+                  value: streakDays >= 3
+                      ? '🔥 ${streakDays}d'
+                      : (streakDays == 0 ? '0' : '${streakDays}d'),
+                ),
+              ],
+            ),
+            if (sortedModalities.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 20,
+                runSpacing: 10,
+                children: modalityChips,
+              ),
+            ],
+          ],
+          ),
+      ],
+    );
+  }
+}
+
+class _CompactStat extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _CompactStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+            color: OmniTheme.textSecondary.withOpacity(0.55),
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+            color: OmniTheme.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 }

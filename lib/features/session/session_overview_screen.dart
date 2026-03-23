@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
+import '../../widgets/pickers/modality_picker_dialog.dart';
+import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../data/models/models.dart';
 import '../../state/routine/routine_state.dart';
@@ -13,12 +16,14 @@ class SessionOverviewScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final RoutineState routineState;
   final SessionSummaryService sessionSummaryService;
+  final SettingsState settingsState;
 
   const SessionOverviewScreen({
     super.key,
     required this.workoutState,
     required this.routineState,
     required this.sessionSummaryService,
+    required this.settingsState,
   });
 
   @override
@@ -79,21 +84,38 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     if (selectedExercise != null) {
       String? chosenMetric;
+      String? effortKindOverride;
 
-      // If Free Training (null modality), show metric chooser
+      // If Free Training or Routine session (null modality), ask user to pick a modality
       if (modality == null) {
-        // If exercise has only one capability, auto-select it
-        final deduped = _deduplicateCapabilities(selectedExercise.capabilities);
-        if (deduped.length == 1) {
-          chosenMetric = deduped.first;
-        } else {
-          chosenMetric = await showDialog<String>(
-            context: context,
-            builder: (context) =>
-                MetricChooserDialog(exercise: selectedExercise),
-          );
+        final modalityResult = await showDialog<(bool, String?)>(
+          context: context,
+          builder: (context) => const ModalityPickerDialog(),
+        );
 
-          if (chosenMetric == null) return; // User cancelled
+        if (!context.mounted || modalityResult == null) return; // user cancelled
+
+        final (_, pickedModality) = modalityResult;
+
+        if (pickedModality != null) {
+          // User picked a specific modality — derive effort kind from its config
+          effortKindOverride =
+              ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
+        } else {
+          // User picked "General" — fall back to metric chooser
+          final deduped =
+              _deduplicateCapabilities(selectedExercise.capabilities);
+          if (deduped.length == 1) {
+            chosenMetric = deduped.first;
+          } else {
+            chosenMetric = await showDialog<String>(
+              context: context,
+              builder: (context) =>
+                  MetricChooserDialog(exercise: selectedExercise),
+            );
+
+            if (chosenMetric == null) return; // User cancelled
+          }
         }
       }
 
@@ -101,6 +123,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
         final effortId = await widget.workoutState.addExerciseToSession(
           selectedExercise,
           chosenMetric: chosenMetric,
+          effortKindOverride: effortKindOverride,
         );
         if (effortId.isNotEmpty) {
           await Navigator.of(context).push(
@@ -109,6 +132,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                 workoutState: widget.workoutState,
                 routineState: widget.routineState,
                 sessionSummaryService: widget.sessionSummaryService,
+                settingsState: widget.settingsState,
                 initialFocusId: effortId,
               ),
             ),
@@ -131,7 +155,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: theme.colorScheme.surface,
+        backgroundColor: OmniTheme.colorsForTheme(widget.settingsState.appTheme).backgroundTop,
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -140,8 +164,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
     final modality = widget.workoutState.currentSession?.modality;
     final modalityName = ModalityDisplay.getName(modality);
 
+    final themeColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
+
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: themeColors.backgroundTop,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,7 +181,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
             ),
           ],
         ),
-        backgroundColor: theme.colorScheme.surface,
+        backgroundColor: themeColors.backgroundTop,
         elevation: 0,
       ),
       body: SafeArea(
@@ -168,6 +194,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                 'Exercises',
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w600,
+                  color: themeColors.textMuted,
                 ),
               ),
               const SizedBox(height: 8),
@@ -249,8 +276,15 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                   '${entries.length} ${entries.length != 1 ? 'entries' : 'entry'}';
                           }
 
-                          return Card(
+                          return Container(
                             margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: themeColors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: themeColors.surfaceBorder,
+                              ),
+                            ),
                             child: ListTile(
                               title: Text(exercise['name'] as String),
                               subtitle: Text(subtitle),
@@ -321,6 +355,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                     routineState: widget.routineState,
                                     sessionSummaryService:
                                         widget.sessionSummaryService,
+                                    settingsState: widget.settingsState,
                                   ),
                                 ),
                               );

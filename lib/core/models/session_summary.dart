@@ -88,6 +88,24 @@ class VolumeComparison {
   bool get hasPrevious => previousVolume != null && delta != null;
 }
 
+/// Per-modality-group progress delta vs the most recent previous session.
+class GroupDelta {
+  /// Raw numeric delta (current − previous). Null when no comparison is available.
+  final double? delta;
+
+  /// Unit of the delta: 'kg' (strength volume), 'ms' (duration), 'rounds' (round count).
+  final String unit;
+
+  /// Whether a previous session existed to compare against.
+  final bool hasPrevious;
+
+  const GroupDelta({
+    this.delta,
+    required this.unit,
+    required this.hasPrevious,
+  });
+}
+
 class SessionTemplateDraft {
   final String name;
   final String? focusModality;
