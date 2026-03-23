@@ -2189,7 +2189,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
   Widget _buildSegmentHeader(String name, ThemeData theme) {
     final textMuted = OmniTheme.colorsForTheme(
-      widget.settingsState?.appTheme ?? AppTheme.abyssalNeon,
+      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
     ).textMuted;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -2217,7 +2217,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               segment.name ?? 'Block ${segment.orderIndex + 1}',
               style: theme.textTheme.titleSmall?.copyWith(
                 color: OmniTheme.colorsForTheme(
-                  widget.settingsState?.appTheme ?? AppTheme.abyssalNeon,
+                  widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
                 ).textMuted,
                 fontWeight: FontWeight.w600,
               ),
@@ -2279,7 +2279,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final idx = _exercises.indexWhere((e) => e['id'] == effortId);
 
     final _tileColors = OmniTheme.colorsForTheme(
-      widget.settingsState?.appTheme ?? AppTheme.abyssalNeon,
+      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
     );
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -2319,7 +2319,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   /// and wraps itself in a [GestureDetector] that opens [_editSessionDuration].
   Widget _buildSessionTimeWidget(ThemeData theme) {
     final _chipColors = OmniTheme.colorsForTheme(
-      widget.settingsState?.appTheme ?? AppTheme.abyssalNeon,
+      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
     );
     final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

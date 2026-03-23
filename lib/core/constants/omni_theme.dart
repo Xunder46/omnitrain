@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt }
+enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen }
 
 typedef OmniThemeColors = ({
   Color backgroundTop,
@@ -59,6 +59,17 @@ class OmniTheme {
           divider: Color(0xFF1F1F1F),
           surfaceBorder: Color(0x12FFFFFF),
         );
+      case AppTheme.circuitGreen:
+        return (
+          backgroundTop: Color(0xFF071210),
+          backgroundBottom: Color(0xFF030806),
+          surface: Color(0xFF091714),
+          primary: Color(0xFF00E676),
+          secondary: Color(0xFF00A854),
+          textMuted: Color(0xFF4A7A5A),
+          divider: Color(0xFF102018),
+          surfaceBorder: Color(0x0DFFFFFF),
+        );
     }
   }
 
@@ -70,6 +81,8 @@ class OmniTheme {
         return 'Forge & Ember';
       case AppTheme.obsidianVolt:
         return 'Obsidian Volt';
+      case AppTheme.circuitGreen:
+        return 'Circuit Green';
     }
   }
 

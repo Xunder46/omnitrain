@@ -132,6 +132,8 @@ Add user-selectable app themes to OmniTrain with two new palettes (Forge & Ember
 - [x] `SessionOverviewScreen` "Exercises" section label uses `themeColors.textMuted`
 - [x] `SettingsState` injected via constructor into `SessionOverviewScreen`
 - [x] No call sites updated for `SessionOverviewScreen` (screen has no active navigation entry points yet)
+- [x] `SessionSummaryScreen` feeling bottom sheet uses active theme tokens (surface/text/borders/handle)
+- [x] `WorkoutSessionScreen` edit/list theme fallback uses `OmniTheme.activeTheme` when `settingsState` is null
 
 ## Acceptance Criteria
 - [ ] `AppTheme` compiles with exhaustive switch handling for all three themes.

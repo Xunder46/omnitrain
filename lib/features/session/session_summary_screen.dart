@@ -1342,14 +1342,15 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
     final accentColor = ModalityColors.forModality(widget.modality);
-    final displayName =
-        ModalityDisplay.getName(widget.modality) ?? 'Free Training';
+    final displayName = ModalityDisplay.getName(widget.modality);
     final subtitle = '$displayName · Today';
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1F2E),
+        color: themeColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -1367,7 +1368,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: themeColors.primary.withOpacity(0.4),
                 borderRadius: BorderRadius.circular(2),
               ),
               margin: const EdgeInsets.only(bottom: 28),
@@ -1377,8 +1378,8 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
           Text(
             'How did it feel?',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Colors.white.withOpacity(0.9),
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.9),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1390,7 +1391,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
-              color: Colors.white.withOpacity(0.4),
+              color: themeColors.textMuted,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -1417,7 +1418,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
                   style: TextStyle(
                     fontSize: 11,
                     letterSpacing: 1.0,
-                    color: Colors.white.withOpacity(0.25),
+                    color: themeColors.textMuted,
                   ),
                 ),
                 Text(
@@ -1425,7 +1426,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
                   style: TextStyle(
                     fontSize: 11,
                     letterSpacing: 1.0,
-                    color: Colors.white.withOpacity(0.25),
+                    color: themeColors.textMuted,
                   ),
                 ),
               ],
@@ -1437,6 +1438,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
   }
 
   Widget _buildFeelingTile(int number, Color accentColor) {
+    final theme = Theme.of(context);
     final isSelected = _selectedFeeling == number;
     final tileColor = _getFeelingColor(number);
 
@@ -1447,9 +1449,13 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           decoration: BoxDecoration(
-            color: isSelected ? tileColor : Colors.white.withOpacity(0.05),
+            color: isSelected
+                ? tileColor
+                : theme.colorScheme.surface.withOpacity(0.6),
             border: Border.all(
-              color: isSelected ? tileColor : Colors.white.withOpacity(0.12),
+              color: isSelected
+                  ? tileColor
+                  : theme.colorScheme.onSurface.withOpacity(0.12),
               width: 1.5,
             ),
             borderRadius: BorderRadius.circular(14),
@@ -1462,7 +1468,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
                 fontWeight: FontWeight.w500,
                 color: isSelected
                     ? Colors.white
-                    : Colors.white.withOpacity(0.35),
+                    : theme.colorScheme.onSurface.withOpacity(0.35),
               ),
             ),
           ),
