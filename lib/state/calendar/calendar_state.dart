@@ -138,9 +138,16 @@ class CalendarState extends ChangeNotifier {
           .where((s) => s.endedAtMs != null)
           .toList();
 
+      // Exclude planned sessions that have already been executed — they carry a
+      // linkedSessionId pointing to the real TrainingSession, which is already
+      // represented in completedSessions. Including them would produce a
+      // duplicate dot on the calendar for the same day.
+      final unlinkedPlannedSessions =
+          plannedSessions.where((p) => p.linkedSessionId == null).toList();
+
       final entries = <CalendarEntry>[
         ...completedSessions.map(CalendarEntry.fromSession),
-        ...plannedSessions.map(CalendarEntry.fromPlannedSession),
+        ...unlinkedPlannedSessions.map(CalendarEntry.fromPlannedSession),
       ];
 
       // Sort ascending by day.

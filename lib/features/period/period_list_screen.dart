@@ -196,26 +196,30 @@ class _PeriodRow extends StatelessWidget {
     final isActive =
         period.startDateMs <= now && period.endDateMs >= now;
 
+    final theme = Theme.of(context);
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+
     return Container(
       decoration: BoxDecoration(
-        color: OmniTheme.surfaceColor.withOpacity(0.85),
+        color: theme.colorScheme.surface.withOpacity(0.85),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isActive
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.4)
-              : OmniTheme.surfaceBorderColor,
+              ? theme.colorScheme.primary.withOpacity(0.4)
+              : themeColors.surfaceBorder,
           width: isActive ? 1.5 : 1.0,
         ),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        onTap: onEdit,
         title: Row(
           children: [
             Expanded(
               child: Text(
                 period.name,
-                style: const TextStyle(
-                  color: OmniTheme.textPrimary,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
@@ -251,7 +255,7 @@ class _PeriodRow extends StatelessWidget {
               dateRange,
               style: TextStyle(
                 fontSize: 12,
-                color: OmniTheme.textSecondary.withOpacity(0.75),
+                color: theme.colorScheme.onSurface.withOpacity(0.55),
               ),
             ),
             if (period.focusModalities.isNotEmpty) ...[
@@ -283,20 +287,10 @@ class _PeriodRow extends StatelessWidget {
             ],
           ],
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              color: OmniTheme.textSecondary,
-              onPressed: onEdit,
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, size: 18),
-              color: Colors.redAccent,
-              onPressed: onDelete,
-            ),
-          ],
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline, size: 18),
+          color: Colors.redAccent,
+          onPressed: onDelete,
         ),
       ),
     );
