@@ -72,7 +72,8 @@ TrainingSession
 | `unitId` | `String?` | Unit reference (e.g., `unit-kg`) |
 | `recordedAtMs` | `int` | Timestamp |
 | `rpeRating` | `int?` | Optional RPE 1-10 value for richer observation payloads |
-| `restDurationMs` | `int?` | Optional rest duration before entry |
+| `restDurationMs` | `int?` | Legacy field — superseded by `EntryRest` for all effort kinds; currently unpopulated |
+| `valueBool` | `bool?` | Skip marker: `true` when set was explicitly skipped (with `valueInt: 0`); used by `_isSetLogged` to restore skip state on reload |
 
 ### RoundInstance
 
@@ -95,9 +96,22 @@ TrainingSession
 
 **RoundState enum:** `notStarted` → `active` ⇄ `paused` → `finished` (terminal)
 
----
+### EntryRest
 
-## Exercise & Taxonomy Models
+Wall-clock-persisted rest record created when a set/round is logged. Tracks recovery time between entries for any effort kind. See [Rest Tracking](rest_tracking.md) for full architecture.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | Deterministic key: `'rest-{effortId}-{entryIndex}'` |
+| `effortId` | `String` | Parent `SegmentEffort` id |
+| `entryIndex` | `int` | 0-based; identifies the set/round this rest precedes |
+| `restStartMs` | `int` | Wall-clock epoch ms when the previous set was logged |
+| `restEndMs` | `int?` | Wall-clock epoch ms when the next set/round was started; `null` while still resting |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+
+**Computed helper:**
+- `elapsedSeconds(int nowMs)` — `((restEndMs ?? nowMs) - restStartMs) / 1000`, clamped to `[0, 99999]`
 
 ### Exercise
 
@@ -345,5 +359,5 @@ MetricDefinition ←── UnitModel
 
 ---
 
-**Document Version**: 1.1
-**Last Updated**: March 15, 2026
+**Document Version**: 1.2
+**Last Updated**: March 22, 2026

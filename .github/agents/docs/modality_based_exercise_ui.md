@@ -276,12 +276,16 @@ switch (effortKind) {
 
 **Purpose**: Passive rest tracking between sets without requiring user action.
 
+**Architecture**: Rest intervals are backed by `EntryRest` repository records — **not** a Stopwatch. The old `_restTimer`, `_restStopwatch`, and `_restElapsedSeconds` fields have been removed. See [rest_tracking.md](rest_tracking.md) for the full data layer documentation.
+
 **Behavior**:
-- Appears automatically after logging a set
+- Appears automatically after logging a set (a new `EntryRest` record is written via `workoutState.recordRestStart(effortId, entryIndex)`)
+- Overlay visibility is gated on `workoutState.hasRestRecord(effortId, entryIndex)` — no record, no overlay
+- Elapsed time is read from `workoutState.getRestElapsedSeconds(effortId, entryIndex)` on each `_ticker` tick (wall-clock derived from `EntryRest.startedAtMs`)
 - Displays elapsed rest time (MM:SS format)
 - Positioned in lower screen area (above controls, non-intrusive)
-- Hides when exercise timer starts (focus shifts to work)
-- Independent of exercise timers (global rest state)
+- Hides when the next effort timer starts (overlay check gates on `hasRestRecord`)
+- Independent of effort timers — rest records are keyed per effortId+entryIndex, not globally
 
 **Visual Design**:
 ```dart
@@ -670,8 +674,8 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 
 ---
 
-**Document Version**: 1.2  
-**Last Updated**: February 28, 2026  
+**Document Version**: 1.3  
+**Last Updated**: March 22, 2026  
 **Author**: Automated documentation generated from codebase analysis  
 **Related Docs**: 
 - [modality_tracking.md](.github/agents/docs/modality_tracking.md) — Data layer + business logic

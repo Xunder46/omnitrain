@@ -36,6 +36,7 @@ This documentation describes the architecture, features, and conventions of Omni
 | [Calendar & Periods](calendar_periods.md) | Month calendar planning, day-session management, and non-overlapping training periods |
 | [Session Summary](session_summary.md) | Post-workout analytics — PRs, volume comparison, save-as-routine |
 | [Profile & Measurements](profile_and_measurements.md) | Profile identity, avatar flow, body measurement logging, and history chart behavior |
+| [Theme & Settings](theme_and_settings.md) | Multi-theme system (AppTheme enum, OmniTheme tokens), SettingsState, SettingsScreen appearance section |
 
 ### Architecture & Technical
 | Document | Description |
@@ -46,6 +47,7 @@ This documentation describes the architecture, features, and conventions of Omni
 | [Constants & Configuration](constants_reference.md) | Modalities, capabilities, metrics, effort kinds, intents, design tokens |
 | [DB Integration](db_integration.md) | Database setup, schema, seed data, dual-backend strategy |
 | [Widget Catalog](widget_catalog.md) | Reusable UI components — layout primitives, tiles, pickers, metric editors |
+| [Rest Tracking](rest_tracking.md) | Wall-clock rest tracking architecture, EntryRest model, DB-backed rest records between sets |
 
 ---
 

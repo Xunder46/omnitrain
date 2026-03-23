@@ -56,6 +56,7 @@ The primary state manager for active workout sessions. Manages the entire sessio
 | `discardCurrentSession()` | Deletes session and all related data |
 | `updateSessionNote(note)` | Updates session note |
 | `updateSessionEndTime(durationSecs)` | Edit-mode only — sets `endedAtMs = startedAtMs + durationSecs × 1000`; no-op if `durationSecs ≤ 0` |
+| `updateSessionFeeling(feeling)` | Persists a 1-5 feeling score to `TrainingSession.sessionFeeling`; updates `_currentSession` in-place |
 
 #### Exercise Management
 
@@ -71,8 +72,9 @@ The primary state manager for active workout sessions. Manages the entire sessio
 | Method | Purpose |
 |--------|---------|
 | `addEntry(effortId)` | Creates new set/interval with default observations |
-| `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately |
+| `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields including `rpeRating` and `restDurationMs` |
 | `deleteLastEntry(effortId)` | Removes last set |
+| `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check |
 
 #### Round Management (round effortKind only)
 
@@ -88,12 +90,24 @@ The primary state manager for active workout sessions. Manages the entire sessio
 | `deleteRound(effortId, roundIndex)` | — | Removes round instance |
 | `getRoundsForEffort(effortId)` | — | Returns all rounds for an effort |
 
+#### Rest Tracking Methods
+
+| Method | Signature | Purpose |
+|--------|-----------|--------|
+| `recordRestStart` | `(effortId, entryIndex) → Future<void>` | Creates an `EntryRest` record with `restStartMs = now`; called after a set/round is logged |
+| `recordRestEnd` | `(effortId, entryIndex) → Future<void>` | Sets `restEndMs = now` on the open rest record; called when the athlete starts the next entry |
+| `getRestElapsedSeconds` | `(effortId, entryIndex) → int` | Returns live elapsed seconds for the rest overlay display |
+| `hasRestRecord` | `(effortId, entryIndex) → bool` | Returns `true` if a rest record exists for this entry; drives overlay visibility |
+| `getEntryRests` | `(effortId) → List<EntryRest>` | Returns unmodifiable list of rest records for an effort |
+
+See [Rest Tracking](rest_tracking.md) for full architecture details.
+
 #### Routine Session Support
 
 | Method | Purpose |
-|--------|---------|
+|--------|--------|
 | `populateSessionFromManifest(manifest)` | Loads exercises from `RoutineSessionManifest` |
-| `computeSessionSummary()` | Returns `SessionSummary` |
+| `computeSessionSummary()` | Returns `SessionSummary`; counts only `RoundState.finished` rounds (not-started/active/paused are excluded) |
 | `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine |
 
 ---
@@ -153,20 +167,21 @@ Manages the calendar month view and associated monthly stats. See also [Calendar
 ### `HomeState`
 
 **File**: `lib/state/home/home_state.dart`
-**Depends on**: nothing
+**Depends on**: `WorkoutRepository`
 
-Minimal state tracking a single boolean for UI purposes.
+Minimal state tracking a single boolean for UI purposes. Now persists the hint flag via `WorkoutRepository.setPreferenceBool` so it survives app restarts.
 
 | Field | Type | Purpose |
-|-------|------|---------|
+|-------|------|--------|
 | `_maintenanceHintSeen` | `bool` | Whether the maintenance sheet hint animation has been shown |
 
 | Method | Purpose |
-|--------|---------|
+|--------|--------|
+| `init()` | `async` — reads `'hint_seen_maintenance'` from repository preferences on startup |
 | `shouldShowMaintenanceHint` | Getter — returns `!_maintenanceHintSeen` |
-| `markMaintenanceHintSeen()` | Sets flag to `true`, notifies listeners |
+| `markMaintenanceHintSeen()` | Sets flag to `true`, persists via `repository.setPreferenceBool('hint_seen_maintenance', true)`, notifies listeners |
 
-Not persisted — resets on app restart.
+Persisted — survives app restart via `WorkoutRepository.getPreferenceBool` / `setPreferenceBool` backed by the Hive `meta` box.
 
 ---
 
@@ -205,6 +220,25 @@ Manages profile identity and body-measurement flows used by `ProfileScreen`.
 | `logMeasurement(type, value, unitId, {recordedAtMs})` | Saves new entry; defaults timestamp to save time |
 | `getMeasurementHistory(type)` | Repository passthrough for history UI |
 | `deleteMeasurementEntry(entryId, measurementType)` | Deletes and refreshes latest value for the type |
+
+---
+
+### `SettingsState`
+
+**File**: `lib/state/settings/settings_state.dart`
+**Depends on**: `SharedPreferences`
+
+Owns the persisted app theme selection. See [Theme & Settings](theme_and_settings.md) for full documentation.
+
+| Field | Type | Default |
+|-------|------|--------|
+| `_appTheme` | `AppTheme` | `AppTheme.abyssalNeon` |
+
+| Method | Purpose |
+|--------|--------|
+| `appTheme` | Getter — current selected theme |
+| `setAppTheme(AppTheme)` | Persists selection by enum name, notifies listeners (immediate reactive update) |
+| `_loadFromPrefs()` | Private — restores theme from `SharedPreferences` key `'app_theme'` on init |
 
 ---
 
@@ -296,10 +330,13 @@ WorkoutRepository (interface)
   ├─ CalendarState
   ├─ PeriodState
   ├─ ProfileState
+  ├─ HomeState        ← now depends on WorkoutRepository for preference persistence
   ├─ RoutineSessionService
   └─ SessionSummaryService
 
-HomeState (standalone, no dependencies)
+SharedPreferences
+  └─ SettingsState    ← theme persistence only
+
 AppState (standalone, singleton, minimal)
 ```
 
@@ -313,8 +350,10 @@ All injectable state/service objects are created in `main.dart` and passed to `M
 - [Data Models](data_models.md) — The models that state classes manage
 - [My Routines](my_routines.md) — RoutineState + RoutineSessionService details
 - [Modality Tracking](modality_tracking.md) — WorkoutState modality logic
+- [Theme & Settings](theme_and_settings.md) — SettingsState, theme tokens, AppTheme enum
+- [Rest Tracking](rest_tracking.md) — EntryRest model and wall-clock rest architecture
 
 ---
 
-**Document Version**: 1.1
-**Last Updated**: March 15, 2026
+**Document Version**: 1.2
+**Last Updated**: March 22, 2026

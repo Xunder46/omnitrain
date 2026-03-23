@@ -11,8 +11,10 @@ The **Session Summary** screen is displayed after a user finishes (or navigates 
 ```
 WorkoutSessionScreen → "Finish Workout" (or back navigation)
   → SessionSummaryScreen
+    ├── [First load, feeling == null] Session Feeling modal (non-dismissible)
+    │     └── Tap 1-5 tile → persists feeling → modal closes
     ├── View stats (duration, sets, volume)
-    ├── See volume delta vs previous session
+    ├── See per-group delta vs previous session (chips on group headers)
     ├── See new personal records (PRs)
     ├── Add/edit session note (auto-saves with 600ms debounce)
     ├── View monthly training calendar
@@ -52,6 +54,7 @@ A `StatefulWidget` receiving:
 - `WorkoutState` — session data, compute summary, end/discard session
 - `RoutineState` — reload routines after save-as-routine
 - `SessionSummaryService` — async PR/volume computations
+- `onOpenCalendar` callback — optional `VoidCallback` injected by the parent for Open Calendar navigation (currently feature-flagged off)
 
 ### Data Flow on Init
 
@@ -60,6 +63,7 @@ A `StatefulWidget` receiving:
 3. Async: `sessionSummaryService.compareGroupsToPreviousSession(session, summary)` → `Map<String, GroupDelta>`
 4. Async: `sessionSummaryService.computePRs(exerciseSummaries)` → `List<PRAchievement>`
 5. Async: `_loadCalendarData()` → fetches sessions in current month date range
+6. Post-frame: if `currentSession.sessionFeeling == null` → `_showFeelingSheet(context)` (runs after first build)
 
 ### Service: `SessionSummaryService`
 
@@ -153,6 +157,23 @@ Group headers are shown for every session, including single-modality ones. The `
 ### 7. Stats Card Fixed Layout
 The top stats card uses a deterministic 2×2 grid (Duration, Exercises, Sets, Rounds) — always all four, no conditional hiding based on zero values. This eliminates orphaned metric rows from the previous `Wrap`-based layout.
 
+### 8. Session Feeling Modal
+On first load, if `currentSession.sessionFeeling == null`, a non-dismissible bottom sheet (`_FeelingSheetContent`) appears automatically:
+- Displays a 1–5 tile row; each tile shows the number on an `AnimatedContainer` square
+- Tile accent color is the modality color (`ModalityColors.forModality(modality)`)
+- Tapping a tile calls `workoutState.updateSessionFeeling(n)` and closes the sheet immediately
+- Sheet is non-dismissible (`isDismissible: false`, `enableDrag: false`) — the athlete must pick a value
+- If the session already has a feeling value, the sheet is skipped entirely
+
+### 9. Open Calendar Button (Feature-Flagged)
+The calendar card header contains an "Open Calendar" button that navigates to `CalendarScreen`. All navigation plumbing (callback injected via `onOpenCalendar` constructor param) is in place, but the button is currently hidden behind a feature flag:
+
+```dart
+static const bool _showCalendarActions = false;
+```
+
+To re-enable, set `_showCalendarActions = true` in `session_summary_screen.dart`. No structural changes are required.
+
 ---
 
 ## Code References
@@ -176,5 +197,5 @@ The top stats card uses a deterministic 2×2 grid (Duration, Exercises, Sets, Ro
 
 ---
 
-**Document Version**: 1.1
-**Last Updated**: March 14, 2026
+**Document Version**: 1.2
+**Last Updated**: March 22, 2026
