@@ -324,6 +324,8 @@ class MockWorkoutRepository implements WorkoutRepository {
     for (final effortId in effortIds) {
       _observations.removeWhere((_, obs) => obs.effortId == effortId);
       _roundInstances.remove(effortId);
+      _timedInstances.remove(effortId);
+      _entryRests.remove(effortId);
       _efforts.remove(effortId);
     }
 

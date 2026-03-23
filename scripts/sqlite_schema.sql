@@ -877,10 +877,12 @@ CREATE TABLE app_planned_session (
   note TEXT,                              -- Optional notes
   is_completed INTEGER NOT NULL DEFAULT 0, -- 0 = planned, 1 = completed
   linked_session_id TEXT,                 -- FK to app_training_session when executed
+  routine_template_id TEXT,               -- FK to app_workout_template for routine-based plans
   recurrence_rule TEXT,                   -- RESERVED: NULL until recurrence is built
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
-  FOREIGN KEY(linked_session_id) REFERENCES app_training_session(id)
+  FOREIGN KEY(linked_session_id) REFERENCES app_training_session(id),
+  FOREIGN KEY(routine_template_id) REFERENCES app_workout_template(id)
 );
 CREATE INDEX IF NOT EXISTS IX_planned_session_date
   ON app_planned_session(owner_user_id, scheduled_date_ms);
@@ -945,6 +947,7 @@ CREATE TABLE app_training_period (
   end_date_ms INTEGER NOT NULL,            -- Epoch ms of last day  (end-of-day local)
   focus_modalities_csv TEXT NOT NULL DEFAULT '', -- ''-separated modality keys; '' = all
   notes TEXT,
+  color_hex TEXT,                          -- Hex color string (e.g. '#4CAF50') for calendar highlight; NULL = theme default
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   CHECK (end_date_ms >= start_date_ms)

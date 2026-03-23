@@ -555,6 +555,26 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
     await _roundInstancesBox.deleteAll(roundInstanceIds);
 
+    // Also delete timed instances for all affected efforts
+    final timedInstanceIds = <dynamic>[];
+    for (final entry in _timedInstancesBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (effortIds.contains(raw['effort_id'])) {
+        timedInstanceIds.add(entry.key);
+      }
+    }
+    await _timedInstancesBox.deleteAll(timedInstanceIds);
+
+    // Also delete entry rests for all affected efforts
+    final entryRestIds = <dynamic>[];
+    for (final entry in _entryRestsBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (effortIds.contains(raw['effort_id'])) {
+        entryRestIds.add(entry.key);
+      }
+    }
+    await _entryRestsBox.deleteAll(entryRestIds);
+
     await _observationsBox.deleteAll(observationIds);
     await _effortsBox.deleteAll(effortIds);
     await _segmentsBox.deleteAll(segmentIds);
