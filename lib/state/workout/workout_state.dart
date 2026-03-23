@@ -1915,12 +1915,19 @@ class WorkoutState extends ChangeNotifier {
             }
           }
 
-          setsCompleted = entries.length;
-          totalSets += entries.length;
+          // Count only sets where at least one metric has been logged.
+          setsCompleted = entries
+              .where((entry) =>
+                  ((entry['reps'] as int?) ?? 0) > 0 ||
+                  ((entry['weight'] as double?) ?? 0.0) > 0)
+              .length;
+          totalSets += setsCompleted;
         } else if (effort.effortKind == 'round') {
-          // Round efforts use RoundInstance records; observations list is empty
+          // Count only completed rounds for summary totals.
           final rounds = _roundInstances[effort.id] ?? [];
-          effortRounds = rounds.length;
+          effortRounds = rounds
+              .where((round) => round.state == RoundState.finished)
+              .length;
           setsCompleted = effortRounds;
           totalRounds += effortRounds;
         } else if (effort.effortKind == 'timed') {
