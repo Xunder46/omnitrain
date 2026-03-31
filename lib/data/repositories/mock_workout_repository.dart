@@ -54,6 +54,7 @@ class MockWorkoutRepository implements WorkoutRepository {
   // Calendar: planned sessions and training periods
   final Map<String, PlannedSession> _plannedSessions = {};
   final Map<String, TrainingPeriod> _periods = {};
+  final Map<String, ExerciseNote> _exerciseNotes = {};
   final Map<String, bool> _boolPrefs = {};
   final Map<String, String> _stringPrefs = {};
 
@@ -549,6 +550,23 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> deleteEntryRestsForEffort(String effortId) async {
     _entryRests.remove(effortId);
+  }
+
+  // ===== EXERCISE NOTES =====
+
+  @override
+  Future<ExerciseNote?> getExerciseNote(String exerciseId) async {
+    return _exerciseNotes[exerciseId];
+  }
+
+  @override
+  Future<void> saveExerciseNote(ExerciseNote note) async {
+    _exerciseNotes[note.exerciseId] = note;
+  }
+
+  @override
+  Future<void> deleteExerciseNote(String exerciseId) async {
+    _exerciseNotes.remove(exerciseId);
   }
 
   // ===== SPORT CATEGORIES =====

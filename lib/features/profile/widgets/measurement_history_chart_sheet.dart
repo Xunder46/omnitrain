@@ -356,7 +356,7 @@ class _MeasurementHistoryChartSheetState
             isCurved: false,
             dotData: FlDotData(
               show: true,
-              getDotPainter: (_, __, ___, index) {
+              getDotPainter: (_, _, _, index) {
                 final isSelected = index == _selectedIndex;
                 return FlDotCirclePainter(
                   radius: isSelected ? 6.5 : 5.0,

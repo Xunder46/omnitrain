@@ -30,6 +30,7 @@ This documentation describes the architecture, features, and conventions of Omni
 |----------|-------------|
 | [Modality Tracking](modality_tracking.md) | How exercise capabilities, modalities, and effort kinds work together — the core differentiator |
 | [Modality-Based Exercise UI](modality_based_exercise_ui.md) | The adaptive workout session screen — per-modality controls, timer management, swipe gestures |
+| [Exercise Info & Notes](exercise_info_and_notes.md) | Workout session detail header sheets: exercise info reference and persistent per-exercise notes |
 | [Exercise Ranking](exercise_ranking.md) | How exercises are scored and sorted for the exercise picker |
 | [Create New Exercise](create_new_exercise.md) | Custom exercise creation from the picker |
 | [My Routines](my_routines.md) | Reusable workout template system — CRUD, template-to-session conversion, UI |

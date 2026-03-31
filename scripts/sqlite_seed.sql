@@ -332,7 +332,7 @@ SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'Easy Run', 'Low intensity steady run' UNION ALL
+  SELECT 'Easy Run' AS name, 'Low intensity steady run' AS description UNION ALL
   SELECT 'Long Run', 'Extended endurance run' UNION ALL
   SELECT 'Tempo Run', 'Sustained threshold pace run' UNION ALL
   SELECT 'Interval Run', 'Repeated fast efforts with rest' UNION ALL
@@ -353,7 +353,7 @@ SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'Barbell Squat', 'Back squat with barbell' UNION ALL
+  SELECT 'Barbell Squat' AS name, 'Back squat with barbell' AS description UNION ALL
   SELECT 'Bench Press', 'Barbell bench press' UNION ALL
   SELECT 'Deadlift', 'Conventional barbell deadlift' UNION ALL
   SELECT 'Overhead Press', 'Standing barbell shoulder press' UNION ALL
@@ -374,7 +374,7 @@ SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'Heavy Bag Rounds', 'Boxing heavy bag work' UNION ALL
+  SELECT 'Heavy Bag Rounds' AS name, 'Boxing heavy bag work' AS description UNION ALL
   SELECT 'Shadowboxing', 'Footwork and technique without equipment' UNION ALL
   SELECT 'Pad Work', 'Striking drills with pads' UNION ALL
   SELECT 'Speed Bag', 'Hand speed and rhythm training' UNION ALL
@@ -396,7 +396,7 @@ SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'Plank Hold', 'Isometric core hold' UNION ALL
+  SELECT 'Plank Hold' AS name, 'Isometric core hold' AS description UNION ALL
   SELECT 'Side Plank', 'Lateral core isometric hold' UNION ALL
   SELECT 'Wall Sit', 'Isometric leg hold' UNION ALL
   SELECT 'Dead Hang', 'Grip and shoulder isometric hang' UNION ALL
@@ -417,7 +417,7 @@ SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'Plank Hold', 'Isometric core hold' UNION ALL
+  SELECT 'Plank Hold' AS name, 'Isometric core hold' AS description UNION ALL
   SELECT 'Side Plank', 'Lateral core isometric hold' UNION ALL
   SELECT 'Wall Sit', 'Isometric leg hold' UNION ALL
   SELECT 'Dead Hang', 'Grip and shoulder isometric hang' UNION ALL

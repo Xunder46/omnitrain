@@ -19,6 +19,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
   static const String _calendarDataMigrationKey = 'calendar_data_seeded_v1';
   static const String _calendarSeedPurgeMigrationKey =
       'calendar_seed_purged_v1';
+  static const String _exerciseContentFieldsMigrationKey =
+      'exercise_content_fields_migrated_v1';
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -50,6 +52,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
   // Entry rests box: key = EntryRest.id, value = EntryRest.toMap()
   // Wall-clock rest periods between consecutive sets/rounds for all effort kinds.
   late Box<Map> _entryRestsBox;
+
+  // Exercise notes box: key = ExerciseNote.id, value = ExerciseNote.toMap()
+  late Box<Map> _exerciseNotesBox;
 
   // Planned sessions box: key = PlannedSession.id, value = PlannedSession.toMap()
   late Box<Map> _plannedSessionsBox;
@@ -98,6 +103,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     _timedInstancesBox = await Hive.openBox<Map>('timed_instances');
 
     _entryRestsBox = await Hive.openBox<Map>('entry_rests');
+    _exerciseNotesBox = await Hive.openBox<Map>('exercise_notes');
 
     _plannedSessionsBox = await Hive.openBox<Map>('planned_sessions');
     _periodsBox = await Hive.openBox<Map>('training_periods');
@@ -123,6 +129,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _migrateSessionFeelingFields();
     await _seedCalendarData();
     await _purgeCalendarSeedData();
+    await _migrateExerciseContentFields();
 
     _initialized = true;
   }
@@ -298,6 +305,15 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
 
     await _metaBox.put(_calendarSeedPurgeMigrationKey, true);
+  }
+
+  /// Migration note: how_to_steps and image_asset_path added as nullable fields.
+  /// No backfill needed - null is the correct default for existing exercises.
+  Future<void> _migrateExerciseContentFields() async {
+    final migrated =
+        _metaBox.get(_exerciseContentFieldsMigrationKey) as bool? ?? false;
+    if (migrated) return;
+    await _metaBox.put(_exerciseContentFieldsMigrationKey, true);
   }
 
   Map<String, dynamic> _asStringMap(dynamic raw) {
@@ -830,6 +846,36 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _entryRestsBox.deleteAll(idsToDelete);
   }
 
+  // ===== EXERCISE NOTES =====
+
+  @override
+  Future<ExerciseNote?> getExerciseNote(String exerciseId) async {
+    try {
+      return _exerciseNotesBox.values
+          .map((raw) => ExerciseNote.fromMap(_asStringMap(raw)))
+          .firstWhere((n) => n.exerciseId == exerciseId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> saveExerciseNote(ExerciseNote note) async {
+    await _exerciseNotesBox.put(note.id, note.toMap());
+  }
+
+  @override
+  Future<void> deleteExerciseNote(String exerciseId) async {
+    final idsToDelete = <dynamic>[];
+    for (final entry in _exerciseNotesBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (raw['exercise_id'] == exerciseId) {
+        idsToDelete.add(entry.key);
+      }
+    }
+    await _exerciseNotesBox.deleteAll(idsToDelete);
+  }
+
   // ===== SPORT CATEGORIES =====
 
   @override
@@ -1270,6 +1316,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _roundInstancesBox.clear();
     await _timedInstancesBox.clear();
     await _entryRestsBox.clear();
+    await _exerciseNotesBox.clear();
     await _unitsBox.clear();
     await _metricsBox.clear();
     await _muscleGroupsBox.clear();

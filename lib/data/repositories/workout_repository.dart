@@ -192,6 +192,21 @@ abstract class WorkoutRepository {
   /// Called by deleteEffort() and during edit-mode rollback.
   Future<void> deleteEntryRestsForEffort(String effortId);
 
+  // Exercise Notes
+  //
+  // Per-exercise user notes that persist across sessions.
+  // Notes are keyed by exerciseId (deterministic id = 'note-{exerciseId}').
+  // These are NOT session-scoped: one note per exercise, updated in-place.
+
+  /// Get the note for an exercise, or null if none exists.
+  Future<ExerciseNote?> getExerciseNote(String exerciseId);
+
+  /// Upsert a note for an exercise.
+  Future<void> saveExerciseNote(ExerciseNote note);
+
+  /// Delete the note for an exercise (called when note text is empty).
+  Future<void> deleteExerciseNote(String exerciseId);
+
   // Modality-ranked exercise retrieval
   /// Retrieve exercises ranked by relevance to a given modality.
   ///

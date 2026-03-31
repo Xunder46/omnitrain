@@ -112,6 +112,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Null in live (non-edit) mode.
   int? _pendingDurationSecs;
   int? _originalDurationSecs;
+  int _focusRequestId = 0;
 
   @override
   void initState() {
@@ -128,6 +129,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Future<void> _loadExercises() async {
     setState(() => _isLoading = true);
     try {
+      int? initialDetailIndex;
+      int initialDetailSet = 1;
+
       if (!widget.workoutState.hasSession) {
         await widget.workoutState.createNewSession();
       }
@@ -251,14 +255,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         if (initialId != null && initialId.isNotEmpty) {
           final idx = _exercises.indexWhere((e) => e['id'] == initialId);
           if (idx != -1) {
-            _currentExerciseIndex = idx;
             final exercise = _exercises[idx];
             final entries =
                 exercise['entries'] as List<Map<String, dynamic>>? ?? [];
             // Restore to the current/last entry position
-            _currentSet = entries.isNotEmpty ? entries.length : 1;
-            _showListView =
-                false; // Show detail view when focusing a specific exercise
+            initialDetailIndex = idx;
+            initialDetailSet = entries.isNotEmpty ? entries.length : 1;
           }
         }
 
@@ -276,6 +278,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       // reflects the state the user started editing from, not a mid-edit reload.
       if (widget.editMode && _editSnapshot == null) {
         _editSnapshot = widget.workoutState.snapshotSessionState();
+      }
+
+      if (initialDetailIndex != null) {
+        await _focusExerciseDetail(
+          initialDetailIndex!,
+          setNumber: initialDetailSet,
+        );
       }
     } catch (e) {
       print('Error loading exercises: $e');
@@ -303,6 +312,34 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final entries = exercise['entries'] as List<Map<String, dynamic>>? ?? [];
     if (entryIndex < 0 || entryIndex >= entries.length) return null;
     return entries[entryIndex];
+  }
+
+  String? _exerciseIdForIndex(int index) {
+    if (index < 0 || index >= _exercises.length) return null;
+    return _exercises[index]['exerciseId'] as String?;
+  }
+
+  Future<void> _loadExerciseNoteForIndex(int index) async {
+    final exerciseId = _exerciseIdForIndex(index);
+    if (exerciseId == null) return;
+    await widget.workoutState.loadExerciseNote(exerciseId);
+  }
+
+  Future<void> _focusExerciseDetail(int index, {int setNumber = 1}) async {
+    if (!mounted || index < 0 || index >= _exercises.length) return;
+    final requestId = ++_focusRequestId;
+
+    // **Await** note load BEFORE transitioning to detail mode.
+    // This guarantees cache is populated before rendering note-dependent UI.
+    await _loadExerciseNoteForIndex(index);
+
+    if (!mounted || requestId != _focusRequestId) return;
+
+    setState(() {
+      _currentExerciseIndex = index;
+      _currentSet = setNumber;
+      _showListView = false;
+    });
   }
 
   /// Get the RoundInstance for a specific round (effortId + roundIndex).
@@ -564,6 +601,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
 
     // Advance to next set or next exercise
+    int? nextExerciseIndex;
     setState(() {
       if (_currentSet < entries.length) {
         _currentSet++;
@@ -572,12 +610,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         if (_currentExerciseIndex < _exercises.length - 1) {
           _currentExerciseIndex++;
           _currentSet = 1;
+          nextExerciseIndex = _currentExerciseIndex;
         } else {
           // All exercises complete - show finish option
           _showFinishDialog();
         }
       }
     });
+
+    if (nextExerciseIndex != null) {
+      unawaited(_loadExerciseNoteForIndex(nextExerciseIndex!));
+    }
   }
 
   void _previousSet() {
@@ -600,6 +643,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
 
     // Simply move back to previous set without clearing values
+    int? previousExerciseIndex;
     setState(() {
       if (_currentSet > 1) {
         _currentSet--;
@@ -609,8 +653,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final previousEntries =
             previousExercise['entries'] as List<Map<String, dynamic>>;
         _currentSet = previousEntries.isNotEmpty ? previousEntries.length : 1;
+        previousExerciseIndex = _currentExerciseIndex;
       }
     });
+
+    if (previousExerciseIndex != null) {
+      unawaited(_loadExerciseNoteForIndex(previousExerciseIndex!));
+    }
   }
 
   void _skipSet() {
@@ -1125,13 +1174,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   void _switchExercise(int delta) {
-    setState(() {
-      final newIndex = _currentExerciseIndex + delta;
-      if (newIndex >= 0 && newIndex < _exercises.length) {
-        _currentExerciseIndex = newIndex;
-        _currentSet = 1;
-      }
-    });
+    final newIndex = _currentExerciseIndex + delta;
+    if (newIndex < 0 || newIndex >= _exercises.length) return;
+    unawaited(_focusExerciseDetail(newIndex));
   }
 
   Future<void> _addExercise({String? segmentId}) async {
@@ -1156,8 +1201,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           builder: (context) => const ModalityPickerDialog(),
         );
 
-        if (!context.mounted || modalityResult == null)
+        if (!context.mounted || modalityResult == null) {
           return; // user cancelled
+        }
 
         final (_, pickedModality) = modalityResult;
 
@@ -1207,11 +1253,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       if (effortId.isNotEmpty) {
         final idx = _exercises.indexWhere((e) => e['id'] == effortId);
         if (idx != -1) {
-          setState(() {
-            _currentExerciseIndex = idx;
-            _currentSet = 1;
-            _showListView = false;
-          });
+          unawaited(_focusExerciseDetail(idx));
         }
       }
     }
@@ -1239,15 +1281,21 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     if (_exercises.isEmpty) return;
     final exercise = _exercises[_currentExerciseIndex];
     final entries = exercise['entries'] as List<Map<String, dynamic>>;
+    int? nextExerciseIndex;
     setState(() {
       if (_currentSet < entries.length) {
         _currentSet++;
       } else if (_currentExerciseIndex < _exercises.length - 1) {
         _currentExerciseIndex++;
         _currentSet = 1;
+        nextExerciseIndex = _currentExerciseIndex;
       }
       // At the very end: stay on the last set (no finish dialog in edit mode)
     });
+
+    if (nextExerciseIndex != null) {
+      unawaited(_loadExerciseNoteForIndex(nextExerciseIndex!));
+    }
   }
 
   void _tick() {
@@ -2207,8 +2255,78 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               ],
             ),
           ),
+          if (!_showListView && _exercises.isNotEmpty)
+            _buildExerciseHeaderActions(theme),
         ],
       ),
+    );
+  }
+
+  Widget _buildExerciseHeaderActions(ThemeData theme) {
+    return ListenableBuilder(
+      listenable: widget.workoutState,
+      builder: (context, _) {
+        final exerciseMap = _exercises[_currentExerciseIndex];
+        final exerciseId = exerciseMap['exerciseId'] as String?;
+        final exercise = exerciseId != null
+            ? widget.workoutState.getExercise(exerciseId)
+            : null;
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              key: const Key('exercise-info-button'),
+              icon: Icon(
+                Icons.info_outline,
+                size: 18,
+                color: theme.colorScheme.onSurface.withOpacity(0.45),
+              ),
+              onPressed: exercise == null
+                  ? null
+                  : () => _showExerciseInfoSheet(context, exercise),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  key: const Key('exercise-note-button'),
+                  icon: Icon(
+                    Icons.edit_note,
+                    size: 18,
+                    color: theme.colorScheme.onSurface.withOpacity(0.45),
+                  ),
+                  onPressed: exercise == null
+                      ? null
+                      : () => _showExerciseNoteSheet(context, exercise),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
+                ),
+                if (exerciseId != null &&
+                    widget.workoutState.hasExerciseNote(exerciseId))
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      key: const Key('exercise-note-indicator'),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2303,15 +2421,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final effortId = exercise['id'] as String;
     final idx = _exercises.indexWhere((e) => e['id'] == effortId);
 
-    final _tileColors = OmniTheme.colorsForTheme(
+    final tileColors = OmniTheme.colorsForTheme(
       widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
     );
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: _tileColors.surface.withOpacity(0.7),
+        color: tileColors.surface.withOpacity(0.7),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _tileColors.surfaceBorder),
+        border: Border.all(color: tileColors.surfaceBorder),
       ),
       child: ListTile(
         title: Text(
@@ -2326,15 +2444,171 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             color: OmniTheme.textSecondary,
           ),
         ),
-        onTap: idx == -1
-            ? null
-            : () {
-                setState(() {
-                  _currentExerciseIndex = idx;
-                  _currentSet = 1;
-                  _showListView = false;
-                });
-              },
+        onTap: idx == -1 ? null : () => unawaited(_focusExerciseDetail(idx)),
+      ),
+    );
+  }
+
+  void _showExerciseInfoSheet(BuildContext context, Exercise exercise) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        final bottomPadding = MediaQuery.of(ctx).padding.bottom + 24;
+        final hasImage = exercise.imageAssetPath != null;
+        final hasSteps =
+            exercise.howToSteps != null && exercise.howToSteps!.isNotEmpty;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Drag handle
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 12, bottom: 8),
+                    child: Container(
+                      width: 32,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.onSurface.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Hero image
+                if (hasImage)
+                  Stack(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        height: 200,
+                        child: Image.asset(
+                          exercise.imageAssetPath!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ),
+                      // Bottom gradient overlay
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 60,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.7),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                // Exercise name
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Text(
+                    exercise.name,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.4,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+
+                // How-to section
+                if (hasSteps) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                    child: Text(
+                      'HOW TO PERFORM',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.45),
+                        letterSpacing: 2.0,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  ...exercise.howToSteps!.asMap().entries.map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${entry.key + 1}.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              entry.value,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+
+                // Empty state
+                if (!hasImage && !hasSteps)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Text(
+                        'No information available yet',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.45),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                SizedBox(height: bottomPadding),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showExerciseNoteSheet(BuildContext context, Exercise exercise) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ExerciseNoteSheet(
+        workoutState: widget.workoutState,
+        exercise: exercise,
+        currentSessionId: widget.workoutState.currentSession?.id,
       ),
     );
   }
@@ -2343,13 +2617,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   /// views. In edit mode it gains a border, tinted text, and an edit icon,
   /// and wraps itself in a [GestureDetector] that opens [_editSessionDuration].
   Widget _buildSessionTimeWidget(ThemeData theme) {
-    final _chipColors = OmniTheme.colorsForTheme(
+    final chipColors = OmniTheme.colorsForTheme(
       widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
     );
     final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: _chipColors.surface.withOpacity(0.5),
+        color: chipColors.surface.withOpacity(0.5),
         borderRadius: BorderRadius.circular(8),
         border: widget.editMode
             ? Border.all(
@@ -3354,6 +3628,157 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         icon: Icon(icon),
         color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
         iconSize: 28,
+      ),
+    );
+  }
+}
+
+class _ExerciseNoteSheet extends StatefulWidget {
+  final WorkoutState workoutState;
+  final Exercise exercise;
+  final String? currentSessionId;
+
+  const _ExerciseNoteSheet({
+    required this.workoutState,
+    required this.exercise,
+    required this.currentSessionId,
+  });
+
+  @override
+  State<_ExerciseNoteSheet> createState() => _ExerciseNoteSheetState();
+}
+
+class _ExerciseNoteSheetState extends State<_ExerciseNoteSheet> {
+  late TextEditingController _controller;
+  Timer? _debounce;
+  bool _hasUnsavedChanges = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.workoutState.getExerciseNote(widget.exercise.id)?.note ?? '',
+    );
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    setState(() => _hasUnsavedChanges = true);
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      widget.workoutState.saveExerciseNote(
+        widget.exercise.id,
+        value,
+        sessionId: widget.currentSessionId,
+      );
+      if (mounted) setState(() => _hasUnsavedChanges = false);
+    });
+  }
+
+  void _forceSave() {
+    if (!_hasUnsavedChanges) return;
+    _debounce?.cancel();
+    _debounce = null;
+    widget.workoutState.saveExerciseNote(
+      widget.exercise.id,
+      _controller.text,
+      sessionId: widget.currentSessionId,
+    );
+    _hasUnsavedChanges = false;
+  }
+
+  @override
+  void dispose() {
+    _forceSave();
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bottomPadding =
+        MediaQuery.of(context).viewInsets.bottom +
+        MediaQuery.of(context).padding.bottom +
+        16;
+    final showCounter = _controller.text.length > 500;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Drag handle
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 4),
+              child: Container(
+                width: 32,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.onSurface.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+
+          // Exercise name label
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: Text(
+              widget.exercise.name,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.55),
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+
+          // Text field
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: TextField(
+              controller: _controller,
+              maxLines: null,
+              autofocus: true,
+              keyboardType: TextInputType.multiline,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.9),
+              ),
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                hintText: 'Add notes, cues, reminders…',
+                hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.3),
+                ),
+              ),
+              onChanged: _onChanged,
+            ),
+          ),
+
+          // Character counter (only when > 500 chars)
+          if (showCounter)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '${_controller.text.length}/∞',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.45),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+
+          SizedBox(height: bottomPadding),
+        ],
       ),
     );
   }

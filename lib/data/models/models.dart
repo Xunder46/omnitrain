@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 // Data model classes aligned with SQLite schema
 
 class SportCategory {
@@ -102,6 +104,8 @@ class Exercise {
   /// Only meaningful for effortKind == 'round' exercises (martial arts, sports).
   /// Examples: Soccer Match = 2700 (45-min half), Ice Hockey = 1200 (20-min period).
   final int? defaultRoundDurationSecs;
+  final List<String>? howToSteps;
+  final String? imageAssetPath;
 
   Exercise({
     required this.id,
@@ -116,6 +120,8 @@ class Exercise {
     this.capabilities = const [],
     this.relevanceScore,
     this.defaultRoundDurationSecs,
+    this.howToSteps,
+    this.imageAssetPath,
   });
 
   factory Exercise.fromMap(Map<String, dynamic> m) => Exercise(
@@ -130,6 +136,10 @@ class Exercise {
     updatedAtMs: m['updated_at_ms'] as int,
     relevanceScore: m['relevance_score'] as double?,
     defaultRoundDurationSecs: m['default_round_duration_secs'] as int?,
+    howToSteps: m['how_to_steps'] != null
+      ? List<String>.from(jsonDecode(m['how_to_steps'] as String) as List)
+      : null,
+    imageAssetPath: m['image_asset_path'] as String?,
   );
 
   Map<String, dynamic> toMap() => {
@@ -144,6 +154,8 @@ class Exercise {
     'updated_at_ms': updatedAtMs,
     'relevance_score': relevanceScore,
     'default_round_duration_secs': defaultRoundDurationSecs,
+    'how_to_steps': howToSteps != null ? jsonEncode(howToSteps) : null,
+    'image_asset_path': imageAssetPath,
   };
 }
 
@@ -1488,3 +1500,61 @@ class EntryRest {
 }
 
 const Object _entryRestCopyWithUnset = Object();
+
+/// Per-exercise user note. Persists across sessions.
+/// id is a deterministic key: 'note-{exerciseId}'.
+class ExerciseNote {
+  final String id;
+  final String exerciseId;
+  final String note;
+  final String? lastSessionId;
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  const ExerciseNote({
+    required this.id,
+    required this.exerciseId,
+    required this.note,
+    this.lastSessionId,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  factory ExerciseNote.fromMap(Map<String, dynamic> m) => ExerciseNote(
+    id: m['id'] as String,
+    exerciseId: m['exercise_id'] as String,
+    note: m['note'] as String,
+    lastSessionId: m['last_session_id'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'exercise_id': exerciseId,
+    'note': note,
+    'last_session_id': lastSessionId,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+
+  ExerciseNote copyWith({
+    String? id,
+    String? exerciseId,
+    String? note,
+    Object? lastSessionId = _exerciseNoteCopyWithUnset,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) => ExerciseNote(
+    id: id ?? this.id,
+    exerciseId: exerciseId ?? this.exerciseId,
+    note: note ?? this.note,
+    lastSessionId: lastSessionId == _exerciseNoteCopyWithUnset
+        ? this.lastSessionId
+        : lastSessionId as String?,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
+}
+
+const Object _exerciseNoteCopyWithUnset = Object();

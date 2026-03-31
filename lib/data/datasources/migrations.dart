@@ -52,4 +52,25 @@ Future<void> applyMigrations(Database db, int oldVersion, int newVersion) async 
       'CREATE UNIQUE INDEX IF NOT EXISTS UX_entry_rest_effort_index ON app_entry_rest(effort_id, entry_index)',
     );
   }
+
+  if (oldVersion < 5) {
+    await db.execute('ALTER TABLE app_exercise ADD COLUMN how_to_steps TEXT');
+    await db.execute(
+      'ALTER TABLE app_exercise ADD COLUMN image_asset_path TEXT',
+    );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS app_exercise_note (
+        id              TEXT    NOT NULL PRIMARY KEY,
+        exercise_id     TEXT    NOT NULL,
+        note            TEXT    NOT NULL,
+        last_session_id TEXT,
+        created_at_ms   INTEGER NOT NULL,
+        updated_at_ms   INTEGER NOT NULL,
+        FOREIGN KEY(exercise_id) REFERENCES app_exercise(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS UX_exercise_note_exercise ON app_exercise_note(exercise_id)',
+    );
+  }
 }

@@ -35,6 +35,14 @@ class WorkoutState extends ChangeNotifier {
   // Entry rests keyed by effortId — wall-clock rest periods for all effort kinds.
   // Stores the actual recovery time between consecutive sets/rounds for tracking and analytics.
   final Map<String, List<EntryRest>> _entryRests = {};
+  // Exercise notes cache: exerciseId -> ExerciseNote? (null = confirmed absent)
+  final Map<String, ExerciseNote?> _exerciseNotes = {};
+  // Track in-flight loads per exerciseId so overlapping callers can await
+  // the same load without issuing redundant repository reads.
+  final Map<String, Future<void>> _exerciseNoteLoadInFlight = {};
+  // Track in-flight save for each exerciseId to prevent out-of-order writes.
+  // Completed futures are retained for this session and cleared in clearSession().
+  final Map<String, Future<void>> _exerciseNoteSaveInFlight = {};
   final Map<String, Exercise> _exerciseCache = {};
 
   // Exercise library data
@@ -84,6 +92,99 @@ class WorkoutState extends ChangeNotifier {
   /// Get rest records for an effort (wall-clock rest durations between sets)
   List<EntryRest> getEntryRests(String effortId) {
     return List.unmodifiable(_entryRests[effortId] ?? []);
+  }
+
+  /// Loads the note for [exerciseId] from the repository into cache.
+  /// Skips if already cached or in-flight to prevent redundant loads.
+  /// Calls notifyListeners() so note indicators can update.
+  Future<void> loadExerciseNote(String exerciseId) async {
+    // Already cached; skip.
+    if (_exerciseNotes.containsKey(exerciseId)) {
+      return;
+    }
+
+    final inFlight = _exerciseNoteLoadInFlight[exerciseId];
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final loadFuture = (() async {
+      try {
+        final note = await _repository.getExerciseNote(exerciseId);
+        _exerciseNotes[exerciseId] = note;
+        notifyListeners();
+      } catch (e) {
+        _setError('Failed to load exercise note: $e');
+      } finally {
+        _exerciseNoteLoadInFlight.remove(exerciseId);
+      }
+    })();
+
+    _exerciseNoteLoadInFlight[exerciseId] = loadFuture;
+    await loadFuture;
+  }
+
+  /// Upserts a note for [exerciseId]. If [text] is blank, deletes the note.
+  /// Serializes saves per exercise to prevent out-of-order writes.
+  /// Caller should NOT await — the state layer handles queueing.
+  /// Queued entries are session-scoped and are cleared in clearSession().
+  /// Calls notifyListeners() on complete to refresh note-dependent UI.
+  Future<void> saveExerciseNote(
+    String exerciseId,
+    String text, {
+    String? sessionId,
+  }) async {
+    final trimmed = text.trim();
+
+    // Chain this save onto any in-flight save for this exercise.
+    _exerciseNoteSaveInFlight[exerciseId] =
+        (_exerciseNoteSaveInFlight[exerciseId] ?? Future.value()).then((
+          _,
+        ) async {
+          try {
+            if (trimmed.isEmpty) {
+              await _repository.deleteExerciseNote(exerciseId);
+              _exerciseNotes[exerciseId] = null;
+            } else {
+              final now = DateTime.now().millisecondsSinceEpoch;
+              final existing = _exerciseNotes[exerciseId];
+              final updated = existing != null
+                  ? existing.copyWith(
+                      note: trimmed,
+                      lastSessionId: sessionId ?? existing.lastSessionId,
+                      updatedAtMs: now,
+                    )
+                  : ExerciseNote(
+                      id: 'note-$exerciseId',
+                      exerciseId: exerciseId,
+                      note: trimmed,
+                      lastSessionId: sessionId,
+                      createdAtMs: now,
+                      updatedAtMs: now,
+                    );
+              await _repository.saveExerciseNote(updated);
+              _exerciseNotes[exerciseId] = updated;
+            }
+            notifyListeners();
+          } catch (e) {
+            _setError('Failed to save exercise note: $e');
+          }
+        });
+
+    // Return the queued future without awaiting, so caller can fire-and-forget.
+    // The queue ensures ordering even if calls are overlapped.
+  }
+
+  /// Returns the cached note for [exerciseId], or null.
+  ExerciseNote? getExerciseNote(String exerciseId) {
+    return _exerciseNotes[exerciseId];
+  }
+
+  /// True if a non-null note exists in cache for [exerciseId].
+  bool hasExerciseNote(String exerciseId) {
+    return _exerciseNotes.containsKey(exerciseId) &&
+        _exerciseNotes[exerciseId] != null;
   }
 
   /// Record the start of a rest period (called when a set/round is logged)
@@ -1917,9 +2018,11 @@ class WorkoutState extends ChangeNotifier {
 
           // Count only sets where at least one metric has been logged.
           setsCompleted = entries
-              .where((entry) =>
-                  ((entry['reps'] as int?) ?? 0) > 0 ||
-                  ((entry['weight'] as double?) ?? 0.0) > 0)
+              .where(
+                (entry) =>
+                    ((entry['reps'] as int?) ?? 0) > 0 ||
+                    ((entry['weight'] as double?) ?? 0.0) > 0,
+              )
               .length;
           totalSets += setsCompleted;
         } else if (effort.effortKind == 'round') {
@@ -2267,6 +2370,7 @@ class WorkoutState extends ChangeNotifier {
 
         result.add({
           'id': effort.id,
+          'exerciseId': effort.exerciseId,
           'name': exerciseName,
           'effortKind': effort.effortKind,
           'entries': entries,
@@ -2291,6 +2395,9 @@ class WorkoutState extends ChangeNotifier {
     _roundInstances.clear();
     _timedInstances.clear();
     _exerciseCache.clear();
+    _exerciseNotes.clear();
+    _exerciseNoteLoadInFlight.clear();
+    _exerciseNoteSaveInFlight.clear();
     _clearError();
     notifyListeners();
   }
