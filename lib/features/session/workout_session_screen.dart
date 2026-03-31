@@ -1395,10 +1395,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final ssCtrl = TextEditingController(text: s.toString().padLeft(2, '0'));
 
     int? result;
-    try {
-      result = await showDialog<int>(
-        context: context,
-        builder: (_) => AlertDialog(
+    result = await showDialog<int>(
+      context: context,
+      builder: (_) => AlertDialog(
           title: const Text('Edit Session Duration'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1490,11 +1489,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           ],
         ),
       );
-    } finally {
+    // Defer controller disposal until the dialog exit animation completes.
+    // Disposing immediately causes "used after being disposed" errors because
+    // the dialog's TextField widgets briefly outlive the showDialog future.
+    Future.delayed(const Duration(milliseconds: 300), () {
       hhCtrl.dispose();
       mmCtrl.dispose();
       ssCtrl.dispose();
-    }
+    });
 
     if (result != null && result > 0 && mounted) {
       setState(() {

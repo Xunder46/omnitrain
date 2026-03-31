@@ -119,7 +119,17 @@ void main() {
 
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
 
-    await tester.pageBack();
+    // The summary screen shows a non-dismissible "How did it feel?" sheet.
+    // Select a feeling to dismiss it before navigating back.
+    if (find.text('How did it feel?').evaluate().isNotEmpty) {
+      // Tap the "3" tile in the feeling sheet (last occurrence to avoid ambiguity)
+      await tester.tap(find.text('3').last);
+      await tester.pumpAndSettle();
+    }
+
+    // Navigate back from the summary screen to verify we don't return to the workout.
+    final navState = tester.state<NavigatorState>(find.byType(Navigator).first);
+    navState.pop();
     await tester.pumpAndSettle();
 
     expect(find.text('Open Workout'), findsOneWidget);

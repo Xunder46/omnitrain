@@ -238,15 +238,8 @@ void main() {
       await tester.tap(find.text('Apply'));
       await tester.pumpAndSettle();
 
-      // Back from detail view (if needed) then from list view.
-      final backBtn = find.byIcon(Icons.arrow_back);
-      if (backBtn.evaluate().isNotEmpty) {
-        await tester.tap(backBtn.first);
-        await tester.pumpAndSettle();
-      }
-
-      // Trigger system back by popping the route.
-      await tester.pageBack();
+      // We should be in list view. Tap back to trigger unsaved-changes dialog.
+      await tester.tap(find.byIcon(Icons.arrow_back).first);
       await tester.pumpAndSettle();
 
       // The unsaved-changes dialog must appear.
@@ -276,7 +269,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Navigate back to trigger the unsaved-changes dialog.
-      await tester.pageBack();
+      await tester.tap(find.byIcon(Icons.arrow_back).first);
       await tester.pumpAndSettle();
 
       expect(find.text('Unsaved changes'), findsOneWidget);

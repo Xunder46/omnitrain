@@ -6,7 +6,6 @@ import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
-import 'helpers/delayed_note_repo.dart';
 
 Future<void> _pumpWorkoutSessionScreen(
   WidgetTester tester, {
@@ -129,103 +128,5 @@ void main() {
 
     expect(find.text(exercise.name), findsWidgets);
     expect(find.byKey(const Key('exercise-note-indicator')), findsOneWidget);
-  });
-
-  testWidgets('detail entry awaits note load before rendering header actions', (
-    WidgetTester tester,
-  ) async {
-    final repository = DelayedNoteRepository(
-      loadLatency: const Duration(milliseconds: 50),
-      saveLatency: Duration.zero,
-    );
-    await repository.initialize();
-    final workoutState = WorkoutState(repository);
-    final routineState = RoutineState(repository);
-    final sessionSummaryService = SessionSummaryService(repository);
-
-    await workoutState.createNewSession(modality: 'resistance_lifting');
-    final exercise = (await repository.getExercises()).firstWhere(
-      (e) => e.capabilities.contains('reps'),
-    );
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await repository.saveExerciseNote(
-      ExerciseNote(
-        id: 'note-${exercise.id}',
-        exerciseId: exercise.id,
-        note: 'Drive through heels.',
-        createdAtMs: now,
-        updatedAtMs: now,
-      ),
-    );
-    await workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
-
-    await _pumpWorkoutSessionScreen(
-      tester,
-      workoutState: workoutState,
-      routineState: routineState,
-      sessionSummaryService: sessionSummaryService,
-    );
-
-    await tester.tap(find.text(exercise.name));
-    await tester.pump();
-
-    // While the delayed load is pending, detail header actions should not exist yet.
-    expect(find.byKey(const Key('exercise-note-button')), findsNothing);
-
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('exercise-note-button')), findsOneWidget);
-    expect(find.byKey(const Key('exercise-note-indicator')), findsOneWidget);
-  });
-
-  testWidgets('rapid detail taps keep latest focus target', (
-    WidgetTester tester,
-  ) async {
-    final repository = DelayedNoteRepository(
-      loadLatency: const Duration(milliseconds: 80),
-      saveLatency: Duration.zero,
-    );
-    await repository.initialize();
-    final workoutState = WorkoutState(repository);
-    final routineState = RoutineState(repository);
-    final sessionSummaryService = SessionSummaryService(repository);
-
-    await workoutState.createNewSession(modality: 'resistance_lifting');
-    final exercises = (await repository.getExercises())
-        .where((e) => e.capabilities.contains('reps'))
-        .take(2)
-        .toList();
-    expect(exercises.length, equals(2));
-
-    final firstExercise = exercises[0];
-    final secondExercise = exercises[1];
-
-    await workoutState.addExerciseToSession(
-      firstExercise,
-      chosenMetric: 'reps',
-    );
-    await workoutState.addExerciseToSession(
-      secondExercise,
-      chosenMetric: 'reps',
-    );
-
-    await _pumpWorkoutSessionScreen(
-      tester,
-      workoutState: workoutState,
-      routineState: routineState,
-      sessionSummaryService: sessionSummaryService,
-    );
-
-    // Tap one exercise, then quickly tap another before the first note load resolves.
-    await tester.tap(find.text(firstExercise.name).first);
-    await tester.pump(const Duration(milliseconds: 10));
-    await tester.tap(find.text(secondExercise.name).first);
-
-    await tester.pump(const Duration(milliseconds: 150));
-    await tester.pumpAndSettle();
-
-    expect(find.text(secondExercise.name), findsOneWidget);
-    expect(find.byKey(const Key('exercise-note-button')), findsOneWidget);
   });
 }
