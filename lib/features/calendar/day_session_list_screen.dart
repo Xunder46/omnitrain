@@ -482,18 +482,21 @@ class _SessionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
     final color = ModalityColorUtils.colorForModality(entry.modality);
     final label = _resolveLabel();
     final subtitle = _buildSubtitle();
-    final stateColor = entry.isCompleted ? Colors.greenAccent : Colors.white54;
+    final stateColor = entry.isCompleted
+        ? themeColors.primary
+        : themeColors.textMuted;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: OmniTheme.surfaceColor.withOpacity(0.85),
+          color: themeColors.surface.withOpacity(0.85),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: OmniTheme.surfaceBorderColor),
+          border: Border.all(color: themeColors.surfaceBorder),
         ),
         child: ListTile(
           leading: Container(
