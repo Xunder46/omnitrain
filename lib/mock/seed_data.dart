@@ -1072,6 +1072,7 @@ class SeedData {
     MetricApplicability(metricId: 'metric-distance', effortKind: 'timed'),
     MetricApplicability(metricId: 'metric-heart-rate', effortKind: 'timed'),
     MetricApplicability(metricId: 'metric-rpe', effortKind: 'timed'),
+    MetricApplicability(metricId: 'metric-extra-weight', effortKind: 'timed'),
     
     // Distance Intervals (interval)
     MetricApplicability(metricId: 'metric-distance', effortKind: 'interval'),

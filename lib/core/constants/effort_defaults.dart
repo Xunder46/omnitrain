@@ -24,10 +24,11 @@ class EffortDefaults {
           MetricIds.weight: 0.0,
         };
       case 'timed':
-        // Cardio/endurance: duration + optional distance
+        // Cardio/endurance: duration + optional distance + optional extra weight
         return {
           MetricIds.duration: 0,
           MetricIds.distance: 0.0,
+          MetricIds.extraWeight: 0.0,
         };
       case 'round':
         // Martial arts / sports: rounds + round duration.

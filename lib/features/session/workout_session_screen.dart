@@ -722,13 +722,21 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         );
         break;
       case 'timed':
-        // Duration is tracked in TimedInstance (wall-clock); persist companion distance only.
+        // Duration is tracked in TimedInstance (wall-clock); persist companion metrics.
         await widget.workoutState.updateEntryValue(
           effortId,
           entryIndex,
           'distance',
           currentEntry['distance'] as double? ?? 0.0,
         );
+        if (currentEntry['extra-weight'] != null) {
+          await widget.workoutState.updateEntryValue(
+            effortId,
+            entryIndex,
+            'extra-weight',
+            currentEntry['extra-weight'] as double,
+          );
+        }
         break;
       case 'round':
         // Round tracking is handled by RoundInstance records via
@@ -3056,6 +3064,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   value,
                 ),
               ),
+              if (entryData['extra-weight'] != null)
+                InlineMetricEditor(
+                  metricType: 'extra-weight',
+                  currentValue: entryData['extra-weight'] as double,
+                  unitLabel: 'EXTRA KG',
+                  onValueChanged: (value) => _updateMetricValue(
+                    effortId,
+                    entryIndex,
+                    'extra-weight',
+                    value,
+                  ),
+                ),
             ],
           );
         }
@@ -3096,6 +3116,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ),
               ],
             ),
+            if (entryData['extra-weight'] != null) ...[
+              const SizedBox(height: 16),
+              InlineMetricEditor(
+                metricType: 'extra-weight',
+                currentValue: entryData['extra-weight'] as double,
+                unitLabel: 'EXTRA KG',
+                onValueChanged: (value) => _updateMetricValue(
+                  effortId,
+                  entryIndex,
+                  'extra-weight',
+                  value,
+                ),
+              ),
+            ],
           ],
         );
 
@@ -3421,6 +3455,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final prevTimedRemSecs = prevTimedSecs % 60;
         statsText =
             'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${prevDistance.toStringAsFixed(1)} m';
+        final prevTimedExtraWeight = previousEntry['extra-weight'] as double?;
+        if (prevTimedExtraWeight != null && prevTimedExtraWeight != 0.0) {
+          statsText += ' + ${prevTimedExtraWeight.toStringAsFixed(1)} kg';
+        }
         break;
       case 'round':
         final prevRounds = previousEntry['rounds'] as int? ?? 1;

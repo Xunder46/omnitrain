@@ -1255,6 +1255,11 @@ extension on _RoutineSetupScreenState {
       case 'timed':
         final duration =
             _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
+        final hasTimedExtraWeightTarget =
+            targets.any((t) => t.metricId == MetricIds.extraWeight);
+        final timedExtraWeight = hasTimedExtraWeightTarget
+            ? _getTargetDouble(targets, MetricIds.extraWeight, setIndex)
+            : null;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1270,6 +1275,19 @@ extension on _RoutineSetupScreenState {
                 targetInt: value as int,
               ),
             ),
+            if (timedExtraWeight != null)
+              InlineMetricEditor(
+                metricType: 'extra-weight',
+                currentValue: timedExtraWeight,
+                unitLabel: 'EXTRA KG',
+                onValueChanged: (value) => widget.routineState.setTargetValue(
+                  effort.id,
+                  MetricIds.extraWeight,
+                  MetricIds.unitKg,
+                  setIndex: setIndex,
+                  targetMin: value as double,
+                ),
+              ),
           ],
         );
       case 'round':
@@ -1414,6 +1432,13 @@ extension on _RoutineSetupScreenState {
         final secs = duration % 60;
         statsText =
             'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+        final timedPrevEw =
+            targets.any((t) => t.metricId == MetricIds.extraWeight)
+            ? _getTargetDouble(targets, MetricIds.extraWeight, previousIndex)
+            : null;
+        if (timedPrevEw != null && timedPrevEw != 0.0) {
+          statsText += ' + ${timedPrevEw.toStringAsFixed(1)} kg';
+        }
         break;
       case 'round':
         final roundDuration =

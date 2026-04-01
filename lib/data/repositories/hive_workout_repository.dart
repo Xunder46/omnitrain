@@ -21,6 +21,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
       'calendar_seed_purged_v1';
   static const String _exerciseContentFieldsMigrationKey =
       'exercise_content_fields_migrated_v1';
+  static const String _timedExtraWeightMigrationKey =
+      'timed_extra_weight_migrated_v1';
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -130,6 +132,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _seedCalendarData();
     await _purgeCalendarSeedData();
     await _migrateExerciseContentFields();
+    await _migrateTimedExtraWeight();
 
     _initialized = true;
   }
@@ -305,6 +308,33 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
 
     await _metaBox.put(_calendarSeedPurgeMigrationKey, true);
+  }
+
+  /// Migration note: metric-extra-weight is now also applicable to timed efforts,
+  /// enabling loaded carries and weighted cardio to log load alongside duration/distance.
+  /// Backfills the _metricEffortKindsBox entry for existing installs.
+  /// No observation backfill needed — the UI guard (entryData['extra-weight'] != null)
+  /// handles pre-existing timed entries that lack an extra-weight observation.
+  Future<void> _migrateTimedExtraWeight() async {
+    final migrated =
+        _metaBox.get(_timedExtraWeightMigrationKey) as bool? ?? false;
+    if (migrated) return;
+
+    final existingKinds = _metricEffortKindsBox.get('metric-extra-weight');
+    if (existingKinds != null) {
+      final kinds = List<String>.from(existingKinds);
+      if (!kinds.contains('timed')) {
+        kinds.add('timed');
+        await _metricEffortKindsBox.put('metric-extra-weight', kinds);
+      }
+    } else {
+      // Key absent entirely — create it fresh with both effort kinds.
+      // Guards against corrupted or partially-initialised installs where the
+      // seed never populated this entry.
+      await _metricEffortKindsBox.put('metric-extra-weight', ['drill', 'timed']);
+    }
+
+    await _metaBox.put(_timedExtraWeightMigrationKey, true);
   }
 
   /// Migration note: how_to_steps and image_asset_path added as nullable fields.

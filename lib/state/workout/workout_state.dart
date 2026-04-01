@@ -700,7 +700,9 @@ class WorkoutState extends ChangeNotifier {
       }
 
       // Timed and drill efforts use TimedInstance for duration tracking +
-      // a companion EffortObservation for the secondary metric (distance / extra weight).
+      // companion EffortObservation(s) for secondary metrics.
+      // Timed: 2 companions (distance + extra-weight).
+      // Drill: 1 companion (extra-weight).
       if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
         final existing = _timedInstances[effortId] ?? [];
         final timedIndex = existing.length;
@@ -708,10 +710,9 @@ class WorkoutState extends ChangeNotifier {
 
         await addTimedEntry(effortId, targetDurationSecs: targetDuration);
 
-        // Create the companion observation (distance for timed, extra weight for drill)
-        final EffortObservation companion;
+        final obsToCreate = <EffortObservation>[];
         if (effort.effortKind == 'timed') {
-          companion = EffortObservation(
+          obsToCreate.add(EffortObservation(
             id: 'obs-$effortId-$timedIndex-distance',
             effortId: effortId,
             metricId: MetricIds.distance,
@@ -719,20 +720,31 @@ class WorkoutState extends ChangeNotifier {
             valueReal: (previousValues?['distance'] as double?) ?? 0.0,
             createdAtMs: now,
             updatedAtMs: now,
-          );
+          ));
+          obsToCreate.add(EffortObservation(
+            id: 'obs-$effortId-$timedIndex-extra-weight',
+            effortId: effortId,
+            metricId: MetricIds.extraWeight,
+            unitId: MetricIds.unitKg,
+            valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
         } else {
           // drill
-          companion = EffortObservation(
+          obsToCreate.add(EffortObservation(
             id: 'obs-$effortId-$timedIndex-extra-weight',
             effortId: effortId,
             metricId: MetricIds.extraWeight,
             valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
             createdAtMs: now,
             updatedAtMs: now,
-          );
+          ));
         }
-        await _repository.createObservation(companion);
-        _observations.putIfAbsent(effortId, () => []).add(companion);
+        for (final obs in obsToCreate) {
+          await _repository.createObservation(obs);
+        }
+        _observations.putIfAbsent(effortId, () => []).addAll(obsToCreate);
 
         notifyListeners();
         return;
@@ -1508,13 +1520,19 @@ class WorkoutState extends ChangeNotifier {
         await _repository.updateTimedInstance(reindexed);
       }
 
-      // Delete the companion observation at the same index.
-      // Timed/drill observations are 1-per-entry (distance or extra weight).
+      // Delete all companion observations for this entry by ID prefix.
+      // Timed entries have 2 companions (distance + extra-weight);
+      // drill entries have 1 (extra-weight). Prefix match is backward-compatible.
       final observations = _observations[effortId];
-      if (observations != null && entryIndex < observations.length) {
-        final obs = observations[entryIndex];
-        await _repository.deleteObservation(obs.id);
-        observations.removeAt(entryIndex);
+      if (observations != null) {
+        final idPrefix = 'obs-$effortId-$entryIndex-';
+        final toDelete = observations
+            .where((o) => o.id.startsWith(idPrefix))
+            .toList();
+        for (final obs in toDelete) {
+          await _repository.deleteObservation(obs.id);
+        }
+        observations.removeWhere((o) => o.id.startsWith(idPrefix));
       }
 
       notifyListeners();
@@ -1582,8 +1600,8 @@ class WorkoutState extends ChangeNotifier {
     switch (effortKind) {
       case 'set': // reps + weight
         return 2;
-      case 'timed': // companion only (distance); duration is in TimedInstance
-        return 1;
+      case 'timed': // 2 companion obs (distance + extra-weight); duration is in TimedInstance
+        return 2;
       case 'round':
         // Round efforts use RoundInstance — not observations.
         // This case should never be reached (deleteEntry routes round to deleteRound).
@@ -2172,6 +2190,25 @@ class WorkoutState extends ChangeNotifier {
               ),
             );
           }
+          // For timed efforts, include the extra-weight target if observations exist.
+          if (effort.effortKind == 'timed') {
+            final companionObs = _observations[effort.id] ?? [];
+            final ewObs = companionObs
+                .where((o) => o.metricId == MetricIds.extraWeight)
+                .toList();
+            if (ewObs.isNotEmpty) {
+              targets.add(
+                TemplateTargetDraft(
+                  metricId: MetricIds.extraWeight,
+                  setIndex: 0,
+                  unitId: MetricIds.unitKg,
+                  valueReal: ewObs.first.valueReal ?? 0.0,
+                  valueInt: null,
+                  valueText: null,
+                ),
+              );
+            }
+          }
         } else {
           final observations = _observations[effort.id] ?? [];
           targets = _buildTemplateTargetsFromObservations(
@@ -2342,18 +2379,27 @@ class WorkoutState extends ChangeNotifier {
               // re-fetching the TimedInstance.
               'timedState': t.state.name,
             };
-            // Attach companion metric from the paired observation
-            if (i < companionObs.length) {
-              final obs = companionObs[i];
-              if (effort.effortKind == 'timed') {
-                entryMap['distance'] = obs.valueReal ?? 0.0;
-              } else {
-                entryMap['extra-weight'] = obs.valueReal ?? 0.0;
+            // Attach companion metrics.
+            if (effort.effortKind == 'timed') {
+              // Timed entries have up to 2 companions (distance + extra-weight).
+              // Find by metricId for backward-compat with pre-change entries (distance-only).
+              final distObs = companionObs
+                  .where((o) => o.metricId == MetricIds.distance)
+                  .toList();
+              final ewObs = companionObs
+                  .where((o) => o.metricId == MetricIds.extraWeight)
+                  .toList();
+              entryMap['distance'] = i < distObs.length
+                  ? (distObs[i].valueReal ?? 0.0)
+                  : 0.0;
+              if (i < ewObs.length) {
+                // Key present → UI guard shows editor; absent → guard hides it
+                entryMap['extra-weight'] = ewObs[i].valueReal ?? 0.0;
               }
             } else {
-              // Missing companion — use default
-              if (effort.effortKind == 'timed') {
-                entryMap['distance'] = 0.0;
+              // drill: 1 extra-weight companion per entry (positional)
+              if (i < companionObs.length) {
+                entryMap['extra-weight'] = companionObs[i].valueReal ?? 0.0;
               } else {
                 entryMap['extra-weight'] = 0.0;
               }

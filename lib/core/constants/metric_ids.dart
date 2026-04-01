@@ -18,7 +18,7 @@ class MetricIds {
   static const String rpe = 'metric-rpe'; // Rate of Perceived Exertion
   static const String rest = 'metric-rest';
 
-  // Isometric / drill companion metric
+  // Isometric/drill and loaded-carry (timed) companion metric
   static const String extraWeight = 'metric-extra-weight';
 
   // Unit IDs

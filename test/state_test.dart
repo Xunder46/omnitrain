@@ -1168,6 +1168,115 @@ void main() {
         final updated = state.getTimedInstancesForEffort(effortId);
         expect(updated.first.state, TimedState.finished);
       });
+
+      test('addEntry for timed creates distance and extra-weight companion observations', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'cardio_endurance');
+
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('time'),
+          orElse: () => exercises.first,
+        );
+        // addExerciseToSession internally calls addEntry for the first set.
+        final effortId = await state.addExerciseToSession(timedExercise);
+
+        final observations = await repo.getEffortObservations(effortId);
+        final metricIds = observations.map((o) => o.metricId).toSet();
+        expect(metricIds, contains('metric-distance'));
+        expect(metricIds, contains('metric-extra-weight'));
+
+        // getExercisesWithEntries exposes both keys.
+        final entry = (state.getExercisesWithEntries().first['entries'] as List)
+            .first as Map<String, dynamic>;
+        expect(entry.containsKey('extra-weight'), true);
+        expect(entry['extra-weight'], 0.0);
+        expect(entry.containsKey('distance'), true);
+      });
+
+      test('getExercisesWithEntries omits extra-weight for legacy timed entry', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'cardio_endurance');
+
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('time'),
+          orElse: () => exercises.first,
+        );
+        final effortId = await state.addExerciseToSession(timedExercise);
+        final sessionId = state.currentSession!.id;
+
+        // Simulate a legacy entry: delete the extra-weight companion observation.
+        final allObs = await repo.getEffortObservations(effortId);
+        final ewObs =
+            allObs.where((o) => o.metricId == 'metric-extra-weight').toList();
+        for (final obs in ewObs) {
+          await repo.deleteObservation(obs.id);
+        }
+
+        // Reload state so it picks up the repo change.
+        final reloaded = WorkoutState(repo);
+        await reloaded.loadHistoricalSession(sessionId);
+
+        final entries =
+            (reloaded.getExercisesWithEntries().first['entries'] as List);
+        final entry = entries.first as Map<String, dynamic>;
+        expect(entry.containsKey('extra-weight'), false);
+        expect(entry.containsKey('distance'), true);
+      });
+
+      test('deleteEntry removes all companion observations for a timed entry', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'cardio_endurance');
+
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('time'),
+          orElse: () => exercises.first,
+        );
+        final effortId = await state.addExerciseToSession(timedExercise); // entry 0
+        await state.addEntry(effortId); // entry 1
+
+        // Both entries have 2 companions each.
+        var observations = await repo.getEffortObservations(effortId);
+        expect(observations.where((o) => o.id.contains('-0-')).length, 2);
+        expect(observations.where((o) => o.id.contains('-1-')).length, 2);
+
+        // Delete entry 0 — both of its companions must be removed.
+        await state.deleteEntry(effortId, 0);
+
+        observations = await repo.getEffortObservations(effortId);
+        expect(observations.where((o) => o.id.contains('-0-')), isEmpty);
+        // Entry 1 companions survive.
+        expect(observations.where((o) => o.id.contains('-1-')).length, 2);
+      });
+
+      test('buildTemplateDraftExercises includes extra-weight target for timed', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'cardio_endurance');
+
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('time'),
+          orElse: () => exercises.first,
+        );
+        await state.addExerciseToSession(timedExercise);
+
+        final drafts = state.buildTemplateDraftExercises();
+        expect(drafts, isNotEmpty);
+
+        final timedDraft = drafts.first;
+        expect(timedDraft.effortKind, 'timed');
+
+        final targetMetricIds =
+            timedDraft.targets.map((t) => t.metricId).toList();
+        expect(targetMetricIds, contains('metric-extra-weight'));
+        expect(targetMetricIds, contains('metric-duration'));
+      });
     });
 
     group('rest lifecycle', () {

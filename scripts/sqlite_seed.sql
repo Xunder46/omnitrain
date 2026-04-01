@@ -155,6 +155,8 @@ INSERT OR IGNORE INTO app_metric_applicability (metric_id, effort_kind)
 SELECT m.id, 'timed' FROM app_metric_definition m WHERE m.key = 'heart_rate';
 INSERT OR IGNORE INTO app_metric_applicability (metric_id, effort_kind)
 SELECT m.id, 'timed' FROM app_metric_definition m WHERE m.key = 'rpe';
+INSERT OR IGNORE INTO app_metric_applicability (metric_id, effort_kind)
+SELECT m.id, 'timed' FROM app_metric_definition m WHERE m.key = 'extra-weight';
 
 INSERT OR IGNORE INTO app_metric_applicability (metric_id, effort_kind)
 SELECT m.id, 'interval' FROM app_metric_definition m WHERE m.key = 'distance';

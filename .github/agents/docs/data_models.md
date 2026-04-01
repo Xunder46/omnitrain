@@ -75,6 +75,25 @@ TrainingSession
 | `restDurationMs` | `int?` | Legacy field — superseded by `EntryRest` for all effort kinds; currently unpopulated |
 | `valueBool` | `bool?` | Skip marker: `true` when set was explicitly skipped (with `valueInt: 0`); used by `_isSetLogged` to restore skip state on reload |
 
+**Observation Layout by Effort Kind:**
+
+Observations are persisted one-per-entry and grouped by effort kind:
+
+- **`set` effort**: 2 observations per entry
+  - `metric-reps` (valueInt)
+  - `metric-weight` (valueReal)
+  
+- **`timed` effort**: 2 observations per entry
+  - `metric-distance` (valueReal)
+  - `metric-extra-weight` (valueReal) — enables loaded carries and weighted cardio (negative = band assist, positive = added load)
+  
+  > **Backward Compatibility Note**: Pre-existing timed entries (created before March 2026) contain only `metric-distance`. New entries always include both. The UI uses a guard pattern (`if (entryData['extra-weight'] != null)`) to show the extra-weight editor only for entries that have the observation.
+  
+- **`drill` effort**: 1 observation per entry
+  - `metric-extra-weight` (valueReal) — for isometric holds with additional load
+  
+- **`round` effort**: Does NOT use observations; uses `RoundInstance` records instead
+
 ### RoundInstance
 
 | Field | Type | Description |

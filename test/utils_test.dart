@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/effort_defaults.dart';
+import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/constants/modality_config.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
@@ -731,6 +733,30 @@ void main() {
         final copy = original.copyWith(capabilities: ['reps', 'load', 'time']);
         expect(copy.capabilities, ['reps', 'load', 'time']);
       });
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // EffortDefaults
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('EffortDefaults', () {
+    test('timed defaults include duration, distance, and extraWeight', () {
+      final defaults = EffortDefaults.getDefaultTargets('timed');
+      expect(defaults[MetricIds.duration], 0);
+      expect(defaults[MetricIds.distance], 0.0);
+      expect(defaults[MetricIds.extraWeight], 0.0);
+    });
+
+    test('drill defaults include extraWeight and duration but not distance', () {
+      final defaults = EffortDefaults.getDefaultTargets('drill');
+      expect(defaults.containsKey(MetricIds.extraWeight), true);
+      expect(defaults.containsKey(MetricIds.distance), false);
+    });
+
+    test('set defaults do not include extraWeight', () {
+      final defaults = EffortDefaults.getDefaultTargets('set');
+      expect(defaults.containsKey(MetricIds.extraWeight), false);
     });
   });
 }
