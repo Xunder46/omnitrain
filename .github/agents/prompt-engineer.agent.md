@@ -96,12 +96,14 @@ If a file with that name already exists, update it in place and preserve useful 
 ### Intent
 [Brief explanation of why this phase exists and what it should unlock]
 
+### Acceptance Criteria
+- [ ] [Specific, observable criterion — can be verified without ambiguity]
+- [ ] [Specific, observable criterion]
+- [ ] [Specific, observable criterion]
+
 ### Copilot Prompt
 [Specific prompt to run with Copilot for this phase]
 
-### Acceptance Criteria
-- [ ] ...
-- [ ] ...
 
 ## Phase 2 - [Name]
 ### Intent...
@@ -120,6 +122,21 @@ If a file with that name already exists, update it in place and preserve useful 
 - [ ] Every phase ends at a technically meaningful stopping point
 - [ ] Every phase prompt includes explicit deliverables and verification steps
 ```
+
+
+## Acceptance Criteria Standards
+
+Each criterion must be specific, observable, and bounded to the phase. It should be verifiable by reading code or testing the UI without ambiguity.
+
+**Good criteria**:
+- ✅ "ExerciseState.loadExercises() returns an empty list when no exercises exist in the repository"
+- ✅ "The exercise list screen displays a 'No exercises yet' message when the state list is empty"
+- ✅ "Tapping an exercise tile navigates to ExerciseDetailScreen with the correct exerciseId"
+
+**Bad criteria**:
+- ❌ "The feature works correctly" — not measurable
+- ❌ "The UI looks good" — not specific
+- ❌ "Tests pass" — too broad
 
 ## Prompt Quality Standards
 
@@ -155,3 +172,5 @@ After writing the file, provide:
 1. File path created/updated
 2. Phase list summary (one line each)
 3. Any unresolved questions (if present)
+
+================================================================================

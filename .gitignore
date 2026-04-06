@@ -12,6 +12,8 @@
 .swiftpm/
 migrate_working_dir/
 images/
+utils/*
+omnitrain_source_bundle.txt
 
 # IntelliJ related
 *.iml

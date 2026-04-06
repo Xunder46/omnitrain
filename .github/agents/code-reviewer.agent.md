@@ -63,7 +63,47 @@ Before reviewing, consult the relevant documentation in `docs/` for context. See
 
 ## Review Checklist
 
+### Step 5a — Acceptance Criteria Verification
+
+Before reviewing code quality, verify the implementation does what was asked.
+
+**Check in this order**:
+1. If a prompt file exists at `.github/agents/plans/[feature]-copilot-prompts.md`, read its Acceptance Criteria sections
+2. If the plan file has a `## Acceptance Criteria` section, read it
+3. If both exist, check against both
+
+For each criterion found:
+- [ ] Locate the corresponding implementation in the changed files
+- [ ] Confirm the implementation satisfies the criterion as stated
+- [ ] Flag any criterion with no corresponding implementation as **CRITICAL**
+
+If no acceptance criteria exist in either artifact, note as **WARNING** and proceed.
+
+### Step 5b — Scenario Register Cross-Check
+
+If `## Scenarios` exists in the plan file:
+- [ ] For each scenario entry, locate the corresponding test in the mapped test file
+- [ ] Confirm the test asserts the Expected Outcome stated in the register
+- [ ] Confirm the test passes
+- [ ] Flag any scenario with no corresponding passing test as **WARNING**
+- [ ] Flag any test asserting a different outcome than the register as **WARNING**
+
+If no `## Scenarios` section exists, note as **WARNING** and flag to Developer to add retroactively.
+
+### Step 5c — Doc Hygiene Verification
+
+Read the handoff summary. Confirm the Doc Updates section is present and complete.
+
+- [ ] `docs/navigation_and_screens.md` — status explicitly stated (Developer)
+- [ ] `docs/state_management.md` — status explicitly stated (Developer)
+- [ ] `docs/widget_catalog.md` — status explicitly stated (Developer)
+- [ ] `docs/data_models.md` — status explicitly stated (DBA)
+- [ ] `docs/db_integration.md` — status explicitly stated (DBA)
+
+For each doc listed as updated, read it and verify it reflects actual post-implementation state. Flag missing or stale doc updates as **WARNING**.
+
 ### Architecture Compliance
+
 
 #### Models (`lib/data/models/`)
 - [ ] No Flutter imports (`package:flutter/...`)
@@ -112,6 +152,23 @@ Before reviewing, consult the relevant documentation in `docs/` for context. See
 - [ ] Platform-agnostic helpers only
 - [ ] No state management
 - [ ] No storage access
+
+#### Dead Code
+
+During any review that touches or is adjacent to the following areas, scan for unreferenced top-level classes and orphaned files:
+
+- [ ] `lib/state/` — any state class not imported by any screen or service is dead
+- [ ] `lib/features/` and `lib/widgets/` — any class not referenced by a route, parent widget, or another widget is a candidate for removal
+- [ ] `lib/core/services/` — any service not injected in main.dart or used by a state class is dead
+- [ ] `.github/agents/docs/` — any doc that references a class or file that no longer exists flags a stale doc
+
+**Known current issue**: `AppState` (`lib/state/app_state.dart`) is documented as not used by any screen. Flag as **WARNING** on first adjacent review and hand off to Developer for removal or proper wiring.
+
+Dead code severity:
+- Unreferenced state class: **WARNING** — must be removed or wired before next release
+- Unreferenced widget or screen: **WARNING** — confirm intentional or remove
+- Stale doc reference: **WARNING** — flag for doc update
+
 
 ### Unit Test Coverage
 
@@ -306,6 +363,9 @@ Also read corresponding test files:
 - test/interaction_flow_test.dart (if features/ changed)
 - test/edge_case_test.dart (if any edge-case-prone logic changed)
 ```
+
+### Step 1b: Acceptance Criteria + Scenario Register + Doc Hygiene
+Run Steps 5a, 5b, and 5c from the checklist above. A feature that does the wrong thing with clean code is still wrong — run these checks before code quality review.
 
 ### Step 2: Check Architecture
 - Verify models are pure Dart
@@ -587,18 +647,26 @@ Files to update using the constant:
 - Changed behaviour breaks or leaves stale existing tests
 - New screen has no render test in `test/screen_widget_test.dart`
 - New user flow has no interaction test in `test/interaction_flow_test.dart`
+- Acceptance criteria not met
+- Scenario register entries have no passing tests
+- Unreferenced top-level class discovered adjacent to changes
+- Doc Updates section missing or stale in handoff summary
 
 ### Approve if:
-- All architecture rules followed
+- All acceptance criteria met (from prompt file or plan file or both)
+- All scenario register entries have corresponding passing tests
+- Architecture rules followed
 - No critical DRY violations
 - Clean code standards met
 - Works on web and will work on native
 - All new behaviour is covered by tests (happy path at minimum)
 - No stale tests referencing removed/renamed code
+- Doc Updates section present in handoff summary and all updated docs reflect current code
 
 ## Remember
 
 - Always read `.github/agents/plans/[feature]-plan.md` first to understand original intent
+- Run acceptance criteria and scenario register checks BEFORE code quality review — behavioral correctness comes first
 - If the implementation doesn't match the plan, add `## Feedback` to the plan file and instruct user to re-run the Coordinator
 - You review and plan, you don't edit source code (only the plan file)
 - Be specific in refactoring recommendations
@@ -606,6 +674,9 @@ Files to update using the constant:
 - DRY violations are important but not always blocking
 - Clean code suggestions are nice-to-haves
 - Always verify environment compatibility (web + native)
-- **Missing tests for new public behaviour are a WARNING-level issue** — not blocking, but must be flagged
-- **Stale tests (referencing removed/renamed code) are a WARNING-level issue** — they break CI and must be fixed
+- **Missing tests for new public behaviour are a WARNING-level issue** â€” not blocking, but must be flagged
+- **Stale tests (referencing removed/renamed code) are a WARNING-level issue** â€” they break CI and must be fixed
 - Use the test file map in the Unit Test Coverage section to quickly locate where tests belong
+
+
+================================================================================
