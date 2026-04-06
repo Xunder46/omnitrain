@@ -35,6 +35,13 @@ class WorkoutSessionScreen extends StatefulWidget {
   /// no timers run, no set logging, values remain editable for correction.
   final bool editMode;
 
+  /// Optional modality hint injected from the home screen when navigating into
+  /// a rolling session via a modality tile.  Passed straight through to
+  /// [ExercisePickerDialog] as [sessionModality] so the picker pre-filters
+  /// exercises by the chosen modality even though the session itself has a
+  /// null modality field.  Has no effect when the session already has a modality.
+  final String? preferredModality;
+
   const WorkoutSessionScreen({
     super.key,
     required this.workoutState,
@@ -44,6 +51,7 @@ class WorkoutSessionScreen extends StatefulWidget {
     this.initialFocusId,
     this.settingsState,
     this.editMode = false,
+    this.preferredModality,
   });
 
   @override
@@ -114,6 +122,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   int? _originalDurationSecs;
   int _focusRequestId = 0;
 
+  // Track if auto-open exercise picker was attempted on first load.
+  // Prevents re-opening on subsequent _loadExercises() calls.
+  bool _autoOpenAttempted = false;
+
   @override
   void initState() {
     super.initState();
@@ -139,9 +151,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       final exercises = widget.workoutState.getExercisesWithEntries();
       setState(() {
         _exercises = exercises;
+        if (widget.workoutState.isRollingSession) {
+          _exercises = _exercises.where((e) => e['blockId'] != null).toList();
+          final blocks = widget.workoutState.getSessionBlocks();
+          final reordered = <Map<String, dynamic>>[];
+          for (final block in blocks) {
+            reordered.addAll(_exercises.where((e) => e['blockId'] == block.id));
+          }
+          _exercises = reordered;
+        }
 
         // Pre-populate timer state from persisted entries for all timer-based exercises
-        for (final exercise in exercises) {
+        for (final exercise in _exercises) {
           final effortId = exercise['id'] as String;
           final effortKind = exercise['effortKind'] as String? ?? 'set';
           final entries =
@@ -285,6 +306,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           initialDetailIndex!,
           setNumber: initialDetailSet,
         );
+      }
+
+      // Auto-open exercise picker on first load if session has no exercises
+      if (_shouldAutoOpenPicker()) {
+        _scheduleAutoOpenPicker();
       }
     } catch (e) {
       print('Error loading exercises: $e');
@@ -1187,8 +1213,32 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     unawaited(_focusExerciseDetail(newIndex));
   }
 
-  Future<void> _addExercise({String? segmentId}) async {
-    final modality = widget.workoutState.currentSession?.modality;
+  /// Check if the exercise picker should auto-open on first session load.
+  /// Auto-open only if:
+  /// - NOT in edit mode (edit mode is for reviewing completed sessions)
+  /// - Session has no exercises yet
+  /// - First load (auto-open not yet attempted)
+  bool _shouldAutoOpenPicker() {
+    return !widget.editMode && _exercises.isEmpty && !_autoOpenAttempted;
+  }
+
+  /// Schedule the exercise picker to open after the current frame renders.
+  /// Uses [Future.microtask] to ensure the UI is fully built and the loading
+  /// spinner is cleared before triggering the dialog.
+  void _scheduleAutoOpenPicker() {
+    _autoOpenAttempted = true; // Prevent re-opening on subsequent _loadExercises calls
+    // Schedule after current frame renders so loading state is cleared
+    Future.microtask(() {
+      if (mounted) {
+        _addExercise();
+      }
+    });
+  }
+
+  Future<void> _addExercise({String? segmentId, String? blockId}) async {
+    final modality =
+        widget.workoutState.currentSession?.modality ??
+        widget.preferredModality;
 
     final selectedExercise = await showDialog<Exercise>(
       context: context,
@@ -1254,6 +1304,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         }
       }
 
+      // Assign to block when adding within a rolling session block.
+      if (effortId.isNotEmpty && blockId != null) {
+        try {
+          await widget.workoutState.assignEffortToBlock(effortId, blockId);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to assign exercise to block: $e')),
+            );
+          }
+        }
+      }
+
       // Mark structural change AFTER we know the add succeeded.
       if (widget.editMode && effortId.isNotEmpty) _hasStructuralChanges = true;
       await _loadExercises();
@@ -1265,6 +1328,330 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         }
       }
     }
+  }
+
+  // ── Rolling session block management helpers ────────────────────────────
+
+  Future<void> _showBlockRenameDialog(SessionBlock block) async {
+    final ctrl = TextEditingController(text: block.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Block'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Block name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    Future.delayed(const Duration(milliseconds: 300), ctrl.dispose);
+    if (newName != null && newName.isNotEmpty && mounted) {
+      final updated = SessionBlock(
+        id: block.id,
+        sessionId: block.sessionId,
+        name: newName,
+        orderIndex: block.orderIndex,
+        createdAtMs: block.createdAtMs,
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      await widget.workoutState.updateSessionBlock(updated);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _showBlockDeleteDialog(String blockId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Block?'),
+        content: const Text('Exercises in this block will not be deleted.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await widget.workoutState.deleteSessionBlock(blockId);
+      await _loadExercises();
+    }
+  }
+
+  Widget _buildSessionBlockCard(SessionBlock block, ThemeData theme) {
+    final blockExercises = _exercises
+        .where((e) => e['blockId'] == block.id)
+        .toList();
+    final tileColors = OmniTheme.colorsForTheme(
+      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
+    );
+    // Segment ID for adding exercises in rolling session (use first segment).
+    final segmentId = widget.workoutState.segments.isNotEmpty
+        ? widget.workoutState.segments.first.id
+        : null;
+
+    return Card(
+      color: tileColors.surface.withOpacity(0.7),
+      elevation: 2,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    block.name,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: OmniTheme.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  color: theme.colorScheme.surface,
+                  onSelected: (value) async {
+                    switch (value) {
+                      case 'edit':
+                        await _showBlockRenameDialog(block);
+                      case 'clone':
+                        await widget.workoutState.cloneSessionBlock(block.id);
+                        await _loadExercises();
+                      case 'delete':
+                        await _showBlockDeleteDialog(block.id);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem<String>(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.edit,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'clone',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.copy,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('Clone'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.delete, size: 18, color: Colors.red),
+                          const SizedBox(width: 8),
+                          const Text('Delete'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Exercise tiles or empty state
+            if (blockExercises.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'No exercises in this block yet.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: OmniTheme.textSecondary,
+                  ),
+                ),
+              )
+            else
+              for (final ex in blockExercises) ...[
+                _buildExerciseTile(ex, theme),
+                const SizedBox(height: 8),
+              ],
+            const SizedBox(height: 4),
+            // Add Exercise button scoped to this block
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        _addExercise(segmentId: segmentId, blockId: block.id),
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Add Exercise'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: BorderSide(color: theme.colorScheme.primary),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonUtilityRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRollingSessionListView(ThemeData theme) {
+    final blocks = widget.workoutState.getSessionBlocks();
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: OmniGradientBackground(
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(theme),
+                  const SizedBox(height: 16),
+                  // Duration intentionally omitted for rolling sessions (Task 5).
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 140),
+                      children: [
+                        for (int i = 0; i < blocks.length; i++)
+                          _buildSessionBlockCard(blocks[i], theme),
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              await widget.workoutState.addSessionBlock();
+                              if (mounted) setState(() {});
+                            },
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('Add Block'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              side: BorderSide(
+                                color: theme.colorScheme.primary,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonUtilityRadius,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 10,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: OmniTheme.buttonPrimaryHeight,
+                    child: FilledButton(
+                      onPressed: widget.editMode
+                          ? _saveEditChanges
+                          : _showFinishSessionDialog,
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonBorderRadius,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        widget.editMode ? 'Save Changes' : 'Finish Workout',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Compute final session duration from persisted timestamps (used in edit mode).
@@ -1335,6 +1722,33 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     return '$mm:$ss';
   }
 
+  ({String effortId, int entryIndex})? _getMostRecentOpenRestKey() {
+    ({String effortId, int entryIndex})? latest;
+    int? latestStartMs;
+
+    for (final exercise in _exercises) {
+      final effortId = exercise['id'] as String;
+      final rests = widget.workoutState.getEntryRests(effortId);
+      for (final rest in rests) {
+        if (rest.restEndMs != null) continue;
+        if (latestStartMs == null || rest.restStartMs > latestStartMs) {
+          latestStartMs = rest.restStartMs;
+          latest = (effortId: effortId, entryIndex: rest.entryIndex);
+        }
+      }
+    }
+
+    return latest;
+  }
+
+  bool _hasGlobalRestToDisplay() => _getMostRecentOpenRestKey() != null;
+
+  String _formatGlobalRestElapsed() {
+    final restKey = _getMostRecentOpenRestKey();
+    if (restKey == null) return '00:00';
+    return _formatRestElapsed(restKey.effortId, restKey.entryIndex);
+  }
+
   int? _getRestDisplayEntryIndex(String effortId, int currentEntryIndex) {
     final rests = widget.workoutState.getEntryRests(effortId);
     int? exactEntryIndex;
@@ -1366,6 +1780,47 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
     if (displayEntryIndex == null) return '00:00';
     return _formatRestElapsed(effortId, displayEntryIndex);
+  }
+
+  Widget _buildRestOverlayChip(ThemeData theme, String elapsedText) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
+            blurRadius: 12,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.self_improvement,
+            size: 24,
+            color: theme.colorScheme.onPrimary,
+          ),
+          const SizedBox(width: 12),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                elapsedText,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  color: theme.colorScheme.onPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   // ── Edit-mode duration editing ───────────────────────────────────────────
@@ -1406,97 +1861,97 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     result = await showDialog<int>(
       context: context,
       builder: (_) => AlertDialog(
-          title: const Text('Edit Session Duration'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Adjust the total duration of this session.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: OmniTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: hhCtrl,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
-                        labelText: 'Hours',
-                        suffixText: 'h',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: mmCtrl,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
-                        labelText: 'Min',
-                        suffixText: 'm',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: ssCtrl,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
-                        labelText: 'Sec',
-                        suffixText: 's',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Cancel'),
+        title: const Text('Edit Session Duration'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Adjust the total duration of this session.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: OmniTheme.textSecondary),
             ),
-            FilledButton(
-              onPressed: () {
-                final hVal = int.tryParse(hhCtrl.text.trim()) ?? 0;
-                final mVal = int.tryParse(mmCtrl.text.trim()) ?? 0;
-                final sVal = int.tryParse(ssCtrl.text.trim()) ?? 0;
-                Navigator.pop(context, hVal * 3600 + mVal * 60 + sVal);
-              },
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: hhCtrl,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      labelText: 'Hours',
+                      suffixText: 'h',
+                      border: OutlineInputBorder(),
                     ),
                   ),
                 ),
-              ),
-              child: const Text('Apply'),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: mmCtrl,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      labelText: 'Min',
+                      suffixText: 'm',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: ssCtrl,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      labelText: 'Sec',
+                      suffixText: 's',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final hVal = int.tryParse(hhCtrl.text.trim()) ?? 0;
+              final mVal = int.tryParse(mmCtrl.text.trim()) ?? 0;
+              final sVal = int.tryParse(ssCtrl.text.trim()) ?? 0;
+              Navigator.pop(context, hVal * 3600 + mVal * 60 + sVal);
+            },
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
     // Defer controller disposal until the dialog exit animation completes.
     // Disposing immediately causes "used after being disposed" errors because
     // the dialog's TextField widgets briefly outlive the showDialog future.
@@ -2131,10 +2586,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               ),
               // Rest timer overlay in lower half (hide in edit mode or when exercise timer is running)
               if (!widget.editMode &&
-                  _hasRestToDisplay(
-                    exercise['id'] as String,
-                    _currentSet - 1,
-                  ) &&
+                  (widget.workoutState.isRollingSession
+                      ? _hasGlobalRestToDisplay()
+                      : _hasRestToDisplay(
+                          exercise['id'] as String,
+                          _currentSet - 1,
+                        )) &&
                   !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ??
                       false))
                 Positioned(
@@ -2142,51 +2599,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   right: 0,
                   bottom: 110,
                   child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: theme.colorScheme.primary.withAlpha(
-                              (0.2 * 255).round(),
+                    child: _buildRestOverlayChip(
+                      theme,
+                      widget.workoutState.isRollingSession
+                          ? _formatGlobalRestElapsed()
+                          : _formatRestElapsedForDisplay(
+                              exercise['id'] as String,
+                              _currentSet - 1,
                             ),
-                            blurRadius: 12,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.self_improvement,
-                            size: 24,
-                            color: theme.colorScheme.onPrimary,
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _formatRestElapsedForDisplay(
-                                  exercise['id'] as String,
-                                  _currentSet - 1,
-                                ),
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  color: theme.colorScheme.onPrimary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
                     ),
                   ),
                 ),
@@ -2685,6 +3105,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Widget _buildListView(ThemeData theme) {
+    // Rolling sessions get a block-grouped list view (Tasks 1–5).
+    if (widget.workoutState.isRollingSession) {
+      return _buildRollingSessionListView(theme);
+    }
+
     final segments = widget.workoutState.segments.toList()
       ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
     final showPerBlockAdd =
@@ -2857,10 +3282,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             ),
             // Rest timer overlay (hide in edit mode or when exercise timer is running)
             if (!widget.editMode &&
-                _hasRestToDisplay(
-                  _exercises[_currentExerciseIndex]['id'] as String,
-                  _currentSet - 1,
-                ) &&
+                (widget.workoutState.isRollingSession
+                    ? _hasGlobalRestToDisplay()
+                    : _hasRestToDisplay(
+                        _exercises[_currentExerciseIndex]['id'] as String,
+                        _currentSet - 1,
+                      )) &&
                 !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ??
                     false))
               Positioned(
@@ -2868,52 +3295,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 right: 0,
                 bottom: 110,
                 child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.8),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: theme.colorScheme.primary.withAlpha(
-                            (0.2 * 255).round(),
+                  child: _buildRestOverlayChip(
+                    theme,
+                    widget.workoutState.isRollingSession
+                        ? _formatGlobalRestElapsed()
+                        : _formatRestElapsedForDisplay(
+                            _exercises[_currentExerciseIndex]['id'] as String,
+                            _currentSet - 1,
                           ),
-                          blurRadius: 12,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.self_improvement,
-                          size: 24,
-                          color: theme.colorScheme.onPrimary,
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _formatRestElapsedForDisplay(
-                                _exercises[_currentExerciseIndex]['id']
-                                    as String,
-                                _currentSet - 1,
-                              ),
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                color: theme.colorScheme.onPrimary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ),

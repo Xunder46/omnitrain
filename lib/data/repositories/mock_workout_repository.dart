@@ -1,8 +1,12 @@
+import 'package:uuid/uuid.dart';
+
 import '../models/models.dart';
 import '../../mock/seed_data.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/utils/exercise_helpers.dart';
 import 'workout_repository.dart';
+
+const _mockUuid = Uuid();
 
 /// In-memory mock implementation of WorkoutRepository for development/testing.
 /// Uses in-memory data and loads from mock/seed_data.dart.
@@ -55,6 +59,7 @@ class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, PlannedSession> _plannedSessions = {};
   final Map<String, TrainingPeriod> _periods = {};
   final Map<String, ExerciseNote> _exerciseNotes = {};
+  final Map<String, SessionBlock> _sessionBlocks = {};
   final Map<String, bool> _boolPrefs = {};
   final Map<String, String> _stringPrefs = {};
 
@@ -305,6 +310,7 @@ class MockWorkoutRepository implements WorkoutRepository {
       perceivedSessionRpe: existing.perceivedSessionRpe,
       sessionFeeling: feeling,
       qualityRating: existing.qualityRating,
+      isRolling: existing.isRolling,
       createdAtMs: existing.createdAtMs,
       updatedAtMs: now,
     );
@@ -331,6 +337,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
 
     _segments.removeWhere((_, segment) => segment.sessionId == id);
+    _sessionBlocks.removeWhere((_, block) => block.sessionId == id);
     _sessions.remove(id);
   }
 
@@ -1106,5 +1113,202 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> setPreferenceString(String key, String value) async {
     _stringPrefs[key] = value;
+  }
+
+  // ===== SESSION BLOCKS =====
+
+  @override
+  Future<List<SessionBlock>> getSessionBlocks(String sessionId) async {
+    final blocks = _sessionBlocks.values
+        .where((b) => b.sessionId == sessionId)
+        .toList();
+    blocks.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    return blocks;
+  }
+
+  @override
+  Future<String> createSessionBlock(SessionBlock block) async {
+    _sessionBlocks[block.id] = block;
+    return block.id;
+  }
+
+  @override
+  Future<void> updateSessionBlock(SessionBlock block) async {
+    _sessionBlocks[block.id] = block;
+  }
+
+  @override
+  Future<void> deleteSessionBlock(String blockId) async {
+    _sessionBlocks.remove(blockId);
+    // Null out blockId on linked efforts — do NOT delete the efforts
+    for (final entry in _efforts.entries.toList()) {
+      final effort = entry.value;
+      if (effort.blockId == blockId) {
+        _efforts[entry.key] = SegmentEffort(
+          id: effort.id,
+          segmentId: effort.segmentId,
+          orderIndex: effort.orderIndex,
+          effortKind: effort.effortKind,
+          exerciseId: effort.exerciseId,
+          note: effort.note,
+          blockId: null,
+          createdAtMs: effort.createdAtMs,
+          updatedAtMs: effort.updatedAtMs,
+        );
+      }
+    }
+  }
+
+  @override
+  Future<void> reorderSessionBlocks(
+    String sessionId,
+    List<String> orderedIds,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (var i = 0; i < orderedIds.length; i++) {
+      final id = orderedIds[i];
+      final existing = _sessionBlocks[id];
+      if (existing == null) continue;
+      if (existing.sessionId != sessionId) continue;
+      _sessionBlocks[id] = SessionBlock(
+        id: existing.id,
+        sessionId: existing.sessionId,
+        name: existing.name,
+        orderIndex: i,
+        createdAtMs: existing.createdAtMs,
+        updatedAtMs: now,
+      );
+    }
+  }
+
+  @override
+  Future<String> cloneSessionBlock(String blockId) async {
+    final original = _sessionBlocks[blockId];
+    if (original == null) throw StateError('SessionBlock $blockId not found');
+
+    final now = DateTime.now();
+    final nowMs = now.millisecondsSinceEpoch;
+    final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final minute = now.minute.toString().padLeft(2, '0');
+    final period = now.hour < 12 ? 'AM' : 'PM';
+    final name = '$hour12:$minute $period';
+
+    final maxOrder = _sessionBlocks.values
+        .where((b) => b.sessionId == original.sessionId)
+        .fold<int>(-1, (m, b) => b.orderIndex > m ? b.orderIndex : m);
+
+    final newBlock = SessionBlock(
+      id: _mockUuid.v4(),
+      sessionId: original.sessionId,
+      name: name,
+      orderIndex: maxOrder + 1,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    );
+    _sessionBlocks[newBlock.id] = newBlock;
+
+    // Deep-clone all efforts linked to the original block
+    final linkedEfforts = _efforts.values
+        .where((e) => e.blockId == blockId)
+        .toList();
+
+    for (final effort in linkedEfforts) {
+      final newEffortId = _mockUuid.v4();
+
+      _efforts[newEffortId] = SegmentEffort(
+        id: newEffortId,
+        segmentId: effort.segmentId,
+        orderIndex: effort.orderIndex,
+        effortKind: effort.effortKind,
+        exerciseId: effort.exerciseId,
+        note: effort.note,
+        blockId: newBlock.id,
+        createdAtMs: nowMs,
+        updatedAtMs: nowMs,
+      );
+
+      // Clone observations with values reset to zero/null
+      final observations = _observations.values
+          .where((o) => o.effortId == effort.id)
+          .toList();
+      for (final obs in observations) {
+        final newObs = EffortObservation(
+          id: _mockUuid.v4(),
+          effortId: newEffortId,
+          metricId: obs.metricId,
+          unitId: obs.unitId,
+          valueInt: 0,
+          valueReal: 0.0,
+          valueText: null,
+          valueBool: null,
+          rpeRating: null,
+          restDurationMs: null,
+          createdAtMs: nowMs,
+          updatedAtMs: nowMs,
+        );
+        _observations[newObs.id] = newObs;
+      }
+
+      // Clone round instances with state reset to notStarted
+      final rounds = (_roundInstances[effort.id] ?? []);
+      for (final r in rounds) {
+        final newRound = RoundInstance(
+          id: _mockUuid.v4(),
+          effortId: newEffortId,
+          roundIndex: r.roundIndex,
+          plannedDurationSecs: r.plannedDurationSecs,
+          actualDurationSecs: 0,
+          startedAtMs: 0,
+          finishedAtMs: null,
+          completed: false,
+          state: RoundState.notStarted,
+          pausedAtMs: null,
+          totalPausedDurationMs: 0,
+          createdAtMs: nowMs,
+          updatedAtMs: nowMs,
+        );
+        _roundInstances.putIfAbsent(newEffortId, () => []).add(newRound);
+      }
+
+      // Clone timed instances with state reset to notStarted
+      final timed = (_timedInstances[effort.id] ?? []);
+      for (final t in timed) {
+        final newTimed = TimedInstance(
+          id: _mockUuid.v4(),
+          effortId: newEffortId,
+          entryIndex: t.entryIndex,
+          targetDurationSecs: t.targetDurationSecs,
+          actualDurationSecs: 0,
+          startedAtMs: 0,
+          finishedAtMs: null,
+          state: TimedState.notStarted,
+          pausedAtMs: null,
+          totalPausedDurationMs: 0,
+          createdAtMs: nowMs,
+          updatedAtMs: nowMs,
+        );
+        _timedInstances.putIfAbsent(newEffortId, () => []).add(newTimed);
+      }
+
+    }
+
+    return newBlock.id;
+  }
+
+  @override
+  Future<void> assignEffortToBlock(String effortId, String? blockId) async {
+    final existing = _efforts[effortId];
+    if (existing == null) return;
+    _efforts[effortId] = SegmentEffort(
+      id: existing.id,
+      segmentId: existing.segmentId,
+      orderIndex: existing.orderIndex,
+      effortKind: existing.effortKind,
+      exerciseId: existing.exerciseId,
+      note: existing.note,
+      blockId: blockId,
+      createdAtMs: existing.createdAtMs,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
   }
 }

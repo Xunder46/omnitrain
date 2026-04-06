@@ -175,6 +175,85 @@ void main() {
       expect(result['session_feeling'], 4);
       expect(result['perceived_session_rpe'], 8.5);
     });
+
+    test('fromMap/toMap handles isRolling int-bool conversion', () {
+      final map = {
+        'id': 's-rolling',
+        'owner_user_id': 'u-1',
+        'started_at_ms': 1000,
+        'is_rolling': 1,
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      };
+      final obj = TrainingSession.fromMap(map);
+      expect(obj.isRolling, true);
+
+      final result = obj.toMap();
+      expect(result['is_rolling'], 1);
+    });
+  });
+
+  // ── SessionBlock ──────────────────────────────────────────────────────────
+
+  group('SessionBlock', () {
+    test('fromMap/toMap round-trip preserves all fields', () {
+      final map = {
+        'id': 'block-1',
+        'session_id': 'session-1',
+        'name': 'Warm-Up',
+        'order_index': 2,
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      };
+
+      final obj = SessionBlock.fromMap(map);
+      final result = obj.toMap();
+
+      expect(result['id'], 'block-1');
+      expect(result['session_id'], 'session-1');
+      expect(result['name'], 'Warm-Up');
+      expect(result['order_index'], 2);
+      expect(result['created_at_ms'], 100);
+      expect(result['updated_at_ms'], 200);
+    });
+  });
+
+  // ── SegmentEffort ────────────────────────────────────────────────────────
+
+  group('SegmentEffort', () {
+    test('fromMap/toMap round-trip preserves nullable blockId', () {
+      final map = {
+        'id': 'effort-1',
+        'segment_id': 'segment-1',
+        'order_index': 0,
+        'effort_kind': 'set',
+        'exercise_id': 'exercise-1',
+        'note': 'note',
+        'block_id': 'block-1',
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      };
+
+      final obj = SegmentEffort.fromMap(map);
+      final result = obj.toMap();
+
+      expect(obj.blockId, 'block-1');
+      expect(result['block_id'], 'block-1');
+    });
+
+    test('fromMap handles null blockId', () {
+      final obj = SegmentEffort.fromMap({
+        'id': 'effort-2',
+        'segment_id': 'segment-1',
+        'order_index': 1,
+        'effort_kind': 'timed',
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      });
+
+      expect(obj.blockId, isNull);
+      expect(obj.toMap()['block_id'], isNull);
+    });
   });
 
   // ── MetricDefinition ──────────────────────────────────────────────────────

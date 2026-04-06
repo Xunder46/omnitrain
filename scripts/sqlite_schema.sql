@@ -974,4 +974,43 @@ CREATE INDEX IF NOT EXISTS IX_training_period_owner
 CREATE INDEX IF NOT EXISTS IX_training_period_range
   ON app_training_period(start_date_ms, end_date_ms);
 
+-- SESSION BLOCKS (Mar 2026)
+-- =========================
+-- Groups efforts within a session into named ordered blocks (e.g. "Warm-Up", "Main Work").
+-- Deleting a block nulls block_id on linked efforts — does NOT delete the efforts themselves.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getSessionBlocks(sessionId):
+--     SELECT * FROM app_session_block WHERE session_id = ? ORDER BY order_index ASC;
+--   createSessionBlock(block):
+--     INSERT INTO app_session_block VALUES (...);
+--   updateSessionBlock(block):
+--     UPDATE app_session_block SET name=?, order_index=?, updated_at_ms=? WHERE id=?;
+--   deleteSessionBlock(blockId):
+--     DELETE FROM app_session_block WHERE id=?;
+--     UPDATE app_segment_effort SET block_id=NULL WHERE block_id=?;
+--   reorderSessionBlocks(sessionId, orderedIds): loop with index, UPDATE order_index
+--   cloneSessionBlock(blockId): deep copy with new UUIDs for block + efforts + children
+--
+-- Migration (for existing databases):
+--   ALTER TABLE app_training_session ADD COLUMN is_rolling INTEGER NOT NULL DEFAULT 0;
+--   CREATE TABLE IF NOT EXISTS app_session_block (...);
+--   ALTER TABLE app_segment_effort ADD COLUMN block_id TEXT REFERENCES app_session_block(id) ON DELETE SET NULL;
+ALTER TABLE app_training_session ADD COLUMN is_rolling INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS app_session_block (
+  id             TEXT    NOT NULL PRIMARY KEY,
+  session_id     TEXT    NOT NULL,
+  name           TEXT    NOT NULL,
+  order_index    INTEGER NOT NULL DEFAULT 0,
+  created_at_ms  INTEGER NOT NULL,
+  updated_at_ms  INTEGER NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES app_training_session(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS IX_session_block_session
+  ON app_session_block(session_id, order_index);
+
+ALTER TABLE app_segment_effort
+  ADD COLUMN block_id TEXT REFERENCES app_session_block(id) ON DELETE SET NULL;
+
 COMMIT;

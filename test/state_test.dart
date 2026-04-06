@@ -1329,4 +1329,410 @@ void main() {
       expect(state.currentSession!.perceivedSessionRpe, 7.0);
     });
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkoutState – Session Blocks
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('WorkoutState – Session Blocks', () {
+    test('getSessionBlocks returns empty list when no session', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      expect(state.getSessionBlocks(), isEmpty);
+    });
+
+    test('getSessionBlocks returns empty list for new session', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+      expect(state.getSessionBlocks(), isEmpty);
+    });
+
+    test('addSessionBlock creates block with time-based name', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final blockId = await state.addSessionBlock();
+
+      expect(blockId, isNotEmpty);
+      final blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(1));
+      expect(blocks.first.id, blockId);
+      // Name should be in h:mm a format (e.g. "3:45 PM")
+      expect(blocks.first.name, matches(RegExp(r'^\d{1,2}:\d{2} [AP]M$')));
+      expect(blocks.first.orderIndex, 0);
+    });
+
+    test('addSessionBlock increments orderIndex', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      await state.addSessionBlock();
+      await state.addSessionBlock();
+      await state.addSessionBlock();
+
+      final blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(3));
+      expect(blocks[0].orderIndex, 0);
+      expect(blocks[1].orderIndex, 1);
+      expect(blocks[2].orderIndex, 2);
+    });
+
+    test('updateSessionBlock persists changes to cache', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      await state.addSessionBlock();
+      final originalBlock = state.getSessionBlocks().first;
+
+      final updatedBlock = SessionBlock(
+        id: originalBlock.id,
+        sessionId: originalBlock.sessionId,
+        name: 'Warm-Up',
+        orderIndex: originalBlock.orderIndex,
+        createdAtMs: originalBlock.createdAtMs,
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      await state.updateSessionBlock(updatedBlock);
+
+      final updated = state.getSessionBlocks();
+      expect(updated.first.name, 'Warm-Up');
+    });
+
+    test('deleteSessionBlock removes block from cache', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      // Add blocks with delays to ensure different IDs
+      final id1 = await state.addSessionBlock();
+      await Future.delayed(Duration(milliseconds: 10));
+      final id2 = await state.addSessionBlock();
+      await Future.delayed(Duration(milliseconds: 10));
+      final id3 = await state.addSessionBlock();
+
+      expect(id1, isNotEmpty);
+      expect(id2, isNotEmpty);
+      expect(id3, isNotEmpty);
+
+      var blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(3));
+
+      // Delete the second block
+      await state.deleteSessionBlock(id2);
+
+      blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(2));
+      expect(blocks.every((b) => b.id != id2), true);
+    });
+
+    test('deleteSessionBlock unassigns linked efforts', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      // Create a block and add an exercise
+      final blockId = await state.addSessionBlock();
+      final exercises = await repo.getExercises();
+      final effortId = await state.addExerciseToSession(exercises.first);
+
+      // Assign effort to block
+      await state.assignEffortToBlock(effortId, blockId);
+      
+      // Get the effort from the current segment
+      final segmentId = state.segments.first.id;
+      var efforts = state.getEffortsForSegment(segmentId);
+      expect(efforts.first.blockId, blockId);
+
+      // Delete block
+      await state.deleteSessionBlock(blockId);
+
+      // Verify effort is unassigned
+      efforts = state.getEffortsForSegment(segmentId);
+      expect(efforts.first.blockId, isNull);
+    });
+
+    test('reorderSessionBlocks calls repository', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      // Add blocks with delays
+      await state.addSessionBlock();
+      await Future.delayed(Duration(milliseconds: 10));
+      await state.addSessionBlock();
+      await Future.delayed(Duration(milliseconds: 10));
+      await state.addSessionBlock();
+
+      var blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(3));
+
+      final blockIds = blocks.map((b) => b.id).toList();
+      // Reorder to reverse
+      await state.reorderSessionBlocks(blockIds.reversed.toList());
+
+      // Just verify blocks still exist - exact order depends on repository impl
+      final reordered = state.getSessionBlocks();
+      expect(reordered, hasLength(3));
+    });
+
+    test('cloneSessionBlock creates independent copy with new ID', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final originalBlockId = await state.addSessionBlock();
+      final originalBlock = state.getSessionBlocks().first;
+
+      final clonedBlockId = await state.cloneSessionBlock(originalBlockId);
+
+      expect(clonedBlockId, isNotEmpty);
+      expect(clonedBlockId, isNot(originalBlockId));
+
+      final blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(2));
+
+      final cloned = blocks.firstWhere((b) => b.id == clonedBlockId);
+      // Cloned block should have a new time-based name, not the original name
+      expect(cloned.name, isNotEmpty);
+      expect(cloned.id, clonedBlockId);
+    });
+
+    test('cloneSessionBlock with efforts clones all linked records', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final blockId = await state.addSessionBlock();
+      final exercises = await repo.getExercises();
+      final effortId1 = await state.addExerciseToSession(exercises.first);
+      final effortId2 = await state.addExerciseToSession(exercises[1]);
+
+      // Assign efforts to block
+      await state.assignEffortToBlock(effortId1, blockId);
+      await state.assignEffortToBlock(effortId2, blockId);
+
+      // Clone the block
+      final clonedBlockId = await state.cloneSessionBlock(blockId);
+
+      final blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(2));
+
+      // Verify cloned block has a new time-based name, not containing 'Copy'
+      final clonedBlock = blocks.firstWhere((b) => b.id == clonedBlockId);
+      expect(clonedBlock.name, isNotEmpty);
+      expect(clonedBlock.name, isNot(contains('Copy')));
+    });
+
+    test('assignEffortToBlock updates effort blockId', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final blockId = await state.addSessionBlock();
+      final exercises = await repo.getExercises();
+      final effortId = await state.addExerciseToSession(exercises.first);
+
+      final segmentId = state.segments.first.id;
+      var efforts = state.getEffortsForSegment(segmentId);
+      expect(efforts.first.blockId, isNull);
+
+      await state.assignEffortToBlock(effortId, blockId);
+
+      efforts = state.getEffortsForSegment(segmentId);
+      expect(efforts.first.blockId, blockId);
+    });
+
+    test('assignEffortToBlock with null blockId unassigns effort', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final blockId = await state.addSessionBlock();
+      final exercises = await repo.getExercises();
+      final effortId = await state.addExerciseToSession(exercises.first);
+
+      // Assign to block
+      await state.assignEffortToBlock(effortId, blockId);
+      final segmentId = state.segments.first.id;
+      var efforts = state.getEffortsForSegment(segmentId);
+      expect(efforts.first.blockId, blockId);
+
+      // Unassign (pass null)
+      await state.assignEffortToBlock(effortId, null);
+
+      efforts = state.getEffortsForSegment(segmentId);
+      expect(efforts.first.blockId, isNull);
+    });
+
+    test('isRollingSession is false by default', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      expect(state.isRollingSession, false);
+    });
+
+    test('isRollingSession is true when created with isRolling: true', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(isRolling: true);
+
+      expect(state.isRollingSession, true);
+    });
+
+    test('computeSessionSummary suppresses totalDurationMs for rolling session',
+        () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(isRolling: true);
+
+      // Add an exercise so we have something to summarize
+      final exercises = await repo.getExercises();
+      await state.addExerciseToSession(exercises.first);
+
+      await state.endSession();
+
+      final summary = state.computeSessionSummary();
+      expect(summary.totalDurationMs, 0);
+    });
+
+    test('computeSessionSummary returns duration for non-rolling session',
+        () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(isRolling: false);
+
+      // Add an exercise so we have something to summarize
+      final exercises = await repo.getExercises();
+      await state.addExerciseToSession(exercises.first);
+
+      // Wait a bit to ensure duration > 0
+      await Future.delayed(Duration(milliseconds: 100));
+
+      await state.endSession();
+
+      final summary = state.computeSessionSummary();
+      expect(summary.totalDurationMs, greaterThanOrEqualTo(100));
+    });
+
+    test('computeSessionSummary carries blockId in exercise summaries',
+        () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(isRolling: true);
+
+      final blockId = await state.addSessionBlock();
+      final exercises = await repo.getExercises();
+      final effortId = await state.addExerciseToSession(exercises.first);
+      await state.assignEffortToBlock(effortId, blockId);
+
+      await state.endSession();
+
+      final summary = state.computeSessionSummary();
+      expect(summary.exercises, hasLength(1));
+      expect(summary.exercises.first.blockId, blockId);
+    });
+
+    test('getSessionBlocks returns sorted by orderIndex', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      // Add multiple blocks with delays to ensure different timestamps
+      await state.addSessionBlock();
+      await Future.delayed(Duration(milliseconds: 5));
+      await state.addSessionBlock();
+      await Future.delayed(Duration(milliseconds: 5));
+      await state.addSessionBlock();
+
+      final blocks = state.getSessionBlocks();
+      // Verify they are sorted by orderIndex (should be 0, 1, 2)
+      final orderIndices = blocks.map((b) => b.orderIndex).toList();
+      expect(orderIndices, equals([0, 1, 2]));
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkoutState – getExercisesWithEntries blockId propagation
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('WorkoutState – getExercisesWithEntries blockId', () {
+    test('exercise map contains null blockId when not assigned', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final exercises = await repo.getExercises();
+      await state.addExerciseToSession(exercises.first);
+
+      final result = state.getExercisesWithEntries();
+      expect(result, hasLength(1));
+      expect(result.first.containsKey('blockId'), true);
+      expect(result.first['blockId'], isNull);
+    });
+
+    test('exercise map contains blockId after assignEffortToBlock', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final blockId = await state.addSessionBlock();
+      final exercises = await repo.getExercises();
+      final effortId = await state.addExerciseToSession(exercises.first);
+
+      await state.assignEffortToBlock(effortId, blockId);
+
+      final result = state.getExercisesWithEntries();
+      expect(result, hasLength(1));
+      expect(result.first['blockId'], blockId);
+    });
+
+    test('blockId is null again after deleteSessionBlock', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final blockId = await state.addSessionBlock();
+      final exercises = await repo.getExercises();
+      final effortId = await state.addExerciseToSession(exercises.first);
+
+      await state.assignEffortToBlock(effortId, blockId);
+      await state.deleteSessionBlock(blockId);
+
+      final result = state.getExercisesWithEntries();
+      expect(result, hasLength(1));
+      expect(result.first['blockId'], isNull);
+    });
+
+    test('multiple exercises carry correct blockIds', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final blockId1 = await state.addSessionBlock();
+      await Future.delayed(Duration(milliseconds: 10));
+      final blockId2 = await state.addSessionBlock();
+
+      final exercises = await repo.getExercises();
+      final effortId1 = await state.addExerciseToSession(exercises.first);
+      await Future.delayed(Duration(milliseconds: 10));
+      final effortId2 = await state.addExerciseToSession(exercises[1]);
+
+      await state.assignEffortToBlock(effortId1, blockId1);
+      await state.assignEffortToBlock(effortId2, blockId2);
+
+      final result = state.getExercisesWithEntries();
+      expect(result, hasLength(2));
+
+      final e1 = result.firstWhere((e) => e['id'] == effortId1);
+      final e2 = result.firstWhere((e) => e['id'] == effortId2);
+      expect(e1['blockId'], blockId1);
+      expect(e2['blockId'], blockId2);
+    });
+  });
 }

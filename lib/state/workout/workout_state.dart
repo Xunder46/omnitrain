@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../core/constants/modality_config.dart';
@@ -37,6 +38,8 @@ class WorkoutState extends ChangeNotifier {
   final Map<String, List<EntryRest>> _entryRests = {};
   // Exercise notes cache: exerciseId -> ExerciseNote? (null = confirmed absent)
   final Map<String, ExerciseNote?> _exerciseNotes = {};
+  // Session blocks cache keyed by sessionId.
+  final Map<String, List<SessionBlock>> _sessionBlocks = {};
   // Track in-flight loads per exerciseId so overlapping callers can await
   // the same load without issuing redundant repository reads.
   final Map<String, Future<void>> _exerciseNoteLoadInFlight = {};
@@ -65,6 +68,7 @@ class WorkoutState extends ChangeNotifier {
       _currentSession != null &&
       _currentSession!.endedAtMs == null &&
       _efforts.values.any((list) => list.isNotEmpty);
+  bool get isRollingSession => _currentSession?.isRolling ?? false;
   List<Exercise> get allExercises => List.unmodifiable(_allExercises);
   List<MuscleGroup> get muscleGroups => List.unmodifiable(_muscleGroups);
   List<Discipline> get disciplines => List.unmodifiable(_disciplines);
@@ -298,6 +302,7 @@ class WorkoutState extends ChangeNotifier {
     String? title,
     String? intent,
     String? routineTemplateId,
+    bool isRolling = false,
     bool includeDefaultSegment = true,
   }) async {
     _setLoading(true);
@@ -315,6 +320,7 @@ class WorkoutState extends ChangeNotifier {
         title: title,
         modality: modality,
         intent: intent,
+        isRolling: isRolling,
         createdAtMs: now,
         updatedAtMs: now,
       );
@@ -375,6 +381,7 @@ class WorkoutState extends ChangeNotifier {
       _roundInstances.clear();
       _timedInstances.clear();
       _entryRests.clear();
+      _sessionBlocks.clear();
 
       // Load all child records for this session.
       final segments = await _repository.getSessionSegments(sessionId);
@@ -410,6 +417,9 @@ class WorkoutState extends ChangeNotifier {
         }
       }
 
+      final blocks = await _repository.getSessionBlocks(sessionId);
+      _sessionBlocks[sessionId] = blocks;
+
       notifyListeners();
     } catch (e) {
       _setError('Failed to load historical session: $e');
@@ -436,6 +446,7 @@ class WorkoutState extends ChangeNotifier {
       _segments.clear();
       _segments.addAll(segments);
       _entryRests.clear();
+      _sessionBlocks.clear();
 
       // Load efforts for each segment
       for (final segment in _segments) {
@@ -477,6 +488,9 @@ class WorkoutState extends ChangeNotifier {
           }
         }
       }
+
+      final sessionBlocks = await _repository.getSessionBlocks(_currentSession!.id);
+      _sessionBlocks[_currentSession!.id] = sessionBlocks;
 
       notifyListeners();
     } catch (e) {
@@ -1644,6 +1658,180 @@ class WorkoutState extends ChangeNotifier {
     }
   }
 
+  // ─── Session Block Management ───────────────────────────────────────────
+
+  /// Returns blocks for the current session sorted by orderIndex.
+  List<SessionBlock> getSessionBlocks() {
+    if (_currentSession == null) return [];
+    final blocks = _sessionBlocks[_currentSession!.id] ?? [];
+    return List<SessionBlock>.from(blocks)
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+  }
+
+  /// Creates a new block for the current session using current time as default name.
+  Future<String> addSessionBlock() async {
+    if (_currentSession == null) return '';
+
+    _clearError();
+
+    try {
+      final now = DateTime.now();
+      final nowMs = now.millisecondsSinceEpoch;
+      final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+      final minute = now.minute.toString().padLeft(2, '0');
+      final period = now.hour < 12 ? 'AM' : 'PM';
+      final name = '$hour12:$minute $period';
+
+      final blocks = _sessionBlocks[_currentSession!.id] ?? [];
+      final maxOrder = blocks.fold<int>(
+        -1,
+        (currentMax, block) => block.orderIndex > currentMax
+            ? block.orderIndex
+            : currentMax,
+      );
+
+      final block = SessionBlock(
+        id: const Uuid().v4(),
+        sessionId: _currentSession!.id,
+        name: name,
+        orderIndex: maxOrder + 1,
+        createdAtMs: nowMs,
+        updatedAtMs: nowMs,
+      );
+
+      final blockId = await _repository.createSessionBlock(block);
+      _sessionBlocks.putIfAbsent(_currentSession!.id, () => []).add(block);
+      notifyListeners();
+      return blockId;
+    } catch (e) {
+      _setError('Failed to add session block: $e');
+      return '';
+    }
+  }
+
+  /// Updates a block and refreshes local cache entry.
+  Future<void> updateSessionBlock(SessionBlock block) async {
+    _clearError();
+
+    try {
+      await _repository.updateSessionBlock(block);
+      final blocks = _sessionBlocks[block.sessionId];
+      if (blocks != null) {
+        final index = blocks.indexWhere((b) => b.id == block.id);
+        if (index != -1) {
+          blocks[index] = block;
+        }
+      }
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update session block: $e');
+    }
+  }
+
+  /// Deletes a block and unassigns any linked efforts.
+  Future<void> deleteSessionBlock(String blockId) async {
+    _clearError();
+
+    try {
+      await _repository.deleteSessionBlock(blockId);
+
+      for (final blocks in _sessionBlocks.values) {
+        blocks.removeWhere((block) => block.id == blockId);
+      }
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      for (final effortList in _efforts.values) {
+        for (int i = 0; i < effortList.length; i++) {
+          final effort = effortList[i];
+          if (effort.blockId == blockId) {
+            effortList[i] = SegmentEffort(
+              id: effort.id,
+              segmentId: effort.segmentId,
+              orderIndex: effort.orderIndex,
+              effortKind: effort.effortKind,
+              exerciseId: effort.exerciseId,
+              note: effort.note,
+              blockId: null,
+              createdAtMs: effort.createdAtMs,
+              updatedAtMs: nowMs,
+            );
+          }
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to delete session block: $e');
+    }
+  }
+
+  /// Reorders blocks for the current session.
+  Future<void> reorderSessionBlocks(List<String> orderedIds) async {
+    if (_currentSession == null) return;
+
+    _clearError();
+
+    try {
+      await _repository.reorderSessionBlocks(_currentSession!.id, orderedIds);
+      _sessionBlocks[_currentSession!.id] =
+          await _repository.getSessionBlocks(_currentSession!.id);
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to reorder session blocks: $e');
+    }
+  }
+
+  /// Deep-clones a block and all linked records via repository.
+  Future<String> cloneSessionBlock(String blockId) async {
+    if (_currentSession == null) return '';
+
+    _clearError();
+
+    try {
+      final newBlockId = await _repository.cloneSessionBlock(blockId);
+      _sessionBlocks[_currentSession!.id] =
+          await _repository.getSessionBlocks(_currentSession!.id);
+      notifyListeners();
+      return newBlockId;
+    } catch (e) {
+      _setError('Failed to clone session block: $e');
+      return '';
+    }
+  }
+
+  /// Assigns or unassigns an effort to/from a session block.
+  Future<void> assignEffortToBlock(String effortId, String? blockId) async {
+    _clearError();
+
+    try {
+      await _repository.assignEffortToBlock(effortId, blockId);
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      for (final effortList in _efforts.values) {
+        final index = effortList.indexWhere((effort) => effort.id == effortId);
+        if (index == -1) continue;
+
+        final effort = effortList[index];
+        effortList[index] = SegmentEffort(
+          id: effort.id,
+          segmentId: effort.segmentId,
+          orderIndex: effort.orderIndex,
+          effortKind: effort.effortKind,
+          exerciseId: effort.exerciseId,
+          note: effort.note,
+          blockId: blockId,
+          createdAtMs: effort.createdAtMs,
+          updatedAtMs: nowMs,
+        );
+        break;
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to assign effort to block: $e');
+    }
+  }
+
   /// End the current session
   /// Sets the session end timestamp and persists to repository
   Future<void> endSession() async {
@@ -1676,6 +1864,7 @@ class WorkoutState extends ChangeNotifier {
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
         sessionFeeling: _currentSession!.sessionFeeling,
         qualityRating: _currentSession!.qualityRating,
+        isRolling: _currentSession!.isRolling,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1725,6 +1914,7 @@ class WorkoutState extends ChangeNotifier {
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
         sessionFeeling: _currentSession!.sessionFeeling,
         qualityRating: _currentSession!.qualityRating,
+        isRolling: _currentSession!.isRolling,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1766,6 +1956,7 @@ class WorkoutState extends ChangeNotifier {
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
         sessionFeeling: _currentSession!.sessionFeeling,
         qualityRating: _currentSession!.qualityRating,
+        isRolling: _currentSession!.isRolling,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1802,6 +1993,7 @@ class WorkoutState extends ChangeNotifier {
           perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
           sessionFeeling: feeling,
           qualityRating: _currentSession!.qualityRating,
+          isRolling: _currentSession!.isRolling,
           createdAtMs: _currentSession!.createdAtMs,
           updatedAtMs: now,
         );
@@ -1836,6 +2028,7 @@ class WorkoutState extends ChangeNotifier {
           perceivedSessionRpe: rpe,
           sessionFeeling: _currentSession!.sessionFeeling,
           qualityRating: _currentSession!.qualityRating,
+          isRolling: _currentSession!.isRolling,
           createdAtMs: _currentSession!.createdAtMs,
           updatedAtMs: now,
         );
@@ -2089,6 +2282,7 @@ class WorkoutState extends ChangeNotifier {
             executionOrder: executionOrder,
             totalDurationMs: effortDurationMs,
             totalRounds: effortRounds,
+            blockId: effort.blockId,
           ),
         );
         executionOrder++;
@@ -2106,7 +2300,7 @@ class WorkoutState extends ChangeNotifier {
       title: title,
       startedAtMs: _currentSession!.startedAtMs,
       endedAtMs: _currentSession!.endedAtMs,
-      totalDurationMs: durationMs,
+      totalDurationMs: _currentSession!.isRolling ? 0 : durationMs,
       totalVolume: totalVolume,
       totalSets: totalSets,
       exercises: exerciseSummaries,
@@ -2424,6 +2618,7 @@ class WorkoutState extends ChangeNotifier {
           'segmentName': segment.name ?? 'Block ${segment.orderIndex + 1}',
           'segmentType': segment.segmentType,
           'segmentOrder': segment.orderIndex,
+          'blockId': effort.blockId,
         });
       }
     }
@@ -2440,6 +2635,7 @@ class WorkoutState extends ChangeNotifier {
     _observations.clear();
     _roundInstances.clear();
     _timedInstances.clear();
+    _sessionBlocks.clear();
     _exerciseCache.clear();
     _exerciseNotes.clear();
     _exerciseNoteLoadInFlight.clear();

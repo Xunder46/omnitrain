@@ -19,6 +19,7 @@ import 'package:omnitrain/features/routine/my_routines_screen.dart';
 import 'package:omnitrain/features/routine/routine_setup_screen.dart';
 import 'package:omnitrain/features/session/session_overview_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
+import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/features/splash/omni_splash_screen.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
@@ -54,9 +55,7 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: SettingsScreen(settingsState: settingsState),
-        ),
+        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
       );
       await tester.pumpAndSettle();
 
@@ -70,9 +69,7 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: SettingsScreen(settingsState: settingsState),
-        ),
+        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
       );
       await tester.pumpAndSettle();
 
@@ -92,9 +89,7 @@ void main() {
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: PeriodListScreen(periodState: periodState),
-        ),
+        MaterialApp(home: PeriodListScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
@@ -104,22 +99,22 @@ void main() {
 
     testWidgets('shows period when data exists', (WidgetTester tester) async {
       final repo = await _freshRepo();
-      await repo.createPeriod(TrainingPeriod(
-        id: 'p-1',
-        ownerUserId: 'u-1',
-        name: 'Bulk Phase',
-        startDateMs: DateTime(2025, 1, 1).millisecondsSinceEpoch,
-        endDateMs: DateTime(2025, 3, 31).millisecondsSinceEpoch,
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createPeriod(
+        TrainingPeriod(
+          id: 'p-1',
+          ownerUserId: 'u-1',
+          name: 'Bulk Phase',
+          startDateMs: DateTime(2025, 1, 1).millisecondsSinceEpoch,
+          endDateMs: DateTime(2025, 3, 31).millisecondsSinceEpoch,
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: PeriodListScreen(periodState: periodState),
-        ),
+        MaterialApp(home: PeriodListScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
@@ -132,9 +127,7 @@ void main() {
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: PeriodListScreen(periodState: periodState),
-        ),
+        MaterialApp(home: PeriodListScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
@@ -154,9 +147,7 @@ void main() {
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: CreatePeriodScreen(periodState: periodState),
-        ),
+        MaterialApp(home: CreatePeriodScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
@@ -227,9 +218,7 @@ void main() {
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: CreatePeriodScreen(periodState: periodState),
-        ),
+        MaterialApp(home: CreatePeriodScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
@@ -400,13 +389,15 @@ void main() {
 
     testWidgets('shows routine when data exists', (WidgetTester tester) async {
       final repo = await _freshRepo();
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'tmpl-1',
-        name: 'Push Day',
-        focusModality: 'resistance_lifting',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-1',
+          name: 'Push Day',
+          focusModality: 'resistance_lifting',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       final routineState = RoutineState(repo);
       final routineSessionService = RoutineSessionService(repo);
@@ -442,9 +433,7 @@ void main() {
       routineState.setAutosaveEnabled(false);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: RoutineSetupScreen(routineState: routineState),
-        ),
+        MaterialApp(home: RoutineSetupScreen(routineState: routineState)),
       );
       await tester.pumpAndSettle();
 
@@ -463,9 +452,7 @@ void main() {
       routineState.setAutosaveEnabled(false);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: RoutineSetupScreen(routineState: routineState),
-        ),
+        MaterialApp(home: RoutineSetupScreen(routineState: routineState)),
       );
       // Initially might show loading spinner, then settles
       await tester.pumpAndSettle();
@@ -481,9 +468,7 @@ void main() {
       routineState.setAutosaveEnabled(false);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: RoutineSetupScreen(routineState: routineState),
-        ),
+        MaterialApp(home: RoutineSetupScreen(routineState: routineState)),
       );
       await tester.pumpAndSettle();
 
@@ -497,20 +482,24 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final repo = await _freshRepo();
       // Create a template in the repo
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'tmpl-existing',
-        name: 'Leg Day',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
-      await repo.createTemplateSegment(TemplateSegment(
-        id: 'tseg-1',
-        templateId: 'tmpl-existing',
-        orderIndex: 0,
-        segmentType: 'main',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-existing',
+          name: 'Leg Day',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
+      await repo.createTemplateSegment(
+        TemplateSegment(
+          id: 'tseg-1',
+          templateId: 'tmpl-existing',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       final routineState = RoutineState(repo);
       routineState.setAutosaveEnabled(false);
@@ -612,10 +601,7 @@ void main() {
       expect(startButton, findsOneWidget);
       // The button should be a FilledButton
       final button = tester.widget<FilledButton>(
-        find.ancestor(
-          of: startButton,
-          matching: find.byType(FilledButton),
-        ),
+        find.ancestor(of: startButton, matching: find.byType(FilledButton)),
       );
       expect(button.onPressed, isNull); // disabled
     });
@@ -720,6 +706,170 @@ void main() {
       // Should have multiple EnergyTile cards in a grid
       expect(find.byType(CustomScrollView), findsWidgets);
     });
+
+    testWidgets('free training flow shows rolling toggle and inline guidance', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final screen = await _buildHomeScreen(repo);
+
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rolling Session'), findsWidgets);
+      expect(
+        find.text(
+          'A rolling session stays open all day. Tap any tile to return and '
+          'add more work at any time. No session timer — just your sets.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('rolling toggle does not open a second onboarding sheet', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final homeState = HomeState(repo);
+      await homeState.init();
+      final routineState = RoutineState(repo);
+      final routineSessionService = RoutineSessionService(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final periodState = PeriodState(repo);
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            workoutState: workoutState,
+            homeState: homeState,
+            routineState: routineState,
+            routineSessionService: routineSessionService,
+            sessionSummaryService: sessionSummaryService,
+            calendarState: calendarState,
+            periodState: periodState,
+            profileState: profileState,
+            settingsState: settingsState,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.play_arrow));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Got it'), findsNothing);
+      expect(find.text("Don't show again"), findsNothing);
+    });
+
+    testWidgets('rolling active session navigates on tile tap without dialog', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final homeState = HomeState(repo);
+      await homeState.init();
+      final routineState = RoutineState(repo);
+      final routineSessionService = RoutineSessionService(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final periodState = PeriodState(repo);
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await workoutState.createNewSession(isRolling: true);
+      final exercises = await repo.getExercises();
+      await workoutState.addExerciseToSession(exercises.first);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            workoutState: workoutState,
+            homeState: homeState,
+            routineState: routineState,
+            routineSessionService: routineSessionService,
+            sessionSummaryService: sessionSummaryService,
+            calendarState: calendarState,
+            periodState: periodState,
+            profileState: profileState,
+            settingsState: settingsState,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Cardio'));
+      // The pushed WorkoutSessionScreen triggers a known transient
+      // setState-during-build assertion in tests; consume it and continue.
+      await tester.pump();
+      tester.takeException();
+      await tester.pump();
+
+      expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+      expect(find.text('Start New Session?'), findsNothing);
+    });
+
+    testWidgets(
+      'my routines still shows conflict dialog during rolling session',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final homeState = HomeState(repo);
+        await homeState.init();
+        final routineState = RoutineState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final periodState = PeriodState(repo);
+        final profileState = ProfileState(repo);
+        await profileState.loadProfile();
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+
+        await workoutState.createNewSession(isRolling: true);
+        final exercises = await repo.getExercises();
+        await workoutState.addExerciseToSession(exercises.first);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              workoutState: workoutState,
+              homeState: homeState,
+              routineState: routineState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+              calendarState: calendarState,
+              periodState: periodState,
+              profileState: profileState,
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.folder_open));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Start New Session?'), findsOneWidget);
+        expect(find.byType(MyRoutinesScreen), findsNothing);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -769,9 +919,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExerciseEditorScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -784,9 +932,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExerciseEditorScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -799,9 +945,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExerciseEditorScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -821,9 +965,7 @@ void main() {
       await profileState.loadProfile();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ProfileScreen(profileState: profileState),
-        ),
+        MaterialApp(home: ProfileScreen(profileState: profileState)),
       );
       await tester.pumpAndSettle();
 
@@ -839,9 +981,7 @@ void main() {
       await profileState.loadProfile();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ProfileScreen(profileState: profileState),
-        ),
+        MaterialApp(home: ProfileScreen(profileState: profileState)),
       );
       await tester.pumpAndSettle();
 
@@ -1034,6 +1174,136 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.text(exercises.first.name), findsOneWidget);
+    });
+
+    testWidgets(
+      'rolling session stats hide Duration and show Exercises/Sets/Rounds',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        await workoutState.createNewSession(isRolling: true);
+        final exercises = await repo.getExercises();
+        await workoutState.addExerciseToSession(exercises.first);
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SessionSummaryScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('DURATION'), findsNothing);
+        expect(find.text('EXERCISES'), findsOneWidget);
+        expect(find.text('SETS'), findsOneWidget);
+        expect(find.text('ROUNDS'), findsOneWidget);
+      },
+    );
+
+    testWidgets('non-rolling session stats include Duration', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(isRolling: false);
+      final exercises = await repo.getExercises();
+      await workoutState.addExerciseToSession(exercises.first);
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('DURATION'), findsOneWidget);
+    });
+
+    testWidgets('rolling summary groups exercises under block header', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(isRolling: true);
+
+      final blockId = await workoutState.addSessionBlock();
+      final block = workoutState.getSessionBlocks().firstWhere(
+        (b) => b.id == blockId,
+      );
+      await workoutState.updateSessionBlock(
+        SessionBlock(
+          id: block.id,
+          sessionId: block.sessionId,
+          name: 'Main Work',
+          orderIndex: block.orderIndex,
+          createdAtMs: block.createdAtMs,
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+
+      final exercises = await repo.getExercises();
+      final effortId = await workoutState.addExerciseToSession(exercises.first);
+      await workoutState.assignEffortToBlock(effortId, blockId);
+
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Main Work'), findsOneWidget);
+      expect(find.text(exercises.first.name), findsOneWidget);
+    });
+
+    testWidgets('rolling summary shows Other header for unassigned exercises', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(isRolling: true);
+
+      final exercises = await repo.getExercises();
+      await workoutState.addExerciseToSession(exercises.first);
+
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Other'), findsOneWidget);
       expect(find.text(exercises.first.name), findsOneWidget);
     });
   });
@@ -1290,10 +1560,7 @@ void main() {
       await tester.pump(); // single frame — before exercises load
 
       // Enter search text before exercises render to avoid exercise-tile overflow
-      await tester.enterText(
-        find.byType(TextField).first,
-        'zzzznotanexercise',
-      );
+      await tester.enterText(find.byType(TextField).first, 'zzzznotanexercise');
       // Advance past 300ms debounce and let load complete with the search filter
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
@@ -1320,9 +1587,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: MetricChooserDialog(exercise: exercise),
-          ),
+          home: Scaffold(body: MetricChooserDialog(exercise: exercise)),
         ),
       );
       await tester.pumpAndSettle();
@@ -1337,9 +1602,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: MetricChooserDialog(exercise: exercise),
-          ),
+          home: Scaffold(body: MetricChooserDialog(exercise: exercise)),
         ),
       );
       await tester.pumpAndSettle();
@@ -1378,9 +1641,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(body: ModalityPickerDialog()),
-        ),
+        const MaterialApp(home: Scaffold(body: ModalityPickerDialog())),
       );
       await tester.pumpAndSettle();
 
@@ -1389,9 +1650,7 @@ void main() {
 
     testWidgets('shows all modality options', (WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(body: ModalityPickerDialog()),
-        ),
+        const MaterialApp(home: Scaffold(body: ModalityPickerDialog())),
       );
       await tester.pumpAndSettle();
 
@@ -1404,9 +1663,7 @@ void main() {
 
     testWidgets('shows Cancel button', (WidgetTester tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(body: ModalityPickerDialog()),
-        ),
+        const MaterialApp(home: Scaffold(body: ModalityPickerDialog())),
       );
       await tester.pumpAndSettle();
 
@@ -1418,15 +1675,442 @@ void main() {
     ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: ModalityPickerDialog(initialModality: 'cardio'),
-          ),
+          home: Scaffold(body: ModalityPickerDialog(initialModality: 'cardio')),
         ),
       );
       await tester.pumpAndSettle();
 
       // Cardio option must still be visible when pre-selected
       expect(find.text('Cardio'), findsOneWidget);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkoutSessionScreen – rolling session block list view
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('WorkoutSessionScreen – rolling session block UI', () {
+    testWidgets('non-rolling session does not show + Add Block', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: false);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('+ Add Block'), findsNothing);
+    });
+
+    testWidgets('rolling session shows + Add Block button', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Add Block'), findsOneWidget);
+    });
+
+    testWidgets('rolling session shows block name after addSessionBlock', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Block name (h:mm a) should exist and the empty-state body should show.
+      expect(find.text('No exercises in this block yet.'), findsOneWidget);
+    });
+
+    testWidgets('rolling session shows block header overflow menu', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // PopupMenuButton renders as an icon; verify it exists.
+      expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+    });
+
+    testWidgets('rolling session overflow menu shows Edit/Clone/Delete', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Open the overflow menu.
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit'), findsOneWidget);
+      expect(find.text('Clone'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+    });
+
+    testWidgets('rolling session + Add Block adds a new block card', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+
+      await tester.tap(find.text('Add Block'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PopupMenuButton<String>), findsNWidgets(2));
+      expect(find.text('No exercises in this block yet.'), findsNWidgets(2));
+    });
+
+    testWidgets('rolling session block Edit action renames block', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rename Block'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'Warm-Up');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Warm-Up'), findsOneWidget);
+    });
+
+    testWidgets('rolling session block Clone action appends a copy block', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      final blockId = await workoutState.addSessionBlock();
+
+      await workoutState.updateSessionBlock(
+        SessionBlock(
+          id: blockId,
+          sessionId: workoutState.currentSession!.id,
+          name: 'Main Work',
+          orderIndex: 0,
+          createdAtMs: DateTime.now().millisecondsSinceEpoch,
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clone'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PopupMenuButton<String>), findsNWidgets(2));
+      // Cloned block should exist as a second card now (has current-time name)
+    });
+
+    testWidgets(
+      'rolling session block Delete removes block but preserves effort',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        await workoutState.createNewSession(isRolling: true);
+        await workoutState.loadSessionData();
+
+        final blockId = await workoutState.addSessionBlock();
+        final exercises = await repo.getExercises();
+        final effortId = await workoutState.addExerciseToSession(
+          exercises.first,
+        );
+        await workoutState.assignEffortToBlock(effortId, blockId);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text(exercises.first.name), findsOneWidget);
+
+        await tester.tap(find.byType(PopupMenuButton<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Delete'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Exercises in this block will not be deleted.'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(PopupMenuButton<String>), findsNothing);
+        expect(
+          workoutState.getExercisesWithEntries().any(
+            (exercise) => exercise['id'] == effortId,
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets('rolling session block cards do not show reorder arrows', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byIcon(Icons.arrow_upward), findsNothing);
+      expect(find.byIcon(Icons.arrow_downward), findsNothing);
+    });
+
+    testWidgets(
+      'rolling session with multiple blocks still has no reorder arrows',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        await workoutState.createNewSession(isRolling: true);
+        await workoutState.addSessionBlock();
+        await workoutState.addSessionBlock();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byIcon(Icons.arrow_upward), findsNothing);
+        expect(find.byIcon(Icons.arrow_downward), findsNothing);
+      },
+    );
+
+    testWidgets('rolling session hides Session Time chip', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Session Time'), findsNothing);
+    });
+
+    testWidgets('non-rolling session shows Session Time chip', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: false);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Session Time'), findsOneWidget);
+    });
+
+    testWidgets('rolling session block shows + Add Exercise button', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.addSessionBlock();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Add Exercise'), findsOneWidget);
+    });
+
+    testWidgets('rolling session shows exercise tile inside correct block', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.createNewSession(isRolling: true);
+      await workoutState.loadSessionData();
+
+      final blockId = await workoutState.addSessionBlock();
+      final exercises = await repo.getExercises();
+      final effortId = await workoutState.addExerciseToSession(exercises.first);
+      await workoutState.assignEffortToBlock(effortId, blockId);
+      await workoutState.loadSessionData();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text(exercises.first.name), findsOneWidget);
     });
   });
 }

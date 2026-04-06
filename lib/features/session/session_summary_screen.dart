@@ -694,6 +694,40 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildStatsCard(ThemeData theme) {
+    final session = widget.workoutState.currentSession;
+    final isRolling = session?.isRolling ?? false;
+
+    if (isRolling) {
+      // Rolling sessions: suppress Duration, show Exercises/Sets/Rounds in 1×3 row.
+      return _SummaryCard(
+        child: Row(
+          children: [
+            Expanded(
+              child: _StatPill(
+                label: 'Exercises',
+                value: _summary.exercises.length.toString(),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _StatPill(
+                label: 'Sets',
+                value: _summary.totalSets.toString(),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _StatPill(
+                label: 'Rounds',
+                value: _summary.totalRounds.toString(),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Non-rolling sessions: original 2×2 grid.
     final stats = <_StatItem>[
       _StatItem(
         label: 'Duration',
@@ -836,6 +870,139 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final exercises = _summary.exercises;
     if (exercises.isEmpty) return const SizedBox.shrink();
 
+    final session = widget.workoutState.currentSession;
+    if (session?.isRolling ?? false) {
+      return _buildBlockGroupedExerciseList(theme, exercises);
+    }
+    return _buildModalityGroupedExerciseList(theme, exercises);
+  }
+
+  // ── Rolling: block-grouped layout ────────────────────────────────────────
+
+  Widget _buildBlockGroupedExerciseList(
+    ThemeData theme,
+    List<ExerciseSummary> exercises,
+  ) {
+    final blocks = widget.workoutState.getSessionBlocks(); // sorted by orderIndex
+
+    // Map blockId → exercises in execution order.
+    final Map<String, List<ExerciseSummary>> byBlock = {};
+    final List<ExerciseSummary> unassigned = [];
+
+    for (final ex in exercises) {
+      if (ex.blockId == null) {
+        unassigned.add(ex);
+      } else {
+        byBlock.putIfAbsent(ex.blockId!, () => []).add(ex);
+      }
+    }
+
+    final groups = <_BlockGroup>[];
+
+    for (final block in blocks) {
+      final blockExercises = byBlock[block.id] ?? [];
+      if (blockExercises.isEmpty) continue;
+      blockExercises.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
+      groups.add(_BlockGroup(
+        header: block.name,
+        timeMs: block.createdAtMs,
+        exercises: blockExercises,
+      ));
+    }
+
+    // Also include exercises for unknown blockIds (data inconsistency safety).
+    final knownBlockIds = blocks.map((b) => b.id).toSet();
+    for (final entry in byBlock.entries) {
+      if (!knownBlockIds.contains(entry.key)) {
+        unassigned.addAll(entry.value);
+      }
+    }
+
+    if (unassigned.isNotEmpty) {
+      unassigned.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
+      groups.add(_BlockGroup(
+        header: 'Other',
+        timeMs: null,
+        exercises: unassigned,
+      ));
+    }
+
+    final items = <Widget>[];
+    for (int g = 0; g < groups.length; g++) {
+      final group = groups[g];
+
+      // Block header
+      items.add(_buildBlockHeader(theme, group.header, group.timeMs));
+      items.add(const SizedBox(height: 8));
+
+      for (int i = 0; i < group.exercises.length; i++) {
+        items.add(_buildExerciseTile(theme, group.exercises[i]));
+        if (i < group.exercises.length - 1) {
+          items.add(const SizedBox(height: 6));
+        }
+      }
+
+      if (g < groups.length - 1) {
+        items.add(const SizedBox(height: 16));
+        items.add(Divider(color: Colors.white.withOpacity(0.06), height: 1));
+        items.add(const SizedBox(height: 16));
+      }
+    }
+
+    return _SummaryCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Exercises', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 12),
+          ...items,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBlockHeader(ThemeData theme, String name, int? createdAtMs) {
+    final timeLabel = createdAtMs != null
+        ? _formatTimeOfDay(DateTime.fromMillisecondsSinceEpoch(createdAtMs))
+        : null;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            name,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurface.withOpacity(0.75),
+            ),
+          ),
+        ),
+        if (timeLabel != null)
+          Text(
+            timeLabel,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.45),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _formatTimeOfDay(DateTime dt) {
+    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final minute = dt.minute.toString().padLeft(2, '0');
+    final suffix = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $suffix';
+  }
+
+  // ── Non-rolling: modality-grouped layout (original) ──────────────────────
+
+  Widget _buildModalityGroupedExerciseList(
+    ThemeData theme,
+    List<ExerciseSummary> exercises,
+  ) {
     // Bucket exercises into groups, preserving arrival order within each.
     final Map<String, List<ExerciseSummary>> groups = {};
     for (final ex in exercises) {
@@ -1297,6 +1464,18 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ];
     return months[month - 1];
   }
+}
+
+class _BlockGroup {
+  final String header;
+  final int? timeMs;
+  final List<ExerciseSummary> exercises;
+
+  const _BlockGroup({
+    required this.header,
+    required this.timeMs,
+    required this.exercises,
+  });
 }
 
 class _SummaryCard extends StatelessWidget {

@@ -196,6 +196,7 @@ class TrainingSession {
   final double? perceivedSessionRpe;
   final int? sessionFeeling; // 1-5 scale: 1=Rough, 5=Great
   final int? qualityRating; // Reserved for future computed session quality
+  final bool isRolling;
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -213,6 +214,7 @@ class TrainingSession {
     this.perceivedSessionRpe,
     this.sessionFeeling,
     this.qualityRating,
+    this.isRolling = false,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
@@ -231,6 +233,7 @@ class TrainingSession {
     perceivedSessionRpe: (m['perceived_session_rpe'] as num?)?.toDouble(),
     sessionFeeling: m['session_feeling'] as int?,
     qualityRating: m['quality_rating'] as int?,
+    isRolling: (m['is_rolling'] as int?) == 1,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
   );
@@ -249,6 +252,43 @@ class TrainingSession {
     'perceived_session_rpe': perceivedSessionRpe,
     'session_feeling': sessionFeeling,
     'quality_rating': qualityRating,
+    'is_rolling': isRolling ? 1 : 0,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+}
+
+class SessionBlock {
+  final String id;
+  final String sessionId;
+  final String name;
+  final int orderIndex;
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  SessionBlock({
+    required this.id,
+    required this.sessionId,
+    required this.name,
+    required this.orderIndex,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  factory SessionBlock.fromMap(Map<String, dynamic> m) => SessionBlock(
+    id: m['id'] as String,
+    sessionId: m['session_id'] as String,
+    name: m['name'] as String,
+    orderIndex: m['order_index'] as int,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'session_id': sessionId,
+    'name': name,
+    'order_index': orderIndex,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
   };
@@ -370,6 +410,7 @@ class SegmentEffort {
   final String effortKind;
   final String? exerciseId;
   final String? note;
+  final String? blockId;
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -380,6 +421,7 @@ class SegmentEffort {
     required this.effortKind,
     this.exerciseId,
     this.note,
+    this.blockId,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
@@ -391,6 +433,7 @@ class SegmentEffort {
     effortKind: m['effort_kind'] as String,
     exerciseId: m['exercise_id'] as String?,
     note: m['note'] as String?,
+    blockId: m['block_id'] as String?,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
   );
@@ -402,6 +445,7 @@ class SegmentEffort {
     'effort_kind': effortKind,
     'exercise_id': exerciseId,
     'note': note,
+    'block_id': blockId,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
   };

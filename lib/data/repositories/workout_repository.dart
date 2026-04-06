@@ -316,6 +316,32 @@ abstract class WorkoutRepository {
   /// [excludeId]: when editing an existing period, pass its ID to skip it.
   Future<bool> hasPeriodOverlap(int startMs, int endMs, {String? excludeId});
 
+  // ─── Session Blocks ───────────────────────────────────────────────────────
+
+  /// Get all blocks for a session, ordered by orderIndex ascending.
+  Future<List<SessionBlock>> getSessionBlocks(String sessionId);
+
+  /// Persist a new session block; returns its ID.
+  Future<String> createSessionBlock(SessionBlock block);
+
+  /// Update an existing session block.
+  Future<void> updateSessionBlock(SessionBlock block);
+
+  /// Delete a session block by ID.
+  /// Nulls out blockId on any linked SegmentEffort — does NOT delete the efforts.
+  Future<void> deleteSessionBlock(String blockId);
+
+  /// Reorder blocks within a session by providing the desired ID order.
+  Future<void> reorderSessionBlocks(String sessionId, List<String> orderedIds);
+
+  /// Deep-clone a block and all its linked efforts/observations/rounds/rests.
+  /// Returns the new block's ID.
+  Future<String> cloneSessionBlock(String blockId);
+
+  /// Assign or unassign an effort to a block.
+  /// Pass [blockId] as null to unassign (effort becomes unblocked).
+  Future<void> assignEffortToBlock(String effortId, String? blockId);
+
   // ─── Preferences ─────────────────────────────────────────────────────────
 
   /// Read a named boolean preference; returns [defaultValue] when not yet set.

@@ -73,4 +73,27 @@ Future<void> applyMigrations(Database db, int oldVersion, int newVersion) async 
       'CREATE UNIQUE INDEX IF NOT EXISTS UX_exercise_note_exercise ON app_exercise_note(exercise_id)',
     );
   }
+
+  if (oldVersion < 6) {
+    await db.execute(
+      'ALTER TABLE app_training_session ADD COLUMN is_rolling INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS app_session_block (
+        id             TEXT    NOT NULL PRIMARY KEY,
+        session_id     TEXT    NOT NULL,
+        name           TEXT    NOT NULL,
+        order_index    INTEGER NOT NULL DEFAULT 0,
+        created_at_ms  INTEGER NOT NULL,
+        updated_at_ms  INTEGER NOT NULL,
+        FOREIGN KEY(session_id) REFERENCES app_training_session(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS IX_session_block_session ON app_session_block(session_id, order_index)',
+    );
+    await db.execute(
+      'ALTER TABLE app_segment_effort ADD COLUMN block_id TEXT REFERENCES app_session_block(id) ON DELETE SET NULL',
+    );
+  }
 }
