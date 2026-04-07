@@ -65,7 +65,7 @@ Exercise capability flags indicating what an exercise can track:
 | Constant | Value | UI Rendering |
 |----------|-------|-------------|
 | `set` | `'set'` | Reps + weight editors |
-| `timed` | `'timed'` | Duration timer + distance |
+| `timed` | `'timed'` | Duration timer + distance + optional extra weight |
 | `round` | `'round'` | Round counter + countdown |
 | `drill` | `'drill'` | Hold timer + extra weight |
 
@@ -90,7 +90,7 @@ Additional effort kinds (less commonly used): `interval`, `amrap`, `note`
 | `rounds` | `'metric-rounds'` | round |
 | `roundDuration` | `'metric-round-duration'` | round |
 | `rpe` | `'metric-rpe'` | set, timed, round, amrap |
-| `extraWeight` | `'metric-extra-weight'` | drill (negative = band assist, positive = added load) |
+| `extraWeight` | `'metric-extra-weight'` | timed, drill (negative = band assist, positive = added load) |
 
 ---
 
@@ -192,7 +192,7 @@ Default target values when creating new sets/entries:
 | Effort Kind | Default Targets |
 |-------------|----------------|
 | `set` | 10 reps, 0 weight |
-| `timed` | 0 seconds duration |
+| `timed` | 0 seconds duration, 0 distance, 0.0 extra weight |
 | `round` | 180 seconds (3 min), 1 round |
 | `drill` | 0 seconds, 0.0 extra weight |
 

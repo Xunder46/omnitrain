@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 // Data model classes aligned with SQLite schema
 
 class SportCategory {
@@ -102,6 +104,8 @@ class Exercise {
   /// Only meaningful for effortKind == 'round' exercises (martial arts, sports).
   /// Examples: Soccer Match = 2700 (45-min half), Ice Hockey = 1200 (20-min period).
   final int? defaultRoundDurationSecs;
+  final List<String>? howToSteps;
+  final String? imageAssetPath;
 
   Exercise({
     required this.id,
@@ -116,6 +120,8 @@ class Exercise {
     this.capabilities = const [],
     this.relevanceScore,
     this.defaultRoundDurationSecs,
+    this.howToSteps,
+    this.imageAssetPath,
   });
 
   factory Exercise.fromMap(Map<String, dynamic> m) => Exercise(
@@ -130,6 +136,10 @@ class Exercise {
     updatedAtMs: m['updated_at_ms'] as int,
     relevanceScore: m['relevance_score'] as double?,
     defaultRoundDurationSecs: m['default_round_duration_secs'] as int?,
+    howToSteps: m['how_to_steps'] != null
+      ? List<String>.from(jsonDecode(m['how_to_steps'] as String) as List)
+      : null,
+    imageAssetPath: m['image_asset_path'] as String?,
   );
 
   Map<String, dynamic> toMap() => {
@@ -144,6 +154,8 @@ class Exercise {
     'updated_at_ms': updatedAtMs,
     'relevance_score': relevanceScore,
     'default_round_duration_secs': defaultRoundDurationSecs,
+    'how_to_steps': howToSteps != null ? jsonEncode(howToSteps) : null,
+    'image_asset_path': imageAssetPath,
   };
 }
 
@@ -184,6 +196,7 @@ class TrainingSession {
   final double? perceivedSessionRpe;
   final int? sessionFeeling; // 1-5 scale: 1=Rough, 5=Great
   final int? qualityRating; // Reserved for future computed session quality
+  final bool isRolling;
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -201,6 +214,7 @@ class TrainingSession {
     this.perceivedSessionRpe,
     this.sessionFeeling,
     this.qualityRating,
+    this.isRolling = false,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
@@ -219,6 +233,7 @@ class TrainingSession {
     perceivedSessionRpe: (m['perceived_session_rpe'] as num?)?.toDouble(),
     sessionFeeling: m['session_feeling'] as int?,
     qualityRating: m['quality_rating'] as int?,
+    isRolling: (m['is_rolling'] as int?) == 1,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
   );
@@ -237,6 +252,43 @@ class TrainingSession {
     'perceived_session_rpe': perceivedSessionRpe,
     'session_feeling': sessionFeeling,
     'quality_rating': qualityRating,
+    'is_rolling': isRolling ? 1 : 0,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+}
+
+class SessionBlock {
+  final String id;
+  final String sessionId;
+  final String name;
+  final int orderIndex;
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  SessionBlock({
+    required this.id,
+    required this.sessionId,
+    required this.name,
+    required this.orderIndex,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  factory SessionBlock.fromMap(Map<String, dynamic> m) => SessionBlock(
+    id: m['id'] as String,
+    sessionId: m['session_id'] as String,
+    name: m['name'] as String,
+    orderIndex: m['order_index'] as int,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'session_id': sessionId,
+    'name': name,
+    'order_index': orderIndex,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
   };
@@ -358,6 +410,7 @@ class SegmentEffort {
   final String effortKind;
   final String? exerciseId;
   final String? note;
+  final String? blockId;
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -368,6 +421,7 @@ class SegmentEffort {
     required this.effortKind,
     this.exerciseId,
     this.note,
+    this.blockId,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
@@ -379,6 +433,7 @@ class SegmentEffort {
     effortKind: m['effort_kind'] as String,
     exerciseId: m['exercise_id'] as String?,
     note: m['note'] as String?,
+    blockId: m['block_id'] as String?,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
   );
@@ -390,6 +445,7 @@ class SegmentEffort {
     'effort_kind': effortKind,
     'exercise_id': exerciseId,
     'note': note,
+    'block_id': blockId,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
   };
@@ -1488,3 +1544,61 @@ class EntryRest {
 }
 
 const Object _entryRestCopyWithUnset = Object();
+
+/// Per-exercise user note. Persists across sessions.
+/// id is a deterministic key: 'note-{exerciseId}'.
+class ExerciseNote {
+  final String id;
+  final String exerciseId;
+  final String note;
+  final String? lastSessionId;
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  const ExerciseNote({
+    required this.id,
+    required this.exerciseId,
+    required this.note,
+    this.lastSessionId,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  factory ExerciseNote.fromMap(Map<String, dynamic> m) => ExerciseNote(
+    id: m['id'] as String,
+    exerciseId: m['exercise_id'] as String,
+    note: m['note'] as String,
+    lastSessionId: m['last_session_id'] as String?,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'exercise_id': exerciseId,
+    'note': note,
+    'last_session_id': lastSessionId,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+
+  ExerciseNote copyWith({
+    String? id,
+    String? exerciseId,
+    String? note,
+    Object? lastSessionId = _exerciseNoteCopyWithUnset,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) => ExerciseNote(
+    id: id ?? this.id,
+    exerciseId: exerciseId ?? this.exerciseId,
+    note: note ?? this.note,
+    lastSessionId: lastSessionId == _exerciseNoteCopyWithUnset
+        ? this.lastSessionId
+        : lastSessionId as String?,
+    createdAtMs: createdAtMs ?? this.createdAtMs,
+    updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+  );
+}
+
+const Object _exerciseNoteCopyWithUnset = Object();

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../core/constants/modality_config.dart';
@@ -35,6 +36,16 @@ class WorkoutState extends ChangeNotifier {
   // Entry rests keyed by effortId — wall-clock rest periods for all effort kinds.
   // Stores the actual recovery time between consecutive sets/rounds for tracking and analytics.
   final Map<String, List<EntryRest>> _entryRests = {};
+  // Exercise notes cache: exerciseId -> ExerciseNote? (null = confirmed absent)
+  final Map<String, ExerciseNote?> _exerciseNotes = {};
+  // Session blocks cache keyed by sessionId.
+  final Map<String, List<SessionBlock>> _sessionBlocks = {};
+  // Track in-flight loads per exerciseId so overlapping callers can await
+  // the same load without issuing redundant repository reads.
+  final Map<String, Future<void>> _exerciseNoteLoadInFlight = {};
+  // Track in-flight save for each exerciseId to prevent out-of-order writes.
+  // Completed futures are retained for this session and cleared in clearSession().
+  final Map<String, Future<void>> _exerciseNoteSaveInFlight = {};
   final Map<String, Exercise> _exerciseCache = {};
 
   // Exercise library data
@@ -57,6 +68,7 @@ class WorkoutState extends ChangeNotifier {
       _currentSession != null &&
       _currentSession!.endedAtMs == null &&
       _efforts.values.any((list) => list.isNotEmpty);
+  bool get isRollingSession => _currentSession?.isRolling ?? false;
   List<Exercise> get allExercises => List.unmodifiable(_allExercises);
   List<MuscleGroup> get muscleGroups => List.unmodifiable(_muscleGroups);
   List<Discipline> get disciplines => List.unmodifiable(_disciplines);
@@ -84,6 +96,99 @@ class WorkoutState extends ChangeNotifier {
   /// Get rest records for an effort (wall-clock rest durations between sets)
   List<EntryRest> getEntryRests(String effortId) {
     return List.unmodifiable(_entryRests[effortId] ?? []);
+  }
+
+  /// Loads the note for [exerciseId] from the repository into cache.
+  /// Skips if already cached or in-flight to prevent redundant loads.
+  /// Calls notifyListeners() so note indicators can update.
+  Future<void> loadExerciseNote(String exerciseId) async {
+    // Already cached; skip.
+    if (_exerciseNotes.containsKey(exerciseId)) {
+      return;
+    }
+
+    final inFlight = _exerciseNoteLoadInFlight[exerciseId];
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final loadFuture = (() async {
+      try {
+        final note = await _repository.getExerciseNote(exerciseId);
+        _exerciseNotes[exerciseId] = note;
+        notifyListeners();
+      } catch (e) {
+        _setError('Failed to load exercise note: $e');
+      } finally {
+        _exerciseNoteLoadInFlight.remove(exerciseId);
+      }
+    })();
+
+    _exerciseNoteLoadInFlight[exerciseId] = loadFuture;
+    await loadFuture;
+  }
+
+  /// Upserts a note for [exerciseId]. If [text] is blank, deletes the note.
+  /// Serializes saves per exercise to prevent out-of-order writes.
+  /// Caller should NOT await — the state layer handles queueing.
+  /// Queued entries are session-scoped and are cleared in clearSession().
+  /// Calls notifyListeners() on complete to refresh note-dependent UI.
+  Future<void> saveExerciseNote(
+    String exerciseId,
+    String text, {
+    String? sessionId,
+  }) async {
+    final trimmed = text.trim();
+
+    // Chain this save onto any in-flight save for this exercise.
+    _exerciseNoteSaveInFlight[exerciseId] =
+        (_exerciseNoteSaveInFlight[exerciseId] ?? Future.value()).then((
+          _,
+        ) async {
+          try {
+            if (trimmed.isEmpty) {
+              await _repository.deleteExerciseNote(exerciseId);
+              _exerciseNotes[exerciseId] = null;
+            } else {
+              final now = DateTime.now().millisecondsSinceEpoch;
+              final existing = _exerciseNotes[exerciseId];
+              final updated = existing != null
+                  ? existing.copyWith(
+                      note: trimmed,
+                      lastSessionId: sessionId ?? existing.lastSessionId,
+                      updatedAtMs: now,
+                    )
+                  : ExerciseNote(
+                      id: 'note-$exerciseId',
+                      exerciseId: exerciseId,
+                      note: trimmed,
+                      lastSessionId: sessionId,
+                      createdAtMs: now,
+                      updatedAtMs: now,
+                    );
+              await _repository.saveExerciseNote(updated);
+              _exerciseNotes[exerciseId] = updated;
+            }
+            notifyListeners();
+          } catch (e) {
+            _setError('Failed to save exercise note: $e');
+          }
+        });
+
+    // Return the queued future without awaiting, so caller can fire-and-forget.
+    // The queue ensures ordering even if calls are overlapped.
+  }
+
+  /// Returns the cached note for [exerciseId], or null.
+  ExerciseNote? getExerciseNote(String exerciseId) {
+    return _exerciseNotes[exerciseId];
+  }
+
+  /// True if a non-null note exists in cache for [exerciseId].
+  bool hasExerciseNote(String exerciseId) {
+    return _exerciseNotes.containsKey(exerciseId) &&
+        _exerciseNotes[exerciseId] != null;
   }
 
   /// Record the start of a rest period (called when a set/round is logged)
@@ -197,6 +302,7 @@ class WorkoutState extends ChangeNotifier {
     String? title,
     String? intent,
     String? routineTemplateId,
+    bool isRolling = false,
     bool includeDefaultSegment = true,
   }) async {
     _setLoading(true);
@@ -214,6 +320,7 @@ class WorkoutState extends ChangeNotifier {
         title: title,
         modality: modality,
         intent: intent,
+        isRolling: isRolling,
         createdAtMs: now,
         updatedAtMs: now,
       );
@@ -274,6 +381,7 @@ class WorkoutState extends ChangeNotifier {
       _roundInstances.clear();
       _timedInstances.clear();
       _entryRests.clear();
+      _sessionBlocks.clear();
 
       // Load all child records for this session.
       final segments = await _repository.getSessionSegments(sessionId);
@@ -309,6 +417,9 @@ class WorkoutState extends ChangeNotifier {
         }
       }
 
+      final blocks = await _repository.getSessionBlocks(sessionId);
+      _sessionBlocks[sessionId] = blocks;
+
       notifyListeners();
     } catch (e) {
       _setError('Failed to load historical session: $e');
@@ -335,6 +446,7 @@ class WorkoutState extends ChangeNotifier {
       _segments.clear();
       _segments.addAll(segments);
       _entryRests.clear();
+      _sessionBlocks.clear();
 
       // Load efforts for each segment
       for (final segment in _segments) {
@@ -376,6 +488,9 @@ class WorkoutState extends ChangeNotifier {
           }
         }
       }
+
+      final sessionBlocks = await _repository.getSessionBlocks(_currentSession!.id);
+      _sessionBlocks[_currentSession!.id] = sessionBlocks;
 
       notifyListeners();
     } catch (e) {
@@ -599,7 +714,9 @@ class WorkoutState extends ChangeNotifier {
       }
 
       // Timed and drill efforts use TimedInstance for duration tracking +
-      // a companion EffortObservation for the secondary metric (distance / extra weight).
+      // companion EffortObservation(s) for secondary metrics.
+      // Timed: 2 companions (distance + extra-weight).
+      // Drill: 1 companion (extra-weight).
       if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
         final existing = _timedInstances[effortId] ?? [];
         final timedIndex = existing.length;
@@ -607,10 +724,9 @@ class WorkoutState extends ChangeNotifier {
 
         await addTimedEntry(effortId, targetDurationSecs: targetDuration);
 
-        // Create the companion observation (distance for timed, extra weight for drill)
-        final EffortObservation companion;
+        final obsToCreate = <EffortObservation>[];
         if (effort.effortKind == 'timed') {
-          companion = EffortObservation(
+          obsToCreate.add(EffortObservation(
             id: 'obs-$effortId-$timedIndex-distance',
             effortId: effortId,
             metricId: MetricIds.distance,
@@ -618,20 +734,31 @@ class WorkoutState extends ChangeNotifier {
             valueReal: (previousValues?['distance'] as double?) ?? 0.0,
             createdAtMs: now,
             updatedAtMs: now,
-          );
+          ));
+          obsToCreate.add(EffortObservation(
+            id: 'obs-$effortId-$timedIndex-extra-weight',
+            effortId: effortId,
+            metricId: MetricIds.extraWeight,
+            unitId: MetricIds.unitKg,
+            valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ));
         } else {
           // drill
-          companion = EffortObservation(
+          obsToCreate.add(EffortObservation(
             id: 'obs-$effortId-$timedIndex-extra-weight',
             effortId: effortId,
             metricId: MetricIds.extraWeight,
             valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
             createdAtMs: now,
             updatedAtMs: now,
-          );
+          ));
         }
-        await _repository.createObservation(companion);
-        _observations.putIfAbsent(effortId, () => []).add(companion);
+        for (final obs in obsToCreate) {
+          await _repository.createObservation(obs);
+        }
+        _observations.putIfAbsent(effortId, () => []).addAll(obsToCreate);
 
         notifyListeners();
         return;
@@ -1407,13 +1534,19 @@ class WorkoutState extends ChangeNotifier {
         await _repository.updateTimedInstance(reindexed);
       }
 
-      // Delete the companion observation at the same index.
-      // Timed/drill observations are 1-per-entry (distance or extra weight).
+      // Delete all companion observations for this entry by ID prefix.
+      // Timed entries have 2 companions (distance + extra-weight);
+      // drill entries have 1 (extra-weight). Prefix match is backward-compatible.
       final observations = _observations[effortId];
-      if (observations != null && entryIndex < observations.length) {
-        final obs = observations[entryIndex];
-        await _repository.deleteObservation(obs.id);
-        observations.removeAt(entryIndex);
+      if (observations != null) {
+        final idPrefix = 'obs-$effortId-$entryIndex-';
+        final toDelete = observations
+            .where((o) => o.id.startsWith(idPrefix))
+            .toList();
+        for (final obs in toDelete) {
+          await _repository.deleteObservation(obs.id);
+        }
+        observations.removeWhere((o) => o.id.startsWith(idPrefix));
       }
 
       notifyListeners();
@@ -1481,8 +1614,8 @@ class WorkoutState extends ChangeNotifier {
     switch (effortKind) {
       case 'set': // reps + weight
         return 2;
-      case 'timed': // companion only (distance); duration is in TimedInstance
-        return 1;
+      case 'timed': // 2 companion obs (distance + extra-weight); duration is in TimedInstance
+        return 2;
       case 'round':
         // Round efforts use RoundInstance — not observations.
         // This case should never be reached (deleteEntry routes round to deleteRound).
@@ -1525,6 +1658,180 @@ class WorkoutState extends ChangeNotifier {
     }
   }
 
+  // ─── Session Block Management ───────────────────────────────────────────
+
+  /// Returns blocks for the current session sorted by orderIndex.
+  List<SessionBlock> getSessionBlocks() {
+    if (_currentSession == null) return [];
+    final blocks = _sessionBlocks[_currentSession!.id] ?? [];
+    return List<SessionBlock>.from(blocks)
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+  }
+
+  /// Creates a new block for the current session using current time as default name.
+  Future<String> addSessionBlock() async {
+    if (_currentSession == null) return '';
+
+    _clearError();
+
+    try {
+      final now = DateTime.now();
+      final nowMs = now.millisecondsSinceEpoch;
+      final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+      final minute = now.minute.toString().padLeft(2, '0');
+      final period = now.hour < 12 ? 'AM' : 'PM';
+      final name = '$hour12:$minute $period';
+
+      final blocks = _sessionBlocks[_currentSession!.id] ?? [];
+      final maxOrder = blocks.fold<int>(
+        -1,
+        (currentMax, block) => block.orderIndex > currentMax
+            ? block.orderIndex
+            : currentMax,
+      );
+
+      final block = SessionBlock(
+        id: const Uuid().v4(),
+        sessionId: _currentSession!.id,
+        name: name,
+        orderIndex: maxOrder + 1,
+        createdAtMs: nowMs,
+        updatedAtMs: nowMs,
+      );
+
+      final blockId = await _repository.createSessionBlock(block);
+      _sessionBlocks.putIfAbsent(_currentSession!.id, () => []).add(block);
+      notifyListeners();
+      return blockId;
+    } catch (e) {
+      _setError('Failed to add session block: $e');
+      return '';
+    }
+  }
+
+  /// Updates a block and refreshes local cache entry.
+  Future<void> updateSessionBlock(SessionBlock block) async {
+    _clearError();
+
+    try {
+      await _repository.updateSessionBlock(block);
+      final blocks = _sessionBlocks[block.sessionId];
+      if (blocks != null) {
+        final index = blocks.indexWhere((b) => b.id == block.id);
+        if (index != -1) {
+          blocks[index] = block;
+        }
+      }
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to update session block: $e');
+    }
+  }
+
+  /// Deletes a block and unassigns any linked efforts.
+  Future<void> deleteSessionBlock(String blockId) async {
+    _clearError();
+
+    try {
+      await _repository.deleteSessionBlock(blockId);
+
+      for (final blocks in _sessionBlocks.values) {
+        blocks.removeWhere((block) => block.id == blockId);
+      }
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      for (final effortList in _efforts.values) {
+        for (int i = 0; i < effortList.length; i++) {
+          final effort = effortList[i];
+          if (effort.blockId == blockId) {
+            effortList[i] = SegmentEffort(
+              id: effort.id,
+              segmentId: effort.segmentId,
+              orderIndex: effort.orderIndex,
+              effortKind: effort.effortKind,
+              exerciseId: effort.exerciseId,
+              note: effort.note,
+              blockId: null,
+              createdAtMs: effort.createdAtMs,
+              updatedAtMs: nowMs,
+            );
+          }
+        }
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to delete session block: $e');
+    }
+  }
+
+  /// Reorders blocks for the current session.
+  Future<void> reorderSessionBlocks(List<String> orderedIds) async {
+    if (_currentSession == null) return;
+
+    _clearError();
+
+    try {
+      await _repository.reorderSessionBlocks(_currentSession!.id, orderedIds);
+      _sessionBlocks[_currentSession!.id] =
+          await _repository.getSessionBlocks(_currentSession!.id);
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to reorder session blocks: $e');
+    }
+  }
+
+  /// Deep-clones a block and all linked records via repository.
+  Future<String> cloneSessionBlock(String blockId) async {
+    if (_currentSession == null) return '';
+
+    _clearError();
+
+    try {
+      final newBlockId = await _repository.cloneSessionBlock(blockId);
+      _sessionBlocks[_currentSession!.id] =
+          await _repository.getSessionBlocks(_currentSession!.id);
+      notifyListeners();
+      return newBlockId;
+    } catch (e) {
+      _setError('Failed to clone session block: $e');
+      return '';
+    }
+  }
+
+  /// Assigns or unassigns an effort to/from a session block.
+  Future<void> assignEffortToBlock(String effortId, String? blockId) async {
+    _clearError();
+
+    try {
+      await _repository.assignEffortToBlock(effortId, blockId);
+
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      for (final effortList in _efforts.values) {
+        final index = effortList.indexWhere((effort) => effort.id == effortId);
+        if (index == -1) continue;
+
+        final effort = effortList[index];
+        effortList[index] = SegmentEffort(
+          id: effort.id,
+          segmentId: effort.segmentId,
+          orderIndex: effort.orderIndex,
+          effortKind: effort.effortKind,
+          exerciseId: effort.exerciseId,
+          note: effort.note,
+          blockId: blockId,
+          createdAtMs: effort.createdAtMs,
+          updatedAtMs: nowMs,
+        );
+        break;
+      }
+
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to assign effort to block: $e');
+    }
+  }
+
   /// End the current session
   /// Sets the session end timestamp and persists to repository
   Future<void> endSession() async {
@@ -1557,6 +1864,7 @@ class WorkoutState extends ChangeNotifier {
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
         sessionFeeling: _currentSession!.sessionFeeling,
         qualityRating: _currentSession!.qualityRating,
+        isRolling: _currentSession!.isRolling,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1606,6 +1914,7 @@ class WorkoutState extends ChangeNotifier {
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
         sessionFeeling: _currentSession!.sessionFeeling,
         qualityRating: _currentSession!.qualityRating,
+        isRolling: _currentSession!.isRolling,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1647,6 +1956,7 @@ class WorkoutState extends ChangeNotifier {
         perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
         sessionFeeling: _currentSession!.sessionFeeling,
         qualityRating: _currentSession!.qualityRating,
+        isRolling: _currentSession!.isRolling,
         createdAtMs: _currentSession!.createdAtMs,
         updatedAtMs: now,
       );
@@ -1683,6 +1993,7 @@ class WorkoutState extends ChangeNotifier {
           perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
           sessionFeeling: feeling,
           qualityRating: _currentSession!.qualityRating,
+          isRolling: _currentSession!.isRolling,
           createdAtMs: _currentSession!.createdAtMs,
           updatedAtMs: now,
         );
@@ -1717,6 +2028,7 @@ class WorkoutState extends ChangeNotifier {
           perceivedSessionRpe: rpe,
           sessionFeeling: _currentSession!.sessionFeeling,
           qualityRating: _currentSession!.qualityRating,
+          isRolling: _currentSession!.isRolling,
           createdAtMs: _currentSession!.createdAtMs,
           updatedAtMs: now,
         );
@@ -1917,9 +2229,11 @@ class WorkoutState extends ChangeNotifier {
 
           // Count only sets where at least one metric has been logged.
           setsCompleted = entries
-              .where((entry) =>
-                  ((entry['reps'] as int?) ?? 0) > 0 ||
-                  ((entry['weight'] as double?) ?? 0.0) > 0)
+              .where(
+                (entry) =>
+                    ((entry['reps'] as int?) ?? 0) > 0 ||
+                    ((entry['weight'] as double?) ?? 0.0) > 0,
+              )
               .length;
           totalSets += setsCompleted;
         } else if (effort.effortKind == 'round') {
@@ -1968,6 +2282,7 @@ class WorkoutState extends ChangeNotifier {
             executionOrder: executionOrder,
             totalDurationMs: effortDurationMs,
             totalRounds: effortRounds,
+            blockId: effort.blockId,
           ),
         );
         executionOrder++;
@@ -1985,7 +2300,7 @@ class WorkoutState extends ChangeNotifier {
       title: title,
       startedAtMs: _currentSession!.startedAtMs,
       endedAtMs: _currentSession!.endedAtMs,
-      totalDurationMs: durationMs,
+      totalDurationMs: _currentSession!.isRolling ? 0 : durationMs,
       totalVolume: totalVolume,
       totalSets: totalSets,
       exercises: exerciseSummaries,
@@ -2069,6 +2384,25 @@ class WorkoutState extends ChangeNotifier {
               ),
             );
           }
+          // For timed efforts, include the extra-weight target if observations exist.
+          if (effort.effortKind == 'timed') {
+            final companionObs = _observations[effort.id] ?? [];
+            final ewObs = companionObs
+                .where((o) => o.metricId == MetricIds.extraWeight)
+                .toList();
+            if (ewObs.isNotEmpty) {
+              targets.add(
+                TemplateTargetDraft(
+                  metricId: MetricIds.extraWeight,
+                  setIndex: 0,
+                  unitId: MetricIds.unitKg,
+                  valueReal: ewObs.first.valueReal ?? 0.0,
+                  valueInt: null,
+                  valueText: null,
+                ),
+              );
+            }
+          }
         } else {
           final observations = _observations[effort.id] ?? [];
           targets = _buildTemplateTargetsFromObservations(
@@ -2089,6 +2423,10 @@ class WorkoutState extends ChangeNotifier {
     }
 
     return drafts;
+  }
+
+  Future<List<TrainingSession>> getAllSessions() async {
+    return _repository.getAllSessions();
   }
 
   Future<List<TrainingSession>> getSessionsByDateRange(
@@ -2239,18 +2577,27 @@ class WorkoutState extends ChangeNotifier {
               // re-fetching the TimedInstance.
               'timedState': t.state.name,
             };
-            // Attach companion metric from the paired observation
-            if (i < companionObs.length) {
-              final obs = companionObs[i];
-              if (effort.effortKind == 'timed') {
-                entryMap['distance'] = obs.valueReal ?? 0.0;
-              } else {
-                entryMap['extra-weight'] = obs.valueReal ?? 0.0;
+            // Attach companion metrics.
+            if (effort.effortKind == 'timed') {
+              // Timed entries have up to 2 companions (distance + extra-weight).
+              // Find by metricId for backward-compat with pre-change entries (distance-only).
+              final distObs = companionObs
+                  .where((o) => o.metricId == MetricIds.distance)
+                  .toList();
+              final ewObs = companionObs
+                  .where((o) => o.metricId == MetricIds.extraWeight)
+                  .toList();
+              entryMap['distance'] = i < distObs.length
+                  ? (distObs[i].valueReal ?? 0.0)
+                  : 0.0;
+              if (i < ewObs.length) {
+                // Key present → UI guard shows editor; absent → guard hides it
+                entryMap['extra-weight'] = ewObs[i].valueReal ?? 0.0;
               }
             } else {
-              // Missing companion — use default
-              if (effort.effortKind == 'timed') {
-                entryMap['distance'] = 0.0;
+              // drill: 1 extra-weight companion per entry (positional)
+              if (i < companionObs.length) {
+                entryMap['extra-weight'] = companionObs[i].valueReal ?? 0.0;
               } else {
                 entryMap['extra-weight'] = 0.0;
               }
@@ -2267,6 +2614,7 @@ class WorkoutState extends ChangeNotifier {
 
         result.add({
           'id': effort.id,
+          'exerciseId': effort.exerciseId,
           'name': exerciseName,
           'effortKind': effort.effortKind,
           'entries': entries,
@@ -2274,6 +2622,7 @@ class WorkoutState extends ChangeNotifier {
           'segmentName': segment.name ?? 'Block ${segment.orderIndex + 1}',
           'segmentType': segment.segmentType,
           'segmentOrder': segment.orderIndex,
+          'blockId': effort.blockId,
         });
       }
     }
@@ -2290,7 +2639,11 @@ class WorkoutState extends ChangeNotifier {
     _observations.clear();
     _roundInstances.clear();
     _timedInstances.clear();
+    _sessionBlocks.clear();
     _exerciseCache.clear();
+    _exerciseNotes.clear();
+    _exerciseNoteLoadInFlight.clear();
+    _exerciseNoteSaveInFlight.clear();
     _clearError();
     notifyListeners();
   }

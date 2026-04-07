@@ -53,7 +53,7 @@ Exercises are tagged with **capabilities** (flags indicating what they can track
 ### Effort Kinds
 Internal classification for UI rendering:
 - **set** - Reps + weight pairs (strength training)
-- **timed** - Duration + distance (cardio)
+- **timed** - Duration + distance + optional extra weight (cardio; enables loaded carries and weighted cardio)
 - **round** - Rounds + round duration (martial arts/sports)
 - **drill** - Hold duration + extra weight (isometric/stretching)
 

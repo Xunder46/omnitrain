@@ -4,6 +4,8 @@ library;
 
 import '../../data/models/models.dart';
 
+const Object _exerciseCopyWithUnset = Object();
+
 /// Extension methods for Exercise - encapsulates capability checking logic
 extension ExerciseCapabilities on Exercise {
   /// Check if exercise supports a specific capability
@@ -27,6 +29,8 @@ extension ExerciseCapabilities on Exercise {
     List<String>? capabilities,
     double? relevanceScore,
     int? defaultRoundDurationSecs,
+    Object? howToSteps = _exerciseCopyWithUnset,
+    Object? imageAssetPath = _exerciseCopyWithUnset,
   }) {
     return Exercise(
       id: id ?? this.id,
@@ -42,6 +46,12 @@ extension ExerciseCapabilities on Exercise {
       relevanceScore: relevanceScore ?? this.relevanceScore,
       defaultRoundDurationSecs:
           defaultRoundDurationSecs ?? this.defaultRoundDurationSecs,
+        howToSteps: howToSteps == _exerciseCopyWithUnset
+          ? this.howToSteps
+          : howToSteps as List<String>?,
+        imageAssetPath: imageAssetPath == _exerciseCopyWithUnset
+          ? this.imageAssetPath
+          : imageAssetPath as String?,
     );
   }
 }

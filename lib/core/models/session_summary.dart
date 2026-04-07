@@ -48,6 +48,9 @@ class ExerciseSummary {
   /// Number of rounds completed for round-based efforts; 0 otherwise.
   final int totalRounds;
 
+  /// Block this effort belongs to; null when the effort was not assigned to a block.
+  final String? blockId;
+
   ExerciseSummary({
     required this.exerciseId,
     required this.name,
@@ -57,6 +60,7 @@ class ExerciseSummary {
     required this.executionOrder,
     this.totalDurationMs,
     this.totalRounds = 0,
+    this.blockId,
   });
 }
 

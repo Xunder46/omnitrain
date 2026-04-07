@@ -38,9 +38,10 @@ The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single s
 2. Identify DRY (Don't Repeat Yourself) violations
 3. Check clean code principles
 4. Verify architecture rules are followed
-5. **Plan refactoring** if issues found
-6. Hand off to DBA/Developer for fixes if needed
-7. Approve if all standards are met
+5. **Assess unit test coverage** for all changed code
+6. **Plan refactoring** if issues found
+7. Hand off to DBA/Developer for fixes if needed
+8. Approve if all standards are met
 
 ## Feature Documentation
 
@@ -62,7 +63,47 @@ Before reviewing, consult the relevant documentation in `docs/` for context. See
 
 ## Review Checklist
 
+### Step 5a — Acceptance Criteria Verification
+
+Before reviewing code quality, verify the implementation does what was asked.
+
+**Check in this order**:
+1. If a prompt file exists at `.github/agents/plans/[feature]-copilot-prompts.md`, read its Acceptance Criteria sections
+2. If the plan file has a `## Acceptance Criteria` section, read it
+3. If both exist, check against both
+
+For each criterion found:
+- [ ] Locate the corresponding implementation in the changed files
+- [ ] Confirm the implementation satisfies the criterion as stated
+- [ ] Flag any criterion with no corresponding implementation as **CRITICAL**
+
+If no acceptance criteria exist in either artifact, note as **WARNING** and proceed.
+
+### Step 5b — Scenario Register Cross-Check
+
+If `## Scenarios` exists in the plan file:
+- [ ] For each scenario entry, locate the corresponding test in the mapped test file
+- [ ] Confirm the test asserts the Expected Outcome stated in the register
+- [ ] Confirm the test passes
+- [ ] Flag any scenario with no corresponding passing test as **WARNING**
+- [ ] Flag any test asserting a different outcome than the register as **WARNING**
+
+If no `## Scenarios` section exists, note as **WARNING** and flag to Developer to add retroactively.
+
+### Step 5c — Doc Hygiene Verification
+
+Read the handoff summary. Confirm the Doc Updates section is present and complete.
+
+- [ ] `docs/navigation_and_screens.md` — status explicitly stated (Developer)
+- [ ] `docs/state_management.md` — status explicitly stated (Developer)
+- [ ] `docs/widget_catalog.md` — status explicitly stated (Developer)
+- [ ] `docs/data_models.md` — status explicitly stated (DBA)
+- [ ] `docs/db_integration.md` — status explicitly stated (DBA)
+
+For each doc listed as updated, read it and verify it reflects actual post-implementation state. Flag missing or stale doc updates as **WARNING**.
+
 ### Architecture Compliance
+
 
 #### Models (`lib/data/models/`)
 - [ ] No Flutter imports (`package:flutter/...`)
@@ -111,6 +152,57 @@ Before reviewing, consult the relevant documentation in `docs/` for context. See
 - [ ] Platform-agnostic helpers only
 - [ ] No state management
 - [ ] No storage access
+
+#### Dead Code
+
+During any review that touches or is adjacent to the following areas, scan for unreferenced top-level classes and orphaned files:
+
+- [ ] `lib/state/` — any state class not imported by any screen or service is dead
+- [ ] `lib/features/` and `lib/widgets/` — any class not referenced by a route, parent widget, or another widget is a candidate for removal
+- [ ] `lib/core/services/` — any service not injected in main.dart or used by a state class is dead
+- [ ] `.github/agents/docs/` — any doc that references a class or file that no longer exists flags a stale doc
+
+**Known current issue**: `AppState` (`lib/state/app_state.dart`) is documented as not used by any screen. Flag as **WARNING** on first adjacent review and hand off to Developer for removal or proper wiring.
+
+Dead code severity:
+- Unreferenced state class: **WARNING** — must be removed or wired before next release
+- Unreferenced widget or screen: **WARNING** — confirm intentional or remove
+- Stale doc reference: **WARNING** — flag for doc update
+
+
+### Unit Test Coverage
+
+The test suite is organized by layer. When reviewing changes, identify which test files are affected and whether new or updated tests are required.
+
+**Test file map:**
+| Changed code area | Expected test file |
+|---|---|
+| `lib/data/models/` | `test/models_test.dart` |
+| `lib/core/utils/`, `lib/core/constants/` | `test/utils_test.dart` |
+| `lib/core/services/` | `test/services_test.dart` |
+| `lib/state/` | `test/state_test.dart` |
+| `lib/features/`, `lib/widgets/` | `test/screen_widget_test.dart` (render) + `test/interaction_flow_test.dart` (interactions) |
+| Edge cases / boundary conditions | `test/edge_case_test.dart` |
+
+**Checklist — for each changed file, verify:**
+
+- [ ] New public methods have at least one test covering the happy path
+- [ ] New public methods with validation or error conditions have tests for those branches
+- [ ] Changed method signatures or return types have corresponding test updates
+- [ ] New models have `fromMap`/`toMap` round-trip tests (including null/optional field handling)
+- [ ] New state methods are tested in isolation using `MockWorkoutRepository`
+- [ ] New screen widgets have a render test in `screen_widget_test.dart`
+- [ ] New user flows have an interaction test in `interaction_flow_test.dart`
+- [ ] Deleted or renamed methods have their old tests removed or updated
+- [ ] No tests rely on implementation details that changed (e.g. key names in entry maps)
+
+**Patterns that always require tests:**
+- New `fromMap` / `toMap` on any model
+- New `CalendarState`, `RoutineState`, `PeriodState`, or `WorkoutState` methods
+- New utils in `lib/core/utils/` or constants in `lib/core/constants/`
+- New service methods in `lib/core/services/`
+- Any validation logic (returns `bool` or error string)
+- Any computation that derives a value from stored data
 
 ### Environment Safety (CRITICAL)
 
@@ -261,7 +353,19 @@ Review these files:
 - lib/state/**/*.dart (if changed)
 - lib/features/**/*.dart (if changed)
 - lib/widgets/**/*.dart (if changed)
+
+Also read corresponding test files:
+- test/models_test.dart (if models changed)
+- test/utils_test.dart (if core/utils or core/constants changed)
+- test/services_test.dart (if core/services changed)
+- test/state_test.dart (if state/ changed)
+- test/screen_widget_test.dart (if features/ or widgets/ changed)
+- test/interaction_flow_test.dart (if features/ changed)
+- test/edge_case_test.dart (if any edge-case-prone logic changed)
 ```
+
+### Step 1b: Acceptance Criteria + Scenario Register + Doc Hygiene
+Run Steps 5a, 5b, and 5c from the checklist above. A feature that does the wrong thing with clean code is still wrong — run these checks before code quality review.
 
 ### Step 2: Check Architecture
 - Verify models are pure Dart
@@ -281,7 +385,14 @@ Review these files:
 - Look for magic numbers
 - Review comments
 
-### Step 5: Plan Refactoring (if needed)
+### Step 5: Review Unit Tests
+- For each changed source file, identify which test file(s) should cover it (see table in Unit Test Coverage section)
+- Read the relevant test file(s) and check whether new/changed behaviour is tested
+- Flag any public method, model, or state change that has no corresponding test
+- Flag any test that still references a renamed/removed method or wrong key name
+- Note whether the change introduces an edge case not yet covered in `test/edge_case_test.dart`
+
+### Step 6: Plan Refactoring (if needed)
 - Create specific refactoring tasks
 - Categorize by severity (critical/warning/suggestion)
 - Provide clear examples
@@ -316,10 +427,20 @@ import 'package:flutter/material.dart'; // ❌ No Flutter in models
 
 ---
 
+### 🧪 Unit Test Gaps
+
+#### Missing Tests
+- `test/models_test.dart` — no tests for `NewModel.fromMap` / `toMap`
+- `test/state_test.dart` — `newMethod()` on `WorkoutState` has no test
+
+**Hand off to**: @developer
+
+---
+
 ### Recommendation
 Critical issues block deployment. Handing off to:
 - @dba for model layer fixes
-- @developer for state layer fixes
+- @developer for state layer fixes and test gaps
 ```
 
 ### If Warnings Found
@@ -331,7 +452,7 @@ No critical blockers, but improvements needed:
 ### 🟡 WARNING - Should Fix
 
 #### 1. DRY Violation - Duplicated Validation
-**Files**: 
+**Files**:
 - lib/features/exercise/exercise_form_screen.dart:45
 - lib/features/workout/workout_form_screen.dart:67
 
@@ -362,8 +483,20 @@ if (name.trim().length < 3) {
 
 ---
 
+### 🧪 Unit Test Gaps
+
+#### Tests to Add
+- `test/utils_test.dart` — add tests for `Validators.validateName` once extracted (empty string, min-length boundary, valid case)
+
+#### Tests to Update
+- `test/screen_widget_test.dart` — update ExerciseFormScreen test to reflect refactored validation message if it changes
+
+**Hand off to**: @developer
+
+---
+
 ### Recommendation
-Non-blocking warnings. Hand off to @developer for refactoring, or approve as-is.
+Non-blocking warnings. Hand off to @developer for refactoring and test updates, or approve as-is.
 ```
 
 ### If Approved
@@ -375,12 +508,17 @@ All changes comply with:
 - ✅ DRY principles (no significant duplication)
 - ✅ Clean code standards (clear naming, small functions, no magic numbers)
 - ✅ Environment compatibility (works on web and will work on native)
+- ✅ Unit test coverage (new behaviour is tested; no stale tests)
 
 ### Files Reviewed
 - lib/data/models/models.dart
 - lib/data/repositories/mock_workout_repository.dart
 - lib/state/workout/workout_state.dart
 - lib/features/exercise/exercise_list_screen.dart
+
+### Test Files Reviewed
+- test/models_test.dart
+- test/state_test.dart
 
 ### Notable Strengths
 - Clean separation of concerns
@@ -414,6 +552,12 @@ No blockers. Optional improvements for future consideration:
 3. **Consider Future Optimization**
    - File: lib/state/workout/workout_state.dart
    - Opportunity: Cache exercise lookups to avoid repeated repository calls
+
+### 🧪 Unit Test Suggestions - Nice to Have
+
+1. **Edge case not yet covered**
+   - File: test/edge_case_test.dart
+   - Suggestion: Add test for `getExercisesWithSets()` when session has no segments
 
 ---
 
@@ -499,16 +643,30 @@ Files to update using the constant:
 - Widgets have state mutation
 - Platform-specific code in shared files
 - Business logic in UI
+- New public methods or models have no tests
+- Changed behaviour breaks or leaves stale existing tests
+- New screen has no render test in `test/screen_widget_test.dart`
+- New user flow has no interaction test in `test/interaction_flow_test.dart`
+- Acceptance criteria not met
+- Scenario register entries have no passing tests
+- Unreferenced top-level class discovered adjacent to changes
+- Doc Updates section missing or stale in handoff summary
 
 ### Approve if:
-- All architecture rules followed
+- All acceptance criteria met (from prompt file or plan file or both)
+- All scenario register entries have corresponding passing tests
+- Architecture rules followed
 - No critical DRY violations
 - Clean code standards met
 - Works on web and will work on native
+- All new behaviour is covered by tests (happy path at minimum)
+- No stale tests referencing removed/renamed code
+- Doc Updates section present in handoff summary and all updated docs reflect current code
 
 ## Remember
 
 - Always read `.github/agents/plans/[feature]-plan.md` first to understand original intent
+- Run acceptance criteria and scenario register checks BEFORE code quality review — behavioral correctness comes first
 - If the implementation doesn't match the plan, add `## Feedback` to the plan file and instruct user to re-run the Coordinator
 - You review and plan, you don't edit source code (only the plan file)
 - Be specific in refactoring recommendations
@@ -516,3 +674,9 @@ Files to update using the constant:
 - DRY violations are important but not always blocking
 - Clean code suggestions are nice-to-haves
 - Always verify environment compatibility (web + native)
+- **Missing tests for new public behaviour are a WARNING-level issue** â€” not blocking, but must be flagged
+- **Stale tests (referencing removed/renamed code) are a WARNING-level issue** â€” they break CI and must be fixed
+- Use the test file map in the Unit Test Coverage section to quickly locate where tests belong
+
+
+================================================================================

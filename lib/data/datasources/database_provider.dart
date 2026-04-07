@@ -17,7 +17,7 @@ class DatabaseProvider {
     String? schemaSql,
     String? seedSql,
     bool inMemory = false,
-    int version = 3,
+    int version = 6,
   }) async {
     if (_db != null && _db!.isOpen) return _db!;
 
@@ -26,11 +26,23 @@ class DatabaseProvider {
     }
 
     if (inMemory) {
-      _db = await openDatabase(inMemoryDatabasePath, version: version, onConfigure: onConfigure, onUpgrade: applyMigrations);
+      _db = await openDatabase(
+        inMemoryDatabasePath,
+        version: version,
+        onConfigure: onConfigure,
+        onCreate: (db, version) async {},
+        onUpgrade: applyMigrations,
+      );
     } else {
       final docs = await getApplicationDocumentsDirectory();
       final path = p.join(docs.path, 'omnitrain.db');
-      _db = await openDatabase(path, version: version, onConfigure: onConfigure, onUpgrade: applyMigrations);
+      _db = await openDatabase(
+        path,
+        version: version,
+        onConfigure: onConfigure,
+        onCreate: (db, version) async {},
+        onUpgrade: applyMigrations,
+      );
     }
 
     // If the main tables don't exist yet, apply schema and seeds.
@@ -57,7 +69,10 @@ class DatabaseProvider {
     // Strip block comments and line comments first.
     var cleaned = sql.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
     final lines = cleaned.split(RegExp(r'\r?\n'));
-    cleaned = lines.where((l) => !l.trim().startsWith('--')).join('\n');
+    cleaned = lines
+        .map((l) => l.replaceFirst(RegExp(r'\s*--.*$'), ''))
+        .where((l) => l.trim().isNotEmpty)
+        .join('\n');
 
     final statements = cleaned
         .split(';')

@@ -19,7 +19,7 @@ import '../routine/my_routines_screen.dart';
 import '../calendar/calendar_screen.dart';
 import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
-import 'maintenance_placeholder_screen.dart';
+import '../stats/stats_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -248,7 +248,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     HomeTileConfig tile,
     bool isActive,
   ) async {
-    // Special case: My Routines tile navigates to routine screen
+    // Special case: My Routines tile
     if (tile.key == 'my_routines') {
       if (isActive) {
         Navigator.of(context).push(
@@ -262,22 +262,67 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         );
       } else {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => MyRoutinesScreen(
-              routineState: widget.routineState,
-              workoutState: widget.workoutState,
-              routineSessionService: widget.routineSessionService,
-              sessionSummaryService: widget.sessionSummaryService,
+        // Guard: any active session (rolling or otherwise) conflicts with
+        // starting a routine, which would create a new competing session.
+        if (widget.workoutState.hasActiveSession) {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Start New Session?'),
+              content: const Text(
+                'Opening a routine will start a new session. Current session will be saved.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: ButtonStyle(
+                    shape: WidgetStateProperty.all(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonUtilityRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ButtonStyle(
+                    shape: WidgetStateProperty.all(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonUtilityRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: const Text('Continue'),
+                ),
+              ],
             ),
-          ),
-        );
+          );
+          if (confirmed != true) return;
+          widget.workoutState.clearSession();
+        }
+        if (context.mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => MyRoutinesScreen(
+                routineState: widget.routineState,
+                workoutState: widget.workoutState,
+                routineSessionService: widget.routineSessionService,
+                sessionSummaryService: widget.sessionSummaryService,
+              ),
+            ),
+          );
+        }
       }
       return;
     }
 
-    // All other tiles are modality-based workout tiles
-    // If tapping active tile, navigate directly to session
+    // All other tiles are modality-based workout tiles (including Free Training).
+    // If tapping the currently active tile, navigate directly to the session.
     if (isActive) {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -286,14 +331,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
             settingsState: widget.settingsState,
+            preferredModality: tile.modality,
           ),
         ),
       );
       return;
     }
 
-    // If tapping inactive tile and session is active, confirm before switching
+    // Tapping an inactive tile while a session is active:
     if (widget.workoutState.hasActiveSession) {
+      if (widget.workoutState.isRollingSession) {
+        // Rolling session: navigate directly — no dialog, no new session.
+        // Pass the tapped tile's modality so ExercisePickerDialog pre-filters.
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => WorkoutSessionScreen(
+              workoutState: widget.workoutState,
+              routineState: widget.routineState,
+              sessionSummaryService: widget.sessionSummaryService,
+              settingsState: widget.settingsState,
+              preferredModality: tile.modality,
+            ),
+          ),
+        );
+        return;
+      }
+
+      // Non-rolling: show conflict dialog before switching session.
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -304,6 +368,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
               child: const Text('Cancel'),
             ),
             FilledButton(
@@ -311,7 +384,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               style: ButtonStyle(
                 shape: WidgetStateProperty.all(
                   RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
                   ),
                 ),
               ),
@@ -324,11 +399,146 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (confirmed != true) return;
     }
 
-    // Start new session with selected modality
+    // Free Training tile (null modality): show rolling toggle start sheet.
+    if (tile.modality == null) {
+      if (context.mounted) {
+        await _showFreeTrainingStartSheet(context);
+      }
+      return;
+    }
+
+    // Standard modality tile: clear any prior session and start a new one.
     widget.workoutState.clearSession();
     await widget.workoutState.createNewSession(modality: tile.modality);
 
-    // Navigate to workout session screen
+    if (context.mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
+            preferredModality: tile.modality,
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Shows a bottom sheet for starting a Free Training session.
+  /// Includes a rolling toggle with inline guidance text.
+  Future<void> _showFreeTrainingStartSheet(BuildContext context) async {
+    bool isRolling = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (innerCtx, setSheetState) {
+            final bottomPadding = MediaQuery.of(innerCtx).padding.bottom;
+            final themeColors = OmniTheme.colorsForTheme(
+              widget.settingsState.appTheme,
+            );
+
+            return Container(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, bottomPadding + 20),
+              decoration: BoxDecoration(
+                color: themeColors.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                border: Border(
+                  top: BorderSide(
+                    color: themeColors.surfaceBorder,
+                    width: OmniTheme.surfaceBorderWidth,
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.35),
+                    blurRadius: 30,
+                    offset: const Offset(0, -12),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Drag handle
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 20),
+                      child: Container(
+                        width: 32,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: OmniTheme.textSecondary.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Free Training',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: OmniTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Rolling Session'),
+                    subtitle: const Text(
+                      'A rolling session stays open all day. Tap any tile to return and '
+                      'add more work at any time. No session timer — just your sets.',
+                    ),
+                    value: isRolling,
+                    onChanged: (value) => setSheetState(() => isRolling = value),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    height: OmniTheme.buttonPrimaryHeight,
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonBorderRadius,
+                            ),
+                          ),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.of(innerCtx).pop();
+                        _startFreeSession(context, isRolling: isRolling);
+                      },
+                      child: const Text('Start Session'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Creates a free training session (with optional rolling flag) and navigates
+  /// to the session screen.
+  Future<void> _startFreeSession(
+    BuildContext context, {
+    required bool isRolling,
+  }) async {
+    widget.workoutState.clearSession();
+    await widget.workoutState.createNewSession(isRolling: isRolling);
     if (context.mounted) {
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -496,10 +706,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Stats',
         icon: Icons.query_stats,
-        onTap: () => _openPlaceholder(
-          context,
-          title: 'Stats',
-          description: 'Review performance trends and training history',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => StatsScreen(
+              workoutState: widget.workoutState,
+              settingsState: widget.settingsState,
+            ),
+          ),
         ),
       ),
       _MaintenanceItem(
@@ -555,21 +768,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _extentToProgress(double extent) {
     final t = (extent - _minSheetExtent) / (_maxSheetExtent - _minSheetExtent);
     return t.clamp(0.0, 1.0);
-  }
-
-  void _openPlaceholder(
-    BuildContext context, {
-    required String title,
-    required String description,
-  }) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MaintenancePlaceholderScreen(
-          title: title,
-          description: description,
-        ),
-      ),
-    );
   }
 }
 

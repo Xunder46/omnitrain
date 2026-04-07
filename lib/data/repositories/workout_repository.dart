@@ -192,6 +192,21 @@ abstract class WorkoutRepository {
   /// Called by deleteEffort() and during edit-mode rollback.
   Future<void> deleteEntryRestsForEffort(String effortId);
 
+  // Exercise Notes
+  //
+  // Per-exercise user notes that persist across sessions.
+  // Notes are keyed by exerciseId (deterministic id = 'note-{exerciseId}').
+  // These are NOT session-scoped: one note per exercise, updated in-place.
+
+  /// Get the note for an exercise, or null if none exists.
+  Future<ExerciseNote?> getExerciseNote(String exerciseId);
+
+  /// Upsert a note for an exercise.
+  Future<void> saveExerciseNote(ExerciseNote note);
+
+  /// Delete the note for an exercise (called when note text is empty).
+  Future<void> deleteExerciseNote(String exerciseId);
+
   // Modality-ranked exercise retrieval
   /// Retrieve exercises ranked by relevance to a given modality.
   ///
@@ -300,6 +315,32 @@ abstract class WorkoutRepository {
   ///
   /// [excludeId]: when editing an existing period, pass its ID to skip it.
   Future<bool> hasPeriodOverlap(int startMs, int endMs, {String? excludeId});
+
+  // ─── Session Blocks ───────────────────────────────────────────────────────
+
+  /// Get all blocks for a session, ordered by orderIndex ascending.
+  Future<List<SessionBlock>> getSessionBlocks(String sessionId);
+
+  /// Persist a new session block; returns its ID.
+  Future<String> createSessionBlock(SessionBlock block);
+
+  /// Update an existing session block.
+  Future<void> updateSessionBlock(SessionBlock block);
+
+  /// Delete a session block by ID.
+  /// Nulls out blockId on any linked SegmentEffort — does NOT delete the efforts.
+  Future<void> deleteSessionBlock(String blockId);
+
+  /// Reorder blocks within a session by providing the desired ID order.
+  Future<void> reorderSessionBlocks(String sessionId, List<String> orderedIds);
+
+  /// Deep-clone a block and all its linked efforts/observations/rounds/rests.
+  /// Returns the new block's ID.
+  Future<String> cloneSessionBlock(String blockId);
+
+  /// Assign or unassign an effort to a block.
+  /// Pass [blockId] as null to unassign (effort becomes unblocked).
+  Future<void> assignEffortToBlock(String effortId, String? blockId);
 
   // ─── Preferences ─────────────────────────────────────────────────────────
 

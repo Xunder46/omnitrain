@@ -12,7 +12,7 @@ class DBHelper {
 
     _db = await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await _createTables(db);
       },
@@ -39,9 +39,23 @@ class DBHelper {
         is_archived INTEGER NOT NULL DEFAULT 0,
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL,
+        how_to_steps TEXT,
+        image_asset_path TEXT,
         deleted_at_ms INTEGER,
         row_version INTEGER NOT NULL DEFAULT 0,
         is_dirty INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE app_exercise_note (
+        id TEXT NOT NULL PRIMARY KEY,
+        exercise_id TEXT NOT NULL,
+        note TEXT NOT NULL,
+        last_session_id TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        FOREIGN KEY(exercise_id) REFERENCES app_exercise(id) ON DELETE CASCADE
       )
     ''');
 

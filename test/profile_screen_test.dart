@@ -19,6 +19,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Body Weight add button (first primary measurement)
     await tester.tap(find.byIcon(Icons.add).first);
     await tester.pumpAndSettle();
 
@@ -29,6 +30,7 @@ void main() {
     Navigator.of(tester.element(find.byType(ProfileScreen))).pop();
     await tester.pumpAndSettle();
 
+    // Height add button (second primary measurement)
     await tester.tap(find.byIcon(Icons.add).at(1));
     await tester.pumpAndSettle();
 
@@ -39,10 +41,12 @@ void main() {
     Navigator.of(tester.element(find.byType(ProfileScreen))).pop();
     await tester.pumpAndSettle();
 
-    expect(find.text('More measurements'), findsNothing);
-    expect(find.text('ADDITIONAL'), findsNothing);
+    // Scroll down to make additional measurements visible
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add).at(2));
+    // Third add button (first additional measurement - Body Fat)
+    await tester.tap(find.byIcon(Icons.add).first);
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Log '), findsOneWidget);
@@ -73,7 +77,8 @@ void main() {
     await tester.tap(find.text('Body Weight'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('History'), findsOneWidget);
+    // The history sheet header shows the measurement label in uppercase
+    expect(find.text('BODY WEIGHT'), findsOneWidget);
     expect(find.text('Note (optional)'), findsNothing);
   });
 }

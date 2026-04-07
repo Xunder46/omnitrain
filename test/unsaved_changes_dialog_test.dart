@@ -85,16 +85,20 @@ void main() {
     WidgetTester tester, {
     required String exerciseName,
   }) async {
+    // Go to exercise detail
     await tester.tap(find.text(exerciseName).first);
     await tester.pumpAndSettle();
 
+    // Add a set
     await tester.tap(find.byTooltip('Add set'));
     await tester.pumpAndSettle();
 
-    // Back from detail to list, then back from list to trigger unsaved dialog.
-    await tester.pageBack();
+    // Back from detail to list view via custom back button
+    await tester.tap(find.byIcon(Icons.arrow_back).first);
     await tester.pumpAndSettle();
-    await tester.pageBack();
+
+    // Back from list to trigger unsaved dialog via custom back button
+    await tester.tap(find.byIcon(Icons.arrow_back).first);
     await tester.pumpAndSettle();
 
     expect(find.text('Unsaved changes'), findsOneWidget);

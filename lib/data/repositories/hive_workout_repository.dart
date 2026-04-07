@@ -1,10 +1,13 @@
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
 import '../../mock/seed_data.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/utils/exercise_helpers.dart';
 import 'workout_repository.dart';
+
+const _hiveUuid = Uuid();
 
 /// Hive-backed repository for local persistence on web.
 /// Stores raw Map data to avoid TypeAdapter boilerplate.
@@ -19,6 +22,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
   static const String _calendarDataMigrationKey = 'calendar_data_seeded_v1';
   static const String _calendarSeedPurgeMigrationKey =
       'calendar_seed_purged_v1';
+  static const String _exerciseContentFieldsMigrationKey =
+      'exercise_content_fields_migrated_v1';
+  static const String _timedExtraWeightMigrationKey =
+      'timed_extra_weight_migrated_v1';
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -51,11 +58,17 @@ class HiveWorkoutRepository implements WorkoutRepository {
   // Wall-clock rest periods between consecutive sets/rounds for all effort kinds.
   late Box<Map> _entryRestsBox;
 
+  // Exercise notes box: key = ExerciseNote.id, value = ExerciseNote.toMap()
+  late Box<Map> _exerciseNotesBox;
+
   // Planned sessions box: key = PlannedSession.id, value = PlannedSession.toMap()
   late Box<Map> _plannedSessionsBox;
 
   // Training periods box: key = TrainingPeriod.id, value = TrainingPeriod.toMap()
   late Box<Map> _periodsBox;
+
+  // Session blocks box: key = SessionBlock.id, value = SessionBlock.toMap()
+  late Box<Map> _sessionBlocksBox;
 
   late Box<List> _exerciseMuscleGroupsBox;
   late Box<List> _exerciseEquipmentBox;
@@ -98,9 +111,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
     _timedInstancesBox = await Hive.openBox<Map>('timed_instances');
 
     _entryRestsBox = await Hive.openBox<Map>('entry_rests');
+    _exerciseNotesBox = await Hive.openBox<Map>('exercise_notes');
 
     _plannedSessionsBox = await Hive.openBox<Map>('planned_sessions');
     _periodsBox = await Hive.openBox<Map>('training_periods');
+    _sessionBlocksBox = await Hive.openBox<Map>('session_blocks');
 
     _exerciseMuscleGroupsBox = await Hive.openBox<List>(
       'exercise_muscle_groups',
@@ -123,6 +138,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _migrateSessionFeelingFields();
     await _seedCalendarData();
     await _purgeCalendarSeedData();
+    await _migrateExerciseContentFields();
+    await _migrateTimedExtraWeight();
 
     _initialized = true;
   }
@@ -298,6 +315,42 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
 
     await _metaBox.put(_calendarSeedPurgeMigrationKey, true);
+  }
+
+  /// Migration note: metric-extra-weight is now also applicable to timed efforts,
+  /// enabling loaded carries and weighted cardio to log load alongside duration/distance.
+  /// Backfills the _metricEffortKindsBox entry for existing installs.
+  /// No observation backfill needed — the UI guard (entryData['extra-weight'] != null)
+  /// handles pre-existing timed entries that lack an extra-weight observation.
+  Future<void> _migrateTimedExtraWeight() async {
+    final migrated =
+        _metaBox.get(_timedExtraWeightMigrationKey) as bool? ?? false;
+    if (migrated) return;
+
+    final existingKinds = _metricEffortKindsBox.get('metric-extra-weight');
+    if (existingKinds != null) {
+      final kinds = List<String>.from(existingKinds);
+      if (!kinds.contains('timed')) {
+        kinds.add('timed');
+        await _metricEffortKindsBox.put('metric-extra-weight', kinds);
+      }
+    } else {
+      // Key absent entirely — create it fresh with both effort kinds.
+      // Guards against corrupted or partially-initialised installs where the
+      // seed never populated this entry.
+      await _metricEffortKindsBox.put('metric-extra-weight', ['drill', 'timed']);
+    }
+
+    await _metaBox.put(_timedExtraWeightMigrationKey, true);
+  }
+
+  /// Migration note: how_to_steps and image_asset_path added as nullable fields.
+  /// No backfill needed - null is the correct default for existing exercises.
+  Future<void> _migrateExerciseContentFields() async {
+    final migrated =
+        _metaBox.get(_exerciseContentFieldsMigrationKey) as bool? ?? false;
+    if (migrated) return;
+    await _metaBox.put(_exerciseContentFieldsMigrationKey, true);
   }
 
   Map<String, dynamic> _asStringMap(dynamic raw) {
@@ -486,6 +539,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
       perceivedSessionRpe: existing.perceivedSessionRpe,
       sessionFeeling: feeling,
       qualityRating: existing.qualityRating,
+      isRolling: existing.isRolling,
       createdAtMs: existing.createdAtMs,
       updatedAtMs: now,
     );
@@ -578,6 +632,14 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _observationsBox.deleteAll(observationIds);
     await _effortsBox.deleteAll(effortIds);
     await _segmentsBox.deleteAll(segmentIds);
+    final blockIds = <dynamic>[];
+    for (final entry in _sessionBlocksBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (raw['session_id'] == id) {
+        blockIds.add(entry.key);
+      }
+    }
+    await _sessionBlocksBox.deleteAll(blockIds);
     await _sessionsBox.delete(id);
   }
 
@@ -828,6 +890,36 @@ class HiveWorkoutRepository implements WorkoutRepository {
       }
     }
     await _entryRestsBox.deleteAll(idsToDelete);
+  }
+
+  // ===== EXERCISE NOTES =====
+
+  @override
+  Future<ExerciseNote?> getExerciseNote(String exerciseId) async {
+    try {
+      return _exerciseNotesBox.values
+          .map((raw) => ExerciseNote.fromMap(_asStringMap(raw)))
+          .firstWhere((n) => n.exerciseId == exerciseId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> saveExerciseNote(ExerciseNote note) async {
+    await _exerciseNotesBox.put(note.id, note.toMap());
+  }
+
+  @override
+  Future<void> deleteExerciseNote(String exerciseId) async {
+    final idsToDelete = <dynamic>[];
+    for (final entry in _exerciseNotesBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (raw['exercise_id'] == exerciseId) {
+        idsToDelete.add(entry.key);
+      }
+    }
+    await _exerciseNotesBox.deleteAll(idsToDelete);
   }
 
   // ===== SPORT CATEGORIES =====
@@ -1270,6 +1362,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _roundInstancesBox.clear();
     await _timedInstancesBox.clear();
     await _entryRestsBox.clear();
+    await _exerciseNotesBox.clear();
     await _unitsBox.clear();
     await _metricsBox.clear();
     await _muscleGroupsBox.clear();
@@ -1288,6 +1381,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _exerciseCapabilitiesBox.clear();
     await _plannedSessionsBox.clear();
     await _periodsBox.clear();
+    await _sessionBlocksBox.clear();
     await _metaBox.delete(_seedLoadedKey);
     _initialized = false;
   }
@@ -1403,5 +1497,194 @@ class HiveWorkoutRepository implements WorkoutRepository {
       if (p.id == excludeId) return false;
       return startMs <= p.endDateMs && endMs >= p.startDateMs;
     });
+  }
+
+  // ===== SESSION BLOCKS =====
+
+  @override
+  Future<List<SessionBlock>> getSessionBlocks(String sessionId) async {
+    final blocks = _sessionBlocksBox.values
+        .map((raw) => SessionBlock.fromMap(_asStringMap(raw)))
+        .where((b) => b.sessionId == sessionId)
+        .toList();
+    blocks.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    return blocks;
+  }
+
+  @override
+  Future<String> createSessionBlock(SessionBlock block) async {
+    await _sessionBlocksBox.put(block.id, block.toMap());
+    return block.id;
+  }
+
+  @override
+  Future<void> updateSessionBlock(SessionBlock block) async {
+    await _sessionBlocksBox.put(block.id, block.toMap());
+  }
+
+  @override
+  Future<void> deleteSessionBlock(String blockId) async {
+    await _sessionBlocksBox.delete(blockId);
+    // Null out blockId on linked efforts — do NOT delete the efforts
+    for (final entry in _effortsBox.toMap().entries) {
+      final raw = _asStringMap(entry.value);
+      if (raw['block_id'] == blockId) {
+        raw['block_id'] = null;
+        await _effortsBox.put(entry.key, raw);
+      }
+    }
+  }
+
+  @override
+  Future<void> reorderSessionBlocks(
+    String sessionId,
+    List<String> orderedIds,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (var i = 0; i < orderedIds.length; i++) {
+      final id = orderedIds[i];
+      final raw = _sessionBlocksBox.get(id);
+      if (raw == null) continue;
+      final m = _asStringMap(raw);
+      if (m['session_id'] != sessionId) continue;
+      m['order_index'] = i;
+      m['updated_at_ms'] = now;
+      await _sessionBlocksBox.put(id, m);
+    }
+  }
+
+  @override
+  Future<String> cloneSessionBlock(String blockId) async {
+    final originalRaw = _sessionBlocksBox.get(blockId);
+    if (originalRaw == null) throw StateError('SessionBlock $blockId not found');
+    final original = SessionBlock.fromMap(_asStringMap(originalRaw));
+
+    final now = DateTime.now();
+    final nowMs = now.millisecondsSinceEpoch;
+    final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final minute = now.minute.toString().padLeft(2, '0');
+    final period = now.hour < 12 ? 'AM' : 'PM';
+    final name = '$hour12:$minute $period';
+
+    final maxOrder = _sessionBlocksBox.values
+        .map((raw) => SessionBlock.fromMap(_asStringMap(raw)))
+        .where((b) => b.sessionId == original.sessionId)
+        .fold<int>(-1, (m, b) => b.orderIndex > m ? b.orderIndex : m);
+
+    final newBlock = SessionBlock(
+      id: _hiveUuid.v4(),
+      sessionId: original.sessionId,
+      name: name,
+      orderIndex: maxOrder + 1,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    );
+    await _sessionBlocksBox.put(newBlock.id, newBlock.toMap());
+
+    // Deep-clone all efforts linked to the original block
+    final linkedEffortEntries = _effortsBox.toMap().entries.where((e) {
+      final m = _asStringMap(e.value);
+      return m['block_id'] == blockId;
+    }).toList();
+
+    for (final effortEntry in linkedEffortEntries) {
+      final originalEffort = SegmentEffort.fromMap(
+        _asStringMap(effortEntry.value),
+      );
+      final newEffortId = _hiveUuid.v4();
+
+      final newEffort = SegmentEffort(
+        id: newEffortId,
+        segmentId: originalEffort.segmentId,
+        orderIndex: originalEffort.orderIndex,
+        effortKind: originalEffort.effortKind,
+        exerciseId: originalEffort.exerciseId,
+        note: originalEffort.note,
+        blockId: newBlock.id,
+        createdAtMs: nowMs,
+        updatedAtMs: nowMs,
+      );
+      await _effortsBox.put(newEffortId, newEffort.toMap());
+
+      // Clone observations with values reset to zero/null
+      for (final obsEntry in _observationsBox.toMap().entries) {
+        final obsMap = _asStringMap(obsEntry.value);
+        if (obsMap['effort_id'] != originalEffort.id) continue;
+        final obs = EffortObservation.fromMap(obsMap);
+        final newObs = EffortObservation(
+          id: _hiveUuid.v4(),
+          effortId: newEffortId,
+          metricId: obs.metricId,
+          unitId: obs.unitId,
+          valueInt: 0,
+          valueReal: 0.0,
+          valueText: null,
+          valueBool: null,
+          rpeRating: null,
+          restDurationMs: null,
+          createdAtMs: nowMs,
+          updatedAtMs: nowMs,
+        );
+        await _observationsBox.put(newObs.id, newObs.toMap());
+      }
+
+      // Clone round instances with state reset to notStarted
+      for (final riEntry in _roundInstancesBox.toMap().entries) {
+        final riMap = _asStringMap(riEntry.value);
+        if (riMap['effort_id'] != originalEffort.id) continue;
+        final ri = RoundInstance.fromMap(riMap);
+        final newRi = RoundInstance(
+          id: _hiveUuid.v4(),
+          effortId: newEffortId,
+          roundIndex: ri.roundIndex,
+          plannedDurationSecs: ri.plannedDurationSecs,
+          actualDurationSecs: 0,
+          startedAtMs: 0,
+          finishedAtMs: null,
+          completed: false,
+          state: RoundState.notStarted,
+          pausedAtMs: null,
+          totalPausedDurationMs: 0,
+          createdAtMs: nowMs,
+          updatedAtMs: nowMs,
+        );
+        await _roundInstancesBox.put(newRi.id, newRi.toMap());
+      }
+
+      // Clone timed instances with state reset to notStarted
+      for (final tiEntry in _timedInstancesBox.toMap().entries) {
+        final tiMap = _asStringMap(tiEntry.value);
+        if (tiMap['effort_id'] != originalEffort.id) continue;
+        final ti = TimedInstance.fromMap(tiMap);
+        final newTi = TimedInstance(
+          id: _hiveUuid.v4(),
+          effortId: newEffortId,
+          entryIndex: ti.entryIndex,
+          targetDurationSecs: ti.targetDurationSecs,
+          actualDurationSecs: 0,
+          startedAtMs: 0,
+          finishedAtMs: null,
+          state: TimedState.notStarted,
+          pausedAtMs: null,
+          totalPausedDurationMs: 0,
+          createdAtMs: nowMs,
+          updatedAtMs: nowMs,
+        );
+        await _timedInstancesBox.put(newTi.id, newTi.toMap());
+      }
+
+    }
+
+    return newBlock.id;
+  }
+
+  @override
+  Future<void> assignEffortToBlock(String effortId, String? blockId) async {
+    final raw = _effortsBox.get(effortId);
+    if (raw == null) return;
+    final m = _asStringMap(raw);
+    m['block_id'] = blockId;
+    m['updated_at_ms'] = DateTime.now().millisecondsSinceEpoch;
+    await _effortsBox.put(effortId, m);
   }
 }

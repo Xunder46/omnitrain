@@ -3,7 +3,6 @@ import '../../core/constants/omni_theme.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
-import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
@@ -28,24 +27,6 @@ class SessionOverviewScreen extends StatefulWidget {
 
   @override
   State<SessionOverviewScreen> createState() => _SessionOverviewScreenState();
-}
-
-/// Deduplicate reps/sets/load capabilities into a single reps option
-List<String> _deduplicateCapabilities(List<String> capabilities) {
-  final strSet = capabilities.toSet();
-  final repsLoadSetVariants = {'reps', 'sets', 'load'};
-
-  // Remove sets and load if any of the reps/sets/load variants exist
-  if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
-    strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
-    // Ensure 'reps' is included as the canonical value
-    if (!strSet.contains('reps') &&
-        strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
-      strSet.add('reps');
-    }
-  }
-
-  return strSet.toList();
 }
 
 class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
@@ -83,7 +64,6 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
     );
 
     if (selectedExercise != null) {
-      String? chosenMetric;
       String? effortKindOverride;
 
       // If Free Training or Routine session (null modality), ask user to pick a modality
@@ -96,33 +76,13 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
         if (!context.mounted || modalityResult == null) return; // user cancelled
 
         final (_, pickedModality) = modalityResult;
-
-        if (pickedModality != null) {
-          // User picked a specific modality — derive effort kind from its config
-          effortKindOverride =
-              ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
-        } else {
-          // User picked "General" — fall back to metric chooser
-          final deduped =
-              _deduplicateCapabilities(selectedExercise.capabilities);
-          if (deduped.length == 1) {
-            chosenMetric = deduped.first;
-          } else {
-            chosenMetric = await showDialog<String>(
-              context: context,
-              builder: (context) =>
-                  MetricChooserDialog(exercise: selectedExercise),
-            );
-
-            if (chosenMetric == null) return; // User cancelled
-          }
-        }
+        effortKindOverride =
+            ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
       }
 
       try {
         final effortId = await widget.workoutState.addExerciseToSession(
           selectedExercise,
-          chosenMetric: chosenMetric,
           effortKindOverride: effortKindOverride,
         );
         if (effortId.isNotEmpty) {

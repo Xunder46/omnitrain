@@ -68,8 +68,9 @@ HomeScreen
   │                            └── (same flow as modality tiles above)
   │
     └── Maintenance Sheet
+      ├── Calendar ──→ CalendarScreen
       ├── Profile ──→ ProfileScreen
-      ├── Stats ──→ MaintenancePlaceholderScreen
+      ├── Stats ──→ StatsScreen
       └── Settings ──→ SettingsScreen
 ```
 
@@ -88,7 +89,7 @@ HomeScreen
 | `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create custom exercises |
 | `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
 | `SettingsScreen` | `lib/features/settings/settings_screen.dart` | App Appearance — theme selector |
-| `MaintenancePlaceholderScreen` | `lib/features/home/maintenance_placeholder_screen.dart` | Placeholder for non-implemented maintenance routes (Stats) |
+| `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: all-time sessions, total training time, current streak, 30-day bar chart |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
 
 ### Empty / Placeholder Directories
