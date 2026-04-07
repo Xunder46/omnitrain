@@ -94,4 +94,21 @@ class OmniDateUtils {
         '${shortMonthName(end.month)} ${end.day}, ${end.year}';
     return sameYear ? '$startStr – $endStr' : '$startStr, ${start.year} – $endStr';
   }
+
+  /// Formats a duration in milliseconds as "Xh Ym" (rounded to the nearest
+  /// minute). Suitable for all-time aggregate totals where sub-minute
+  /// precision is not meaningful.
+  ///
+  /// Examples:
+  ///   0          → "0m"
+  ///   45_000     → "0m"   (< 1 min rounds to 0)
+  ///   3_600_000  → "1h 0m"
+  ///   5_400_000  → "1h 30m"
+  static String formatDurationHoursMins(int ms) {
+    final totalMinutes = (ms / 60000).round();
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    if (hours == 0) return '${minutes}m';
+    return '${hours}h ${minutes}m';
+  }
 }

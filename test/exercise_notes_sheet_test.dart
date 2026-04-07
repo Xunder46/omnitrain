@@ -113,8 +113,12 @@ void main() {
       sessionSummaryService: sessionSummaryService,
     );
 
-    await tester.tap(find.byIcon(Icons.add).first);
-    await tester.pumpAndSettle();
+    // Empty session auto-opens the exercise picker. If the picker is not yet
+    // visible (i.e. another code path), tap Icons.add to open it manually.
+    if (find.widgetWithText(TextField, 'Search exercises...').evaluate().isEmpty) {
+      await tester.tap(find.byIcon(Icons.add).first);
+      await tester.pumpAndSettle();
+    }
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Search exercises...'),

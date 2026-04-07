@@ -19,7 +19,7 @@ import '../routine/my_routines_screen.dart';
 import '../calendar/calendar_screen.dart';
 import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
-import 'maintenance_placeholder_screen.dart';
+import '../stats/stats_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -706,10 +706,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Stats',
         icon: Icons.query_stats,
-        onTap: () => _openPlaceholder(
-          context,
-          title: 'Stats',
-          description: 'Review performance trends and training history',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => StatsScreen(
+              workoutState: widget.workoutState,
+              settingsState: widget.settingsState,
+            ),
+          ),
         ),
       ),
       _MaintenanceItem(
@@ -765,21 +768,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   double _extentToProgress(double extent) {
     final t = (extent - _minSheetExtent) / (_maxSheetExtent - _minSheetExtent);
     return t.clamp(0.0, 1.0);
-  }
-
-  void _openPlaceholder(
-    BuildContext context, {
-    required String title,
-    required String description,
-  }) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MaintenancePlaceholderScreen(
-          title: title,
-          description: description,
-        ),
-      ),
-    );
   }
 }
 

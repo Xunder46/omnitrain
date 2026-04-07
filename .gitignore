@@ -50,3 +50,5 @@ app.*.map.json
 
 # user-specific
 /docs/copilot-agents/
+
+/.claude/settings.local.json

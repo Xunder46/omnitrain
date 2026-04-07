@@ -720,8 +720,6 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final initialTheme = settingsState.appTheme;
-
       // GestureDetectors wrap individual theme tiles; tap the second one
       final detectors = find.byType(GestureDetector);
       if (detectors.evaluate().length >= 2) {
@@ -731,9 +729,6 @@ void main() {
         // appTheme should now be set (may be same if only one option exists)
         expect(settingsState.appTheme, isNotNull);
       }
-
-      // Suppress unused-variable warning
-      assert(initialTheme != null || true);
     });
   });
 }

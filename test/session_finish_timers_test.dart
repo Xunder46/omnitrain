@@ -111,6 +111,12 @@ void main() {
     await tester.tap(find.text('Open Workout'));
     await tester.pumpAndSettle();
 
+    // Empty session auto-opens the exercise picker; close it before proceeding.
+    if (find.byIcon(Icons.close).evaluate().isNotEmpty) {
+      await tester.tap(find.byIcon(Icons.close).first);
+      await tester.pumpAndSettle();
+    }
+
     await tester.tap(find.text('Finish Workout'));
     await tester.pumpAndSettle();
 
@@ -151,6 +157,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    // Empty session auto-opens the exercise picker; close it before proceeding.
+    if (find.byIcon(Icons.close).evaluate().isNotEmpty) {
+      await tester.tap(find.byIcon(Icons.close).first);
+      await tester.pumpAndSettle();
+    }
 
     await tester.tap(find.text('Finish Workout'));
     await tester.pumpAndSettle();

@@ -1218,8 +1218,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   /// - NOT in edit mode (edit mode is for reviewing completed sessions)
   /// - Session has no exercises yet
   /// - First load (auto-open not yet attempted)
+  /// - Not a rolling session (rolling sessions use per-block add buttons)
   bool _shouldAutoOpenPicker() {
-    return !widget.editMode && _exercises.isEmpty && !_autoOpenAttempted;
+    return !widget.editMode &&
+        _exercises.isEmpty &&
+        !_autoOpenAttempted &&
+        !widget.workoutState.isRollingSession;
   }
 
   /// Schedule the exercise picker to open after the current frame renders.

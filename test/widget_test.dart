@@ -94,6 +94,13 @@ void main() {
       sessionSummaryService: deps.sessionSummaryService,
     );
 
+    // Empty session auto-opens the exercise picker; close it so we can test
+    // the manual add-button flow below.
+    if (find.byIcon(Icons.close).evaluate().isNotEmpty) {
+      await tester.tap(find.byIcon(Icons.close).first);
+      await tester.pumpAndSettle();
+    }
+
     // List view should show add button (FilledButton with Icons.add)
     expect(find.byIcon(Icons.add), findsWidgets);
     await tester.tap(find.byIcon(Icons.add).first);

@@ -1486,7 +1486,6 @@ void main() {
       await state.createNewSession();
 
       final originalBlockId = await state.addSessionBlock();
-      final originalBlock = state.getSessionBlocks().first;
 
       final clonedBlockId = await state.cloneSessionBlock(originalBlockId);
 

@@ -10,7 +10,6 @@ import 'package:omnitrain/features/calendar/day_session_list_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_detail_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
 import 'package:omnitrain/features/home/home_screen.dart';
-import 'package:omnitrain/features/home/maintenance_placeholder_screen.dart';
 import 'package:omnitrain/features/period/create_period_screen.dart';
 import 'package:omnitrain/features/period/period_list_screen.dart';
 import 'package:omnitrain/features/profile/profile_screen.dart';
@@ -22,6 +21,8 @@ import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/features/splash/omni_splash_screen.dart';
+import 'package:omnitrain/features/stats/stats_screen.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
@@ -873,38 +874,93 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // MaintenancePlaceholderScreen
+  // StatsScreen
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('MaintenancePlaceholderScreen', () {
-    testWidgets('shows the title passed as parameter', (
-      WidgetTester tester,
-    ) async {
+  group('StatsScreen', () {
+    testWidgets('shows Stats AppBar title', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
       await tester.pumpWidget(
-        const MaterialApp(
-          home: MaintenancePlaceholderScreen(
-            title: 'Analytics',
-            description: 'Track your progress over time.',
+        MaterialApp(
+          home: StatsScreen(
+            workoutState: workoutState,
+            settingsState: settingsState,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Analytics'), findsOneWidget);
+      expect(find.text('Stats'), findsOneWidget);
     });
 
-    testWidgets('shows Coming Soon text', (WidgetTester tester) async {
+    testWidgets('shows empty state when no sessions exist', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
       await tester.pumpWidget(
-        const MaterialApp(
-          home: MaintenancePlaceholderScreen(
-            title: 'Analytics',
-            description: 'Track your progress over time.',
+        MaterialApp(
+          home: StatsScreen(
+            workoutState: workoutState,
+            settingsState: settingsState,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Coming Soon'), findsOneWidget);
+      expect(find.text('No sessions yet'), findsOneWidget);
+      expect(find.byType(BarChart), findsNothing);
+    });
+
+    testWidgets('shows aggregate card and bar chart when sessions exist', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+
+      // Seed one completed session today.
+      final now = DateTime.now();
+      final startMs = now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch;
+      final endMs = now.millisecondsSinceEpoch;
+      await repo.createSession(
+        TrainingSession(
+          id: 'sess-1',
+          ownerUserId: 'user-1',
+          modality: 'strength',
+          startedAtMs: startMs,
+          endedAtMs: endMs,
+          createdAtMs: startMs,
+          updatedAtMs: endMs,
+        ),
+      );
+
+      final workoutState = WorkoutState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatsScreen(
+            workoutState: workoutState,
+            settingsState: settingsState,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('No sessions yet'), findsNothing);
+      expect(find.text('ALL TIME'), findsOneWidget);
+      expect(find.text('ACTIVITY'), findsOneWidget);
+      expect(find.byType(BarChart), findsOneWidget);
     });
   });
 

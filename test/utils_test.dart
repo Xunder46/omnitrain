@@ -759,4 +759,49 @@ void main() {
       expect(defaults.containsKey(MetricIds.extraWeight), false);
     });
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // OmniDateUtils.formatDurationHoursMins
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('OmniDateUtils.formatDurationHoursMins', () {
+    test('zero ms returns "0m"', () {
+      expect(OmniDateUtils.formatDurationHoursMins(0), '0m');
+    });
+
+    test('sub-minute ms rounds to "0m"', () {
+      expect(OmniDateUtils.formatDurationHoursMins(29000), '0m');
+    });
+
+    test('exactly 1 minute returns "1m"', () {
+      expect(OmniDateUtils.formatDurationHoursMins(60000), '1m');
+    });
+
+    test('59 minutes returns "59m"', () {
+      expect(OmniDateUtils.formatDurationHoursMins(59 * 60000), '59m');
+    });
+
+    test('exactly 1 hour returns "1h 0m"', () {
+      expect(OmniDateUtils.formatDurationHoursMins(3600000), '1h 0m');
+    });
+
+    test('1 hour 30 minutes returns "1h 30m"', () {
+      expect(OmniDateUtils.formatDurationHoursMins(5400000), '1h 30m');
+    });
+
+    test('large duration returns correct hours and minutes', () {
+      // 2h 45m = 9900 seconds = 9_900_000 ms
+      expect(OmniDateUtils.formatDurationHoursMins(9900000), '2h 45m');
+    });
+
+    test('rounds to nearest minute (29 seconds -> rounds down)', () {
+      // 1 min 29 sec -> rounds to 1 min
+      expect(OmniDateUtils.formatDurationHoursMins(89000), '1m');
+    });
+
+    test('rounds to nearest minute (30 seconds -> rounds up)', () {
+      // 1 min 30 sec -> rounds to 2 min
+      expect(OmniDateUtils.formatDurationHoursMins(90000), '2m');
+    });
+  });
 }

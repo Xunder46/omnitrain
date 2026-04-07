@@ -2425,6 +2425,10 @@ class WorkoutState extends ChangeNotifier {
     return drafts;
   }
 
+  Future<List<TrainingSession>> getAllSessions() async {
+    return _repository.getAllSessions();
+  }
+
   Future<List<TrainingSession>> getSessionsByDateRange(
     int fromMs,
     int toMs,
