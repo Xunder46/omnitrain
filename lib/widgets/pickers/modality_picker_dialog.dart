@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 /// Dialog for selecting an exercise modality.
 ///
-/// Returns `(true, modality)` when the user picks a modality (modality may be
-/// null for "General"), or `null` when the user cancels.
+/// Returns `(true, modality)` when the user picks a modality, or `null` when
+/// the user cancels.
 class ModalityPickerDialog extends StatelessWidget {
   final String? initialModality;
 
@@ -55,7 +55,6 @@ class ModalityPickerDialog extends StatelessWidget {
       ('resistance_lifting', 'Resistance', Icons.fitness_center),
       ('sports', 'Sports', Icons.sports_basketball),
       ('isometric_stretching', 'Isometric', Icons.accessibility),
-      (null, 'General', Icons.star_outline),
     ];
 
     return modalities.map((modalityTuple) {
@@ -136,7 +135,7 @@ class ModalityPickerDialog extends StatelessWidget {
       case 'isometric_stretching':
         return 'Static holds, yoga, and flexibility';
       default:
-        return 'Bodyweight and general exercises';
+        return '';
     }
   }
 }

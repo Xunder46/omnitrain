@@ -1714,7 +1714,6 @@ void main() {
       expect(find.text('Resistance'), findsOneWidget);
       expect(find.text('Sports'), findsOneWidget);
       expect(find.text('Isometric'), findsOneWidget);
-      expect(find.text('General'), findsOneWidget);
     });
 
     testWidgets('shows Cancel button', (WidgetTester tester) async {

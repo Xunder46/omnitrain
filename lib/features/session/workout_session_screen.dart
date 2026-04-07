@@ -8,7 +8,6 @@ import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
-import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../data/models/models.dart';
@@ -1253,7 +1252,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
 
     if (selectedExercise != null) {
-      String? chosenMetric;
       String? effortKindOverride;
 
       // If Free Training or Routine session (null modality), ask user to pick a modality
@@ -1268,35 +1266,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         }
 
         final (_, pickedModality) = modalityResult;
-
-        if (pickedModality != null) {
-          // User picked a specific modality — derive effort kind from its config
-          effortKindOverride =
-              ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
-        } else {
-          // User picked "General" — fall back to metric chooser
-          final deduped = _deduplicateCapabilities(
-            selectedExercise.capabilities,
-          );
-          if (deduped.length == 1) {
-            chosenMetric = deduped.first;
-          } else {
-            chosenMetric = await showDialog<String>(
-              context: context,
-              builder: (context) =>
-                  MetricChooserDialog(exercise: selectedExercise),
-            );
-
-            if (chosenMetric == null) return; // User cancelled metric selection
-          }
-        }
+        effortKindOverride =
+            ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
       }
 
       String effortId = '';
       try {
         effortId = await widget.workoutState.addExerciseToSession(
           selectedExercise,
-          chosenMetric: chosenMetric,
           effortKindOverride: effortKindOverride,
           segmentId: segmentId,
         );
@@ -4217,20 +4194,4 @@ class _ExerciseNoteSheetState extends State<_ExerciseNoteSheet> {
   }
 }
 
-/// Deduplicate reps/sets/load capabilities into a single reps option
-List<String> _deduplicateCapabilities(List<String> capabilities) {
-  final strSet = capabilities.toSet();
-  final repsLoadSetVariants = {'reps', 'sets', 'load'};
 
-  // Remove sets and load if any of the reps/sets/load variants exist
-  if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
-    strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
-    // Ensure 'reps' is included as the canonical value
-    if (!strSet.contains('reps') &&
-        strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
-      strSet.add('reps');
-    }
-  }
-
-  return strSet.toList();
-}
