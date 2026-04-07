@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'core/constants/omni_theme.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
+import 'data/repositories/workout_repository.dart';
 import 'state/workout/workout_state.dart';
 import 'state/home/home_state.dart';
 import 'state/routine/routine_state.dart';
@@ -11,8 +12,11 @@ import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
 
 import 'features/home/home_screen.dart';
+import 'features/onboarding/onboarding_screen.dart';
 
 class MyApp extends StatelessWidget {
+  final WorkoutRepository repository;
+  final bool showOnboarding;
   final WorkoutState workoutState;
   final HomeState homeState;
   final RoutineState routineState;
@@ -25,6 +29,8 @@ class MyApp extends StatelessWidget {
 
   const MyApp({
     super.key,
+    required this.repository,
+    required this.showOnboarding,
     required this.workoutState,
     required this.homeState,
     required this.routineState,
@@ -77,17 +83,30 @@ class MyApp extends StatelessWidget {
           theme: appTheme.copyWith(textTheme: textTheme),
           // Splash screen temporarily disabled - showing home screen directly
           // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
-          home: HomeScreen(
-            workoutState: workoutState,
-            homeState: homeState,
-            routineState: routineState,
-            routineSessionService: routineSessionService,
-            sessionSummaryService: sessionSummaryService,
-            calendarState: calendarState,
-            periodState: periodState,
-            profileState: profileState,
-            settingsState: settingsState,
-          ),
+          home: true //showOnboarding
+              ? OnboardingScreen(
+                  repository: repository,
+                  workoutState: workoutState,
+                  homeState: homeState,
+                  routineState: routineState,
+                  routineSessionService: routineSessionService,
+                  sessionSummaryService: sessionSummaryService,
+                  calendarState: calendarState,
+                  periodState: periodState,
+                  profileState: profileState,
+                  settingsState: settingsState,
+                )
+              : HomeScreen(
+                  workoutState: workoutState,
+                  homeState: homeState,
+                  routineState: routineState,
+                  routineSessionService: routineSessionService,
+                  sessionSummaryService: sessionSummaryService,
+                  calendarState: calendarState,
+                  periodState: periodState,
+                  profileState: profileState,
+                  settingsState: settingsState,
+                ),
         );
       },
     );

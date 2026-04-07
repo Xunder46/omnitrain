@@ -34,6 +34,8 @@ void main() {
 
     await tester.pumpWidget(
       MyApp(
+        repository: repository,
+        showOnboarding: false,
         workoutState: workoutState,
         homeState: homeState,
         routineState: routineState,

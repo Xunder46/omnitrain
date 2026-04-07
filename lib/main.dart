@@ -32,6 +32,11 @@ void main() async {
     final repository = await _createRepository();
     await repository.initialize();
 
+    // Check first-launch onboarding flag
+    final onboardingComplete =
+        await repository.getPreferenceBool('onboarding_complete');
+    final showOnboarding = !onboardingComplete;
+
     // Create state with repository
     final workoutState = WorkoutState(repository);
     final homeState = HomeState(repository);
@@ -49,6 +54,8 @@ void main() async {
 
     runApp(
       MyApp(
+        repository: repository,
+        showOnboarding: showOnboarding,
         workoutState: workoutState,
         homeState: homeState,
         routineState: routineState,
