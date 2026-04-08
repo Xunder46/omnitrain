@@ -56,8 +56,14 @@ class WorkoutState extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  // One-time coach mark flags for exercise detail header icons.
+  bool _exerciseNotesHintSeen = false;
+  bool _exerciseInfoHintSeen = false;
+
   // Getters
   WorkoutRepository get repository => _repository;
+  bool get shouldShowExerciseNotesHint => !_exerciseNotesHintSeen;
+  bool get shouldShowExerciseInfoHint => !_exerciseInfoHintSeen;
   TrainingSession? get currentSession => _currentSession;
   ModalityConfig? get modalityConfig => _currentModalityConfig;
   List<SessionSegment> get segments => List.unmodifiable(_segments);
@@ -189,6 +195,44 @@ class WorkoutState extends ChangeNotifier {
   bool hasExerciseNote(String exerciseId) {
     return _exerciseNotes.containsKey(exerciseId) &&
         _exerciseNotes[exerciseId] != null;
+  }
+
+  /// Loads the one-time coach mark flags for the exercise detail header icons.
+  /// Safe to call multiple times — subsequent calls are no-ops once loaded.
+  Future<void> initExerciseHints() async {
+    _exerciseNotesHintSeen = await _repository.getPreferenceBool(
+      'hint_seen_exercise_notes',
+    );
+    _exerciseInfoHintSeen = await _repository.getPreferenceBool(
+      'hint_seen_exercise_info',
+    );
+    notifyListeners();
+  }
+
+  /// Marks the exercise notes coach mark as seen and persists the flag.
+  Future<void> markExerciseNotesHintSeen() async {
+    if (_exerciseNotesHintSeen) return;
+    _exerciseNotesHintSeen = true;
+    notifyListeners();
+    await _repository.setPreferenceBool('hint_seen_exercise_notes', true);
+  }
+
+  /// Marks the exercise info coach mark as seen and persists the flag.
+  Future<void> markExerciseInfoHintSeen() async {
+    if (_exerciseInfoHintSeen) return;
+    _exerciseInfoHintSeen = true;
+    notifyListeners();
+    await _repository.setPreferenceBool('hint_seen_exercise_info', true);
+  }
+
+  /// [TESTING ONLY] Reset exercise hint flags to unseen state.
+  /// Call this in initState during development to re-show coach marks every session.
+  Future<void> resetExerciseHintsForTesting() async {
+    _exerciseNotesHintSeen = false;
+    _exerciseInfoHintSeen = false;
+    notifyListeners();
+    await _repository.setPreferenceBool('hint_seen_exercise_notes', false);
+    await _repository.setPreferenceBool('hint_seen_exercise_info', false);
   }
 
   /// Record the start of a rest period (called when a set/round is logged)

@@ -38,7 +38,7 @@ class SessionSummaryScreen extends StatefulWidget {
 }
 
 class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
-  static const bool _showCalendarActions = false;
+  static const bool _showCalendarActions = true;
 
   late SessionSummary _summary;
   late TextEditingController _noteController;

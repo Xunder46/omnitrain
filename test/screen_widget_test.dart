@@ -648,7 +648,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('HomeScreen', () {
-    Future<HomeScreen> _buildHomeScreen(MockWorkoutRepository repo) async {
+    Future<HomeScreen> buildHomeScreen(MockWorkoutRepository repo) async {
       final workoutState = WorkoutState(repo);
       final homeState = HomeState(repo);
       await homeState.init();
@@ -678,7 +678,7 @@ void main() {
 
     testWidgets('renders TRAIN label', (WidgetTester tester) async {
       final repo = await _freshRepo();
-      final screen = await _buildHomeScreen(repo);
+      final screen = await buildHomeScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pumpAndSettle();
@@ -688,7 +688,7 @@ void main() {
 
     testWidgets('renders app bar logo', (WidgetTester tester) async {
       final repo = await _freshRepo();
-      final screen = await _buildHomeScreen(repo);
+      final screen = await buildHomeScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pumpAndSettle();
@@ -699,7 +699,7 @@ void main() {
 
     testWidgets('renders energy tile grid', (WidgetTester tester) async {
       final repo = await _freshRepo();
-      final screen = await _buildHomeScreen(repo);
+      final screen = await buildHomeScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pumpAndSettle();
@@ -712,7 +712,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final screen = await _buildHomeScreen(repo);
+      final screen = await buildHomeScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pumpAndSettle();
@@ -1152,7 +1152,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('SessionSummaryScreen', () {
-    Future<WorkoutState> _workoutStateWithActiveSession(
+    Future<WorkoutState> workoutStateWithActiveSession(
       MockWorkoutRepository repo,
     ) async {
       final workoutState = WorkoutState(repo);
@@ -1163,7 +1163,7 @@ void main() {
     testWidgets('shows Done button', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final repo = await _freshRepo();
-      final workoutState = await _workoutStateWithActiveSession(repo);
+      final workoutState = await workoutStateWithActiveSession(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
 
@@ -1186,7 +1186,7 @@ void main() {
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final repo = await _freshRepo();
-      final workoutState = await _workoutStateWithActiveSession(repo);
+      final workoutState = await workoutStateWithActiveSession(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
 
@@ -1210,7 +1210,7 @@ void main() {
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final repo = await _freshRepo();
-      final workoutState = await _workoutStateWithActiveSession(repo);
+      final workoutState = await workoutStateWithActiveSession(repo);
       final exercises = await repo.getExercises();
       await workoutState.addExerciseToSession(
         exercises.first,
@@ -1369,7 +1369,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('OmniSplashScreen', () {
-    Future<OmniSplashScreen> _buildSplashScreen(
+    Future<OmniSplashScreen> buildSplashScreen(
       MockWorkoutRepository repo,
     ) async {
       final workoutState = WorkoutState(repo);
@@ -1405,7 +1405,7 @@ void main() {
     testWidgets('shows OMNITRAIN text', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
-      final screen = await _buildSplashScreen(repo);
+      final screen = await buildSplashScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pump(); // single frame — splash is visible
@@ -1420,7 +1420,7 @@ void main() {
     testWidgets('renders without crash', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
-      final screen = await _buildSplashScreen(repo);
+      final screen = await buildSplashScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pump();

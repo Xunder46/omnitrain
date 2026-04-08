@@ -42,7 +42,7 @@ void main() {
         Exercise firstExercise,
       })
     >
-    _setupSession({bool addExercise = true}) async {
+    setupSession({bool addExercise = true}) async {
       final repo = await _freshRepo();
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
@@ -71,7 +71,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession(addExercise: false);
+      final deps = await setupSession(addExercise: false);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -93,7 +93,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession();
+      final deps = await setupSession();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -115,7 +115,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession();
+      final deps = await setupSession();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -139,7 +139,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession();
+      final deps = await setupSession();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -161,7 +161,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession();
+      final deps = await setupSession();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -183,7 +183,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession(addExercise: false);
+      final deps = await setupSession(addExercise: false);
 
       await tester.pumpWidget(
         MaterialApp(

@@ -125,9 +125,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Prevents re-opening on subsequent _loadExercises() calls.
   bool _autoOpenAttempted = false;
 
+  // GlobalKeys used to locate the header icon buttons for coach mark positioning.
+  final GlobalKey _notesIconKey = GlobalKey();
+  final GlobalKey _infoIconKey = GlobalKey();
+  // True once initExerciseHints() has been awaited at least once this session —
+  // avoids redundant repository reads when navigating between exercises.
+  bool _exerciseHintsLoaded = false;
+  // The currently-visible coach mark overlay entry; at most one at a time.
+  OverlayEntry? _coachMarkEntry;
+
   @override
   void initState() {
     super.initState();
+    // TEMP: reset coach mark flags for testing — remove when done
+    unawaited(widget.workoutState.resetExerciseHintsForTesting());
     if (!widget.editMode) {
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
       _tick();
@@ -365,6 +376,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       _currentSet = setNumber;
       _showListView = false;
     });
+
+    // Load hint flags once per session, then schedule the coach mark.
+    if (!_exerciseHintsLoaded) {
+      await widget.workoutState.initExerciseHints();
+      _exerciseHintsLoaded = true;
+    }
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeShowExerciseCoachMark();
+      });
+    }
   }
 
   /// Get the RoundInstance for a specific round (effortId + roundIndex).
@@ -2303,6 +2325,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     for (final timer in _effortTimers.values) {
       timer?.cancel();
     }
+    // Remove any visible coach mark overlay before the widget tree tears down.
+    _coachMarkEntry?.remove();
+    _coachMarkEntry = null;
     super.dispose();
   }
 
@@ -2686,36 +2711,42 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              key: const Key('exercise-info-button'),
-              icon: Icon(
-                Icons.info_outline,
-                size: 18,
-                color: theme.colorScheme.onSurface.withOpacity(0.45),
+            SizedBox(
+              key: _infoIconKey,
+              child: IconButton(
+                key: const Key('exercise-info-button'),
+                icon: Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: theme.colorScheme.onSurface.withOpacity(0.45),
+                ),
+                onPressed: exercise == null
+                    ? null
+                    : () => _showExerciseInfoSheet(context, exercise),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               ),
-              onPressed: exercise == null
-                  ? null
-                  : () => _showExerciseInfoSheet(context, exercise),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             ),
             Stack(
               clipBehavior: Clip.none,
               children: [
-                IconButton(
-                  key: const Key('exercise-note-button'),
-                  icon: Icon(
-                    Icons.edit_note,
-                    size: 18,
-                    color: theme.colorScheme.onSurface.withOpacity(0.45),
-                  ),
-                  onPressed: exercise == null
-                      ? null
-                      : () => _showExerciseNoteSheet(context, exercise),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 36,
-                    minHeight: 36,
+                SizedBox(
+                  key: _notesIconKey,
+                  child: IconButton(
+                    key: const Key('exercise-note-button'),
+                    icon: Icon(
+                      Icons.edit_note,
+                      size: 18,
+                      color: theme.colorScheme.onSurface.withOpacity(0.45),
+                    ),
+                    onPressed: exercise == null
+                        ? null
+                        : () => _showExerciseNoteSheet(context, exercise),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                   ),
                 ),
                 if (exerciseId != null &&
@@ -2739,6 +2770,92 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         );
       },
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Coach marks
+  // ---------------------------------------------------------------------------
+
+  /// Decides which coach mark (if any) to show on the current detail view.
+  /// Notes hint takes priority; info hint fires only after notes hint is seen.
+  /// Never shows two overlays simultaneously.
+  void _maybeShowExerciseCoachMark() {
+    if (_coachMarkEntry != null) return; // already showing
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+
+    // Info hint fires first. Its "Got it!" handler chains directly into the
+    // notes hint so both are shown in sequence on the same session open.
+    if (widget.workoutState.shouldShowExerciseInfoHint) {
+      _showExerciseCoachMark(
+        targetKey: _infoIconKey,
+        label: 'View exercise info',
+        primaryColor: primary,
+        onDismiss: () {
+          unawaited(widget.workoutState.markExerciseInfoHintSeen());
+          // Chain straight to notes hint on the next frame.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _maybeShowExerciseCoachMark();
+          });
+        },
+      );
+    } else if (widget.workoutState.shouldShowExerciseNotesHint) {
+      _showExerciseCoachMark(
+        targetKey: _notesIconKey,
+        label: 'Add notes for this exercise',
+        primaryColor: primary,
+        onDismiss: () =>
+            unawaited(widget.workoutState.markExerciseNotesHintSeen()),
+      );
+    }
+  }
+
+  /// Inserts a full-screen coach mark overlay anchored to [targetKey].
+  void _showExerciseCoachMark({
+    required GlobalKey targetKey,
+    required String label,
+    required Color primaryColor,
+    required VoidCallback onDismiss,
+  }) {
+    final overlay = Overlay.of(context);
+    final renderBox =
+        targetKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null || !renderBox.hasSize) {
+      // Widget not yet laid out — retry on the next frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _coachMarkEntry == null) {
+          _showExerciseCoachMark(
+            targetKey: targetKey,
+            label: label,
+            primaryColor: primaryColor,
+            onDismiss: onDismiss,
+          );
+        }
+      });
+      return;
+    }
+
+    final iconCenter = renderBox.localToGlobal(
+      Offset(renderBox.size.width / 2, renderBox.size.height / 2),
+    );
+
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => _ExerciseCoachMarkOverlay(
+        iconCenter: iconCenter,
+        label: label,
+        primaryColor: primaryColor,
+        onDismiss: () {
+          entry.remove();
+          _coachMarkEntry = null;
+          onDismiss();
+        },
+      ),
+    );
+
+    _coachMarkEntry = entry;
+    overlay.insert(entry);
   }
 
   Widget _buildSegmentHeader(String name, ThemeData theme) {
@@ -2906,7 +3023,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                         child: Image.asset(
                           exercise.imageAssetPath!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
                         ),
                       ),
                       // Bottom gradient overlay
@@ -4194,4 +4311,233 @@ class _ExerciseNoteSheetState extends State<_ExerciseNoteSheet> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Exercise coach mark overlay
+// ---------------------------------------------------------------------------
 
+/// Full-screen one-time coach mark that highlights a header icon.
+///
+/// Renders a dark semi-transparent backdrop, a pulsing primary-colored glow
+/// centred on [iconCenter], and a short label below.  Tapping anywhere —
+/// including the glow — dismisses the overlay and calls [onDismiss].
+class _ExerciseCoachMarkOverlay extends StatefulWidget {
+  final Offset iconCenter;
+  final String label;
+  final Color primaryColor;
+  final VoidCallback onDismiss;
+
+  const _ExerciseCoachMarkOverlay({
+    required this.iconCenter,
+    required this.label,
+    required this.primaryColor,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_ExerciseCoachMarkOverlay> createState() =>
+      _ExerciseCoachMarkOverlayState();
+}
+
+class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+  late final Animation<double> _scale;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    // Pulse twice then stop — gives a good visual without looping forever,
+    // which would cause pumpAndSettle to time out in tests.
+    _pulse.forward().whenComplete(() {
+      if (!mounted) return;
+      _pulse.reverse().whenComplete(() {
+        if (!mounted) return;
+        _pulse.forward().whenComplete(() {
+          if (mounted) _pulse.reverse();
+        });
+      });
+    });
+
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 1.45,
+    ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
+
+    _opacity = Tween<double>(
+      begin: 0.55,
+      end: 0.15,
+    ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const double glowRadius = 22;
+    const double labelWidth = 200;
+    const double labelOffset = glowRadius + 12; // below glow centre
+    const double triangleWidth = 10;
+    const double triangleHeight = 6;
+    const double screenMargin = 8.0;
+
+    final cx = widget.iconCenter.dx;
+    final cy = widget.iconCenter.dy;
+
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    // Clamp label so it never overflows either edge of the screen.
+    final rawLabelLeft = cx - labelWidth / 2;
+    final clampedLabelLeft = rawLabelLeft.clamp(
+      screenMargin,
+      screenWidth - labelWidth - screenMargin,
+    );
+
+    return Stack(
+        children: [
+          // Dark backdrop — absorbs all taps so neither the overlay itself
+          // nor underlying workout widgets react to incidental touches.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {}, // absorb without action
+            child: Container(color: const Color(0xBF000000)),
+          ),
+
+          // Pulsing glow ring
+          Positioned(
+            left: cx - glowRadius,
+            top: cy - glowRadius,
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _pulse,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _scale.value,
+                    child: Container(
+                      width: glowRadius * 2,
+                      height: glowRadius * 2,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: widget.primaryColor
+                            .withOpacity(_opacity.value * 0.6),
+                        border: Border.all(
+                          color: widget.primaryColor.withOpacity(
+                            _opacity.value + 0.2,
+                          ),
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+
+          // Triangle pointer — always anchored to the icon center so it keeps
+          // pointing at the icon even when the label box is clamped sideways.
+          Positioned(
+            left: cx - triangleWidth / 2,
+            top: cy + labelOffset,
+            child: IgnorePointer(
+              child: CustomPaint(
+                size: const Size(triangleWidth, triangleHeight),
+                painter: _TrianglePointerPainter(
+                  color: widget.primaryColor.withOpacity(0.85),
+                ),
+              ),
+            ),
+          ),
+
+          // Label box with "Got it!" button — clamped to stay within bounds.
+          Positioned(
+            left: clampedLabelLeft,
+            top: cy + labelOffset + triangleHeight + 4,
+            width: labelWidth,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A2E),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: widget.primaryColor.withOpacity(0.35),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.label,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 30,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: widget.primaryColor,
+                            foregroundColor: Colors.black87,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          onPressed: widget.onDismiss,
+                          child: const Text('Got it!'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+    );
+  }
+}
+
+/// Draws a small downward-pointing triangle used as a callout pointer.
+class _TrianglePointerPainter extends CustomPainter {
+  final Color color;
+  const _TrianglePointerPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    final path = Path()
+      ..moveTo(size.width / 2, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_TrianglePointerPainter old) => old.color != color;
+}
