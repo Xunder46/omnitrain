@@ -192,6 +192,15 @@ abstract class WorkoutRepository {
   /// Called by deleteEffort() and during edit-mode rollback.
   Future<void> deleteEntryRestsForEffort(String effortId);
 
+  /// Returns all closed EntryRest records (restEndMs != null) whose restStartMs
+  /// falls within [fromMs, toMs], grouped by normalised modality key.
+  /// - 'martial_arts' is folded into 'sports'.
+  /// - null key = Free Training (session had no modality set).
+  Future<Map<String?, List<EntryRest>>> getEntryRestsByModalityInDateRange(
+    int fromMs,
+    int toMs,
+  );
+
   // Exercise Notes
   //
   // Per-exercise user notes that persist across sessions.

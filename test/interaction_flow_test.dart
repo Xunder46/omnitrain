@@ -42,8 +42,11 @@ void main() {
         Exercise firstExercise,
       })
     >
-    _setupSession({bool addExercise = true}) async {
+    setupSession({bool addExercise = true}) async {
       final repo = await _freshRepo();
+      // Pre-seed coach mark flags so the overlay never blocks button taps.
+      await repo.setPreferenceBool('hint_seen_exercise_info', true);
+      await repo.setPreferenceBool('hint_seen_exercise_notes', true);
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
@@ -71,7 +74,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession(addExercise: false);
+      final deps = await setupSession(addExercise: false);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -93,7 +96,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession();
+      final deps = await setupSession();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -115,7 +118,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession();
+      final deps = await setupSession();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -139,7 +142,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession();
+      final deps = await setupSession();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -161,7 +164,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession();
+      final deps = await setupSession();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -183,7 +186,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final deps = await _setupSession(addExercise: false);
+      final deps = await setupSession(addExercise: false);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -192,7 +195,6 @@ void main() {
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
             settingsState: deps.settingsState,
-            editMode: true,
           ),
         ),
       );

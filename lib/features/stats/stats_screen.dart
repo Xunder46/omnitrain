@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/constants/modality.dart';
+import '../../core/constants/modality_colors.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../state/calendar/calendar_state.dart';
@@ -33,6 +35,9 @@ class _StatsScreenState extends State<StatsScreen> {
 
   // Index 0 = 29 days ago, index 29 = today.
   final List<int> _dayCounts = List.filled(30, 0);
+
+  // modality key → 30-element list of average rest seconds (null = no data that day).
+  Map<String?, List<double?>> _restAvgsByModality = {};
 
   // Anchored at load time so the chart label never drifts after midnight rebuilds.
   DateTime? _thirtyDaysAgo;
@@ -92,6 +97,35 @@ class _StatsScreenState extends State<StatsScreen> {
       await calendarState.init();
       final streak = calendarState.streakDays;
 
+      // Fetch closed rests in the 30-day window, grouped by modality.
+      final restsByModality = await widget.workoutState.repository
+          .getEntryRestsByModalityInDateRange(fromMs, toMs);
+
+      final restAvgs = <String?, List<double?>>{};
+      for (final entry in restsByModality.entries) {
+        final modality = entry.key;
+        final rests = entry.value;
+
+        final sumSecs = List<double>.filled(30, 0);
+        final countPerDay = List<int>.filled(30, 0);
+
+        for (final rest in rests) {
+          final restDt = DateTime.fromMillisecondsSinceEpoch(rest.restStartMs);
+          final restDay = DateTime(restDt.year, restDt.month, restDt.day);
+          final dayIndex = restDay.difference(thirtyDaysAgo).inDays;
+          if (dayIndex < 0 || dayIndex >= 30) continue;
+          final durationSecs = (rest.restEndMs! - rest.restStartMs) / 1000.0;
+          sumSecs[dayIndex] += durationSecs;
+          countPerDay[dayIndex]++;
+        }
+
+        final avgs = <double?>[];
+        for (var i = 0; i < 30; i++) {
+          avgs.add(countPerDay[i] > 0 ? sumSecs[i] / countPerDay[i] : null);
+        }
+        restAvgs[modality] = avgs;
+      }
+
       if (!mounted) return;
 
       setState(() {
@@ -101,6 +135,7 @@ class _StatsScreenState extends State<StatsScreen> {
         for (var i = 0; i < 30; i++) {
           _dayCounts[i] = counts[i];
         }
+        _restAvgsByModality = restAvgs;
         // Anchor the date range so chart labels never drift after midnight rebuilds.
         _thirtyDaysAgo = thirtyDaysAgo;
         _today = today;
@@ -143,6 +178,12 @@ class _StatsScreenState extends State<StatsScreen> {
                               _buildSectionLabel('ACTIVITY', themeColors),
                               const SizedBox(height: 8),
                               _buildActivityCard(context, themeColors),
+                              if (_restAvgsByModality.isNotEmpty) ...[
+                                const SizedBox(height: 24),
+                                _buildSectionLabel('REST TIME', themeColors),
+                                const SizedBox(height: 8),
+                                _buildRestTimeCard(context, themeColors),
+                              ],
                             ],
                     ),
             ),
@@ -352,6 +393,204 @@ class _StatsScreenState extends State<StatsScreen> {
                 ),
               );
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestTimeCard(BuildContext context, OmniThemeColors themeColors) {
+    final theme = Theme.of(context);
+    final thirtyDaysAgo = _thirtyDaysAgo!;
+    final today = _today!;
+
+    // Stable display order for modalities.
+    const displayOrder = <String?>[
+      'cardio_endurance',
+      'resistance_lifting',
+      'sports',
+      'isometric_stretching',
+      null, // Free Training
+    ];
+
+    final visibleModalities = displayOrder
+        .where((m) => _restAvgsByModality.containsKey(m))
+        .toList();
+
+    // Build LineChartBarData for each visible modality.
+    final lineBars = <LineChartBarData>[];
+    double maxY = 10.0;
+
+    for (final modality in visibleModalities) {
+      final avgs = _restAvgsByModality[modality]!;
+      final spots = <FlSpot>[];
+      for (var i = 0; i < 30; i++) {
+        if (avgs[i] != null) {
+          spots.add(FlSpot(i.toDouble(), avgs[i]!));
+          if (avgs[i]! > maxY) maxY = avgs[i]!;
+        }
+      }
+      if (spots.isEmpty) continue;
+      lineBars.add(LineChartBarData(
+        spots: spots,
+        color: ModalityColors.forModality(modality),
+        isCurved: true,
+        curveSmoothness: 0.3,
+        barWidth: 2,
+        isStrokeCapRound: true,
+        dotData: const FlDotData(show: false),
+        belowBarData: BarAreaData(show: false),
+      ));
+    }
+
+    if (lineBars.isEmpty) return const SizedBox.shrink();
+
+    // Y axis interval: aim for ~4 ticks, rounded to nearest 10.
+    final rawInterval = (maxY / 4).ceilToDouble();
+    final yInterval = max(10.0, (rawInterval / 10).ceil() * 10.0);
+
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '30-Day Rest Time',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${OmniDateUtils.shortMonthName(thirtyDaysAgo.month)} ${thirtyDaysAgo.day}'
+            ' – '
+            '${OmniDateUtils.shortMonthName(today.month)} ${today.day}',
+            style: TextStyle(fontSize: 11, color: themeColors.textMuted),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 160,
+            child: LineChart(
+              LineChartData(
+                minX: 0,
+                maxX: 29,
+                minY: 0,
+                maxY: maxY + yInterval * 0.3,
+                lineTouchData: const LineTouchData(enabled: false),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 36,
+                      interval: yInterval,
+                      getTitlesWidget: (value, meta) {
+                        if (value != value.floorToDouble()) {
+                          return const SizedBox.shrink();
+                        }
+                        final intVal = value.toInt();
+                        if (intVal < 0) return const SizedBox.shrink();
+                        final mins = intVal ~/ 60;
+                        final secs = intVal % 60;
+                        final label =
+                            '$mins:${secs.toString().padLeft(2, '0')}';
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: themeColors.textMuted,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 24,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        // Three labels: start (0), middle (15), end (29).
+                        if (idx != 0 && idx != 15 && idx != 29) {
+                          return const SizedBox.shrink();
+                        }
+                        final date = thirtyDaysAgo.add(Duration(days: idx));
+                        final label =
+                            '${OmniDateUtils.shortMonthName(date.month)} ${date.day}';
+                        final align = idx == 0
+                            ? TextAlign.left
+                            : idx == 29
+                                ? TextAlign.right
+                                : TextAlign.center;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            label,
+                            textAlign: align,
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: themeColors.textMuted,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: yInterval,
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: themeColors.divider,
+                    strokeWidth: 1,
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                lineBarsData: lineBars,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 16,
+            runSpacing: 6,
+            children: visibleModalities.map((modality) {
+              final color = ModalityColors.forModality(modality);
+              final label = modality == null
+                  ? 'Free Training'
+                  : Modality.getDisplayName(modality);
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 12,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: themeColors.textMuted,
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
           ),
         ],
       ),

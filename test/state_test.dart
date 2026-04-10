@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/models/routine_session_manifest.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
@@ -243,6 +244,141 @@ void main() {
 
         expect(state.currentSegments[0].name, 'Block B');
         expect(state.currentSegments[1].name, 'Main Block');
+      });
+
+      test('cloneSegment appends (2) suffix to plain name', () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
+
+        await state.createNewRoutine('Routine');
+        final segId = state.currentSegments.first.id;
+
+        await state.cloneSegment(segId);
+
+        expect(state.currentSegments, hasLength(2));
+        expect(state.currentSegments[1].name, 'Main Block (2)');
+      });
+
+      test('cloneSegment increments (N) suffix', () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
+
+        await state.createNewRoutine('Routine');
+        await Future.delayed(const Duration(milliseconds: 2));
+        final segId = state.currentSegments.first.id;
+
+        await state.cloneSegment(segId); // → "Main Block (2)"
+        final cloneId = state.currentSegments[1].id;
+        await state.cloneSegment(cloneId); // → "Main Block (3)"
+
+        expect(state.currentSegments[2].name, 'Main Block (3)');
+      });
+
+      test('cloneSegment inserts clone immediately after source', () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
+
+        await state.createNewRoutine('Routine');
+        await Future.delayed(const Duration(milliseconds: 2));
+        await state.addSegment(name: 'Block B');
+        final segId = state.currentSegments.first.id; // Main Block
+
+        await state.cloneSegment(segId);
+
+        expect(state.currentSegments[0].name, 'Main Block');
+        expect(state.currentSegments[1].name, 'Main Block (2)');
+        expect(state.currentSegments[2].name, 'Block B');
+      });
+
+      test('cloneSegment re-indexes all segment orderIndex values', () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
+
+        await state.createNewRoutine('Routine');
+        await Future.delayed(const Duration(milliseconds: 2));
+        await state.addSegment(name: 'Block B');
+        final segId = state.currentSegments.first.id;
+
+        await state.cloneSegment(segId);
+
+        for (int i = 0; i < state.currentSegments.length; i++) {
+          expect(state.currentSegments[i].orderIndex, i);
+        }
+      });
+
+      test('cloneSegment deep-clones efforts with new IDs', () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
+
+        final exercises = await repo.getExercises();
+        await state.createNewRoutine('Routine');
+        final segId = state.currentSegments.first.id;
+        await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+          segmentId: segId,
+        );
+
+        final sourceEfforts = state.getEffortsForSegment(segId);
+
+        await state.cloneSegment(segId);
+        final cloneId = state.currentSegments[1].id;
+        final clonedEfforts = state.getEffortsForSegment(cloneId);
+
+        expect(clonedEfforts, hasLength(1));
+        expect(clonedEfforts.first.id, isNot(sourceEfforts.first.id));
+        expect(clonedEfforts.first.exerciseId, sourceEfforts.first.exerciseId);
+        expect(clonedEfforts.first.effortKind, sourceEfforts.first.effortKind);
+      });
+
+      test('cloneSegment deep-clones targets with new IDs', () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
+
+        final exercises = await repo.getExercises();
+        await state.createNewRoutine('Routine');
+        final segId = state.currentSegments.first.id;
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+          segmentId: segId,
+        );
+        await state.setTargetValue(
+          effortId,
+          'metric-reps',
+          'unit-reps',
+          setIndex: 0,
+          targetInt: 10,
+        );
+
+        final sourceTargets = state.getEffortTargets(effortId);
+        expect(sourceTargets, hasLength(1));
+
+        await state.cloneSegment(segId);
+        final cloneId = state.currentSegments[1].id;
+        final clonedEfforts = state.getEffortsForSegment(cloneId);
+        final clonedTargets = state.getEffortTargets(clonedEfforts.first.id);
+
+        expect(clonedTargets, hasLength(1));
+        expect(clonedTargets.first.id, isNot(sourceTargets.first.id));
+        expect(clonedTargets.first.targetInt, 10);
+      });
+
+      test('cloneSegment with unknown segmentId is no-op', () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
+
+        await state.createNewRoutine('Routine');
+        await state.cloneSegment('nonexistent-id');
+
+        expect(state.currentSegments, hasLength(1));
       });
     });
 
@@ -1364,6 +1500,18 @@ void main() {
       expect(blocks.first.orderIndex, 0);
     });
 
+    test('addSessionBlock with explicit name uses that name', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final blockId = await state.addSessionBlock(name: 'Warm-Up');
+
+      final blocks = state.getSessionBlocks();
+      expect(blocks.first.id, blockId);
+      expect(blocks.first.name, 'Warm-Up');
+    });
+
     test('addSessionBlock increments orderIndex', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
@@ -1430,7 +1578,7 @@ void main() {
       expect(blocks.every((b) => b.id != id2), true);
     });
 
-    test('deleteSessionBlock unassigns linked efforts', () async {
+    test('deleteSessionBlock removes linked efforts', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
       await state.createNewSession();
@@ -1448,12 +1596,12 @@ void main() {
       var efforts = state.getEffortsForSegment(segmentId);
       expect(efforts.first.blockId, blockId);
 
-      // Delete block
+      // Delete block — effort should be removed entirely
       await state.deleteSessionBlock(blockId);
 
-      // Verify effort is unassigned
+      // Verify effort is gone
       efforts = state.getEffortsForSegment(segmentId);
-      expect(efforts.first.blockId, isNull);
+      expect(efforts.where((e) => e.id == effortId), isEmpty);
     });
 
     test('reorderSessionBlocks calls repository', () async {
@@ -1496,8 +1644,8 @@ void main() {
       expect(blocks, hasLength(2));
 
       final cloned = blocks.firstWhere((b) => b.id == clonedBlockId);
-      // Cloned block should have a new time-based name, not the original name
-      expect(cloned.name, isNotEmpty);
+      // Cloned block name should use "(2)" suffix
+      expect(cloned.name, endsWith('(2)'));
       expect(cloned.id, clonedBlockId);
     });
 
@@ -1521,10 +1669,9 @@ void main() {
       final blocks = state.getSessionBlocks();
       expect(blocks, hasLength(2));
 
-      // Verify cloned block has a new time-based name, not containing 'Copy'
+      // Verify cloned block uses "(2)" suffix naming
       final clonedBlock = blocks.firstWhere((b) => b.id == clonedBlockId);
-      expect(clonedBlock.name, isNotEmpty);
-      expect(clonedBlock.name, isNot(contains('Copy')));
+      expect(clonedBlock.name, endsWith('(2)'));
     });
 
     test('assignEffortToBlock updates effort blockId', () async {
@@ -1654,6 +1801,121 @@ void main() {
       final orderIndices = blocks.map((b) => b.orderIndex).toList();
       expect(orderIndices, equals([0, 1, 2]));
     });
+
+    test('populateSessionFromManifest creates one SessionBlock per non-empty segment', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final exercises = await repo.getExercises();
+
+      final template = WorkoutTemplate(
+        id: 'tmpl-test',
+        name: 'Test Routine',
+        createdAtMs: 1000,
+        updatedAtMs: 1000,
+      );
+
+      final manifest = RoutineSessionManifest(
+        template: template,
+        segments: [
+          SessionSegmentEntry(
+            segment: TemplateSegment(
+              id: 'tseg-1',
+              templateId: 'tmpl-test',
+              orderIndex: 0,
+              segmentType: 'mixed',
+              name: 'Warm-Up',
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+            exercises: [
+              SessionExerciseEntry(
+                exercise: exercises.first,
+                effortKind: 'set',
+                setCount: 1,
+                targets: [],
+              ),
+            ],
+          ),
+          SessionSegmentEntry(
+            segment: TemplateSegment(
+              id: 'tseg-2',
+              templateId: 'tmpl-test',
+              orderIndex: 1,
+              segmentType: 'mixed',
+              name: 'Main Work',
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+            exercises: [
+              SessionExerciseEntry(
+                exercise: exercises[1],
+                effortKind: 'set',
+                setCount: 2,
+                targets: [],
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await state.populateSessionFromManifest(manifest);
+
+      final blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(2));
+      expect(blocks.map((b) => b.name).toList(), ['Warm-Up', 'Main Work']);
+    });
+
+    test('populateSessionFromManifest assigns each effort to its segment block', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final exercises = await repo.getExercises();
+
+      final template = WorkoutTemplate(
+        id: 'tmpl-test2',
+        name: 'Test Routine 2',
+        createdAtMs: 1000,
+        updatedAtMs: 1000,
+      );
+
+      final manifest = RoutineSessionManifest(
+        template: template,
+        segments: [
+          SessionSegmentEntry(
+            segment: TemplateSegment(
+              id: 'tseg-a',
+              templateId: 'tmpl-test2',
+              orderIndex: 0,
+              segmentType: 'mixed',
+              name: 'Block A',
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+            exercises: [
+              SessionExerciseEntry(
+                exercise: exercises.first,
+                effortKind: 'set',
+                setCount: 1,
+                targets: [],
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await state.populateSessionFromManifest(manifest);
+
+      final blocks = state.getSessionBlocks();
+      expect(blocks, hasLength(1));
+      final block = blocks.first;
+
+      final result = state.getExercisesWithEntries();
+      expect(result, hasLength(1));
+      expect(result.first['blockId'], block.id);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1691,7 +1953,7 @@ void main() {
       expect(result.first['blockId'], blockId);
     });
 
-    test('blockId is null again after deleteSessionBlock', () async {
+    test('exercise is gone after deleteSessionBlock', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
       await state.createNewSession();
@@ -1704,8 +1966,7 @@ void main() {
       await state.deleteSessionBlock(blockId);
 
       final result = state.getExercisesWithEntries();
-      expect(result, hasLength(1));
-      expect(result.first['blockId'], isNull);
+      expect(result.where((e) => e['id'] == effortId), isEmpty);
     });
 
     test('multiple exercises carry correct blockIds', () async {

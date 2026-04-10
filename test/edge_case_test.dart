@@ -681,7 +681,7 @@ void main() {
 
   group('MockWorkoutRepository.hasPeriodOverlap', () {
     // Helper: seed a period into the repo directly.
-    Future<void> _seedPeriod(
+    Future<void> seedPeriod(
       MockWorkoutRepository repo, {
       required String id,
       required int startMs,
@@ -706,7 +706,7 @@ void main() {
     test('returns false for completely non-overlapping range', () async {
       final repo = await _freshRepo();
       // Existing period: 100–200
-      await _seedPeriod(repo, id: 'p1', startMs: 100, endMs: 200);
+      await seedPeriod(repo, id: 'p1', startMs: 100, endMs: 200);
 
       // Query entirely after existing period
       expect(await repo.hasPeriodOverlap(300, 400), isFalse);
@@ -716,7 +716,7 @@ void main() {
 
     test('returns true when new range overlaps an existing period', () async {
       final repo = await _freshRepo();
-      await _seedPeriod(repo, id: 'p1', startMs: 100, endMs: 300);
+      await seedPeriod(repo, id: 'p1', startMs: 100, endMs: 300);
 
       // Partially overlapping from the left
       expect(await repo.hasPeriodOverlap(50, 150), isTrue);
@@ -731,7 +731,7 @@ void main() {
     test('returns true at inclusive boundary (touching endDateMs)', () async {
       final repo = await _freshRepo();
       // Period ends at ms 200
-      await _seedPeriod(repo, id: 'p1', startMs: 100, endMs: 200);
+      await seedPeriod(repo, id: 'p1', startMs: 100, endMs: 200);
 
       // New period starts exactly at the same ms — should overlap per inclusive check
       expect(await repo.hasPeriodOverlap(200, 300), isTrue);
@@ -740,7 +740,7 @@ void main() {
     test('returns true at inclusive boundary (touching startDateMs)', () async {
       final repo = await _freshRepo();
       // Period starts at ms 200
-      await _seedPeriod(repo, id: 'p1', startMs: 200, endMs: 400);
+      await seedPeriod(repo, id: 'p1', startMs: 200, endMs: 400);
 
       // New period ends exactly at startDateMs — should overlap
       expect(await repo.hasPeriodOverlap(100, 200), isTrue);
@@ -748,7 +748,7 @@ void main() {
 
     test('excludeId skips that period from the overlap check', () async {
       final repo = await _freshRepo();
-      await _seedPeriod(repo, id: 'p1', startMs: 100, endMs: 300);
+      await seedPeriod(repo, id: 'p1', startMs: 100, endMs: 300);
 
       // Without excludeId: overlaps
       expect(await repo.hasPeriodOverlap(100, 300), isTrue);
@@ -758,8 +758,8 @@ void main() {
 
     test('excludeId only skips the matching period, not others', () async {
       final repo = await _freshRepo();
-      await _seedPeriod(repo, id: 'p1', startMs: 100, endMs: 300);
-      await _seedPeriod(repo, id: 'p2', startMs: 200, endMs: 400);
+      await seedPeriod(repo, id: 'p1', startMs: 100, endMs: 300);
+      await seedPeriod(repo, id: 'p2', startMs: 200, endMs: 400);
 
       // Excluding p1 still finds p2 overlap
       expect(await repo.hasPeriodOverlap(150, 350, excludeId: 'p1'), isTrue);

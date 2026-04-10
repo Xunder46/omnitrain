@@ -571,7 +571,7 @@ void main() {
 
   group('RoutineSessionService', () {
     // ── Helper to seed a template in the repo ────────────────────────────
-    Future<String> _seedTemplate(
+    Future<String> seedTemplate(
       MockWorkoutRepository repo, {
       String templateId = 'tmpl-1',
       String? exerciseId,
@@ -636,7 +636,7 @@ void main() {
     test('builds manifest from a valid template', () async {
       final repo = await _freshRepo();
       final service = RoutineSessionService(repo);
-      final templateId = await _seedTemplate(repo);
+      final templateId = await seedTemplate(repo);
 
       final manifest = await service.buildSessionFromTemplate(templateId);
 
@@ -886,7 +886,7 @@ void main() {
     test('getTargetsForSet filters by setIndex', () async {
       final repo = await _freshRepo();
       final service = RoutineSessionService(repo);
-      final templateId = await _seedTemplate(repo, setCount: 3);
+      final templateId = await seedTemplate(repo, setCount: 3);
 
       final manifest = await service.buildSessionFromTemplate(templateId);
       final entry = manifest.exercises.first;

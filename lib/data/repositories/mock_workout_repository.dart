@@ -148,6 +148,10 @@ class MockWorkoutRepository implements WorkoutRepository {
     // Calendar maps intentionally start empty; users create planned sessions
     // and periods through calendar/period flows.
 
+    // NOTE: SeedData.sampleTrainingSessions/sampleSessionSegments/sampleSessionBlocks/
+    // sampleSegmentEfforts are available as reference data but NOT auto-loaded here.
+    // Use them to manually populate a demo session when needed.
+
     _initialized = true;
   }
 
@@ -557,6 +561,33 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> deleteEntryRestsForEffort(String effortId) async {
     _entryRests.remove(effortId);
+  }
+
+  @override
+  Future<Map<String?, List<EntryRest>>> getEntryRestsByModalityInDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final result = <String?, List<EntryRest>>{};
+    for (final restList in _entryRests.values) {
+      for (final rest in restList) {
+        if (rest.restEndMs == null) continue;
+        if (rest.restStartMs < fromMs || rest.restStartMs > toMs) continue;
+
+        final effort = _efforts[rest.effortId];
+        if (effort == null) continue;
+        final segment = _segments[effort.segmentId];
+        if (segment == null) continue;
+        final session = _sessions[segment.sessionId];
+        if (session == null) continue;
+
+        final rawModality = session.modality;
+        final modality = rawModality == 'martial_arts' ? 'sports' : rawModality;
+
+        result.putIfAbsent(modality, () => []).add(rest);
+      }
+    }
+    return result;
   }
 
   // ===== EXERCISE NOTES =====
@@ -1139,24 +1170,23 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deleteSessionBlock(String blockId) async {
-    _sessionBlocks.remove(blockId);
-    // Null out blockId on linked efforts — do NOT delete the efforts
-    for (final entry in _efforts.entries.toList()) {
-      final effort = entry.value;
-      if (effort.blockId == blockId) {
-        _efforts[entry.key] = SegmentEffort(
-          id: effort.id,
-          segmentId: effort.segmentId,
-          orderIndex: effort.orderIndex,
-          effortKind: effort.effortKind,
-          exerciseId: effort.exerciseId,
-          note: effort.note,
-          blockId: null,
-          createdAtMs: effort.createdAtMs,
-          updatedAtMs: effort.updatedAtMs,
-        );
-      }
+    // 1. Find all efforts linked to this block
+    final linkedEffortIds = _efforts.entries
+        .where((e) => e.value.blockId == blockId)
+        .map((e) => e.key)
+        .toList();
+
+    // 2. For each linked effort, cascade-delete sub-records then the effort itself
+    for (final effortId in linkedEffortIds) {
+      _observations.removeWhere((_, obs) => obs.effortId == effortId);
+      _roundInstances.remove(effortId);
+      _timedInstances.remove(effortId);
+      _entryRests.remove(effortId);
+      _efforts.remove(effortId);
     }
+
+    // 3. Delete the block itself
+    _sessionBlocks.remove(blockId);
   }
 
   @override
@@ -1186,12 +1216,12 @@ class MockWorkoutRepository implements WorkoutRepository {
     final original = _sessionBlocks[blockId];
     if (original == null) throw StateError('SessionBlock $blockId not found');
 
-    final now = DateTime.now();
-    final nowMs = now.millisecondsSinceEpoch;
-    final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
-    final minute = now.minute.toString().padLeft(2, '0');
-    final period = now.hour < 12 ? 'AM' : 'PM';
-    final name = '$hour12:$minute $period';
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final rawName = original.name;
+    final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
+    final name = suffixMatch != null
+        ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
+        : '$rawName (2)';
 
     final maxOrder = _sessionBlocks.values
         .where((b) => b.sessionId == original.sessionId)

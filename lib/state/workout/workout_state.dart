@@ -56,8 +56,14 @@ class WorkoutState extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  // One-time coach mark flags for exercise detail header icons.
+  bool _exerciseNotesHintSeen = false;
+  bool _exerciseInfoHintSeen = false;
+
   // Getters
   WorkoutRepository get repository => _repository;
+  bool get shouldShowExerciseNotesHint => !_exerciseNotesHintSeen;
+  bool get shouldShowExerciseInfoHint => !_exerciseInfoHintSeen;
   TrainingSession? get currentSession => _currentSession;
   ModalityConfig? get modalityConfig => _currentModalityConfig;
   List<SessionSegment> get segments => List.unmodifiable(_segments);
@@ -189,6 +195,44 @@ class WorkoutState extends ChangeNotifier {
   bool hasExerciseNote(String exerciseId) {
     return _exerciseNotes.containsKey(exerciseId) &&
         _exerciseNotes[exerciseId] != null;
+  }
+
+  /// Loads the one-time coach mark flags for the exercise detail header icons.
+  /// Safe to call multiple times — subsequent calls are no-ops once loaded.
+  Future<void> initExerciseHints() async {
+    _exerciseNotesHintSeen = await _repository.getPreferenceBool(
+      'hint_seen_exercise_notes',
+    );
+    _exerciseInfoHintSeen = await _repository.getPreferenceBool(
+      'hint_seen_exercise_info',
+    );
+    notifyListeners();
+  }
+
+  /// Marks the exercise notes coach mark as seen and persists the flag.
+  Future<void> markExerciseNotesHintSeen() async {
+    if (_exerciseNotesHintSeen) return;
+    _exerciseNotesHintSeen = true;
+    notifyListeners();
+    await _repository.setPreferenceBool('hint_seen_exercise_notes', true);
+  }
+
+  /// Marks the exercise info coach mark as seen and persists the flag.
+  Future<void> markExerciseInfoHintSeen() async {
+    if (_exerciseInfoHintSeen) return;
+    _exerciseInfoHintSeen = true;
+    notifyListeners();
+    await _repository.setPreferenceBool('hint_seen_exercise_info', true);
+  }
+
+  /// [TESTING ONLY] Reset exercise hint flags to unseen state.
+  /// Call this in initState during development to re-show coach marks every session.
+  Future<void> resetExerciseHintsForTesting() async {
+    _exerciseNotesHintSeen = false;
+    _exerciseInfoHintSeen = false;
+    notifyListeners();
+    await _repository.setPreferenceBool('hint_seen_exercise_notes', false);
+    await _repository.setPreferenceBool('hint_seen_exercise_info', false);
   }
 
   /// Record the start of a rest period (called when a set/round is logged)
@@ -539,6 +583,14 @@ class WorkoutState extends ChangeNotifier {
         _segments.add(sessionSegment);
         _efforts.putIfAbsent(segmentId, () => []);
 
+        // Create a SessionBlock for this segment if it has exercises.
+        String? blockId;
+        if (segmentEntry.exercises.isNotEmpty) {
+          blockId = await addSessionBlock(
+            name: templateSegment.name ?? 'Block $segmentCounter',
+          );
+        }
+
         for (final entry in segmentEntry.exercises) {
           final exercise = entry.exercise;
           final effortKind = entry.effortKind;
@@ -552,6 +604,11 @@ class WorkoutState extends ChangeNotifier {
           );
 
           if (effortId.isEmpty) continue;
+
+          // Assign effort to the segment's block
+          if (blockId != null) {
+            await assignEffortToBlock(effortId, blockId);
+          }
 
           // Add additional entries (sets) beyond the first
           for (int i = 1; i < setCount; i++) {
@@ -1668,8 +1725,10 @@ class WorkoutState extends ChangeNotifier {
       ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
   }
 
-  /// Creates a new block for the current session using current time as default name.
-  Future<String> addSessionBlock() async {
+  /// Creates a new block for the current session.
+  /// If [name] is provided it is used directly; otherwise the block is named
+  /// with the current time in "h:mm AM/PM" format.
+  Future<String> addSessionBlock({String? name}) async {
     if (_currentSession == null) return '';
 
     _clearError();
@@ -1677,10 +1736,12 @@ class WorkoutState extends ChangeNotifier {
     try {
       final now = DateTime.now();
       final nowMs = now.millisecondsSinceEpoch;
-      final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
-      final minute = now.minute.toString().padLeft(2, '0');
-      final period = now.hour < 12 ? 'AM' : 'PM';
-      final name = '$hour12:$minute $period';
+      final blockName = name ?? () {
+        final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+        final minute = now.minute.toString().padLeft(2, '0');
+        final period = now.hour < 12 ? 'AM' : 'PM';
+        return '$hour12:$minute $period';
+      }();
 
       final blocks = _sessionBlocks[_currentSession!.id] ?? [];
       final maxOrder = blocks.fold<int>(
@@ -1693,7 +1754,7 @@ class WorkoutState extends ChangeNotifier {
       final block = SessionBlock(
         id: const Uuid().v4(),
         sessionId: _currentSession!.id,
-        name: name,
+        name: blockName,
         orderIndex: maxOrder + 1,
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
@@ -1728,7 +1789,7 @@ class WorkoutState extends ChangeNotifier {
     }
   }
 
-  /// Deletes a block and unassigns any linked efforts.
+  /// Deletes a block and all efforts inside it (repository cascade).
   Future<void> deleteSessionBlock(String blockId) async {
     _clearError();
 
@@ -1739,23 +1800,18 @@ class WorkoutState extends ChangeNotifier {
         blocks.removeWhere((block) => block.id == blockId);
       }
 
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      // Mirror repository cascade: remove linked efforts and their sub-records.
       for (final effortList in _efforts.values) {
-        for (int i = 0; i < effortList.length; i++) {
-          final effort = effortList[i];
-          if (effort.blockId == blockId) {
-            effortList[i] = SegmentEffort(
-              id: effort.id,
-              segmentId: effort.segmentId,
-              orderIndex: effort.orderIndex,
-              effortKind: effort.effortKind,
-              exerciseId: effort.exerciseId,
-              note: effort.note,
-              blockId: null,
-              createdAtMs: effort.createdAtMs,
-              updatedAtMs: nowMs,
-            );
-          }
+        final toRemove = effortList
+            .where((e) => e.blockId == blockId)
+            .map((e) => e.id)
+            .toList();
+        effortList.removeWhere((e) => e.blockId == blockId);
+        for (final effortId in toRemove) {
+          _observations.remove(effortId);
+          _roundInstances.remove(effortId);
+          _timedInstances.remove(effortId);
+          _entryRests.remove(effortId);
         }
       }
 
@@ -2623,6 +2679,7 @@ class WorkoutState extends ChangeNotifier {
           'segmentType': segment.segmentType,
           'segmentOrder': segment.orderIndex,
           'blockId': effort.blockId,
+          'createdAtMs': effort.createdAtMs,
         });
       }
     }

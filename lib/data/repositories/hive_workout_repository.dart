@@ -218,6 +218,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
           .add(applicability.effortKind);
     }
     await _metricEffortKindsBox.putAll(metricEffortKinds);
+
+    // NOTE: SeedData.sampleTrainingSessions/sampleSessionSegments/sampleSessionBlocks/
+    // sampleSegmentEfforts are available as reference data but NOT auto-seeded here.
+    // Use them to manually populate a demo session when needed.
   }
 
   /// Backfills newly added seed units for existing installs where `_seed_loaded`
@@ -892,6 +896,37 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _entryRestsBox.deleteAll(idsToDelete);
   }
 
+  @override
+  Future<Map<String?, List<EntryRest>>> getEntryRestsByModalityInDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final result = <String?, List<EntryRest>>{};
+    for (final raw in _entryRestsBox.values) {
+      final rest = EntryRest.fromMap(_asStringMap(raw));
+      if (rest.restEndMs == null) continue;
+      if (rest.restStartMs < fromMs || rest.restStartMs > toMs) continue;
+
+      final effortRaw = _effortsBox.get(rest.effortId);
+      if (effortRaw == null) continue;
+      final effort = SegmentEffort.fromMap(_asStringMap(effortRaw));
+
+      final segmentRaw = _segmentsBox.get(effort.segmentId);
+      if (segmentRaw == null) continue;
+      final segment = SessionSegment.fromMap(_asStringMap(segmentRaw));
+
+      final sessionRaw = _sessionsBox.get(segment.sessionId);
+      if (sessionRaw == null) continue;
+      final session = TrainingSession.fromMap(_asStringMap(sessionRaw));
+
+      final rawModality = session.modality;
+      final modality = rawModality == 'martial_arts' ? 'sports' : rawModality;
+
+      result.putIfAbsent(modality, () => []).add(rest);
+    }
+    return result;
+  }
+
   // ===== EXERCISE NOTES =====
 
   @override
@@ -1524,15 +1559,43 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<void> deleteSessionBlock(String blockId) async {
-    await _sessionBlocksBox.delete(blockId);
-    // Null out blockId on linked efforts — do NOT delete the efforts
-    for (final entry in _effortsBox.toMap().entries) {
-      final raw = _asStringMap(entry.value);
-      if (raw['block_id'] == blockId) {
-        raw['block_id'] = null;
-        await _effortsBox.put(entry.key, raw);
-      }
+    // 1. Find all efforts linked to this block
+    final linkedEffortKeys = _effortsBox.toMap().entries
+        .where((e) => _asStringMap(e.value)['block_id'] == blockId)
+        .map((e) => e.key)
+        .toList();
+
+    // 2. For each linked effort, cascade-delete sub-records then the effort itself
+    for (final effortKey in linkedEffortKeys) {
+      final obsKeys = _observationsBox.toMap().entries
+          .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
+          .map((e) => e.key)
+          .toList();
+      for (final k in obsKeys) await _observationsBox.delete(k);
+
+      final riKeys = _roundInstancesBox.toMap().entries
+          .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
+          .map((e) => e.key)
+          .toList();
+      for (final k in riKeys) await _roundInstancesBox.delete(k);
+
+      final tiKeys = _timedInstancesBox.toMap().entries
+          .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
+          .map((e) => e.key)
+          .toList();
+      for (final k in tiKeys) await _timedInstancesBox.delete(k);
+
+      final erKeys = _entryRestsBox.toMap().entries
+          .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
+          .map((e) => e.key)
+          .toList();
+      for (final k in erKeys) await _entryRestsBox.delete(k);
+
+      await _effortsBox.delete(effortKey);
     }
+
+    // 3. Delete the block itself
+    await _sessionBlocksBox.delete(blockId);
   }
 
   @override
@@ -1559,12 +1622,12 @@ class HiveWorkoutRepository implements WorkoutRepository {
     if (originalRaw == null) throw StateError('SessionBlock $blockId not found');
     final original = SessionBlock.fromMap(_asStringMap(originalRaw));
 
-    final now = DateTime.now();
-    final nowMs = now.millisecondsSinceEpoch;
-    final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
-    final minute = now.minute.toString().padLeft(2, '0');
-    final period = now.hour < 12 ? 'AM' : 'PM';
-    final name = '$hour12:$minute $period';
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final rawName = original.name;
+    final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
+    final name = suffixMatch != null
+        ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
+        : '$rawName (2)';
 
     final maxOrder = _sessionBlocksBox.values
         .map((raw) => SessionBlock.fromMap(_asStringMap(raw)))
