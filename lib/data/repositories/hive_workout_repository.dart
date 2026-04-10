@@ -896,6 +896,37 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _entryRestsBox.deleteAll(idsToDelete);
   }
 
+  @override
+  Future<Map<String?, List<EntryRest>>> getEntryRestsByModalityInDateRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    final result = <String?, List<EntryRest>>{};
+    for (final raw in _entryRestsBox.values) {
+      final rest = EntryRest.fromMap(_asStringMap(raw));
+      if (rest.restEndMs == null) continue;
+      if (rest.restStartMs < fromMs || rest.restStartMs > toMs) continue;
+
+      final effortRaw = _effortsBox.get(rest.effortId);
+      if (effortRaw == null) continue;
+      final effort = SegmentEffort.fromMap(_asStringMap(effortRaw));
+
+      final segmentRaw = _segmentsBox.get(effort.segmentId);
+      if (segmentRaw == null) continue;
+      final segment = SessionSegment.fromMap(_asStringMap(segmentRaw));
+
+      final sessionRaw = _sessionsBox.get(segment.sessionId);
+      if (sessionRaw == null) continue;
+      final session = TrainingSession.fromMap(_asStringMap(sessionRaw));
+
+      final rawModality = session.modality;
+      final modality = rawModality == 'martial_arts' ? 'sports' : rawModality;
+
+      result.putIfAbsent(modality, () => []).add(rest);
+    }
+    return result;
+  }
+
   // ===== EXERCISE NOTES =====
 
   @override
