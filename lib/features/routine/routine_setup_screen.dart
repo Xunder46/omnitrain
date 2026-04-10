@@ -390,6 +390,20 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                       ),
                     ),
                     PopupMenuItem(
+                      onTap: () => widget.routineState.cloneSegment(segment.id),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.copy,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('Clone Block'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
                       onTap: () => _confirmDeleteSegment(segment),
                       child: Row(
                         children: [

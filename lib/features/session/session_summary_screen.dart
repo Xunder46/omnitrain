@@ -847,7 +847,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (exercises.isEmpty) return const SizedBox.shrink();
 
     final session = widget.workoutState.currentSession;
-    if (session?.isRolling ?? false) {
+    if ((session?.isRolling ?? false) ||
+        widget.workoutState.getSessionBlocks().isNotEmpty) {
       return _buildBlockGroupedExerciseList(theme, exercises);
     }
     return _buildModalityGroupedExerciseList(theme, exercises);

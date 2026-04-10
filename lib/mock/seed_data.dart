@@ -1412,6 +1412,113 @@ class SeedData {
 
   // Calendar period demo data was removed; user-created periods only.
   static final List<TrainingPeriod> sampleTrainingPeriods = [];
+
+  // ─── Standard session with blocks (development / testing fixture) ─────────
+  // Provides a completed non-rolling session with two named blocks and one
+  // standalone exercise for testing the standard session list and summary UI.
+
+  static final List<TrainingSession> sampleTrainingSessions = [
+    TrainingSession(
+      id: 'seed-session-standard',
+      ownerUserId: 'local-user',
+      startedAtMs: 1744012800000, // 2025-04-07 08:00 UTC
+      endedAtMs: 1744016400000,   // 2025-04-07 09:00 UTC
+      title: 'Strength Day',
+      modality: 'resistance_lifting',
+      intent: 'open',
+      sessionFeeling: 4,
+      isRolling: false,
+      createdAtMs: 1744012800000,
+      updatedAtMs: 1744016400000,
+    ),
+  ];
+
+  static final List<SessionSegment> sampleSessionSegments = [
+    SessionSegment(
+      id: 'seed-segment-standard',
+      sessionId: 'seed-session-standard',
+      orderIndex: 0,
+      segmentType: 'mixed',
+      name: 'Main',
+      createdAtMs: 1744012800000,
+      updatedAtMs: 1744012800000,
+    ),
+  ];
+
+  static final List<SessionBlock> sampleSessionBlocks = [
+    SessionBlock(
+      id: 'seed-block-warmup',
+      sessionId: 'seed-session-standard',
+      name: 'Warm-Up',
+      orderIndex: 0,
+      createdAtMs: 1744012860000,
+      updatedAtMs: 1744012860000,
+    ),
+    SessionBlock(
+      id: 'seed-block-main',
+      sessionId: 'seed-session-standard',
+      name: 'Main Work',
+      orderIndex: 1,
+      createdAtMs: 1744012920000,
+      updatedAtMs: 1744012920000,
+    ),
+  ];
+
+  static final List<SegmentEffort> sampleSegmentEfforts = [
+    // Warm-Up block: easy run + barbell squat warm-up
+    SegmentEffort(
+      id: 'seed-effort-warmup-run',
+      segmentId: 'seed-segment-standard',
+      orderIndex: 0,
+      effortKind: 'timed',
+      exerciseId: 'exercise-easy-run',
+      blockId: 'seed-block-warmup',
+      createdAtMs: 1744012860000,
+      updatedAtMs: 1744012860000,
+    ),
+    SegmentEffort(
+      id: 'seed-effort-warmup-squat',
+      segmentId: 'seed-segment-standard',
+      orderIndex: 1,
+      effortKind: 'set',
+      exerciseId: 'exercise-barbell-squat',
+      blockId: 'seed-block-warmup',
+      createdAtMs: 1744012900000,
+      updatedAtMs: 1744012900000,
+    ),
+    // Main Work block: bench press + deadlift
+    SegmentEffort(
+      id: 'seed-effort-main-bench',
+      segmentId: 'seed-segment-standard',
+      orderIndex: 2,
+      effortKind: 'set',
+      exerciseId: 'exercise-bench-press',
+      blockId: 'seed-block-main',
+      createdAtMs: 1744012920000,
+      updatedAtMs: 1744012920000,
+    ),
+    SegmentEffort(
+      id: 'seed-effort-main-deadlift',
+      segmentId: 'seed-segment-standard',
+      orderIndex: 3,
+      effortKind: 'set',
+      exerciseId: 'exercise-deadlift',
+      blockId: 'seed-block-main',
+      createdAtMs: 1744012980000,
+      updatedAtMs: 1744012980000,
+    ),
+    // Standalone: pull-up (no block)
+    SegmentEffort(
+      id: 'seed-effort-standalone-pullup',
+      segmentId: 'seed-segment-standard',
+      orderIndex: 4,
+      effortKind: 'set',
+      exerciseId: 'exercise-pullup',
+      blockId: null,
+      createdAtMs: 1744015200000,
+      updatedAtMs: 1744015200000,
+    ),
+  ];
 }
 
 /// Helper class for metric-to-effort-kind relationships

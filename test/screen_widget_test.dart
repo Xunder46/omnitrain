@@ -1971,7 +1971,7 @@ void main() {
     });
 
     testWidgets(
-      'rolling session block Delete removes block but preserves effort',
+      'rolling session block Delete removes block and its efforts',
       (WidgetTester tester) async {
         final repo = await _freshRepo();
         final workoutState = WorkoutState(repo);
@@ -2004,20 +2004,17 @@ void main() {
         await tester.tap(find.text('Delete'));
         await tester.pumpAndSettle();
 
-        expect(
-          find.text('Exercises in this block will not be deleted.'),
-          findsOneWidget,
-        );
-
+        // Confirm deletion
         await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
         await tester.pumpAndSettle();
 
         expect(find.byType(PopupMenuButton<String>), findsNothing);
+        // Effort is cascade-deleted with the block
         expect(
           workoutState.getExercisesWithEntries().any(
             (exercise) => exercise['id'] == effortId,
           ),
-          isTrue,
+          isFalse,
         );
       },
     );

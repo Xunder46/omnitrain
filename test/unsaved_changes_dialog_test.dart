@@ -20,6 +20,9 @@ void main() {
   setupEditSession() async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
+    // Pre-seed coach mark flags so the overlay never blocks button taps.
+    await repository.setPreferenceBool('hint_seen_exercise_info', true);
+    await repository.setPreferenceBool('hint_seen_exercise_notes', true);
 
     final workoutState = WorkoutState(repository);
     final routineState = RoutineState(repository);

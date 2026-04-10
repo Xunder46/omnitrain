@@ -380,6 +380,92 @@ class RoutineState extends ChangeNotifier {
     }
   }
 
+  /// Clone a segment (block) by inserting a copy immediately after it with
+  /// all efforts and targets deep-cloned under new IDs.
+  Future<void> cloneSegment(String segmentId) async {
+    _clearError();
+    try {
+      final sourceIndex = _currentSegments.indexWhere(
+        (s) => s.id == segmentId,
+      );
+      if (sourceIndex == -1) return;
+      final source = _currentSegments[sourceIndex];
+
+      // Derive clone name: "Main" → "Main (2)", "Main (2)" → "Main (3)"
+      final rawName = source.name ?? 'Block ${sourceIndex + 1}';
+      final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
+      final cloneName = suffixMatch != null
+          ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
+          : '$rawName (2)';
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final newSegmentId = 'tseg-clone-$now';
+      final clonedSegment = TemplateSegment(
+        id: newSegmentId,
+        templateId: source.templateId,
+        orderIndex: sourceIndex + 1, // will be re-indexed below
+        segmentType: source.segmentType,
+        name: cloneName,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+
+      // Insert cloned segment immediately after the source, then re-index all.
+      final newSegments = [..._currentSegments];
+      newSegments.insert(sourceIndex + 1, clonedSegment);
+      for (int i = 0; i < newSegments.length; i++) {
+        newSegments[i] = newSegments[i].copyWith(orderIndex: i);
+      }
+      _currentSegments = newSegments;
+      _segmentEfforts[newSegmentId] = [];
+
+      // Deep-clone efforts and their targets.
+      final sourceEfforts = _segmentEfforts[segmentId] ?? [];
+      for (final effort in sourceEfforts) {
+        final newEffortId = 'teff-clone-$now-${effort.id}';
+        final clonedEffort = TemplateEffort(
+          id: newEffortId,
+          templateSegmentId: newSegmentId,
+          orderIndex: effort.orderIndex,
+          effortKind: effort.effortKind,
+          modality: effort.modality,
+          exerciseId: effort.exerciseId,
+          note: effort.note,
+          restSeconds: effort.restSeconds,
+          restType: effort.restType,
+          createdAtMs: now,
+        );
+        _segmentEfforts[newSegmentId]!.add(clonedEffort);
+
+        // Clone all targets for this effort (values intact — template context).
+        final sourceTargets = _currentTargets
+            .where((t) => t.templateEffortId == effort.id)
+            .toList();
+        for (final target in sourceTargets) {
+          final clonedTarget = TemplateTarget(
+            id: 'ttgt-clone-$now-${target.id}',
+            templateEffortId: newEffortId,
+            metricId: target.metricId,
+            setIndex: target.setIndex,
+            unitId: target.unitId,
+            targetMin: target.targetMin,
+            targetMax: target.targetMax,
+            targetInt: target.targetInt,
+            targetText: target.targetText,
+            createdAtMs: now,
+            updatedAtMs: now,
+          );
+          _currentTargets.add(clonedTarget);
+        }
+      }
+
+      _scheduleAutosave();
+      notifyListeners();
+    } catch (e) {
+      _setError('Failed to clone block: $e');
+    }
+  }
+
   /// Reorder segments
   Future<void> reorderSegments(int oldIndex, int newIndex) async {
     _clearError();

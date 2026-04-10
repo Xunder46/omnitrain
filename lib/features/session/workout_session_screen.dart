@@ -137,8 +137,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   @override
   void initState() {
     super.initState();
-    // TEMP: reset coach mark flags for testing — remove when done
-    unawaited(widget.workoutState.resetExerciseHintsForTesting());
     if (!widget.editMode) {
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
       _tick();
@@ -1391,12 +1389,26 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
   }
 
-  Future<void> _showBlockDeleteDialog(String blockId) async {
+  Future<void> _confirmAndDeleteBlock(SessionBlock block) async {
+    final count = _exercises.where((e) => e['blockId'] == block.id).length;
+
+    if (count == 0) {
+      // Empty block — no confirmation needed.
+      if (!mounted) return;
+      await widget.workoutState.deleteSessionBlock(block.id);
+      await _loadExercises();
+      return;
+    }
+
+    // Non-empty block — confirm before cascade-deleting all exercises.
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Block?'),
-        content: const Text('Exercises in this block will not be deleted.'),
+        content: Text(
+          'This block contains $count exercise${count != 1 ? 's' : ''}. '
+          'All exercises inside will be permanently deleted.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1428,7 +1440,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       ),
     );
     if (confirmed == true && mounted) {
-      await widget.workoutState.deleteSessionBlock(blockId);
+      await widget.workoutState.deleteSessionBlock(block.id);
       await _loadExercises();
     }
   }
@@ -1440,7 +1452,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final tileColors = OmniTheme.colorsForTheme(
       widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
     );
-    // Segment ID for adding exercises in rolling session (use first segment).
+    // Segment ID for scoped Add Exercise (always first segment).
     final segmentId = widget.workoutState.segments.isNotEmpty
         ? widget.workoutState.segments.first.id
         : null;
@@ -1477,7 +1489,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                         await widget.workoutState.cloneSessionBlock(block.id);
                         await _loadExercises();
                       case 'delete':
-                        await _showBlockDeleteDialog(block.id);
+                        await _confirmAndDeleteBlock(block);
                     }
                   },
                   itemBuilder: (context) => [
@@ -1619,6 +1631,277 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ],
               ),
             ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 10,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: OmniTheme.buttonPrimaryHeight,
+                    child: FilledButton(
+                      onPressed: widget.editMode
+                          ? _saveEditChanges
+                          : _showFinishSessionDialog,
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonBorderRadius,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        widget.editMode ? 'Save Changes' : 'Finish Workout',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStandardSessionListView(ThemeData theme) {
+    final blocks = widget.workoutState.getSessionBlocks();
+    final standaloneExercises =
+        _exercises.where((e) => e['blockId'] == null).toList();
+
+    if (_exercises.isEmpty && blocks.isEmpty) {
+      // Empty state — no exercises and no blocks yet.
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: OmniGradientBackground(
+          child: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildHeader(theme),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(children: [_buildSessionTimeWidget(theme)]),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          'No exercises',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: OmniTheme.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await widget.workoutState.addSessionBlock();
+                            if (mounted) setState(() {});
+                          },
+                          icon: const Icon(Icons.add_circle_outline),
+                          label: const Text('Add Block'),
+                          style: OutlinedButton.styleFrom(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(
+                              color: theme.colorScheme.primary,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                OmniTheme.buttonUtilityRadius,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+              if (!widget.editMode)
+                Positioned(
+                  right: 10,
+                  bottom: 110,
+                  child: SafeArea(
+                    top: false,
+                    child: SizedBox(
+                      width: OmniTheme.buttonIconSize,
+                      height: OmniTheme.buttonIconSize,
+                      child: FilledButton(
+                        style: ButtonStyle(
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                OmniTheme.buttonIconRadius,
+                              ),
+                            ),
+                          ),
+                        ),
+                        onPressed: _addExercise,
+                        child: const Icon(Icons.add),
+                      ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 10,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: OmniTheme.buttonPrimaryHeight,
+                      child: FilledButton(
+                        onPressed: widget.editMode
+                            ? _saveEditChanges
+                            : _showFinishSessionDialog,
+                        style: ButtonStyle(
+                          shape: WidgetStateProperty.all(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                OmniTheme.buttonBorderRadius,
+                              ),
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          widget.editMode ? 'Save Changes' : 'Finish Workout',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Build a merged ordered list of display items sorted by createdAtMs.
+    // Each item is either a SessionBlock (group) or a standalone exercise map.
+    final List<({SessionBlock? block, Map<String, dynamic>? exercise})> items =
+        [];
+    for (final b in blocks) {
+      items.add((block: b, exercise: null));
+    }
+    for (final ex in standaloneExercises) {
+      items.add((block: null, exercise: ex));
+    }
+    items.sort((a, b) {
+      final aMs =
+          a.block?.createdAtMs ?? (a.exercise?['createdAtMs'] as int? ?? 0);
+      final bMs =
+          b.block?.createdAtMs ?? (b.exercise?['createdAtMs'] as int? ?? 0);
+      return aMs.compareTo(bMs);
+    });
+
+    // Segment ID for adding standalone exercises (always first segment).
+    final segmentId = widget.workoutState.segments.isNotEmpty
+        ? widget.workoutState.segments.first.id
+        : null;
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: OmniGradientBackground(
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(theme),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(children: [_buildSessionTimeWidget(theme)]),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 140),
+                      children: [
+                        // Mixed list: standalone exercises and block groups in insertion order
+                        for (final item in items)
+                          if (item.block != null)
+                            _buildSessionBlockCard(item.block!, theme)
+                          else
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+                              child: _buildExerciseTile(item.exercise!, theme),
+                            ),
+                        const SizedBox(height: 4),
+                        // "Add Block" — always visible, always appended after list
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              await widget.workoutState.addSessionBlock();
+                              if (mounted) setState(() {});
+                            },
+                            icon: const Icon(Icons.add_circle_outline),
+                            label: const Text('Add Block'),
+                            style: OutlinedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                              side: BorderSide(
+                                color: theme.colorScheme.primary,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonUtilityRadius,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Global Add Exercise FAB (standalone — no block assignment)
+            if (!widget.editMode)
+              Positioned(
+                right: 10,
+                bottom: 110,
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    width: OmniTheme.buttonIconSize,
+                    height: OmniTheme.buttonIconSize,
+                    child: FilledButton(
+                      style: ButtonStyle(
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonIconRadius,
+                            ),
+                          ),
+                        ),
+                      ),
+                      onPressed: () => _addExercise(segmentId: segmentId),
+                      child: const Icon(Icons.add),
+                    ),
+                  ),
+                ),
+              ),
+            // Finish Workout button
             Positioned(
               left: 0,
               right: 0,
@@ -3203,264 +3486,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Widget _buildListView(ThemeData theme) {
-    // Rolling sessions get a block-grouped list view (Tasks 1–5).
+    // Rolling sessions get a block-grouped list view.
     if (widget.workoutState.isRollingSession) {
       return _buildRollingSessionListView(theme);
     }
-
-    final segments = widget.workoutState.segments.toList()
-      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
-    final showPerBlockAdd =
-        widget.workoutState.currentSession?.intent == 'routine' &&
-        segments.length > 1;
-
-    if (_exercises.isEmpty && !showPerBlockAdd) {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
-        body: OmniGradientBackground(
-          child: Stack(
-            children: [
-              // Full screen center for text
-              Center(
-                child: Text(
-                  'No exercises',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    color: OmniTheme.textPrimary,
-                  ),
-                ),
-              ),
-              // Header and controls overlay
-              SafeArea(
-                child: Column(
-                  children: [
-                    _buildHeader(theme),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(children: [_buildSessionTimeWidget(theme)]),
-                    ),
-                    Spacer(),
-                  ],
-                ),
-              ),
-              Positioned(
-                right: 10,
-                bottom: 110,
-                child: SafeArea(
-                  top: false,
-                  child: SizedBox(
-                    width: OmniTheme.buttonIconSize,
-                    height: OmniTheme.buttonIconSize,
-                    child: FilledButton(
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonIconRadius,
-                            ),
-                          ),
-                        ),
-                      ),
-                      onPressed: _addExercise,
-                      child: const Icon(Icons.add),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 10,
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: OmniTheme.buttonPrimaryHeight,
-                      child: FilledButton(
-                        onPressed: widget.editMode
-                            ? _saveEditChanges
-                            : _showFinishSessionDialog,
-                        style: ButtonStyle(
-                          shape: WidgetStateProperty.all(
-                            RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                OmniTheme.buttonBorderRadius,
-                              ),
-                            ),
-                          ),
-                        ),
-                        child: Text(
-                          widget.editMode ? 'Save Changes' : 'Finish Workout',
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: OmniGradientBackground(
-        child: Stack(
-          children: [
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(theme),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(children: [_buildSessionTimeWidget(theme)]),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.only(bottom: 140),
-                      children: [
-                        if (showPerBlockAdd)
-                          for (final segment in segments) ...[
-                            _buildSegmentHeaderRow(
-                              segment,
-                              theme,
-                              showAddButton: true,
-                            ),
-                            if (_exercises
-                                .where((e) => e['segmentId'] == segment.id)
-                                .isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
-                                  0,
-                                  20,
-                                  12,
-                                ),
-                                child: Text(
-                                  'No exercises in this block yet.',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: OmniTheme.textSecondary,
-                                  ),
-                                ),
-                              ),
-                            for (final ex in _exercises.where(
-                              (e) => e['segmentId'] == segment.id,
-                            )) ...[
-                              _buildExerciseTile(ex, theme),
-                              const SizedBox(height: 8),
-                            ],
-                          ]
-                        else
-                          for (
-                            int index = 0;
-                            index < _exercises.length;
-                            index++
-                          ) ...[
-                            if (index == 0 ||
-                                _exercises[index]['segmentId'] !=
-                                    _exercises[index - 1]['segmentId'])
-                              _buildSegmentHeader(
-                                _exercises[index]['segmentName'] as String? ??
-                                    'Block',
-                                theme,
-                              ),
-                            _buildExerciseTile(_exercises[index], theme),
-                            const SizedBox(height: 8),
-                          ],
-                        const SizedBox(height: 8),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Rest timer overlay (hide in edit mode or when exercise timer is running)
-            if (!widget.editMode &&
-                (widget.workoutState.isRollingSession
-                    ? _hasGlobalRestToDisplay()
-                    : _hasRestToDisplay(
-                        _exercises[_currentExerciseIndex]['id'] as String,
-                        _currentSet - 1,
-                      )) &&
-                !(_effortRunning['${_exercises[_currentExerciseIndex]['id']}-${_currentSet - 1}'] ??
-                    false))
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 110,
-                child: Center(
-                  child: _buildRestOverlayChip(
-                    theme,
-                    widget.workoutState.isRollingSession
-                        ? _formatGlobalRestElapsed()
-                        : _formatRestElapsedForDisplay(
-                            _exercises[_currentExerciseIndex]['id'] as String,
-                            _currentSet - 1,
-                          ),
-                  ),
-                ),
-              ),
-            if (!showPerBlockAdd)
-              Positioned(
-                right: 10,
-                bottom: 110,
-                child: SafeArea(
-                  top: false,
-                  child: SizedBox(
-                    width: 60,
-                    height: 60,
-                    child: FilledButton(
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                      onPressed: () => _addExercise(),
-                      child: const Icon(Icons.add),
-                    ),
-                  ),
-                ),
-              ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 10,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: FilledButton(
-                      onPressed: widget.editMode
-                          ? _saveEditChanges
-                          : _showFinishSessionDialog,
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        widget.editMode ? 'Save Changes' : 'Finish Workout',
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return _buildStandardSessionListView(theme);
   }
 
   Widget _buildMetricWidget(

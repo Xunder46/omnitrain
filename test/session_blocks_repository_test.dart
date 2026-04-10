@@ -31,7 +31,7 @@ void main() {
       expect(updated.isRolling, isTrue);
     });
 
-    test('deleteSessionBlock nulls blockId on linked efforts', () async {
+    test('deleteSessionBlock cascade-deletes linked efforts', () async {
       await repository.createSession(
         TrainingSession(
           id: 'session-a',
@@ -79,8 +79,7 @@ void main() {
       await repository.deleteSessionBlock('block-a');
 
       final efforts = await repository.getSegmentEfforts('segment-a');
-      expect(efforts, hasLength(1));
-      expect(efforts.first.blockId, isNull);
+      expect(efforts, isEmpty);
     });
 
     test('reorderSessionBlocks only updates matching session IDs', () async {
@@ -268,8 +267,8 @@ void main() {
       final blocks = await repository.getSessionBlocks('session-clone');
       expect(blocks, hasLength(2));
       final clonedBlock = blocks.firstWhere((b) => b.id == newBlockId);
-      // Cloned block should have current-time name like "10:20 PM", not original name
-      expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} [AP]M$')));
+      // Cloned block should use "(2)" suffix notation
+      expect(clonedBlock.name, 'Source (2)');
       expect(clonedBlock.id, isNot('block-clone-source'));
 
       final efforts = await repository.getSegmentEfforts('segment-clone');
@@ -312,6 +311,41 @@ void main() {
 
       final clonedRests = await repository.getEntryRests(clonedEffort.id);
       expect(clonedRests, isEmpty);
+    });
+
+    test('cloneSessionBlock uses incremental (2)/(3) suffix naming', () async {
+      await repository.createSession(
+        TrainingSession(
+          id: 'session-naming',
+          ownerUserId: 'local-user',
+          startedAtMs: 1000,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-main',
+          sessionId: 'session-naming',
+          name: 'Main',
+          orderIndex: 0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // First clone: "Main" → "Main (2)"
+      final clone2Id = await repository.cloneSessionBlock('block-main');
+      final blocksAfterFirst = await repository.getSessionBlocks('session-naming');
+      final clone2 = blocksAfterFirst.firstWhere((b) => b.id == clone2Id);
+      expect(clone2.name, 'Main (2)');
+
+      // Second clone of (2): "Main (2)" → "Main (3)"
+      final clone3Id = await repository.cloneSessionBlock(clone2Id);
+      final blocksAfterSecond = await repository.getSessionBlocks('session-naming');
+      final clone3 = blocksAfterSecond.firstWhere((b) => b.id == clone3Id);
+      expect(clone3.name, 'Main (3)');
     });
   });
 }

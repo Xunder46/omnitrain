@@ -128,5 +128,19 @@ It also includes session/observation extensions:
 
 ---
 
-**Document Version**: 1.1
-**Last Updated**: March 15, 2026
+## Session Block Semantics (Iteration 5 change)
+
+`deleteSessionBlock(blockId)` now **cascade-deletes** all linked `SegmentEffort` records and their sub-records (observations, round instances, timed instances, entry rests). This changed from the Iteration 1 design which only nulled `blockId` on linked efforts.
+
+- Both `HiveWorkoutRepository` and `MockWorkoutRepository` implement the cascade.
+- `WorkoutState.deleteSessionBlock` mirrors the cascade in its in-memory caches.
+- The SQLite schema remains `ON DELETE SET NULL` on `app_segment_effort.block_id`; the app layer performs the cascade before any FK action fires.
+
+`cloneSessionBlock(blockId)` now names clones using an incremental suffix: `"Main" → "Main (2)"`, `"Main (2)" → "Main (3)"`. Timestamp-based names removed.
+
+`addSessionBlock({String? name})` now accepts an optional `name` parameter. When `name` is omitted, the current time in `"h:mm AM/PM"` format is used.
+
+---
+
+**Document Version**: 1.2
+**Last Updated**: April 8, 2026
