@@ -36,6 +36,7 @@ TrainingSession
 | `routineTemplateId` | `String?` | Links to source `WorkoutTemplate` if started from a routine |
 | `sessionFeeling` | `int?` | Optional 1-5 post-session feeling score |
 | `qualityRating` | `int?` | Reserved nullable quality field |
+| `isRolling` | `bool` | Marks the session as using the rolling/continuous format. Exercises are grouped into named time-stamped segment blocks; session duration display is suppressed. Defaults to `false`. |
 
 ### SessionSegment
 

@@ -12,8 +12,7 @@ OmniTrain supports **multiple app themes** selectable at runtime from the Settin
 |------------|-------------|----------------|-----------|
 | `AppTheme.abyssalNeon` | Abyssal Neon | `#2DE2E6` (Neon Cyan) | Deep navy gradient, electric cyan accents |
 | `AppTheme.forgeEmber` | Forge & Ember | `#FF6B35` (Ember Orange) | Dark amber-black gradient, molten orange accents |
-| `AppTheme.obsidianVolt` | Obsidian Volt | `#EAE000` (Electric Yellow) | Near-black gradient, volt yellow accents |
-
+| `AppTheme.obsidianVolt` | Obsidian Volt | `#EAE000` (Electric Yellow) | Near-black gradient, volt yellow accents || `AppTheme.circuitGreen` | Circuit Green | `#00E676` (Circuit Green) | Deep forest-black gradient, vivid green accents |
 ---
 
 ## Token System: `OmniTheme`
@@ -23,7 +22,7 @@ OmniTrain supports **multiple app themes** selectable at runtime from the Settin
 ### `AppTheme` Enum
 
 ```dart
-enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt }
+enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen }
 ```
 
 ### Color Token Record
@@ -78,6 +77,18 @@ enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt }
 | textMuted | `Color(0xFF666666)` |
 | divider | `Color(0xFF1F1F1F)` |
 | surfaceBorder | `Color(0x12FFFFFF)` |
+
+#### `circuitGreen`
+| Token | Value |
+|-------|-------|
+| backgroundTop | `Color(0xFF071210)` |
+| backgroundBottom | `Color(0xFF030806)` |
+| surface | `Color(0xFF091714)` |
+| primary | `Color(0xFF00E676)` |
+| secondary | `Color(0xFF00A854)` |
+| textMuted | `Color(0xFF4A7A5A)` |
+| divider | `Color(0xFF102018)` |
+| surfaceBorder | `Color(0x0DFFFFFF)` |
 
 ### Helper Methods
 

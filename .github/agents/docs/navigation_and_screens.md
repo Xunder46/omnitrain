@@ -21,9 +21,16 @@ main()
 **File**: `lib/app.dart`
 
 `MyApp` is a `StatelessWidget` that:
-- Builds the "abyssal neon dark" theme via `buildTheme()`
-- Sets `MaterialApp.home` → `HomeScreen` (splash screen is commented out)
-- Passes all dependencies to `HomeScreen` via constructor
+- Builds the theme via `buildTheme()`
+- Sets `MaterialApp.home` based on the `showOnboarding` flag (read from SQLite preference `onboarding_complete` in `main.dart`):
+  - Fresh install (`onboarding_complete` absent or `false`) → `OnboardingScreen`
+  - Returning user (`onboarding_complete = true`) → `HomeScreen`
+- Passes all dependencies via constructor
+
+```
+main.dart → (fresh install, onboarding_complete absent/false) → OnboardingScreen → [Get Started] → HomeScreen
+main.dart → (returning user, onboarding_complete = true)       → HomeScreen
+```
 
 ---
 
@@ -90,6 +97,7 @@ HomeScreen
 | `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
 | `SettingsScreen` | `lib/features/settings/settings_screen.dart` | App Appearance — theme selector |
 | `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: all-time sessions, total training time, current streak, 30-day bar chart |
+| `OnboardingScreen` | `lib/features/onboarding/onboarding_screen.dart` | First-launch 3-page swipeable intro. Page 1: app pitch. Page 2: modality tiles with accent colors and one-liners. Page 3: calendar features + Get Started button. Completion sets `onboarding_complete` preference key via `repository.setPreferenceBool` and calls `pushReplacement` to `HomeScreen`. |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
 
 ### Empty / Placeholder Directories
