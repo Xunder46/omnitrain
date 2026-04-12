@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
+import '../../core/constants/home_tiles.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -115,6 +116,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         streakDays: widget.calendarState.streakDays,
                         modalityBreakdown:
                             widget.calendarState.modalityBreakdown,
+                        isActiveStreak:
+                            widget.calendarState.isActiveStreak,
                       ),
                     ),
                   ],
@@ -485,12 +488,14 @@ class _MonthlyStatsStrip extends StatelessWidget {
   final int totalTrainingMs;
   final int streakDays;
   final Map<String?, int> modalityBreakdown;
+  final bool isActiveStreak;
 
   const _MonthlyStatsStrip({
     required this.completedSessions,
     required this.totalTrainingMs,
     required this.streakDays,
     required this.modalityBreakdown,
+    required this.isActiveStreak,
   });
 
   String _formatTrainingTime(int ms) {
@@ -511,6 +516,17 @@ class _MonthlyStatsStrip extends StatelessWidget {
       ..sort((a, b) => b.value.compareTo(a.value));
     final modalityChips = sortedModalities.map((entry) {
       final color = ModalityColorUtils.colorForModality(entry.key);
+      final tileLabel = HomeTiles.all
+          .firstWhere(
+            (t) => t.modality == entry.key,
+            orElse: () => HomeTiles.all.first,
+          )
+          .label;
+      const labelStyle = TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        color: OmniTheme.textSecondary,
+      );
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -522,13 +538,15 @@ class _MonthlyStatsStrip extends StatelessWidget {
               shape: BoxShape.circle,
             ),
           ),
-          const SizedBox(width: 7),
+          const SizedBox(width: 5),
+          Text(tileLabel, style: labelStyle),
+          const SizedBox(width: 4),
           Text(
             '${entry.value}',
-            style: TextStyle(
-              fontSize: 15,
+            style: const TextStyle(
+              fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: OmniTheme.textSecondary.withOpacity(0.75),
+              color: OmniTheme.textSecondary,
             ),
           ),
         ],
@@ -560,10 +578,12 @@ class _MonthlyStatsStrip extends StatelessWidget {
                   value: _formatTrainingTime(totalTrainingMs),
                 ),
                 _CompactStat(
-                  label: 'STREAK',
-                  value: streakDays >= 3
-                      ? '🔥 ${streakDays}d'
-                      : (streakDays == 0 ? '0' : '${streakDays}d'),
+                  label: isActiveStreak ? 'STREAK' : 'BEST RUN',
+                  value: completedSessions == 0
+                      ? '—'
+                      : (streakDays >= 3
+                          ? '🔥 ${streakDays}d'
+                          : (streakDays == 0 ? '0' : '${streakDays}d')),
                 ),
               ],
             ),

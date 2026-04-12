@@ -12,7 +12,12 @@ OmniTrain supports **multiple app themes** selectable at runtime from the Settin
 |------------|-------------|----------------|-----------|
 | `AppTheme.abyssalNeon` | Abyssal Neon | `#2DE2E6` (Neon Cyan) | Deep navy gradient, electric cyan accents |
 | `AppTheme.forgeEmber` | Forge & Ember | `#FF6B35` (Ember Orange) | Dark amber-black gradient, molten orange accents |
-| `AppTheme.obsidianVolt` | Obsidian Volt | `#EAE000` (Electric Yellow) | Near-black gradient, volt yellow accents || `AppTheme.circuitGreen` | Circuit Green | `#00E676` (Circuit Green) | Deep forest-black gradient, vivid green accents |
+| `AppTheme.obsidianVolt` | Obsidian Volt | `#EAE000` (Electric Yellow) | Near-black gradient, volt yellow accents |
+| `AppTheme.circuitGreen` | Circuit Green | `#00E676` (Circuit Green) | Deep forest-black gradient, vivid green accents |
+| `AppTheme.voidPulse` | Void Pulse | `#8B5CF6` (Ultraviolet) | Deep violet-black gradient, ultraviolet accents — meditative, focused, late-night training |
+| `AppTheme.arcticCore` | Arctic Core | `#B8E4F9` (Ice Blue-White) | Cold slate-black gradient, ice-white blue accents — clinical, precision, instrument-sharp |
+| `AppTheme.crimsonDojo` | Crimson Dojo | `#E53935` (Blood Red) | Deep maroon-black gradient, blood-red accents — combat sport, aggression, martial arts |
+| `AppTheme.titaniumRose` | Titanium Rose | `#F72585` (Neon Magenta) | Dark charcoal-violet gradient, neon magenta accents — explosive, high-intensity, unapologetic |
 ---
 
 ## Token System: `OmniTheme`
@@ -22,7 +27,7 @@ OmniTrain supports **multiple app themes** selectable at runtime from the Settin
 ### `AppTheme` Enum
 
 ```dart
-enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen }
+enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen, voidPulse, arcticCore, crimsonDojo, titaniumRose }
 ```
 
 ### Color Token Record
@@ -89,6 +94,54 @@ enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen }
 | textMuted | `Color(0xFF4A7A5A)` |
 | divider | `Color(0xFF102018)` |
 | surfaceBorder | `Color(0x0DFFFFFF)` |
+
+#### `voidPulse`
+| Token | Value |
+|-------|-------|
+| backgroundTop | `Color(0xFF0D0A1A)` |
+| backgroundBottom | `Color(0xFF050308)` |
+| surface | `Color(0xFF110D20)` |
+| primary | `Color(0xFF8B5CF6)` |
+| secondary | `Color(0xFF6D3FD4)` |
+| textMuted | `Color(0xFF6B5B8A)` |
+| divider | `Color(0xFF1A1230)` |
+| surfaceBorder | `Color(0x0FFFFFFF)` |
+
+#### `arcticCore`
+| Token | Value |
+|-------|-------|
+| backgroundTop | `Color(0xFF0A0E14)` |
+| backgroundBottom | `Color(0xFF04060A)` |
+| surface | `Color(0xFF0D1219)` |
+| primary | `Color(0xFFB8E4F9)` |
+| secondary | `Color(0xFF7AB8D8)` |
+| textMuted | `Color(0xFF4A5E72)` |
+| divider | `Color(0xFF111820)` |
+| surfaceBorder | `Color(0x12FFFFFF)` |
+
+#### `crimsonDojo`
+| Token | Value |
+|-------|-------|
+| backgroundTop | `Color(0xFF1A0806)` |
+| backgroundBottom | `Color(0xFF080302)` |
+| surface | `Color(0xFF1F0A08)` |
+| primary | `Color(0xFFE53935)` |
+| secondary | `Color(0xFFB71C1C)` |
+| textMuted | `Color(0xFF7A3530)` |
+| divider | `Color(0xFF2A0F0C)` |
+| surfaceBorder | `Color(0x0DFFFFFF)` |
+
+#### `titaniumRose`
+| Token | Value |
+|-------|-------|
+| backgroundTop | `Color(0xFF120A14)` |
+| backgroundBottom | `Color(0xFF060308)` |
+| surface | `Color(0xFF170C1A)` |
+| primary | `Color(0xFFF72585)` |
+| secondary | `Color(0xFFC1006A)` |
+| textMuted | `Color(0xFF6B3D5E)` |
+| divider | `Color(0xFF1E1020)` |
+| surfaceBorder | `Color(0x0FFFFFFF)` |
 
 ### Helper Methods
 

@@ -5,7 +5,8 @@ import '../../core/constants/omni_theme.dart';
 /// Features biomechanical aesthetic with depth and subtle animations
 class EnergyTile extends StatefulWidget {
   final String title;
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final List<Color> gradientColors;
   final Color accentColor;
   final VoidCallback onTap;
@@ -14,7 +15,8 @@ class EnergyTile extends StatefulWidget {
   const EnergyTile({
     super.key,
     required this.title,
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.gradientColors,
     required this.accentColor,
     required this.onTap,
@@ -107,8 +109,8 @@ class _EnergyTileState extends State<EnergyTile> {
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              widget.icon,
+            widget.iconWidget ?? Icon(
+              widget.icon!,
               size: 70,
               color: OmniTheme.textPrimary,
             ),

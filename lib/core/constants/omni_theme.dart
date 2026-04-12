@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen }
+enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen, voidPulse, arcticCore, crimsonDojo, titaniumRose }
 
 typedef OmniThemeColors = ({
   Color backgroundTop,
@@ -70,6 +70,50 @@ class OmniTheme {
           divider: Color(0xFF102018),
           surfaceBorder: Color(0x0DFFFFFF),
         );
+      case AppTheme.voidPulse:
+        return (
+          backgroundTop: Color(0xFF0D0A1A),
+          backgroundBottom: Color(0xFF050308),
+          surface: Color(0xFF110D20),
+          primary: Color(0xFF8B5CF6),
+          secondary: Color(0xFF6D3FD4),
+          textMuted: Color(0xFF6B5B8A),
+          divider: Color(0xFF1A1230),
+          surfaceBorder: Color(0x0FFFFFFF),
+        );
+      case AppTheme.arcticCore:
+        return (
+          backgroundTop: Color(0xFF0A0E14),
+          backgroundBottom: Color(0xFF04060A),
+          surface: Color(0xFF0D1219),
+          primary: Color(0xFFB8E4F9),
+          secondary: Color(0xFF7AB8D8),
+          textMuted: Color(0xFF4A5E72),
+          divider: Color(0xFF111820),
+          surfaceBorder: Color(0x12FFFFFF),
+        );
+      case AppTheme.crimsonDojo:
+        return (
+          backgroundTop: Color(0xFF1A0806),
+          backgroundBottom: Color(0xFF080302),
+          surface: Color(0xFF1F0A08),
+          primary: Color(0xFFE53935),
+          secondary: Color(0xFFB71C1C),
+          textMuted: Color(0xFF7A3530),
+          divider: Color(0xFF2A0F0C),
+          surfaceBorder: Color(0x0DFFFFFF),
+        );
+      case AppTheme.titaniumRose:
+        return (
+          backgroundTop: Color(0xFF120A14),
+          backgroundBottom: Color(0xFF060308),
+          surface: Color(0xFF170C1A),
+          primary: Color(0xFFF72585),
+          secondary: Color(0xFFC1006A),
+          textMuted: Color(0xFF6B3D5E),
+          divider: Color(0xFF1E1020),
+          surfaceBorder: Color(0x0FFFFFFF),
+        );
     }
   }
 
@@ -83,6 +127,14 @@ class OmniTheme {
         return 'Obsidian Volt';
       case AppTheme.circuitGreen:
         return 'Circuit Green';
+      case AppTheme.voidPulse:
+        return 'Void Pulse';
+      case AppTheme.arcticCore:
+        return 'Arctic Core';
+      case AppTheme.crimsonDojo:
+        return 'Crimson Dojo';
+      case AppTheme.titaniumRose:
+        return 'Titanium Rose';
     }
   }
 

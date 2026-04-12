@@ -305,62 +305,107 @@ class CalendarState extends ChangeNotifier {
   int _streakDays = 0;
   int get streakDays => _streakDays;
 
-  /// Computes the current consecutive-day streak of completed sessions,
-  /// looking back up to 90 days from today.
+  /// True when the displayed month is before the current calendar month.
+  bool get isHistoricalMonth {
+    final now = DateTime.now();
+    return _year < now.year || (_year == now.year && _month < now.month);
+  }
+
+  /// True when [streakDays] represents an active consecutive streak anchored
+  /// on today or yesterday (i.e. current month with a live streak > 0).
+  bool get isActiveStreak {
+    final now = DateTime.now();
+    return _year == now.year && _month == now.month && _streakDays > 0;
+  }
+
+  /// For the current month: active consecutive-day streak anchored on
+  /// today / yesterday (may span prior months, looks back 90 days).
   ///
-  /// Rules:
-  /// - If there is a session today, streak anchors on today.
-  /// - Else if there is a session yesterday, streak anchors on yesterday.
-  /// - Else streak is 0.
+  /// For historical months: longest consecutive-day run with at least one
+  /// completed session within the displayed month's data.
   ///
   /// Non-fatal: defaults to 0 on errors.
   Future<void> _computeStreak() async {
     try {
       final now = DateTime.now();
-      final toMs = OmniDateUtils.endOfDayMs(now);
-      final fromMs = OmniDateUtils.startOfDayMs(
-        now.subtract(const Duration(days: 90)),
-      );
-      final sessions = await _repository.getSessionsByDateRange(fromMs, toMs);
+      final isCurrentMonth = _year == now.year && _month == now.month;
 
-      final completedDays = <int>{};
-      for (final s in sessions) {
-        if (s.endedAtMs != null) {
-          completedDays.add(
-            OmniDateUtils.startOfDayMs(OmniDateUtils.fromMs(s.startedAtMs)),
-          );
+      if (isCurrentMonth) {
+        // Active streak anchored on today / yesterday — may span prior months.
+        final toMs = OmniDateUtils.endOfDayMs(now);
+        final fromMs = OmniDateUtils.startOfDayMs(
+          now.subtract(const Duration(days: 90)),
+        );
+        final sessions = await _repository.getSessionsByDateRange(fromMs, toMs);
+
+        final completedDays = <int>{};
+        for (final s in sessions) {
+          if (s.endedAtMs != null) {
+            completedDays.add(
+              OmniDateUtils.startOfDayMs(OmniDateUtils.fromMs(s.startedAtMs)),
+            );
+          }
         }
-      }
 
-      final today = DateTime(now.year, now.month, now.day);
-      final yesterday = today.subtract(const Duration(days: 1));
-      final todayMs = today.millisecondsSinceEpoch;
-      final yesterdayMs = yesterday.millisecondsSinceEpoch;
+        final today = DateTime(now.year, now.month, now.day);
+        final yesterday = today.subtract(const Duration(days: 1));
+        final todayMs = today.millisecondsSinceEpoch;
+        final yesterdayMs = yesterday.millisecondsSinceEpoch;
 
-      DateTime? anchorDay;
-      if (completedDays.contains(todayMs)) {
-        anchorDay = today;
-      } else if (completedDays.contains(yesterdayMs)) {
-        anchorDay = yesterday;
-      }
+        DateTime? anchorDay;
+        if (completedDays.contains(todayMs)) {
+          anchorDay = today;
+        } else if (completedDays.contains(yesterdayMs)) {
+          anchorDay = yesterday;
+        }
 
-      if (anchorDay == null) {
-        _streakDays = 0;
-        return;
-      }
+        if (anchorDay == null) {
+          // No active streak — fall back to longest run within the month.
+          _streakDays = _longestRunInMonth();
+          return;
+        }
 
-      int streak = 0;
-      var day = anchorDay;
-      while (true) {
-        final ms = day.millisecondsSinceEpoch;
-        if (!completedDays.contains(ms)) break;
-        streak++;
-        day = day.subtract(const Duration(days: 1));
+        int streak = 0;
+        var day = anchorDay;
+        while (true) {
+          final ms = day.millisecondsSinceEpoch;
+          if (!completedDays.contains(ms)) break;
+          streak++;
+          day = day.subtract(const Duration(days: 1));
+        }
+        _streakDays = streak;
+      } else {
+        // Historical month: longest consecutive-day run within _entriesByDay.
+        _streakDays = _longestRunInMonth();
       }
-      _streakDays = streak;
     } catch (_) {
       _streakDays = 0;
     }
+  }
+
+  /// Longest consecutive-day run of completed sessions within [_entriesByDay].
+  int _longestRunInMonth() {
+    final completedDayMs = _entriesByDay.entries
+        .where((e) => e.value.any((entry) => entry.isCompleted))
+        .map((e) => e.key)
+        .toList()
+      ..sort();
+
+    if (completedDayMs.isEmpty) return 0;
+
+    int longest = 1;
+    int current = 1;
+    for (int i = 1; i < completedDayMs.length; i++) {
+      final prev = DateTime.fromMillisecondsSinceEpoch(completedDayMs[i - 1]);
+      final curr = DateTime.fromMillisecondsSinceEpoch(completedDayMs[i]);
+      if (curr.difference(prev).inDays == 1) {
+        current++;
+        if (current > longest) longest = current;
+      } else {
+        current = 1;
+      }
+    }
+    return longest;
   }
 
   // ─── Period highlights ───────────────────────────────────────────────────────
