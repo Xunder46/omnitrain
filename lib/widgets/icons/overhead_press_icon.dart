@@ -81,15 +81,15 @@ class _OverheadPressPainter extends CustomPainter {
       ..moveTo(x(103), y(83))
       ..lineTo(x(95), y(110))
       ..lineTo(x(70), y(58))
-      ..lineTo(x(85), y(50))
+      ..lineTo(x(86), y(50))
       ..close();
     canvas.drawPath(leftUpperArm, paint);
 
     // ── LEFT FOREARM ──────────────────────────────────────────────────────────
     final leftForearm = Path()
       ..moveTo(x(72), y(62))
-      ..lineTo(x(87), y(55))
-      ..lineTo(x(71), y(18))
+      ..lineTo(x(88), y(55))
+      ..lineTo(x(72), y(18))
       ..lineTo(x(52), y(18))
       ..close();
     canvas.drawPath(leftForearm, paint);
@@ -99,28 +99,28 @@ class _OverheadPressPainter extends CustomPainter {
       ..moveTo(x(145), y(83))
       ..lineTo(x(153), y(110))
       ..lineTo(x(176), y(58))
-      ..lineTo(x(162), y(50))
+      ..lineTo(x(161), y(50))
       ..close();
     canvas.drawPath(rightUpperArm, paint);
 
     // ── RIGHT FOREARM ─────────────────────────────────────────────────────────
     final rightForearm = Path()
       ..moveTo(x(174), y(62))
-      ..lineTo(x(160), y(55))
-      ..lineTo(x(175), y(18))
+      ..lineTo(x(159), y(55))
+      ..lineTo(x(174), y(18))
       ..lineTo(x(194), y(18))
       ..close();
     canvas.drawPath(rightForearm, paint);
 
     // ── LEFT LEG ──────────────────────────────────────────────────────────────
     canvas.drawRect(
-      Rect.fromLTWH(x(95), y(181), w * (20 / 240), h * (85 / 280)),
+      Rect.fromLTWH(x(95), y(186), w * (20 / 240), h * (80 / 280)),
       paint,
     );
 
     // ── RIGHT LEG ─────────────────────────────────────────────────────────────
     canvas.drawRect(
-      Rect.fromLTWH(x(135), y(181), w * (20 / 240), h * (85 / 280)),
+      Rect.fromLTWH(x(135), y(186), w * (20 / 240), h * (80 / 280)),
       paint,
     );
 
