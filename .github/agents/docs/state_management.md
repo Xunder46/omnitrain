@@ -48,7 +48,7 @@ The primary state manager for active workout sessions. Manages the entire sessio
 
 | Method | Purpose |
 |--------|---------|
-| `createNewSession({modality, title, intent, routineTemplateId})` | Creates session + segment |
+| `createNewSession({modality, title, intent, routineTemplateId, isRolling})` | Creates session + segment; `isRolling` (bool, default `false`) sets `TrainingSession.isRolling` |
 | `loadSessionData()` | Loads exercises, efforts, observations for current session |
 | `loadHistoricalSession(session)` | Loads a previously completed session for review/edit mode; sets `_currentModalityConfig` correctly from `session.modality` |
 | `endSession()` | Marks session as ended (`endedAtMs`); idempotent — no-op if session already has `endedAtMs` |
@@ -57,6 +57,7 @@ The primary state manager for active workout sessions. Manages the entire sessio
 | `updateSessionNote(note)` | Updates session note |
 | `updateSessionEndTime(durationSecs)` | Edit-mode only — sets `endedAtMs = startedAtMs + durationSecs × 1000`; no-op if `durationSecs ≤ 0` |
 | `updateSessionFeeling(feeling)` | Persists a 1-5 feeling score to `TrainingSession.sessionFeeling`; updates `_currentSession` in-place |
+| `isRollingSession` | Getter — returns `true` when the active session has `isRolling == true`; returns `false` when no session is loaded |
 
 #### Exercise Management
 
@@ -109,6 +110,19 @@ See [Rest Tracking](rest_tracking.md) for full architecture details.
 | `populateSessionFromManifest(manifest)` | Loads exercises from `RoutineSessionManifest` |
 | `computeSessionSummary()` | Returns `SessionSummary`; counts only `RoundState.finished` rounds (not-started/active/paused are excluded) |
 | `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine |
+
+#### Session Block Management
+
+Session blocks organize efforts into named, time-stamped groups. They are the primary UI structure for rolling sessions but are present in all session types when content is added via the routine manifest flow.
+
+| Method | Purpose |
+|--------|--------|
+| `getSessionBlocks()` | Returns blocks for the current session sorted by `orderIndex` |
+| `addSessionBlock({String? name})` | Creates a new `SessionBlock` for the current session. If `name` is omitted the block is named with the current wall-clock time in `"h:mm AM/PM"` format (e.g. `"3:45 PM"`) — the mechanism behind time-stamped blocks in rolling sessions |
+| `updateSessionBlock(block)` | Persists changes to an existing block |
+| `deleteSessionBlock(blockId)` | Deletes a block and mirrors the repository cascade to in-memory effort/observation maps |
+| `reorderSessionBlocks(orderedIds)` | Reorders blocks for the current session |
+| `cloneSessionBlock(blockId)` | Deep-clones a block and all linked records via the repository |
 
 ---
 

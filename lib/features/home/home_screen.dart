@@ -181,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 return EnergyTile(
                                   title: tile.label,
                                   icon: tile.iconData,
+                                  iconWidget: tile.iconWidget,
                                   gradientColors: tile.gradientColors,
                                   accentColor: tile.accentColor,
                                   isActive: isActive,

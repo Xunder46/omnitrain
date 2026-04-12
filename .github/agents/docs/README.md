@@ -38,6 +38,8 @@ This documentation describes the architecture, features, and conventions of Omni
 | [Session Summary](session_summary.md) | Post-workout analytics — PRs, volume comparison, save-as-routine |
 | [Profile & Measurements](profile_and_measurements.md) | Profile identity, avatar flow, body measurement logging, and history chart behavior |
 | [Theme & Settings](theme_and_settings.md) | Multi-theme system (AppTheme enum, OmniTheme tokens), SettingsState, SettingsScreen appearance section |
+| [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, first-time onboarding sheet |
+| [Stats Screen](stats_screen.md) | All-time session aggregates, streak, 30-day activity bar chart, rest averages by modality |
 
 ### Architecture & Technical
 | Document | Description |
@@ -162,4 +164,4 @@ Profile measurement rules implemented in code:
 
 ---
 
-**Last Updated**: March 15, 2026
+**Last Updated**: April 11, 2026

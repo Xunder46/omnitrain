@@ -4,7 +4,8 @@ import '../../core/constants/omni_theme.dart';
 /// Circular energy core with radial gradient and glow
 /// Represents the biomechanical power source for each training modality
 class EnergyCore extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? iconWidget;
   final List<Color> gradientColors;
   final Color glowColor;
   final bool isActive;
@@ -12,7 +13,8 @@ class EnergyCore extends StatelessWidget {
 
   const EnergyCore({
     super.key,
-    required this.icon,
+    this.icon,
+    this.iconWidget,
     required this.gradientColors,
     required this.glowColor,
     this.isActive = false,
@@ -38,8 +40,8 @@ class EnergyCore extends StatelessWidget {
           OmniTheme.glowShadow(glowColor, opacity: glowOpacity),
         ],
       ),
-      child: Icon(
-        icon,
+      child: iconWidget ?? Icon(
+        icon!,
         size: size * 0.4, // Icon is 40% of core size
         color: OmniTheme.textPrimary,
       ),

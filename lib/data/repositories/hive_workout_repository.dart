@@ -1571,25 +1571,33 @@ class HiveWorkoutRepository implements WorkoutRepository {
           .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
           .map((e) => e.key)
           .toList();
-      for (final k in obsKeys) await _observationsBox.delete(k);
+      for (final k in obsKeys) {
+        await _observationsBox.delete(k);
+      }
 
       final riKeys = _roundInstancesBox.toMap().entries
           .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
           .map((e) => e.key)
           .toList();
-      for (final k in riKeys) await _roundInstancesBox.delete(k);
+      for (final k in riKeys) {
+        await _roundInstancesBox.delete(k);
+      }
 
       final tiKeys = _timedInstancesBox.toMap().entries
           .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
           .map((e) => e.key)
           .toList();
-      for (final k in tiKeys) await _timedInstancesBox.delete(k);
+      for (final k in tiKeys) {
+        await _timedInstancesBox.delete(k);
+      }
 
       final erKeys = _entryRestsBox.toMap().entries
           .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
           .map((e) => e.key)
           .toList();
-      for (final k in erKeys) await _entryRestsBox.delete(k);
+      for (final k in erKeys) {
+        await _entryRestsBox.delete(k);
+      }
 
       await _effortsBox.delete(effortKey);
     }

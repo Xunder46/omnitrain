@@ -13,13 +13,21 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final themeColors = OmniTheme.colorsForTheme(settingsState.appTheme);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: themeColors.backgroundTop,
+        foregroundColor: themeColors.primary,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Settings'),
+        title: Text(
+          'Settings',
+          style: theme.textTheme.titleLarge?.copyWith(
+            color: themeColors.primary,
+          ),
+        ),
       ),
       body: OmniGradientBackground(
         child: SafeArea(
@@ -42,88 +50,63 @@ class SettingsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        Row(
-                          children: AppTheme.values.map((appTheme) {
-                            final isSelected =
-                                settingsState.appTheme == appTheme;
-                            final themeColors = OmniTheme.colorsForTheme(
-                              appTheme,
-                            );
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: AppTheme.values.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                                childAspectRatio: 2.8,
+                              ),
+                          itemBuilder: (context, index) {
+                            final appTheme = AppTheme.values[index];
+                            final isSelected = settingsState.appTheme == appTheme;
 
-                            return Expanded(
-                              child: Padding(
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => settingsState.setAppTheme(appTheme),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                curve: Curves.easeInOut,
+                                alignment: Alignment.center,
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
+                                  horizontal: 10,
+                                  vertical: 8,
                                 ),
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: () =>
-                                      settingsState.setAppTheme(appTheme),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 180),
-                                    curve: Curves.easeInOut,
-                                    constraints: const BoxConstraints(
-                                      minHeight: 52,
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? theme.colorScheme.surface
-                                                .withOpacity(0.85)
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(
-                                        OmniTheme.buttonUtilityRadius,
-                                      ),
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? theme.colorScheme.primary
-                                            : theme.colorScheme.onSurface
-                                                  .withOpacity(0.25),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Container(
-                                          width: 10,
-                                          height: 10,
-                                          decoration: BoxDecoration(
-                                            color: themeColors.primary,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            OmniTheme.displayNameForTheme(
-                                              appTheme,
-                                            ),
-                                            textAlign: TextAlign.center,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: isSelected
-                                                      ? theme
-                                                            .colorScheme
-                                                            .onSurface
-                                                      : OmniTheme.textSecondary,
-                                                  fontWeight: isSelected
-                                                      ? FontWeight.w600
-                                                      : FontWeight.w500,
-                                                ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? theme.colorScheme.surface.withOpacity(0.88)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(
+                                    OmniTheme.buttonUtilityRadius,
+                                  ),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface
+                                            .withOpacity(0.25),
+                                  ),
+                                ),
+                                child: Text(
+                                  OmniTheme.displayNameForTheme(appTheme),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: isSelected
+                                        ? theme.colorScheme.onSurface
+                                        : OmniTheme.textSecondary,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
                                   ),
                                 ),
                               ),
                             );
-                          }).toList(),
+                          },
                         ),
                       ],
                     ),

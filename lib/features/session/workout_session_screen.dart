@@ -1259,9 +1259,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Future<void> _addExercise({String? segmentId, String? blockId}) async {
-    final modality =
-        widget.workoutState.currentSession?.modality ??
-        widget.preferredModality;
+    final sessionModality = widget.workoutState.currentSession?.modality;
+    final modality = sessionModality ?? widget.preferredModality;
 
     final selectedExercise = await showDialog<Exercise>(
       context: context,
@@ -1274,20 +1273,30 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     if (selectedExercise != null) {
       String? effortKindOverride;
 
-      // If Free Training or Routine session (null modality), ask user to pick a modality
-      if (modality == null) {
-        final modalityResult = await showDialog<(bool, String?)>(
-          context: context,
-          builder: (context) => const ModalityPickerDialog(),
-        );
+      // If the session has its own modality, use it as-is (modality config already set in state)
+      // If the session has null modality:
+      if (sessionModality == null) {
+        if (widget.preferredModality != null) {
+          // Rolling session with a preferred modality hint from the tile
+          // Derive effort kind from that modality without showing picker
+          effortKindOverride =
+              ModalityConfig.forModality(widget.preferredModality)?.effortKind ??
+                  'set';
+        } else {
+          // True free training: show modality picker
+          final modalityResult = await showDialog<(bool, String?)>(
+            context: context,
+            builder: (context) => const ModalityPickerDialog(),
+          );
 
-        if (!context.mounted || modalityResult == null) {
-          return; // user cancelled
+          if (!context.mounted || modalityResult == null) {
+            return; // user cancelled
+          }
+
+          final (_, pickedModality) = modalityResult;
+          effortKindOverride =
+              ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
         }
-
-        final (_, pickedModality) = modalityResult;
-        effortKindOverride =
-            ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
       }
 
       String effortId = '';
@@ -1631,6 +1640,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ],
               ),
             ),
+            // Rest timer overlay (shown above Finish button while any open rest window exists)
+            if (!widget.editMode && _hasGlobalRestToDisplay())
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 110,
+                child: Center(
+                  child: _buildRestOverlayChip(
+                    theme,
+                    _formatGlobalRestElapsed(),
+                  ),
+                ),
+              ),
             Positioned(
               left: 0,
               right: 0,
@@ -1898,6 +1920,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       onPressed: () => _addExercise(segmentId: segmentId),
                       child: const Icon(Icons.add),
                     ),
+                  ),
+                ),
+              ),
+            // Rest timer overlay (shown above Finish button while any open rest window exists)
+            if (!widget.editMode && _hasGlobalRestToDisplay())
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 110,
+                child: Center(
+                  child: _buildRestOverlayChip(
+                    theme,
+                    _formatGlobalRestElapsed(),
                   ),
                 ),
               ),
@@ -2873,14 +2908,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   ],
                 ),
               ),
-              // Rest timer overlay in lower half (hide in edit mode or when exercise timer is running)
+              // Rest timer overlay in lower half (hide in edit mode or when exercise timer is running).
+              // Uses the global helper so the overlay persists after crossing an exercise
+              // boundary (the open rest lives under the previous exercise's effortId).
               if (!widget.editMode &&
-                  (widget.workoutState.isRollingSession
-                      ? _hasGlobalRestToDisplay()
-                      : _hasRestToDisplay(
-                          exercise['id'] as String,
-                          _currentSet - 1,
-                        )) &&
+                  _hasGlobalRestToDisplay() &&
                   !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ??
                       false))
                 Positioned(
@@ -2890,12 +2922,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   child: Center(
                     child: _buildRestOverlayChip(
                       theme,
-                      widget.workoutState.isRollingSession
-                          ? _formatGlobalRestElapsed()
-                          : _formatRestElapsedForDisplay(
-                              exercise['id'] as String,
-                              _currentSet - 1,
-                            ),
+                      _formatGlobalRestElapsed(),
                     ),
                   ),
                 ),
@@ -3203,18 +3230,32 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   String _buildExerciseSubtitle(Map<String, dynamic> exercise) {
     final entries = exercise['entries'] as List<dynamic>? ?? [];
     final effortKind = exercise['effortKind'] as String? ?? 'set';
+    final effortId = exercise['id'] as String;
 
     switch (effortKind) {
       case 'set':
         return '${entries.length} set${entries.length != 1 ? 's' : ''}';
       case 'timed':
-        // Sum elapsedSecs (actual duration) for completed/in-progress entries;
-        // fall back to 'duration' (target) for entries not yet started.
-        final totalDuration = entries.fold<int>(0, (sum, e) {
-          final elapsed = e['elapsedSecs'] as int? ?? 0;
-          final target = e['duration'] as int? ?? 0;
-          return sum + (elapsed > 0 ? elapsed : target);
-        });
+        // Sum elapsed duration for all entries by fetching live TimedInstance data.
+        // This ensures finished sets show their actual elapsed time, not stale entry data.
+        int totalDuration = 0;
+        for (int i = 0; i < entries.length; i++) {
+          final instance = _getTimedInstance(effortId, i);
+          if (instance != null) {
+            // Use actual duration if finished, or elapsed time if still in progress
+            if (instance.state == TimedState.finished) {
+              totalDuration += instance.actualDurationSecs;
+            } else {
+              totalDuration += (instance.elapsedMs / 1000).round();
+            }
+          } else {
+            // Fallback to entry data if TimedInstance not found (shouldn't happen)
+            final e = entries[i] as dynamic;
+            final elapsed = e['elapsedSecs'] as int? ?? 0;
+            final target = e['duration'] as int? ?? 0;
+            totalDuration += (elapsed > 0 ? elapsed : target);
+          }
+        }
         final minutes = totalDuration ~/ 60;
         final seconds = totalDuration % 60;
         return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';

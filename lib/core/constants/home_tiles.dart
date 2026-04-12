@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'modality.dart';
 import 'modality_colors.dart';
+import 'omni_theme.dart';
+import '../../widgets/icons/overhead_press_icon.dart';
 
 /// Configuration for home screen modality tiles with cosmic aesthetic
 /// Defines the 5 primary entry points for workout sessions + My Routines
@@ -8,7 +10,8 @@ import 'modality_colors.dart';
 class HomeTileConfig {
   final String key;
   final String label;
-  final IconData iconData;
+  final IconData? iconData;
+  final Widget? iconWidget;
   final List<Color> gradientColors;
   final Color accentColor;
   final String? modality; // null = special tile (Free Training, My Routines)
@@ -16,7 +19,8 @@ class HomeTileConfig {
   const HomeTileConfig({
     required this.key,
     required this.label,
-    required this.iconData,
+    this.iconData,
+    this.iconWidget,
     required this.gradientColors,
     required this.accentColor,
     this.modality,
@@ -42,7 +46,7 @@ class HomeTiles {
     HomeTileConfig(
       key: 'resistance',
       label: 'Resistance',
-      iconData: Icons.fitness_center,
+      iconWidget: const OverheadPressIcon(size: 70),
       gradientColors: [Color(0xFF1A2F47), Color(0xFF152F42)],
       accentColor: ModalityColors.resistanceLifting,
       modality: Modality.resistanceLifting,
