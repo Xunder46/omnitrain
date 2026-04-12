@@ -72,7 +72,7 @@ class _OverheadPressPainter extends CustomPainter {
 
     // ── TORSO ─────────────────────────────────────────────────────────────────
     canvas.drawRect(
-      Rect.fromLTWH(x(95), y(82), w * (60 / 240), h * (100 / 280)),
+      Rect.fromLTWH(x(95), y(82), w * (60 / 240), h * (105 / 280)),
       paint,
     );
 
