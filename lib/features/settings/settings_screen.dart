@@ -13,21 +13,15 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeColors = OmniTheme.colorsForTheme(settingsState.appTheme);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: themeColors.backgroundTop,
-        foregroundColor: themeColors.primary,
+        backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        title: Text(
-          'Settings',
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: themeColors.primary,
-          ),
-        ),
+        title: const Text('Settings'),
       ),
       body: OmniGradientBackground(
         child: SafeArea(

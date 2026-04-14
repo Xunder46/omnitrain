@@ -1217,16 +1217,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     if (original == null) throw StateError('SessionBlock $blockId not found');
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final sourceSession = _sessions[original.sessionId];
-    final name = sourceSession?.isRolling == true
-      ? _formatBlockTimeLabel(nowMs)
-      : () {
-        final rawName = original.name;
-        final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
-        return suffixMatch != null
-          ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
-          : '$rawName (2)';
-        }();
+    final name = _formatBlockTimeLabel(nowMs);
 
     final maxOrder = _sessionBlocks.values
         .where((b) => b.sessionId == original.sessionId)

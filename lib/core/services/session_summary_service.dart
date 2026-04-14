@@ -286,13 +286,19 @@ class SessionSummaryService {
             break;
           case 'round':
             final instances = await _repository.getRoundInstances(effort.id);
-            final completedRounds = instances
+            final finishedRounds = instances
                 .where(
                   (i) =>
-                      i.completed && i.startedAtMs > 0 && i.finishedAtMs != null,
+                      i.state == RoundState.finished &&
+                      i.startedAtMs > 0 &&
+                      i.finishedAtMs != null,
                 )
-                .length;
-            stats['rounds'] = (stats['rounds'] ?? 0) + completedRounds;
+                .toList();
+            final durationMs = finishedRounds.fold<int>(
+              0,
+              (sum, round) => sum + round.elapsedMs,
+            );
+            stats['rounds'] = (stats['rounds'] ?? 0) + durationMs;
             break;
           case 'drill':
             final instances = await _repository.getTimedInstances(effort.id);
@@ -318,7 +324,7 @@ class SessionSummaryService {
     const units = <String, String>{
       'strength': 'kg',
       'cardio': 'ms',
-      'rounds': 'rounds',
+      'rounds': 'ms',
       'isometric': 'ms',
     };
 
@@ -330,8 +336,9 @@ class SessionSummaryService {
     if (currentSummary.totalCardioDurationMs > 0) {
       currentValues['cardio'] = currentSummary.totalCardioDurationMs.toDouble();
     }
-    if (currentSummary.totalRounds > 0) {
-      currentValues['rounds'] = currentSummary.totalRounds.toDouble();
+    if (currentSummary.totalRounds > 0 ||
+        currentSummary.totalRoundDurationMs > 0) {
+      currentValues['rounds'] = currentSummary.totalRoundDurationMs.toDouble();
     }
     if (currentSummary.totalDrillDurationMs > 0) {
       currentValues['isometric'] = currentSummary.totalDrillDurationMs

@@ -60,6 +60,7 @@ class WorkoutSessionScreen extends StatefulWidget {
 class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Constants
   static const Duration _timerUpdateInterval = Duration(seconds: 1);
+  static const double _kSessionScrollBottomExtra = 24.0;
 
   List<Map<String, dynamic>> _exercises = [];
   int _currentExerciseIndex = 0;
@@ -146,6 +147,76 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _loadExercises();
   }
 
+  int _compareExercises(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final aCreatedAt = a['createdAtMs'] as int? ?? 0;
+    final bCreatedAt = b['createdAtMs'] as int? ?? 0;
+    final createdCompare = aCreatedAt.compareTo(bCreatedAt);
+    if (createdCompare != 0) return createdCompare;
+
+    final aExecutionOrder = a['executionOrder'] as int? ?? 0;
+    final bExecutionOrder = b['executionOrder'] as int? ?? 0;
+    final executionCompare = aExecutionOrder.compareTo(bExecutionOrder);
+    if (executionCompare != 0) return executionCompare;
+
+    final aId = a['id'] as String? ?? '';
+    final bId = b['id'] as String? ?? '';
+    return aId.compareTo(bId);
+  }
+
+  List<Map<String, dynamic>> _buildNonRollingDisplayOrderedExercises(
+    List<Map<String, dynamic>> source,
+  ) {
+    final blocks = widget.workoutState.getSessionBlocks();
+    if (blocks.isEmpty) {
+      final sorted = List<Map<String, dynamic>>.from(source);
+      sorted.sort(_compareExercises);
+      return sorted;
+    }
+
+    final standaloneExercises = source
+        .where((e) => e['blockId'] == null)
+        .toList()
+      ..sort(_compareExercises);
+
+    final List<({SessionBlock? block, Map<String, dynamic>? exercise})> items =
+        [];
+    for (final b in blocks) {
+      items.add((block: b, exercise: null));
+    }
+    for (final ex in standaloneExercises) {
+      items.add((block: null, exercise: ex));
+    }
+
+    items.sort((a, b) {
+      if (a.exercise != null && b.exercise != null) {
+        return _compareExercises(a.exercise!, b.exercise!);
+      }
+
+      final aMs =
+          a.block?.createdAtMs ?? (a.exercise?['createdAtMs'] as int? ?? 0);
+      final bMs =
+          b.block?.createdAtMs ?? (b.exercise?['createdAtMs'] as int? ?? 0);
+      return aMs.compareTo(bMs);
+    });
+
+    final ordered = <Map<String, dynamic>>[];
+    for (final item in items) {
+      if (item.exercise != null) {
+        ordered.add(item.exercise!);
+        continue;
+      }
+
+      final blockId = item.block!.id;
+      final blockExercises = source
+          .where((e) => e['blockId'] == blockId)
+          .toList()
+        ..sort(_compareExercises);
+      ordered.addAll(blockExercises);
+    }
+
+    return ordered;
+  }
+
   Future<void> _loadExercises() async {
     setState(() => _isLoading = true);
     try {
@@ -167,6 +238,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             reordered.addAll(_exercises.where((e) => e['blockId'] == block.id));
           }
           _exercises = reordered;
+        } else {
+          // Keep detail navigation in the exact same sequence as the list view.
+          _exercises = _buildNonRollingDisplayOrderedExercises(_exercises);
         }
 
         // Pre-populate timer state from persisted entries for all timer-based exercises
@@ -605,7 +679,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       final round = roundInstance;
       if (round != null && round.state != RoundState.finished) {
         // End early if not already finished
-        unawaited(widget.workoutState.endRoundEarly(effortId, _currentSet - 1));
+        await widget.workoutState.endRoundEarly(effortId, _currentSet - 1);
       }
     }
 
@@ -1606,7 +1680,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   // Duration intentionally omitted for rolling sessions (Task 5).
                   Expanded(
                     child: ListView(
-                      padding: const EdgeInsets.fromLTRB(0, 0, 0, 140),
+                      padding: const EdgeInsets.fromLTRB(
+                        0,
+                        0,
+                        0,
+                        140 + _kSessionScrollBottomExtra,
+                      ),
                       children: [
                         for (int i = 0; i < blocks.length; i++)
                           _buildSessionBlockCard(blocks[i], theme),
@@ -1826,6 +1905,22 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       items.add((block: null, exercise: ex));
     }
     items.sort((a, b) {
+      if (a.exercise != null && b.exercise != null) {
+        final aCreatedAt = a.exercise!['createdAtMs'] as int? ?? 0;
+        final bCreatedAt = b.exercise!['createdAtMs'] as int? ?? 0;
+        final createdCompare = aCreatedAt.compareTo(bCreatedAt);
+        if (createdCompare != 0) return createdCompare;
+
+        final aOrder = a.exercise!['executionOrder'] as int? ?? 0;
+        final bOrder = b.exercise!['executionOrder'] as int? ?? 0;
+        final executionCompare = aOrder.compareTo(bOrder);
+        if (executionCompare != 0) return executionCompare;
+
+        final aId = a.exercise!['id'] as String? ?? '';
+        final bId = b.exercise!['id'] as String? ?? '';
+        return aId.compareTo(bId);
+      }
+
       final aMs =
           a.block?.createdAtMs ?? (a.exercise?['createdAtMs'] as int? ?? 0);
       final bMs =
@@ -1854,7 +1949,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   ),
                   Expanded(
                     child: ListView(
-                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 140),
+                      padding: const EdgeInsets.fromLTRB(
+                        0,
+                        8,
+                        0,
+                        140 + _kSessionScrollBottomExtra,
+                      ),
                       children: [
                         // Mixed list: standalone exercises and block groups in insertion order
                         for (final item in items)
@@ -2892,7 +2992,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                                 effortKind,
                                 theme,
                               ),
-                              const SizedBox(height: 24),
+                              SizedBox(height: 24 + _kSessionScrollBottomExtra),
                             ],
                           ),
                         ),
@@ -3619,7 +3719,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 48),
+              SizedBox(height: 24 + _kSessionScrollBottomExtra),
               InlineMetricEditor(
                 metricType: 'duration',
                 currentValue: editDuration,
@@ -3650,7 +3750,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 48),
+            SizedBox(height: 24 + _kSessionScrollBottomExtra),
             InlineMetricEditor(
               metricType: 'duration',
               currentValue: timedDisplayValue,
@@ -3772,7 +3872,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 48),
+              SizedBox(height: 24 + _kSessionScrollBottomExtra),
               Text(
                 'ROUND $rounds',
                 style: theme.textTheme.displayLarge?.copyWith(
@@ -3800,7 +3900,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 48),
+            SizedBox(height: 24 + _kSessionScrollBottomExtra),
             // Round count (read-only, controlled by add/delete buttons)
             Text(
               'ROUND $rounds',

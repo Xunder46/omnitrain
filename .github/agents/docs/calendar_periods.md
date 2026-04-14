@@ -78,6 +78,17 @@ Behavior by date:
   - Delete planned session
   - Tap planned session to start workout
 
+Planned session form behavior (Add + Edit):
+- Shared bottom sheet (`_PlannedSessionForm`) is used for both add and edit entry points.
+- A contextual label `Session Type` appears above mode controls.
+- Mode selector uses two full-width segmented actions with exact labels:
+  - `Free Training`
+  - `Routine`
+- `Free Training` mode shows a Modality dropdown.
+- `Routine` mode shows a Routine dropdown.
+- Dropdown fields expand to available width in the sheet to avoid clipped text on narrow devices.
+- Existing form logic remains unchanged: only one mode is active and mode-specific fields swap in-place.
+
 Tap behavior:
 - Tap completed entry -> opens `SessionSummaryScreen`
 - Tap planned entry -> starts workout:
@@ -250,6 +261,7 @@ Supporting flows:
 6. Completed-session tap opens summary.
 7. Period overlap is rejected before save.
 8. Period colors are curated presets and used as calendar highlights.
+9. Planned-session add/edit form uses the same shared mode selector and field-swap behavior.
 
 ---
 
@@ -270,5 +282,5 @@ Supporting flows:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: March 10, 2026
+**Document Version**: 1.1
+**Last Updated**: April 13, 2026

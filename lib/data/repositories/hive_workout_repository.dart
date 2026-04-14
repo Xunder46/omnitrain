@@ -1631,19 +1631,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final original = SessionBlock.fromMap(_asStringMap(originalRaw));
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final sourceSessionRaw = _sessionsBox.get(original.sessionId);
-    final isRollingSession =
-      sourceSessionRaw != null &&
-      TrainingSession.fromMap(_asStringMap(sourceSessionRaw)).isRolling;
-    final name = isRollingSession
-      ? _formatBlockTimeLabel(nowMs)
-      : () {
-        final rawName = original.name;
-        final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
-        return suffixMatch != null
-          ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
-          : '$rawName (2)';
-        }();
+    final name = _formatBlockTimeLabel(nowMs);
 
     final maxOrder = _sessionBlocksBox.values
         .map((raw) => SessionBlock.fromMap(_asStringMap(raw)))

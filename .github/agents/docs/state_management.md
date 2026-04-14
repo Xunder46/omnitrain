@@ -108,7 +108,7 @@ See [Rest Tracking](rest_tracking.md) for full architecture details.
 | Method | Purpose |
 |--------|--------|
 | `populateSessionFromManifest(manifest)` | Loads exercises from `RoutineSessionManifest` |
-| `computeSessionSummary()` | Returns `SessionSummary`; counts only `RoundState.finished` rounds (not-started/active/paused are excluded) |
+| `computeSessionSummary()` | Returns `SessionSummary`; counts `RoundState.finished` rounds (both natural completion and early-end logged rounds; not-started/active/paused are excluded) |
 | `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine |
 
 #### Session Block Management

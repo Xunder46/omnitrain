@@ -179,6 +179,7 @@ void main() {
           id: 'session-clone',
           ownerUserId: 'local-user',
           startedAtMs: 1000,
+          modality: 'resistance_lifting',
           createdAtMs: 1000,
           updatedAtMs: 1000,
         ),
@@ -267,8 +268,8 @@ void main() {
       final blocks = await repository.getSessionBlocks('session-clone');
       expect(blocks, hasLength(2));
       final clonedBlock = blocks.firstWhere((b) => b.id == newBlockId);
-      // Cloned block should use "(2)" suffix notation
-      expect(clonedBlock.name, 'Source (2)');
+      expect(clonedBlock.name, isNot(contains('(2)')));
+      expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
       expect(clonedBlock.id, isNot('block-clone-source'));
 
       final efforts = await repository.getSegmentEfforts('segment-clone');
@@ -313,12 +314,13 @@ void main() {
       expect(clonedRests, isEmpty);
     });
 
-    test('cloneSessionBlock uses incremental (2)/(3) suffix naming', () async {
+    test('cloneSessionBlock in modality session uses current-time title', () async {
       await repository.createSession(
         TrainingSession(
           id: 'session-naming',
           ownerUserId: 'local-user',
           startedAtMs: 1000,
+          modality: 'resistance_lifting',
           createdAtMs: 1000,
           updatedAtMs: 1000,
         ),
@@ -339,13 +341,15 @@ void main() {
       final clone2Id = await repository.cloneSessionBlock('block-main');
       final blocksAfterFirst = await repository.getSessionBlocks('session-naming');
       final clone2 = blocksAfterFirst.firstWhere((b) => b.id == clone2Id);
-      expect(clone2.name, 'Main (2)');
+      expect(clone2.name, isNot(contains('(2)')));
+      expect(clone2.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
 
-      // Second clone of (2): "Main (2)" → "Main (3)"
+      // Second clone also remains time-based.
       final clone3Id = await repository.cloneSessionBlock(clone2Id);
       final blocksAfterSecond = await repository.getSessionBlocks('session-naming');
       final clone3 = blocksAfterSecond.firstWhere((b) => b.id == clone3Id);
-      expect(clone3.name, 'Main (3)');
+      expect(clone3.name, isNot(contains('(2)')));
+      expect(clone3.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
     });
 
     test('cloneSessionBlock in rolling session uses current-time title', () async {
@@ -373,6 +377,39 @@ void main() {
 
       final cloneId = await repository.cloneSessionBlock('block-time-source');
       final blocks = await repository.getSessionBlocks('session-rolling-clone');
+      final cloned = blocks.firstWhere((b) => b.id == cloneId);
+
+      expect(cloned.name, isNot(contains('(2)')));
+      expect(cloned.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    });
+
+    test('cloneSessionBlock in free session uses current-time title', () async {
+      await repository.createSession(
+        TrainingSession(
+          id: 'session-free-clone',
+          ownerUserId: 'local-user',
+          startedAtMs: 1000,
+          modality: null,
+          intent: null,
+          isRolling: false,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-free-source',
+          sessionId: 'session-free-clone',
+          name: 'Main',
+          orderIndex: 0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final cloneId = await repository.cloneSessionBlock('block-free-source');
+      final blocks = await repository.getSessionBlocks('session-free-clone');
       final cloned = blocks.firstWhere((b) => b.id == cloneId);
 
       expect(cloned.name, isNot(contains('(2)')));

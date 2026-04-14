@@ -1631,7 +1631,7 @@ void main() {
     test('cloneSessionBlock creates independent copy with new ID', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
-      await state.createNewSession();
+      await state.createNewSession(modality: 'resistance_lifting');
 
       final originalBlockId = await state.addSessionBlock();
 
@@ -1644,15 +1644,15 @@ void main() {
       expect(blocks, hasLength(2));
 
       final cloned = blocks.firstWhere((b) => b.id == clonedBlockId);
-      // Cloned block name should use "(2)" suffix
-      expect(cloned.name, endsWith('(2)'));
+      expect(cloned.name, isNot(contains('(2)')));
+      expect(cloned.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
       expect(cloned.id, clonedBlockId);
     });
 
     test('cloneSessionBlock with efforts clones all linked records', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
-      await state.createNewSession();
+      await state.createNewSession(modality: 'resistance_lifting');
 
       final blockId = await state.addSessionBlock();
       final exercises = await repo.getExercises();
@@ -1669,9 +1669,10 @@ void main() {
       final blocks = state.getSessionBlocks();
       expect(blocks, hasLength(2));
 
-      // Verify cloned block uses "(2)" suffix naming
+      // Verify cloned block uses current-time naming
       final clonedBlock = blocks.firstWhere((b) => b.id == clonedBlockId);
-      expect(clonedBlock.name, endsWith('(2)'));
+      expect(clonedBlock.name, isNot(contains('(2)')));
+      expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
     });
 
     test('cloneSessionBlock in rolling session uses current-time title', () async {
@@ -1680,6 +1681,21 @@ void main() {
       await state.createNewSession(isRolling: true);
 
       final sourceBlockId = await state.addSessionBlock(name: '10:00 AM');
+      final cloneBlockId = await state.cloneSessionBlock(sourceBlockId);
+
+      final blocks = state.getSessionBlocks();
+      final clonedBlock = blocks.firstWhere((b) => b.id == cloneBlockId);
+
+      expect(clonedBlock.name, isNot(contains('(2)')));
+      expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    });
+
+    test('cloneSessionBlock in free session uses current-time title', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(modality: null, isRolling: false);
+
+      final sourceBlockId = await state.addSessionBlock(name: 'Main');
       final cloneBlockId = await state.cloneSessionBlock(sourceBlockId);
 
       final blocks = state.getSessionBlocks();
@@ -1797,6 +1813,33 @@ void main() {
       final summary = state.computeSessionSummary();
       expect(summary.exercises, hasLength(1));
       expect(summary.exercises.first.blockId, blockId);
+    });
+
+    test('computeSessionSummary counts finished early rounds for sports',
+        () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(modality: 'sports');
+
+      final exercises = await repo.getExercises();
+      final roundExercise = exercises.firstWhere(
+        (e) => e.capabilities.contains('rounds'),
+        orElse: () => exercises.first,
+      );
+
+      final effortId = await state.addExerciseToSession(
+        roundExercise,
+        effortKindOverride: 'round',
+      );
+
+      await state.startRound(effortId, 0);
+      await state.endRoundEarly(effortId, 0);
+      await state.endSession();
+
+      final summary = state.computeSessionSummary();
+      expect(summary.totalRounds, 1);
+      expect(summary.totalRoundDurationMs, greaterThanOrEqualTo(0));
+      expect(summary.exercises.single.totalRounds, 1);
     });
 
     test('getSessionBlocks returns sorted by orderIndex', () async {

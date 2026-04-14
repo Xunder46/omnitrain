@@ -84,6 +84,70 @@ Future<TrainingSession> _seedCompletedSetSession(
   return session;
 }
 
+/// Creates a completed session with one round-based effort and one finished round.
+/// Returns the session. The repo is mutated in-place.
+Future<TrainingSession> _seedCompletedRoundSession(
+  MockWorkoutRepository repo, {
+  required String sessionId,
+  required int startedAtMs,
+  required int endedAtMs,
+  required String exerciseId,
+  required int roundDurationSecs,
+}) async {
+  final session = TrainingSession(
+    id: sessionId,
+    ownerUserId: 'u-1',
+    startedAtMs: startedAtMs,
+    endedAtMs: endedAtMs,
+    createdAtMs: startedAtMs,
+    updatedAtMs: endedAtMs,
+  );
+  await repo.createSession(session);
+
+  final segId = 'seg-$sessionId';
+  await repo.createSegment(
+    SessionSegment(
+      id: segId,
+      sessionId: sessionId,
+      orderIndex: 0,
+      segmentType: 'main',
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+
+  final effortId = 'eff-$sessionId';
+  await repo.createEffort(
+    SegmentEffort(
+      id: effortId,
+      segmentId: segId,
+      orderIndex: 0,
+      effortKind: 'round',
+      exerciseId: exerciseId,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+
+  await repo.createRoundInstance(
+    RoundInstance(
+      id: 'round-$sessionId-0',
+      effortId: effortId,
+      roundIndex: 0,
+      plannedDurationSecs: roundDurationSecs,
+      actualDurationSecs: roundDurationSecs,
+      startedAtMs: startedAtMs,
+      finishedAtMs: startedAtMs + (roundDurationSecs * 1000),
+      completed: true,
+      state: RoundState.finished,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs + (roundDurationSecs * 1000),
+    ),
+  );
+
+  return session;
+}
+
 void main() {
   // ══════════════════════════════════════════════════════════════════════════
   // SessionSummaryService
@@ -718,6 +782,54 @@ void main() {
         expect(result.containsKey('cardio'), false);
         expect(result.containsKey('rounds'), false);
         expect(result.containsKey('isometric'), false);
+      });
+
+      test('uses duration delta and ms unit for rounds group', () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final roundExerciseId =
+            exercises.firstWhere((e) => e.capabilities.contains('rounds')).id;
+        final service = SessionSummaryService(repo);
+
+        await _seedCompletedRoundSession(
+          repo,
+          sessionId: 'prev-round',
+          startedAtMs: 1000,
+          endedAtMs: 220000,
+          exerciseId: roundExerciseId,
+          roundDurationSecs: 300,
+        );
+
+        final current = await _seedCompletedRoundSession(
+          repo,
+          sessionId: 'current-round',
+          startedAtMs: 400000,
+          endedAtMs: 700000,
+          exerciseId: roundExerciseId,
+          roundDurationSecs: 306,
+        );
+
+        final summary = SessionSummary(
+          sessionId: 'current-round',
+          title: 'Sports Session',
+          startedAtMs: 400000,
+          endedAtMs: 700000,
+          totalDurationMs: 300000,
+          totalVolume: 0,
+          totalSets: 0,
+          totalRounds: 1,
+          totalRoundDurationMs: 306000,
+          exercises: const [],
+        );
+
+        final result = await service.compareGroupsToPreviousSession(
+          current,
+          summary,
+        );
+
+        expect(result['rounds']!.hasPrevious, true);
+        expect(result['rounds']!.unit, 'ms');
+        expect(result['rounds']!.delta, 6000.0);
       });
     });
   });

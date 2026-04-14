@@ -2305,20 +2305,22 @@ class WorkoutState extends ChangeNotifier {
               .length;
           totalSets += setsCompleted;
         } else if (effort.effortKind == 'round') {
-          // Count only naturally completed rounds for summary totals.
+          // Count all finished rounds for summary totals.
+          // Natural completion sets completed=true; early-end logging sets
+          // completed=false but still represents a logged round.
           final rounds = _roundInstances[effort.id] ?? [];
-          final completedRounds = rounds
+          final finishedRounds = rounds
               .where(
                 (round) =>
-                    round.completed &&
+                    round.state == RoundState.finished &&
                     round.startedAtMs > 0 &&
                     round.finishedAtMs != null,
               )
               .toList();
-          effortRounds = completedRounds.length;
+          effortRounds = finishedRounds.length;
           setsCompleted = effortRounds;
           totalRounds += effortRounds;
-          effortDurationMs = completedRounds.fold<int>(
+          effortDurationMs = finishedRounds.fold<int>(
             0,
             (sum, round) => sum + round.elapsedMs,
           );
@@ -2701,6 +2703,7 @@ class WorkoutState extends ChangeNotifier {
           'exerciseId': effort.exerciseId,
           'name': exerciseName,
           'effortKind': effort.effortKind,
+          'executionOrder': effort.orderIndex,
           'entries': entries,
           'segmentId': segment.id,
           'segmentName': segment.name ?? 'Block ${segment.orderIndex + 1}',

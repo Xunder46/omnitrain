@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
+import 'package:omnitrain/core/constants/modality.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/core/constants/profile_measurements.dart';
@@ -1147,6 +1148,84 @@ void main() {
       // title contains the date in some format — AppBar must render a Text with date
       expect(find.textContaining('Jun'), findsOneWidget);
     });
+
+    testWidgets('planned session form shows session type and full mode labels', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final routineState = RoutineState(repo);
+      final workoutState = WorkoutState(repo);
+      final routineSessionService = RoutineSessionService(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      final futureDate = DateTime(2099, 12, 31);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DaySessionListScreen(
+            date: futureDate,
+            calendarState: calendarState,
+            routineState: routineState,
+            workoutState: workoutState,
+            routineSessionService: routineSessionService,
+            sessionSummaryService: sessionSummaryService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Add Planned Session'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Session Type'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Free Training'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Routine'), findsOneWidget);
+    });
+
+    testWidgets('edit planned session opens shared form with session type toggle', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final routineState = RoutineState(repo);
+      final workoutState = WorkoutState(repo);
+      final routineSessionService = RoutineSessionService(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      final today = DateTime.now();
+      await calendarState.createPlannedSession(
+        date: today,
+        modality: Modality.cardioEndurance,
+        title: 'Planned Test',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DaySessionListScreen(
+            date: DateTime(today.year, today.month, today.day),
+            calendarState: calendarState,
+            routineState: routineState,
+            workoutState: workoutState,
+            routineSessionService: routineSessionService,
+            sessionSummaryService: sessionSummaryService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.edit_outlined).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit Session'), findsOneWidget);
+      expect(find.text('Session Type'), findsOneWidget);
+      expect(find.text('Free Training'), findsAtLeastNWidgets(1));
+      expect(find.text('Routine'), findsOneWidget);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1234,6 +1313,77 @@ void main() {
 
       expect(find.text('Strength'), findsOneWidget);
       expect(find.text('SETS'), findsOneWidget);
+    });
+
+    testWidgets(
+      'shows Sports group card when at least one round is finished',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = await workoutStateWithActiveSession(repo);
+        final exercises = await repo.getExercises();
+        final roundExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('rounds'),
+          orElse: () => exercises.first,
+        );
+
+        final effortId = await workoutState.addExerciseToSession(
+          roundExercise,
+          effortKindOverride: 'round',
+        );
+        await workoutState.startRound(effortId, 0);
+        await workoutState.endRoundEarly(effortId, 0);
+
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SessionSummaryScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Sports'), findsOneWidget);
+      },
+    );
+
+    testWidgets('hides Sports group card when rounds are never started', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = await workoutStateWithActiveSession(repo);
+      final exercises = await repo.getExercises();
+      final roundExercise = exercises.firstWhere(
+        (e) => e.capabilities.contains('rounds'),
+        orElse: () => exercises.first,
+      );
+
+      await workoutState.addExerciseToSession(
+        roundExercise,
+        effortKindOverride: 'round',
+      );
+
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sports'), findsNothing);
     });
 
     testWidgets('rolling session uses same top stats layout as non-rolling', (
@@ -1413,6 +1563,39 @@ void main() {
       expect(find.text('REST TIME'), findsOneWidget);
       expect(find.text('EXERCISES'), findsNothing);
       expect(find.textContaining('1m 30s'), findsOneWidget);
+    });
+
+    testWidgets('top stats render Rest Time as 0 when no rests are closed', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = await workoutStateWithActiveSession(repo);
+      final session = workoutState.currentSession!;
+      await workoutState.updateSessionFeeling(session.id, 3);
+
+      final exercises = await repo.getExercises();
+      await workoutState.addExerciseToSession(
+        exercises.first,
+        chosenMetric: 'reps',
+      );
+
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('REST TIME'), findsOneWidget);
+      expect(find.text('0'), findsWidgets);
     });
 
     testWidgets('removes session RPE and per-exercise rows from summary', (
@@ -2248,20 +2431,6 @@ void main() {
             exerciseId: firstExercise.id,
             blockId: null,
             note: null,
-            createdAtMs: 3000,
-            updatedAtMs: 3000,
-          ),
-        );
-
-        await repo.createEffort(
-          SegmentEffort(
-            id: 'effort-b',
-            segmentId: segmentId,
-            orderIndex: 0,
-            effortKind: 'timed',
-            exerciseId: secondExercise.id,
-            blockId: null,
-            note: null,
             createdAtMs: 1000,
             updatedAtMs: 1000,
           ),
@@ -2269,15 +2438,29 @@ void main() {
 
         await repo.createEffort(
           SegmentEffort(
-            id: 'effort-c',
+            id: 'effort-b',
             segmentId: segmentId,
             orderIndex: 1,
+            effortKind: 'timed',
+            exerciseId: secondExercise.id,
+            blockId: null,
+            note: null,
+            createdAtMs: 2000,
+            updatedAtMs: 2000,
+          ),
+        );
+
+        await repo.createEffort(
+          SegmentEffort(
+            id: 'effort-c',
+            segmentId: segmentId,
+            orderIndex: 0,
             effortKind: 'round',
             exerciseId: thirdExercise.id,
             blockId: null,
             note: null,
-            createdAtMs: 500,
-            updatedAtMs: 500,
+            createdAtMs: 3000,
+            updatedAtMs: 3000,
           ),
         );
 
@@ -2302,8 +2485,8 @@ void main() {
         final firstY = tester.getTopLeft(find.text(firstName).first).dy;
         final thirdY = tester.getTopLeft(find.text(thirdName).first).dy;
 
-        expect(secondY, lessThan(firstY));
-        expect(firstY, lessThan(thirdY));
+        expect(firstY, lessThan(secondY));
+        expect(secondY, lessThan(thirdY));
       },
     );
 
@@ -2345,6 +2528,120 @@ void main() {
       expect(find.text('Sports'), findsNothing);
       expect(find.text('Intervals'), findsNothing);
     });
+
+    testWidgets(
+      'non-rolling detail follows visible list order with block-grouped exercises',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        await workoutState.createNewSession(isRolling: false);
+
+        final sessionId = workoutState.currentSession!.id;
+        final segmentId = workoutState.segments.first.id;
+        final allExercises = await repo.getExercises();
+
+        final standaloneEx = allExercises[0];
+        final blockAFirstEx = allExercises[1];
+        final blockBLaterEx = allExercises[2];
+        final blockALateEx = allExercises[3];
+
+        await repo.createSessionBlock(
+          SessionBlock(
+            id: 'block-a',
+            sessionId: sessionId,
+            name: '11:58 PM',
+            orderIndex: 0,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repo.createSessionBlock(
+          SessionBlock(
+            id: 'block-b',
+            sessionId: sessionId,
+            name: '11:59 PM',
+            orderIndex: 1,
+            createdAtMs: 2000,
+            updatedAtMs: 2000,
+          ),
+        );
+
+        await repo.createEffort(
+          SegmentEffort(
+            id: 'eff-standalone',
+            segmentId: segmentId,
+            orderIndex: 0,
+            effortKind: 'timed',
+            exerciseId: standaloneEx.id,
+            blockId: null,
+            note: null,
+            createdAtMs: 500,
+            updatedAtMs: 500,
+          ),
+        );
+
+        await repo.createEffort(
+          SegmentEffort(
+            id: 'eff-block-a-first',
+            segmentId: segmentId,
+            orderIndex: 1,
+            effortKind: 'timed',
+            exerciseId: blockAFirstEx.id,
+            blockId: 'block-a',
+            note: null,
+            createdAtMs: 1100,
+            updatedAtMs: 1100,
+          ),
+        );
+
+        await repo.createEffort(
+          SegmentEffort(
+            id: 'eff-block-b',
+            segmentId: segmentId,
+            orderIndex: 2,
+            effortKind: 'timed',
+            exerciseId: blockBLaterEx.id,
+            blockId: 'block-b',
+            note: null,
+            createdAtMs: 2100,
+            updatedAtMs: 2100,
+          ),
+        );
+
+        await repo.createEffort(
+          SegmentEffort(
+            id: 'eff-block-a-late',
+            segmentId: segmentId,
+            orderIndex: 3,
+            effortKind: 'timed',
+            exerciseId: blockALateEx.id,
+            blockId: 'block-a',
+            note: null,
+            createdAtMs: 3000,
+            updatedAtMs: 3000,
+          ),
+        );
+
+        await workoutState.loadHistoricalSession(sessionId);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(blockALateEx.name).first);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Exercise 3 / 4'), findsOneWidget);
+      },
+    );
 
     testWidgets('rolling session block shows + Add Exercise button', (
       WidgetTester tester,

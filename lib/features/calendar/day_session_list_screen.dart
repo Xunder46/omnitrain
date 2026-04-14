@@ -699,27 +699,183 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             ),
             const SizedBox(height: 16),
 
+            const Text(
+              'Session Type',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: OmniTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+
             // Mode selector: Free Training vs Routine
             Row(
               children: [
                 Expanded(
-                  child: ChoiceChip(
-                    label: const Text('Free Training'),
-                    selected: _mode == 'free',
-                    onSelected: (v) {
-                      if (v) setState(() => _mode = 'free');
-                    },
-                  ),
+                  child: (_mode == 'free')
+                      ? FilledButton(
+                          style: ButtonStyle(
+                            minimumSize: WidgetStateProperty.all(
+                              const Size.fromHeight(52),
+                            ),
+                            padding: WidgetStateProperty.all(
+                              const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                            backgroundColor: WidgetStateProperty.all(
+                              OmniTheme.zenCoreGlowColor.withValues(
+                                alpha: 0.22,
+                              ),
+                            ),
+                            foregroundColor: WidgetStateProperty.all(
+                              OmniTheme.textPrimary,
+                            ),
+                            side: WidgetStateProperty.all(
+                              BorderSide(
+                                color: OmniTheme.zenCoreGlowColor.withValues(
+                                  alpha: 0.75,
+                                ),
+                                width: 1.2,
+                              ),
+                            ),
+                            shape: WidgetStateProperty.all(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonBorderRadius,
+                                ),
+                              ),
+                            ),
+                          ),
+                          onPressed: () => setState(() => _mode = 'free'),
+                          child: const Text(
+                            'Free Training',
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                          ),
+                        )
+                      : OutlinedButton(
+                          style: ButtonStyle(
+                            minimumSize: WidgetStateProperty.all(
+                              const Size.fromHeight(52),
+                            ),
+                            padding: WidgetStateProperty.all(
+                              const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                            foregroundColor: WidgetStateProperty.all(
+                              OmniTheme.textSecondary,
+                            ),
+                            side: WidgetStateProperty.all(
+                              BorderSide(
+                                color: OmniTheme.textSecondary.withValues(
+                                  alpha: 0.45,
+                                ),
+                                width: 1.2,
+                              ),
+                            ),
+                            shape: WidgetStateProperty.all(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonBorderRadius,
+                                ),
+                              ),
+                            ),
+                          ),
+                          onPressed: () => setState(() => _mode = 'free'),
+                          child: const Text(
+                            'Free Training',
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: ChoiceChip(
-                    label: const Text('Custom Routine'),
-                    selected: _mode == 'routine',
-                    onSelected: (v) {
-                      if (v) setState(() => _mode = 'routine');
-                    },
-                  ),
+                  child: (_mode == 'routine')
+                      ? FilledButton(
+                          style: ButtonStyle(
+                            minimumSize: WidgetStateProperty.all(
+                              const Size.fromHeight(52),
+                            ),
+                            padding: WidgetStateProperty.all(
+                              const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                            backgroundColor: WidgetStateProperty.all(
+                              OmniTheme.zenCoreGlowColor.withValues(
+                                alpha: 0.22,
+                              ),
+                            ),
+                            foregroundColor: WidgetStateProperty.all(
+                              OmniTheme.textPrimary,
+                            ),
+                            side: WidgetStateProperty.all(
+                              BorderSide(
+                                color: OmniTheme.zenCoreGlowColor.withValues(
+                                  alpha: 0.75,
+                                ),
+                                width: 1.2,
+                              ),
+                            ),
+                            shape: WidgetStateProperty.all(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonBorderRadius,
+                                ),
+                              ),
+                            ),
+                          ),
+                          onPressed: () => setState(() => _mode = 'routine'),
+                          child: const Text(
+                            'Custom Routine',
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                          ),
+                        )
+                      : OutlinedButton(
+                          style: ButtonStyle(
+                            minimumSize: WidgetStateProperty.all(
+                              const Size.fromHeight(52),
+                            ),
+                            padding: WidgetStateProperty.all(
+                              const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                            ),
+                            foregroundColor: WidgetStateProperty.all(
+                              OmniTheme.textSecondary,
+                            ),
+                            side: WidgetStateProperty.all(
+                              BorderSide(
+                                color: OmniTheme.textSecondary.withValues(
+                                  alpha: 0.45,
+                                ),
+                                width: 1.2,
+                              ),
+                            ),
+                            shape: WidgetStateProperty.all(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonBorderRadius,
+                                ),
+                              ),
+                            ),
+                          ),
+                          onPressed: () => setState(() => _mode = 'routine'),
+                          child: const Text(
+                            'Routine',
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -729,6 +885,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             if (_mode == 'free')
               DropdownButtonFormField<String?>(
                 initialValue: _selectedModality,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Modality',
                   border: OutlineInputBorder(),
@@ -746,6 +903,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             else
               DropdownButtonFormField<String?>(
                 initialValue: _selectedTemplateId,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Routine',
                   border: OutlineInputBorder(),

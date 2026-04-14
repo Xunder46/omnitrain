@@ -394,5 +394,76 @@ Likely failure mode is an orphaned reference to `plannedSessionId` after delete.
 - [ ] Add regression tests for delete-while-started flow
 - [ ] Run web smoke test for modality and routine planned sessions
 
+## Iteration 5
+
+### Overview
+Fix visual and layout issues in the `Add Planned Session` bottom-sheet mode toggle so both labels always render fully, context is explicit, and selected/unselected states are clearly distinguishable in dark modal surfaces.
+
+### Analysis
+This is a presentation-only refinement of the existing `_PlannedSessionForm` mode selector in `DaySessionListScreen`.
+
+Scope constraints from request:
+- Keep all current form logic, state transitions, and field-swapping behavior unchanged.
+- Keep button copy exactly as `Free Training` and `Custom Routine`.
+- Do not change overall modal width.
+- Ensure both add and edit flows benefit automatically by updating the shared form widget only.
+
+### Questions (if any)
+None. Requirements are specific and implementation-ready.
+
+### DB Changes (@dba)
+1. [ ] No database or repository changes required.
+
+### Backend Changes (@developer)
+1. [ ] No data/state contract changes required.
+2. [ ] Keep all existing toggle selection logic and conditional form content rendering exactly as-is.
+3. [ ] Preserve repository abstraction boundaries: no direct Hive/SQLite box access from UI/state for this change.
+
+### Frontend Changes (@developer)
+1. [ ] In `_PlannedSessionForm` (`lib/features/calendar/day_session_list_screen.dart`), add a muted contextual label `Session Type` directly above the mode-toggle row.
+2. [ ] Update toggle-row layout so both segmented buttons share available width and always display full labels without truncation (`Custom Routine` must never clip/ellipsis).
+3. [ ] Ensure text can wrap/fit safely under constrained width while preserving current modal width (no sheet width increase).
+4. [ ] Increase selected/unselected contrast in dark modal context:
+5. [ ] Active segment is clearly highlighted with stronger fill/background emphasis.
+6. [ ] Inactive segment has a clearly visible but muted outline and reduced emphasis.
+7. [ ] Keep color usage aligned with existing design tokens/theme system (`AppTheme` / current semantic colors), avoiding hardcoded one-off values when equivalents exist.
+8. [ ] Verify both add and edit entry points render the same improved toggle since they share `_PlannedSessionForm`.
+
+### Implementation Steps
+1. [ ] Locate mode selector block in `_PlannedSessionForm` and insert `Session Type` label with subdued typography style used by nearby helper labels.
+2. [ ] Adjust segmented control/button container constraints (e.g., expanded/flexible layout and padding) to guarantee full label rendering for both options.
+3. [ ] Tune selected/unselected decoration (fill, border, and foreground) for clear visual separation on dark sheet background.
+4. [ ] Run analyzer/tests affected by the file and ensure no behavior regressions.
+5. [ ] Perform visual smoke check on both add and edit planned-session flows.
+
+### Acceptance Criteria
+- [ ] Mode toggle shows full `Free Training` and `Custom Routine` labels with no truncation or ellipsis at supported app widths.
+- [ ] A muted `Session Type` label appears directly above the toggle row in the planned-session form.
+- [ ] Active and inactive toggle states are clearly distinct in dark modal context.
+- [ ] Inactive state uses visible muted outline; active state is unmistakably highlighted.
+- [ ] Modal overall width remains unchanged.
+- [ ] Existing form logic and field-swapping behavior are unchanged.
+- [ ] Both add and edit flows reflect the same UI improvements via shared form.
+
+### Files Affected
+- lib/features/calendar/day_session_list_screen.dart
+- test/ (only if an existing widget test is updated to assert label visibility/contrast semantics)
+
+### Execution Note
+- Phase 2 (Logic/UI) is approved to proceed.
+- Runtime compatibility guardrail: implementation must remain repository-interface-driven so current web (`HiveWorkoutRepository`) and future native (`SqliteWorkoutRepository`) continue to work without storage-specific branching in UI/state.
+
+## Progress (Iteration 5)
+- [x] Add `Session Type` context label above mode toggle
+- [x] Remove label truncation by fixing toggle row constraints
+- [x] Improve selected vs unselected visual contrast
+- [x] Verify add and edit flows share the updated UI
+- [x] Run analyzer/tests and visual smoke check
+
 ## Feedback
 [Leave empty until a specialist or reviewer adds notes]
+
+- Iteration 5 copy requirement says keep button copy exactly `Free Training` and `Custom Routine`. Current implementation renders `Free\nTraining` in the button label, which changes the explicit copy token and should be reverted to the exact requested text.
+- Iteration 5 implementation step requires analyzer/tests + visual smoke validation; staged progress still shows this item unchecked, so acceptance cannot be marked complete yet.
+
+- Resolved: mode copy now uses exact `Free Training` / `Custom Routine` labels; widget coverage added for add and edit entry points and targeted tests are green.
