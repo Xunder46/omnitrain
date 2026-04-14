@@ -36,42 +36,50 @@ Future<TrainingSession> _seedCompletedSetSession(
   await repo.createSession(session);
 
   final segId = 'seg-$sessionId';
-  await repo.createSegment(SessionSegment(
-    id: segId,
-    sessionId: sessionId,
-    orderIndex: 0,
-    segmentType: 'main',
-    createdAtMs: startedAtMs,
-    updatedAtMs: startedAtMs,
-  ));
+  await repo.createSegment(
+    SessionSegment(
+      id: segId,
+      sessionId: sessionId,
+      orderIndex: 0,
+      segmentType: 'main',
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
 
   final effortId = 'eff-$sessionId';
-  await repo.createEffort(SegmentEffort(
-    id: effortId,
-    segmentId: segId,
-    orderIndex: 0,
-    effortKind: 'set',
-    exerciseId: exerciseId,
-    createdAtMs: startedAtMs,
-    updatedAtMs: startedAtMs,
-  ));
+  await repo.createEffort(
+    SegmentEffort(
+      id: effortId,
+      segmentId: segId,
+      orderIndex: 0,
+      effortKind: 'set',
+      exerciseId: exerciseId,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
 
-  await repo.createObservation(EffortObservation(
-    id: 'obs-reps-$sessionId',
-    effortId: effortId,
-    metricId: 'metric-reps',
-    valueInt: reps,
-    createdAtMs: startedAtMs,
-    updatedAtMs: startedAtMs,
-  ));
-  await repo.createObservation(EffortObservation(
-    id: 'obs-weight-$sessionId',
-    effortId: effortId,
-    metricId: 'metric-weight',
-    valueReal: weight,
-    createdAtMs: startedAtMs + 1,
-    updatedAtMs: startedAtMs + 1,
-  ));
+  await repo.createObservation(
+    EffortObservation(
+      id: 'obs-reps-$sessionId',
+      effortId: effortId,
+      metricId: 'metric-reps',
+      valueInt: reps,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  await repo.createObservation(
+    EffortObservation(
+      id: 'obs-weight-$sessionId',
+      effortId: effortId,
+      metricId: 'metric-weight',
+      valueReal: weight,
+      createdAtMs: startedAtMs + 1,
+      updatedAtMs: startedAtMs + 1,
+    ),
+  );
 
   return session;
 }
@@ -346,6 +354,146 @@ void main() {
       });
     });
 
+    group('session summary redesign helpers', () {
+      test(
+        'computeSessionRestTimeMs sums closed rests and excludes open rests',
+        () async {
+          final repo = await _freshRepo();
+          final exercises = await repo.getExercises();
+          final exId = exercises.first.id;
+          final service = SessionSummaryService(repo);
+
+          final session = TrainingSession(
+            id: 'session-rest',
+            ownerUserId: 'u-1',
+            startedAtMs: 1000,
+            endedAtMs: 4000,
+            createdAtMs: 1000,
+            updatedAtMs: 4000,
+          );
+          await repo.createSession(session);
+
+          final segId = 'seg-rest';
+          await repo.createSegment(
+            SessionSegment(
+              id: segId,
+              sessionId: session.id,
+              orderIndex: 0,
+              segmentType: 'main',
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+          );
+
+          final effortId = 'eff-rest';
+          await repo.createEffort(
+            SegmentEffort(
+              id: effortId,
+              segmentId: segId,
+              orderIndex: 0,
+              effortKind: 'set',
+              exerciseId: exId,
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+          );
+
+          await repo.createEntryRest(
+            EntryRest(
+              id: 'closed-a',
+              effortId: effortId,
+              entryIndex: 0,
+              restStartMs: 10000,
+              restEndMs: 40000,
+              createdAtMs: 10000,
+              updatedAtMs: 40000,
+            ),
+          );
+          await repo.createEntryRest(
+            EntryRest(
+              id: 'closed-b',
+              effortId: effortId,
+              entryIndex: 1,
+              restStartMs: 50000,
+              restEndMs: 90000,
+              createdAtMs: 50000,
+              updatedAtMs: 90000,
+            ),
+          );
+          await repo.createEntryRest(
+            EntryRest(
+              id: 'open-c',
+              effortId: effortId,
+              entryIndex: 2,
+              restStartMs: 100000,
+              restEndMs: null,
+              createdAtMs: 100000,
+              updatedAtMs: 100000,
+            ),
+          );
+
+          final totalMs = await service.computeSessionRestTimeMs(session.id);
+          expect(totalMs, 70000);
+        },
+      );
+
+      test(
+        'buildGroupMetrics counts timed entries as rounds for cardio',
+        () async {
+          final repo = await _freshRepo();
+          final service = SessionSummaryService(repo);
+
+          final summary = SessionSummary(
+            sessionId: 's1',
+            title: 'test',
+            startedAtMs: 1000,
+            endedAtMs: 2000,
+            totalDurationMs: 1000,
+            totalVolume: 1200,
+            totalSets: 5,
+            totalRounds: 3,
+            totalCardioDurationMs: 90000,
+            totalDrillDurationMs: 45000,
+            exercises: [
+              ExerciseSummary(
+                exerciseId: 'a',
+                name: 'Run',
+                effortKind: 'timed',
+                setsCompleted: 4,
+                bestWeight: null,
+                executionOrder: 0,
+                totalDurationMs: 90000,
+              ),
+              ExerciseSummary(
+                exerciseId: 'b',
+                name: 'Plank',
+                effortKind: 'drill',
+                setsCompleted: 2,
+                bestWeight: null,
+                executionOrder: 1,
+                totalDurationMs: 45000,
+              ),
+              ExerciseSummary(
+                exerciseId: 'c',
+                name: 'Spar',
+                effortKind: 'round',
+                setsCompleted: 3,
+                bestWeight: null,
+                executionOrder: 2,
+                totalRounds: 3,
+              ),
+            ],
+          );
+
+          final metrics = await service.buildGroupMetrics(summary);
+          expect(metrics['cardio']?.primaryCount, 4);
+          expect(metrics['cardio']?.effortDurationMs, 90000);
+          expect(metrics['rounds']?.primaryCount, 3);
+          expect(metrics['isometric']?.primaryCount, 2);
+        },
+      );
+    });
+
     // ── saveRoutineFromDraft ──────────────────────────────────────────────
     group('saveRoutineFromDraft', () {
       test('creates template, segment, efforts, and targets in repo', () async {
@@ -426,25 +574,28 @@ void main() {
         expect(template!.focusModality, 'resistance_lifting');
       });
 
-      test('handles draft with no exercises (creates empty template)', () async {
-        final repo = await _freshRepo();
-        final service = SessionSummaryService(repo);
+      test(
+        'handles draft with no exercises (creates empty template)',
+        () async {
+          final repo = await _freshRepo();
+          final service = SessionSummaryService(repo);
 
-        final draft = SessionTemplateDraft(
-          name: 'Empty',
-          focusModality: null,
-          exercises: [],
-        );
+          final draft = SessionTemplateDraft(
+            name: 'Empty',
+            focusModality: null,
+            exercises: [],
+          );
 
-        final templateId = await service.saveRoutineFromDraft(draft);
-        expect(templateId, isNotEmpty);
+          final templateId = await service.saveRoutineFromDraft(draft);
+          expect(templateId, isNotEmpty);
 
-        final template = await repo.getTemplateById(templateId);
-        expect(template, isNotNull);
+          final template = await repo.getTemplateById(templateId);
+          expect(template, isNotNull);
 
-        final segments = await repo.getTemplateSegments(templateId);
-        expect(segments, hasLength(1)); // Segment still created
-      });
+          final segments = await repo.getTemplateSegments(templateId);
+          expect(segments, hasLength(1)); // Segment still created
+        },
+      );
     });
 
     // ── compareGroupsToPreviousSession ────────────────────────────────────
@@ -474,8 +625,10 @@ void main() {
           exercises: [],
         );
 
-        final result =
-            await service.compareGroupsToPreviousSession(current, summary);
+        final result = await service.compareGroupsToPreviousSession(
+          current,
+          summary,
+        );
         expect(result.containsKey('strength'), true);
         expect(result['strength']!.hasPrevious, false);
         expect(result['strength']!.delta, isNull);
@@ -519,8 +672,10 @@ void main() {
           exercises: [],
         );
 
-        final result =
-            await service.compareGroupsToPreviousSession(current, summary);
+        final result = await service.compareGroupsToPreviousSession(
+          current,
+          summary,
+        );
         expect(result['strength']!.hasPrevious, true);
         expect(result['strength']!.delta, 100.0); // 500 - 400
         expect(result['strength']!.unit, 'kg');
@@ -554,8 +709,10 @@ void main() {
           totalDrillDurationMs: 0,
         );
 
-        final result =
-            await service.compareGroupsToPreviousSession(current, summary);
+        final result = await service.compareGroupsToPreviousSession(
+          current,
+          summary,
+        );
         // Only 'strength' should be present (totalVolume > 0)
         expect(result.containsKey('strength'), true);
         expect(result.containsKey('cardio'), false);
@@ -580,54 +737,64 @@ void main() {
       final exercises = await repo.getExercises();
       final exId = exerciseId ?? exercises.first.id;
 
-      await repo.createTemplate(WorkoutTemplate(
-        id: templateId,
-        name: 'Test Routine',
-        focusModality: 'resistance_lifting',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: templateId,
+          name: 'Test Routine',
+          focusModality: 'resistance_lifting',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
-      await repo.createTemplateSegment(TemplateSegment(
-        id: 'tseg-1',
-        templateId: templateId,
-        orderIndex: 0,
-        segmentType: 'main',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplateSegment(
+        TemplateSegment(
+          id: 'tseg-1',
+          templateId: templateId,
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
-      await repo.createTemplateEffort(TemplateEffort(
-        id: 'teff-1',
-        templateSegmentId: 'tseg-1',
-        orderIndex: 0,
-        effortKind: 'set',
-        exerciseId: exId,
-        restSeconds: 90,
-        restType: 'fixed',
-        createdAtMs: 100,
-      ));
+      await repo.createTemplateEffort(
+        TemplateEffort(
+          id: 'teff-1',
+          templateSegmentId: 'tseg-1',
+          orderIndex: 0,
+          effortKind: 'set',
+          exerciseId: exId,
+          restSeconds: 90,
+          restType: 'fixed',
+          createdAtMs: 100,
+        ),
+      );
 
       // Create targets for each set
       for (int i = 0; i < setCount; i++) {
-        await repo.createTemplateTarget(TemplateTarget(
-          id: 'ttgt-reps-$i',
-          templateEffortId: 'teff-1',
-          metricId: 'metric-reps',
-          setIndex: i,
-          targetInt: 8,
-          createdAtMs: 100,
-          updatedAtMs: 100,
-        ));
-        await repo.createTemplateTarget(TemplateTarget(
-          id: 'ttgt-weight-$i',
-          templateEffortId: 'teff-1',
-          metricId: 'metric-weight',
-          setIndex: i,
-          targetMin: 50.0,
-          createdAtMs: 100,
-          updatedAtMs: 100,
-        ));
+        await repo.createTemplateTarget(
+          TemplateTarget(
+            id: 'ttgt-reps-$i',
+            templateEffortId: 'teff-1',
+            metricId: 'metric-reps',
+            setIndex: i,
+            targetInt: 8,
+            createdAtMs: 100,
+            updatedAtMs: 100,
+          ),
+        );
+        await repo.createTemplateTarget(
+          TemplateTarget(
+            id: 'ttgt-weight-$i',
+            templateEffortId: 'teff-1',
+            metricId: 'metric-weight',
+            setIndex: i,
+            targetMin: 50.0,
+            createdAtMs: 100,
+            updatedAtMs: 100,
+          ),
+        );
       }
 
       return templateId;
@@ -655,11 +822,13 @@ void main() {
 
       expect(
         () => service.buildSessionFromTemplate('nonexistent'),
-        throwsA(isA<Exception>().having(
-          (e) => e.toString(),
-          'message',
-          contains('Template not found'),
-        )),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Template not found'),
+          ),
+        ),
       );
     });
 
@@ -668,20 +837,24 @@ void main() {
       final service = RoutineSessionService(repo);
 
       // Create template with no segments
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'empty-tmpl',
-        name: 'Empty',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'empty-tmpl',
+          name: 'Empty',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       expect(
         () => service.buildSessionFromTemplate('empty-tmpl'),
-        throwsA(isA<Exception>().having(
-          (e) => e.toString(),
-          'message',
-          contains('no segments'),
-        )),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('no segments'),
+          ),
+        ),
       );
     });
 
@@ -689,28 +862,34 @@ void main() {
       final repo = await _freshRepo();
       final service = RoutineSessionService(repo);
 
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'no-ex-tmpl',
-        name: 'No Exercises',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
-      await repo.createTemplateSegment(TemplateSegment(
-        id: 'tseg-empty',
-        templateId: 'no-ex-tmpl',
-        orderIndex: 0,
-        segmentType: 'main',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'no-ex-tmpl',
+          name: 'No Exercises',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
+      await repo.createTemplateSegment(
+        TemplateSegment(
+          id: 'tseg-empty',
+          templateId: 'no-ex-tmpl',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       expect(
         () => service.buildSessionFromTemplate('no-ex-tmpl'),
-        throwsA(isA<Exception>().having(
-          (e) => e.toString(),
-          'message',
-          contains('no exercises'),
-        )),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('no exercises'),
+          ),
+        ),
       );
     });
 
@@ -719,40 +898,48 @@ void main() {
       final exercises = await repo.getExercises();
       final service = RoutineSessionService(repo);
 
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'tmpl-skip',
-        name: 'With Skip',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
-      await repo.createTemplateSegment(TemplateSegment(
-        id: 'tseg-skip',
-        templateId: 'tmpl-skip',
-        orderIndex: 0,
-        segmentType: 'main',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-skip',
+          name: 'With Skip',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
+      await repo.createTemplateSegment(
+        TemplateSegment(
+          id: 'tseg-skip',
+          templateId: 'tmpl-skip',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       // Effort with null exerciseId (should be skipped)
-      await repo.createTemplateEffort(TemplateEffort(
-        id: 'teff-null',
-        templateSegmentId: 'tseg-skip',
-        orderIndex: 0,
-        effortKind: 'set',
-        exerciseId: null,
-        createdAtMs: 100,
-      ));
+      await repo.createTemplateEffort(
+        TemplateEffort(
+          id: 'teff-null',
+          templateSegmentId: 'tseg-skip',
+          orderIndex: 0,
+          effortKind: 'set',
+          exerciseId: null,
+          createdAtMs: 100,
+        ),
+      );
 
       // Effort with valid exerciseId
-      await repo.createTemplateEffort(TemplateEffort(
-        id: 'teff-valid',
-        templateSegmentId: 'tseg-skip',
-        orderIndex: 1,
-        effortKind: 'set',
-        exerciseId: exercises.first.id,
-        createdAtMs: 100,
-      ));
+      await repo.createTemplateEffort(
+        TemplateEffort(
+          id: 'teff-valid',
+          templateSegmentId: 'tseg-skip',
+          orderIndex: 1,
+          effortKind: 'set',
+          exerciseId: exercises.first.id,
+          createdAtMs: 100,
+        ),
+      );
 
       final manifest = await service.buildSessionFromTemplate('tmpl-skip');
       expect(manifest.totalExercises, 1);
@@ -762,30 +949,36 @@ void main() {
       final repo = await _freshRepo();
       final service = RoutineSessionService(repo);
 
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'tmpl-miss',
-        name: 'Missing Ex',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
-      await repo.createTemplateSegment(TemplateSegment(
-        id: 'tseg-miss',
-        templateId: 'tmpl-miss',
-        orderIndex: 0,
-        segmentType: 'main',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-miss',
+          name: 'Missing Ex',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
+      await repo.createTemplateSegment(
+        TemplateSegment(
+          id: 'tseg-miss',
+          templateId: 'tmpl-miss',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       // Effort referencing a non-existent exercise
-      await repo.createTemplateEffort(TemplateEffort(
-        id: 'teff-miss',
-        templateSegmentId: 'tseg-miss',
-        orderIndex: 0,
-        effortKind: 'set',
-        exerciseId: 'nonexistent-exercise',
-        createdAtMs: 100,
-      ));
+      await repo.createTemplateEffort(
+        TemplateEffort(
+          id: 'teff-miss',
+          templateSegmentId: 'tseg-miss',
+          orderIndex: 0,
+          effortKind: 'set',
+          exerciseId: 'nonexistent-exercise',
+          createdAtMs: 100,
+        ),
+      );
 
       // All exercises skipped → should throw "no exercises"
       expect(
@@ -799,28 +992,34 @@ void main() {
       final exercises = await repo.getExercises();
       final service = RoutineSessionService(repo);
 
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'tmpl-notargets',
-        name: 'No Targets',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
-      await repo.createTemplateSegment(TemplateSegment(
-        id: 'tseg-nt',
-        templateId: 'tmpl-notargets',
-        orderIndex: 0,
-        segmentType: 'main',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
-      await repo.createTemplateEffort(TemplateEffort(
-        id: 'teff-nt',
-        templateSegmentId: 'tseg-nt',
-        orderIndex: 0,
-        effortKind: 'set',
-        exerciseId: exercises.first.id,
-        createdAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-notargets',
+          name: 'No Targets',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
+      await repo.createTemplateSegment(
+        TemplateSegment(
+          id: 'tseg-nt',
+          templateId: 'tmpl-notargets',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
+      await repo.createTemplateEffort(
+        TemplateEffort(
+          id: 'teff-nt',
+          templateSegmentId: 'tseg-nt',
+          orderIndex: 0,
+          effortKind: 'set',
+          exerciseId: exercises.first.id,
+          createdAtMs: 100,
+        ),
+      );
       // No targets created
 
       final manifest = await service.buildSessionFromTemplate('tmpl-notargets');
@@ -832,50 +1031,60 @@ void main() {
       final exercises = await repo.getExercises();
       final service = RoutineSessionService(repo);
 
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'tmpl-sort',
-        name: 'Sort Test',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-sort',
+          name: 'Sort Test',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       // Create segments in reverse order
-      await repo.createTemplateSegment(TemplateSegment(
-        id: 'tseg-second',
-        templateId: 'tmpl-sort',
-        orderIndex: 1,
-        segmentType: 'accessory',
-        name: 'Accessory',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
-      await repo.createTemplateSegment(TemplateSegment(
-        id: 'tseg-first',
-        templateId: 'tmpl-sort',
-        orderIndex: 0,
-        segmentType: 'main',
-        name: 'Main',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplateSegment(
+        TemplateSegment(
+          id: 'tseg-second',
+          templateId: 'tmpl-sort',
+          orderIndex: 1,
+          segmentType: 'accessory',
+          name: 'Accessory',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
+      await repo.createTemplateSegment(
+        TemplateSegment(
+          id: 'tseg-first',
+          templateId: 'tmpl-sort',
+          orderIndex: 0,
+          segmentType: 'main',
+          name: 'Main',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       // Add exercises to both segments
-      await repo.createTemplateEffort(TemplateEffort(
-        id: 'teff-s1',
-        templateSegmentId: 'tseg-first',
-        orderIndex: 0,
-        effortKind: 'set',
-        exerciseId: exercises.first.id,
-        createdAtMs: 100,
-      ));
-      await repo.createTemplateEffort(TemplateEffort(
-        id: 'teff-s2',
-        templateSegmentId: 'tseg-second',
-        orderIndex: 0,
-        effortKind: 'set',
-        exerciseId: exercises.last.id,
-        createdAtMs: 100,
-      ));
+      await repo.createTemplateEffort(
+        TemplateEffort(
+          id: 'teff-s1',
+          templateSegmentId: 'tseg-first',
+          orderIndex: 0,
+          effortKind: 'set',
+          exerciseId: exercises.first.id,
+          createdAtMs: 100,
+        ),
+      );
+      await repo.createTemplateEffort(
+        TemplateEffort(
+          id: 'teff-s2',
+          templateSegmentId: 'tseg-second',
+          orderIndex: 0,
+          effortKind: 'set',
+          exerciseId: exercises.last.id,
+          createdAtMs: 100,
+        ),
+      );
 
       final manifest = await service.buildSessionFromTemplate('tmpl-sort');
       expect(manifest.segments, hasLength(2));

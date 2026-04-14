@@ -224,8 +224,18 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                   '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
                               break;
                             case 'round':
+                              final effortId = exercise['id'] as String;
+                              final completedRounds = widget.workoutState
+                                  .getRoundsForEffort(effortId)
+                                  .where(
+                                    (round) =>
+                                        round.completed &&
+                                        round.startedAtMs > 0 &&
+                                        round.finishedAtMs != null,
+                                  )
+                                  .length;
                               subtitle =
-                                  '${entries.length} round${entries.length != 1 ? 's' : ''}';
+                                  '$completedRounds round${completedRounds != 1 ? 's' : ''}';
                               break;
                             case 'drill':
                               subtitle =

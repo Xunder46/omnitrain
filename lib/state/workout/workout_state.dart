@@ -533,7 +533,9 @@ class WorkoutState extends ChangeNotifier {
         }
       }
 
-      final sessionBlocks = await _repository.getSessionBlocks(_currentSession!.id);
+      final sessionBlocks = await _repository.getSessionBlocks(
+        _currentSession!.id,
+      );
       _sessionBlocks[_currentSession!.id] = sessionBlocks;
 
       notifyListeners();
@@ -783,34 +785,40 @@ class WorkoutState extends ChangeNotifier {
 
         final obsToCreate = <EffortObservation>[];
         if (effort.effortKind == 'timed') {
-          obsToCreate.add(EffortObservation(
-            id: 'obs-$effortId-$timedIndex-distance',
-            effortId: effortId,
-            metricId: MetricIds.distance,
-            unitId: MetricIds.unitMeters,
-            valueReal: (previousValues?['distance'] as double?) ?? 0.0,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
-          obsToCreate.add(EffortObservation(
-            id: 'obs-$effortId-$timedIndex-extra-weight',
-            effortId: effortId,
-            metricId: MetricIds.extraWeight,
-            unitId: MetricIds.unitKg,
-            valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          obsToCreate.add(
+            EffortObservation(
+              id: 'obs-$effortId-$timedIndex-distance',
+              effortId: effortId,
+              metricId: MetricIds.distance,
+              unitId: MetricIds.unitMeters,
+              valueReal: (previousValues?['distance'] as double?) ?? 0.0,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
+          obsToCreate.add(
+            EffortObservation(
+              id: 'obs-$effortId-$timedIndex-extra-weight',
+              effortId: effortId,
+              metricId: MetricIds.extraWeight,
+              unitId: MetricIds.unitKg,
+              valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
         } else {
           // drill
-          obsToCreate.add(EffortObservation(
-            id: 'obs-$effortId-$timedIndex-extra-weight',
-            effortId: effortId,
-            metricId: MetricIds.extraWeight,
-            valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
-            createdAtMs: now,
-            updatedAtMs: now,
-          ));
+          obsToCreate.add(
+            EffortObservation(
+              id: 'obs-$effortId-$timedIndex-extra-weight',
+              effortId: effortId,
+              metricId: MetricIds.extraWeight,
+              valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
+              createdAtMs: now,
+              updatedAtMs: now,
+            ),
+          );
         }
         for (final obs in obsToCreate) {
           await _repository.createObservation(obs);
@@ -1736,19 +1744,20 @@ class WorkoutState extends ChangeNotifier {
     try {
       final now = DateTime.now();
       final nowMs = now.millisecondsSinceEpoch;
-      final blockName = name ?? () {
-        final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
-        final minute = now.minute.toString().padLeft(2, '0');
-        final period = now.hour < 12 ? 'AM' : 'PM';
-        return '$hour12:$minute $period';
-      }();
+      final blockName =
+          name ??
+          () {
+            final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+            final minute = now.minute.toString().padLeft(2, '0');
+            final period = now.hour < 12 ? 'AM' : 'PM';
+            return '$hour12:$minute $period';
+          }();
 
       final blocks = _sessionBlocks[_currentSession!.id] ?? [];
       final maxOrder = blocks.fold<int>(
         -1,
-        (currentMax, block) => block.orderIndex > currentMax
-            ? block.orderIndex
-            : currentMax,
+        (currentMax, block) =>
+            block.orderIndex > currentMax ? block.orderIndex : currentMax,
       );
 
       final block = SessionBlock(
@@ -1829,8 +1838,9 @@ class WorkoutState extends ChangeNotifier {
 
     try {
       await _repository.reorderSessionBlocks(_currentSession!.id, orderedIds);
-      _sessionBlocks[_currentSession!.id] =
-          await _repository.getSessionBlocks(_currentSession!.id);
+      _sessionBlocks[_currentSession!.id] = await _repository.getSessionBlocks(
+        _currentSession!.id,
+      );
       notifyListeners();
     } catch (e) {
       _setError('Failed to reorder session blocks: $e');
@@ -1845,8 +1855,9 @@ class WorkoutState extends ChangeNotifier {
 
     try {
       final newBlockId = await _repository.cloneSessionBlock(blockId);
-      _sessionBlocks[_currentSession!.id] =
-          await _repository.getSessionBlocks(_currentSession!.id);
+      _sessionBlocks[_currentSession!.id] = await _repository.getSessionBlocks(
+        _currentSession!.id,
+      );
       notifyListeners();
       return newBlockId;
     } catch (e) {
@@ -2247,6 +2258,7 @@ class WorkoutState extends ChangeNotifier {
     double totalVolume = 0;
     int totalSets = 0;
     int totalRounds = 0;
+    int totalRoundDurationMs = 0;
     int totalCardioDurationMs = 0;
     int totalDrillDurationMs = 0;
     int executionOrder = 0;
@@ -2293,17 +2305,30 @@ class WorkoutState extends ChangeNotifier {
               .length;
           totalSets += setsCompleted;
         } else if (effort.effortKind == 'round') {
-          // Count only completed rounds for summary totals.
+          // Count only naturally completed rounds for summary totals.
           final rounds = _roundInstances[effort.id] ?? [];
-          effortRounds = rounds
-              .where((round) => round.state == RoundState.finished)
-              .length;
+          final completedRounds = rounds
+              .where(
+                (round) =>
+                    round.completed &&
+                    round.startedAtMs > 0 &&
+                    round.finishedAtMs != null,
+              )
+              .toList();
+          effortRounds = completedRounds.length;
           setsCompleted = effortRounds;
           totalRounds += effortRounds;
+          effortDurationMs = completedRounds.fold<int>(
+            0,
+            (sum, round) => sum + round.elapsedMs,
+          );
+          totalRoundDurationMs += effortDurationMs;
         } else if (effort.effortKind == 'timed') {
           // Timed efforts use TimedInstance records for wall-clock duration
           final timedInstances = _timedInstances[effort.id] ?? [];
-          setsCompleted = timedInstances.length;
+          setsCompleted = timedInstances
+              .where((inst) => inst.state == TimedState.finished)
+              .length;
           totalCardioDurationMs += timedInstances.fold<int>(
             0,
             (sum, inst) => sum + inst.elapsedMs,
@@ -2315,7 +2340,9 @@ class WorkoutState extends ChangeNotifier {
         } else if (effort.effortKind == 'drill') {
           // Drill efforts use TimedInstance records for wall-clock duration
           final timedInstances = _timedInstances[effort.id] ?? [];
-          setsCompleted = timedInstances.length;
+          setsCompleted = timedInstances
+              .where((inst) => inst.state == TimedState.finished)
+              .length;
           totalDrillDurationMs += timedInstances.fold<int>(
             0,
             (sum, inst) => sum + inst.elapsedMs,
@@ -2361,6 +2388,7 @@ class WorkoutState extends ChangeNotifier {
       totalSets: totalSets,
       exercises: exerciseSummaries,
       totalRounds: totalRounds,
+      totalRoundDurationMs: totalRoundDurationMs,
       totalCardioDurationMs: totalCardioDurationMs,
       totalDrillDurationMs: totalDrillDurationMs,
     );

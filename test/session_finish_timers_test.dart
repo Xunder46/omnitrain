@@ -142,7 +142,7 @@ void main() {
     expect(find.byType(WorkoutSessionScreen), findsNothing);
   });
 
-  testWidgets('Session summary Open Calendar button is hidden for now', (
+  testWidgets('Session summary shows Open Calendar button', (
     WidgetTester tester,
   ) async {
     final deps = await setupStates();
@@ -171,7 +171,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
-    expect(find.text('Open Calendar'), findsNothing);
-    expect(find.text('Calendar'), findsNothing);
+    expect(find.text('Open Calendar'), findsOneWidget);
   });
 }

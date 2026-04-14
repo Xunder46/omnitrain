@@ -3260,7 +3260,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final seconds = totalDuration % 60;
         return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
       case 'round':
-        return '${entries.length} round${entries.length != 1 ? 's' : ''}';
+        final completedRounds = widget.workoutState
+            .getRoundsForEffort(effortId)
+            .where(
+              (round) =>
+                  round.completed &&
+                  round.startedAtMs > 0 &&
+                  round.finishedAtMs != null,
+            )
+            .length;
+        return '$completedRounds round${completedRounds != 1 ? 's' : ''}';
       case 'drill':
         return '${entries.length} hold${entries.length != 1 ? 's' : ''}';
       default:
