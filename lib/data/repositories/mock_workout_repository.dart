@@ -1217,11 +1217,16 @@ class MockWorkoutRepository implements WorkoutRepository {
     if (original == null) throw StateError('SessionBlock $blockId not found');
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final rawName = original.name;
-    final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
-    final name = suffixMatch != null
-        ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
-        : '$rawName (2)';
+    final sourceSession = _sessions[original.sessionId];
+    final name = sourceSession?.isRolling == true
+      ? _formatBlockTimeLabel(nowMs)
+      : () {
+        final rawName = original.name;
+        final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
+        return suffixMatch != null
+          ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
+          : '$rawName (2)';
+        }();
 
     final maxOrder = _sessionBlocks.values
         .where((b) => b.sessionId == original.sessionId)
@@ -1323,6 +1328,14 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
 
     return newBlock.id;
+  }
+
+  String _formatBlockTimeLabel(int timestampMs) {
+    final now = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+    final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final minute = now.minute.toString().padLeft(2, '0');
+    final period = now.hour < 12 ? 'AM' : 'PM';
+    return '$hour12:$minute $period';
   }
 
   @override

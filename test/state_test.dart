@@ -1674,6 +1674,21 @@ void main() {
       expect(clonedBlock.name, endsWith('(2)'));
     });
 
+    test('cloneSessionBlock in rolling session uses current-time title', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(isRolling: true);
+
+      final sourceBlockId = await state.addSessionBlock(name: '10:00 AM');
+      final cloneBlockId = await state.cloneSessionBlock(sourceBlockId);
+
+      final blocks = state.getSessionBlocks();
+      final clonedBlock = blocks.firstWhere((b) => b.id == cloneBlockId);
+
+      expect(clonedBlock.name, isNot(contains('(2)')));
+      expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    });
+
     test('assignEffortToBlock updates effort blockId', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);

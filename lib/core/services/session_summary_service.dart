@@ -11,6 +11,122 @@ class SessionSummaryService {
 
   SessionSummaryService(this._repository);
 
+  Future<int> computeSessionRestTimeMs(String sessionId) async {
+    int totalMs = 0;
+    final segments = await _repository.getSessionSegments(sessionId);
+
+    for (final segment in segments) {
+      final efforts = await _repository.getSegmentEfforts(segment.id);
+      for (final effort in efforts) {
+        final rests = await _repository.getEntryRests(effort.id);
+        for (final rest in rests) {
+          final endMs = rest.restEndMs;
+          if (endMs == null) continue;
+          final duration = endMs - rest.restStartMs;
+          if (duration > 0) {
+            totalMs += duration;
+          }
+        }
+      }
+    }
+
+    return totalMs;
+  }
+
+  Future<Map<String, SessionGroupMetrics>> buildGroupMetrics(
+    SessionSummary summary,
+  ) async {
+    final cardioRounds = summary.exercises
+        .where((e) => e.effortKind == 'timed')
+        .fold<int>(0, (sum, e) => sum + e.setsCompleted);
+    final isometricHolds = summary.exercises
+        .where((e) => e.effortKind == 'drill')
+        .fold<int>(0, (sum, e) => sum + e.setsCompleted);
+
+    final groups = <String, SessionGroupMetrics>{};
+
+    if (summary.totalSets > 0 || summary.totalVolume > 0) {
+      groups['strength'] = SessionGroupMetrics(
+        groupKey: 'strength',
+        primaryLabel: 'Sets',
+        primaryCount: summary.totalSets,
+        totalVolumeKg: summary.totalVolume,
+      );
+    }
+
+    if (cardioRounds > 0 || summary.totalCardioDurationMs > 0) {
+      groups['cardio'] = SessionGroupMetrics(
+        groupKey: 'cardio',
+        primaryLabel: 'Rounds',
+        primaryCount: cardioRounds,
+        effortDurationMs: summary.totalCardioDurationMs,
+      );
+    }
+
+    if (summary.totalRounds > 0 || summary.totalRoundDurationMs > 0) {
+      groups['rounds'] = SessionGroupMetrics(
+        groupKey: 'rounds',
+        primaryLabel: 'Rounds',
+        primaryCount: summary.totalRounds,
+        effortDurationMs: summary.totalRoundDurationMs,
+      );
+    }
+
+    if (isometricHolds > 0 || summary.totalDrillDurationMs > 0) {
+      groups['isometric'] = SessionGroupMetrics(
+        groupKey: 'isometric',
+        primaryLabel: 'Holds',
+        primaryCount: isometricHolds,
+        effortDurationMs: summary.totalDrillDurationMs,
+      );
+    }
+
+    return groups;
+  }
+
+  Map<String, List<PRAchievement>> groupPrsByEffortKind(
+    List<PRAchievement> prs,
+    List<ExerciseSummary> exercises,
+  ) {
+    final groupByExercise = <String, String>{};
+    for (final exercise in exercises) {
+      groupByExercise[exercise.name] = _groupForEffort(exercise.effortKind);
+    }
+
+    final grouped = <String, List<PRAchievement>>{};
+    for (final pr in prs) {
+      final groupKey = groupByExercise[pr.exerciseName] ?? 'strength';
+      grouped.putIfAbsent(groupKey, () => []).add(pr);
+    }
+    return grouped;
+  }
+
+  Future<String> getPreferredWeightUnit() async {
+    final pref = (await _repository.getPreferenceString(
+      'preferred_weight_unit',
+      defaultValue: 'kg',
+    ))?.toLowerCase().trim();
+    if (pref == 'lb' || pref == 'lbs') {
+      return 'lbs';
+    }
+    return 'kg';
+  }
+
+  static String _groupForEffort(String effortKind) {
+    switch (effortKind) {
+      case 'set':
+        return 'strength';
+      case 'timed':
+        return 'cardio';
+      case 'round':
+        return 'rounds';
+      case 'drill':
+        return 'isometric';
+      default:
+        return 'strength';
+    }
+  }
+
   Future<VolumeComparison> compareToPreviousSession(
     TrainingSession currentSession,
     double currentVolume,
@@ -151,15 +267,17 @@ class SessionSummaryService {
       for (final effort in efforts) {
         switch (effort.effortKind) {
           case 'set':
-            final observations =
-                await _repository.getEffortObservations(effort.id);
-            final vol =
-                _computeVolumeFromObservations(effort.effortKind, observations);
+            final observations = await _repository.getEffortObservations(
+              effort.id,
+            );
+            final vol = _computeVolumeFromObservations(
+              effort.effortKind,
+              observations,
+            );
             stats['strength'] = (stats['strength'] ?? 0) + vol;
             break;
           case 'timed':
-            final instances =
-                await _repository.getTimedInstances(effort.id);
+            final instances = await _repository.getTimedInstances(effort.id);
             final ms = instances.fold<int>(
               0,
               (sum, inst) => sum + inst.elapsedMs,
@@ -167,14 +285,17 @@ class SessionSummaryService {
             stats['cardio'] = (stats['cardio'] ?? 0) + ms;
             break;
           case 'round':
-            final instances =
-                await _repository.getRoundInstances(effort.id);
-            stats['rounds'] =
-                (stats['rounds'] ?? 0) + instances.length;
+            final instances = await _repository.getRoundInstances(effort.id);
+            final completedRounds = instances
+                .where(
+                  (i) =>
+                      i.completed && i.startedAtMs > 0 && i.finishedAtMs != null,
+                )
+                .length;
+            stats['rounds'] = (stats['rounds'] ?? 0) + completedRounds;
             break;
           case 'drill':
-            final instances =
-                await _repository.getTimedInstances(effort.id);
+            final instances = await _repository.getTimedInstances(effort.id);
             final ms = instances.fold<int>(
               0,
               (sum, inst) => sum + inst.elapsedMs,
@@ -207,15 +328,14 @@ class SessionSummaryService {
       currentValues['strength'] = currentSummary.totalVolume;
     }
     if (currentSummary.totalCardioDurationMs > 0) {
-      currentValues['cardio'] =
-          currentSummary.totalCardioDurationMs.toDouble();
+      currentValues['cardio'] = currentSummary.totalCardioDurationMs.toDouble();
     }
     if (currentSummary.totalRounds > 0) {
       currentValues['rounds'] = currentSummary.totalRounds.toDouble();
     }
     if (currentSummary.totalDrillDurationMs > 0) {
-      currentValues['isometric'] =
-          currentSummary.totalDrillDurationMs.toDouble();
+      currentValues['isometric'] = currentSummary.totalDrillDurationMs
+          .toDouble();
     }
 
     // Find the most recent completed session before this one.

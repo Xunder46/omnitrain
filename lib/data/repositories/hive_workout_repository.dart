@@ -1631,11 +1631,19 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final original = SessionBlock.fromMap(_asStringMap(originalRaw));
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final rawName = original.name;
-    final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
-    final name = suffixMatch != null
-        ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
-        : '$rawName (2)';
+    final sourceSessionRaw = _sessionsBox.get(original.sessionId);
+    final isRollingSession =
+      sourceSessionRaw != null &&
+      TrainingSession.fromMap(_asStringMap(sourceSessionRaw)).isRolling;
+    final name = isRollingSession
+      ? _formatBlockTimeLabel(nowMs)
+      : () {
+        final rawName = original.name;
+        final suffixMatch = RegExp(r'^(.*) \((\d+)\)$').firstMatch(rawName);
+        return suffixMatch != null
+          ? '${suffixMatch.group(1)!} (${int.parse(suffixMatch.group(2)!) + 1})'
+          : '$rawName (2)';
+        }();
 
     final maxOrder = _sessionBlocksBox.values
         .map((raw) => SessionBlock.fromMap(_asStringMap(raw)))
@@ -1747,6 +1755,14 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
 
     return newBlock.id;
+  }
+
+  String _formatBlockTimeLabel(int timestampMs) {
+    final now = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+    final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final minute = now.minute.toString().padLeft(2, '0');
+    final period = now.hour < 12 ? 'AM' : 'PM';
+    return '$hour12:$minute $period';
   }
 
   @override

@@ -11,6 +11,9 @@ class SessionSummary {
   /// Total rounds across all round-based exercises.
   final int totalRounds;
 
+  /// Total duration in ms for completed round-based efforts.
+  final int totalRoundDurationMs;
+
   /// Total duration in ms for all cardio/timed exercises.
   final int totalCardioDurationMs;
 
@@ -27,8 +30,25 @@ class SessionSummary {
     required this.totalSets,
     required this.exercises,
     this.totalRounds = 0,
+    this.totalRoundDurationMs = 0,
     this.totalCardioDurationMs = 0,
     this.totalDrillDurationMs = 0,
+  });
+}
+
+class SessionGroupMetrics {
+  final String groupKey;
+  final String primaryLabel;
+  final int primaryCount;
+  final int effortDurationMs;
+  final double totalVolumeKg;
+
+  const SessionGroupMetrics({
+    required this.groupKey,
+    required this.primaryLabel,
+    required this.primaryCount,
+    this.effortDurationMs = 0,
+    this.totalVolumeKg = 0,
   });
 }
 
@@ -103,11 +123,7 @@ class GroupDelta {
   /// Whether a previous session existed to compare against.
   final bool hasPrevious;
 
-  const GroupDelta({
-    this.delta,
-    required this.unit,
-    required this.hasPrevious,
-  });
+  const GroupDelta({this.delta, required this.unit, required this.hasPrevious});
 }
 
 class SessionTemplateDraft {

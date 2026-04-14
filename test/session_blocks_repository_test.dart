@@ -347,5 +347,36 @@ void main() {
       final clone3 = blocksAfterSecond.firstWhere((b) => b.id == clone3Id);
       expect(clone3.name, 'Main (3)');
     });
+
+    test('cloneSessionBlock in rolling session uses current-time title', () async {
+      await repository.createSession(
+        TrainingSession(
+          id: 'session-rolling-clone',
+          ownerUserId: 'local-user',
+          startedAtMs: 1000,
+          isRolling: true,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-time-source',
+          sessionId: 'session-rolling-clone',
+          name: '10:00 AM',
+          orderIndex: 0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final cloneId = await repository.cloneSessionBlock('block-time-source');
+      final blocks = await repository.getSessionBlocks('session-rolling-clone');
+      final cloned = blocks.firstWhere((b) => b.id == cloneId);
+
+      expect(cloned.name, isNot(contains('(2)')));
+      expect(cloned.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    });
   });
 }
