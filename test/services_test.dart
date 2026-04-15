@@ -287,6 +287,76 @@ void main() {
       });
     });
 
+    // ── getPreferredWeightUnit ───────────────────────────────────────────
+    group('getPreferredWeightUnit', () {
+      test('returns kg when no preference is stored', () async {
+        final repo = await _freshRepo();
+        final service = SessionSummaryService(repo);
+
+        expect(await service.getPreferredWeightUnit(), 'kg');
+      });
+
+      test('returns kg when stored value is kg', () async {
+        final repo = await _freshRepo();
+        final service = SessionSummaryService(repo);
+
+        await repo.setPreferenceString('preferred_weight_unit', 'kg');
+
+        expect(await service.getPreferredWeightUnit(), 'kg');
+      });
+
+      test('returns lbs when stored value is lb', () async {
+        final repo = await _freshRepo();
+        final service = SessionSummaryService(repo);
+
+        await repo.setPreferenceString('preferred_weight_unit', 'lb');
+
+        expect(await service.getPreferredWeightUnit(), 'lbs');
+      });
+
+      test('returns lbs when stored value is lbs', () async {
+        final repo = await _freshRepo();
+        final service = SessionSummaryService(repo);
+
+        await repo.setPreferenceString('preferred_weight_unit', 'lbs');
+
+        expect(await service.getPreferredWeightUnit(), 'lbs');
+      });
+
+      test('returns lbs for uppercase and mixed-case values', () async {
+        final repo = await _freshRepo();
+        final service = SessionSummaryService(repo);
+
+        await repo.setPreferenceString('preferred_weight_unit', 'LBS');
+        expect(await service.getPreferredWeightUnit(), 'lbs');
+
+        await repo.setPreferenceString('preferred_weight_unit', 'Lbs');
+        expect(await service.getPreferredWeightUnit(), 'lbs');
+      });
+
+      test(
+        'returns lbs when stored value has surrounding whitespace',
+        () async {
+          final repo = await _freshRepo();
+          final service = SessionSummaryService(repo);
+
+          await repo.setPreferenceString('preferred_weight_unit', ' lbs ');
+
+          expect(await service.getPreferredWeightUnit(), 'lbs');
+        },
+      );
+
+      test('returns kg for unrecognised stored values', () async {
+        final repo = await _freshRepo();
+        final service = SessionSummaryService(repo);
+
+        for (final rawValue in ['pounds', 'kilograms']) {
+          await repo.setPreferenceString('preferred_weight_unit', rawValue);
+          expect(await service.getPreferredWeightUnit(), 'kg');
+        }
+      });
+    });
+
     // ── computePRs ────────────────────────────────────────────────────────
     group('computePRs', () {
       test('detects a new PR when no previous best exists', () async {
@@ -787,8 +857,9 @@ void main() {
       test('uses duration delta and ms unit for rounds group', () async {
         final repo = await _freshRepo();
         final exercises = await repo.getExercises();
-        final roundExerciseId =
-            exercises.firstWhere((e) => e.capabilities.contains('rounds')).id;
+        final roundExerciseId = exercises
+            .firstWhere((e) => e.capabilities.contains('rounds'))
+            .id;
         final service = SessionSummaryService(repo);
 
         await _seedCompletedRoundSession(

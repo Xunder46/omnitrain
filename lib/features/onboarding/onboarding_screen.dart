@@ -146,7 +146,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     count: _pageCount,
                     current: _currentPage,
                     activeColor: themeColors.primary,
-                    inactiveColor: themeColors.textMuted.withValues(alpha: 0.35),
+                    inactiveColor: themeColors.textMuted.withValues(
+                      alpha: 0.35,
+                    ),
                   ),
                 ),
               ),
@@ -215,7 +217,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
       _ModalityData(
         name: 'Sports',
-        description: 'Round and time based training for martial arts and sports',
+        description:
+            'Round and time based training for martial arts and sports',
         color: ModalityColors.sports,
       ),
       _ModalityData(
@@ -249,10 +252,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 8),
             Text(
               'OmniTrain adapts its interface to the way you actually train.',
-              style: TextStyle(
-                fontSize: 14,
-                color: themeColors.textMuted,
-              ),
+              style: TextStyle(fontSize: 14, color: themeColors.textMuted),
             ),
             const SizedBox(height: 20),
             Expanded(
@@ -294,10 +294,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 8),
             Text(
               'Your training calendar keeps everything in one place.',
-              style: TextStyle(
-                fontSize: 14,
-                color: themeColors.textMuted,
-              ),
+              style: TextStyle(fontSize: 14, color: themeColors.textMuted),
             ),
             const SizedBox(height: 28),
             _PlanFeatureBullet(
@@ -324,10 +321,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               width: double.infinity,
               child: FilledButton(
                 style: ButtonStyle(
-                  backgroundColor:
-                      WidgetStateProperty.all(themeColors.primary),
-                  foregroundColor:
-                      WidgetStateProperty.all(const Color(0xFF060B14)),
+                  backgroundColor: WidgetStateProperty.all(themeColors.primary),
+                  foregroundColor: WidgetStateProperty.all(
+                    const Color(0xFF060B14),
+                  ),
                   shape: WidgetStateProperty.all(
                     RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(
@@ -434,60 +431,64 @@ class _ModalityTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-            // Accent color bar
-            Container(
-              width: 4,
-              color: data.color,
-            ),
-            // Content
-            Expanded(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: data.color,
-                            shape: BoxShape.circle,
+              // Accent color bar
+              Container(width: 4, color: data.color),
+              // Content
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: data.color,
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          data.name,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              data.name,
+                              maxLines: 2,
+                              softWrap: true,
+                              overflow: TextOverflow.visible,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: OmniTheme.textPrimary,
+                                letterSpacing: OmniTheme.titleLetterSpacing,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 18),
+                        child: Text(
+                          data.description,
                           style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: OmniTheme.textPrimary,
-                            letterSpacing: OmniTheme.titleLetterSpacing,
+                            fontSize: 13,
+                            color: themeColors.textMuted,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 18),
-                      child: Text(
-                        data.description,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: themeColors.textMuted,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 }

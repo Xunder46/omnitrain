@@ -61,6 +61,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Constants
   static const Duration _timerUpdateInterval = Duration(seconds: 1);
   static const double _kSessionScrollBottomExtra = 24.0;
+  static const double _kBottomControlsClearance =
+      140.0 + _kSessionScrollBottomExtra;
 
   List<Map<String, dynamic>> _exercises = [];
   int _currentExerciseIndex = 0;
@@ -173,10 +175,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       return sorted;
     }
 
-    final standaloneExercises = source
-        .where((e) => e['blockId'] == null)
-        .toList()
-      ..sort(_compareExercises);
+    final standaloneExercises =
+        source.where((e) => e['blockId'] == null).toList()
+          ..sort(_compareExercises);
 
     final List<({SessionBlock? block, Map<String, dynamic>? exercise})> items =
         [];
@@ -207,10 +208,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       }
 
       final blockId = item.block!.id;
-      final blockExercises = source
-          .where((e) => e['blockId'] == blockId)
-          .toList()
-        ..sort(_compareExercises);
+      final blockExercises =
+          source.where((e) => e['blockId'] == blockId).toList()
+            ..sort(_compareExercises);
       ordered.addAll(blockExercises);
     }
 
@@ -1323,7 +1323,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   /// Uses [Future.microtask] to ensure the UI is fully built and the loading
   /// spinner is cleared before triggering the dialog.
   void _scheduleAutoOpenPicker() {
-    _autoOpenAttempted = true; // Prevent re-opening on subsequent _loadExercises calls
+    _autoOpenAttempted =
+        true; // Prevent re-opening on subsequent _loadExercises calls
     // Schedule after current frame renders so loading state is cleared
     Future.microtask(() {
       if (mounted) {
@@ -1354,8 +1355,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           // Rolling session with a preferred modality hint from the tile
           // Derive effort kind from that modality without showing picker
           effortKindOverride =
-              ModalityConfig.forModality(widget.preferredModality)?.effortKind ??
-                  'set';
+              ModalityConfig.forModality(
+                widget.preferredModality,
+              )?.effortKind ??
+              'set';
         } else {
           // True free training: show modality picker
           final modalityResult = await showDialog<(bool, String?)>(
@@ -1684,7 +1687,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                         0,
                         0,
                         0,
-                        140 + _kSessionScrollBottomExtra,
+                        _kBottomControlsClearance,
                       ),
                       children: [
                         for (int i = 0; i < blocks.length; i++)
@@ -1772,11 +1775,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
   Widget _buildStandardSessionListView(ThemeData theme) {
     final blocks = widget.workoutState.getSessionBlocks();
-    final standaloneExercises =
-        _exercises.where((e) => e['blockId'] == null).toList();
+    final standaloneExercises = _exercises
+        .where((e) => e['blockId'] == null)
+        .toList();
 
     if (_exercises.isEmpty && blocks.isEmpty) {
       // Empty state — no exercises and no blocks yet.
+      // Match rolling session structure for consistency.
       return Scaffold(
         backgroundColor: Colors.transparent,
         body: OmniGradientBackground(
@@ -1792,42 +1797,43 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       child: Row(children: [_buildSessionTimeWidget(theme)]),
                     ),
                     Expanded(
-                      child: Center(
-                        child: Text(
-                          'No exercises',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: OmniTheme.textPrimary,
-                          ),
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(
+                          0,
+                          8,
+                          0,
+                          _kBottomControlsClearance,
                         ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await widget.workoutState.addSessionBlock();
-                            if (mounted) setState(() {});
-                          },
-                          icon: const Icon(Icons.add_circle_outline),
-                          label: const Text('Add Block'),
-                          style: OutlinedButton.styleFrom(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            side: BorderSide(
-                              color: theme.colorScheme.primary,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                OmniTheme.buttonUtilityRadius,
+                        children: [
+                          const SizedBox(height: 4),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                await widget.workoutState.addSessionBlock();
+                                if (mounted) setState(() {});
+                              },
+                              icon: const Icon(Icons.add_circle_outline),
+                              label: const Text('Add Block'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                side: BorderSide(
+                                  color: theme.colorScheme.primary,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    OmniTheme.buttonUtilityRadius,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
                   ],
                 ),
               ),
@@ -1953,7 +1959,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                         0,
                         8,
                         0,
-                        140 + _kSessionScrollBottomExtra,
+                        _kBottomControlsClearance,
                       ),
                       children: [
                         // Mixed list: standalone exercises and block groups in insertion order
@@ -1977,8 +1983,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                             icon: const Icon(Icons.add_circle_outline),
                             label: const Text('Add Block'),
                             style: OutlinedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
                               side: BorderSide(
                                 color: theme.colorScheme.primary,
                               ),
@@ -4581,123 +4586,124 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
     );
 
     return Stack(
-        children: [
-          // Dark backdrop — absorbs all taps so neither the overlay itself
-          // nor underlying workout widgets react to incidental touches.
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {}, // absorb without action
-            child: Container(color: const Color(0xBF000000)),
-          ),
+      children: [
+        // Dark backdrop — absorbs all taps so neither the overlay itself
+        // nor underlying workout widgets react to incidental touches.
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {}, // absorb without action
+          child: Container(color: const Color(0xBF000000)),
+        ),
 
-          // Pulsing glow ring
-          Positioned(
-            left: cx - glowRadius,
-            top: cy - glowRadius,
-            child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: _pulse,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _scale.value,
-                    child: Container(
-                      width: glowRadius * 2,
-                      height: glowRadius * 2,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: widget.primaryColor
-                            .withOpacity(_opacity.value * 0.6),
-                        border: Border.all(
-                          color: widget.primaryColor.withOpacity(
-                            _opacity.value + 0.2,
-                          ),
-                          width: 1.5,
+        // Pulsing glow ring
+        Positioned(
+          left: cx - glowRadius,
+          top: cy - glowRadius,
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _pulse,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _scale.value,
+                  child: Container(
+                    width: glowRadius * 2,
+                    height: glowRadius * 2,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: widget.primaryColor.withOpacity(
+                        _opacity.value * 0.6,
+                      ),
+                      border: Border.all(
+                        color: widget.primaryColor.withOpacity(
+                          _opacity.value + 0.2,
                         ),
+                        width: 1.5,
                       ),
                     ),
-                  );
-                },
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+
+        // Triangle pointer — always anchored to the icon center so it keeps
+        // pointing at the icon even when the label box is clamped sideways.
+        Positioned(
+          left: cx - triangleWidth / 2,
+          top: cy + labelOffset,
+          child: IgnorePointer(
+            child: CustomPaint(
+              size: const Size(triangleWidth, triangleHeight),
+              painter: _TrianglePointerPainter(
+                color: widget.primaryColor.withOpacity(0.85),
               ),
             ),
           ),
+        ),
 
-          // Triangle pointer — always anchored to the icon center so it keeps
-          // pointing at the icon even when the label box is clamped sideways.
-          Positioned(
-            left: cx - triangleWidth / 2,
-            top: cy + labelOffset,
-            child: IgnorePointer(
-              child: CustomPaint(
-                size: const Size(triangleWidth, triangleHeight),
-                painter: _TrianglePointerPainter(
-                  color: widget.primaryColor.withOpacity(0.85),
+        // Label box with "Got it!" button — clamped to stay within bounds.
+        Positioned(
+          left: clampedLabelLeft,
+          top: cy + labelOffset + triangleHeight + 4,
+          width: labelWidth,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A2E),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: widget.primaryColor.withOpacity(0.35),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 30,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: widget.primaryColor,
+                          foregroundColor: Colors.black87,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        onPressed: widget.onDismiss,
+                        child: const Text('Got it!'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
+            ],
           ),
-
-          // Label box with "Got it!" button — clamped to stay within bounds.
-          Positioned(
-            left: clampedLabelLeft,
-            top: cy + labelOffset + triangleHeight + 4,
-            width: labelWidth,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A2E),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: widget.primaryColor.withOpacity(0.35),
-                      width: 1,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        widget.label,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          height: 1.4,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 30,
-                        child: FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: widget.primaryColor,
-                            foregroundColor: Colors.black87,
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            textStyle: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          onPressed: widget.onDismiss,
-                          child: const Text('Got it!'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
+      ],
     );
   }
 }

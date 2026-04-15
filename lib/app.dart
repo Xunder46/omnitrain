@@ -83,7 +83,7 @@ class MyApp extends StatelessWidget {
           theme: appTheme.copyWith(textTheme: textTheme),
           // Splash screen temporarily disabled - showing home screen directly
           // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
-          home: true //showOnboarding
+          home: showOnboarding
               ? OnboardingScreen(
                   repository: repository,
                   workoutState: workoutState,

@@ -137,6 +137,7 @@ Add user-selectable app themes to OmniTrain with two new palettes (Forge & Ember
 - [x] Settings Appearance theme selector uses a 2-column by 4-row mini-tile grid layout
 - [x] Settings AppBar title bar colors follow active theme tokens (no static white)
 - [x] Settings header title and back arrow colors match the shared transparent AppBar pattern used by other pages
+- [x] ExerciseEditorScreen app bar and save area use active theme chrome instead of default Material surfaces
 
 Phase Status: Complete
 

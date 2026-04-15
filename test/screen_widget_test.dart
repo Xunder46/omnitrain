@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/app.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/constants/modality.dart';
@@ -11,6 +12,7 @@ import 'package:omnitrain/features/calendar/day_session_list_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_detail_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
 import 'package:omnitrain/features/home/home_screen.dart';
+import 'package:omnitrain/features/onboarding/onboarding_screen.dart';
 import 'package:omnitrain/features/period/create_period_screen.dart';
 import 'package:omnitrain/features/period/period_list_screen.dart';
 import 'package:omnitrain/features/profile/profile_screen.dart';
@@ -31,6 +33,7 @@ import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
 import 'package:omnitrain/widgets/pickers/metric_chooser_dialog.dart';
 import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
@@ -875,77 +878,261 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // OnboardingScreen
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('OnboardingScreen', () {
+    Future<
+      ({
+        MockWorkoutRepository repo,
+        WorkoutState workoutState,
+        HomeState homeState,
+        RoutineState routineState,
+        RoutineSessionService routineSessionService,
+        SessionSummaryService sessionSummaryService,
+        CalendarState calendarState,
+        PeriodState periodState,
+        ProfileState profileState,
+        SettingsState settingsState,
+      })
+    >
+    buildOnboardingDeps() async {
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final homeState = HomeState(repo);
+      await homeState.init();
+      final routineState = RoutineState(repo);
+      final routineSessionService = RoutineSessionService(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final periodState = PeriodState(repo);
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      return (
+        repo: repo,
+        workoutState: workoutState,
+        homeState: homeState,
+        routineState: routineState,
+        routineSessionService: routineSessionService,
+        sessionSummaryService: sessionSummaryService,
+        calendarState: calendarState,
+        periodState: periodState,
+        profileState: profileState,
+        settingsState: settingsState,
+      );
+    }
+
+    Widget buildOnboardingScreen(
+      ({
+        MockWorkoutRepository repo,
+        WorkoutState workoutState,
+        HomeState homeState,
+        RoutineState routineState,
+        RoutineSessionService routineSessionService,
+        SessionSummaryService sessionSummaryService,
+        CalendarState calendarState,
+        PeriodState periodState,
+        ProfileState profileState,
+        SettingsState settingsState,
+      })
+      deps,
+    ) {
+      return MaterialApp(
+        home: OnboardingScreen(
+          repository: deps.repo,
+          workoutState: deps.workoutState,
+          homeState: deps.homeState,
+          routineState: deps.routineState,
+          routineSessionService: deps.routineSessionService,
+          sessionSummaryService: deps.sessionSummaryService,
+          calendarState: deps.calendarState,
+          periodState: deps.periodState,
+          profileState: deps.profileState,
+          settingsState: deps.settingsState,
+        ),
+      );
+    }
+
+    testWidgets('renders welcome page with title and skip button', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final deps = await buildOnboardingDeps();
+
+      await tester.pumpWidget(buildOnboardingScreen(deps));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(OnboardingScreen), findsOneWidget);
+      expect(find.text('OMNITRAIN'), findsOneWidget);
+      expect(find.text('one app for every way you train'), findsOneWidget);
+      expect(find.text('Skip'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('swiping advances pages and final page shows get started', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final deps = await buildOnboardingDeps();
+
+      await tester.pumpWidget(buildOnboardingScreen(deps));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('How You Train'), findsOneWidget);
+      expect(
+        find.text(
+          'OmniTrain adapts its interface to the way you actually train.',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+
+      expect(find.text('How You Plan'), findsOneWidget);
+      expect(find.text('Get Started'), findsOneWidget);
+
+      final skipButton = find.widgetWithText(TextButton, 'Skip');
+      expect(skipButton, findsOneWidget);
+
+      final skipOpacity = tester.widget<AnimatedOpacity>(
+        find
+            .ancestor(of: skipButton, matching: find.byType(AnimatedOpacity))
+            .first,
+      );
+      final skipIgnorePointer = tester.widget<IgnorePointer>(
+        find
+            .ancestor(of: skipButton, matching: find.byType(IgnorePointer))
+            .first,
+      );
+
+      expect(skipOpacity.opacity, 0.0);
+      expect(skipIgnorePointer.ignoring, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('tapping Skip completes onboarding and navigates home', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final deps = await buildOnboardingDeps();
+
+      await tester.pumpWidget(buildOnboardingScreen(deps));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Skip'));
+      await tester.pumpAndSettle();
+
+      expect(await deps.repo.getPreferenceBool('onboarding_complete'), isTrue);
+      expect(find.byType(OnboardingScreen), findsNothing);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('tapping Get Started completes onboarding and navigates home', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final deps = await buildOnboardingDeps();
+
+      await tester.pumpWidget(buildOnboardingScreen(deps));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Get Started'));
+      await tester.pumpAndSettle();
+
+      expect(await deps.repo.getPreferenceBool('onboarding_complete'), isTrue);
+      expect(find.byType(OnboardingScreen), findsNothing);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('MyApp skips onboarding when showOnboarding is false', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final deps = await buildOnboardingDeps();
+
+      await tester.pumpWidget(
+        MyApp(
+          repository: deps.repo,
+          showOnboarding: false,
+          workoutState: deps.workoutState,
+          homeState: deps.homeState,
+          routineState: deps.routineState,
+          routineSessionService: deps.routineSessionService,
+          sessionSummaryService: deps.sessionSummaryService,
+          calendarState: deps.calendarState,
+          periodState: deps.periodState,
+          profileState: deps.profileState,
+          settingsState: deps.settingsState,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(OnboardingScreen), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    test('repository persists onboarding_complete preference', () async {
+      final repo = await _freshRepo();
+
+      expect(await repo.getPreferenceBool('onboarding_complete'), isFalse);
+
+      await repo.setPreferenceBool('onboarding_complete', true);
+
+      expect(await repo.getPreferenceBool('onboarding_complete'), isTrue);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // StatsScreen
   // ══════════════════════════════════════════════════════════════════════════
 
   group('StatsScreen', () {
-    testWidgets('shows Stats AppBar title', (WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final settingsState = SettingsState(repo);
-      await settingsState.initialize();
+    Future<void> seedCompletedSession(
+      MockWorkoutRepository repo, {
+      required String id,
+      required DateTime start,
+      required Duration duration,
+      bool isRolling = false,
+      String? modality,
+    }) async {
+      final startMs = start.millisecondsSinceEpoch;
+      final endMs = start.add(duration).millisecondsSinceEpoch;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: StatsScreen(
-            workoutState: workoutState,
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Stats'), findsOneWidget);
-    });
-
-    testWidgets('shows empty state when no sessions exist', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final settingsState = SettingsState(repo);
-      await settingsState.initialize();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: StatsScreen(
-            workoutState: workoutState,
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('No sessions yet'), findsOneWidget);
-      expect(find.byType(BarChart), findsNothing);
-    });
-
-    testWidgets('shows aggregate card and bar chart when sessions exist', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-
-      // Seed one completed session today.
-      final now = DateTime.now();
-      final startMs = now
-          .subtract(const Duration(hours: 1))
-          .millisecondsSinceEpoch;
-      final endMs = now.millisecondsSinceEpoch;
       await repo.createSession(
         TrainingSession(
-          id: 'sess-1',
+          id: id,
           ownerUserId: 'user-1',
-          modality: 'strength',
+          modality: modality,
           startedAtMs: startMs,
           endedAtMs: endMs,
+          isRolling: isRolling,
           createdAtMs: startMs,
           updatedAtMs: endMs,
         ),
       );
+    }
 
+    Future<void> pumpStatsScreen(
+      WidgetTester tester,
+      MockWorkoutRepository repo,
+    ) async {
       final workoutState = WorkoutState(repo);
       final settingsState = SettingsState(repo);
       await settingsState.initialize();
@@ -959,11 +1146,162 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+    }
 
-      expect(find.text('No sessions yet'), findsNothing);
-      expect(find.text('ALL TIME'), findsOneWidget);
-      expect(find.text('ACTIVITY'), findsOneWidget);
+    int totalSessionsShownInChart(WidgetTester tester) {
+      final chart = tester.widget<BarChart>(find.byType(BarChart));
+      return chart.data.barGroups.fold<int>(0, (sum, group) {
+        return sum +
+            group.barRods.fold<int>(
+              0,
+              (rodSum, rod) => rodSum + rod.toY.round(),
+            );
+      });
+    }
+
+    testWidgets('shows Stats AppBar title', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+
+      await pumpStatsScreen(tester, repo);
+
+      expect(find.text('Stats'), findsOneWidget);
+    });
+
+    testWidgets('zero state renders without crash or phantom data', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+
+      await pumpStatsScreen(tester, repo);
+
+      expect(find.text('No sessions yet'), findsOneWidget);
+      expect(
+        find.text('Complete your first session to see stats here.'),
+        findsOneWidget,
+      );
+      expect(find.text('ALL TIME'), findsNothing);
+      expect(find.text('ACTIVITY'), findsNothing);
+      expect(find.byType(BarChart), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('aggregate totals reflect seeded completed sessions', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      await seedCompletedSession(
+        repo,
+        id: 'sess-1',
+        start: now.subtract(const Duration(days: 1, minutes: 30)),
+        duration: const Duration(minutes: 30),
+        modality: 'resistance_lifting',
+      );
+      await seedCompletedSession(
+        repo,
+        id: 'sess-2',
+        start: now.subtract(const Duration(days: 3, minutes: 45)),
+        duration: const Duration(minutes: 45),
+        modality: 'sports',
+      );
+      await seedCompletedSession(
+        repo,
+        id: 'sess-3',
+        start: now.subtract(const Duration(days: 8, hours: 1)),
+        duration: const Duration(hours: 1),
+        modality: 'cardio_endurance',
+      );
+
+      await pumpStatsScreen(tester, repo);
+
+      final aggregateCard = find.byType(OmniSurface).first;
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('3')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('2h 15m')),
+        findsOneWidget,
+      );
       expect(find.byType(BarChart), findsOneWidget);
+    });
+
+    testWidgets('30-day activity excludes sessions outside the window', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      await seedCompletedSession(
+        repo,
+        id: 'old-session',
+        start: now.subtract(const Duration(days: 60, hours: 1)),
+        duration: const Duration(hours: 1),
+      );
+      await seedCompletedSession(
+        repo,
+        id: 'recent-session',
+        start: now.subtract(const Duration(days: 5, minutes: 20)),
+        duration: const Duration(minutes: 20),
+      );
+
+      await pumpStatsScreen(tester, repo);
+
+      final aggregateCard = find.byType(OmniSurface).first;
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('2')),
+        findsOneWidget,
+      );
+      expect(find.byType(BarChart), findsOneWidget);
+      expect(totalSessionsShownInChart(tester), 1);
+    });
+
+    testWidgets('rolling sessions are excluded from duration aggregates', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      await seedCompletedSession(
+        repo,
+        id: 'rolling-session',
+        start: now.subtract(const Duration(days: 2, hours: 2)),
+        duration: const Duration(hours: 2),
+        isRolling: true,
+      );
+      await seedCompletedSession(
+        repo,
+        id: 'standard-session',
+        start: now.subtract(const Duration(days: 1, minutes: 45)),
+        duration: const Duration(minutes: 45),
+        isRolling: false,
+      );
+
+      await pumpStatsScreen(tester, repo);
+
+      final aggregateCard = find.byType(OmniSurface).first;
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('2')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('45m')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('2h 45m')),
+        findsNothing,
+      );
     });
   });
 
@@ -1149,83 +1487,88 @@ void main() {
       expect(find.textContaining('Jun'), findsOneWidget);
     });
 
-    testWidgets('planned session form shows session type and full mode labels', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1000));
-      final repo = await _freshRepo();
-      final calendarState = CalendarState(repo);
-      await calendarState.init();
-      final routineState = RoutineState(repo);
-      final workoutState = WorkoutState(repo);
-      final routineSessionService = RoutineSessionService(repo);
-      final sessionSummaryService = SessionSummaryService(repo);
+    testWidgets(
+      'planned session form shows session type and full mode labels',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
 
-      final futureDate = DateTime(2099, 12, 31);
+        final futureDate = DateTime(2099, 12, 31);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DaySessionListScreen(
-            date: futureDate,
-            calendarState: calendarState,
-            routineState: routineState,
-            workoutState: workoutState,
-            routineSessionService: routineSessionService,
-            sessionSummaryService: sessionSummaryService,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DaySessionListScreen(
+              date: futureDate,
+              calendarState: calendarState,
+              routineState: routineState,
+              workoutState: workoutState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Add Planned Session'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Add Planned Session'));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Session Type'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Free Training'), findsOneWidget);
-      expect(find.widgetWithText(OutlinedButton, 'Routine'), findsOneWidget);
-    });
+        expect(find.text('Session Type'), findsOneWidget);
+        expect(
+          find.widgetWithText(FilledButton, 'Free Training'),
+          findsOneWidget,
+        );
+        expect(find.widgetWithText(OutlinedButton, 'Routine'), findsOneWidget);
+      },
+    );
 
-    testWidgets('edit planned session opens shared form with session type toggle', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 1000));
-      final repo = await _freshRepo();
-      final calendarState = CalendarState(repo);
-      await calendarState.init();
-      final routineState = RoutineState(repo);
-      final workoutState = WorkoutState(repo);
-      final routineSessionService = RoutineSessionService(repo);
-      final sessionSummaryService = SessionSummaryService(repo);
+    testWidgets(
+      'edit planned session opens shared form with session type toggle',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
 
-      final today = DateTime.now();
-      await calendarState.createPlannedSession(
-        date: today,
-        modality: Modality.cardioEndurance,
-        title: 'Planned Test',
-      );
+        final today = DateTime.now();
+        await calendarState.createPlannedSession(
+          date: today,
+          modality: Modality.cardioEndurance,
+          title: 'Planned Test',
+        );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: DaySessionListScreen(
-            date: DateTime(today.year, today.month, today.day),
-            calendarState: calendarState,
-            routineState: routineState,
-            workoutState: workoutState,
-            routineSessionService: routineSessionService,
-            sessionSummaryService: sessionSummaryService,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DaySessionListScreen(
+              date: DateTime(today.year, today.month, today.day),
+              calendarState: calendarState,
+              routineState: routineState,
+              workoutState: workoutState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.edit_outlined).first);
-      await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.edit_outlined).first);
+        await tester.pumpAndSettle();
 
-      expect(find.text('Edit Session'), findsOneWidget);
-      expect(find.text('Session Type'), findsOneWidget);
-      expect(find.text('Free Training'), findsAtLeastNWidgets(1));
-      expect(find.text('Routine'), findsOneWidget);
-    });
+        expect(find.text('Edit Session'), findsOneWidget);
+        expect(find.text('Session Type'), findsOneWidget);
+        expect(find.text('Free Training'), findsAtLeastNWidgets(1));
+        expect(find.text('Routine'), findsOneWidget);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1240,6 +1583,180 @@ void main() {
       await workoutState.createNewSession();
       return workoutState;
     }
+
+    Future<void> pumpSessionSummaryScreen(
+      WidgetTester tester, {
+      required MockWorkoutRepository repo,
+      required WorkoutState workoutState,
+    }) async {
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows feeling modal on mount with five numbered tiles', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = await workoutStateWithActiveSession(repo);
+
+      await pumpSessionSummaryScreen(
+        tester,
+        repo: repo,
+        workoutState: workoutState,
+      );
+
+      expect(find.text('How did it feel?'), findsOneWidget);
+
+      final sheetFinder = find.byType(BottomSheet);
+      expect(sheetFinder, findsOneWidget);
+
+      for (int i = 1; i <= 5; i++) {
+        expect(
+          find.descendant(of: sheetFinder, matching: find.text(i.toString())),
+          findsOneWidget,
+        );
+      }
+    });
+
+    testWidgets(
+      'feeling modal is non-dismissible and blocks summary controls',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = await workoutStateWithActiveSession(repo);
+
+        await pumpSessionSummaryScreen(
+          tester,
+          repo: repo,
+          workoutState: workoutState,
+        );
+
+        expect(find.text('How did it feel?'), findsOneWidget);
+        expect(tester.testTextInput.isVisible, isFalse);
+
+        await tester.tapAt(const Offset(24, 24));
+        await tester.pumpAndSettle();
+        expect(find.text('How did it feel?'), findsOneWidget);
+
+        await tester.tap(find.text('Done'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(find.text('How did it feel?'), findsOneWidget);
+        expect(find.byType(SessionSummaryScreen), findsOneWidget);
+
+        await tester.tapAt(tester.getCenter(find.byType(TextField)));
+        await tester.pump();
+        expect(tester.testTextInput.isVisible, isFalse);
+        expect(find.text('How did it feel?'), findsOneWidget);
+      },
+    );
+
+    testWidgets('selecting tile 3 dismisses the feeling modal and persists', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = await workoutStateWithActiveSession(repo);
+
+      await pumpSessionSummaryScreen(
+        tester,
+        repo: repo,
+        workoutState: workoutState,
+      );
+
+      final sheetFinder = find.byType(BottomSheet);
+      await tester.tap(
+        find.descendant(of: sheetFinder, matching: find.text('3')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('How did it feel?'), findsNothing);
+      expect(workoutState.currentSession!.sessionFeeling, 3);
+    });
+
+    testWidgets(
+      'does not show feeling modal when session feeling already exists',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = await workoutStateWithActiveSession(repo);
+        final sessionId = workoutState.currentSession!.id;
+        await workoutState.updateSessionFeeling(sessionId, 4);
+
+        await pumpSessionSummaryScreen(
+          tester,
+          repo: repo,
+          workoutState: workoutState,
+        );
+
+        expect(find.text('How did it feel?'), findsNothing);
+        expect(find.text('Done'), findsOneWidget);
+        expect(find.byType(TextField), findsOneWidget);
+
+        await tester.tap(find.byType(TextField));
+        await tester.pump();
+        expect(tester.testTextInput.isVisible, isTrue);
+      },
+    );
+
+    testWidgets('feeling modal subtitle includes resistance modality name', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(modality: 'resistance_lifting');
+
+      await pumpSessionSummaryScreen(
+        tester,
+        repo: repo,
+        workoutState: workoutState,
+      );
+
+      final sheetFinder = find.byType(BottomSheet);
+      expect(
+        find.descendant(
+          of: sheetFinder,
+          matching: find.text('Resistance / Lifting · Today'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'feeling modal renders Free Training subtitle for null modality',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = await workoutStateWithActiveSession(repo);
+
+        await pumpSessionSummaryScreen(
+          tester,
+          repo: repo,
+          workoutState: workoutState,
+        );
+
+        final sheetFinder = find.byType(BottomSheet);
+        expect(
+          find.descendant(
+            of: sheetFinder,
+            matching: find.text('Free Training · Today'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('shows Done button', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -1315,42 +1832,41 @@ void main() {
       expect(find.text('SETS'), findsOneWidget);
     });
 
-    testWidgets(
-      'shows Sports group card when at least one round is finished',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final repo = await _freshRepo();
-        final workoutState = await workoutStateWithActiveSession(repo);
-        final exercises = await repo.getExercises();
-        final roundExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('rounds'),
-          orElse: () => exercises.first,
-        );
+    testWidgets('shows Sports group card when at least one round is finished', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = await workoutStateWithActiveSession(repo);
+      final exercises = await repo.getExercises();
+      final roundExercise = exercises.firstWhere(
+        (e) => e.capabilities.contains('rounds'),
+        orElse: () => exercises.first,
+      );
 
-        final effortId = await workoutState.addExerciseToSession(
-          roundExercise,
-          effortKindOverride: 'round',
-        );
-        await workoutState.startRound(effortId, 0);
-        await workoutState.endRoundEarly(effortId, 0);
+      final effortId = await workoutState.addExerciseToSession(
+        roundExercise,
+        effortKindOverride: 'round',
+      );
+      await workoutState.startRound(effortId, 0);
+      await workoutState.endRoundEarly(effortId, 0);
 
-        final routineState = RoutineState(repo);
-        final sessionSummaryService = SessionSummaryService(repo);
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SessionSummaryScreen(
-              workoutState: workoutState,
-              routineState: routineState,
-              sessionSummaryService: sessionSummaryService,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(find.text('Sports'), findsOneWidget);
-      },
-    );
+      expect(find.text('Sports'), findsOneWidget);
+    });
 
     testWidgets('hides Sports group card when rounds are never started', (
       WidgetTester tester,
@@ -2041,27 +2557,39 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('WorkoutSessionScreen – rolling session block UI', () {
-    testWidgets('non-rolling session does not show + Add Block', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final routineState = RoutineState(repo);
-      await workoutState.createNewSession(isRolling: false);
+    testWidgets(
+      'non-rolling empty session keeps Add Block visible above Finish Workout',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        await workoutState.createNewSession(isRolling: false);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: WorkoutSessionScreen(
-            workoutState: workoutState,
-            routineState: routineState,
-            sessionSummaryService: SessionSummaryService(repo),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+            ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('+ Add Block'), findsNothing);
-    });
+        final addBlockFinder = find.widgetWithText(OutlinedButton, 'Add Block');
+        final finishFinder = find.widgetWithText(
+          FilledButton,
+          'Finish Workout',
+        );
+
+        expect(addBlockFinder, findsOneWidget);
+        expect(finishFinder, findsOneWidget);
+
+        final addBlockRect = tester.getRect(addBlockFinder);
+        final finishRect = tester.getRect(finishFinder);
+        expect(addBlockRect.bottom, lessThan(finishRect.top));
+      },
+    );
 
     testWidgets('rolling session shows + Add Block button', (
       WidgetTester tester,

@@ -27,7 +27,33 @@ Replace the `MaintenancePlaceholderScreen` backing the Stats tile in the mainten
 - [ ] No new dependencies introduced (fl_chart already in pubspec.yaml)
 
 ## Scenarios
-N/A (no new DI components required)
+### S-001: Zero state
+- Trigger: User opens StatsScreen with no completed sessions in the repository.
+- Precondition: Session list is empty or all sessions are incomplete.
+- Flow: Navigate to the Stats screen and allow the screen to load aggregate and chart data.
+- Expected outcome: Empty state renders without crashing, no phantom totals appear, and no activity chart is shown.
+- Edge case of: none
+
+### S-002: Aggregate totals reflect seeded sessions
+- Trigger: User opens StatsScreen after multiple completed sessions have been saved.
+- Precondition: Repository contains 2–3 completed sessions with known durations.
+- Flow: Load the screen, compute all-time totals, and render the aggregate card.
+- Expected outcome: Visible totals for Sessions and Total Time match the seeded data exactly.
+- Edge case of: none
+
+### S-003: 30-day activity window excludes old sessions
+- Trigger: StatsScreen loads activity history for the last 30 days.
+- Precondition: Repository contains one completed session inside the last 30 days and one completed session older than 30 days.
+- Flow: Open StatsScreen and inspect the rendered bar-chart data.
+- Expected outcome: Only the recent session contributes to the 30-day activity counts.
+- Edge case of: S-002
+
+### S-004: Rolling sessions excluded from duration totals
+- Trigger: StatsScreen computes all-time duration aggregates.
+- Precondition: Repository contains one completed rolling session and one completed non-rolling session.
+- Flow: Open StatsScreen and inspect the Total Time value.
+- Expected outcome: Total session count includes both completed sessions, but Total Time only includes the non-rolling session duration.
+- Edge case of: S-002
 
 ---
 
@@ -112,13 +138,15 @@ None. No new repository methods, no new state classes, no schema changes.
 - [x] Extract _formatDuration → OmniDateUtils.formatDurationHoursMins
 - [x] Remove dead MaintenancePlaceholderScreen tests from screen_widget_test.dart
 - [x] Add 3 StatsScreen render tests (title, empty state, aggregate+chart)
+- [x] Add StatsScreen data-accuracy tests for zero state, aggregate totals, 30-day filtering, and rolling-session exclusion
+- [x] Fix StatsScreen total-duration aggregation to exclude rolling sessions
 - [x] Add 9 formatDurationHoursMins unit tests
-- [x] Full test suite: 468 passed, 8 pre-existing failures, 0 regressions
+- [x] Full test suite: 530 passed, 0 failed
 
 ## Phase Status: Complete ✓
 
 ## Feedback
-<!-- Leave empty until a specialist or reviewer adds notes -->
+- Resolved: StatsScreen data-accuracy coverage has been added and the rolling-session duration mismatch has been fixed.
 
 ---
 
