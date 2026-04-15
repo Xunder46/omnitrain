@@ -359,6 +359,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               final modality = session.modality;
               final selectedExercise = await showDialog<Exercise>(
                 context: context,
+                barrierColor: Colors.black.withOpacity(0.78),
                 builder: (context) => ExercisePickerDialog(
                   workoutState: widget.workoutState,
                   sessionModality: modality,
@@ -648,7 +649,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             style: theme.textTheme.headlineSmall?.copyWith(letterSpacing: 0.4),
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 _formatDateTime(startedAt),
@@ -656,7 +660,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
-              const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,

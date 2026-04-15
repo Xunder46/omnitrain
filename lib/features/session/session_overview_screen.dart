@@ -57,6 +57,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     final selectedExercise = await showDialog<Exercise>(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.78),
       builder: (context) => ExercisePickerDialog(
         workoutState: widget.workoutState,
         sessionModality: modality,
@@ -73,7 +74,8 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
           builder: (context) => const ModalityPickerDialog(),
         );
 
-        if (!context.mounted || modalityResult == null) return; // user cancelled
+        if (!context.mounted || modalityResult == null)
+          return; // user cancelled
 
         final (_, pickedModality) = modalityResult;
         effortKindOverride =
@@ -115,7 +117,9 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: OmniTheme.colorsForTheme(widget.settingsState.appTheme).backgroundTop,
+        backgroundColor: OmniTheme.colorsForTheme(
+          widget.settingsState.appTheme,
+        ).backgroundTop,
         body: const Center(child: CircularProgressIndicator()),
       );
     }

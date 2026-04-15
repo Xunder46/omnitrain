@@ -128,7 +128,7 @@ ThemeData buildTheme({
   final colorScheme = ColorScheme(
     brightness: brightness,
     primary: primary,
-    onPrimary: brightness == Brightness.dark ? Colors.black : Colors.white,
+    onPrimary: Colors.white,
     secondary: secondary,
     onSecondary: Colors.white,
     error: Colors.red,

@@ -1339,6 +1339,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
     final selectedExercise = await showDialog<Exercise>(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.78),
       builder: (context) => ExercisePickerDialog(
         workoutState: widget.workoutState,
         sessionModality: modality,
@@ -2757,10 +2758,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final themeColors = OmniTheme.colorsForTheme(
+      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
+    );
+    // Explicitly anchor FilledButton background to the active accent token so
+    // the "Finish Workout" button — and any dialog opened from this screen —
+    // cannot inherit a stale or reset colorScheme.primary from an intervening
+    // overlay context.
+    final sessionTheme = theme.copyWith(
+      filledButtonTheme: FilledButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStatePropertyAll(themeColors.primary),
+          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+        ),
+      ),
+    );
     // In edit mode, intercept the system back gesture so we can show the
     // "Unsaved changes" dialog before popping.  Non-edit sessions pop freely.
     final content = _buildContent(theme);
-    if (!widget.editMode) return content;
+    if (!widget.editMode) return Theme(data: sessionTheme, child: content);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (bool didPop, dynamic result) {
@@ -2771,7 +2787,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           _handleEditModeBack();
         }
       },
-      child: content,
+      child: Theme(data: sessionTheme, child: content),
     );
   }
 

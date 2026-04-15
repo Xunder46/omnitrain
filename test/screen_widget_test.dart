@@ -4,6 +4,7 @@ import 'package:omnitrain/app.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/constants/modality.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/core/constants/profile_measurements.dart';
@@ -68,7 +69,9 @@ void main() {
       expect(find.text('APPEARANCE'), findsOneWidget);
     });
 
-    testWidgets('displays theme options', (WidgetTester tester) async {
+    testWidgets('shows only the five retained theme options', (
+      WidgetTester tester,
+    ) async {
       final repo = await _freshRepo();
       final settingsState = SettingsState(repo);
       await settingsState.initialize();
@@ -78,9 +81,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // There should be multiple theme options visible
-      // At minimum the current theme should be visible
-      expect(find.byType(GestureDetector), findsWidgets);
+      expect(find.text('Abyssal Neon'), findsOneWidget);
+      expect(find.text('Forge & Ember'), findsOneWidget);
+      expect(find.text('Obsidian Volt'), findsOneWidget);
+      expect(find.text('Void Pulse'), findsOneWidget);
+      expect(find.text('Crimson Dojo'), findsOneWidget);
+
+      expect(find.text('Circuit Green'), findsNothing);
+      expect(find.text('Arctic Core'), findsNothing);
+      expect(find.text('Titanium Rose'), findsNothing);
     });
   });
 
@@ -2374,6 +2383,64 @@ void main() {
       expect(find.text('Search exercises...'), findsOneWidget);
     });
 
+    testWidgets('uses the active themed sheet surface', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ExercisePickerDialog(workoutState: workoutState),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final dialog = tester.widget<Dialog>(find.byType(Dialog));
+      final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+
+      expect(dialog.backgroundColor, themeColors.surface);
+      expect(dialog.surfaceTintColor, Colors.transparent);
+    });
+
+    testWidgets('enforces filled CTA styling for the active picker theme', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      for (final appTheme in const [
+        AppTheme.forgeEmber,
+        AppTheme.obsidianVolt,
+        AppTheme.crimsonDojo,
+      ]) {
+        OmniTheme.activeTheme = appTheme;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ExercisePickerDialog(workoutState: workoutState),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final themedAncestor = find
+            .ancestor(of: find.byType(Dialog), matching: find.byType(Theme))
+            .first;
+        final pickerTheme = tester.widget<Theme>(themedAncestor).data;
+        final style = pickerTheme.filledButtonTheme.style!;
+        final colors = OmniTheme.colorsForTheme(appTheme);
+
+        expect(style.backgroundColor?.resolve({}), colors.primary);
+        expect(style.foregroundColor?.resolve({}), Colors.white);
+      }
+    });
+
     testWidgets('shows Add Custom Exercise button', (
       WidgetTester tester,
     ) async {
@@ -2392,6 +2459,39 @@ void main() {
 
       expect(find.text('Add Custom Exercise'), findsOneWidget);
     });
+
+    testWidgets(
+      'uses subdued styling for recommended label and metadata chips',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ExercisePickerDialog(
+                workoutState: workoutState,
+                sessionModality: Modality.martialArts,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Recommended'), findsOneWidget);
+
+        final recommendedText = tester.widget<Text>(find.text('Recommended'));
+        expect(recommendedText.style?.color, OmniTheme.textSecondary);
+
+        final firstChip = tester.widget<Chip>(find.byType(Chip).first);
+        expect(firstChip.backgroundColor, Colors.transparent);
+        expect(
+          firstChip.side?.color,
+          OmniTheme.colorsForTheme(OmniTheme.activeTheme).surfaceBorder,
+        );
+      },
+    );
 
     testWidgets('shows exercises from repo', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 1200));
@@ -2550,6 +2650,130 @@ void main() {
       // Cardio option must still be visible when pre-selected
       expect(find.text('Cardio'), findsOneWidget);
     });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkoutSessionScreen – Finish Workout button theme context
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('WorkoutSessionScreen – Finish Workout button theme context', () {
+    testWidgets(
+      'Finish Workout and add buttons inherit the active accent across themes',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+
+        for (final appTheme in const [
+          AppTheme.abyssalNeon,
+          AppTheme.forgeEmber,
+          AppTheme.obsidianVolt,
+          AppTheme.voidPulse,
+          AppTheme.crimsonDojo,
+        ]) {
+          OmniTheme.activeTheme = appTheme;
+
+          final repo = await _freshRepo();
+          final workoutState = WorkoutState(repo);
+          final routineState = RoutineState(repo);
+          await workoutState.createNewSession(isRolling: false);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: WorkoutSessionScreen(
+                workoutState: workoutState,
+                routineState: routineState,
+                sessionSummaryService: SessionSummaryService(repo),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final finishFinder = find.widgetWithText(
+            FilledButton,
+            'Finish Workout',
+          );
+          expect(
+            finishFinder,
+            findsOneWidget,
+            reason: '${appTheme.name} – Finish Workout button not found',
+          );
+
+          final addFinder = find.byWidgetPredicate(
+            (widget) =>
+                widget is FilledButton &&
+                widget.child is Icon &&
+                (widget.child as Icon).icon == Icons.add,
+          );
+          expect(
+            addFinder,
+            findsOneWidget,
+            reason: '${appTheme.name} – add button not found',
+          );
+
+          final colors = OmniTheme.colorsForTheme(appTheme);
+          final finishTheme = Theme.of(tester.element(finishFinder));
+          final addTheme = Theme.of(tester.element(addFinder));
+
+          expect(
+            finishTheme.filledButtonTheme.style?.backgroundColor?.resolve({}),
+            colors.primary,
+            reason:
+                '${appTheme.name} – Finish Workout accent must match the active theme primary',
+          );
+          expect(
+            addTheme.filledButtonTheme.style?.backgroundColor?.resolve({}),
+            colors.primary,
+            reason:
+                '${appTheme.name} – add button accent must match the active theme primary',
+          );
+        }
+      },
+    );
+
+    testWidgets(
+      'exercise picker modal barrier fully obscures underlying session CTA',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        await workoutState.createNewSession(isRolling: false);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final addButton = tester
+            .widgetList<FilledButton>(find.byType(FilledButton))
+            .firstWhere(
+              (button) =>
+                  button.child is Icon &&
+                  (button.child as Icon).icon == Icons.add,
+            );
+        expect(addButton.onPressed, isNotNull);
+
+        addButton.onPressed!.call();
+        await tester.pumpAndSettle();
+
+        final barrier = tester.widget<AnimatedModalBarrier>(
+          find.byType(AnimatedModalBarrier).first,
+        );
+        expect(barrier.color.value, isNotNull);
+        expect(
+          barrier.color.value!.opacity,
+          greaterThanOrEqualTo(0.7),
+          reason:
+              'Exercise picker overlay must sufficiently dim the underlying Finish Workout CTA',
+        );
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

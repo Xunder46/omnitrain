@@ -14,6 +14,25 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 
 void main() {
+  test('Abyssal Neon uses deeper teal primary with white CTA text', () {
+    final colors = OmniTheme.colorsForTheme(AppTheme.abyssalNeon);
+
+    expect(colors.primary, const Color(0xFF00B4B8));
+
+    final theme = buildTheme(
+      theme: AppTheme.abyssalNeon,
+      brightness: Brightness.dark,
+      background: colors.backgroundBottom,
+      surface: colors.surface,
+      secondary: colors.secondary,
+      textPrimary: const Color(0xFFE6EDF3),
+      textSecondary: colors.textMuted,
+      divider: colors.divider,
+    );
+
+    expect(theme.colorScheme.onPrimary, Colors.white);
+  });
+
   testWidgets('MyApp reacts to theme changes through SettingsState', (
     tester,
   ) async {
@@ -51,11 +70,19 @@ void main() {
     ThemeData themeData() =>
         tester.widget<MaterialApp>(find.byType(MaterialApp)).theme!;
 
-    expect(themeData().colorScheme.primary.value, 0xFF2DE2E6);
+    expect(
+      themeData().colorScheme.primary.value,
+      OmniTheme.colorsForTheme(AppTheme.abyssalNeon).primary.value,
+    );
+    expect(themeData().colorScheme.onPrimary, Colors.white);
 
     await settingsState.setAppTheme(AppTheme.obsidianVolt);
     await tester.pump();
 
-    expect(themeData().colorScheme.primary.value, 0xFFEAE000);
+    expect(
+      themeData().colorScheme.primary.value,
+      OmniTheme.colorsForTheme(AppTheme.obsidianVolt).primary.value,
+    );
+    expect(themeData().colorScheme.onPrimary, Colors.white);
   });
 }

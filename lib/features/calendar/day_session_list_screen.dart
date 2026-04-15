@@ -834,7 +834,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                           ),
                           onPressed: () => setState(() => _mode = 'routine'),
                           child: const Text(
-                            'Custom Routine',
+                            'Routine',
                             textAlign: TextAlign.center,
                             maxLines: 2,
                           ),

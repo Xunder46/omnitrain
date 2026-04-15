@@ -92,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (widget.homeState.shouldShowMaintenanceHint) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _playHintAnimationIndefinitely();
+        unawaited(_playHintAnimationBurst());
       });
     }
   }
@@ -116,9 +116,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _playHintAnimationIndefinitely() {
-    // Play animation indefinitely with repeat
-    _hintController.repeat(reverse: true);
+  Future<void> _playHintAnimationBurst() async {
+    if (_hintController.isAnimating) return;
+
+    try {
+      for (var i = 0; i < 3 && mounted; i++) {
+        await _hintController.forward(from: 0.0);
+        if (!mounted) return;
+        await _hintController.reverse();
+      }
+      _hintController.value = 0.0;
+    } on TickerCanceled {
+      // Animation was stopped because the widget was disposed or the user
+      // interacted with the maintenance sheet.
+    }
   }
 
   @override

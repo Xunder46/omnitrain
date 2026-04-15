@@ -696,6 +696,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     // Step 1: Pick exercise
     final exercise = await showDialog<Exercise>(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.78),
       builder: (_) => ExercisePickerDialog(workoutState: widget.workoutState!),
     );
 
@@ -1269,8 +1270,9 @@ extension on _RoutineSetupScreenState {
       case 'timed':
         final duration =
             _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
-        final hasTimedExtraWeightTarget =
-            targets.any((t) => t.metricId == MetricIds.extraWeight);
+        final hasTimedExtraWeightTarget = targets.any(
+          (t) => t.metricId == MetricIds.extraWeight,
+        );
         final timedExtraWeight = hasTimedExtraWeightTarget
             ? _getTargetDouble(targets, MetricIds.extraWeight, setIndex)
             : null;
