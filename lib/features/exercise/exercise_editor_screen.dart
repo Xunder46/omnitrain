@@ -3,6 +3,7 @@ import '../../core/constants/omni_theme.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 
 class ExerciseEditorScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -119,7 +120,6 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
 
     final appBar = AppBar(
       title: const Text('New Exercise'),
@@ -259,37 +259,9 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: Container(
-        color: themeColors.backgroundBottom,
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 20),
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: FilledButton(
-                onPressed: _isSaving ? null : _save,
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonBorderRadius,
-                      ),
-                    ),
-                  ),
-                  backgroundColor: WidgetStateProperty.all(
-                    theme.colorScheme.primary,
-                  ),
-                  foregroundColor: WidgetStateProperty.all(
-                    theme.colorScheme.onPrimary,
-                  ),
-                ),
-                child: const Text('Save exercise'),
-              ),
-            ),
-          ),
-        ),
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Save exercise',
+        onPressed: _isSaving ? null : _save,
       ),
     );
   }

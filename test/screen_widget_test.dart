@@ -35,6 +35,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
+import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
 import 'package:omnitrain/widgets/pickers/metric_chooser_dialog.dart';
 import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
@@ -48,6 +49,45 @@ Future<MockWorkoutRepository> _freshRepo() async {
 }
 
 void main() {
+  group('OmniBottomCTA', () {
+    testWidgets('uses the shared primary height and corner radius', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            bottomNavigationBar: OmniBottomCTA(
+              label: 'Primary Action',
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(OmniBottomCTA), findsOneWidget);
+      expect(find.text('Primary Action'), findsOneWidget);
+
+      final sizedBox = tester.widget<SizedBox>(
+        find
+            .ancestor(
+              of: find.byType(FilledButton),
+              matching: find.byType(SizedBox),
+            )
+            .first,
+      );
+      expect(sizedBox.height, OmniTheme.buttonPrimaryHeight);
+
+      final button = tester.widget<FilledButton>(find.byType(FilledButton));
+      final resolvedShape = button.style?.shape?.resolve(<WidgetState>{});
+      expect(resolvedShape, isA<RoundedRectangleBorder>());
+      final shape = resolvedShape! as RoundedRectangleBorder;
+      expect(
+        shape.borderRadius,
+        BorderRadius.circular(OmniTheme.buttonBorderRadius),
+      );
+    });
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // SettingsScreen
   // ══════════════════════════════════════════════════════════════════════════
@@ -146,6 +186,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.add), findsOneWidget);
+      expect(find.byType(OmniBottomCTA), findsOneWidget);
     });
   });
 
@@ -236,7 +277,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(FilledButton), findsWidgets);
+      expect(find.byType(OmniBottomCTA), findsOneWidget);
+      expect(find.text('Save'), findsWidgets);
     });
   });
 

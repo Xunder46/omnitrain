@@ -13,6 +13,7 @@ import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
@@ -539,33 +540,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.06)),
-            ),
-          ),
-          child: SizedBox(
-            width: double.infinity,
-            height: OmniTheme.buttonPrimaryHeight,
-            child: FilledButton(
-              onPressed: _finishAndSaveSession,
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Done'),
-            ),
-          ),
-        ),
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Done',
+        onPressed: _finishAndSaveSession,
       ),
       body: OmniGradientBackground(
         child: SafeArea(

@@ -13,6 +13,7 @@ import '../../core/constants/modality_config.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/models/session_edit_snapshot.dart';
@@ -1739,33 +1740,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 10,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: OmniTheme.buttonPrimaryHeight,
-                    child: FilledButton(
-                      onPressed: widget.editMode
-                          ? _saveEditChanges
-                          : _showFinishSessionDialog,
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonBorderRadius,
-                            ),
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        widget.editMode ? 'Save Changes' : 'Finish Workout',
-                      ),
-                    ),
-                  ),
-                ),
+              bottom: 0,
+              child: OmniBottomCTA(
+                label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+                onPressed: widget.editMode
+                    ? _saveEditChanges
+                    : _showFinishSessionDialog,
               ),
             ),
           ],
@@ -1866,33 +1846,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: 10,
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: OmniTheme.buttonPrimaryHeight,
-                      child: FilledButton(
-                        onPressed: widget.editMode
-                            ? _saveEditChanges
-                            : _showFinishSessionDialog,
-                        style: ButtonStyle(
-                          shape: WidgetStateProperty.all(
-                            RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                OmniTheme.buttonBorderRadius,
-                              ),
-                            ),
-                          ),
-                        ),
-                        child: Text(
-                          widget.editMode ? 'Save Changes' : 'Finish Workout',
-                        ),
-                      ),
-                    ),
-                  ),
+                bottom: 0,
+                child: OmniBottomCTA(
+                  label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+                  onPressed: widget.editMode
+                      ? _saveEditChanges
+                      : _showFinishSessionDialog,
                 ),
               ),
             ],
@@ -2046,33 +2005,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 10,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: OmniTheme.buttonPrimaryHeight,
-                    child: FilledButton(
-                      onPressed: widget.editMode
-                          ? _saveEditChanges
-                          : _showFinishSessionDialog,
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonBorderRadius,
-                            ),
-                          ),
-                        ),
-                      ),
-                      child: Text(
-                        widget.editMode ? 'Save Changes' : 'Finish Workout',
-                      ),
-                    ),
-                  ),
-                ),
+              bottom: 0,
+              child: OmniBottomCTA(
+                label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+                onPressed: widget.editMode
+                    ? _saveEditChanges
+                    : _showFinishSessionDialog,
               ),
             ),
           ],
