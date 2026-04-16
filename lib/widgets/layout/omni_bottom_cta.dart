@@ -24,8 +24,6 @@ class OmniBottomCTA extends StatelessWidget {
     final foregroundColor = isDestructive
         ? theme.colorScheme.onError
         : theme.colorScheme.onPrimary;
-    final showLeadingAddIcon = label.trimLeft().startsWith('+');
-    final buttonText = label.replaceFirst(RegExp(r'^\s*\+\s*'), '').trim();
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -69,16 +67,7 @@ class OmniBottomCTA extends StatelessWidget {
                 ),
               ),
             ),
-            child: showLeadingAddIcon
-                ? Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.add, size: 20),
-                      const SizedBox(width: 8),
-                      Text(buttonText),
-                    ],
-                  )
-                : Text(label),
+            child: Text(label),
           ),
         ),
       ),

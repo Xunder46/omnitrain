@@ -29,6 +29,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Training Periods'),
@@ -63,7 +64,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
               }
 
               return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 128),
                 itemCount: periods.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) => _PeriodRow(
@@ -76,7 +77,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
           ),
         ),
       ),
-      bottomSheet: OmniBottomCTA(
+      bottomNavigationBar: OmniBottomCTA(
         label: '+ Create Period',
         onPressed: () => _openCreate(context),
       ),

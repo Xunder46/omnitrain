@@ -81,6 +81,7 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(
@@ -89,14 +90,14 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      bottomSheet: OmniBottomCTA(
+      bottomNavigationBar: OmniBottomCTA(
         label: 'Save',
         onPressed: _isSaving ? null : _submit,
       ),
       body: OmniGradientBackground(
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 128),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

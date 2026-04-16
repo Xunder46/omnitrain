@@ -176,7 +176,9 @@ void main() {
       expect(find.text('No training periods yet.'), findsNothing);
     });
 
-    testWidgets('shows add button', (WidgetTester tester) async {
+    testWidgets('uses compliant shared bottom CTA', (
+      WidgetTester tester,
+    ) async {
       final repo = await _freshRepo();
       final periodState = PeriodState(repo);
 
@@ -185,8 +187,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.add), findsOneWidget);
-      expect(find.byType(OmniBottomCTA), findsOneWidget);
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+      expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>());
+      expect(scaffold.bottomSheet, isNull);
+      expect(find.text('+ Create Period'), findsOneWidget);
     });
   });
 
@@ -277,6 +281,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+      expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>());
+      expect(scaffold.bottomSheet, isNull);
       expect(find.byType(OmniBottomCTA), findsOneWidget);
       expect(find.text('Save'), findsWidgets);
     });
@@ -1398,6 +1405,23 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Save exercise'), findsOneWidget);
+    });
+
+    testWidgets('extends body behind bottom CTA to avoid footer banding', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
+      );
+      await tester.pumpAndSettle();
+
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+      expect(scaffold.extendBody, isTrue);
+      expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>());
     });
   });
 

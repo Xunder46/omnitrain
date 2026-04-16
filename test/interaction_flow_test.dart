@@ -245,12 +245,14 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'tmpl-del',
-        name: 'Delete Me',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-del',
+          name: 'Delete Me',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       final routineState = RoutineState(repo);
       routineState.setAutosaveEnabled(false);
@@ -300,9 +302,7 @@ void main() {
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: CreatePeriodScreen(periodState: periodState),
-        ),
+        MaterialApp(home: CreatePeriodScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
@@ -320,9 +320,7 @@ void main() {
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: CreatePeriodScreen(periodState: periodState),
-        ),
+        MaterialApp(home: CreatePeriodScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
@@ -345,9 +343,7 @@ void main() {
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: CreatePeriodScreen(periodState: periodState),
-        ),
+        MaterialApp(home: CreatePeriodScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
@@ -362,13 +358,11 @@ void main() {
       final periodState = PeriodState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: PeriodListScreen(periodState: periodState),
-        ),
+        MaterialApp(home: PeriodListScreen(periodState: periodState)),
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add));
+      await tester.tap(find.text('+ Create Period'));
       await tester.pumpAndSettle();
 
       expect(find.byType(CreatePeriodScreen), findsOneWidget);
@@ -388,9 +382,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExerciseEditorScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -409,9 +401,7 @@ void main() {
       final countBefore = (await repo.getExercises()).length;
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExerciseEditorScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -437,9 +427,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExerciseEditorScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -716,9 +704,7 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: SettingsScreen(settingsState: settingsState),
-        ),
+        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
       );
       await tester.pumpAndSettle();
 

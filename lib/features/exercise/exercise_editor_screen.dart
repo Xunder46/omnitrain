@@ -144,6 +144,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: appBar,
       body: OmniGradientBackground(

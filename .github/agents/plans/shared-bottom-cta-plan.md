@@ -128,6 +128,8 @@ Potentially comparable but verify before changing:
 - Green verification after implementation: `flutter test test/screen_widget_test.dart test/interaction_flow_test.dart test/session_finish_timers_test.dart` completed with `00:06 +137: All tests passed!`.
 - Web smoke verification: `flutter run -d chrome --target lib/main.dart` launched successfully and initialized the Hive-backed boxes with no runtime errors in the captured log.
 - Audit result: the only additional comparable single-footer CTA that needed migration beyond the required list was `ExerciseEditorScreen`.
+- Follow-up compliance fix: the period list and create period screens were moved from scaffold bottom sheets to the shared bottom navigation footer pattern, and the shared CTA now preserves the exact passed label text.
+- April 2026 regression fix: `ExerciseEditorScreen` now sets `extendBody: true` so the gradient body continues behind the footer CTA and avoids the stray light band at the bottom; the targeted footer regression test now passes.
 
 ### Phase 2 Complete ✓
 Implementation done. Shared footer CTA migration verified on tests and web. Ready for Code Reviewer.
