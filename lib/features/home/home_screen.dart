@@ -634,7 +634,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'SYSTEM',
+                                    'HUB',
                                     style: TextStyle(
                                       color: OmniTheme.textSecondary
                                           .withOpacity(0.7),
