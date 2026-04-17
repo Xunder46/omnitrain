@@ -182,7 +182,7 @@ void main() {
       expect(find.text('Finish Workout'), findsWidgets);
     });
 
-    testWidgets('shows add exercise icon button when session is empty', (
+    testWidgets('shows centered add actions when session is empty', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -200,8 +200,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Empty list view shows 'No exercises' + an Icons.add button
-      expect(find.byIcon(Icons.add), findsWidgets);
+      expect(find.widgetWithText(FilledButton, 'Add Exercise'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Add Block'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is FilledButton &&
+              widget.child is Icon &&
+              (widget.child as Icon).icon == Icons.add,
+        ),
+        findsNothing,
+      );
     });
   });
 

@@ -2763,16 +2763,21 @@ void main() {
             reason: '${appTheme.name} – Finish Workout button not found',
           );
 
-          final addFinder = find.byWidgetPredicate(
-            (widget) =>
-                widget is FilledButton &&
-                widget.child is Icon &&
-                (widget.child as Icon).icon == Icons.add,
-          );
+          final addFinder = find.widgetWithText(FilledButton, 'Add Exercise');
           expect(
             addFinder,
             findsOneWidget,
-            reason: '${appTheme.name} – add button not found',
+            reason: '${appTheme.name} – Add Exercise button not found',
+          );
+          expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is FilledButton &&
+                  widget.child is Icon &&
+                  (widget.child as Icon).icon == Icons.add,
+            ),
+            findsNothing,
+            reason: '${appTheme.name} – floating plus button should be removed',
           );
 
           final colors = OmniTheme.colorsForTheme(appTheme);
@@ -2816,13 +2821,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        final addButton = tester
-            .widgetList<FilledButton>(find.byType(FilledButton))
-            .firstWhere(
-              (button) =>
-                  button.child is Icon &&
-                  (button.child as Icon).icon == Icons.add,
-            );
+        final addButton = tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'Add Exercise'),
+        );
         expect(addButton.onPressed, isNotNull);
 
         addButton.onPressed!.call();
@@ -2848,7 +2849,7 @@ void main() {
 
   group('WorkoutSessionScreen – rolling session block UI', () {
     testWidgets(
-      'non-rolling empty session keeps Add Block visible above Finish Workout',
+      'non-rolling empty session shows Add Exercise and Add Block above Finish Workout',
       (WidgetTester tester) async {
         final repo = await _freshRepo();
         final workoutState = WorkoutState(repo);
@@ -2866,22 +2867,38 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        final addExerciseFinder = find.widgetWithText(
+          FilledButton,
+          'Add Exercise',
+        );
         final addBlockFinder = find.widgetWithText(OutlinedButton, 'Add Block');
         final finishFinder = find.widgetWithText(
           FilledButton,
           'Finish Workout',
         );
 
+        expect(addExerciseFinder, findsOneWidget);
         expect(addBlockFinder, findsOneWidget);
         expect(finishFinder, findsOneWidget);
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is FilledButton &&
+                widget.child is Icon &&
+                (widget.child as Icon).icon == Icons.add,
+          ),
+          findsNothing,
+        );
 
+        final addExerciseRect = tester.getRect(addExerciseFinder);
         final addBlockRect = tester.getRect(addBlockFinder);
         final finishRect = tester.getRect(finishFinder);
+        expect(addExerciseRect.bottom, lessThan(addBlockRect.top));
         expect(addBlockRect.bottom, lessThan(finishRect.top));
       },
     );
 
-    testWidgets('rolling session shows + Add Block button', (
+    testWidgets('rolling session shows Add Exercise and Add Block actions', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
@@ -2898,9 +2915,10 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(find.text('Add Block'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Add Exercise'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Add Block'), findsOneWidget);
     });
 
     testWidgets('rolling session shows block name after addSessionBlock', (
@@ -3461,28 +3479,29 @@ void main() {
       },
     );
 
-    testWidgets('rolling session block shows + Add Exercise button', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final routineState = RoutineState(repo);
-      await workoutState.createNewSession(isRolling: true);
-      await workoutState.addSessionBlock();
+    testWidgets(
+      'rolling session block shows local and shared Add Exercise actions',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        await workoutState.createNewSession(isRolling: true);
+        await workoutState.addSessionBlock();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: WorkoutSessionScreen(
-            workoutState: workoutState,
-            routineState: routineState,
-            sessionSummaryService: SessionSummaryService(repo),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+            ),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.text('Add Exercise'), findsOneWidget);
-    });
+        expect(find.text('Add Exercise'), findsNWidgets(2));
+      },
+    );
 
     testWidgets('rolling session shows exercise tile inside correct block', (
       WidgetTester tester,

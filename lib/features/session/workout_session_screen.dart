@@ -1669,8 +1669,59 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     );
   }
 
+  Widget _buildAddExerciseAndBlockBar(ThemeData theme, {String? segmentId}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: OmniTheme.buttonPrimaryHeight,
+            child: FilledButton(
+              onPressed: () => _addExercise(segmentId: segmentId),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonBorderRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Add Exercise'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () async {
+                await widget.workoutState.addSessionBlock();
+                if (mounted) setState(() {});
+              },
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: BorderSide(color: theme.colorScheme.primary),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+              child: const Text('Add Block'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRollingSessionListView(ThemeData theme) {
     final blocks = widget.workoutState.getSessionBlocks();
+    final segmentId = widget.workoutState.segments.isNotEmpty
+        ? widget.workoutState.segments.first.id
+        : null;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1684,42 +1735,41 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   const SizedBox(height: 16),
                   // Duration intentionally omitted for rolling sessions (Task 5).
                   Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        0,
-                        0,
-                        0,
-                        _kBottomControlsClearance,
-                      ),
-                      children: [
-                        for (int i = 0; i < blocks.length; i++)
-                          _buildSessionBlockCard(blocks[i], theme),
-                        const SizedBox(height: 4),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              await widget.workoutState.addSessionBlock();
-                              if (mounted) setState(() {});
-                            },
-                            icon: const Icon(Icons.add_circle_outline),
-                            label: const Text('Add Block'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              side: BorderSide(
-                                color: theme.colorScheme.primary,
+                    child: blocks.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: _kBottomControlsClearance,
                               ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonUtilityRadius,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 480,
+                                ),
+                                child: _buildAddExerciseAndBlockBar(
+                                  theme,
+                                  segmentId: segmentId,
                                 ),
                               ),
                             ),
+                          )
+                        : ListView(
+                            padding: const EdgeInsets.fromLTRB(
+                              0,
+                              0,
+                              0,
+                              _kBottomControlsClearance,
+                            ),
+                            children: [
+                              for (int i = 0; i < blocks.length; i++)
+                                _buildSessionBlockCard(blocks[i], theme),
+                              const SizedBox(height: 24),
+                              _buildAddExerciseAndBlockBar(
+                                theme,
+                                segmentId: segmentId,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                    ),
                   ),
                 ],
               ),
@@ -1759,6 +1809,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final standaloneExercises = _exercises
         .where((e) => e['blockId'] == null)
         .toList();
+    final segmentId = widget.workoutState.segments.isNotEmpty
+        ? widget.workoutState.segments.first.id
+        : null;
 
     if (_exercises.isEmpty && blocks.isEmpty) {
       // Empty state — no exercises and no blocks yet.
@@ -1778,71 +1831,24 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                       child: Row(children: [_buildSessionTimeWidget(theme)]),
                     ),
                     Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(
-                          0,
-                          8,
-                          0,
-                          _kBottomControlsClearance,
-                        ),
-                        children: [
-                          const SizedBox(height: 4),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: OutlinedButton.icon(
-                              onPressed: () async {
-                                await widget.workoutState.addSessionBlock();
-                                if (mounted) setState(() {});
-                              },
-                              icon: const Icon(Icons.add_circle_outline),
-                              label: const Text('Add Block'),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                ),
-                                side: BorderSide(
-                                  color: theme.colorScheme.primary,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    OmniTheme.buttonUtilityRadius,
-                                  ),
-                                ),
-                              ),
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: _kBottomControlsClearance,
+                          ),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 480),
+                            child: _buildAddExerciseAndBlockBar(
+                              theme,
+                              segmentId: segmentId,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                        ],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              if (!widget.editMode)
-                Positioned(
-                  right: 10,
-                  bottom: 110,
-                  child: SafeArea(
-                    top: false,
-                    child: SizedBox(
-                      width: OmniTheme.buttonIconSize,
-                      height: OmniTheme.buttonIconSize,
-                      child: FilledButton(
-                        style: ButtonStyle(
-                          shape: WidgetStateProperty.all(
-                            RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                OmniTheme.buttonIconRadius,
-                              ),
-                            ),
-                          ),
-                        ),
-                        onPressed: _addExercise,
-                        child: const Icon(Icons.add),
-                      ),
-                    ),
-                  ),
-                ),
               Positioned(
                 left: 0,
                 right: 0,
@@ -1894,11 +1900,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       return aMs.compareTo(bMs);
     });
 
-    // Segment ID for adding standalone exercises (always first segment).
-    final segmentId = widget.workoutState.segments.isNotEmpty
-        ? widget.workoutState.segments.first.id
-        : null;
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: OmniGradientBackground(
@@ -1931,29 +1932,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                               padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
                               child: _buildExerciseTile(item.exercise!, theme),
                             ),
-                        const SizedBox(height: 4),
-                        // "Add Block" — always visible, always appended after list
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              await widget.workoutState.addSessionBlock();
-                              if (mounted) setState(() {});
-                            },
-                            icon: const Icon(Icons.add_circle_outline),
-                            label: const Text('Add Block'),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              side: BorderSide(
-                                color: theme.colorScheme.primary,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonUtilityRadius,
-                                ),
-                              ),
-                            ),
-                          ),
+                        const SizedBox(height: 24),
+                        _buildAddExerciseAndBlockBar(
+                          theme,
+                          segmentId: segmentId,
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -1962,32 +1944,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ],
               ),
             ),
-            // Global Add Exercise FAB (standalone — no block assignment)
-            if (!widget.editMode)
-              Positioned(
-                right: 10,
-                bottom: 110,
-                child: SafeArea(
-                  top: false,
-                  child: SizedBox(
-                    width: OmniTheme.buttonIconSize,
-                    height: OmniTheme.buttonIconSize,
-                    child: FilledButton(
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonIconRadius,
-                            ),
-                          ),
-                        ),
-                      ),
-                      onPressed: () => _addExercise(segmentId: segmentId),
-                      child: const Icon(Icons.add),
-                    ),
-                  ),
-                ),
-              ),
             // Rest timer overlay (shown above Finish button while any open rest window exists)
             if (!widget.editMode && _hasGlobalRestToDisplay())
               Positioned(
@@ -2509,6 +2465,54 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Future<void> _showFinishSessionDialog() async {
+    final hasExercises = widget.workoutState
+        .getExercisesWithEntries()
+        .isNotEmpty;
+    if (!hasExercises) {
+      final emptyConfirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('End empty session?'),
+          content: const Text(
+            'No exercises have been logged. Are you sure you want to finish?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Finish'),
+            ),
+          ],
+        ),
+      );
+
+      if (emptyConfirmed == true && mounted) {
+        await _finishSession();
+      }
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

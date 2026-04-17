@@ -104,13 +104,24 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    // List view should show add button (FilledButton with Icons.add)
-    expect(find.byIcon(Icons.add), findsWidgets);
-    await tester.tap(find.byIcon(Icons.add).first);
+    expect(find.widgetWithText(FilledButton, 'Add Exercise'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is FilledButton &&
+            widget.child is Icon &&
+            (widget.child as Icon).icon == Icons.add,
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Add Exercise'));
     await tester.pumpAndSettle();
 
     // Exercise picker dialog should open with search field
-    expect(find.widgetWithText(TextField, 'Search exercises...'), findsOneWidget);
+    expect(
+      find.widgetWithText(TextField, 'Search exercises...'),
+      findsOneWidget,
+    );
 
     // Search for an exercise
     await tester.enterText(
@@ -270,8 +281,11 @@ void main() {
 
       // Verify no rest yet
       var rests = deps.workoutState.getEntryRests(effortId);
-      expect(rests.isEmpty, isTrue,
-          reason: 'No rest should exist before Log Set is pressed');
+      expect(
+        rests.isEmpty,
+        isTrue,
+        reason: 'No rest should exist before Log Set is pressed',
+      );
 
       // Click Log Set button
       await tester.tap(find.byTooltip('Log Set'));
@@ -279,16 +293,28 @@ void main() {
 
       // NOW rest should be created for the next entry
       rests = deps.workoutState.getEntryRests(effortId);
-      expect(rests.isNotEmpty, isTrue,
-          reason: 'Rest should be created after Log Set press');
-      expect(rests.first.entryIndex, 1,
-          reason: 'Rest should be for next entry (set 2)');
-      expect(rests.first.restEndMs, isNull,
-          reason: 'Rest should be open and running');
+      expect(
+        rests.isNotEmpty,
+        isTrue,
+        reason: 'Rest should be created after Log Set press',
+      );
+      expect(
+        rests.first.entryIndex,
+        1,
+        reason: 'Rest should be for next entry (set 2)',
+      );
+      expect(
+        rests.first.restEndMs,
+        isNull,
+        reason: 'Rest should be open and running',
+      );
 
       // Verify rest overlay is visible (shows self_improvement icon, not "Rest" text)
-      expect(find.byIcon(Icons.self_improvement), findsOneWidget,
-          reason: 'Rest overlay should be visible on set 2');
+      expect(
+        find.byIcon(Icons.self_improvement),
+        findsOneWidget,
+        reason: 'Rest overlay should be visible on set 2',
+      );
     },
   );
 }

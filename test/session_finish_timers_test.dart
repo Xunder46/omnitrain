@@ -78,6 +78,40 @@ void main() {
     expect(timedEntries.first.state, TimedState.finished);
   });
 
+  testWidgets('empty session shows simplified end empty session dialog', (
+    WidgetTester tester,
+  ) async {
+    final deps = await setupStates();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WorkoutSessionScreen(
+          workoutState: deps.workoutState,
+          routineState: deps.routineState,
+          sessionSummaryService: deps.sessionSummaryService,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    if (find.byIcon(Icons.close).evaluate().isNotEmpty) {
+      await tester.tap(find.byIcon(Icons.close).first);
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.text('Finish Workout'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('End empty session?'), findsOneWidget);
+    expect(
+      find.text(
+        'No exercises have been logged. Are you sure you want to finish?',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Finish Workout?'), findsNothing);
+  });
+
   testWidgets('Back after finish does not return to active workout screen', (
     WidgetTester tester,
   ) async {
