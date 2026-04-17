@@ -8,6 +8,7 @@ import '../../core/models/session_summary.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/effort_defaults.dart';
 import '../../core/services/routine_session_service.dart';
+import '../../core/utils/session_feeling_utils.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
@@ -1638,7 +1639,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
   Widget _buildFeelingTile(int number, Color accentColor) {
     final theme = Theme.of(context);
     final isSelected = _selectedFeeling == number;
-    final tileColor = _getFeelingColor(number);
+    final tileColor = feelingColor(number, context);
 
     return GestureDetector(
       onTap: () => _selectFeeling(number),
@@ -1673,24 +1674,6 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
         ),
       ),
     );
-  }
-
-  /// Get feeling-specific color based on the number
-  Color _getFeelingColor(int number) {
-    switch (number) {
-      case 1:
-        return Colors.red;
-      case 2:
-        return Colors.orange;
-      case 3:
-        return Colors.yellow[700]!;
-      case 4:
-        return Colors.green;
-      case 5:
-        return Theme.of(context).primaryColor;
-      default:
-        return Theme.of(context).primaryColor;
-    }
   }
 
   Future<void> _selectFeeling(int feeling) async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
+import '../../core/utils/session_feeling_utils.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -489,57 +490,85 @@ class _SessionRow extends StatelessWidget {
     final stateColor = entry.isCompleted
         ? themeColors.primary
         : themeColors.textMuted;
+    final feeling = entry.session?.sessionFeeling;
+    final leftBorderColor = feeling != null
+        ? feelingColor(feeling, context)
+        : null;
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: themeColors.surface.withOpacity(0.85),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: themeColors.surfaceBorder),
-        ),
-        child: ListTile(
-          leading: Container(
-            width: 12,
-            height: 12,
-            decoration: entry.isCompleted
-                ? BoxDecoration(color: color, shape: BoxShape.circle)
-                : BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: color, width: 2),
-                  ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: themeColors.surface.withOpacity(0.85),
+            border: leftBorderColor != null
+                ? Border(
+                    left: BorderSide(color: leftBorderColor, width: 4),
+                    top: BorderSide(color: themeColors.surfaceBorder),
+                    right: BorderSide(color: themeColors.surfaceBorder),
+                    bottom: BorderSide(color: themeColors.surfaceBorder),
+                  )
+                : Border.all(color: themeColors.surfaceBorder),
           ),
-          title: Text(
-            label,
-            style: const TextStyle(
-              color: OmniTheme.textPrimary,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
+          child: ListTile(
+            isThreeLine: entry.isCompleted && entry.session != null,
+            leading: Container(
+              width: 12,
+              height: 12,
+              decoration: entry.isCompleted
+                  ? BoxDecoration(color: color, shape: BoxShape.circle)
+                  : BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: color, width: 2),
+                    ),
             ),
+            title: Text(
+              label,
+              style: const TextStyle(
+                color: OmniTheme.textPrimary,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  subtitle,
+                  style: TextStyle(color: stateColor, fontSize: 12),
+                ),
+                if (entry.isCompleted && entry.session != null)
+                  Text(
+                    _formatTimeDuration(entry.session!),
+                    style: TextStyle(
+                      color: themeColors.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
+            ),
+            trailing: (onEdit != null || onDelete != null)
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (onEdit != null)
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          color: OmniTheme.textSecondary,
+                          onPressed: onEdit,
+                        ),
+                      if (onDelete != null)
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          color: Colors.redAccent,
+                          onPressed: onDelete,
+                        ),
+                    ],
+                  )
+                : null,
           ),
-          subtitle: Text(
-            subtitle,
-            style: TextStyle(color: stateColor, fontSize: 12),
-          ),
-          trailing: (onEdit != null || onDelete != null)
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (onEdit != null)
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        color: OmniTheme.textSecondary,
-                        onPressed: onEdit,
-                      ),
-                    if (onDelete != null)
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        color: Colors.redAccent,
-                        onPressed: onDelete,
-                      ),
-                  ],
-                )
-              : null,
         ),
       ),
     );
@@ -585,6 +614,27 @@ class _SessionRow extends StatelessWidget {
     }
 
     return '$modalityLabel  ·  $stateLabel';
+  }
+
+  String _formatTimeDuration(TrainingSession session) {
+    final start = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
+    final hour = start.hour;
+    final minute = start.minute.toString().padLeft(2, '0');
+    final period = hour >= 12 ? 'PM' : 'AM';
+    final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    final timeStr = '$hour12:$minute $period';
+
+    if (session.endedAtMs == null) {
+      return timeStr;
+    }
+
+    final durationMs = session.endedAtMs! - session.startedAtMs;
+    final totalMinutes = (durationMs / 60000).round();
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    final durationStr = hours > 0 ? '${hours}h ${minutes}m' : '${minutes}m';
+
+    return '$timeStr · $durationStr';
   }
 }
 

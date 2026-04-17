@@ -1644,6 +1644,143 @@ void main() {
         expect(find.text('Routine'), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'completed session cards show time, duration, and feeling border',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final today = DateTime.now();
+        final startedAt = DateTime(today.year, today.month, today.day, 13, 5);
+        final timestamp = startedAt.millisecondsSinceEpoch;
+
+        await repo.createSession(
+          TrainingSession(
+            id: 'session-complete',
+            ownerUserId: 'u-1',
+            startedAtMs: timestamp,
+            endedAtMs: startedAt
+                .add(const Duration(minutes: 72))
+                .millisecondsSinceEpoch,
+            title: 'Lunch Lift',
+            modality: Modality.resistanceLifting,
+            sessionFeeling: 4,
+            createdAtMs: timestamp,
+            updatedAtMs: timestamp,
+          ),
+        );
+
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DaySessionListScreen(
+              date: DateTime(today.year, today.month, today.day),
+              calendarState: calendarState,
+              routineState: routineState,
+              workoutState: workoutState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Lunch Lift'), findsOneWidget);
+        expect(find.text('1:05 PM · 1h 12m'), findsOneWidget);
+
+        final highlightedCards = tester
+            .widgetList<Container>(find.byType(Container))
+            .where((container) {
+              final decoration = container.decoration;
+              if (decoration is! BoxDecoration ||
+                  decoration.border is! Border) {
+                return false;
+              }
+              final border = decoration.border! as Border;
+              return border.left.width == 4;
+            })
+            .toList();
+
+        expect(highlightedCards, isNotEmpty);
+        final border =
+            (highlightedCards.first.decoration! as BoxDecoration).border!
+                as Border;
+        expect(border.left.color, Colors.green);
+      },
+    );
+
+    testWidgets(
+      'completed session cards without a feeling keep the standard border',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final today = DateTime.now();
+        final startedAt = DateTime(today.year, today.month, today.day, 9, 7);
+        final timestamp = startedAt.millisecondsSinceEpoch;
+
+        await repo.createSession(
+          TrainingSession(
+            id: 'session-neutral',
+            ownerUserId: 'u-1',
+            startedAtMs: timestamp,
+            endedAtMs: startedAt
+                .add(const Duration(minutes: 45))
+                .millisecondsSinceEpoch,
+            title: 'Easy Spin',
+            modality: Modality.cardioEndurance,
+            createdAtMs: timestamp,
+            updatedAtMs: timestamp,
+          ),
+        );
+
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DaySessionListScreen(
+              date: DateTime(today.year, today.month, today.day),
+              calendarState: calendarState,
+              routineState: routineState,
+              workoutState: workoutState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Easy Spin'), findsOneWidget);
+        expect(find.text('9:07 AM · 45m'), findsOneWidget);
+
+        final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+        final standardCards = tester
+            .widgetList<Container>(find.byType(Container))
+            .where((container) {
+              final decoration = container.decoration;
+              if (decoration is! BoxDecoration ||
+                  decoration.border is! Border) {
+                return false;
+              }
+              final border = decoration.border! as Border;
+              return border.left.width != 4 &&
+                  border.left.color == themeColors.surfaceBorder;
+            })
+            .toList();
+
+        expect(standardCards, isNotEmpty);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
