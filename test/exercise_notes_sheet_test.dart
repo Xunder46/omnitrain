@@ -121,8 +121,11 @@ void main() {
 
     // Empty session auto-opens the exercise picker. If the picker is not yet
     // visible (i.e. another code path), tap Icons.add to open it manually.
-    if (find.widgetWithText(TextField, 'Search exercises...').evaluate().isEmpty) {
-      await tester.tap(find.byIcon(Icons.add).first);
+    if (find
+        .widgetWithText(TextField, 'Search exercises...')
+        .evaluate()
+        .isEmpty) {
+      await tester.tap(find.widgetWithText(FilledButton, 'Add Exercise'));
       await tester.pumpAndSettle();
     }
 

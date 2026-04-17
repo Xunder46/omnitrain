@@ -961,6 +961,11 @@ This ensures that a standard session that has blocks (created by the user or inh
 
 ## Progress
 
+### Iteration 6 (complete)
+- [x] Fix rolling-session block cloning to use current-time title instead of suffix naming
+- [x] Extend same current-time clone title behavior to regular free sessions
+- [x] Add regression tests in repository/state suites for rolling clone title behavior
+
 ### Iteration 5 (current)
 - [x] 1.1 `WorkoutState.addSessionBlock({String? name})` — add optional name param
 - [x] 1.2 `cloneSessionBlock` name logic: `"Main (2)"` suffix in Mock + Hive

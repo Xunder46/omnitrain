@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen, voidPulse, arcticCore, crimsonDojo, titaniumRose }
+enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, voidPulse, crimsonDojo }
 
 typedef OmniThemeColors = ({
   Color backgroundTop,
@@ -16,13 +16,7 @@ typedef OmniThemeColors = ({
 /// Core theme constants for OMNITRAIN biomechanical training system
 /// Centralized color palette and design tokens
 class OmniTheme {
-  static AppTheme _activeTheme = AppTheme.abyssalNeon;
-
-  static AppTheme get activeTheme => _activeTheme;
-
-  static set activeTheme(AppTheme theme) {
-    _activeTheme = theme;
-  }
+  static AppTheme activeTheme = AppTheme.abyssalNeon;
 
   static OmniThemeColors colorsForTheme(AppTheme theme) {
     switch (theme) {
@@ -31,7 +25,7 @@ class OmniTheme {
           backgroundTop: Color(0xFF0F1F33),
           backgroundBottom: Color(0xFF060B14),
           surface: Color(0xFF0E223A),
-          primary: Color(0xFF2DE2E6),
+          primary: Color(0xFF00B4B8),
           secondary: Color(0xFF1B9AAA),
           textMuted: Color(0xFF9BA4B5),
           divider: Color(0xFF1F2937),
@@ -53,27 +47,16 @@ class OmniTheme {
           backgroundTop: Color(0xFF111111),
           backgroundBottom: Color(0xFF050505),
           surface: Color(0xFF161616),
-          primary: Color(0xFFEAE000),
-          secondary: Color(0xFFB8B000),
-          textMuted: Color(0xFF666666),
+          primary: Color(0xFFD4A017),
+          secondary: Color(0xFF9C7400),
+          textMuted: Color(0xFF8A7A52),
           divider: Color(0xFF1F1F1F),
           surfaceBorder: Color(0x12FFFFFF),
         );
-      case AppTheme.circuitGreen:
-        return (
-          backgroundTop: Color(0xFF071210),
-          backgroundBottom: Color(0xFF030806),
-          surface: Color(0xFF091714),
-          primary: Color(0xFF00E676),
-          secondary: Color(0xFF00A854),
-          textMuted: Color(0xFF4A7A5A),
-          divider: Color(0xFF102018),
-          surfaceBorder: Color(0x0DFFFFFF),
-        );
       case AppTheme.voidPulse:
         return (
-          backgroundTop: Color(0xFF0D0A1A),
-          backgroundBottom: Color(0xFF050308),
+          backgroundTop: Color(0xFF120F24),
+          backgroundBottom: Color(0xFF0A071A),
           surface: Color(0xFF110D20),
           primary: Color(0xFF8B5CF6),
           secondary: Color(0xFF6D3FD4),
@@ -81,38 +64,16 @@ class OmniTheme {
           divider: Color(0xFF1A1230),
           surfaceBorder: Color(0x0FFFFFFF),
         );
-      case AppTheme.arcticCore:
-        return (
-          backgroundTop: Color(0xFF0A0E14),
-          backgroundBottom: Color(0xFF04060A),
-          surface: Color(0xFF0D1219),
-          primary: Color(0xFFB8E4F9),
-          secondary: Color(0xFF7AB8D8),
-          textMuted: Color(0xFF4A5E72),
-          divider: Color(0xFF111820),
-          surfaceBorder: Color(0x12FFFFFF),
-        );
       case AppTheme.crimsonDojo:
         return (
           backgroundTop: Color(0xFF1A0806),
           backgroundBottom: Color(0xFF080302),
-          surface: Color(0xFF1F0A08),
+          surface: Color(0xFF3A1A16),
           primary: Color(0xFFE53935),
           secondary: Color(0xFFB71C1C),
           textMuted: Color(0xFF7A3530),
           divider: Color(0xFF2A0F0C),
           surfaceBorder: Color(0x0DFFFFFF),
-        );
-      case AppTheme.titaniumRose:
-        return (
-          backgroundTop: Color(0xFF120A14),
-          backgroundBottom: Color(0xFF060308),
-          surface: Color(0xFF170C1A),
-          primary: Color(0xFFF72585),
-          secondary: Color(0xFFC1006A),
-          textMuted: Color(0xFF6B3D5E),
-          divider: Color(0xFF1E1020),
-          surfaceBorder: Color(0x0FFFFFFF),
         );
     }
   }
@@ -125,16 +86,10 @@ class OmniTheme {
         return 'Forge & Ember';
       case AppTheme.obsidianVolt:
         return 'Obsidian Volt';
-      case AppTheme.circuitGreen:
-        return 'Circuit Green';
       case AppTheme.voidPulse:
         return 'Void Pulse';
-      case AppTheme.arcticCore:
-        return 'Arctic Core';
       case AppTheme.crimsonDojo:
         return 'Crimson Dojo';
-      case AppTheme.titaniumRose:
-        return 'Titanium Rose';
     }
   }
 
@@ -172,7 +127,7 @@ class OmniTheme {
 
   /// Deep shadow for elevated surfaces
   static BoxShadow get deepShadow => BoxShadow(
-    color: Colors.black.withOpacity(0.55),
+    color: Colors.black.withValues(alpha: 0.55),
     blurRadius: 30,
     offset: const Offset(0, 14),
   );
@@ -180,7 +135,7 @@ class OmniTheme {
   /// Glow effect for energy cores
   static BoxShadow glowShadow(Color color, {double opacity = 0.35}) =>
       BoxShadow(
-        color: color.withOpacity(opacity),
+        color: color.withValues(alpha: opacity),
         blurRadius: 24,
         spreadRadius: 0,
       );

@@ -65,6 +65,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _sheetController = DraggableScrollableController();
     _sheetExtent = ValueNotifier<double>(_minSheetExtent);
 
+    // Listen for sheet dragging to stop the hint animation
+    _sheetExtent.addListener(_onSheetExtentChanged);
+
     _hintController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -89,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (widget.homeState.shouldShowMaintenanceHint) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _playHintAnimationTwice();
+        unawaited(_playHintAnimationBurst());
       });
     }
   }
@@ -97,21 +100,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _sheetController.dispose();
+    _sheetExtent.removeListener(_onSheetExtentChanged);
     _sheetExtent.dispose();
     _hintController.dispose();
     super.dispose();
   }
 
-  void _playHintAnimationTwice() {
-    _hintController.forward().whenComplete(() {
-      if (!mounted) return;
-      _hintController.reset();
-      _hintController.forward().whenComplete(() {
-        if (mounted) {
-          unawaited(widget.homeState.markMaintenanceHintSeen());
-        }
-      });
-    });
+  void _onSheetExtentChanged() {
+    // Stop animation if user pulls the sheet beyond minimum extent
+    if (_sheetExtent.value > _minSheetExtent + 0.01) {
+      if (_hintController.isAnimating) {
+        _hintController.stop();
+        unawaited(widget.homeState.markMaintenanceHintSeen());
+      }
+    }
+  }
+
+  Future<void> _playHintAnimationBurst() async {
+    if (_hintController.isAnimating) return;
+
+    try {
+      for (var i = 0; i < 3 && mounted; i++) {
+        await _hintController.forward(from: 0.0);
+        if (!mounted) return;
+        await _hintController.reverse();
+      }
+      _hintController.value = 0.0;
+    } on TickerCanceled {
+      // Animation was stopped because the widget was disposed or the user
+      // interacted with the maintenance sheet.
+    }
   }
 
   @override
@@ -500,7 +518,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       'add more work at any time. No session timer — just your sets.',
                     ),
                     value: isRolling,
-                    onChanged: (value) => setSheetState(() => isRolling = value),
+                    onChanged: (value) =>
+                        setSheetState(() => isRolling = value),
                   ),
                   const SizedBox(height: 24),
                   SizedBox(
@@ -575,8 +594,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               final contentOpacity = t.clamp(0.0, 1.0);
               final slideOffset = 20.0 * (1.0 - t);
 
-              final sheetColors =
-                  OmniTheme.colorsForTheme(widget.settingsState.appTheme);
+              final sheetColors = OmniTheme.colorsForTheme(
+                widget.settingsState.appTheme,
+              );
               return Container(
                 decoration: BoxDecoration(
                   borderRadius: const BorderRadius.vertical(
@@ -614,7 +634,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'SYSTEM',
+                                    'HUB',
                                     style: TextStyle(
                                       color: OmniTheme.textSecondary
                                           .withOpacity(0.7),
@@ -674,9 +694,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: OmniTheme.colorsForTheme(widget.settingsState.appTheme)
-                    .primary
-                    .withOpacity(0.4),
+                color: OmniTheme.colorsForTheme(
+                  widget.settingsState.appTheme,
+                ).primary.withOpacity(0.4),
                 borderRadius: BorderRadius.circular(20),
               ),
             ),

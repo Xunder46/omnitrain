@@ -5,6 +5,7 @@ import '../../state/period/period_state.dart';
 import '../../core/constants/modality.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 
 class CreatePeriodScreen extends StatefulWidget {
   final PeriodState periodState;
@@ -62,10 +63,8 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
     final existing = widget.existingPeriod;
     if (existing != null) {
       _nameCtrl.text = existing.name;
-      _startDate =
-          DateTime.fromMillisecondsSinceEpoch(existing.startDateMs);
-      _endDate =
-          DateTime.fromMillisecondsSinceEpoch(existing.endDateMs);
+      _startDate = DateTime.fromMillisecondsSinceEpoch(existing.startDateMs);
+      _endDate = DateTime.fromMillisecondsSinceEpoch(existing.endDateMs);
       _focusModalities.addAll(existing.focusModalities);
       _notesCtrl.text = existing.notes ?? '';
       _selectedColor = existing.colorHex;
@@ -82,47 +81,23 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text(widget.existingPeriod == null
-            ? 'Create Period'
-            : 'Edit Period'),
+        title: Text(
+          widget.existingPeriod == null ? 'Create Period' : 'Edit Period',
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      bottomSheet: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: SizedBox(
-            width: double.infinity,
-            height: OmniTheme.buttonPrimaryHeight,
-            child: FilledButton(
-              onPressed: _isSaving ? null : _submit,
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text('Save'),
-            ),
-          ),
-        ),
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Save',
+        onPressed: _isSaving ? null : _submit,
       ),
       body: OmniGradientBackground(
         child: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 96),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 128),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -262,7 +237,11 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                               : null,
                         ),
                         child: isSelected
-                            ? const Icon(Icons.check, color: Colors.white, size: 18)
+                            ? const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 18,
+                              )
                             : null,
                       ),
                     );
@@ -325,8 +304,11 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
     });
 
     final startMs = _startDate != null
-        ? DateTime(_startDate!.year, _startDate!.month, _startDate!.day)
-            .millisecondsSinceEpoch
+        ? DateTime(
+            _startDate!.year,
+            _startDate!.month,
+            _startDate!.day,
+          ).millisecondsSinceEpoch
         : null;
     final endMs = _endDate != null
         ? DateTime(
@@ -408,8 +390,8 @@ class _DateField extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = value != null
         ? '${value!.day.toString().padLeft(2, '0')}/'
-            '${value!.month.toString().padLeft(2, '0')}/'
-            '${value!.year}'
+              '${value!.month.toString().padLeft(2, '0')}/'
+              '${value!.year}'
         : 'Select';
 
     return GestureDetector(

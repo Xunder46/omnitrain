@@ -136,7 +136,7 @@ It also includes session/observation extensions:
 - `WorkoutState.deleteSessionBlock` mirrors the cascade in its in-memory caches.
 - The SQLite schema remains `ON DELETE SET NULL` on `app_segment_effort.block_id`; the app layer performs the cascade before any FK action fires.
 
-`cloneSessionBlock(blockId)` now names clones using an incremental suffix: `"Main" → "Main (2)"`, `"Main (2)" → "Main (3)"`. Timestamp-based names removed.
+`cloneSessionBlock(blockId)` names clones using the current wall-clock time label (`"h:mm AM/PM"`) across all session modalities/intents.
 
 `addSessionBlock({String? name})` now accepts an optional `name` parameter. When `name` is omitted, the current time in `"h:mm AM/PM"` format is used.
 

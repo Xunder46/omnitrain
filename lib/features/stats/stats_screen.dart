@@ -67,11 +67,14 @@ class _StatsScreenState extends State<StatsScreen> {
       final recentSessions = results[1];
 
       // Compute all-time aggregates from completed sessions only.
+      // Rolling sessions still count as completed sessions, but they do not
+      // contribute to total duration to stay aligned with session-summary logic.
       int totalCount = 0;
       int totalMs = 0;
       for (final s in allSessions) {
-        if (s.endedAtMs != null) {
-          totalCount++;
+        if (s.endedAtMs == null) continue;
+        totalCount++;
+        if (!s.isRolling) {
           totalMs += s.endedAtMs! - s.startedAtMs;
         }
       }

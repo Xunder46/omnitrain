@@ -2,177 +2,201 @@
 
 ## Overview
 
-The **Session Summary** screen is displayed after a user finishes (or navigates away from) an active workout session. It provides post-workout analytics: duration, sets, per-group progress deltas vs the previous session, personal records, a monthly training calendar, and the ability to save the completed session as a reusable routine.
+The Session Summary screen appears after workout completion and focuses on session-level outcomes instead of per-exercise detail.
+
+Current hierarchy:
+
+1. Header
+2. Top Stats (Duration, Rest Time)
+3. Context-aware modality group cards (Strength, Cardio, Sports, Isometric)
+4. Session note
+5. Calendar card
+
+The screen keeps existing summary navigation actions (edit, save as routine, discard) and the bottom Done action.
 
 ---
 
 ## User Workflow
 
-```
-WorkoutSessionScreen → "Finish Workout" (or back navigation)
-  → SessionSummaryScreen
-    ├── [First load, feeling == null] Session Feeling modal (non-dismissible)
-    │     └── Tap 1-5 tile → persists feeling → modal closes
-    ├── View stats (duration, sets, volume)
-    ├── See per-group delta vs previous session (chips on group headers)
-    ├── See new personal records (PRs)
-    ├── Add/edit session note (auto-saves with 600ms debounce)
-    ├── View monthly training calendar
-    ├── Popup menu:
-    │     ├── Edit Session → SessionOverviewScreen (push, refresh on return)
-    │     ├── Save as Routine → bottom sheet (name + exercise list + save)
-    │     └── Discard → confirmation → delete session → pop to home
-    └── "Done" button → end + clear session → pop to home with SnackBar
-```
+WorkoutSessionScreen -> Finish Workout
+  -> SessionSummaryScreen
+    -> [if sessionFeeling is null] mandatory 1-5 feeling sheet
+    -> review top stats and modality cards
+    -> optionally edit session note (debounced autosave)
+    -> optionally open calendar
+    -> optionally use overflow menu (Edit Session, Save as Routine, Discard)
+    -> Done
 
 ---
 
 ## Screen Layout
 
-The screen renders a `CustomScrollView` over an `OmniGradientBackground` with the following card sections:
+The screen renders a CustomScrollView over OmniGradientBackground with this order:
 
 | Section | Content |
 |---------|---------|
-| **Header** | Session title, formatted start date/time, modality badge |
-| **Stats** | Four metrics in a fixed 2×2 grid: Duration, Exercises, Sets, Rounds — always all four visible |
-| **Exercise Groups** | Always rendered group headers (even for single-modality sessions) with per-group comparison chips |
-| **PRs** | New personal records (conditional — only shown when PRs exist) |
-| **Note** | Editable `TextField` with 600ms debounce save via `workoutState.updateSessionNote()` |
-| **Calendar** | Current-month grid highlighting workout days and today |
+| Header | Session title, formatted start date and time, modality badge |
+| Top Stats | Exactly two metrics: Duration and Rest Time |
+| Group Cards | One card per group that has data in this session |
+| Session Note | Inline TextField with debounce save |
+| Calendar | Month grid and Open Calendar navigation button |
 
-> The standalone **Volume Comparison** card was removed. Progress feedback is now embedded as per-group chips in each exercise group header.
+What is not rendered in the active layout:
+
+- Session RPE card
+- Per-exercise rows
+- Standalone PR card
+
+Notes:
+
+- Group cards are conditional by data presence; empty groups are hidden.
+- The same summary structure is used for rolling and non-rolling sessions.
+
+---
+
+## Group Cards
+
+Cards are shown in fixed order when data exists:
+
+1. Strength
+2. Cardio
+3. Sports
+4. Isometric
+
+Each card contains:
+
+- Group title
+- Existing comparison delta chip from GroupDelta
+- Two metrics
+- Inline PR rows for that group (if any)
+
+Per-group metrics:
+
+- Strength: Sets and Total Volume
+- Cardio: Rounds and Total Time
+- Sports: Rounds and Total Time
+- Isometric: Holds and Total Time
+
+Behavior details:
+
+- Cardio rounds are counted from timed entries.
+- Sports time comes from completed round durations.
+- Strength volume is formatted using preferred weight unit (kg or lbs).
+
+---
+
+## Rest Time and Duration
+
+Top stats are always rendered and always contain exactly:
+
+- Duration
+- Rest Time
+
+Rest Time is aggregated from EntryRest records by:
+
+- collecting rests for all efforts in the current session
+- including only closed rests where restEndMs is non-null
+- summing positive durations only
+
+Formatting:
+
+- Human-readable duration for positive values
+- 0 when no closed rests exist
 
 ---
 
 ## Technical Architecture
 
-### Screen: `SessionSummaryScreen`
+### Screen: SessionSummaryScreen
 
-**File**: `lib/features/session/session_summary_screen.dart`
+File: lib/features/session/session_summary_screen.dart
 
-A `StatefulWidget` receiving:
-- `WorkoutState` — session data, compute summary, end/discard session
-- `RoutineState` — reload routines after save-as-routine
-- `SessionSummaryService` — async PR/volume computations
-- `onOpenCalendar` callback — optional `VoidCallback` injected by the parent for Open Calendar navigation (currently feature-flagged off)
+Inputs:
 
-### Data Flow on Init
+- WorkoutState
+- RoutineState
+- SessionSummaryService
+- optional onSessionSaved callback
 
-1. `workoutState.computeSessionSummary()` → synchronous `SessionSummary` (duration, sets, volume, exercise list)
-2. `workoutState.buildTemplateDraftExercises()` → `List<SessionTemplateExercise>` (for save-as-routine sheet)
-3. Async: `sessionSummaryService.compareGroupsToPreviousSession(session, summary)` → `Map<String, GroupDelta>`
-4. Async: `sessionSummaryService.computePRs(exerciseSummaries)` → `List<PRAchievement>`
-5. Async: `_loadCalendarData()` → fetches sessions in current month date range
-6. Post-frame: if `currentSession.sessionFeeling == null` → `_showFeelingSheet(context)` (runs after first build)
+Summary data loaded on entry:
 
-### Service: `SessionSummaryService`
+1. computeSessionSummary from WorkoutState
+2. buildTemplateDraftExercises from WorkoutState
+3. compareGroupsToPreviousSession from SessionSummaryService
+4. computePRs from SessionSummaryService
+5. groupPrsByEffortKind from SessionSummaryService
+6. buildGroupMetrics from SessionSummaryService
+7. computeSessionRestTimeMs from SessionSummaryService
+8. getPreferredWeightUnit from SessionSummaryService
+9. calendar-day data for current month
 
-**File**: `lib/core/services/session_summary_service.dart`
+Feeling sheet behavior:
 
-Wraps a `WorkoutRepository`. Key methods:
+- shown after first frame when sessionFeeling is null
+- non-dismissible until user selects a value
+- writes through updateSessionFeeling
 
-| Method | Signature | Purpose |
-|--------|-----------|---------|
-| `compareGroupsToPreviousSession` | `Future<Map<String, GroupDelta>>(TrainingSession, SessionSummary)` | Finds the most recent previous session, computes per-group stats (volume/duration/rounds), returns delta map keyed by group (`'strength'`, `'cardio'`, `'rounds'`, `'isometric'`) |
-| `computePRs` | `Future<List<PRAchievement>>(List<ExerciseSummary>)` | For each `set`-type exercise, checks `bestWeight` against `repository.getPersonalRecordCandidates()` |
-| `saveRoutineFromDraft` | `Future<String>(SessionTemplateDraft, {String? focusModality})` | Creates `WorkoutTemplate` + `TemplateSegment` + N `TemplateEffort` + N×M `TemplateTarget`. Returns template ID |
+### Service: SessionSummaryService
 
-Private helpers:
-- `_computeGroupStats(sessionId)` — iterates segments → efforts; accumulates strength volume, cardio/isometric elapsed ms, and round counts per group key
-- `_computeSessionVolume(sessionId)` — iterates segments → efforts (set-kind only) → observations, sums reps × weight using `ObservationGrouper`
-- `_metricOrderForEffort(effortKind)` — sort-order for observation grouping per effort kind
+File: lib/core/services/session_summary_service.dart
 
-### Models: `session_summary.dart`
+Key public methods:
 
-**File**: `lib/core/models/session_summary.dart`
+- compareGroupsToPreviousSession
+- computePRs
+- saveRoutineFromDraft
+- computeSessionRestTimeMs
+- buildGroupMetrics
+- groupPrsByEffortKind
+- getPreferredWeightUnit
 
-Six plain-data classes (no persistence, no JSON serialization):
+Repository compatibility:
 
-| Class | Key Fields |
-|-------|------------|
-| `SessionSummary` | `sessionId`, `title`, `startedAtMs`, `endedAtMs`, `totalDurationMs`, `totalVolume`, `totalSets`, `totalRounds`, `totalCardioDurationMs`, `totalDrillDurationMs`, `List<ExerciseSummary>` |
-| `ExerciseSummary` | `exerciseId`, `name`, `effortKind`, `setsCompleted`, `bestWeight?` |
-| `PRAchievement` | `exerciseName`, `metricLabel`, `previousBest`, `newBest` |
-| `GroupDelta` | `delta?` (raw numeric, null = no comparison), `unit` (`'kg'`/`'ms'`/`'rounds'`), `hasPrevious` | 
-| `VolumeComparison` | `currentVolume`, `previousVolume?`, `delta?`, `hasPrevious` getter |
-| `SessionTemplateDraft` | `name`, `focusModality?`, `List<SessionTemplateExercise>` |
-| `SessionTemplateExercise` | `exerciseId`, `name`, `effortKind`, `List<TemplateTargetDraft>` (has `copyWith`) |
-| `TemplateTargetDraft` | `metricId`, `setIndex`, `unitId?`, `valueReal?`, `valueInt?`, `valueText?` |
+- Uses WorkoutRepository interface only
+- Works with both HiveWorkoutRepository and SqliteWorkoutRepository
 
-### Connection Chain
+---
 
-```
-WorkoutState.computeSessionSummary() → SessionSummary
-  → fed into SessionSummaryService.computePRs()
-  → rendered by SessionSummaryScreen
+## Models
 
-WorkoutState.buildTemplateDraftExercises() → List<SessionTemplateExercise>
-  → displayed in save-as-routine bottom sheet
-  → saved via SessionSummaryService.saveRoutineFromDraft()
-```
+File: lib/core/models/session_summary.dart
+
+Key classes:
+
+- SessionSummary
+- SessionGroupMetrics
+- ExerciseSummary
+- PRAchievement
+- GroupDelta
+- VolumeComparison
+- SessionTemplateDraft
+- SessionTemplateExercise
+- TemplateTargetDraft
+
+Important SessionSummary fields used by the current UI:
+
+- totalDurationMs
+- totalSets
+- totalVolume
+- totalRounds
+- totalRoundDurationMs
+- totalCardioDurationMs
+- totalDrillDurationMs
+- exercises
 
 ---
 
 ## Save as Routine Flow
 
-The **Save as Routine** bottom sheet allows turning a completed session into a reusable routine template:
+Save as Routine remains available from the overflow menu.
 
-1. User taps popup menu → "Save as Routine"
-2. Bottom sheet opens with:
-   - Routine name text field (pre-filled with session title)
-   - Reorderable exercise list from `_draftExercises`
-   - Each exercise shows name + effort kind label
-   - ⋮ menu per exercise: "Remove" or "Change Tracking"
-   - (+) Add Exercise button → `ExercisePickerDialog` → `MetricChooserDialog` → adds to draft list
-3. User taps "Save" → `sessionSummaryService.saveRoutineFromDraft(draft)` → template ID returned
-4. `routineState.loadRoutines()` refreshes the routine list
-5. Bottom sheet closes with success SnackBar
+Flow:
 
----
-
-## Key Design Decisions
-
-### 1. Summary is Computed, Not Stored
-The `SessionSummary` is calculated on-the-fly from session data. No separate summary table exists. This ensures the summary always reflects the actual session state.
-
-### 2. PR Detection is Exercise-Scoped
-PRs are only computed for `set`-type exercises (where weight is tracked). The service queries all historical observations for the same exercise to find the previous best.
-
-### 3. Volume = Reps × Weight (Set Exercises Only)
-Only `set`-kind efforts contribute to total volume. Timed, round, and drill efforts are excluded from the volume calculation.
-
-### 4. Debounced Note Persistence
-Session notes auto-save with a 600ms debounce to avoid excessive repository writes during typing.
-
-### 5. Per-Group Progress Chips (replaces standalone Volume Comparison card)
-Each exercise group header row carries a right-aligned comparison chip showing the delta vs the most recent previous session:
-- `strength` → volume delta in kg (`↑ +6.6 kg` / `↓ -2 kg`)
-- `cardio` / `isometric` → duration delta in minutes/seconds (`↑ +2 min` / `↓ -30s`)
-- `rounds` → round count delta (`↑ +2 rounds`)
-- Arrow color: teal (`colorScheme.primary`) for positive, muted-red (`colorScheme.error.withOpacity(0.8)`) for negative; `—` when no comparison data.
-
-### 6. Exercise Group Headers Always Rendered
-Group headers are shown for every session, including single-modality ones. The `rounds` group header label reads **Sports** (not "Rounds"). Header label color is driven by `ModalityColors.forSummaryGroupLabel(groupKey)` from the consolidated color constants.
-
-### 7. Stats Card Fixed Layout
-The top stats card uses a deterministic 2×2 grid (Duration, Exercises, Sets, Rounds) — always all four, no conditional hiding based on zero values. This eliminates orphaned metric rows from the previous `Wrap`-based layout.
-
-### 8. Session Feeling Modal
-On first load, if `currentSession.sessionFeeling == null`, a non-dismissible bottom sheet (`_FeelingSheetContent`) appears automatically:
-- Displays a 1–5 tile row; each tile shows the number on an `AnimatedContainer` square
-- Tile accent color is the modality color (`ModalityColors.forModality(modality)`)
-- Tapping a tile calls `workoutState.updateSessionFeeling(n)` and closes the sheet immediately
-- Sheet is non-dismissible (`isDismissible: false`, `enableDrag: false`) — the athlete must pick a value
-- If the session already has a feeling value, the sheet is skipped entirely
-
-### 9. Open Calendar Button (Feature-Flagged)
-The calendar card header contains an "Open Calendar" button that navigates to `CalendarScreen`. All navigation plumbing (callback injected via `onOpenCalendar` constructor param) is in place, but the button is currently hidden behind a feature flag:
-
-```dart
-static const bool _showCalendarActions = false;
-```
-
-To re-enable, set `_showCalendarActions = true` in `session_summary_screen.dart`. No structural changes are required.
+1. Open bottom sheet
+2. Edit routine name
+3. Reorder/add/remove draft exercises
+4. Save through saveRoutineFromDraft
+5. Reload routines and finish session
 
 ---
 
@@ -180,22 +204,22 @@ To re-enable, set `_showCalendarActions = true` in `session_summary_screen.dart`
 
 | Concern | File |
 |---------|------|
-| Summary screen | `lib/features/session/session_summary_screen.dart` |
-| Summary service | `lib/core/services/session_summary_service.dart` |
-| Summary models | `lib/core/models/session_summary.dart` |
-| Workout state (compute) | `lib/state/workout/workout_state.dart` |
-| Observation grouper | `lib/core/utils/observation_grouper.dart` |
-| Routine state (reload) | `lib/state/routine/routine_state.dart` |
+| Summary screen | lib/features/session/session_summary_screen.dart |
+| Summary service | lib/core/services/session_summary_service.dart |
+| Summary models | lib/core/models/session_summary.dart |
+| Summary computation in state | lib/state/workout/workout_state.dart |
+| Repository interface | lib/data/repositories/workout_repository.dart |
 
 ---
 
 ## Related Documentation
 
-- [Modality-Based Exercise UI](modality_based_exercise_ui.md) — The workout session screen that precedes this summary
-- [My Routines](my_routines.md) — Routine template system (save-as-routine creates templates)
-- [App Philosophy](app_philosophy.md) — Core design principles
+- modality_based_exercise_ui.md
+- my_routines.md
+- app_philosophy.md
+- data_models.md
 
 ---
 
-**Document Version**: 1.2
-**Last Updated**: March 22, 2026
+Document Version: 1.3
+Last Updated: April 13, 2026

@@ -34,12 +34,14 @@ void main() {
     test('loadRoutines fetches from repository', () async {
       final repo = await _freshRepo();
       // Seed a template
-      await repo.createTemplate(WorkoutTemplate(
-        id: 'tmpl-1',
-        name: 'Push Day',
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-1',
+          name: 'Push Day',
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
       final state = RoutineState(repo);
       await state.loadRoutines();
       expect(state.routines, hasLength(1));
@@ -102,51 +104,63 @@ void main() {
       expect(state.currentTemplate!.focusModality, 'cardio_endurance');
     });
 
-    test('updateRoutineFocusModality with null preserves prior value (copyWith limitation)',
-        () async {
-      final repo = await _freshRepo();
-      final state = RoutineState(repo);
-      state.setAutosaveEnabled(false);
+    test(
+      'updateRoutineFocusModality with null preserves prior value (copyWith limitation)',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
 
-      await state.createNewRoutine('Routine');
-      await state.updateRoutineFocusModality('resistance_lifting');
-      await state.updateRoutineFocusModality(null);
+        await state.createNewRoutine('Routine');
+        await state.updateRoutineFocusModality('resistance_lifting');
+        await state.updateRoutineFocusModality(null);
 
-      // copyWith uses ?? so null keeps existing value
-      expect(state.currentTemplate!.focusModality, 'resistance_lifting');
-    });
+        // copyWith uses ?? so null keeps existing value
+        expect(state.currentTemplate!.focusModality, 'resistance_lifting');
+      },
+    );
 
-    test('addExerciseToRoutine adds effort to first segment by default',
-        () async {
-      final repo = await _freshRepo();
-      final state = RoutineState(repo);
-      state.setAutosaveEnabled(false);
+    test(
+      'addExerciseToRoutine adds effort to first segment by default',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
 
-      final exercises = await repo.getExercises();
-      await state.createNewRoutine('Routine');
+        final exercises = await repo.getExercises();
+        await state.createNewRoutine('Routine');
 
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
-      expect(effortId, isNotEmpty);
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+        );
+        expect(effortId, isNotEmpty);
 
-      final efforts =
-          state.getEffortsForSegment(state.currentSegments.first.id);
-      expect(efforts, hasLength(1));
-      expect(efforts.first.exerciseId, exercises.first.id);
-      expect(efforts.first.effortKind, 'set');
-    });
+        final efforts = state.getEffortsForSegment(
+          state.currentSegments.first.id,
+        );
+        expect(efforts, hasLength(1));
+        expect(efforts.first.exerciseId, exercises.first.id);
+        expect(efforts.first.effortKind, 'set');
+      },
+    );
 
-    test('addExerciseToRoutine returns empty string without segments', () async {
-      final repo = await _freshRepo();
-      final state = RoutineState(repo);
-      state.setAutosaveEnabled(false);
+    test(
+      'addExerciseToRoutine returns empty string without segments',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
 
-      final exercises = await repo.getExercises();
-      // No createNewRoutine → no segments
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
-      expect(effortId, isEmpty);
-    });
+        final exercises = await repo.getExercises();
+        // No createNewRoutine → no segments
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+        );
+        expect(effortId, isEmpty);
+      },
+    );
 
     test('removeExerciseFromRoutine removes effort and its targets', () async {
       final repo = await _freshRepo();
@@ -155,8 +169,7 @@ void main() {
 
       final exercises = await repo.getExercises();
       await state.createNewRoutine('Routine');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
 
       // Add a target
       await state.setTargetValue(
@@ -169,8 +182,9 @@ void main() {
 
       await state.removeExerciseFromRoutine(effortId);
 
-      final efforts =
-          state.getEffortsForSegment(state.currentSegments.first.id);
+      final efforts = state.getEffortsForSegment(
+        state.currentSegments.first.id,
+      );
       expect(efforts, isEmpty);
       expect(state.getEffortTargets(effortId), isEmpty);
     });
@@ -390,8 +404,10 @@ void main() {
 
         final exercises = await repo.getExercises();
         await state.createNewRoutine('Routine');
-        final effortId =
-            await state.addExerciseToRoutine(exercises.first, 'set');
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+        );
 
         await state.setTargetValue(
           effortId,
@@ -414,8 +430,10 @@ void main() {
 
         final exercises = await repo.getExercises();
         await state.createNewRoutine('Routine');
-        final effortId =
-            await state.addExerciseToRoutine(exercises.first, 'set');
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+        );
 
         await state.setTargetValue(
           effortId,
@@ -444,8 +462,10 @@ void main() {
 
         final exercises = await repo.getExercises();
         await state.createNewRoutine('Routine');
-        final effortId =
-            await state.addExerciseToRoutine(exercises.first, 'set');
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+        );
 
         await state.setTargetValue(
           effortId,
@@ -475,13 +495,13 @@ void main() {
 
       final exercises = await repo.getExercises();
       await state.createNewRoutine('Routine');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
 
       await state.updateEffortKind(effortId, 'timed');
 
-      final efforts =
-          state.getEffortsForSegment(state.currentSegments.first.id);
+      final efforts = state.getEffortsForSegment(
+        state.currentSegments.first.id,
+      );
       expect(efforts.first.effortKind, 'timed');
     });
 
@@ -492,8 +512,7 @@ void main() {
 
       final exercises = await repo.getExercises();
       await state.createNewRoutine('Routine');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
 
       await state.updateEffortRest(
         effortId,
@@ -501,8 +520,9 @@ void main() {
         restType: 'fixed',
       );
 
-      final efforts =
-          state.getEffortsForSegment(state.currentSegments.first.id);
+      final efforts = state.getEffortsForSegment(
+        state.currentSegments.first.id,
+      );
       expect(efforts.first.restSeconds, 120);
       expect(efforts.first.restType, 'fixed');
     });
@@ -549,30 +569,32 @@ void main() {
       expect(state.hasUnsavedChanges, false);
     });
 
-    test('loadRoutineForEditing loads template with segments and efforts',
-        () async {
-      final repo = await _freshRepo();
-      final state = RoutineState(repo);
-      state.setAutosaveEnabled(false);
+    test(
+      'loadRoutineForEditing loads template with segments and efforts',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
 
-      final exercises = await repo.getExercises();
+        final exercises = await repo.getExercises();
 
-      // Create and save a routine
-      await state.createNewRoutine('Editable');
-      await state.addExerciseToRoutine(exercises.first, 'set');
-      await state.saveRoutine();
+        // Create and save a routine
+        await state.createNewRoutine('Editable');
+        await state.addExerciseToRoutine(exercises.first, 'set');
+        await state.saveRoutine();
 
-      final templateId = state.currentTemplate!.id;
-      state.clearCurrentRoutine();
+        final templateId = state.currentTemplate!.id;
+        state.clearCurrentRoutine();
 
-      // Load for editing
-      await state.loadRoutineForEditing(templateId);
+        // Load for editing
+        await state.loadRoutineForEditing(templateId);
 
-      expect(state.currentTemplate, isNotNull);
-      expect(state.currentTemplate!.name, 'Editable');
-      expect(state.currentSegments, isNotEmpty);
-      expect(state.currentEfforts, isNotEmpty);
-    });
+        expect(state.currentTemplate, isNotNull);
+        expect(state.currentTemplate!.name, 'Editable');
+        expect(state.currentSegments, isNotEmpty);
+        expect(state.currentEfforts, isNotEmpty);
+      },
+    );
 
     test('loadRoutineForEditing sets error when template not found', () async {
       final repo = await _freshRepo();
@@ -590,8 +612,7 @@ void main() {
 
       final exercises = await repo.getExercises();
       await state.createNewRoutine('Routine');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
 
       final segment = state.getSegmentForEffort(effortId);
       expect(segment, isNotNull);
@@ -614,8 +635,7 @@ void main() {
 
       final exercises = await repo.getExercises();
       await state.createNewRoutine('Routine');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
 
       // Set initial targets for set 0
       await state.setTargetValue(
@@ -640,8 +660,7 @@ void main() {
 
       final exercises = await repo.getExercises();
       await state.createNewRoutine('Routine');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
 
       await state.setTargetValue(
         effortId,
@@ -669,8 +688,7 @@ void main() {
 
       final exercises = await repo.getExercises();
       await state.createNewRoutine('Routine');
-      final effortId =
-          await state.addExerciseToRoutine(exercises.first, 'set');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
 
       await state.setTargetValue(
         effortId,
@@ -800,16 +818,21 @@ void main() {
 
       // Seed a completed session for today
       final now = DateTime.now();
-      final todayMs = DateTime(now.year, now.month, now.day)
-          .millisecondsSinceEpoch;
-      await repo.createSession(TrainingSession(
-        id: 's-complete',
-        ownerUserId: 'u-1',
-        startedAtMs: todayMs + 1000,
-        endedAtMs: todayMs + 3600000,
-        createdAtMs: todayMs,
-        updatedAtMs: todayMs,
-      ));
+      final todayMs = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).millisecondsSinceEpoch;
+      await repo.createSession(
+        TrainingSession(
+          id: 's-complete',
+          ownerUserId: 'u-1',
+          startedAtMs: todayMs + 1000,
+          endedAtMs: todayMs + 3600000,
+          createdAtMs: todayMs,
+          updatedAtMs: todayMs,
+        ),
+      );
 
       await state.init();
 
@@ -879,15 +902,17 @@ void main() {
 
     test('load fetches periods from repository', () async {
       final repo = await _freshRepo();
-      await repo.createPeriod(TrainingPeriod(
-        id: 'p-1',
-        ownerUserId: 'u-1',
-        name: 'Bulk Phase',
-        startDateMs: 1000,
-        endDateMs: 5000,
-        createdAtMs: 100,
-        updatedAtMs: 100,
-      ));
+      await repo.createPeriod(
+        TrainingPeriod(
+          id: 'p-1',
+          ownerUserId: 'u-1',
+          name: 'Bulk Phase',
+          startDateMs: 1000,
+          endDateMs: 5000,
+          createdAtMs: 100,
+          updatedAtMs: 100,
+        ),
+      );
 
       final state = PeriodState(repo);
       await state.load();
@@ -936,15 +961,17 @@ void main() {
 
       test('detects overlapping periods', () async {
         final repo = await _freshRepo();
-        await repo.createPeriod(TrainingPeriod(
-          id: 'p-existing',
-          ownerUserId: 'u-1',
-          name: 'Existing',
-          startDateMs: 1000,
-          endDateMs: 5000,
-          createdAtMs: 100,
-          updatedAtMs: 100,
-        ));
+        await repo.createPeriod(
+          TrainingPeriod(
+            id: 'p-existing',
+            ownerUserId: 'u-1',
+            name: 'Existing',
+            startDateMs: 1000,
+            endDateMs: 5000,
+            createdAtMs: 100,
+            updatedAtMs: 100,
+          ),
+        );
 
         final state = PeriodState(repo);
         final result = await state.validate('New', 3000, 7000);
@@ -952,28 +979,32 @@ void main() {
         expect(result.overlapError, isNotNull);
       });
 
-      test('excludeId allows editing own period without overlap error',
-          () async {
-        final repo = await _freshRepo();
-        await repo.createPeriod(TrainingPeriod(
-          id: 'p-edit',
-          ownerUserId: 'u-1',
-          name: 'Edit Me',
-          startDateMs: 1000,
-          endDateMs: 5000,
-          createdAtMs: 100,
-          updatedAtMs: 100,
-        ));
+      test(
+        'excludeId allows editing own period without overlap error',
+        () async {
+          final repo = await _freshRepo();
+          await repo.createPeriod(
+            TrainingPeriod(
+              id: 'p-edit',
+              ownerUserId: 'u-1',
+              name: 'Edit Me',
+              startDateMs: 1000,
+              endDateMs: 5000,
+              createdAtMs: 100,
+              updatedAtMs: 100,
+            ),
+          );
 
-        final state = PeriodState(repo);
-        final result = await state.validate(
-          'Edit Me',
-          1000,
-          6000,
-          excludeId: 'p-edit',
-        );
-        expect(result.isValid, true);
-      });
+          final state = PeriodState(repo);
+          final result = await state.validate(
+            'Edit Me',
+            1000,
+            6000,
+            excludeId: 'p-edit',
+          );
+          expect(result.isValid, true);
+        },
+      );
 
       test('valid input passes', () async {
         final repo = await _freshRepo();
@@ -1036,11 +1067,7 @@ void main() {
       final repo = await _freshRepo();
       final state = PeriodState(repo);
 
-      await state.createPeriod(
-        name: 'Original',
-        startMs: 1000,
-        endMs: 5000,
-      );
+      await state.createPeriod(name: 'Original', startMs: 1000, endMs: 5000);
 
       final period = state.periods.first;
       final success = await state.updatePeriod(
@@ -1059,11 +1086,7 @@ void main() {
       final repo = await _freshRepo();
       final state = PeriodState(repo);
 
-      await state.createPeriod(
-        name: 'Valid',
-        startMs: 1000,
-        endMs: 5000,
-      );
+      await state.createPeriod(name: 'Valid', startMs: 1000, endMs: 5000);
 
       final period = state.periods.first;
       final success = await state.updatePeriod(
@@ -1081,11 +1104,7 @@ void main() {
       final repo = await _freshRepo();
       final state = PeriodState(repo);
 
-      await state.createPeriod(
-        name: 'To Delete',
-        startMs: 1000,
-        endMs: 5000,
-      );
+      await state.createPeriod(name: 'To Delete', startMs: 1000, endMs: 5000);
 
       final id = state.periods.first.id;
       await state.deletePeriod(id);
@@ -1137,18 +1156,20 @@ void main() {
       expect(effortId, isNotEmpty);
     });
 
-    test('updateSessionEndTime changes endedAtMs based on durationSecs',
-        () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
-      await state.endSession();
+    test(
+      'updateSessionEndTime changes endedAtMs based on durationSecs',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+        await state.endSession();
 
-      final start = state.currentSession!.startedAtMs;
-      await state.updateSessionEndTime(3600); // 1 hour
+        final start = state.currentSession!.startedAtMs;
+        await state.updateSessionEndTime(3600); // 1 hour
 
-      expect(state.currentSession!.endedAtMs, start + 3600 * 1000);
-    });
+        expect(state.currentSession!.endedAtMs, start + 3600 * 1000);
+      },
+    );
 
     test('updateSessionEndTime is no-op for zero or negative', () async {
       final repo = await _freshRepo();
@@ -1163,6 +1184,52 @@ void main() {
 
       await state.updateSessionEndTime(-100);
       expect(state.currentSession!.endedAtMs, original);
+    });
+
+    group('session feeling', () {
+      test(
+        'updateSessionFeeling persists value and rehydrates on historical reload',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+          await state.endSession();
+
+          final sessionId = state.currentSession!.id;
+
+          await state.updateSessionFeeling(sessionId, 3);
+
+          expect(state.currentSession!.sessionFeeling, 3);
+
+          final reloaded = WorkoutState(repo);
+          await reloaded.loadHistoricalSession(sessionId);
+
+          expect(reloaded.currentSession, isNotNull);
+          expect(reloaded.currentSession!.sessionFeeling, 3);
+        },
+      );
+
+      test('updateSessionFeeling persists lower bound 1', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final sessionId = state.currentSession!.id;
+        await state.updateSessionFeeling(sessionId, 1);
+
+        expect(state.currentSession!.sessionFeeling, 1);
+      });
+
+      test('updateSessionFeeling persists upper bound 5', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final sessionId = state.currentSession!.id;
+        await state.updateSessionFeeling(sessionId, 5);
+
+        expect(state.currentSession!.sessionFeeling, 5);
+      });
     });
 
     group('round lifecycle', () {
@@ -1305,114 +1372,175 @@ void main() {
         expect(updated.first.state, TimedState.finished);
       });
 
-      test('addEntry for timed creates distance and extra-weight companion observations', () async {
-        final repo = await _freshRepo();
-        final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'cardio_endurance');
+      test(
+        'addEntry for timed creates distance and extra-weight companion observations',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'cardio_endurance');
 
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        // addExerciseToSession internally calls addEntry for the first set.
-        final effortId = await state.addExerciseToSession(timedExercise);
+          final exercises = await repo.getExercises();
+          final timedExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('time'),
+            orElse: () => exercises.first,
+          );
+          // addExerciseToSession internally calls addEntry for the first set.
+          final effortId = await state.addExerciseToSession(timedExercise);
 
-        final observations = await repo.getEffortObservations(effortId);
-        final metricIds = observations.map((o) => o.metricId).toSet();
-        expect(metricIds, contains('metric-distance'));
-        expect(metricIds, contains('metric-extra-weight'));
+          final observations = await repo.getEffortObservations(effortId);
+          final metricIds = observations.map((o) => o.metricId).toSet();
+          expect(metricIds, contains('metric-distance'));
+          expect(metricIds, contains('metric-extra-weight'));
 
-        // getExercisesWithEntries exposes both keys.
-        final entry = (state.getExercisesWithEntries().first['entries'] as List)
-            .first as Map<String, dynamic>;
-        expect(entry.containsKey('extra-weight'), true);
-        expect(entry['extra-weight'], 0.0);
-        expect(entry.containsKey('distance'), true);
-      });
+          // getExercisesWithEntries exposes both keys.
+          final entry =
+              (state.getExercisesWithEntries().first['entries'] as List).first
+                  as Map<String, dynamic>;
+          expect(entry.containsKey('extra-weight'), true);
+          expect(entry['extra-weight'], 0.0);
+          expect(entry.containsKey('distance'), true);
+        },
+      );
 
-      test('getExercisesWithEntries omits extra-weight for legacy timed entry', () async {
-        final repo = await _freshRepo();
-        final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'cardio_endurance');
+      test(
+        'getExercisesWithEntries omits extra-weight for legacy timed entry',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'cardio_endurance');
 
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        final effortId = await state.addExerciseToSession(timedExercise);
-        final sessionId = state.currentSession!.id;
+          final exercises = await repo.getExercises();
+          final timedExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('time'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(timedExercise);
+          final sessionId = state.currentSession!.id;
 
-        // Simulate a legacy entry: delete the extra-weight companion observation.
-        final allObs = await repo.getEffortObservations(effortId);
-        final ewObs =
-            allObs.where((o) => o.metricId == 'metric-extra-weight').toList();
-        for (final obs in ewObs) {
-          await repo.deleteObservation(obs.id);
-        }
+          // Simulate a legacy entry: delete the extra-weight companion observation.
+          final allObs = await repo.getEffortObservations(effortId);
+          final ewObs = allObs
+              .where((o) => o.metricId == 'metric-extra-weight')
+              .toList();
+          for (final obs in ewObs) {
+            await repo.deleteObservation(obs.id);
+          }
 
-        // Reload state so it picks up the repo change.
-        final reloaded = WorkoutState(repo);
-        await reloaded.loadHistoricalSession(sessionId);
+          // Reload state so it picks up the repo change.
+          final reloaded = WorkoutState(repo);
+          await reloaded.loadHistoricalSession(sessionId);
 
-        final entries =
-            (reloaded.getExercisesWithEntries().first['entries'] as List);
-        final entry = entries.first as Map<String, dynamic>;
-        expect(entry.containsKey('extra-weight'), false);
-        expect(entry.containsKey('distance'), true);
-      });
+          final entries =
+              (reloaded.getExercisesWithEntries().first['entries'] as List);
+          final entry = entries.first as Map<String, dynamic>;
+          expect(entry.containsKey('extra-weight'), false);
+          expect(entry.containsKey('distance'), true);
+        },
+      );
 
-      test('deleteEntry removes all companion observations for a timed entry', () async {
-        final repo = await _freshRepo();
-        final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'cardio_endurance');
+      test(
+        'deleteEntry removes all companion observations for a timed entry',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'cardio_endurance');
 
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        final effortId = await state.addExerciseToSession(timedExercise); // entry 0
-        await state.addEntry(effortId); // entry 1
+          final exercises = await repo.getExercises();
+          final timedExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('time'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            timedExercise,
+          ); // entry 0
+          await state.addEntry(effortId); // entry 1
 
-        // Both entries have 2 companions each.
-        var observations = await repo.getEffortObservations(effortId);
-        expect(observations.where((o) => o.id.contains('-0-')).length, 2);
-        expect(observations.where((o) => o.id.contains('-1-')).length, 2);
+          // Both entries have 2 companions each.
+          var observations = await repo.getEffortObservations(effortId);
+          expect(observations.where((o) => o.id.contains('-0-')).length, 2);
+          expect(observations.where((o) => o.id.contains('-1-')).length, 2);
 
-        // Delete entry 0 — both of its companions must be removed.
-        await state.deleteEntry(effortId, 0);
+          // Delete entry 0 — both of its companions must be removed.
+          await state.deleteEntry(effortId, 0);
 
-        observations = await repo.getEffortObservations(effortId);
-        expect(observations.where((o) => o.id.contains('-0-')), isEmpty);
-        // Entry 1 companions survive.
-        expect(observations.where((o) => o.id.contains('-1-')).length, 2);
-      });
+          observations = await repo.getEffortObservations(effortId);
+          expect(observations.where((o) => o.id.contains('-0-')), isEmpty);
+          // Entry 1 companions survive.
+          expect(observations.where((o) => o.id.contains('-1-')).length, 2);
+        },
+      );
 
-      test('buildTemplateDraftExercises includes extra-weight target for timed', () async {
-        final repo = await _freshRepo();
-        final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'cardio_endurance');
+      test(
+        'buildTemplateDraftExercises includes extra-weight target for timed',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'cardio_endurance');
 
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-          orElse: () => exercises.first,
-        );
-        await state.addExerciseToSession(timedExercise);
+          final exercises = await repo.getExercises();
+          final timedExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('time'),
+            orElse: () => exercises.first,
+          );
+          await state.addExerciseToSession(timedExercise);
 
-        final drafts = state.buildTemplateDraftExercises();
-        expect(drafts, isNotEmpty);
+          final drafts = state.buildTemplateDraftExercises();
+          expect(drafts, isNotEmpty);
 
-        final timedDraft = drafts.first;
-        expect(timedDraft.effortKind, 'timed');
+          final timedDraft = drafts.first;
+          expect(timedDraft.effortKind, 'timed');
 
-        final targetMetricIds =
-            timedDraft.targets.map((t) => t.metricId).toList();
-        expect(targetMetricIds, contains('metric-extra-weight'));
-        expect(targetMetricIds, contains('metric-duration'));
-      });
+          final targetMetricIds = timedDraft.targets
+              .map((t) => t.metricId)
+              .toList();
+          expect(targetMetricIds, contains('metric-extra-weight'));
+          expect(targetMetricIds, contains('metric-duration'));
+        },
+      );
+    });
+
+    group('set extra-weight support', () {
+      test(
+        'set entries without load persist and expose extra-weight values',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'resistance_lifting');
+
+          final exercises = await repo.getExercises();
+          final bodyweightExercise = exercises.firstWhere(
+            (e) =>
+                e.capabilities.contains('sets') &&
+                !e.capabilities.contains('load'),
+            orElse: () => exercises.firstWhere(
+              (e) => !e.capabilities.contains('load'),
+              orElse: () => exercises.first,
+            ),
+          );
+
+          final effortId = await state.addExerciseToSession(
+            bodyweightExercise,
+            effortKindOverride: 'set',
+          );
+
+          final observations = await repo.getEffortObservations(effortId);
+          final metricIds = observations.map((o) => o.metricId).toSet();
+          expect(metricIds, contains('metric-extra-weight'));
+
+          final entry =
+              (state.getExercisesWithEntries().first['entries'] as List).first
+                  as Map<String, dynamic>;
+          expect(entry.containsKey('extra-weight'), true);
+          expect(entry['extra-weight'], 0.0);
+
+          await state.updateEntryValue(effortId, 0, 'extra-weight', -15.0);
+
+          final refreshedEntry =
+              (state.getExercisesWithEntries().first['entries'] as List).first
+                  as Map<String, dynamic>;
+          expect(refreshedEntry['extra-weight'], -15.0);
+        },
+      );
     });
 
     group('rest lifecycle', () {
@@ -1590,7 +1718,7 @@ void main() {
 
       // Assign effort to block
       await state.assignEffortToBlock(effortId, blockId);
-      
+
       // Get the effort from the current segment
       final segmentId = state.segments.first.id;
       var efforts = state.getEffortsForSegment(segmentId);
@@ -1631,7 +1759,7 @@ void main() {
     test('cloneSessionBlock creates independent copy with new ID', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
-      await state.createNewSession();
+      await state.createNewSession(modality: 'resistance_lifting');
 
       final originalBlockId = await state.addSessionBlock();
 
@@ -1644,15 +1772,15 @@ void main() {
       expect(blocks, hasLength(2));
 
       final cloned = blocks.firstWhere((b) => b.id == clonedBlockId);
-      // Cloned block name should use "(2)" suffix
-      expect(cloned.name, endsWith('(2)'));
+      expect(cloned.name, isNot(contains('(2)')));
+      expect(cloned.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
       expect(cloned.id, clonedBlockId);
     });
 
     test('cloneSessionBlock with efforts clones all linked records', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
-      await state.createNewSession();
+      await state.createNewSession(modality: 'resistance_lifting');
 
       final blockId = await state.addSessionBlock();
       final exercises = await repo.getExercises();
@@ -1669,9 +1797,43 @@ void main() {
       final blocks = state.getSessionBlocks();
       expect(blocks, hasLength(2));
 
-      // Verify cloned block uses "(2)" suffix naming
+      // Verify cloned block uses current-time naming
       final clonedBlock = blocks.firstWhere((b) => b.id == clonedBlockId);
-      expect(clonedBlock.name, endsWith('(2)'));
+      expect(clonedBlock.name, isNot(contains('(2)')));
+      expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    });
+
+    test(
+      'cloneSessionBlock in rolling session uses current-time title',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(isRolling: true);
+
+        final sourceBlockId = await state.addSessionBlock(name: '10:00 AM');
+        final cloneBlockId = await state.cloneSessionBlock(sourceBlockId);
+
+        final blocks = state.getSessionBlocks();
+        final clonedBlock = blocks.firstWhere((b) => b.id == cloneBlockId);
+
+        expect(clonedBlock.name, isNot(contains('(2)')));
+        expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+      },
+    );
+
+    test('cloneSessionBlock in free session uses current-time title', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(modality: null, isRolling: false);
+
+      final sourceBlockId = await state.addSessionBlock(name: 'Main');
+      final cloneBlockId = await state.cloneSessionBlock(sourceBlockId);
+
+      final blocks = state.getSessionBlocks();
+      final clonedBlock = blocks.firstWhere((b) => b.id == cloneBlockId);
+
+      expect(clonedBlock.name, isNot(contains('(2)')));
+      expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
     });
 
     test('assignEffortToBlock updates effort blockId', () async {
@@ -1723,66 +1885,104 @@ void main() {
       expect(state.isRollingSession, false);
     });
 
-    test('isRollingSession is true when created with isRolling: true', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(isRolling: true);
+    test(
+      'isRollingSession is true when created with isRolling: true',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(isRolling: true);
 
-      expect(state.isRollingSession, true);
-    });
+        expect(state.isRollingSession, true);
+      },
+    );
 
-    test('computeSessionSummary suppresses totalDurationMs for rolling session',
-        () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(isRolling: true);
+    test(
+      'computeSessionSummary suppresses totalDurationMs for rolling session',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(isRolling: true);
 
-      // Add an exercise so we have something to summarize
-      final exercises = await repo.getExercises();
-      await state.addExerciseToSession(exercises.first);
+        // Add an exercise so we have something to summarize
+        final exercises = await repo.getExercises();
+        await state.addExerciseToSession(exercises.first);
 
-      await state.endSession();
+        await state.endSession();
 
-      final summary = state.computeSessionSummary();
-      expect(summary.totalDurationMs, 0);
-    });
+        final summary = state.computeSessionSummary();
+        expect(summary.totalDurationMs, 0);
+      },
+    );
 
-    test('computeSessionSummary returns duration for non-rolling session',
-        () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(isRolling: false);
+    test(
+      'computeSessionSummary returns duration for non-rolling session',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(isRolling: false);
 
-      // Add an exercise so we have something to summarize
-      final exercises = await repo.getExercises();
-      await state.addExerciseToSession(exercises.first);
+        // Add an exercise so we have something to summarize
+        final exercises = await repo.getExercises();
+        await state.addExerciseToSession(exercises.first);
 
-      // Wait a bit to ensure duration > 0
-      await Future.delayed(Duration(milliseconds: 100));
+        // Wait a bit to ensure duration > 0
+        await Future.delayed(Duration(milliseconds: 100));
 
-      await state.endSession();
+        await state.endSession();
 
-      final summary = state.computeSessionSummary();
-      expect(summary.totalDurationMs, greaterThanOrEqualTo(100));
-    });
+        final summary = state.computeSessionSummary();
+        expect(summary.totalDurationMs, greaterThanOrEqualTo(100));
+      },
+    );
 
-    test('computeSessionSummary carries blockId in exercise summaries',
-        () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession(isRolling: true);
+    test(
+      'computeSessionSummary carries blockId in exercise summaries',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(isRolling: true);
 
-      final blockId = await state.addSessionBlock();
-      final exercises = await repo.getExercises();
-      final effortId = await state.addExerciseToSession(exercises.first);
-      await state.assignEffortToBlock(effortId, blockId);
+        final blockId = await state.addSessionBlock();
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(exercises.first);
+        await state.assignEffortToBlock(effortId, blockId);
 
-      await state.endSession();
+        await state.endSession();
 
-      final summary = state.computeSessionSummary();
-      expect(summary.exercises, hasLength(1));
-      expect(summary.exercises.first.blockId, blockId);
-    });
+        final summary = state.computeSessionSummary();
+        expect(summary.exercises, hasLength(1));
+        expect(summary.exercises.first.blockId, blockId);
+      },
+    );
+
+    test(
+      'computeSessionSummary counts finished early rounds for sports',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'sports');
+
+        final exercises = await repo.getExercises();
+        final roundExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('rounds'),
+          orElse: () => exercises.first,
+        );
+
+        final effortId = await state.addExerciseToSession(
+          roundExercise,
+          effortKindOverride: 'round',
+        );
+
+        await state.startRound(effortId, 0);
+        await state.endRoundEarly(effortId, 0);
+        await state.endSession();
+
+        final summary = state.computeSessionSummary();
+        expect(summary.totalRounds, 1);
+        expect(summary.totalRoundDurationMs, greaterThanOrEqualTo(0));
+        expect(summary.exercises.single.totalRounds, 1);
+      },
+    );
 
     test('getSessionBlocks returns sorted by orderIndex', () async {
       final repo = await _freshRepo();
@@ -1802,120 +2002,126 @@ void main() {
       expect(orderIndices, equals([0, 1, 2]));
     });
 
-    test('populateSessionFromManifest creates one SessionBlock per non-empty segment', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
+    test(
+      'populateSessionFromManifest creates one SessionBlock per non-empty segment',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
 
-      final exercises = await repo.getExercises();
+        final exercises = await repo.getExercises();
 
-      final template = WorkoutTemplate(
-        id: 'tmpl-test',
-        name: 'Test Routine',
-        createdAtMs: 1000,
-        updatedAtMs: 1000,
-      );
+        final template = WorkoutTemplate(
+          id: 'tmpl-test',
+          name: 'Test Routine',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        );
 
-      final manifest = RoutineSessionManifest(
-        template: template,
-        segments: [
-          SessionSegmentEntry(
-            segment: TemplateSegment(
-              id: 'tseg-1',
-              templateId: 'tmpl-test',
-              orderIndex: 0,
-              segmentType: 'mixed',
-              name: 'Warm-Up',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
-            ),
-            exercises: [
-              SessionExerciseEntry(
-                exercise: exercises.first,
-                effortKind: 'set',
-                setCount: 1,
-                targets: [],
+        final manifest = RoutineSessionManifest(
+          template: template,
+          segments: [
+            SessionSegmentEntry(
+              segment: TemplateSegment(
+                id: 'tseg-1',
+                templateId: 'tmpl-test',
+                orderIndex: 0,
+                segmentType: 'mixed',
+                name: 'Warm-Up',
+                createdAtMs: 1000,
+                updatedAtMs: 1000,
               ),
-            ],
-          ),
-          SessionSegmentEntry(
-            segment: TemplateSegment(
-              id: 'tseg-2',
-              templateId: 'tmpl-test',
-              orderIndex: 1,
-              segmentType: 'mixed',
-              name: 'Main Work',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
+              exercises: [
+                SessionExerciseEntry(
+                  exercise: exercises.first,
+                  effortKind: 'set',
+                  setCount: 1,
+                  targets: [],
+                ),
+              ],
             ),
-            exercises: [
-              SessionExerciseEntry(
-                exercise: exercises[1],
-                effortKind: 'set',
-                setCount: 2,
-                targets: [],
+            SessionSegmentEntry(
+              segment: TemplateSegment(
+                id: 'tseg-2',
+                templateId: 'tmpl-test',
+                orderIndex: 1,
+                segmentType: 'mixed',
+                name: 'Main Work',
+                createdAtMs: 1000,
+                updatedAtMs: 1000,
               ),
-            ],
-          ),
-        ],
-      );
-
-      await state.populateSessionFromManifest(manifest);
-
-      final blocks = state.getSessionBlocks();
-      expect(blocks, hasLength(2));
-      expect(blocks.map((b) => b.name).toList(), ['Warm-Up', 'Main Work']);
-    });
-
-    test('populateSessionFromManifest assigns each effort to its segment block', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      await state.createNewSession();
-
-      final exercises = await repo.getExercises();
-
-      final template = WorkoutTemplate(
-        id: 'tmpl-test2',
-        name: 'Test Routine 2',
-        createdAtMs: 1000,
-        updatedAtMs: 1000,
-      );
-
-      final manifest = RoutineSessionManifest(
-        template: template,
-        segments: [
-          SessionSegmentEntry(
-            segment: TemplateSegment(
-              id: 'tseg-a',
-              templateId: 'tmpl-test2',
-              orderIndex: 0,
-              segmentType: 'mixed',
-              name: 'Block A',
-              createdAtMs: 1000,
-              updatedAtMs: 1000,
+              exercises: [
+                SessionExerciseEntry(
+                  exercise: exercises[1],
+                  effortKind: 'set',
+                  setCount: 2,
+                  targets: [],
+                ),
+              ],
             ),
-            exercises: [
-              SessionExerciseEntry(
-                exercise: exercises.first,
-                effortKind: 'set',
-                setCount: 1,
-                targets: [],
+          ],
+        );
+
+        await state.populateSessionFromManifest(manifest);
+
+        final blocks = state.getSessionBlocks();
+        expect(blocks, hasLength(2));
+        expect(blocks.map((b) => b.name).toList(), ['Warm-Up', 'Main Work']);
+      },
+    );
+
+    test(
+      'populateSessionFromManifest assigns each effort to its segment block',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final exercises = await repo.getExercises();
+
+        final template = WorkoutTemplate(
+          id: 'tmpl-test2',
+          name: 'Test Routine 2',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        );
+
+        final manifest = RoutineSessionManifest(
+          template: template,
+          segments: [
+            SessionSegmentEntry(
+              segment: TemplateSegment(
+                id: 'tseg-a',
+                templateId: 'tmpl-test2',
+                orderIndex: 0,
+                segmentType: 'mixed',
+                name: 'Block A',
+                createdAtMs: 1000,
+                updatedAtMs: 1000,
               ),
-            ],
-          ),
-        ],
-      );
+              exercises: [
+                SessionExerciseEntry(
+                  exercise: exercises.first,
+                  effortKind: 'set',
+                  setCount: 1,
+                  targets: [],
+                ),
+              ],
+            ),
+          ],
+        );
 
-      await state.populateSessionFromManifest(manifest);
+        await state.populateSessionFromManifest(manifest);
 
-      final blocks = state.getSessionBlocks();
-      expect(blocks, hasLength(1));
-      final block = blocks.first;
+        final blocks = state.getSessionBlocks();
+        expect(blocks, hasLength(1));
+        final block = blocks.first;
 
-      final result = state.getExercisesWithEntries();
-      expect(result, hasLength(1));
-      expect(result.first['blockId'], block.id);
-    });
+        final result = state.getExercisesWithEntries();
+        expect(result, hasLength(1));
+        expect(result.first['blockId'], block.id);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

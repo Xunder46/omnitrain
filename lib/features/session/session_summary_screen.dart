@@ -8,11 +8,13 @@ import '../../core/models/session_summary.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/effort_defaults.dart';
 import '../../core/services/routine_session_service.dart';
+import '../../core/utils/session_feeling_utils.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
@@ -46,6 +48,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   Map<String, GroupDelta> _groupDeltas = {};
   List<PRAchievement> _prs = [];
+  Map<String, List<PRAchievement>> _prsByGroup = {};
+  Map<String, SessionGroupMetrics> _groupMetrics = {};
+  int _restTimeMs = 0;
+  String _preferredWeightUnit = 'kg';
   Set<int> _workoutDays = {};
   int _daysInMonth = 30;
   late final CalendarState _calendarState;
@@ -64,7 +70,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     'strength': 'Strength',
     'cardio': 'Cardio',
     'rounds': 'Sports',
-    'isometric': 'Intervals',
+    'isometric': 'Isometric',
   };
 
   /// Maps effortKind → canonical group key used for grouping/display.
@@ -118,6 +124,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       final prs = await widget.sessionSummaryService.computePRs(
         _summary.exercises,
       );
+      final groupedPrs = widget.sessionSummaryService.groupPrsByEffortKind(
+        prs,
+        _summary.exercises,
+      );
+      final groupMetrics = await widget.sessionSummaryService.buildGroupMetrics(
+        _summary,
+      );
+      final restTimeMs = await widget.sessionSummaryService
+          .computeSessionRestTimeMs(currentSession.id);
+      final preferredWeightUnit = await widget.sessionSummaryService
+          .getPreferredWeightUnit();
       await _loadCalendarData();
 
       if (!mounted) return;
@@ -125,6 +142,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       setState(() {
         _groupDeltas = groupDeltas;
         _prs = prs;
+        _prsByGroup = groupedPrs;
+        _groupMetrics = groupMetrics;
+        _restTimeMs = restTimeMs;
+        _preferredWeightUnit = preferredWeightUnit;
         _isLoading = false;
       });
     }
@@ -340,6 +361,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               final modality = session.modality;
               final selectedExercise = await showDialog<Exercise>(
                 context: context,
+                barrierColor: Colors.black.withOpacity(0.78),
                 builder: (context) => ExercisePickerDialog(
                   workoutState: widget.workoutState,
                   sessionModality: modality,
@@ -519,33 +541,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.06)),
-            ),
-          ),
-          child: SizedBox(
-            width: double.infinity,
-            height: OmniTheme.buttonPrimaryHeight,
-            child: FilledButton(
-              onPressed: _finishAndSaveSession,
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Done'),
-            ),
-          ),
-        ),
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Done',
+        onPressed: _finishAndSaveSession,
       ),
       body: OmniGradientBackground(
         child: SafeArea(
@@ -589,15 +587,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     _buildHeaderCard(theme),
                     const SizedBox(height: 16),
                     _buildStatsCard(theme),
-                    const SizedBox(height: 16),
-                    _buildRpeCard(theme),
-                    const SizedBox(height: 16),
-                    _buildExerciseListSection(theme),
-                    if (_prs.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      _buildPrsCard(theme),
-                    ],
-                    const SizedBox(height: 16),
+                    ..._buildGroupCards(theme),
                     _buildNoteCard(theme),
                     const SizedBox(height: 16),
                     _buildCalendarCard(theme),
@@ -637,7 +627,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             style: theme.textTheme.headlineSmall?.copyWith(letterSpacing: 0.4),
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 _formatDateTime(startedAt),
@@ -645,7 +638,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
-              const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -670,79 +662,112 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildStatsCard(ThemeData theme) {
-    final session = widget.workoutState.currentSession;
-    final isRolling = session?.isRolling ?? false;
-
-    if (isRolling) {
-      // Rolling sessions: suppress Duration, show Exercises/Sets/Rounds in 1×3 row.
-      return _SummaryCard(
-        child: Row(
-          children: [
-            Expanded(
-              child: _StatPill(
-                label: 'Exercises',
-                value: _summary.exercises.length.toString(),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _StatPill(
-                label: 'Sets',
-                value: _summary.totalSets.toString(),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _StatPill(
-                label: 'Rounds',
-                value: _summary.totalRounds.toString(),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Non-rolling sessions: original 2×2 grid.
     final stats = <_StatItem>[
       _StatItem(
         label: 'Duration',
         value: _formatDuration(_summary.totalDurationMs),
       ),
-      _StatItem(
-        label: 'Exercises',
-        value: _summary.exercises.length.toString(),
-      ),
-      _StatItem(label: 'Sets', value: _summary.totalSets.toString()),
-      _StatItem(label: 'Rounds', value: _summary.totalRounds.toString()),
+      _StatItem(label: 'Rest Time', value: _formatDurationOrZero(_restTimeMs)),
     ];
 
     return _SummaryCard(
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatPill(label: stats[0].label, value: stats[0].value),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _StatPill(label: stats[1].label, value: stats[1].value),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildGroupCards(ThemeData theme) {
+    if (_groupMetrics.isEmpty) {
+      return const [];
+    }
+
+    final widgets = <Widget>[const SizedBox(height: 16)];
+    for (final key in _groupOrder) {
+      final metrics = _groupMetrics[key];
+      if (metrics == null) continue;
+      widgets.add(_buildGroupCard(theme, key, metrics, _groupDeltas[key]));
+      widgets.add(const SizedBox(height: 16));
+    }
+    return widgets;
+  }
+
+  Widget _buildGroupCard(
+    ThemeData theme,
+    String groupKey,
+    SessionGroupMetrics metrics,
+    GroupDelta? delta,
+  ) {
+    final label = _groupLabels[groupKey] ?? groupKey;
+    final labelColor = ModalityColors.forSummaryGroupLabel(groupKey);
+
+    final primaryLabel = metrics.primaryLabel;
+    final primaryValue = metrics.primaryCount.toString();
+
+    String secondaryLabel;
+    String secondaryValue;
+
+    if (groupKey == 'strength') {
+      secondaryLabel = 'Total Volume';
+      secondaryValue = _formatWeight(metrics.totalVolumeKg);
+    } else {
+      secondaryLabel = 'Total Time';
+      secondaryValue = _formatDurationOrZero(metrics.effortDurationMs);
+    }
+
+    final prs = _prsByGroup[groupKey] ?? const <PRAchievement>[];
+
+    return _SummaryCard(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
-                child: _StatPill(label: stats[0].label, value: stats[0].value),
+                child: Text(
+                  label,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: labelColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _StatPill(label: stats[1].label, value: stats[1].value),
-              ),
+              _buildGroupComparisonChip(theme, delta),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
-                child: _StatPill(label: stats[2].label, value: stats[2].value),
+                child: _StatPill(label: primaryLabel, value: primaryValue),
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _StatPill(label: stats[3].label, value: stats[3].value),
+                child: _StatPill(label: secondaryLabel, value: secondaryValue),
               ),
             ],
           ),
+          if (prs.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Divider(color: Colors.white.withOpacity(0.06), height: 1),
+            const SizedBox(height: 10),
+            for (final pr in prs)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  '${pr.exerciseName}: New best ${_formatWeight(pr.newBest)} (was ${_formatWeight(pr.previousBest)})',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -860,7 +885,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ThemeData theme,
     List<ExerciseSummary> exercises,
   ) {
-    final blocks = widget.workoutState.getSessionBlocks(); // sorted by orderIndex
+    final blocks = widget.workoutState
+        .getSessionBlocks(); // sorted by orderIndex
 
     // Map blockId → exercises in execution order.
     final Map<String, List<ExerciseSummary>> byBlock = {};
@@ -879,12 +905,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     for (final block in blocks) {
       final blockExercises = byBlock[block.id] ?? [];
       if (blockExercises.isEmpty) continue;
-      blockExercises.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
-      groups.add(_BlockGroup(
-        header: block.name,
-        timeMs: block.createdAtMs,
-        exercises: blockExercises,
-      ));
+      blockExercises.sort(
+        (a, b) => a.executionOrder.compareTo(b.executionOrder),
+      );
+      groups.add(
+        _BlockGroup(
+          header: block.name,
+          timeMs: block.createdAtMs,
+          exercises: blockExercises,
+        ),
+      );
     }
 
     // Also include exercises for unknown blockIds (data inconsistency safety).
@@ -897,11 +927,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     if (unassigned.isNotEmpty) {
       unassigned.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
-      groups.add(_BlockGroup(
-        header: 'Other',
-        timeMs: null,
-        exercises: unassigned,
-      ));
+      groups.add(
+        _BlockGroup(header: 'Other', timeMs: null, exercises: unassigned),
+      );
     }
 
     final items = <Widget>[];
@@ -1141,7 +1169,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final String formattedValue;
     switch (delta.unit) {
       case 'kg':
-        formattedValue = '${_formatNumber(d.abs())} kg';
+        final converted = _convertKgToPreferred(d.abs());
+        formattedValue = '${_formatNumber(converted)} $_preferredWeightUnit';
         break;
       case 'ms':
         formattedValue = _formatDurationDelta(d.abs().toInt());
@@ -1387,6 +1416,25 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return '${seconds}s';
   }
 
+  String _formatDurationOrZero(int durationMs) {
+    if (durationMs <= 0) {
+      return '0';
+    }
+    return _formatDuration(durationMs);
+  }
+
+  double _convertKgToPreferred(double kg) {
+    if (_preferredWeightUnit == 'lbs') {
+      return kg * 2.2046226218;
+    }
+    return kg;
+  }
+
+  String _formatWeight(double valueKg) {
+    final converted = _convertKgToPreferred(valueKg);
+    return '${_formatNumber(converted)} $_preferredWeightUnit';
+  }
+
   String _formatNumber(double value) {
     if (value.abs() < 1) {
       return value.toStringAsFixed(1);
@@ -1543,10 +1591,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: themeColors.textMuted,
-            ),
+            style: TextStyle(fontSize: 13, color: themeColors.textMuted),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1594,7 +1639,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
   Widget _buildFeelingTile(int number, Color accentColor) {
     final theme = Theme.of(context);
     final isSelected = _selectedFeeling == number;
-    final tileColor = _getFeelingColor(number);
+    final tileColor = feelingColor(number, context);
 
     return GestureDetector(
       onTap: () => _selectFeeling(number),
@@ -1629,24 +1674,6 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
         ),
       ),
     );
-  }
-
-  /// Get feeling-specific color based on the number
-  Color _getFeelingColor(int number) {
-    switch (number) {
-      case 1:
-        return Colors.red;
-      case 2:
-        return Colors.orange;
-      case 3:
-        return Colors.yellow[700]!;
-      case 4:
-        return Colors.green;
-      case 5:
-        return Theme.of(context).primaryColor;
-      default:
-        return Theme.of(context).primaryColor;
-    }
   }
 
   Future<void> _selectFeeling(int feeling) async {

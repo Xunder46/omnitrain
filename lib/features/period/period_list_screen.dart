@@ -5,6 +5,7 @@ import '../../core/utils/modality_color_utils.dart';
 import '../../state/period/period_state.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 import 'create_period_screen.dart';
 
 class PeriodListScreen extends StatefulWidget {
@@ -28,6 +29,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Training Periods'),
@@ -62,7 +64,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
               }
 
               return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 128),
                 itemCount: periods.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) => _PeriodRow(
@@ -75,35 +77,9 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
           ),
         ),
       ),
-      bottomSheet: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: SizedBox(
-            width: double.infinity,
-            height: OmniTheme.buttonPrimaryHeight,
-            child: FilledButton(
-              onPressed: () => _openCreate(context),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.add, size: 20),
-                  SizedBox(width: 8),
-                  Text('Create Period'),
-                ],
-              ),
-            ),
-          ),
-        ),
+      bottomNavigationBar: OmniBottomCTA(
+        label: '+ Create Period',
+        onPressed: () => _openCreate(context),
       ),
     );
   }
@@ -147,7 +123,9 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
             style: ButtonStyle(
               shape: WidgetStateProperty.all(
                 RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
                 ),
               ),
             ),
@@ -158,7 +136,9 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
             style: ButtonStyle(
               shape: WidgetStateProperty.all(
                 RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
                 ),
               ),
             ),
@@ -193,8 +173,7 @@ class _PeriodRow extends StatelessWidget {
     );
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final isActive =
-        period.startDateMs <= now && period.endDateMs >= now;
+    final isActive = period.startDateMs <= now && period.endDateMs >= now;
 
     final theme = Theme.of(context);
     final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
@@ -227,13 +206,11 @@ class _PeriodRow extends StatelessWidget {
             ),
             if (isActive)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withOpacity(0.15),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(

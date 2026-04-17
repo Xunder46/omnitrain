@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
+import '../../widgets/layout/omni_gradient_background.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 
 class ExerciseEditorScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -119,151 +121,148 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final appBar = AppBar(
+      title: const Text('New Exercise'),
+      backgroundColor: Colors.transparent,
+      foregroundColor: theme.colorScheme.onSurface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+    );
+
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('New Exercise')),
-        body: const Center(child: CircularProgressIndicator()),
+        backgroundColor: Colors.transparent,
+        extendBodyBehindAppBar: true,
+        appBar: appBar,
+        body: OmniGradientBackground(
+          child: const SafeArea(
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('New Exercise'), actions: []),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Exercise name',
-                    border: OutlineInputBorder(),
-                  ),
-                  textInputAction: TextInputAction.next,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Name is required';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Description (optional)',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String?>(
-                  initialValue: _selectedDisciplineId,
-                  decoration: const InputDecoration(
-                    labelText: 'Discipline',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('None'),
+      backgroundColor: Colors.transparent,
+      extendBody: true,
+      extendBodyBehindAppBar: true,
+      appBar: appBar,
+      body: OmniGradientBackground(
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Exercise name',
+                      border: OutlineInputBorder(),
                     ),
-                    ..._disciplines.map(
-                      (discipline) => DropdownMenuItem<String?>(
-                        value: discipline.id,
-                        child: Text(discipline.name),
+                    textInputAction: TextInputAction.next,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Name is required';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _descriptionController,
+                    decoration: const InputDecoration(
+                      labelText: 'Description (optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String?>(
+                    initialValue: _selectedDisciplineId,
+                    decoration: const InputDecoration(
+                      labelText: 'Discipline',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('None'),
                       ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedDisciplineId = value;
-                    });
-                  },
-                ),
-                const SizedBox(height: 20),
-                Text('Capabilities', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _capabilityOptions.map((option) {
-                    final isSelected = _selectedCapabilities.contains(
-                      option.id,
-                    );
-                    return FilterChip(
-                      label: Text(option.label),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            _selectedCapabilities.add(option.id);
-                          } else {
-                            _selectedCapabilities.remove(option.id);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-                Text('Muscle groups', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _muscleGroups.map((muscle) {
-                    final isSelected = _selectedMuscleGroupIds.contains(
-                      muscle.id,
-                    );
-                    return FilterChip(
-                      label: Text(muscle.name),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() {
-                          if (selected) {
-                            _selectedMuscleGroupIds.add(muscle.id);
-                          } else {
-                            _selectedMuscleGroupIds.remove(muscle.id);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-              ],
+                      ..._disciplines.map(
+                        (discipline) => DropdownMenuItem<String?>(
+                          value: discipline.id,
+                          child: Text(discipline.name),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedDisciplineId = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Text('Capabilities', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _capabilityOptions.map((option) {
+                      final isSelected = _selectedCapabilities.contains(
+                        option.id,
+                      );
+                      return FilterChip(
+                        label: Text(option.label),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedCapabilities.add(option.id);
+                            } else {
+                              _selectedCapabilities.remove(option.id);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 20),
+                  Text('Muscle groups', style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _muscleGroups.map((muscle) {
+                      final isSelected = _selectedMuscleGroupIds.contains(
+                        muscle.id,
+                      );
+                      return FilterChip(
+                        label: Text(muscle.name),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedMuscleGroupIds.add(muscle.id);
+                            } else {
+                              _selectedMuscleGroupIds.remove(muscle.id);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 0, 10, 20),
-          child: SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: FilledButton(
-              onPressed: _isSaving ? null : _save,
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
-                    ),
-                  ),
-                ),
-                backgroundColor: WidgetStateProperty.all(
-                  theme.colorScheme.primary.withOpacity(0.8),
-                ),
-              ),
-              child: const Text('Save exercise'),
-            ),
-          ),
-        ),
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Save exercise',
+        onPressed: _isSaving ? null : _save,
       ),
     );
   }

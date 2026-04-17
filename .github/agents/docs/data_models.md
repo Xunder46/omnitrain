@@ -324,12 +324,16 @@ Used by the post-workout summary screen (not persisted):
 | Class | File | Purpose |
 |-------|------|---------|
 | `SessionSummary` | `lib/core/models/session_summary.dart` | Computed session stats |
+| `SessionGroupMetrics` | same | Per-group summary card metrics (count + effort time or volume) |
 | `ExerciseSummary` | same | Per-exercise stats |
 | `PRAchievement` | same | New personal records |
+| `GroupDelta` | same | Per-group comparison chip data vs previous session |
 | `VolumeComparison` | same | Delta vs previous session |
 | `SessionTemplateDraft` | same | Draft for save-as-routine |
 | `SessionTemplateExercise` | same | Exercise entry in draft |
 | `TemplateTargetDraft` | same | Target entry in draft |
+
+Notable current `SessionSummary` fields consumed by UI include `totalRounds`, `totalRoundDurationMs`, `totalCardioDurationMs`, and `totalDrillDurationMs`.
 
 See [Session Summary](session_summary.md) for details.
 
@@ -379,5 +383,5 @@ MetricDefinition ←── UnitModel
 
 ---
 
-**Document Version**: 1.2
-**Last Updated**: March 22, 2026
+**Document Version**: 1.3
+**Last Updated**: April 13, 2026

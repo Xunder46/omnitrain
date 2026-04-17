@@ -13,7 +13,7 @@ Add user-selectable app themes to OmniTrain with two new palettes (Forge & Ember
     - backgroundTop: `Color(0xFF0F1F33)`
     - backgroundBottom: `Color(0xFF060B14)`
     - surface: `Color(0xFF0E223A)`
-    - primary: `Color(0xFF2DE2E6)`
+    - primary: `Color(0xFF00B4B8)`
     - secondary: `Color(0xFF1B9AAA)`
     - textMuted: `Color(0xFF9BA4B5)`
     - divider: `Color(0xFF1F2937)`
@@ -136,6 +136,11 @@ Add user-selectable app themes to OmniTrain with two new palettes (Forge & Ember
 - [x] `WorkoutSessionScreen` edit/list theme fallback uses `OmniTheme.activeTheme` when `settingsState` is null
 - [x] Settings Appearance theme selector uses a 2-column by 4-row mini-tile grid layout
 - [x] Settings AppBar title bar colors follow active theme tokens (no static white)
+- [x] Settings header title and back arrow colors match the shared transparent AppBar pattern used by other pages
+- [x] ExerciseEditorScreen app bar and save area use active theme chrome instead of default Material surfaces
+- [x] Harden Abyssal Neon CTA contrast by deepening the primary teal while keeping white onPrimary text
+
+Phase Status: Complete
 
 ## Acceptance Criteria
 - [ ] `AppTheme` compiles with exhaustive switch handling for all three themes.

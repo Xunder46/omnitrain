@@ -21,6 +21,9 @@ class InlineMetricEditor extends StatefulWidget {
   /// Optional override color for the unit label.
   final Color? unitLabelColor;
 
+  /// When true, the unit is shown inline beside the value instead of below it.
+  final bool showUnitInline;
+
   /// Called when value changes, passes new value
   final Function(dynamic) onValueChanged;
 
@@ -31,6 +34,7 @@ class InlineMetricEditor extends StatefulWidget {
     required this.unitLabel,
     this.isReadOnly = false,
     this.unitLabelColor,
+    this.showUnitInline = false,
     required this.onValueChanged,
   });
 
@@ -113,6 +117,20 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     final theme = Theme.of(context);
     final displayText = _formatValue();
 
+    final valueStyle = theme.textTheme.displayLarge?.copyWith(
+      fontWeight: FontWeight.w300,
+      letterSpacing: -2,
+      color: widget.isReadOnly
+          ? theme.colorScheme.onSurface.withAlpha((0.45 * 255).round())
+          : null,
+    );
+    final unitStyle = theme.textTheme.labelMedium?.copyWith(
+      letterSpacing: 1,
+      color:
+          widget.unitLabelColor ??
+          theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+    );
+
     return GestureDetector(
       onVerticalDragUpdate: widget.isReadOnly
           ? null
@@ -142,31 +160,32 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Main value display
-            Text(
-              displayText,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.displayLarge?.copyWith(
-                fontWeight: FontWeight.w300,
-                letterSpacing: -2,
-                color: widget.isReadOnly
-                    ? theme.colorScheme.onSurface.withAlpha(
-                        (0.45 * 255).round(),
-                      )
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Unit label
-            Text(
-              widget.unitLabel.toUpperCase(),
-              style: theme.textTheme.labelMedium?.copyWith(
-                letterSpacing: 1,
-                color:
-                    widget.unitLabelColor ??
-                    theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
-              ),
-            ),
+            if (widget.showUnitInline && widget.unitLabel.isNotEmpty)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    displayText,
+                    textAlign: TextAlign.center,
+                    style: valueStyle,
+                  ),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      widget.unitLabel.toUpperCase(),
+                      style: unitStyle,
+                    ),
+                  ),
+                ],
+              )
+            else
+              Text(displayText, textAlign: TextAlign.center, style: valueStyle),
+            if (!widget.showUnitInline && widget.unitLabel.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(widget.unitLabel.toUpperCase(), style: unitStyle),
+            ],
           ],
         ),
       ),

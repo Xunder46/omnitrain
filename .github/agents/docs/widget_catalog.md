@@ -56,6 +56,25 @@ Base container for all cards and panels. Dark navy with border + shadow.
 
 Uses `OmniTheme.surfaceColor`, `surfaceBorderRadius`, `surfaceBorderColor`, `surfaceBorderWidth`, `deepShadow`.
 
+### `OmniBottomCTA`
+
+**File**: `lib/widgets/layout/omni_bottom_cta.dart`
+
+Shared full-width bottom call-to-action used by screens with a single persistent footer action.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `label` | `String` | required | Button text; a leading `+` triggers the shared add affordance |
+| `onPressed` | `VoidCallback?` | required | Tap handler; `null` disables the CTA |
+| `isDestructive` | `bool` | `false` | Uses the active theme’s destructive/error colors |
+
+**Behavior**:
+- Fixed height: `OmniTheme.buttonPrimaryHeight`
+- Fixed radius: `OmniTheme.buttonBorderRadius`
+- Footer-safe spacing via `SafeArea(top: false)` with shared padding
+- Theme-reactive fade gradient behind the button using `colorScheme.surface`
+- Prevents per-screen CTA styling drift by centralizing footer layout and colors
+
 ### `NoiseOverlayPainter`
 
 **File**: `lib/widgets/layout/noise_overlay_painter.dart`

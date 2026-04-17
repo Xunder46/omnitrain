@@ -338,6 +338,12 @@ Container(
 
 **List View**:
 - Shows all exercises in session
+- Ordering behavior:
+  - Non-rolling sessions: detail navigation follows the exact same sequence as the rendered list.
+  - With blocks present, block anchors define group placement in the list and detail traversal.
+  - Within a block, exercises are ordered by `createdAtMs`, then `executionOrder`, then id.
+  - Standalone (no-block) exercises are ordered by `createdAtMs`, then `executionOrder`, then id.
+  - Rolling sessions: exercises render grouped by session block order.
 - Summary stats per exercise:
   - **set**: "3 sets"
   - **timed**: "05:30 total"
@@ -345,6 +351,7 @@ Container(
   - **drill**: "3 holds"
 - Tap exercise to enter detail view
 - FAB button to add new exercise
+- Non-rolling list view does not render modality group headers.
 
 **Detail View**:
 - Single exercise focus
@@ -674,8 +681,8 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 
 ---
 
-**Document Version**: 1.3  
-**Last Updated**: March 22, 2026  
+**Document Version**: 1.4  
+**Last Updated**: April 13, 2026  
 **Author**: Automated documentation generated from codebase analysis  
 **Related Docs**: 
 - [modality_tracking.md](.github/agents/docs/modality_tracking.md) — Data layer + business logic

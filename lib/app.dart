@@ -83,7 +83,7 @@ class MyApp extends StatelessWidget {
           theme: appTheme.copyWith(textTheme: textTheme),
           // Splash screen temporarily disabled - showing home screen directly
           // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
-          home: true //showOnboarding
+          home: showOnboarding
               ? OnboardingScreen(
                   repository: repository,
                   workoutState: workoutState,
@@ -128,7 +128,7 @@ ThemeData buildTheme({
   final colorScheme = ColorScheme(
     brightness: brightness,
     primary: primary,
-    onPrimary: brightness == Brightness.dark ? Colors.black : Colors.white,
+    onPrimary: Colors.white,
     secondary: secondary,
     onSecondary: Colors.white,
     error: Colors.red,
