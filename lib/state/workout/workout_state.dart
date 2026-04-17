@@ -749,9 +749,13 @@ class WorkoutState extends ChangeNotifier {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final entryIndex =
-          (_observations[effortId]?.length ?? 0) ~/
-          2; // Rough index for grouping
+      final existingObservations =
+          _observations[effortId] ?? <EffortObservation>[];
+      final entryIndex = effort.effortKind == 'set'
+          ? existingObservations
+                .where((o) => o.metricId == MetricIds.reps)
+                .length
+          : existingObservations.length ~/ 2;
 
       // Round efforts use RoundInstance records — not EffortObservation pairs.
       // Priority chain for planned duration (highest → lowest):
@@ -856,6 +860,24 @@ class WorkoutState extends ChangeNotifier {
               updatedAtMs: now,
             ),
           );
+          final hasLoad =
+              _exerciseCache[effort.exerciseId]?.capabilities.contains(
+                'load',
+              ) ??
+              false;
+          if (!hasLoad) {
+            observations.add(
+              EffortObservation(
+                id: 'obs-$effortId-$entryIndex-extra-weight',
+                effortId: effortId,
+                metricId: MetricIds.extraWeight,
+                unitId: MetricIds.unitKg,
+                valueReal: (previousValues?['extra-weight'] as double?) ?? 0.0,
+                createdAtMs: now,
+                updatedAtMs: now,
+              ),
+            );
+          }
           break;
 
         case 'timed': // Now handled by TimedInstance — should not reach here
@@ -966,6 +988,21 @@ class WorkoutState extends ChangeNotifier {
         observations[obsIndex] = newObs;
 
         notifyListeners();
+      } else if (metricKey == 'extra-weight') {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final newObservation = EffortObservation(
+          id: 'obs-$effortId-$entryIndex-extra-weight',
+          effortId: effortId,
+          metricId: metricId,
+          unitId: _metricKeyToUnitId[metricKey],
+          valueReal: value is double ? value : (value as num).toDouble(),
+          createdAtMs: now,
+          updatedAtMs: now,
+        );
+
+        await _repository.createObservation(newObservation);
+        observations.add(newObservation);
+        notifyListeners();
       }
     } catch (e) {
       _setError('Failed to update entry: $e');
@@ -1039,28 +1076,38 @@ class WorkoutState extends ChangeNotifier {
       final observations = _observations[effortId];
       if (observations == null) return;
 
-      // Get observations for this entry based on effort kind
-      final metricsPerEntry = _getMetricsPerEntry(effort.effortKind);
-      final startIndex = entryIndex * metricsPerEntry;
-      final endIndex = startIndex + metricsPerEntry;
+      final idPrefix = 'obs-$effortId-$entryIndex-';
+      final obsToDelete = observations
+          .where((o) => o.id.startsWith(idPrefix))
+          .toList();
 
-      if (startIndex >= observations.length) return;
+      if (obsToDelete.isNotEmpty) {
+        for (final obs in obsToDelete) {
+          await _repository.deleteObservation(obs.id);
+        }
+        observations.removeWhere((o) => o.id.startsWith(idPrefix));
+      } else {
+        // Fallback for any legacy observation ordering that predates ID-prefix deletion.
+        final metricsPerEntry = _getMetricsPerEntry(effort.effortKind);
+        final startIndex = entryIndex * metricsPerEntry;
+        final endIndex = startIndex + metricsPerEntry;
 
-      // Delete the observations in reverse order to maintain indices
-      final obsToDelete = observations.sublist(
-        startIndex,
-        endIndex.clamp(0, observations.length),
-      );
+        if (startIndex >= observations.length) return;
 
-      for (final obs in obsToDelete) {
-        await _repository.deleteObservation(obs.id);
+        final fallbackDelete = observations.sublist(
+          startIndex,
+          endIndex.clamp(0, observations.length),
+        );
+
+        for (final obs in fallbackDelete) {
+          await _repository.deleteObservation(obs.id);
+        }
+
+        observations.removeRange(
+          startIndex,
+          endIndex.clamp(0, observations.length),
+        );
       }
-
-      // Remove from local cache
-      observations.removeRange(
-        startIndex,
-        endIndex.clamp(0, observations.length),
-      );
 
       notifyListeners();
     } catch (e) {
@@ -2696,6 +2743,18 @@ class WorkoutState extends ChangeNotifier {
             effort.effortKind,
             effortObservations,
           );
+
+          final hasLoad = exercise?.capabilities.contains('load') ?? false;
+          if (effort.effortKind == 'set' && !hasLoad) {
+            final extraWeightObs = effortObservations
+                .where((o) => o.metricId == MetricIds.extraWeight)
+                .toList();
+            for (int i = 0; i < entries.length; i++) {
+              entries[i]['extra-weight'] = i < extraWeightObs.length
+                  ? (extraWeightObs[i].valueReal ?? 0.0)
+                  : (entries[i]['extra-weight'] as double? ?? 0.0);
+            }
+          }
         }
 
         result.add({

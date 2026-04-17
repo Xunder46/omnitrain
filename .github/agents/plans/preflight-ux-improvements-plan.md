@@ -404,7 +404,7 @@ to give Flutter the layout hint.
 ## Progress
 - [x] Item 1: Empty session state (workout_session_screen.dart)
 - [x] Item 2: SYSTEM → HUB (home_screen.dart)
-- [ ] Item 3: Weight adjustment toggle (workout_session_screen.dart + state wiring)
+- [x] Item 3: Weight adjustment toggle (workout_session_screen.dart + state wiring)
 - [ ] Item 4: Day details session cards (day_session_list_screen.dart + feeling color utility)
 
 ## Feedback

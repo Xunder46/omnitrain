@@ -2844,6 +2844,108 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // WorkoutSessionScreen – weight adjustment toggle
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('WorkoutSessionScreen – weight adjustment toggle', () {
+    testWidgets(
+      'timed exercise reveals extra weight only after tapping the link',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        await repo.setPreferenceString('preferred_weight_unit', 'lbs');
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await workoutState.markExerciseInfoHintSeen();
+        await workoutState.markExerciseNotesHintSeen();
+        await workoutState.createNewSession(modality: 'cardio_endurance');
+
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('time'),
+          orElse: () => exercises.first,
+        );
+        await workoutState.addExerciseToSession(
+          timedExercise,
+          effortKindOverride: 'timed',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(timedExercise.name).first);
+        await tester.pumpAndSettle();
+
+        final linkFinder = find.widgetWithText(TextButton, 'Weight adjustment');
+        await tester.ensureVisible(linkFinder);
+
+        expect(linkFinder, findsOneWidget);
+        expect(find.text('EXTRA KG'), findsNothing);
+
+        await tester.tap(linkFinder);
+        await tester.pumpAndSettle();
+        expect(find.text('EXTRA KG'), findsNothing);
+        expect(find.text('LBS'), findsOneWidget);
+
+        await tester.ensureVisible(linkFinder);
+        await tester.tap(linkFinder);
+        await tester.pumpAndSettle();
+        expect(find.text('EXTRA KG'), findsNothing);
+      },
+    );
+
+    testWidgets('loaded set exercise does not show weight adjustment link', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.markExerciseInfoHintSeen();
+      await workoutState.markExerciseNotesHintSeen();
+      await workoutState.createNewSession(modality: 'resistance_lifting');
+
+      final exercises = await repo.getExercises();
+      final loadedExercise = exercises.firstWhere(
+        (e) =>
+            e.capabilities.contains('sets') && e.capabilities.contains('load'),
+        orElse: () => exercises.first,
+      );
+      await workoutState.addExerciseToSession(
+        loadedExercise,
+        effortKindOverride: 'set',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(loadedExercise.name).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Weight adjustment'), findsNothing);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // WorkoutSessionScreen – rolling session block list view
   // ══════════════════════════════════════════════════════════════════════════
 

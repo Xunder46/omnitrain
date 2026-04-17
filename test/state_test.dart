@@ -1499,6 +1499,50 @@ void main() {
       );
     });
 
+    group('set extra-weight support', () {
+      test(
+        'set entries without load persist and expose extra-weight values',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'resistance_lifting');
+
+          final exercises = await repo.getExercises();
+          final bodyweightExercise = exercises.firstWhere(
+            (e) =>
+                e.capabilities.contains('sets') &&
+                !e.capabilities.contains('load'),
+            orElse: () => exercises.firstWhere(
+              (e) => !e.capabilities.contains('load'),
+              orElse: () => exercises.first,
+            ),
+          );
+
+          final effortId = await state.addExerciseToSession(
+            bodyweightExercise,
+            effortKindOverride: 'set',
+          );
+
+          final observations = await repo.getEffortObservations(effortId);
+          final metricIds = observations.map((o) => o.metricId).toSet();
+          expect(metricIds, contains('metric-extra-weight'));
+
+          final entry =
+              (state.getExercisesWithEntries().first['entries'] as List).first
+                  as Map<String, dynamic>;
+          expect(entry.containsKey('extra-weight'), true);
+          expect(entry['extra-weight'], 0.0);
+
+          await state.updateEntryValue(effortId, 0, 'extra-weight', -15.0);
+
+          final refreshedEntry =
+              (state.getExercisesWithEntries().first['entries'] as List).first
+                  as Map<String, dynamic>;
+          expect(refreshedEntry['extra-weight'], -15.0);
+        },
+      );
+    });
+
     group('rest lifecycle', () {
       test('recordRestStart creates an EntryRest record', () async {
         final repo = await _freshRepo();

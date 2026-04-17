@@ -104,6 +104,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // Changes are flushed to the repository only when Save is clicked.
   final Map<String, Map<String, dynamic>> _editBuffer = {};
 
+  // Per-entry expand/collapse state for the optional weight adjustment editor.
+  final Map<String, bool> _weightAdjustExpanded = {};
+
   // Prevent duplicate finish flows from double taps.
   bool _isFinishingSession = false;
 
@@ -827,7 +830,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   ) async {
     switch (effortKind) {
       case 'set':
-        // Persist reps and weight
+        // Persist reps, weight, and optional weight adjustment.
         await widget.workoutState.updateEntryValue(
           effortId,
           entryIndex,
@@ -840,6 +843,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           'weight',
           currentEntry['weight'] as double? ?? 0.0,
         );
+        if (currentEntry['extra-weight'] != null) {
+          await widget.workoutState.updateEntryValue(
+            effortId,
+            entryIndex,
+            'extra-weight',
+            (currentEntry['extra-weight'] as num).toDouble(),
+          );
+        }
         break;
       case 'timed':
         // Duration is tracked in TimedInstance (wall-clock); persist companion metrics.
@@ -3606,6 +3617,68 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     return _buildStandardSessionListView(theme);
   }
 
+  String get _preferredWeightUnitLabel {
+    final preferred = widget.settingsState?.preferredWeightUnit
+        .toLowerCase()
+        .trim();
+    return preferred == 'lb' || preferred == 'lbs' ? 'LBS' : 'KG';
+  }
+
+  Widget _buildWeightAdjustmentSection({
+    required ThemeData theme,
+    required String effortId,
+    required int entryIndex,
+    required double currentValue,
+    required ValueChanged<double> onValueChanged,
+  }) {
+    final key = '$effortId-$entryIndex';
+    final isExpanded = _weightAdjustExpanded[key] ?? false;
+    final isNonZero = currentValue != 0.0;
+    final linkColor = !isExpanded && !isNonZero
+        ? OmniTheme.textSecondary.withOpacity(0.7)
+        : theme.colorScheme.primary;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: () => setState(() {
+            _weightAdjustExpanded[key] = !isExpanded;
+          }),
+          style: ButtonStyle(
+            padding: WidgetStateProperty.all(
+              const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            ),
+            minimumSize: WidgetStateProperty.all(Size.zero),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  OmniTheme.buttonUtilityRadius,
+                ),
+              ),
+            ),
+          ),
+          child: Text(
+            'Weight adjustment',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(color: linkColor),
+          ),
+        ),
+        if (isExpanded)
+          InlineMetricEditor(
+            metricType: 'extra-weight',
+            currentValue: currentValue,
+            unitLabel: _preferredWeightUnitLabel,
+            showUnitInline: true,
+            onValueChanged: (value) =>
+                onValueChanged((value as num).toDouble()),
+          ),
+      ],
+    );
+  }
+
   Widget _buildMetricWidget(
     Map<String, dynamic> exercise,
     Map<String, dynamic> entryData,
@@ -3619,6 +3692,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       case 'set':
         final reps = entryData['reps'] as int? ?? 0;
         final weight = entryData['weight'] as double? ?? 0.0;
+        final exerciseId = exercise['exerciseId'] as String?;
+        final exerciseObj = widget.workoutState.getExercise(exerciseId);
+        final hasLoad = exerciseObj?.capabilities.contains('load') ?? false;
+        final extraWeight =
+            (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0;
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -3638,6 +3716,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'weight', value),
             ),
+            if (!hasLoad)
+              _buildWeightAdjustmentSection(
+                theme: theme,
+                effortId: effortId,
+                entryIndex: entryIndex,
+                currentValue: extraWeight,
+                onValueChanged: (value) => _updateMetricValue(
+                  effortId,
+                  entryIndex,
+                  'extra-weight',
+                  value,
+                ),
+              ),
           ],
         );
 
@@ -3695,10 +3786,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ),
               ),
               if (entryData['extra-weight'] != null)
-                InlineMetricEditor(
-                  metricType: 'extra-weight',
-                  currentValue: entryData['extra-weight'] as double,
-                  unitLabel: 'EXTRA KG',
+                _buildWeightAdjustmentSection(
+                  theme: theme,
+                  effortId: effortId,
+                  entryIndex: entryIndex,
+                  currentValue:
+                      (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
                   onValueChanged: (value) => _updateMetricValue(
                     effortId,
                     entryIndex,
@@ -3746,12 +3839,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                 ),
               ],
             ),
-            if (entryData['extra-weight'] != null) ...[
-              const SizedBox(height: 16),
-              InlineMetricEditor(
-                metricType: 'extra-weight',
-                currentValue: entryData['extra-weight'] as double,
-                unitLabel: 'EXTRA KG',
+            if (entryData['extra-weight'] != null)
+              _buildWeightAdjustmentSection(
+                theme: theme,
+                effortId: effortId,
+                entryIndex: entryIndex,
+                currentValue:
+                    (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
                 onValueChanged: (value) => _updateMetricValue(
                   effortId,
                   entryIndex,
@@ -3759,7 +3853,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   value,
                 ),
               ),
-            ],
           ],
         );
 
@@ -3945,10 +4038,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   value,
                 ),
               ),
-              InlineMetricEditor(
-                metricType: 'extra-weight',
+              _buildWeightAdjustmentSection(
+                theme: theme,
+                effortId: effortId,
+                entryIndex: entryIndex,
                 currentValue: drillExtraWeight,
-                unitLabel: 'EXTRA WEIGHT',
                 onValueChanged: (value) => _updateMetricValue(
                   effortId,
                   entryIndex,
@@ -3972,17 +4066,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               isReadOnly: true,
               onValueChanged: (_) {},
             ),
-            InlineMetricEditor(
-              metricType: 'extra-weight',
-              currentValue: drillExtraWeight,
-              unitLabel: 'EXTRA WEIGHT',
-              onValueChanged: (value) => _updateMetricValue(
-                effortId,
-                entryIndex,
-                'extra-weight',
-                value,
-              ),
-            ),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -4004,6 +4087,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   ),
                 ),
               ],
+            ),
+            _buildWeightAdjustmentSection(
+              theme: theme,
+              effortId: effortId,
+              entryIndex: entryIndex,
+              currentValue: drillExtraWeight,
+              onValueChanged: (value) => _updateMetricValue(
+                effortId,
+                entryIndex,
+                'extra-weight',
+                value,
+              ),
             ),
           ],
         );

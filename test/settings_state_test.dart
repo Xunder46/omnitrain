@@ -75,6 +75,17 @@ void main() {
     expect(reloaded.appTheme, AppTheme.forgeEmber);
   });
 
+  test('SettingsState loads the preferred weight unit from prefs', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    await repository.setPreferenceString('preferred_weight_unit', 'lbs');
+
+    final settingsState = SettingsState(repository);
+    await settingsState.initialize();
+
+    expect(settingsState.preferredWeightUnit, 'lbs');
+  });
+
   test('Void Pulse uses a visible violet atmospheric gradient', () {
     final colors = OmniTheme.colorsForTheme(AppTheme.voidPulse);
 
