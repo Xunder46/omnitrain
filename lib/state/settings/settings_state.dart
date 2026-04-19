@@ -6,6 +6,7 @@ import '../../data/repositories/workout_repository.dart';
 class SettingsState extends ChangeNotifier {
   static const String _themeKey = 'app_theme';
   static const String _preferredWeightUnitKey = 'preferred_weight_unit';
+  static const String _preferredDistanceUnitKey = 'preferred_distance_unit';
 
   final WorkoutRepository _repository;
 
@@ -13,9 +14,11 @@ class SettingsState extends ChangeNotifier {
 
   AppTheme _appTheme = AppTheme.abyssalNeon;
   String _preferredWeightUnit = 'kg';
+  String _preferredDistanceUnit = 'km';
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
+  String get preferredDistanceUnit => _preferredDistanceUnit;
 
   Future<void> initialize() async {
     await _loadFromPrefs();
@@ -39,6 +42,19 @@ class SettingsState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setPreferredDistanceUnit(String unit) async {
+    final normalized = unit.toLowerCase().trim();
+    _preferredDistanceUnit =
+        normalized == 'mile' || normalized == 'miles' || normalized == 'mi'
+        ? 'miles'
+        : 'km';
+    await _repository.setPreferenceString(
+      _preferredDistanceUnitKey,
+      _preferredDistanceUnit,
+    );
+    notifyListeners();
+  }
+
   Future<void> _loadFromPrefs() async {
     final savedTheme = await _repository.getPreferenceString(_themeKey);
     if (savedTheme != null) {
@@ -56,6 +72,18 @@ class SettingsState extends ChangeNotifier {
     _preferredWeightUnit = normalized == 'lb' || normalized == 'lbs'
         ? 'lbs'
         : 'kg';
+
+    final savedDistanceUnit = await _repository.getPreferenceString(
+      _preferredDistanceUnitKey,
+      defaultValue: 'km',
+    );
+    final normalizedDistance = savedDistanceUnit?.toLowerCase().trim();
+    _preferredDistanceUnit =
+        normalizedDistance == 'mile' ||
+            normalizedDistance == 'miles' ||
+            normalizedDistance == 'mi'
+        ? 'miles'
+        : 'km';
 
     notifyListeners();
   }

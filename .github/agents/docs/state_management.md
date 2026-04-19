@@ -240,19 +240,25 @@ Manages profile identity and body-measurement flows used by `ProfileScreen`.
 ### `SettingsState`
 
 **File**: `lib/state/settings/settings_state.dart`
-**Depends on**: `SharedPreferences`
+**Depends on**: `WorkoutRepository`
 
-Owns the persisted app theme selection. See [Theme & Settings](theme_and_settings.md) for full documentation.
+Owns persisted app appearance and measurement preferences. See [Theme & Settings](theme_and_settings.md) for full documentation.
 
 | Field | Type | Default |
 |-------|------|--------|
 | `_appTheme` | `AppTheme` | `AppTheme.abyssalNeon` |
+| `_preferredWeightUnit` | `String` | `'kg'` |
+| `_preferredDistanceUnit` | `String` | `'km'` |
 
 | Method | Purpose |
 |--------|--------|
 | `appTheme` | Getter — current selected theme |
-| `setAppTheme(AppTheme)` | Persists selection by enum name, notifies listeners (immediate reactive update) |
-| `_loadFromPrefs()` | Private — restores theme from `SharedPreferences` key `'app_theme'` on init |
+| `preferredWeightUnit` | Getter — current displayed load unit (`kg` or `lbs`) |
+| `preferredDistanceUnit` | Getter — current displayed distance unit (`km` or `miles`) |
+| `setAppTheme(AppTheme)` | Persists theme by enum name and notifies listeners for immediate UI updates |
+| `setPreferredWeightUnit(String)` | Normalizes/persists the display weight unit and notifies listeners |
+| `setPreferredDistanceUnit(String)` | Normalizes/persists the display distance unit and notifies listeners |
+| `_loadFromPrefs()` | Private — restores theme and unit preferences from repository-backed preference keys on init |
 
 ---
 

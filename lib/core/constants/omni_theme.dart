@@ -121,6 +121,9 @@ class OmniTheme {
   /// Secondary text color
   static const textSecondary = Color(0xB3FFFFFF); // White 70%
 
+  /// Muted text color for supporting labels and instrumentation copy
+  static const textMuted = Color(0xFF9BA4B5);
+
   // ═══════════════════════════════════════════════════════════
   // SHADOWS
   // ═══════════════════════════════════════════════════════════

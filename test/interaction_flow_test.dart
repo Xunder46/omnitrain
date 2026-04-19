@@ -727,5 +727,59 @@ void main() {
         expect(settingsState.appTheme, isNotNull);
       }
     });
+
+    testWidgets('unit toggles update preview values live', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('100 kg'), findsOneWidget);
+      expect(find.text('5 km'), findsOneWidget);
+
+      await tester.tap(find.text('lbs').first);
+      await tester.pumpAndSettle();
+
+      expect(settingsState.preferredWeightUnit, 'lbs');
+      expect(find.text('220.5 lbs'), findsOneWidget);
+
+      await tester.tap(find.text('mi').first);
+      await tester.pumpAndSettle();
+
+      expect(settingsState.preferredDistanceUnit, 'miles');
+      expect(find.text('3.1 mi'), findsOneWidget);
+    });
+
+    testWidgets('placeholder rows show the specified snackbars', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Equipment'));
+      await tester.pump();
+      expect(find.text('Equipment preferences coming soon'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Sign In'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Sign In'));
+      await tester.pump();
+      expect(find.text('Account sync coming soon'), findsOneWidget);
+    });
   });
 }

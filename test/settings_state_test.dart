@@ -86,6 +86,46 @@ void main() {
     expect(settingsState.preferredWeightUnit, 'lbs');
   });
 
+  test('SettingsState defaults preferred distance unit to km', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+
+    final settingsState = SettingsState(repository);
+    await settingsState.initialize();
+
+    expect(settingsState.preferredDistanceUnit, 'km');
+  });
+
+  test('SettingsState persists and reloads preferred distance unit', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+
+    final settingsState = SettingsState(repository);
+    await settingsState.initialize();
+    await settingsState.setPreferredDistanceUnit('miles');
+
+    expect(
+      await repository.getPreferenceString('preferred_distance_unit'),
+      'miles',
+    );
+
+    final reloaded = SettingsState(repository);
+    await reloaded.initialize();
+
+    expect(reloaded.preferredDistanceUnit, 'miles');
+  });
+
+  test('SettingsState normalizes invalid saved distance unit to km', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    await repository.setPreferenceString('preferred_distance_unit', 'yards');
+
+    final settingsState = SettingsState(repository);
+    await settingsState.initialize();
+
+    expect(settingsState.preferredDistanceUnit, 'km');
+  });
+
   test('Void Pulse uses a visible violet atmospheric gradient', () {
     final colors = OmniTheme.colorsForTheme(AppTheme.voidPulse);
 

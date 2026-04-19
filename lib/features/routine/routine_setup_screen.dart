@@ -8,7 +8,9 @@ import '../../core/constants/metric_ids.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../state/routine/routine_state.dart';
+import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
+import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 
 /// Screen for creating or editing a workout routine (template)
@@ -16,12 +18,14 @@ class RoutineSetupScreen extends StatefulWidget {
   final RoutineState routineState;
   final WorkoutState? workoutState; // Optional for loading exercise data
   final String? templateId; // null = create new, non-null = edit existing
+  final SettingsState? settingsState;
 
   const RoutineSetupScreen({
     super.key,
     required this.routineState,
     this.workoutState,
     this.templateId,
+    this.settingsState,
   });
 
   @override
@@ -32,6 +36,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   late TextEditingController _nameController;
   late TextEditingController _descriptionController;
   bool _isLoading = true;
+
+  String get _preferredWeightUnitLabel => widget.settingsState != null
+      ? UnitFormatter.weightLabelUpper(widget.settingsState!)
+      : UnitFormatter.weightLabelUpperForUnit('kg');
   Map<String, Exercise> _exerciseCache = {};
   bool _showListView = true;
   int _currentExerciseIndex = 0;
@@ -1256,7 +1264,7 @@ extension on _RoutineSetupScreenState {
             InlineMetricEditor(
               metricType: 'weight',
               currentValue: weight,
-              unitLabel: 'LBS',
+              unitLabel: _preferredWeightUnitLabel,
               onValueChanged: (value) => widget.routineState.setTargetValue(
                 effort.id,
                 MetricIds.weight,
@@ -1295,7 +1303,7 @@ extension on _RoutineSetupScreenState {
               InlineMetricEditor(
                 metricType: 'extra-weight',
                 currentValue: timedExtraWeight,
-                unitLabel: 'EXTRA KG',
+                unitLabel: 'EXTRA $_preferredWeightUnitLabel',
                 onValueChanged: (value) => widget.routineState.setTargetValue(
                   effort.id,
                   MetricIds.extraWeight,
@@ -1370,7 +1378,7 @@ extension on _RoutineSetupScreenState {
             InlineMetricEditor(
               metricType: 'extra-weight',
               currentValue: extraWeight,
-              unitLabel: 'EXTRA WEIGHT',
+              unitLabel: 'EXTRA $_preferredWeightUnitLabel',
               onValueChanged: (value) => widget.routineState.setTargetValue(
                 effort.id,
                 MetricIds.extraWeight,
@@ -1439,7 +1447,9 @@ extension on _RoutineSetupScreenState {
           MetricIds.weight,
           previousIndex,
         );
-        statsText = 'Previous: $reps reps @ ${weight.toStringAsFixed(1)} lbs';
+        statsText = widget.settingsState != null
+            ? 'Previous: $reps reps @ ${UnitFormatter.formatWeightValue(weight, widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
+            : 'Previous: $reps reps @ ${weight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
         break;
       case 'timed':
         final duration =
@@ -1453,7 +1463,9 @@ extension on _RoutineSetupScreenState {
             ? _getTargetDouble(targets, MetricIds.extraWeight, previousIndex)
             : null;
         if (timedPrevEw != null && timedPrevEw != 0.0) {
-          statsText += ' + ${timedPrevEw.toStringAsFixed(1)} kg';
+          statsText += widget.settingsState != null
+              ? ' + ${UnitFormatter.formatWeightValue(timedPrevEw, widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
+              : ' + ${timedPrevEw.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
         }
         break;
       case 'round':
@@ -1475,8 +1487,9 @@ extension on _RoutineSetupScreenState {
         final mins = duration ~/ 60;
         final secs = duration % 60;
         final ewSign = extraWeight > 0 ? '+' : '';
-        statsText =
-            'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ $ewSign${extraWeight.toStringAsFixed(1)} lbs';
+        statsText = widget.settingsState != null
+            ? 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ $ewSign${UnitFormatter.formatWeightValue(extraWeight.abs(), widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
+            : 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ $ewSign${extraWeight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
         break;
       default:
         return const SizedBox.shrink();

@@ -6,18 +6,22 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/constants/profile_measurements.dart';
 import '../../../core/utils/date_utils.dart';
+import '../../../core/utils/unit_formatter.dart';
 import '../../../data/models/models.dart';
 import '../../../state/profile/profile_state.dart';
+import '../../../state/settings/settings_state.dart';
 
 class MeasurementHistoryChartSheet extends StatefulWidget {
   final ProfileState profileState;
   final ProfileMeasurementDefinition definition;
+  final SettingsState settingsState;
   final Future<void> Function() onLogNew;
 
   const MeasurementHistoryChartSheet({
     super.key,
     required this.profileState,
     required this.definition,
+    required this.settingsState,
     required this.onLogNew,
   });
 
@@ -144,8 +148,9 @@ class _MeasurementHistoryChartSheetState
     final selectedDate = DateTime.fromMillisecondsSinceEpoch(
       selected.recordedAtMs,
     );
-    final valueLabel =
-        '${ProfileMeasurements.formatValue(selected.value)} ${ProfileMeasurements.unitLabelFor(selected.unitId)}';
+    final valueLabel = selected.unitId == 'unit-kg'
+        ? UnitFormatter.formatWeight(selected.value, widget.settingsState)
+        : '${ProfileMeasurements.formatValue(selected.value)} ${ProfileMeasurements.unitLabelFor(selected.unitId)}';
 
     return SizedBox(
       width: double.infinity,
@@ -242,8 +247,13 @@ class _MeasurementHistoryChartSheetState
                     final x = _entries.length == 1
                         ? plotWidth / 2
                         : (i / (_entries.length - 1)) * plotWidth;
-                    final yRatio =
-                        (_entries[i].value - chartMetrics.yMin) / yRange;
+                    final displayValue = _entries[i].unitId == 'unit-kg'
+                        ? UnitFormatter.convertWeight(
+                            _entries[i].value,
+                            widget.settingsState,
+                          )
+                        : _entries[i].value;
+                    final yRatio = (displayValue - chartMetrics.yMin) / yRange;
                     final y = (plotHeight - (yRatio * plotHeight)).clamp(
                       0.0,
                       plotHeight,
@@ -277,10 +287,19 @@ class _MeasurementHistoryChartSheetState
     final spots = <FlSpot>[];
 
     for (var i = 0; i < _entries.length; i++) {
-      spots.add(FlSpot(i.toDouble(), _entries[i].value));
+      final displayValue = _entries[i].unitId == 'unit-kg'
+          ? UnitFormatter.convertWeight(_entries[i].value, widget.settingsState)
+          : _entries[i].value;
+      spots.add(FlSpot(i.toDouble(), displayValue));
     }
 
-    final values = _entries.map((entry) => entry.value).toList(growable: false);
+    final values = _entries
+        .map((entry) {
+          return entry.unitId == 'unit-kg'
+              ? UnitFormatter.convertWeight(entry.value, widget.settingsState)
+              : entry.value;
+        })
+        .toList(growable: false);
     final minValue = values.reduce(min);
     final maxValue = values.reduce(max);
     final range = (maxValue - minValue).abs();

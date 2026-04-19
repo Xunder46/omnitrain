@@ -4,8 +4,10 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/profile_measurements.dart';
+import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../state/profile/profile_state.dart';
+import '../../state/settings/settings_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_surface.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
@@ -14,8 +16,13 @@ import 'widgets/profile_avatar_image_stub.dart'
 
 class ProfileScreen extends StatefulWidget {
   final ProfileState profileState;
+  final SettingsState settingsState;
 
-  const ProfileScreen({super.key, required this.profileState});
+  const ProfileScreen({
+    super.key,
+    required this.profileState,
+    required this.settingsState,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -211,6 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             definition: definitions[index],
             latestEntry:
                 widget.profileState.latestMeasurements[definitions[index].type],
+            settingsState: widget.settingsState,
             onTap: () => _showMeasurementHistory(definitions[index]),
             onAddTap: () => _showMeasurementLogSheet(definitions[index]),
           ),
@@ -363,6 +371,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           profileState: widget.profileState,
           definition: definition,
           latestEntry: latestEntry,
+          settingsState: widget.settingsState,
         );
       },
     );
@@ -379,6 +388,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return MeasurementHistoryChartSheet(
           profileState: widget.profileState,
           definition: definition,
+          settingsState: widget.settingsState,
           onLogNew: () => _showMeasurementLogSheet(definition),
         );
       },
@@ -395,12 +405,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 class _MeasurementRow extends StatelessWidget {
   final ProfileMeasurementDefinition definition;
   final BodyMeasurementEntry? latestEntry;
+  final SettingsState settingsState;
   final VoidCallback onTap;
   final VoidCallback onAddTap;
 
   const _MeasurementRow({
     required this.definition,
     required this.latestEntry,
+    required this.settingsState,
     required this.onTap,
     required this.onAddTap,
   });
@@ -408,12 +420,21 @@ class _MeasurementRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final unitLabel = latestEntry != null
-        ? ProfileMeasurements.unitLabelFor(latestEntry!.unitId)
-        : definition.unitLabel;
-    final valueLabel = latestEntry != null
-        ? '${ProfileMeasurements.formatValue(latestEntry!.value)} $unitLabel'
-        : '—';
+    String valueLabel;
+    if (latestEntry != null) {
+      if (latestEntry!.unitId == 'unit-kg') {
+        valueLabel = UnitFormatter.formatWeight(
+          latestEntry!.value,
+          settingsState,
+        );
+      } else {
+        final label = ProfileMeasurements.unitLabelFor(latestEntry!.unitId);
+        valueLabel =
+            '${ProfileMeasurements.formatValue(latestEntry!.value)} $label';
+      }
+    } else {
+      valueLabel = '—';
+    }
 
     return OmniSurface(
       padding: EdgeInsets.zero,
@@ -493,11 +514,13 @@ class _MeasurementLogSheet extends StatefulWidget {
   final ProfileState profileState;
   final ProfileMeasurementDefinition definition;
   final BodyMeasurementEntry? latestEntry;
+  final SettingsState settingsState;
 
   const _MeasurementLogSheet({
     required this.profileState,
     required this.definition,
     required this.latestEntry,
+    required this.settingsState,
   });
 
   @override
@@ -514,7 +537,12 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
     super.initState();
     _valueController = TextEditingController(
       text: widget.latestEntry != null
-          ? ProfileMeasurements.formatValue(widget.latestEntry!.value)
+          ? widget.definition.unitId == 'unit-kg'
+                ? UnitFormatter.formatWeightValue(
+                    widget.latestEntry!.value,
+                    widget.settingsState,
+                  )
+                : ProfileMeasurements.formatValue(widget.latestEntry!.value)
           : '',
     );
   }
@@ -554,7 +582,9 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
                     decimal: true,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Value (${widget.definition.unitLabel})',
+                    labelText: widget.definition.unitId == 'unit-kg'
+                        ? 'Value (${UnitFormatter.weightLabel(widget.settingsState)})'
+                        : 'Value (${widget.definition.unitLabel})',
                     errorText: _valueError,
                   ),
                 ),
@@ -605,9 +635,12 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
     });
 
     try {
+      final canonicalValue = widget.definition.unitId == 'unit-kg'
+          ? UnitFormatter.toCanonicalWeight(value, widget.settingsState)
+          : value;
       await widget.profileState.logMeasurement(
         widget.definition.type,
-        value,
+        canonicalValue,
         widget.definition.unitId,
       );
     } catch (e) {
