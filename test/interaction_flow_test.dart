@@ -18,6 +18,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
+import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,112 @@ Future<MockWorkoutRepository> _freshRepo() async {
 }
 
 void main() {
+  group('InlineMetricEditor interactions', () {
+    testWidgets('weight drag increments by 0.5', (WidgetTester tester) async {
+      double? updatedValue;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InlineMetricEditor(
+              metricType: 'weight',
+              currentValue: 10.0,
+              unitLabel: 'kg',
+              onValueChanged: (value) => updatedValue = value as double,
+            ),
+          ),
+        ),
+      );
+
+      await tester.drag(find.byType(InlineMetricEditor), const Offset(0, -10));
+      await tester.pump();
+
+      expect(updatedValue, 10.5);
+    });
+
+    testWidgets('extra-weight drag increments by 0.5', (
+      WidgetTester tester,
+    ) async {
+      double? updatedValue;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InlineMetricEditor(
+              metricType: 'extra-weight',
+              currentValue: 0.0,
+              unitLabel: 'lbs',
+              onValueChanged: (value) => updatedValue = value as double,
+            ),
+          ),
+        ),
+      );
+
+      await tester.drag(find.byType(InlineMetricEditor), const Offset(0, -10));
+      await tester.pump();
+
+      expect(updatedValue, 0.5);
+    });
+
+    testWidgets('fast weight drag still snaps to 0.5 increments', (
+      WidgetTester tester,
+    ) async {
+      double? updatedValue;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InlineMetricEditor(
+              metricType: 'weight',
+              currentValue: 10.0,
+              unitLabel: 'kg',
+              onValueChanged: (value) => updatedValue = value as double,
+            ),
+          ),
+        ),
+      );
+
+      final detector = tester.widget<GestureDetector>(
+        find.byType(GestureDetector),
+      );
+      detector.onVerticalDragUpdate!(
+        const DragUpdateDetails(delta: Offset(0, -13)),
+      );
+      await tester.pump();
+
+      expect(updatedValue, 10.5);
+    });
+
+    testWidgets('fast extra-weight drag still snaps to 0.5 increments', (
+      WidgetTester tester,
+    ) async {
+      double? updatedValue;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InlineMetricEditor(
+              metricType: 'extra-weight',
+              currentValue: 0.0,
+              unitLabel: 'lbs',
+              onValueChanged: (value) => updatedValue = value as double,
+            ),
+          ),
+        ),
+      );
+
+      final detector = tester.widget<GestureDetector>(
+        find.byType(GestureDetector),
+      );
+      detector.onVerticalDragUpdate!(
+        const DragUpdateDetails(delta: Offset(0, -13)),
+      );
+      await tester.pump();
+
+      expect(updatedValue, 0.5);
+    });
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // WorkoutSessionScreen
   // ══════════════════════════════════════════════════════════════════════════
