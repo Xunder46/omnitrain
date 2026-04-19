@@ -98,7 +98,10 @@ void main() {
         find.byType(GestureDetector),
       );
       detector.onVerticalDragUpdate!(
-        const DragUpdateDetails(delta: Offset(0, -13)),
+        DragUpdateDetails(
+          delta: const Offset(0, -13),
+          globalPosition: Offset.zero,
+        ),
       );
       await tester.pump();
 
@@ -127,7 +130,10 @@ void main() {
         find.byType(GestureDetector),
       );
       detector.onVerticalDragUpdate!(
-        const DragUpdateDetails(delta: Offset(0, -13)),
+        DragUpdateDetails(
+          delta: const Offset(0, -13),
+          globalPosition: Offset.zero,
+        ),
       );
       await tester.pump();
 
@@ -863,7 +869,7 @@ void main() {
       expect(find.text('3.1 mi'), findsOneWidget);
     });
 
-    testWidgets('placeholder rows show the specified snackbars', (
+    testWidgets('retained settings rows keep their specified snackbars', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
@@ -879,14 +885,9 @@ void main() {
       await tester.pump();
       expect(find.text('Equipment preferences coming soon'), findsOneWidget);
 
-      await tester.scrollUntilVisible(
-        find.text('Sign In'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.tap(find.text('Sign In'));
+      await tester.tap(find.text('Modality Defaults'));
       await tester.pump();
-      expect(find.text('Account sync coming soon'), findsOneWidget);
+      expect(find.text('Modality defaults coming soon'), findsOneWidget);
     });
   });
 }

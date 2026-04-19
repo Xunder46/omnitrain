@@ -109,7 +109,7 @@ void main() {
       expect(find.text('APPEARANCE'), findsOneWidget);
     });
 
-    testWidgets('renders measurements training and account sections in order', (
+    testWidgets('renders retained sections in order with version footer', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
@@ -136,15 +136,13 @@ void main() {
       expect(trainingY, lessThan(appearanceY));
 
       await tester.scrollUntilVisible(
-        find.text('ACCOUNT'),
+        find.text('Version 1.0.0'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('ACCOUNT'), findsOneWidget);
-      expect(find.text('Version'), findsOneWidget);
-      expect(find.text('1.0.0'), findsOneWidget);
+      expect(find.text('Version 1.0.0'), findsOneWidget);
     });
 
     testWidgets('shows only the five retained theme options', (

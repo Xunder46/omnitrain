@@ -147,46 +147,19 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  _PlaceholderSection(
-                    title: 'ACCOUNT',
-                    rows: [
-                      _SettingsRowData(
-                        label: 'Sign In',
-                        subtitle: 'Sync your data across devices',
-                        trailing: Icon(
-                          Icons.chevron_right,
-                          size: 18,
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'Version 1.0.0',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: OmniTheme.textMuted,
-                        ),
-                        onTap: () => _showPlaceholderSnackBar(
-                          context,
-                          'Account sync coming soon',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      _SettingsRowData(
-                        label: 'Export Data',
-                        subtitle: 'Download your workout history',
-                        trailing: Icon(
-                          Icons.download_outlined,
-                          size: 18,
-                          color: OmniTheme.textMuted,
-                        ),
-                        onTap: () => _showPlaceholderSnackBar(
-                          context,
-                          'Export coming soon',
-                        ),
-                      ),
-                      _SettingsRowData(
-                        label: 'Version',
-                        trailing: Text(
-                          '1.0.0',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: OmniTheme.textMuted,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 40),
                 ],

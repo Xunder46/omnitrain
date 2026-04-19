@@ -67,11 +67,19 @@ Current implementation places an ACCOUNT placeholder section in [lib/features/se
 5. [ ] Verify the Settings screen still scrolls and renders correctly on the retained sections.
 
 ## Progress
-- [ ] Remove Account section UI from Settings screen.
-- [ ] Relocate version text to footer.
-- [ ] Clean obsolete handlers/references.
-- [ ] Update Account-related widget tests.
-- [ ] Run relevant verification tests.
+- [x] Remove Account section UI from Settings screen.
+- [x] Relocate version text to footer.
+- [x] Clean obsolete handlers/references.
+- [x] Update Account-related widget tests.
+- [x] Run relevant verification tests.
+
+### Phase 2 Complete ✓
+Implementation done. All Phase 0 tests green. Ready for Code Reviewer.
 
 ## Feedback
-<!-- Leave notes from specialist agents or reviewers here. -->
+### Code Review Follow-up — April 19, 2026
+The remaining review items were addressed:
+- Settings footer copy now uses a plain, low-emphasis version label.
+- Tests no longer reference the removed Account rows or section.
+- The outdated drag-details test construction was updated to the current Flutter API.
+- Navigation docs now reflect the post-removal Settings screen.
