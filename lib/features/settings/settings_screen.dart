@@ -53,7 +53,13 @@ class SettingsScreen extends StatelessWidget {
                         GridView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          itemCount: AppTheme.values.length,
+                          // Ghost-pad odd counts so the last row is never a
+                          // lone tile. When count becomes even after the
+                          // bake-off pruning pass this expression collapses
+                          // to plain length with no visual change needed.
+                          itemCount: AppTheme.values.length.isOdd
+                              ? AppTheme.values.length + 1
+                              : AppTheme.values.length,
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 2,
@@ -62,6 +68,10 @@ class SettingsScreen extends StatelessWidget {
                                 childAspectRatio: 2.8,
                               ),
                           itemBuilder: (context, index) {
+                            // Ghost slot that balances an odd-count final row.
+                            if (index >= AppTheme.values.length) {
+                              return const SizedBox.shrink();
+                            }
                             final appTheme = AppTheme.values[index];
                             final isSelected =
                                 settingsState.appTheme == appTheme;

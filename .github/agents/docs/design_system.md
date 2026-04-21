@@ -37,6 +37,19 @@ The aesthetic is **spacecraft interior** — not cosmic/outer-space, but the con
 
 ## Color System
 
+### Theme Roster
+
+| Theme | Enum | Primary | Character |
+|-------|------|---------|-----------|
+| Abyssal Neon | `abyssalNeon` | `#00B4B8` Neon cyan | Deep cosmic, high-contrast blue-teal |
+| Forge & Ember | `forgeEmber` | `#FF6B35` Ember orange | Hot molten steel, industrial warm |
+| Obsidian Volt | `obsidianVolt` | `#D4A017` Amber volt | Dark electric, controlled amber |
+| Void Pulse | `voidPulse` | `#8B5CF6` Deep violet | Cosmic meditative, purple-galaxy |
+| Crimson Dojo | `crimsonDojo` | `#E53935` Crimson red | Martial aggression, deep red |
+| Malachite Core | `malachiteCore` | `#1A9A4A` Deep emerald | Industrial, geological, mineral-veined rock face |
+
+---
+
 ### Theme: Abyssal Neon Dark
 
 | Token | Hex | Role |
@@ -54,6 +67,21 @@ The aesthetic is **spacecraft interior** — not cosmic/outer-space, but the con
 | Material Surface | `#121826` | Material component surfaces |
 | Text Muted | `#9BA4B5` | Tertiary text |
 | Divider | `#1F2937` | Separators |
+
+### Theme: Malachite Core
+
+Character: deep emerald, geological, industrial — a mineral-veined rock face under tungsten light. Closest mood sibling to Void Pulse but grounded and earthy rather than cosmic. Primary hue ≈ 147° HSL, unambiguously green (well clear of the teal boundary at ~170°). Sole green theme in the permanent roster.
+
+| Token | Hex | Role |
+|-------|-----|------|
+| Background Top | `#0D1F10` | Dark warm green-black gradient start |
+| Background Bottom | `#060C08` | Near-black gradient end, slightly warmer |
+| Surface | `#122214` | Warm dark green-black card surface |
+| Surface Border | `#FFFFFF` @ 5% | Subtle boundary (matches Forge & Ember weight) |
+| Primary (Deep Emerald) | `#1A9A4A` | Heavy, saturated emerald — CTAs, active states |
+| Secondary (Forest Emerald) | `#128A40` | Supporting accent, clears 3:1 on surface |
+| Text Muted | `#AACFAA` | Green-tinted bone (lifted from `#8BBF8A`) — clears 6:1 comfortable margin on surface |
+| Divider | `#172A18` | Warm dark green separator |
 
 ### Color Usage Rules
 1. **Background** is always the cosmic gradient — never flat

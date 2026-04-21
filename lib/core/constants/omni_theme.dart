@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, voidPulse, crimsonDojo }
+enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, voidPulse, crimsonDojo, malachiteCore }
 
 typedef OmniThemeColors = ({
   Color backgroundTop,
@@ -70,9 +70,20 @@ class OmniTheme {
           backgroundBottom: Color(0xFF080302),
           surface: Color(0xFF3A1A16),
           primary: Color(0xFFE53935),
-          secondary: Color(0xFFB71C1C),
-          textMuted: Color(0xFF7A3530),
+          secondary: Color(0xFFD32F2F),
+          textMuted: Color(0xFFC4907A),
           divider: Color(0xFF2A0F0C),
+          surfaceBorder: Color(0x0DFFFFFF),
+        );
+      case AppTheme.malachiteCore:
+        return (
+          backgroundTop: Color(0xFF0D1F10),
+          backgroundBottom: Color(0xFF060C08),
+          surface: Color(0xFF122214),
+          primary: Color(0xFF1A9A4A),
+          secondary: Color(0xFF128A40),
+          textMuted: Color(0xFFAACFAA),
+          divider: Color(0xFF172A18),
           surfaceBorder: Color(0x0DFFFFFF),
         );
     }
@@ -90,6 +101,8 @@ class OmniTheme {
         return 'Void Pulse';
       case AppTheme.crimsonDojo:
         return 'Crimson Dojo';
+      case AppTheme.malachiteCore:
+        return 'Malachite Core';
     }
   }
 
