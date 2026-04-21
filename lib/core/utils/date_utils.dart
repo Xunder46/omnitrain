@@ -41,13 +41,27 @@ class OmniDateUtils {
       DateTime.fromMillisecondsSinceEpoch(ms, isUtc: false);
 
   /// Builds the ordered list of DateTime values (midnight each day) for a
-  /// month grid, starting from the Monday anchor of the week that contains
-  /// the first day of [year]/[month].
-  /// The grid always has complete weeks (multiples of 7 cells).
-  static List<DateTime?> buildMonthGrid(int year, int month) {
+  /// month grid, starting from the anchor weekday determined by [startOfWeek].
+  ///
+  /// [startOfWeek] accepts `'monday'` (default, ISO week — Mon=col 0) or
+  /// `'sunday'` (US week — Sun=col 0). The grid always has complete weeks
+  /// (multiples of 7 cells).
+  static List<DateTime?> buildMonthGrid(
+    int year,
+    int month, {
+    String startOfWeek = 'monday',
+  }) {
     final firstOfMonth = DateTime(year, month, 1);
-    // weekday: 1=Mon … 7=Sun
-    final leadingBlanks = (firstOfMonth.weekday - 1) % 7;
+    // weekday: 1=Mon … 7=Sun (Dart convention)
+    final int leadingBlanks;
+    if (startOfWeek == 'sunday') {
+      // Sunday-first: Sun=0, Mon=1, … Sat=6
+      // Dart: Sun=7 → 7%7=0, Mon=1 → 1%7=1, … Sat=6 → 6%7=6
+      leadingBlanks = firstOfMonth.weekday % 7;
+    } else {
+      // Monday-first: Mon=0, Tue=1, … Sun=6
+      leadingBlanks = (firstOfMonth.weekday - 1) % 7;
+    }
 
     final daysInMonth =
         DateTime(year, month + 1, 0).day; // day 0 of next month

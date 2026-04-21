@@ -338,6 +338,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           routineState: widget.routineState,
           routineSessionService: _routineSessionService,
           sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
         ),
       ),
     );
@@ -1369,17 +1370,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildCalendarGrid(ThemeData theme, DateTime now) {
+    final startOfWeek = widget.settingsState?.startOfWeek ?? 'monday';
     final firstDay = DateTime(now.year, now.month, 1);
-    final firstWeekday = firstDay.weekday; // 1=Mon
+    // Dart weekday: 1=Mon … 7=Sun
+    final int leadingBlanks = startOfWeek == 'sunday'
+        ? firstDay.weekday % 7   // Sun=0, Mon=1, … Sat=6
+        : firstDay.weekday - 1;  // Mon=0, Tue=1, … Sun=6
     final daysInMonth = _daysInMonth;
-    final totalSlots = daysInMonth + (firstWeekday - 1);
+    final totalSlots = daysInMonth + leadingBlanks;
     final rows = (totalSlots / 7).ceil();
 
     final cells = <Widget>[];
     final today = DateTime.now().day;
 
     for (int i = 0; i < rows * 7; i++) {
-      final dayNumber = i - (firstWeekday - 2);
+      final dayNumber = i - leadingBlanks + 1;
       if (dayNumber < 1 || dayNumber > daysInMonth) {
         cells.add(const SizedBox.shrink());
         continue;

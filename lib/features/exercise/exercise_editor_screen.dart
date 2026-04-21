@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/omni_theme.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';

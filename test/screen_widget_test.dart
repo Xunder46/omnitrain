@@ -121,19 +121,19 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('MEASUREMENTS'), findsOneWidget);
-      expect(find.text('TRAINING'), findsOneWidget);
+      expect(find.text('PREFERENCES'), findsOneWidget);
+      expect(find.text('TRAINING'), findsNothing);
+      expect(find.text('MEASUREMENTS'), findsNothing);
       expect(find.text('APPEARANCE'), findsOneWidget);
 
       expect(find.text('100 kg'), findsOneWidget);
       expect(find.text('5 km'), findsOneWidget);
+      expect(find.text('Start of Week'), findsOneWidget);
 
-      final measurementsY = tester.getTopLeft(find.text('MEASUREMENTS')).dy;
-      final trainingY = tester.getTopLeft(find.text('TRAINING')).dy;
+      final preferencesY = tester.getTopLeft(find.text('PREFERENCES')).dy;
       final appearanceY = tester.getTopLeft(find.text('APPEARANCE')).dy;
 
-      expect(measurementsY, lessThan(trainingY));
-      expect(trainingY, lessThan(appearanceY));
+      expect(preferencesY, lessThan(appearanceY));
 
       await tester.scrollUntilVisible(
         find.text('Version 1.0.0'),

@@ -74,8 +74,9 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
           builder: (context) => const ModalityPickerDialog(),
         );
 
-        if (!context.mounted || modalityResult == null)
+        if (!context.mounted || modalityResult == null) {
           return; // user cancelled
+        }
 
         final (_, pickedModality) = modalityResult;
         effortKindOverride =

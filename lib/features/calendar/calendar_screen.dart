@@ -4,6 +4,7 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
 import '../../core/constants/home_tiles.dart';
 import '../../state/calendar/calendar_state.dart';
+import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/period/period_state.dart';
@@ -22,6 +23,7 @@ class CalendarScreen extends StatefulWidget {
   final RoutineState routineState;
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
+  final SettingsState? settingsState;
 
   const CalendarScreen({
     super.key,
@@ -31,6 +33,7 @@ class CalendarScreen extends StatefulWidget {
     required this.routineState,
     required this.routineSessionService,
     required this.sessionSummaryService,
+    this.settingsState,
   });
 
   @override
@@ -38,7 +41,15 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  static const _weekLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _mondayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _sundayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  List<String> get _weekLabels =>
+      (widget.settingsState?.startOfWeek ?? 'monday') == 'sunday'
+          ? _sundayLabels
+          : _mondayLabels;
+
+  String get _startOfWeek => widget.settingsState?.startOfWeek ?? 'monday';
 
   @override
   void initState() {
@@ -83,7 +94,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: OmniGradientBackground(
         child: SafeArea(
           child: ListenableBuilder(
-            listenable: widget.calendarState,
+            listenable: Listenable.merge([
+              widget.calendarState,
+              if (widget.settingsState != null) widget.settingsState!,
+            ]),
             builder: (context, _) {
               return Column(
                 children: [
@@ -104,6 +118,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       month: widget.calendarState.month,
                       entriesByDay: widget.calendarState.entriesByDay,
                       periods: widget.calendarState.periods,
+                      startOfWeek: _startOfWeek,
                       onDayTap: (date) => _onDayTap(context, date),
                     ),
                     Padding(
@@ -281,6 +296,7 @@ class _MonthGrid extends StatelessWidget {
   final int month;
   final Map<int, List<CalendarEntry>> entriesByDay;
   final List<TrainingPeriod> periods;
+  final String startOfWeek;
   final void Function(DateTime) onDayTap;
 
   const _MonthGrid({
@@ -288,12 +304,13 @@ class _MonthGrid extends StatelessWidget {
     required this.month,
     required this.entriesByDay,
     required this.periods,
+    required this.startOfWeek,
     required this.onDayTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final grid = OmniDateUtils.buildMonthGrid(year, month);
+    final grid = OmniDateUtils.buildMonthGrid(year, month, startOfWeek: startOfWeek);
 
     return GridView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 4),

@@ -7,6 +7,7 @@ class SettingsState extends ChangeNotifier {
   static const String _themeKey = 'app_theme';
   static const String _preferredWeightUnitKey = 'preferred_weight_unit';
   static const String _preferredDistanceUnitKey = 'preferred_distance_unit';
+  static const String _preferredStartOfWeekKey = 'preferred_start_of_week';
 
   final WorkoutRepository _repository;
 
@@ -15,10 +16,12 @@ class SettingsState extends ChangeNotifier {
   AppTheme _appTheme = AppTheme.abyssalNeon;
   String _preferredWeightUnit = 'kg';
   String _preferredDistanceUnit = 'km';
+  String _startOfWeek = 'monday';
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
   String get preferredDistanceUnit => _preferredDistanceUnit;
+  String get startOfWeek => _startOfWeek;
 
   Future<void> initialize() async {
     await _loadFromPrefs();
@@ -55,6 +58,18 @@ class SettingsState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setStartOfWeek(String value) async {
+    final normalized = value.toLowerCase().trim();
+    _startOfWeek = normalized == 'sunday' || normalized == 'sun'
+        ? 'sunday'
+        : 'monday';
+    await _repository.setPreferenceString(
+      _preferredStartOfWeekKey,
+      _startOfWeek,
+    );
+    notifyListeners();
+  }
+
   Future<void> _loadFromPrefs() async {
     final savedTheme = await _repository.getPreferenceString(_themeKey);
     if (savedTheme != null) {
@@ -84,6 +99,15 @@ class SettingsState extends ChangeNotifier {
             normalizedDistance == 'mi'
         ? 'miles'
         : 'km';
+
+    final savedStartOfWeek = await _repository.getPreferenceString(
+      _preferredStartOfWeekKey,
+      defaultValue: 'monday',
+    );
+    final normalizedSow = savedStartOfWeek?.toLowerCase().trim();
+    _startOfWeek = normalizedSow == 'sunday' || normalizedSow == 'sun'
+        ? 'sunday'
+        : 'monday';
 
     notifyListeners();
   }

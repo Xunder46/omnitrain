@@ -37,38 +37,6 @@ class SettingsScreen extends StatelessWidget {
                     theme: theme,
                   ),
                   const SizedBox(height: 24),
-                  _PlaceholderSection(
-                    title: 'TRAINING',
-                    rows: [
-                      _SettingsRowData(
-                        label: 'Equipment',
-                        subtitle: 'Filter exercises to available equipment',
-                        trailing: Icon(
-                          Icons.chevron_right,
-                          size: 18,
-                          color: OmniTheme.textMuted,
-                        ),
-                        onTap: () => _showPlaceholderSnackBar(
-                          context,
-                          'Equipment preferences coming soon',
-                        ),
-                      ),
-                      _SettingsRowData(
-                        label: 'Modality Defaults',
-                        subtitle: 'Default durations, rest timers, and more',
-                        trailing: Icon(
-                          Icons.chevron_right,
-                          size: 18,
-                          color: OmniTheme.textMuted,
-                        ),
-                        onTap: () => _showPlaceholderSnackBar(
-                          context,
-                          'Modality defaults coming soon',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
                   OmniSurface(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -172,12 +140,6 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-void _showPlaceholderSnackBar(BuildContext context, String message) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.hideCurrentSnackBar();
-  messenger.showSnackBar(SnackBar(content: Text(message)));
-}
-
 class _MeasurementsSection extends StatelessWidget {
   final SettingsState settingsState;
   final ThemeData theme;
@@ -194,7 +156,20 @@ class _MeasurementsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(title: 'MEASUREMENTS'),
+          const _SectionHeader(title: 'PREFERENCES'),
+          _SettingsRow(
+            label: 'Start of Week',
+            subtitle: 'First day shown in the calendar',
+            trailing: _SegmentedToggle(
+              groupValue: settingsState.startOfWeek,
+              options: const [
+                _SegmentedOption(value: 'sunday', label: 'Sun'),
+                _SegmentedOption(value: 'monday', label: 'Mon'),
+              ],
+              onChanged: settingsState.setStartOfWeek,
+            ),
+          ),
+          _SurfaceDivider(theme: theme),
           _SettingsRow(
             label: 'Weight',
             subtitle: 'Used for exercises and volume',
@@ -292,49 +267,6 @@ class _MeasurementsSection extends StatelessWidget {
       ),
     );
   }
-}
-
-class _PlaceholderSection extends StatelessWidget {
-  final String title;
-  final List<_SettingsRowData> rows;
-
-  const _PlaceholderSection({required this.title, required this.rows});
-
-  @override
-  Widget build(BuildContext context) {
-    return OmniSurface(
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionHeader(title: title),
-          for (var i = 0; i < rows.length; i++) ...[
-            _SettingsRow(
-              label: rows[i].label,
-              subtitle: rows[i].subtitle,
-              trailing: rows[i].trailing,
-              onTap: rows[i].onTap,
-            ),
-            if (i != rows.length - 1) _SurfaceDivider(theme: Theme.of(context)),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsRowData {
-  final String label;
-  final String? subtitle;
-  final Widget trailing;
-  final VoidCallback? onTap;
-
-  const _SettingsRowData({
-    required this.label,
-    this.subtitle,
-    required this.trailing,
-    this.onTap,
-  });
 }
 
 class _SectionHeader extends StatelessWidget {

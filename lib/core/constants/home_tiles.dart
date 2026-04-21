@@ -46,7 +46,7 @@ class HomeTiles {
     HomeTileConfig(
       key: 'resistance',
       label: 'Resistance',
-      iconWidget: const OverheadPressIcon(size: 70),
+      iconWidget: OverheadPressIcon(size: 70),
       gradientColors: [Color(0xFF1A2F47), Color(0xFF152F42)],
       accentColor: ModalityColors.resistanceLifting,
       modality: Modality.resistanceLifting,

@@ -869,7 +869,7 @@ void main() {
       expect(find.text('3.1 mi'), findsOneWidget);
     });
 
-    testWidgets('retained settings rows keep their specified snackbars', (
+    testWidgets('Start of Week selector persists the selected value', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
@@ -881,13 +881,28 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Equipment'));
-      await tester.pump();
-      expect(find.text('Equipment preferences coming soon'), findsOneWidget);
+      // Equipment and Modality Defaults rows are gone.
+      expect(find.text('Equipment'), findsNothing);
+      expect(find.text('Modality Defaults'), findsNothing);
 
-      await tester.tap(find.text('Modality Defaults'));
-      await tester.pump();
-      expect(find.text('Modality defaults coming soon'), findsOneWidget);
+      // Start of Week row is present with its subtitle.
+      expect(find.text('Start of Week'), findsOneWidget);
+      expect(find.text('First day shown in the calendar'), findsOneWidget);
+
+      // Default is Monday.
+      expect(settingsState.startOfWeek, 'monday');
+
+      // Tap Sunday to change the preference.
+      await tester.tap(find.text('Sun'));
+      await tester.pumpAndSettle();
+
+      expect(settingsState.startOfWeek, 'sunday');
+
+      // Tap Monday to switch back.
+      await tester.tap(find.text('Mon'));
+      await tester.pumpAndSettle();
+
+      expect(settingsState.startOfWeek, 'monday');
     });
   });
 }

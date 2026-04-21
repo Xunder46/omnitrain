@@ -76,10 +76,100 @@ Current implementation places an ACCOUNT placeholder section in [lib/features/se
 ### Phase 2 Complete ✓
 Implementation done. All Phase 0 tests green. Ready for Code Reviewer.
 
+## Iteration 2 — TestFlight Finalization (April 20, 2026)
+### Analysis
+The previous pass removed Account (Sign In, Export Data). This pass removes Training (Equipment, Modality Defaults), renames Measurements → Preferences, adds a Start of Week preference row, and wires the start-of-week value through the calendar and any week-based UI.
+
+No new DB tables are needed. The preference follows the same `setPreferenceString` / `getPreferenceString` pattern already used for weight unit and distance unit. All changes are confined to the state, settings UI, calendar, session summary mini-calendar, and tests.
+
+### DB Changes
+None. Preference is stored via the existing `WorkoutRepository.setPreferenceString` / `getPreferenceString` API.
+
+### Backend / State Changes
+1. [ ] Add `_preferredStartOfWeekKey = 'preferred_start_of_week'` constant to `SettingsState`.
+2. [ ] Add `String _startOfWeek = 'monday'` field (default: Monday).
+3. [ ] Add `String get startOfWeek => _startOfWeek` getter.
+4. [ ] Add `Future<void> setStartOfWeek(String value) async` — normalises to `'sunday'` or `'monday'`, persists, notifies.
+5. [ ] Load `_startOfWeek` in `_loadFromPrefs()`, defaulting to `'monday'`.
+
+### Frontend Changes
+#### Settings screen (`lib/features/settings/settings_screen.dart`)
+6. [ ] Remove `_PlaceholderSection` for TRAINING and its two rows (Equipment, Modality Defaults) — including the `const SizedBox(height: 24)` spacer that precedes it.
+7. [ ] Remove the now-dead `_showPlaceholderSnackBar` function.
+8. [ ] Remove the now-dead `_PlaceholderSection` class.
+9. [ ] Remove the now-dead `_SettingsRowData` class (only used by `_PlaceholderSection`).
+10. [ ] Rename the `_MeasurementsSection` section header label from `'MEASUREMENTS'` to `'PREFERENCES'`.
+11. [ ] Add a divider and a new **Start of Week** `_SettingsRow` at the bottom of `_MeasurementsSection`, below the preview block. Use a `_SegmentedToggle` with options `['sunday', 'monday']` (labels `'Sun'` / `'Mon'`), `groupValue: settingsState.startOfWeek`, `onChanged: settingsState.setStartOfWeek`.
+
+#### Date utility (`lib/core/utils/date_utils.dart`)
+12. [ ] Add `startOfWeek` parameter (default `'monday'`) to `buildMonthGrid`. For `'sunday'`: `leadingBlanks = firstOfMonth.weekday % 7` (Sun=7 maps to 0, Mon=1 maps to 1…). For `'monday'` (existing): `(firstOfMonth.weekday - 1) % 7`.
+
+#### Calendar screen (`lib/features/calendar/calendar_screen.dart`)
+13. [ ] Add `required SettingsState settingsState` parameter to `CalendarScreen`.
+14. [ ] Remove the static `_weekLabels` const. Compute labels from `settingsState.startOfWeek`: Sunday-first = `['Sun','Mon','Tue','Wed','Thu','Fri','Sat']`, Monday-first = `['Mon','Tue','Wed','Thu','Fri','Sat','Sun']` (current).
+15. [ ] Wrap the `Column` body in a combined listenable on both `calendarState` and `settingsState` so the grid re-renders reactively. (Simplest: wrap inner builder's ListView with a second `ListenableBuilder` on `settingsState`, or use `Listenable.merge`.)
+16. [ ] Pass `settingsState.startOfWeek` to `OmniDateUtils.buildMonthGrid`.
+17. [ ] Update `_WeekDayRow` to receive the labels list.
+
+#### Home screen (`lib/features/home/home_screen.dart`)
+18. [ ] Pass `settingsState: widget.settingsState` to the `CalendarScreen(...)` call inside `_buildMaintenanceGrid`.
+
+#### Session summary screen (`lib/features/session/session_summary_screen.dart`)
+19. [ ] In `_buildCalendarGrid`, derive `startOfWeek` from `widget.settingsState?.startOfWeek ?? 'monday'`.
+20. [ ] Update the leading-blank calculation: `final leadingBlanks = startOfWeek == 'sunday' ? firstWeekday % 7 : firstWeekday - 1;`
+21. [ ] Update `dayNumber` indexing to match the new `leadingBlanks`.
+22. [ ] Pass `settingsState: widget.settingsState` to the `CalendarScreen(...)` call opened from this screen (inside `_openCalendarScreen`).
+
+### Test / Validation
+23. [ ] In `test/screen_widget_test.dart`, update `'renders retained sections in order with version footer'`:
+    - Replace `MEASUREMENTS` finder with `PREFERENCES`.
+    - Remove the `TRAINING` finder and `trainingY` ordering assertion.
+    - Assert order is `PREFERENCES` before `APPEARANCE`.
+    - Optionally assert that the `Start of Week` label is present.
+24. [ ] Run `test/screen_widget_test.dart` and `test/settings_state_test.dart` to verify green.
+25. [ ] Run the full test suite for regressions.
+
+### Acceptance Criteria
+- [ ] Sign In, Export Data, Equipment, Modality Defaults no longer appear in Settings.
+- [ ] Account section card + ACCOUNT header: already removed in Iteration 1. ✓
+- [ ] Training section card + TRAINING header: fully removed.
+- [ ] Measurements section renamed to Preferences; header reads "PREFERENCES".
+- [ ] Preferences section contains: Weight row, Distance row, preview block, Start of Week row.
+- [ ] Start of Week row label = "Start of Week", subtitle = "First day shown in the calendar".
+- [ ] Two-option segmented selector: Sunday / Monday, consistent style with kg/lbs toggle.
+- [ ] Only one option selectable at a time.
+- [ ] New users default to Monday.
+- [ ] Changing selection persists immediately, no confirm step.
+- [ ] Calendar screen leftmost day reflects Start of Week preference.
+- [ ] Session summary mini-calendar leftmost day reflects Start of Week preference.
+- [ ] Changing preference updates visible calendar without app restart.
+- [ ] Version label remains plain low-emphasis footer at bottom, not in a card. ✓ (from Iteration 1)
+- [ ] Screen order: Preferences card, Appearance card, Version footer.
+- [ ] No dead classes, functions, or imports from removed Training section.
+- [ ] No tests reference TRAINING or removed rows.
+
+### Files Affected
+- `lib/state/settings/settings_state.dart`
+- `lib/features/settings/settings_screen.dart`
+- `lib/core/utils/date_utils.dart`
+- `lib/features/calendar/calendar_screen.dart`
+- `lib/features/home/home_screen.dart`
+- `lib/features/session/session_summary_screen.dart`
+- `test/screen_widget_test.dart`
+
+## Progress
+- [x] Remove Account section UI from Settings screen. (Iter 1)
+- [x] Relocate version text to footer. (Iter 1)
+- [x] Clean obsolete handlers/references. (Iter 1)
+- [x] Update Account-related widget tests. (Iter 1)
+- [x] Remove Training section UI from Settings screen. (Iter 2)
+- [x] Rename Measurements → Preferences section. (Iter 2)
+- [x] Add Start of Week preference to SettingsState. (Iter 2)
+- [x] Add Start of Week row to Preferences section. (Iter 2)
+- [x] Parameterize buildMonthGrid for start-of-week. (Iter 2)
+- [x] Wire start-of-week into CalendarScreen. (Iter 2)
+- [x] Wire start-of-week into session summary mini-calendar. (Iter 2)
+- [x] Update tests. (Iter 2)
+
 ## Feedback
-### Code Review Follow-up — April 19, 2026
-The remaining review items were addressed:
-- Settings footer copy now uses a plain, low-emphasis version label.
-- Tests no longer reference the removed Account rows or section.
-- The outdated drag-details test construction was updated to the current Flutter API.
-- Navigation docs now reflect the post-removal Settings screen.
+
