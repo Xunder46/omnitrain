@@ -226,7 +226,7 @@ class _StatsScreenState extends State<StatsScreen> {
           const SizedBox(width: 16),
           Expanded(
             child: _StatsPill(
-              label: 'Total Time',
+              label: 'Time',
               value: _formatDuration(_totalDurationMs),
               themeColors: themeColors,
               theme: theme,
@@ -273,7 +273,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Row(
             children: [
               Text(
-                '30-Day Activity',
+                'Sessions per Day',
                 style: theme.textTheme.titleSmall?.copyWith(
                   color: OmniTheme.textPrimary,
                   fontWeight: FontWeight.w600,
@@ -662,7 +662,7 @@ class _StatsPill extends StatelessWidget {
         Text(
           label.toUpperCase(),
           style: theme.textTheme.labelSmall?.copyWith(
-            letterSpacing: 1.5,
+            letterSpacing: 0.5,
             color: themeColors.textMuted,
           ),
         ),
