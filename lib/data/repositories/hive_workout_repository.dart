@@ -26,6 +26,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
       'exercise_content_fields_migrated_v1';
   static const String _timedExtraWeightMigrationKey =
       'timed_extra_weight_migrated_v1';
+  static const String _exerciseLibraryRefreshMigrationKey =
+      'exercise_library_refreshed_v3';
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -140,6 +142,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _purgeCalendarSeedData();
     await _migrateExerciseContentFields();
     await _migrateTimedExtraWeight();
+    await _migrateExerciseLibraryRefresh();
 
     _initialized = true;
   }
@@ -342,7 +345,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
       // Key absent entirely — create it fresh with both effort kinds.
       // Guards against corrupted or partially-initialised installs where the
       // seed never populated this entry.
-      await _metricEffortKindsBox.put('metric-extra-weight', ['drill', 'timed']);
+      await _metricEffortKindsBox.put('metric-extra-weight', [
+        'drill',
+        'timed',
+      ]);
     }
 
     await _metaBox.put(_timedExtraWeightMigrationKey, true);
@@ -355,6 +361,41 @@ class HiveWorkoutRepository implements WorkoutRepository {
         _metaBox.get(_exerciseContentFieldsMigrationKey) as bool? ?? false;
     if (migrated) return;
     await _metaBox.put(_exerciseContentFieldsMigrationKey, true);
+  }
+
+  /// Backfills and refreshes seed exercise content for existing installs.
+  ///
+  /// Why needed:
+  /// - Seed data is loaded once behind `_seed_loaded`, so newly added seed
+  ///   exercises and updated descriptions/cues are not visible to existing users.
+  /// - This migration upserts current seed exercises and relationship maps while
+  ///   leaving user-created exercises untouched.
+  Future<void> _migrateExerciseLibraryRefresh() async {
+    final migrated =
+        _metaBox.get(_exerciseLibraryRefreshMigrationKey) as bool? ?? false;
+    if (migrated) return;
+
+    await _exercisesBox.putAll({
+      for (final exercise in SeedData.sampleExercises)
+        exercise.id: exercise.toMap(),
+    });
+
+    await _exerciseMuscleGroupsBox.putAll({
+      for (final entry in SeedData.exerciseMuscleGroupRelationships.entries)
+        entry.key: List<String>.from(entry.value),
+    });
+
+    await _exerciseEquipmentBox.putAll({
+      for (final entry in SeedData.exerciseEquipmentRelationships.entries)
+        entry.key: List<String>.from(entry.value),
+    });
+
+    await _exerciseCapabilitiesBox.putAll({
+      for (final entry in SeedData.exerciseCapabilityRelationships.entries)
+        entry.key: List<String>.from(entry.value),
+    });
+
+    await _metaBox.put(_exerciseLibraryRefreshMigrationKey, true);
   }
 
   Map<String, dynamic> _asStringMap(dynamic raw) {
@@ -1560,14 +1601,18 @@ class HiveWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> deleteSessionBlock(String blockId) async {
     // 1. Find all efforts linked to this block
-    final linkedEffortKeys = _effortsBox.toMap().entries
+    final linkedEffortKeys = _effortsBox
+        .toMap()
+        .entries
         .where((e) => _asStringMap(e.value)['block_id'] == blockId)
         .map((e) => e.key)
         .toList();
 
     // 2. For each linked effort, cascade-delete sub-records then the effort itself
     for (final effortKey in linkedEffortKeys) {
-      final obsKeys = _observationsBox.toMap().entries
+      final obsKeys = _observationsBox
+          .toMap()
+          .entries
           .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
           .map((e) => e.key)
           .toList();
@@ -1575,7 +1620,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
         await _observationsBox.delete(k);
       }
 
-      final riKeys = _roundInstancesBox.toMap().entries
+      final riKeys = _roundInstancesBox
+          .toMap()
+          .entries
           .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
           .map((e) => e.key)
           .toList();
@@ -1583,7 +1630,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
         await _roundInstancesBox.delete(k);
       }
 
-      final tiKeys = _timedInstancesBox.toMap().entries
+      final tiKeys = _timedInstancesBox
+          .toMap()
+          .entries
           .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
           .map((e) => e.key)
           .toList();
@@ -1591,7 +1640,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
         await _timedInstancesBox.delete(k);
       }
 
-      final erKeys = _entryRestsBox.toMap().entries
+      final erKeys = _entryRestsBox
+          .toMap()
+          .entries
           .where((e) => _asStringMap(e.value)['effort_id'] == effortKey)
           .map((e) => e.key)
           .toList();
@@ -1627,7 +1678,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
   @override
   Future<String> cloneSessionBlock(String blockId) async {
     final originalRaw = _sessionBlocksBox.get(blockId);
-    if (originalRaw == null) throw StateError('SessionBlock $blockId not found');
+    if (originalRaw == null)
+      throw StateError('SessionBlock $blockId not found');
     final original = SessionBlock.fromMap(_asStringMap(originalRaw));
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -1739,7 +1791,6 @@ class HiveWorkoutRepository implements WorkoutRepository {
         );
         await _timedInstancesBox.put(newTi.id, newTi.toMap());
       }
-
     }
 
     return newBlock.id;
