@@ -30,7 +30,8 @@ Five training modalities are available as home screen tiles, covering the full s
 4. **Isometric / Stretching** - Static hold durations (planks, yoga, stretching)
 5. **Free Training** (null modality) - User chooses tracking method per exercise
 
-> **Feb 2026**: The previous separate "Martial Arts" and "Sports" tiles were unified into a single "Sports" tile. The `sports` modality now maps to both `category-martial-arts` and `category-sports` for exercise ranking. The `martial_arts` modality constant remains in code for backward compatibility but is no longer a home screen tile.
+> **Feb 2026**: The previous separate "Martial Arts" and "Sports" tiles were unified into a single "Sports" tile.
+> **Apr 2026**: `martial_arts` fully retired — the constant, compat guard, and `category-martial-arts` record were removed. Boxing, BJJ, and Muay Thai disciplines now live under `category-sports`. The `sports` modality maps to `['category-sports']` only.
 
 Additionally, **My Routines** is a special (non-modality) tile on the home screen that navigates to saved workout templates. See [My Routines](my_routines.md) for details.
 

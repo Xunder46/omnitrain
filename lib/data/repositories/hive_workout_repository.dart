@@ -960,8 +960,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
       if (sessionRaw == null) continue;
       final session = TrainingSession.fromMap(_asStringMap(sessionRaw));
 
-      final rawModality = session.modality;
-      final modality = rawModality == 'martial_arts' ? 'sports' : rawModality;
+      final modality = session.modality;
 
       result.putIfAbsent(modality, () => []).add(rest);
     }

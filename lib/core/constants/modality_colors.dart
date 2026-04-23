@@ -18,7 +18,6 @@ class ModalityColors {
     Modality.cardioEndurance: cardioEndurance,
     Modality.resistanceLifting: resistanceLifting,
     Modality.sports: sports,
-    Modality.martialArts: sports,
     Modality.isometricStretching: isometricStretching,
     'free_training': freeTraining,
   };

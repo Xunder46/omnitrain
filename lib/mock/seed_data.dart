@@ -25,16 +25,6 @@ class SeedData {
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
     SportCategory(
-      id: 'category-martial-arts',
-      key: 'martial_arts',
-      name: 'Martial Arts',
-      description: 'Boxing, BJJ, Muay Thai, wrestling, karate - part of unified Sports tile',
-      iconName: 'sports_mma',
-      sortOrder: 3,
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
-    ),
-    SportCategory(
       id: 'category-isometric',
       key: 'isometric_stretching',
       name: 'Isometric / Stretching',
@@ -134,10 +124,10 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
-    // Martial Arts
+    // Combat Sports (under Sports)
     Discipline(
       id: 'discipline-boxing',
-      categoryId: 'category-martial-arts',
+      categoryId: 'category-sports',
       key: 'boxing',
       name: 'Boxing',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -145,7 +135,7 @@ class SeedData {
     ),
     Discipline(
       id: 'discipline-bjj',
-      categoryId: 'category-martial-arts',
+      categoryId: 'category-sports',
       key: 'bjj',
       name: 'Brazilian Jiu-Jitsu',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -153,7 +143,7 @@ class SeedData {
     ),
     Discipline(
       id: 'discipline-muay-thai',
-      categoryId: 'category-martial-arts',
+      categoryId: 'category-sports',
       key: 'muay_thai',
       name: 'Muay Thai',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,

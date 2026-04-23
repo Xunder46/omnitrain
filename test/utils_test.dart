@@ -472,8 +472,8 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('ModalityConfig', () {
-    test('configs map has 6 entries (5 modalities + null)', () {
-      expect(ModalityConfig.configs.length, 6);
+    test('configs map has 5 entries (4 modalities + null)', () {
+      expect(ModalityConfig.configs.length, 5);
       expect(ModalityConfig.configs.containsKey(null), true);
     });
 
@@ -493,6 +493,10 @@ void main() {
 
       test('returns null for unknown modality', () {
         expect(ModalityConfig.forModality('nonexistent'), isNull);
+      });
+
+      test('martial_arts is no longer a known modality (compat guard removed)', () {
+        expect(ModalityConfig.forModality('martial_arts'), isNull);
       });
     });
 
@@ -559,10 +563,6 @@ void main() {
     group('getRoundsLabel', () {
       test('sports → Periods', () {
         expect(ModalityConfig.getRoundsLabel('sports'), 'Periods');
-      });
-
-      test('martial_arts → Rounds', () {
-        expect(ModalityConfig.getRoundsLabel('martial_arts'), 'Rounds');
       });
 
       test('cardio_endurance → Intervals', () {
@@ -660,13 +660,13 @@ void main() {
       });
 
       test('score is clamped to 0 minimum', () {
-        final config = ModalityConfig.forModality('martial_arts')!;
-        // martial_arts anti: load, hold, distance (3 items)
+        final config = ModalityConfig.forModality('cardio_endurance')!;
+        // cardio anti: load, hold (2 items)
         final score = config.calculateRelevanceScore(
-          exerciseCapabilities: ['load', 'hold', 'distance'],
+          exerciseCapabilities: ['load', 'hold'],
           exerciseCategoryId: 'other-category',
         );
-        // 0 + 0 + 0 - 20 (3/3 anti) - 10 (no-overlap) = -30, clamped to 0
+        // 0 + 0 + 0 - 20 (2/2 anti) - 10 (no-overlap) = -30, clamped to 0
         expect(score, 0.0);
       });
 

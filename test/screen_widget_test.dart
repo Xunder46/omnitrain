@@ -2810,7 +2810,7 @@ void main() {
             home: Scaffold(
               body: ExercisePickerDialog(
                 workoutState: workoutState,
-                sessionModality: Modality.martialArts,
+                sessionModality: Modality.sports,
               ),
             ),
           ),
@@ -2830,6 +2830,35 @@ void main() {
         );
       },
     );
+
+    testWidgets('sports modality recommends boxing exercises', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ExercisePickerDialog(
+              workoutState: workoutState,
+              sessionModality: Modality.sports,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Recommended'), findsOneWidget);
+      // Scroll down to ensure lazy-built list items are rendered
+      await tester.dragUntilVisible(
+        find.text('Heavy Bag Rounds'),
+        find.byType(ListView).first,
+        const Offset(0, -200),
+      );
+      expect(find.text('Heavy Bag Rounds'), findsOneWidget);
+    });
 
     testWidgets('shows exercises from repo', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 1200));
@@ -2964,6 +2993,7 @@ void main() {
       expect(find.text('Resistance'), findsOneWidget);
       expect(find.text('Sports'), findsOneWidget);
       expect(find.text('Isometric'), findsOneWidget);
+      expect(find.text('Martial Arts'), findsNothing);
     });
 
     testWidgets('shows Cancel button', (WidgetTester tester) async {

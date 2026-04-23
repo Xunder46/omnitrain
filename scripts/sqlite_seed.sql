@@ -8,8 +8,8 @@ BEGIN TRANSACTION;
 -- ============================================================================
 -- UNIFIED SPORTS MODALITY (Feb 2026 Refactor)
 -- ============================================================================
--- The 'sports' modality now combines martial arts and sports exercises.
--- Home screen shows unified "Sports" tile with martial arts icon (sports_martial_arts).
+-- The 'sports' modality covers all sports disciplines under a single category-sports.
+-- Home screen shows a unified "Sports" tile (Sports category).
 -- 
 -- MODALITY FEATURE SUPPORT:
 -- - Primary metric: time (round/period duration)
@@ -21,17 +21,15 @@ BEGIN TRANSACTION;
 --
 -- EXERCISE RANKING FOR SPORTS:
 -- When SqliteWorkoutRepository.getExercisesRankedForModality('sports',...) is called:
--- 1. Filter: exercises whose discipline.category_id IN ('category-martial-arts', 'category-sports')
+-- 1. Filter: exercises whose discipline.category_id = 'category-sports'
 -- 2. Score: by capability matchagains ModalityConfig(sports).primaryCapabilities = ['time', 'rounds']
 -- 3. Return: sorted by relevance score (capabilities-based affinity)
 --
 -- CATEGORIES INVOLVED:
---   category-martial-arts: Boxing, BJJ, Muay Thai, wrestling, karate  
---   category-sports: Soccer, basketball, tennis, team sports
---   (Also seeded with martial arts exercises for unified experience)
+--   category-sports: Boxing, BJJ, Muay Thai, soccer, basketball, tennis, team sports
 --
 -- See lib/core/constants/modality.dart Modality.modalityToCategoryIds mapping:
---   sports: ['category-martial-arts', 'category-sports']
+--   sports: ['category-sports']
 --
 -- ============================================================================
 -- EXERCISE CAPABILITY SEEDING NOTES
@@ -57,7 +55,7 @@ BEGIN TRANSACTION;
 --   - 'exercise-barbell-squat', 'exercise-bench-press', etc.: ['reps', 'sets', 'load', 'time']
 --   (Can be done for time in cardio context, but primarily reps/sets/load)
 --
--- Boxing exercises (category-martial-arts):
+-- Boxing exercises (category-sports):
 --   - 'exercise-heavy-bag-rounds', 'exercise-sparring', etc.: ['time', 'rounds']
 --
 -- Calisthenics/Isometric (category-calisthenics → category-isometric):
@@ -192,17 +190,14 @@ SELECT m.id, 'drill' FROM app_metric_definition m WHERE m.key = 'quality';
 
 -- Categories (aligned with 5 home screen modality tiles after Feb 2026 restructure)
 -- Note: Keys match Modality constants in lib/core/constants/modality.dart
--- NOTE: sports modality now includes both 'sports' and 'martial_arts' categories
+-- NOTE: sports modality now uses a single 'sports' category for all sports disciplines
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'cardio_endurance', 'Cardio / Endurance', 'Running, cycling, swimming, rowing', 'directions_run', 1, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'resistance_lifting', 'Resistance / Lifting', 'Weightlifting, bodybuilding, powerlifting, strength training', 'fitness_center', 2, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
--- Martial Arts category (part of unified sports modality, kept for exercise classification)
-INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
-VALUES (lower(hex(randomblob(16))), 'martial_arts', 'Martial Arts', 'Boxing, BJJ, Muay Thai, wrestling, karate - part of unified Sports tile', 'sports_mma', 3, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'isometric_stretching', 'Isometric / Stretching', 'Yoga, static holds, stretching, flexibility work', 'self_improvement', 4, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
--- Sports category (combined with martial arts in unified sports modality)
+-- Sports category (includes martial arts disciplines and field/court sports)
 INSERT OR IGNORE INTO app_sport_category (id, key, name, description, icon_name, sort_order, created_at_ms, updated_at_ms)
 VALUES (lower(hex(randomblob(16))), 'sports', 'Sports', 'Boxing, BJJ, Muay Thai, wrestling, soccer, basketball, tennis, team sports', 'sports_soccer', 5, (strftime('%s','now') * 1000), (strftime('%s','now') * 1000));
 -- Legacy category (kept for backward compatibility)
@@ -243,17 +238,17 @@ WHERE c.key='cardio_endurance' AND NOT EXISTS (SELECT 1 FROM app_discipline WHER
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'boxing', 'Boxing', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='martial_arts' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='boxing');
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='boxing');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'bjj', 'Brazilian Jiu-Jitsu', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='martial_arts' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='bjj');
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='bjj');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'muay_thai', 'Muay Thai', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
-WHERE c.key='martial_arts' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='muay_thai');
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='muay_thai');
 
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'powerlifting', 'Powerlifting', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
@@ -433,7 +428,7 @@ WHERE name = 'Recovery Run' AND owner_user_id IS NULL;
 UPDATE app_exercise SET
   how_to_steps = json_array(
     'Know your target pace before you step on the track — winging it defeats the purpose.',
-    'Run the first rep slightly conservative; negative-split the set if you can.',
+    'Run the first rep slightly conservative, negative-split the set if you can.',
     'Recovery is usually a standing rest or easy lap depending on the session.',
     'Stay in lane 1 unless other runners are working — and check before stepping on.'
   ),
@@ -799,22 +794,6 @@ SELECT e.id, 'rounds' FROM app_exercise e WHERE e.name IN (
   'Elliptical Intervals', 'Stair Intervals',
   'Assault Bike Sprints', 'Jump Rope Intervals'
 ) AND e.owner_user_id IS NULL;
-
-
-  SELECT 'Bench Press', 'Barbell bench press' UNION ALL
-  SELECT 'Deadlift', 'Conventional barbell deadlift' UNION ALL
-  SELECT 'Overhead Press', 'Standing barbell shoulder press' UNION ALL
-  SELECT 'Pull-Up', 'Bodyweight vertical pull' UNION ALL
-  SELECT 'Lat Pulldown', 'Cable vertical pull' UNION ALL
-  SELECT 'Dumbbell Row', 'Single-arm dumbbell row' UNION ALL
-  SELECT 'Leg Press', 'Machine-based squat pattern' UNION ALL
-  SELECT 'Lateral Raise', 'Dumbbell shoulder isolation' UNION ALL
-  SELECT 'Triceps Pressdown', 'Cable triceps extension'
-) e
-WHERE d.key='bodybuilding'
-AND NOT EXISTS (
-  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
-);
 
 -- ============================================================================
 -- RESISTANCE / LIFTING EXERCISE LIBRARY (Phase 4 — 59 additional exercises)

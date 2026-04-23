@@ -163,7 +163,7 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String` | e.g., `category-cardio`, `category-martial-arts` |
+| `id` | `String` | e.g., `category-cardio`, `category-sports` |
 | `name` | `String` | Display name |
 
 ### MuscleGroup

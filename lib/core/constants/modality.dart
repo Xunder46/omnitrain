@@ -6,7 +6,6 @@ class Modality {
   // Primary home screen modalities
   static const String cardioEndurance = 'cardio_endurance';
   static const String resistanceLifting = 'resistance_lifting';
-  static const String martialArts = 'martial_arts';
   static const String isometricStretching = 'isometric_stretching';
   static const String sports = 'sports';
   // Free training has no modality preset (null)
@@ -26,20 +25,18 @@ class Modality {
   static const Map<String, String> modalityToCategoryId = {
     cardioEndurance: 'category-cardio',
     resistanceLifting: 'category-resistance',
-    martialArts: 'category-martial-arts',
     isometricStretching: 'category-isometric',
     sports: 'category-sports',
   };
 
   /// Maps modality keys to ALL associated SportCategory IDs (plural).
   /// Used when a modality encompasses multiple disciplines/categories.
-  /// Example: sports modality includes exercises from both category-martial-arts and category-sports
+  /// Example: sports modality includes all sports disciplines under category-sports
   static const Map<String, List<String>> modalityToCategoryIds = {
     cardioEndurance: ['category-cardio'],
     resistanceLifting: ['category-resistance'],
-    martialArts: ['category-martial-arts'],
     isometricStretching: ['category-isometric'],
-    sports: ['category-martial-arts', 'category-sports'], // Combined martial arts + sports
+    sports: ['category-sports'],
   };
 
   static const List<String> primaryHomeTiles = [
@@ -54,7 +51,6 @@ class Modality {
   static const List<String> all = [
     cardioEndurance,
     resistanceLifting,
-    martialArts,
     isometricStretching,
     sports,
     strengthResistance,
@@ -71,8 +67,6 @@ class Modality {
         return 'Cardio / Endurance';
       case resistanceLifting:
         return 'Resistance / Lifting';
-      case martialArts:
-        return 'Martial Arts';
       case isometricStretching:
         return 'Isometric / Stretching';
       case sports:

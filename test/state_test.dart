@@ -1236,7 +1236,7 @@ void main() {
       test('startRound creates an active RoundInstance', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(
@@ -1255,7 +1255,7 @@ void main() {
       test('completeRound sets round state to finished', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(
@@ -1274,7 +1274,7 @@ void main() {
       test('pauseRound and resumeRound cycle', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(
@@ -1297,7 +1297,7 @@ void main() {
       test('endRoundEarly finishes round immediately', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(
@@ -1316,7 +1316,7 @@ void main() {
       test('deleteRound removes instance', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(

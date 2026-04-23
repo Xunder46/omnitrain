@@ -72,22 +72,6 @@ class ModalityConfig {
       antiCapabilities: ['distance', 'rounds', 'hold'],
     ),
 
-    // Martial Arts - round-based time tracking
-    // Primary exercises: Boxing, BJJ, Muay Thai, wrestling
-    // Discipline category: category-martial-arts
-    'martial_arts': ModalityConfig(
-      primaryMetric: 'time',
-      secondaryMetrics: ['rounds'],
-      optionalMetrics: ['rpe'],
-      defaultInputType: 'round_timer',
-      structure: 'segmented',
-      effortKind: 'round',
-      categoryId: 'category-martial-arts',
-      primaryCapabilities: ['time', 'rounds'],
-      secondaryCapabilities: [],
-      antiCapabilities: ['load', 'hold', 'distance'],
-    ),
-
     // Isometric / Stretching - hold time tracking
     // Primary exercises: Yoga, static holds, flexibility work
     // Discipline category: category-isometric
@@ -177,8 +161,6 @@ class ModalityConfig {
     switch (modality) {
       case 'sports':
         return 'Periods'; // Can be periods, halves, quarters
-      case 'martial_arts':
-        return 'Rounds';
       case 'cardio_endurance':
         return 'Intervals';
       default:
