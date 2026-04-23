@@ -27,7 +27,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
   static const String _timedExtraWeightMigrationKey =
       'timed_extra_weight_migrated_v1';
   static const String _exerciseLibraryRefreshMigrationKey =
-      'exercise_library_refreshed_v3';
+      'exercise_library_refreshed_v5';
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -374,6 +374,16 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final migrated =
         _metaBox.get(_exerciseLibraryRefreshMigrationKey) as bool? ?? false;
     if (migrated) return;
+
+    await _sportCategoriesBox.putAll({
+      for (final category in SeedData.sampleSportCategories)
+        category.id: category.toMap(),
+    });
+
+    await _disciplinesBox.putAll({
+      for (final discipline in SeedData.sampleDisciplines)
+        discipline.id: discipline.toMap(),
+    });
 
     await _exercisesBox.putAll({
       for (final exercise in SeedData.sampleExercises)

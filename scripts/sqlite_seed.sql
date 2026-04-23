@@ -280,6 +280,47 @@ SELECT lower(hex(randomblob(16))), c.id, 'basketball', 'Basketball', (strftime('
 FROM app_sport_category c
 WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='basketball');
 
+-- New sports disciplines (Phase 4)
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'squash', 'Squash', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='squash');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'padel', 'Padel', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='padel');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'mma', 'MMA', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='mma');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'karate', 'Karate', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='karate');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'judo', 'Judo', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='judo');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'golf', 'Golf', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='golf');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'climbing', 'Climbing', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='sports' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='climbing');
+
+INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), c.id, 'isometric_holds', 'Isometric Holds', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_sport_category c
+WHERE c.key='isometric_stretching' AND NOT EXISTS (SELECT 1 FROM app_discipline WHERE key='isometric_holds');
+
 INSERT INTO app_discipline (id, category_id, key, name, created_at_ms, updated_at_ms)
 SELECT lower(hex(randomblob(16))), c.id, 'yoga', 'Yoga', (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_sport_category c
@@ -1658,90 +1699,783 @@ INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
 SELECT e.id, 'distance' FROM app_exercise e
 WHERE e.name = 'Farmer''s Carry' AND e.owner_user_id IS NULL;
 
-INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'Heavy Bag Rounds' AS name, 'Boxing heavy bag work' AS description UNION ALL
-  SELECT 'Shadowboxing', 'Footwork and technique without equipment' UNION ALL
-  SELECT 'Pad Work', 'Striking drills with pads' UNION ALL
-  SELECT 'Speed Bag', 'Hand speed and rhythm training' UNION ALL
-  SELECT 'Double-End Bag', 'Timing and accuracy training' UNION ALL
-  SELECT 'Sparring', 'Live boxing rounds' UNION ALL
-  SELECT 'Defensive Drills', 'Slips, rolls, and blocks practice' UNION ALL
-  SELECT 'Footwork Drills', 'Movement and positioning drills' UNION ALL
-  SELECT 'Conditioning Rounds', 'High intensity boxing rounds' UNION ALL
-  SELECT 'Technical Rounds', 'Low intensity skill-focused rounds'
+  SELECT 'Heavy Bag Rounds' AS name,
+    'Timed rounds on the heavy bag — combinations, power work, and conditioning at moderate-to-high intensity.' AS description,
+    json_array('Hands back to the guard after every punch — no hanging.','Turn the hip and shoulder into straight punches; don''t arm-punch.','Move around the bag between combinations, don''t stand square.','Breathe out on every strike.') AS how_to_steps
+  UNION ALL
+  SELECT 'Shadowboxing',
+    'Timed rounds of punching in open space — footwork, head movement, and combination rehearsal without resistance.',
+    json_array('Watch yourself in a mirror or film one round to audit form.','Throw every punch with the intent you would against a bag.','Include defense — slips, rolls, pulls — not just offense.','Finish every combination with movement off line.')
+  UNION ALL
+  SELECT 'Pad Work',
+    'Timed rounds with a coach or partner holding focus mitts or Thai pads — called combinations, reactive work, and counters.',
+    json_array('Respond to the call, don''t anticipate it.','Reset the guard between combinations — don''t drift.','Hit the pad, don''t slap it — turn punches over at contact.','Footwork moves first, then the hands.')
+  UNION ALL
+  SELECT 'Speed Bag',
+    'Timed rounds on the speed bag — rhythm, hand speed, and shoulder endurance.',
+    json_array('Strike with the side of the fist on the downswing, not a punch.','Keep elbows up at bag height — don''t let them drop.','Find the three-beat rhythm: bag hits front wall, back wall, front wall.','Switch lead hand every round.')
+  UNION ALL
+  SELECT 'Double-End Bag',
+    'Timed rounds on a tethered reflex bag — timing, accuracy, and defensive reactions against a moving target.',
+    json_array('Stay in range — close enough to hit, far enough to slip.','Don''t chase the bag; let it come back to you.','Work in combinations of two or three, not singles.','Slip or pull after every shot — the bag is swinging back at you.')
+  UNION ALL
+  SELECT 'Sparring',
+    'Live rounds with a partner at an agreed intensity. Technique-focused light sparring or harder competition-prep rounds.',
+    NULL
+  UNION ALL
+  SELECT 'Defensive Drills',
+    'Timed rounds of slipping, rolling, parrying, and blocking against a partner''s feed or shadowed in open space.',
+    json_array('Move the head off the centerline, not just back.','Hands don''t drop when the head moves.','Slip short — enough to miss the punch, not more.','Counter out of every defensive movement.')
+  UNION ALL
+  SELECT 'Footwork Drills',
+    'Timed rounds of movement patterns — pivots, cuts, in-and-out rhythm, lateral steps. Done on floor markings, ladder, or open space.',
+    json_array('Stay in stance — the feet never cross.','Push off the back foot moving forward, front foot moving back.','Small, fast steps — not long strides.','Reset stance after every pivot.')
+  UNION ALL
+  SELECT 'Conditioning Rounds',
+    'High-output rounds — bag work, pads, or shadow — run at competition intensity to build round-specific conditioning.',
+    json_array('Throw in volume — don''t pace.','Nasal breathing between exchanges where possible.','Keep form honest when tired; collapsing form is the drill failing.','Log how you feel at minute 2:30 of each round — that''s the true signal.')
+  UNION ALL
+  SELECT 'Technical Rounds',
+    'Low-intensity rounds focused on one technical element — a specific combination, footwork pattern, or defensive sequence.',
+    json_array('Pick one thing to work on before the round starts.','Slow is fast — technique first, speed later.','If form breaks, stop and reset rather than push through.','Finish every round with a clean rep of the focus technique.')
 ) e
 WHERE d.key='boxing'
 AND NOT EXISTS (
   SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
 );
 
+-- Update boxing exercise descriptions and cues (for pre-existing rows)
+UPDATE app_exercise SET
+  description = 'Timed rounds on the heavy bag — combinations, power work, and conditioning at moderate-to-high intensity.',
+  how_to_steps = json_array('Hands back to the guard after every punch — no hanging.','Turn the hip and shoulder into straight punches; don''t arm-punch.','Move around the bag between combinations, don''t stand square.','Breathe out on every strike.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Heavy Bag Rounds' AND owner_user_id IS NULL;
 
-INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+UPDATE app_exercise SET
+  description = 'Timed rounds of punching in open space — footwork, head movement, and combination rehearsal without resistance.',
+  how_to_steps = json_array('Watch yourself in a mirror or film one round to audit form.','Throw every punch with the intent you would against a bag.','Include defense — slips, rolls, pulls — not just offense.','Finish every combination with movement off line.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Shadowboxing' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Timed rounds with a coach or partner holding focus mitts or Thai pads — called combinations, reactive work, and counters.',
+  how_to_steps = json_array('Respond to the call, don''t anticipate it.','Reset the guard between combinations — don''t drift.','Hit the pad, don''t slap it — turn punches over at contact.','Footwork moves first, then the hands.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Pad Work' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Timed rounds on the speed bag — rhythm, hand speed, and shoulder endurance.',
+  how_to_steps = json_array('Strike with the side of the fist on the downswing, not a punch.','Keep elbows up at bag height — don''t let them drop.','Find the three-beat rhythm: bag hits front wall, back wall, front wall.','Switch lead hand every round.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Speed Bag' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Timed rounds on a tethered reflex bag — timing, accuracy, and defensive reactions against a moving target.',
+  how_to_steps = json_array('Stay in range — close enough to hit, far enough to slip.','Don''t chase the bag; let it come back to you.','Work in combinations of two or three, not singles.','Slip or pull after every shot — the bag is swinging back at you.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Double-End Bag' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Live rounds with a partner at an agreed intensity. Technique-focused light sparring or harder competition-prep rounds.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Sparring' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Timed rounds of slipping, rolling, parrying, and blocking against a partner''s feed or shadowed in open space.',
+  how_to_steps = json_array('Move the head off the centerline, not just back.','Hands don''t drop when the head moves.','Slip short — enough to miss the punch, not more.','Counter out of every defensive movement.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Defensive Drills' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Timed rounds of movement patterns — pivots, cuts, in-and-out rhythm, lateral steps. Done on floor markings, ladder, or open space.',
+  how_to_steps = json_array('Stay in stance — the feet never cross.','Push off the back foot moving forward, front foot moving back.','Small, fast steps — not long strides.','Reset stance after every pivot.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Footwork Drills' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'High-output rounds — bag work, pads, or shadow — run at competition intensity to build round-specific conditioning.',
+  how_to_steps = json_array('Throw in volume — don''t pace.','Nasal breathing between exchanges where possible.','Keep form honest when tired; collapsing form is the drill failing.','Log how you feel at minute 2:30 of each round — that''s the true signal.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Conditioning Rounds' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Low-intensity rounds focused on one technical element — a specific combination, footwork pattern, or defensive sequence.',
+  how_to_steps = json_array('Pick one thing to work on before the round starts.','Slow is fast — technique first, speed later.','If form breaks, stop and reset rather than push through.','Finish every round with a clean rep of the focus technique.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Technical Rounds' AND owner_user_id IS NULL;
+
+
+-- Isometric holds — migrate existing 10 exercises to discipline-isometric-holds and update descriptions/cues
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Front-facing isometric hold supported on forearms and toes, targeting the anterior core, shoulders, and glutes. A baseline test of full-body bracing.',
+  how_to_steps = json_array('Stack elbows directly under shoulders, forearms parallel.','Squeeze glutes and brace the abs — ribs tucked, no sag at the hips.','Hold a neutral neck, eyes on the floor just ahead of the hands.','Breathe shallow through the nose; don''t hold your breath.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Plank Hold' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Lateral isometric hold on one forearm and the side of one foot, targeting the obliques, quadratus lumborum, and shoulder stabilizers.',
+  how_to_steps = json_array('Stack shoulder over elbow, feet stacked or staggered for balance.','Drive the hips up so the body forms one straight line from head to heels.','Reach the top arm skyward or rest it on the hip — pick one and keep it still.','Keep the bottom shoulder packed, not collapsed toward the ear.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Side Plank' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Isometric squat hold with the back flat against a wall and thighs parallel to the floor. Targets the quads, with secondary glute and calf engagement.',
+  how_to_steps = json_array('Slide down until thighs are parallel to the floor — knees at roughly 90 degrees.','Knees stacked over ankles, not forward over the toes.','Press the full back flat against the wall, no gap at the low back.','Breathe steadily; the burn will spike around 30 seconds in.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Wall Sit' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Passive isometric hang from a pull-up bar with arms fully extended. Trains grip endurance and decompresses the shoulders and spine.',
+  how_to_steps = json_array('Grip the bar at roughly shoulder width, thumbs wrapped.','Let the body hang fully — don''t actively shrug the shoulders up.','Keep the ribcage down and core lightly engaged so you''re not swaying.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Dead Hang' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Supine isometric hold with arms overhead and legs extended, pressing the low back firmly into the floor. Trains anterior core tension used in gymnastics and Olympic lifting.',
+  how_to_steps = json_array('Press the low back flat — no daylight between the floor and your spine.','Lift shoulders and legs just enough that lockout is maintained, not higher.','Arms by the ears, legs straight, toes pointed.','If the low back arches, raise the legs higher until you can flatten it again.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Hollow Body Hold' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Supine hip-extension hold with shoulders on the floor, knees bent, hips driven up. Targets the glutes and hamstrings.',
+  how_to_steps = json_array('Feet flat, heels close enough that a brushed fingertip barely touches them.','Drive through the heels and squeeze the glutes to lift the hips.','Ribs stay down — don''t hyperextend the low back to get higher.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Glute Bridge Hold' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Seated isometric hold with the body supported on straight arms, legs extended straight out parallel to the floor. Trains the anterior core, hip flexors, and tricep lockout.',
+  how_to_steps = json_array('Press down hard through straight arms to lift the hips clear of the floor.','Extend legs straight forward — lock the knees, point the toes.','If straight legs are impossible, bend the knees (tuck L-sit) as a regression.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'L-Sit Hold' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Paused hold at the bottom of a push-up, typically with the chest an inch off the floor. Targets the chest, triceps, and anterior core.',
+  how_to_steps = json_array('Lower to the bottom of a push-up and hold — chest hovering just off the floor.','Elbows at roughly 45 degrees to the torso, not flared wide.','Maintain full plank body line; don''t let the hips sag.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Isometric Push-Up Hold' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Isometric hold at the top of a calf raise, up on the balls of the feet. Trains calf endurance and ankle stability.',
+  how_to_steps = json_array('Rise to the top of a calf raise on both feet.','Hold the highest point — don''t settle into a mid-range position.','Keep the ankles tracking straight, not rolling outward.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Calf Raise Hold' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  discipline_id = (SELECT d.id FROM app_discipline d WHERE d.key = 'isometric_holds'),
+  description = 'Unilateral isometric lunge hold in the bottom position. Targets the front-leg quad and glute, with a long-lever stretch on the rear-leg hip flexor.',
+  how_to_steps = json_array('Front knee stacked over the front ankle, rear knee hovering an inch off the floor.','Torso tall, front heel planted.','Shift weight onto the front leg — the rear leg is a kickstand, not a driver.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Split Squat Hold' AND owner_user_id IS NULL;
+
+-- New Isometric Holds (core, lower-body, upper-body)
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'Plank Hold' AS name, 'Isometric core hold' AS description UNION ALL
-  SELECT 'Side Plank', 'Lateral core isometric hold' UNION ALL
-  SELECT 'Wall Sit', 'Isometric leg hold' UNION ALL
-  SELECT 'Dead Hang', 'Grip and shoulder isometric hang' UNION ALL
-  SELECT 'Hollow Body Hold', 'Anterior core isometric hold' UNION ALL
-  SELECT 'Glute Bridge Hold', 'Hip extension isometric hold' UNION ALL
-  SELECT 'L-Sit Hold', 'Advanced seated isometric hold' UNION ALL
-  SELECT 'Isometric Push-Up Hold', 'Paused push-up position hold' UNION ALL
-  SELECT 'Calf Raise Hold', 'Isometric calf contraction' UNION ALL
-  SELECT 'Split Squat Hold', 'Unilateral leg isometric hold'
+  SELECT 'RKC Plank' AS name,
+    'Maximum-tension variant of the standard plank. Same position, but every muscle — glutes, quads, abs, lats — contracts as hard as possible throughout the hold.' AS description,
+    json_array('Set up in a standard plank, then actively pull elbows toward toes without moving them.','Squeeze glutes and quads hard enough that they shake.','Cap holds at 10–20 seconds — this is an intensity drill, not a duration one.') AS how_to_steps
+  UNION ALL
+  SELECT 'Long-Lever Plank',
+    'Plank variant with the elbows placed further forward than the shoulders, increasing the lever arm and anti-extension demand on the core.',
+    json_array('Start in a standard plank, then walk the elbows 4–6 inches forward.','Fight hard to keep the lower back from arching — ribs stay pulled down.','Expect to hold significantly less time than a standard plank.')
+  UNION ALL
+  SELECT 'Dead Bug Hold',
+    'Supine anti-extension hold with opposite arm and opposite leg extended, low back pinned to the floor. A more accessible alternative to the hollow body hold.',
+    json_array('Pin the low back down before extending anything.','Lower one arm overhead and the opposite leg toward the floor, holding short of contact.','Don''t let the ribs flare or the back arch as the limbs extend.')
+  UNION ALL
+  SELECT 'Copenhagen Plank',
+    'Side plank variant with the top leg elevated on a bench, targeting the adductors of the top leg alongside the obliques. A groin-resilience staple.',
+    json_array('Place the inside of the top ankle or knee on the bench; shorter lever (knee) is the regression.','Drive the top leg down into the bench to lift the hips.','Keep the hips square, shoulder stacked over elbow.')
+  UNION ALL
+  SELECT 'Single-Leg Glute Bridge Hold',
+    'Unilateral version of the glute bridge hold, performed with one leg extended. Exposes side-to-side glute asymmetries.',
+    json_array('Set up in a glute bridge, then extend one leg straight out.','Keep the hips level — don''t let the extended-leg side drop.','Drive through the heel of the planted foot, squeeze the working glute.')
+  UNION ALL
+  SELECT 'Single-Leg Calf Raise Hold',
+    'Unilateral calf raise hold. Doubles the load on the working calf and exposes ankle-stability deficits.',
+    json_array('Rise to the top of a single-leg calf raise, using fingertips against a wall for balance if needed.','Keep the standing ankle tracking straight.','If the ankle wobbles, drop the non-working foot and scale back to a two-leg hold.')
+  UNION ALL
+  SELECT 'Pistol Squat Hold',
+    'Advanced unilateral hold at the bottom of a pistol squat — one leg folded deep, the other extended forward. Requires significant ankle mobility and single-leg strength.',
+    json_array('Plant the working foot flat, extend the free leg forward.','Keep arms extended forward as a counterbalance.','If ankle mobility fails, hold a wall or rack for assistance.')
+  UNION ALL
+  SELECT 'Cossack Squat Hold',
+    'Bottom-position hold of a deep lateral squat — one leg bent underneath, the other extended to the side. Trains adductor length and hip mobility under load.',
+    json_array('Sit the hips down and back over the bent leg.','Extended leg stays straight, heel down, toes up if possible.','Chest up, don''t collapse forward.')
+  UNION ALL
+  SELECT 'Active Hang',
+    'Hang from a pull-up bar with shoulders actively pulled down and packed — a scapular-retraction hold. The starting position for any pull-up.',
+    json_array('Start from a dead hang, then pull the shoulder blades down and back without bending the elbows.','Chest rises slightly, shoulders move away from the ears.','Hold the packed position without letting elbows bend.')
+  UNION ALL
+  SELECT 'Tuck Front Lever Hold',
+    'Entry-level front lever progression hung from a bar with knees tucked tight to the chest and the torso pulled horizontal. Trains the lats, core, and scapular depressors.',
+    json_array('From an active hang, pull the knees to the chest and the hips up until the torso is horizontal.','Drive the arms straight down — don''t bend the elbows.','Keep the tuck tight; opening up too soon collapses the position.')
+  UNION ALL
+  SELECT 'Advanced Tuck Front Lever Hold',
+    'Progression between tuck front lever and straddle front lever, with the hips opened so the thighs are roughly parallel to the floor but knees still bent.',
+    json_array('Start in a tuck front lever, then open the hips until thighs are parallel to the floor.','Knees stay bent at roughly 90 degrees.','Lats pulled down hard; torso stays horizontal.')
+  UNION ALL
+  SELECT 'Tuck Back Lever Hold',
+    'Entry-level back lever progression with the body inverted and tucked, facing away from the bar. Trains the biceps, anterior delts, and core anti-extension.',
+    json_array('Invert into a tucked inverted hang first, then lower the torso away from the bar until the back is horizontal and facing down.','Knees tucked tight to the chest, hips at bar level.','Keep arms straight and locked throughout.')
+  UNION ALL
+  SELECT 'Ring Support Hold',
+    'Straight-arm support hold on gymnastic rings at the top of a ring dip. Trains pressing stability, scapular control, and wrist strength. Highly unstable.',
+    json_array('Press to full lockout on the rings, arms straight, body vertical.','Turn the rings slightly outward (external rotation) to lock out the shoulders.','Hollow body shape — ribs tucked, glutes squeezed.')
+  UNION ALL
+  SELECT 'Handstand Hold (Wall-Supported)',
+    'Inverted isometric hold against a wall with hands shoulder-width, heels against the wall. Trains shoulder stability, wrist strength, and full-body tension upside down.',
+    json_array('Kick up with hands roughly six inches from the wall, heels resting against it.','Push the floor away — shoulders fully shrugged up by the ears.','Squeeze glutes and abs; don''t let the low back arch off into a "banana."')
 ) e
-WHERE d.key='calisthenics'
+WHERE d.key='isometric_holds'
 AND NOT EXISTS (
   SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
 );
 
-INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+-- New Stretches and Mobility Holds
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'Plank Hold' AS name, 'Isometric core hold' AS description UNION ALL
-  SELECT 'Side Plank', 'Lateral core isometric hold' UNION ALL
-  SELECT 'Wall Sit', 'Isometric leg hold' UNION ALL
-  SELECT 'Dead Hang', 'Grip and shoulder isometric hang' UNION ALL
-  SELECT 'Hollow Body Hold', 'Anterior core isometric hold' UNION ALL
-  SELECT 'Glute Bridge Hold', 'Hip extension isometric hold' UNION ALL
-  SELECT 'L-Sit Hold', 'Advanced seated isometric hold' UNION ALL
-  SELECT 'Isometric Push-Up Hold', 'Paused push-up position hold' UNION ALL
-  SELECT 'Calf Raise Hold', 'Isometric calf contraction' UNION ALL
-  SELECT 'Split Squat Hold', 'Unilateral leg isometric hold'
+  SELECT 'Standing Hamstring Stretch' AS name,
+    'Static stretch for the hamstrings, performed by hinging at the hips and folding forward over straight legs.' AS description,
+    json_array('Hinge from the hips, not the low back.','Let the head and arms hang heavy.','Bend the knees slightly if the low back rounds aggressively.') AS how_to_steps
+  UNION ALL
+  SELECT 'Seated Forward Fold',
+    'Seated hamstring and low-back stretch with legs extended, reaching toward the toes.',
+    json_array('Sit tall first, then hinge forward from the hips.','Reach for the toes or shins — wherever the hands naturally land.','Don''t force a rounded back to go deeper.')
+  UNION ALL
+  SELECT 'Standing Quad Stretch',
+    'Stretch for the front of the thigh, pulling one heel toward the glute while standing on the opposite leg.',
+    json_array('Pull the heel toward the glute, knee pointing straight down.','Keep the knees close together — don''t let the working knee drift forward.','Squeeze the glute on the stretched side to deepen the hip-flexor stretch.')
+  UNION ALL
+  SELECT 'Couch Stretch',
+    'Deep hip-flexor and quad stretch with the rear foot elevated against a wall or couch and the front leg in a lunge position.',
+    json_array('Rear shin vertical against the wall, rear knee on a pad.','Tuck the pelvis under — squeeze the rear glute to intensify the hip-flexor stretch.','Stay tall through the torso; don''t lean forward.')
+  UNION ALL
+  SELECT 'Kneeling Hip Flexor Stretch',
+    'Classic hip-flexor stretch in a half-kneeling position, shifting the hips forward over the front foot.',
+    json_array('Half-kneeling, front foot flat, rear knee on a pad.','Tuck the pelvis and squeeze the rear glute before shifting forward.','Don''t just push the hips forward — the stretch comes from the posterior pelvic tilt.')
+  UNION ALL
+  SELECT 'Pigeon Pose',
+    'Deep stretch for the glutes, piriformis, and outer hip, with the front leg folded under the torso and the rear leg extended straight back.',
+    json_array('Front shin angled across the body, rear leg extended straight back with the top of the foot down.','Square the hips as much as possible — use a block under the front-side hip if it floats.','Walk the hands forward to deepen; keep the breath steady.')
+  UNION ALL
+  SELECT 'Seated Piriformis Stretch (Figure-4)',
+    'Seated stretch for the piriformis and deep hip rotators, crossing one ankle over the opposite knee and folding forward.',
+    json_array('Cross the ankle over the opposite knee, foot flexed to protect the knee.','Hinge from the hips and fold forward.','If the knee of the crossed leg sits high, support it with a cushion rather than forcing it down.')
+  UNION ALL
+  SELECT 'Doorway Chest Stretch',
+    'Stretch for the pecs and anterior shoulder, with the forearm pressed against a doorframe and the body rotated away.',
+    json_array('Forearm flat against the doorframe, elbow at roughly shoulder height.','Step the front foot through and rotate the torso away.','Try elbow heights above and below shoulder level to hit different pec fibers.')
+  UNION ALL
+  SELECT 'Lat Stretch (Overhead Reach)',
+    'Stretch for the lats and lateral torso, reaching one arm overhead and bending sideways, often assisted by holding a rack or doorframe.',
+    json_array('Grip a rack or doorframe with one hand overhead.','Sink the hips back and away from the grip.','Rotate the torso slightly to aim the stretch into the lat.')
+  UNION ALL
+  SELECT 'Overhead Triceps Stretch',
+    'Stretch for the triceps and lats, reaching one arm overhead with the elbow bent and the hand reaching down the back.',
+    json_array('Reach one arm overhead, bend the elbow so the hand drops behind the head.','Use the opposite hand to gently pull the elbow across and down.','Keep ribs tucked — don''t arch the back to cheat depth.')
+  UNION ALL
+  SELECT 'Neck Side Stretch',
+    'Gentle lateral neck stretch, tilting the head toward one shoulder to stretch the upper trap and levator scapulae.',
+    json_array('Tilt the ear toward the shoulder — don''t raise the shoulder to meet the ear.','Anchor the opposite shoulder down by sitting on the opposite hand.','Gentle pressure with the same-side hand only; no forceful pulls.')
+  UNION ALL
+  SELECT 'Standing Calf Stretch',
+    'Stretch for the gastrocnemius, performed with the rear leg straight and heel pressed down, front leg bent forward.',
+    json_array('Rear leg straight, heel firmly planted.','Front leg bent, lean forward from the ankle, not the waist.','Toes of the rear foot point straight forward.')
+  UNION ALL
+  SELECT 'Soleus Stretch (Bent-Knee Calf Stretch)',
+    'Variant of the calf stretch targeting the soleus, performed with the rear knee bent rather than straight.',
+    json_array('Same setup as a calf stretch, but bend the rear knee.','Keep the rear heel planted.','Sink straight down into the rear ankle.')
+  UNION ALL
+  SELECT 'Child''s Pose',
+    'Kneeling rest position with hips sitting back onto the heels and arms extended forward. Gentle stretch for the low back, lats, and shoulders.',
+    json_array('Knees wide, big toes together, hips sinking back to the heels.','Reach the arms long in front, chest heavy toward the floor.','Breathe into the low back.')
+  UNION ALL
+  SELECT '90/90 Hip Hold',
+    'Seated hold with both hips at 90 degrees — front leg bent in front, rear leg bent to the side. Stretches internal rotation of the front hip and external rotation of the rear.',
+    json_array('Sit with front shin parallel to the body, rear shin parallel to the body on the other side.','Keep the torso upright; hinge forward over the front leg to deepen.','Swap sides evenly — this asymmetry exposes mobility imbalances.')
+  UNION ALL
+  SELECT 'Frog Stretch',
+    'Quadruped stretch with knees wide and feet flared, pressing the hips back toward the heels. Stretches the adductors and inner groin.',
+    json_array('Knees wide, shins aligned with thighs, feet flared outward.','Rock the hips back toward the heels; find the first meaningful resistance and hold there.','Keep the torso supported on forearms.')
+  UNION ALL
+  SELECT 'Deep Squat Hold',
+    'Bottom-position squat hold with feet flat, hips dropped as low as possible, elbows inside the knees pressing them open. Trains ankle, hip, and thoracic mobility simultaneously.',
+    json_array('Feet roughly shoulder-width, toes turned slightly out.','Heels stay planted — elevate them on a plate if they lift.','Elbows inside the knees, gently pressing them open; chest up.')
+  UNION ALL
+  SELECT 'Thoracic Rotation Hold',
+    'Quadruped hold rotating one arm up toward the ceiling, threading the thoracic spine. Targets mid-back rotation.',
+    json_array('Start in quadruped, place one hand behind the head.','Rotate the elbow up toward the ceiling, opening the chest.','Hips stay square — the rotation comes from the mid-back, not the low back.')
+  UNION ALL
+  SELECT 'Cat-Cow Hold',
+    'Quadruped spinal mobility drill alternating between full flexion (cat) and full extension (cow), holding each end-range briefly. Not a flowing sequence — hold each position for time.',
+    json_array('Quadruped, wrists under shoulders, knees under hips.','Hold each end-range position for the programmed duration before switching.','Move the whole spine — not just the low back.')
+  UNION ALL
+  SELECT 'World''s Greatest Stretch Hold',
+    'Multi-joint mobility hold in a deep lunge position with the same-side hand reaching up toward the ceiling, opening the thoracic spine. Held for time rather than flowed through.',
+    json_array('Step one foot forward into a deep lunge, opposite hand planted inside the foot.','Reach the same-side arm up, rotating the torso open.','Hold the end position; don''t flow between sides until the duration ends.')
+  UNION ALL
+  SELECT 'Seated Butterfly Hold',
+    'Seated adductor and groin stretch with soles of the feet together and knees dropped out to the sides.',
+    json_array('Sit tall, soles of the feet together, hands on the ankles.','Let the knees drop under their own weight — don''t force them down.','Hinge forward from the hips to deepen, keeping the back long.')
 ) e
-WHERE d.key='calisthenics'
+WHERE d.key='stretching'
 AND NOT EXISTS (
   SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
 );
 
--- Sports exercises (team sports & racket sports with round/period-based tracking)
-INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, created_at_ms, updated_at_ms)
-SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description,
+-- Sports exercises (racket sports, team sports, combat sports)
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
        (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
 FROM app_discipline d
 JOIN (
-  SELECT 'tennis' AS disc, 'Tennis Match' AS name, 'Full tennis match or practice game' AS description UNION ALL
-  SELECT 'tennis', 'Tennis Drill', 'Targeted tennis technique and footwork drills' UNION ALL
-  SELECT 'volleyball', 'Volleyball Match', 'Full volleyball game or scrimmage' UNION ALL
-  SELECT 'volleyball', 'Volleyball Drill', 'Passing, setting, and spiking drills' UNION ALL
-  SELECT 'badminton', 'Badminton Match', 'Full badminton game or rally practice' UNION ALL
-  SELECT 'table_tennis', 'Table Tennis Match', 'Full table tennis game or practice' UNION ALL
-  SELECT 'cricket', 'Cricket Match', 'Cricket match or practice session' UNION ALL
-  SELECT 'ice_hockey', 'Ice Hockey Match', 'Full ice hockey game or scrimmage' UNION ALL
-  SELECT 'baseball', 'Baseball Game', 'Full baseball game or practice' UNION ALL
-  SELECT 'american_football', 'American Football Game', 'Full American football game or scrimmage' UNION ALL
-  SELECT 'rugby', 'Rugby Match', 'Full rugby game or practice match' UNION ALL
-  SELECT 'lacrosse', 'Lacrosse Game', 'Full lacrosse game or scrimmage'
+  SELECT 'tennis' AS disc, 'Tennis Match' AS name,
+    'A full singles or doubles match, or an internal practice match. Use periods as sets.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'tennis', 'Tennis Drill',
+    'Technique and footwork drill blocks — groundstrokes, volleys, approach shots, or movement patterns fed by a partner, coach, or ball machine.',
+    json_array('Split-step the moment the feeder makes contact.','Take the racquet back on the turn, not after the bounce.','Contact point in front of the body, not beside it.','Recover to the center after every shot, even in drill mode.')
+  UNION ALL
+  SELECT 'tennis', 'Tennis Serve Practice',
+    'Dedicated serving session — baskets of balls from one or both sides, flats, slices, and kicks.',
+    json_array('Same ball toss every time — in front, slightly to the right for a righty.','Trophy position before the drop — don''t rush the load.','Hit up and out, not down on the ball.','Land inside the baseline with the hitting leg.')
+  UNION ALL
+  SELECT 'tennis', 'Tennis Return Practice',
+    'Return-of-serve reps against a live server or ball machine. Focus on read, split, and short swing.',
+    json_array('Split-step earlier than you think — before the server makes contact.','Keep the takeback short — no full loop on a first serve.','Neutralize first, attack second serves.','Pick a target before the ball is tossed.')
+  UNION ALL
+  SELECT 'badminton', 'Badminton Match',
+    'A full singles or doubles match played to standard game format, or a rally-based practice game.',
+    NULL
+  UNION ALL
+  SELECT 'badminton', 'Badminton Drill',
+    'Targeted drill blocks — clears, drops, smashes, net play, or multi-shuttle footwork patterns fed by a partner or coach.',
+    json_array('Ready position with racquet up, weight on the balls of the feet.','Recover to center court after every shot.','Wrist and forearm do the work on overheads, not the shoulder.','Lunge and push back — don''t step and stop at the net.')
+  UNION ALL
+  SELECT 'table_tennis', 'Table Tennis Match',
+    'A full match played to standard game format, or a practice game against a partner or robot.',
+    NULL
+  UNION ALL
+  SELECT 'table_tennis', 'Table Tennis Drill',
+    'Multi-ball or partner-fed drill blocks — forehand/backhand loops, blocks, pushes, or footwork patterns.',
+    json_array('Bent knees, weight forward, paddle up at all times.','Rotate from the waist on loops — don''t arm the ball.','Recover to neutral after every stroke.','Read the opponent''s paddle angle, not the ball off the bounce.')
+  UNION ALL
+  SELECT 'volleyball', 'Volleyball Match',
+    'A full match or scrimmage, indoor or beach. Use periods as sets.',
+    NULL
+  UNION ALL
+  SELECT 'volleyball', 'Volleyball Drill',
+    'Drill blocks — passing, setting, hitting, blocking, or serve-receive patterns fed by a coach or partner.',
+    json_array('Low, balanced platform on every pass — don''t swing the arms.','Square shoulders to the target before contact.','Jump off two feet on attacks, not one.','Call every ball, even in drills.')
+  UNION ALL
+  SELECT 'squash', 'Squash Match',
+    'A full match played to 11 or 15, or a practice game against a regular partner. Use periods as games.',
+    NULL
+  UNION ALL
+  SELECT 'squash', 'Squash Drill',
+    'Solo or partner drill blocks — length, boasts, volleys, or ghosting patterns.',
+    json_array('Keep the T — every shot should aim to return you there.','Swing through the ball on a straight line parallel to the side wall.','Watch the ball onto the strings, not off them.','Stay low on the split — don''t stand tall between rallies.')
+  UNION ALL
+  SELECT 'padel', 'Padel Match',
+    'A full doubles match, or a practice game with a regular pairing. Use periods as sets.',
+    NULL
+  UNION ALL
+  SELECT 'padel', 'Padel Drill',
+    'Partner-fed drill blocks — wall plays, volleys at the net, lobs, and bandeja/vibora patterns.',
+    json_array('Hold the net position — don''t retreat unless lobbed.','Let the ball come off the wall before playing defensively.','Flat, short swings — no topspin loops.','Communicate on every ball with your partner — "mine," "yours," "out."')
+  UNION ALL
+  SELECT 'cricket', 'Cricket Match',
+    'A full match — T20, ODI, multi-day, or club — or a practice match. Use periods as innings or sessions.',
+    NULL
+  UNION ALL
+  SELECT 'cricket', 'Cricket Practice',
+    'A net or field practice session — batting, bowling, and fielding work.',
+    NULL
+  UNION ALL
+  SELECT 'ice_hockey', 'Ice Hockey Match',
+    'A full game or scrimmage. Use periods as game periods.',
+    NULL
+  UNION ALL
+  SELECT 'ice_hockey', 'Ice Hockey Practice',
+    'A full team practice — skating, passing, shooting, systems, and scrimmage.',
+    NULL
+  UNION ALL
+  SELECT 'baseball', 'Baseball Game',
+    'A full game or scrimmage. Use periods as innings.',
+    NULL
+  UNION ALL
+  SELECT 'baseball', 'Baseball Practice',
+    'A full team practice — batting, fielding, pitching, and situational work.',
+    NULL
+  UNION ALL
+  SELECT 'american_football', 'American Football Game',
+    'A full game or scrimmage. Use periods as quarters.',
+    NULL
+  UNION ALL
+  SELECT 'american_football', 'American Football Practice',
+    'A full team practice — individual drills, position work, and team periods.',
+    NULL
+  UNION ALL
+  SELECT 'rugby', 'Rugby Match',
+    'A full match — 15s, 10s, or 7s — or a practice match. Use periods as halves.',
+    NULL
+  UNION ALL
+  SELECT 'rugby', 'Rugby Training',
+    'A full team training session — fitness, skills, phase play, and contact work.',
+    NULL
+  UNION ALL
+  SELECT 'lacrosse', 'Lacrosse Game',
+    'A full game or scrimmage — men''s field, women''s field, or box. Use periods as quarters.',
+    NULL
+  UNION ALL
+  SELECT 'lacrosse', 'Lacrosse Practice',
+    'A full team practice — stick work, shooting, defense, and team periods.',
+    NULL
 ) e ON d.key = e.disc
 WHERE NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Update existing sports exercise descriptions (for pre-existing rows)
+UPDATE app_exercise SET
+  description = 'A full singles or doubles match, or an internal practice match. Use periods as sets.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Tennis Match' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Technique and footwork drill blocks — groundstrokes, volleys, approach shots, or movement patterns fed by a partner, coach, or ball machine.',
+  how_to_steps = json_array('Split-step the moment the feeder makes contact.','Take the racquet back on the turn, not after the bounce.','Contact point in front of the body, not beside it.','Recover to the center after every shot, even in drill mode.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Tennis Drill' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full match or scrimmage, indoor or beach. Use periods as sets.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Volleyball Match' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'Drill blocks — passing, setting, hitting, blocking, or serve-receive patterns fed by a coach or partner.',
+  how_to_steps = json_array('Low, balanced platform on every pass — don''t swing the arms.','Square shoulders to the target before contact.','Jump off two feet on attacks, not one.','Call every ball, even in drills.'),
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Volleyball Drill' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full singles or doubles match played to standard game format, or a rally-based practice game.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Badminton Match' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full match played to standard game format, or a practice game against a partner or robot.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Table Tennis Match' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full match — T20, ODI, multi-day, or club — or a practice match. Use periods as innings or sessions.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Cricket Match' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full game or scrimmage. Use periods as game periods.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Ice Hockey Match' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full game or scrimmage. Use periods as innings.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Baseball Game' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full game or scrimmage. Use periods as quarters.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'American Football Game' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full match — 15s, 10s, or 7s — or a practice match. Use periods as halves.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Rugby Match' AND owner_user_id IS NULL;
+
+UPDATE app_exercise SET
+  description = 'A full game or scrimmage — men''s field, women''s field, or box. Use periods as quarters.',
+  updated_at_ms = (strftime('%s','now') * 1000)
+WHERE name = 'Lacrosse Game' AND owner_user_id IS NULL;
+
+-- BJJ exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'BJJ Class' AS name,
+    'A full scheduled class — warm-up, technique instruction, drilling, and rolling. Log as one session; use periods for class segments if desired.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'BJJ Drilling',
+    'Partner drilling blocks — repping a specific technique, transition, or sequence without resistance.',
+    json_array('Drill the movement, not the outcome — no muscling reps.','Switch partners regularly for different body types.','Keep a count — quality reps per round matter more than time.','If the technique fails, ask before repeating it wrong.')
+  UNION ALL
+  SELECT 'BJJ Rolling',
+    'Live rolling rounds with rotating partners — open sparring at a negotiated intensity.',
+    NULL
+  UNION ALL
+  SELECT 'BJJ Positional Sparring',
+    'Rolling rounds starting from a fixed position — guard, side control, mount, back — reset to the starting position on escape or submission.',
+    json_array('Pick a position and stick to it for the whole round.','Lose the position before you reset — don''t bail early.','Track what works and what doesn''t during the round, not after.','Alternate top and bottom between rounds.')
+  UNION ALL
+  SELECT 'BJJ Guard Retention Practice',
+    'Partner drill — the bottom player defends the guard against systematic passing attempts, reset when passed.',
+    json_array('Hips first, legs second — frame with the hips before the knees.','Keep at least one point of connection with the passer at all times.','Re-guard before recovering offense — don''t scramble to attack.','Breathe through the tight positions, don''t hold breath.')
+  UNION ALL
+  SELECT 'BJJ Guard Passing Practice',
+    'Partner drill — the top player works through a passing sequence against a defending guard, reset on pass or sweep.',
+    json_array('Control grips or frames before moving the hips.','Kill one leg before trying to pass around or over.','Stay heavy through the shoulder, not the hands.','If the pass stalls, reset pressure instead of forcing.')
+  UNION ALL
+  SELECT 'BJJ Submission Practice',
+    'Targeted drilling of specific submissions from a fixed position — entries, finishes, and common defenses.',
+    json_array('Drill the setup, not just the finish.','Control the posture and grips before committing to the submission.','Finish with technique — no cranking for leverage.','Drill both the attack and the common escape.')
+) e
+WHERE d.key='bjj'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Muay Thai exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'Muay Thai Class' AS name,
+    'A full scheduled class — shadow, pads, bag work, clinch, and optional sparring. Log as one session.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'Muay Thai Pad Work',
+    'Timed rounds on Thai pads with a coach — kicks, knees, elbows, and punch-kick combinations.',
+    json_array('Turn the hip fully on every kick — the shin follows the hip.','Return to stance on the same line you left, not wider.','Step, then strike — never the other way around.','Close combinations with a defensive movement.')
+  UNION ALL
+  SELECT 'Muay Thai Bag Work',
+    'Timed rounds on a banana bag — full toolkit of punches, kicks, knees, and elbows with movement between combinations.',
+    json_array('Hit hard once, then reset — no spammed kicks.','Check into every kick — balance on landing matters more than power.','Include knees and elbows, not only kicks and punches.','Work around the bag — don''t stand square.')
+  UNION ALL
+  SELECT 'Muay Thai Clinch Practice',
+    'Timed rounds of clinch work with a partner — hand fighting, posture control, knees, sweeps, and turns.',
+    json_array('Fight for the inside position on the head and neck.','Stay tall — don''t let the partner bend you forward.','Short, snapping knees from the hip, not full extensions.','Reset posture after every exchange.')
+  UNION ALL
+  SELECT 'Muay Thai Sparring',
+    'Live rounds with a partner at agreed intensity — technical sparring or harder prep rounds with shin guards and control.',
+    NULL
+) e
+WHERE d.key='muay_thai'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- MMA exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'MMA Class' AS name,
+    'A full scheduled class — mixed striking, grappling, and transition work. Log as one session.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'MMA Pad Work',
+    'Timed rounds on pads with striking plus takedown entries, cage work, or ground transitions mixed in.',
+    json_array('Treat every strike as a setup for the next phase — takedown, clinch, or exit.','Hands back to guard after every combination — the fight isn''t over.','Level change realistically — don''t fake shots.','Finish combinations with a distance reset.')
+  UNION ALL
+  SELECT 'MMA Sparring',
+    'Live rounds with a partner covering all phases — striking, clinch, takedowns, and ground — at agreed intensity.',
+    NULL
+  UNION ALL
+  SELECT 'MMA Situational Sparring',
+    'Live rounds starting from a fixed situation — back against the cage, bottom guard, in the clinch — reset to the starting position.',
+    json_array('Pick the situation before the round, don''t drift between them.','Both partners fight honestly from the position — no easing off.','Reset the instant the situation ends — don''t keep rolling past it.','Alternate which role you start in between rounds.')
+) e
+WHERE d.key='mma'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Karate exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'Karate Class' AS name,
+    'A full scheduled class — kihon, kata, and kumite. Log as one session.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'Karate Kumite',
+    'Sparring rounds — point sparring, continuous sparring, or controlled full-contact depending on style.',
+    NULL
+  UNION ALL
+  SELECT 'Karate Kata Practice',
+    'Solo practice of prescribed forms — timed blocks of kata repetitions at varying intensities.',
+    json_array('Full kime on every technique — no throwaway reps.','Breathe with the technique, not against it.','Stances drop as low as they do in the first rep; don''t ride high when tired.','Visualize the opponent at every count.')
+) e
+WHERE d.key='karate'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Judo exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'Judo Class' AS name,
+    'A full scheduled class — ukemi, uchi-komi, drilling, and randori. Log as one session.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'Judo Randori',
+    'Live sparring rounds with rotating partners — standing, ground, or combined depending on the session''s focus.',
+    NULL
+  UNION ALL
+  SELECT 'Judo Uchi-Komi',
+    'Repetitive throw entries with a partner — no follow-through, focused on grip, kuzushi, and entry position.',
+    json_array('Break the partner''s balance before stepping in.','Get under the center of gravity on every entry — don''t reach.','Match tempo to your partner — don''t rush.','Alternate sides between rounds.')
+  UNION ALL
+  SELECT 'Judo Nage-Komi',
+    'Partner drilling of full throws with follow-through, typically onto a crash mat. Technique reps at varying intensities.',
+    json_array('Commit fully to the throw — half-throws build bad habits.','Maintain grip through the landing, don''t release early.','Alternate who throws between rounds.','Drill breakfalls as part of the rep, not as an afterthought.')
+) e
+WHERE d.key='judo'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Soccer exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'Soccer Match' AS name,
+    'A full match — competitive, small-sided, or internal — played at standard or reduced duration. Use periods as halves or quarters.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'Soccer Training',
+    'A full team training session — warm-up, technical work, tactical phases, and scrimmages.',
+    NULL
+  UNION ALL
+  SELECT 'Soccer Shooting Practice',
+    'Dedicated finishing drill blocks — shots from distance, inside the box, one-touch finishes, or set-piece rehearsal.',
+    json_array('Plant foot next to the ball, not behind it.','Strike through the middle of the ball for power, under for lift.','Follow through toward the target, don''t cut the swing short.','Finish into the corners, not down the goalkeeper''s center.')
+  UNION ALL
+  SELECT 'Soccer Passing Practice',
+    'Drill blocks focused on passing patterns — short, long, switches, or combination play under varying pressure.',
+    json_array('Open the body before receiving — don''t square up to the passer.','Weight of pass first, accuracy second.','Scan before the ball arrives, not after.','Receive across the body into the next action.')
+) e
+WHERE d.key='soccer'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Basketball exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'Basketball Game' AS name,
+    'A full game — full court or half-court, competitive or pickup. Use periods as quarters or halves.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'Basketball Practice',
+    'A full team or solo practice session — skill work, plays, and scrimmage.',
+    NULL
+  UNION ALL
+  SELECT 'Basketball Shooting Practice',
+    'Dedicated shooting session — catch-and-shoot, off-the-dribble, spot-up, or free throw reps.',
+    json_array('Feet set before the catch — jump from a balanced base.','Elbow under the ball, not out to the side.','Follow through with a full wrist snap — hold it until the ball lands.','Same form on every rep, regardless of distance.')
+  UNION ALL
+  SELECT 'Basketball Free Throw Practice',
+    'Dedicated free throw reps — same routine every shot, tracked as made/missed.',
+    json_array('Use the same pre-shot routine on every attempt.','Align the shooting foot with the center of the rim.','Eyes on the back of the rim, not the front.','Shoot with arc — flat shots have no margin.')
+  UNION ALL
+  SELECT 'Basketball Ball Handling Practice',
+    'Solo dribbling drill blocks — stationary, moving, two-ball, or cone patterns.',
+    json_array('Keep the dribble at or below the hip.','Eyes up — use peripheral vision for the ball.','Push the ball, don''t slap it.','Change pace within the drill — not just speed but rhythm.')
+) e
+WHERE d.key='basketball'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Golf exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'Golf Round' AS name,
+    'A full round — 9 or 18 holes — stroke play, match play, or casual. Use periods as nines or sets of holes.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'Golf Range Practice',
+    'A driving range session — full swings, club-by-club work, or targeted shot shaping.',
+    json_array('Go through a full pre-shot routine on every ball, not just the first few.','Hit to specific targets, not just out into the range.','Change clubs every few shots rather than bucket-bashing one.','Log misses as left/right/thin/fat — track patterns, not just outcomes.')
+  UNION ALL
+  SELECT 'Golf Short Game Practice',
+    'Dedicated session around the green — chipping, pitching, and bunker work from varied lies and distances.',
+    json_array('Land the ball on a chosen spot, not at the flag.','Weight forward on chips — don''t try to scoop the ball up.','Accelerate through contact on bunker shots.','Vary the club for chips — don''t default to one.')
+  UNION ALL
+  SELECT 'Golf Putting Practice',
+    'Dedicated putting session — distance control, lag putting, short putts, or breaking putts.',
+    json_array('Read the putt, pick a line, commit — no second-guessing over the ball.','Match stroke length to distance, not swing speed.','Keep the head still through contact — don''t track the ball.','Drill short putts at the end when tired, not at the start.')
+) e
+WHERE d.key='golf'
+AND NOT EXISTS (
+  SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
+);
+
+-- Climbing exercises
+INSERT INTO app_exercise (id, owner_user_id, discipline_id, name, description, how_to_steps, created_at_ms, updated_at_ms)
+SELECT lower(hex(randomblob(16))), NULL, d.id, e.name, e.description, e.how_to_steps,
+       (strftime('%s','now') * 1000), (strftime('%s','now') * 1000)
+FROM app_discipline d
+JOIN (
+  SELECT 'Climbing Session' AS name,
+    'An open-ended climbing session — gym or outdoor, bouldering or roped. Use periods as problem/route attempts if tracking.' AS description,
+    NULL AS how_to_steps
+  UNION ALL
+  SELECT 'Climbing Projecting',
+    'Working a specific problem or route at or near the limit — attempts interspersed with rest.',
+    json_array('Rest fully between attempts — 3–5 minutes minimum on hard projects.','Work the project in sections before trying it linked.','Rehearse the sequence mentally before each attempt.','Call it after 4–5 quality attempts — diminishing returns after that.')
+  UNION ALL
+  SELECT 'Climbing Volume',
+    'High-quantity climbing at sub-maximal grades — mileage for technique, capacity, and movement literacy.',
+    json_array('Stay 2–3 grades below limit — this isn''t projecting.','Focus on footwork — silent feet, weight through the toe.','Climb efficiently, not fast — static where possible.','Stop before form breaks down, not after.')
+  UNION ALL
+  SELECT 'Climbing Hangboard Session',
+    'Structured hangboard protocol — max hangs, repeaters, or specific grip work.',
+    json_array('Warm up fully before touching the board — no cold max hangs.','Shoulders engaged, not shrugged — active hang only.','Stop the set before form degrades, not when time expires.','Do not hangboard on fatigued fingers — reschedule if needed.')
+) e
+WHERE d.key='climbing'
+AND NOT EXISTS (
   SELECT 1 FROM app_exercise WHERE name=e.name AND owner_user_id IS NULL
 );
 
@@ -1890,16 +2624,66 @@ SELECT e.id, 'sets' FROM app_exercise e WHERE e.name IN (
 -- Sports exercises: time + rounds (periods/halves/sets)
 INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
 SELECT e.id, 'time' FROM app_exercise e WHERE e.name IN (
-  'Tennis Match', 'Tennis Drill', 'Volleyball Match', 'Volleyball Drill',
-  'Badminton Match', 'Table Tennis Match', 'Cricket Match', 'Ice Hockey Match',
-  'Baseball Game', 'American Football Game', 'Rugby Match', 'Lacrosse Game'
+  -- Racket sports
+  'Tennis Match', 'Tennis Drill', 'Tennis Serve Practice', 'Tennis Return Practice',
+  'Volleyball Match', 'Volleyball Drill',
+  'Badminton Match', 'Badminton Drill',
+  'Table Tennis Match', 'Table Tennis Drill',
+  'Squash Match', 'Squash Drill',
+  'Padel Match', 'Padel Drill',
+  -- Team sports
+  'Cricket Match', 'Cricket Practice',
+  'Ice Hockey Match', 'Ice Hockey Practice',
+  'Baseball Game', 'Baseball Practice',
+  'American Football Game', 'American Football Practice',
+  'Rugby Match', 'Rugby Training',
+  'Lacrosse Game', 'Lacrosse Practice',
+  'Soccer Match', 'Soccer Training', 'Soccer Shooting Practice', 'Soccer Passing Practice',
+  'Basketball Game', 'Basketball Practice', 'Basketball Shooting Practice',
+  'Basketball Free Throw Practice', 'Basketball Ball Handling Practice',
+  -- Combat sports
+  'BJJ Class', 'BJJ Drilling', 'BJJ Rolling', 'BJJ Positional Sparring',
+  'BJJ Guard Retention Practice', 'BJJ Guard Passing Practice', 'BJJ Submission Practice',
+  'Muay Thai Class', 'Muay Thai Pad Work', 'Muay Thai Bag Work',
+  'Muay Thai Clinch Practice', 'Muay Thai Sparring',
+  'MMA Class', 'MMA Pad Work', 'MMA Sparring', 'MMA Situational Sparring',
+  'Karate Class', 'Karate Kumite', 'Karate Kata Practice',
+  'Judo Class', 'Judo Randori', 'Judo Uchi-Komi', 'Judo Nage-Komi',
+  -- Individual sports
+  'Golf Round', 'Golf Range Practice', 'Golf Short Game Practice', 'Golf Putting Practice',
+  'Climbing Session', 'Climbing Projecting', 'Climbing Volume', 'Climbing Hangboard Session'
 ) AND e.owner_user_id IS NULL;
 
 INSERT OR IGNORE INTO app_exercise_capability (exercise_id, capability)
 SELECT e.id, 'rounds' FROM app_exercise e WHERE e.name IN (
-  'Tennis Match', 'Tennis Drill', 'Volleyball Match', 'Volleyball Drill',
-  'Badminton Match', 'Table Tennis Match', 'Cricket Match', 'Ice Hockey Match',
-  'Baseball Game', 'American Football Game', 'Rugby Match', 'Lacrosse Game'
+  -- Racket sports
+  'Tennis Match', 'Tennis Drill', 'Tennis Serve Practice', 'Tennis Return Practice',
+  'Volleyball Match', 'Volleyball Drill',
+  'Badminton Match', 'Badminton Drill',
+  'Table Tennis Match', 'Table Tennis Drill',
+  'Squash Match', 'Squash Drill',
+  'Padel Match', 'Padel Drill',
+  -- Team sports
+  'Cricket Match', 'Cricket Practice',
+  'Ice Hockey Match', 'Ice Hockey Practice',
+  'Baseball Game', 'Baseball Practice',
+  'American Football Game', 'American Football Practice',
+  'Rugby Match', 'Rugby Training',
+  'Lacrosse Game', 'Lacrosse Practice',
+  'Soccer Match', 'Soccer Training', 'Soccer Shooting Practice', 'Soccer Passing Practice',
+  'Basketball Game', 'Basketball Practice', 'Basketball Shooting Practice',
+  'Basketball Free Throw Practice', 'Basketball Ball Handling Practice',
+  -- Combat sports
+  'BJJ Class', 'BJJ Drilling', 'BJJ Rolling', 'BJJ Positional Sparring',
+  'BJJ Guard Retention Practice', 'BJJ Guard Passing Practice', 'BJJ Submission Practice',
+  'Muay Thai Class', 'Muay Thai Pad Work', 'Muay Thai Bag Work',
+  'Muay Thai Clinch Practice', 'Muay Thai Sparring',
+  'MMA Class', 'MMA Pad Work', 'MMA Sparring', 'MMA Situational Sparring',
+  'Karate Class', 'Karate Kumite', 'Karate Kata Practice',
+  'Judo Class', 'Judo Randori', 'Judo Uchi-Komi', 'Judo Nage-Komi',
+  -- Individual sports
+  'Golf Round', 'Golf Range Practice', 'Golf Short Game Practice', 'Golf Putting Practice',
+  'Climbing Session', 'Climbing Projecting', 'Climbing Volume', 'Climbing Hangboard Session'
 ) AND e.owner_user_id IS NULL;
 
 -- ============================================================================
@@ -1910,8 +2694,9 @@ SELECT e.id, 'rounds' FROM app_exercise e WHERE e.name IN (
 -- playing unit differs meaningfully from a 3-min boxing round.
 -- See Exercise.defaultRoundDurationSecs in lib/data/models/models.dart.
 -- Boxing exercises intentionally left as NULL (they use the 3-min default).
+-- Combat sport new entries (BJJ, Muay Thai, MMA, Karate, Judo) also NULL.
 
--- Team sports — period / half / set lengths
+-- Racket sports
 UPDATE app_exercise SET default_round_duration_secs = 1200  -- 20-min set
   WHERE name = 'Tennis Match'            AND owner_user_id IS NULL;
 UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min drill
@@ -1922,8 +2707,21 @@ UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min drill
   WHERE name = 'Volleyball Drill'        AND owner_user_id IS NULL;
 UPDATE app_exercise SET default_round_duration_secs = 1200  -- 20-min game
   WHERE name = 'Badminton Match'         AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min drill
+  WHERE name = 'Badminton Drill'         AND owner_user_id IS NULL;
 UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min game
   WHERE name = 'Table Tennis Match'      AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min drill
+  WHERE name = 'Table Tennis Drill'      AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min game
+  WHERE name = 'Squash Match'            AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min drill
+  WHERE name = 'Squash Drill'            AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 1200  -- 20-min set equivalent
+  WHERE name = 'Padel Match'             AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min drill
+  WHERE name = 'Padel Drill'             AND owner_user_id IS NULL;
+-- Team sports
 UPDATE app_exercise SET default_round_duration_secs = 1800  -- 30-min innings segment
   WHERE name = 'Cricket Match'           AND owner_user_id IS NULL;
 UPDATE app_exercise SET default_round_duration_secs = 1200  -- 20-min period
@@ -1934,7 +2732,35 @@ UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min quarter
   WHERE name = 'American Football Game'  AND owner_user_id IS NULL;
 UPDATE app_exercise SET default_round_duration_secs = 2400  -- 40-min half
   WHERE name = 'Rugby Match'             AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min block
+  WHERE name = 'Rugby Training'          AND owner_user_id IS NULL;
 UPDATE app_exercise SET default_round_duration_secs = 720   -- 12-min quarter
   WHERE name = 'Lacrosse Game'           AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min block
+  WHERE name = 'Lacrosse Practice'       AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min block
+  WHERE name = 'Ice Hockey Practice'     AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min block
+  WHERE name = 'American Football Practice' AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min block
+  WHERE name = 'Baseball Practice'       AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min block
+  WHERE name = 'Cricket Practice'        AND owner_user_id IS NULL;
+-- Soccer
+UPDATE app_exercise SET default_round_duration_secs = 2700  -- 45-min half
+  WHERE name = 'Soccer Match'            AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min phase
+  WHERE name = 'Soccer Training'         AND owner_user_id IS NULL;
+-- Basketball
+UPDATE app_exercise SET default_round_duration_secs = 720   -- 12-min quarter (NBA)
+  WHERE name = 'Basketball Game'         AND owner_user_id IS NULL;
+UPDATE app_exercise SET default_round_duration_secs = 900   -- 15-min block
+  WHERE name = 'Basketball Practice'     AND owner_user_id IS NULL;
+-- Golf
+UPDATE app_exercise SET default_round_duration_secs = 5400  -- 90-min per 9 holes
+  WHERE name = 'Golf Round'              AND owner_user_id IS NULL;
+-- Climbing
+UPDATE app_exercise SET default_round_duration_secs = 600   -- 10-min block
+  WHERE name = 'Climbing Session'        AND owner_user_id IS NULL;
 
 COMMIT;
