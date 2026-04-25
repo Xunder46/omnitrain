@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'modality.dart';
 import 'modality_colors.dart';
-import 'omni_theme.dart';
 import '../../widgets/icons/overhead_press_icon.dart';
 
 /// Configuration for home screen modality tiles with cosmic aesthetic

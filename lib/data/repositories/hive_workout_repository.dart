@@ -1687,8 +1687,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
   @override
   Future<String> cloneSessionBlock(String blockId) async {
     final originalRaw = _sessionBlocksBox.get(blockId);
-    if (originalRaw == null)
+    if (originalRaw == null) {
       throw StateError('SessionBlock $blockId not found');
+    }
     final original = SessionBlock.fromMap(_asStringMap(originalRaw));
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
