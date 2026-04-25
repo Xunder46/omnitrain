@@ -74,8 +74,7 @@ class DatabaseProvider {
         .where((l) => l.trim().isNotEmpty)
         .join('\n');
 
-    final statements = cleaned
-        .split(';')
+      final statements = _splitSqlStatements(cleaned)
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .where((s) {
@@ -87,6 +86,42 @@ class DatabaseProvider {
 
     for (final stmt in statements) {
       await exec.execute(stmt);
+    }
+  }
+
+  Iterable<String> _splitSqlStatements(String sql) sync* {
+    final buffer = StringBuffer();
+    var inSingleQuotedString = false;
+
+    for (var index = 0; index < sql.length; index++) {
+      final char = sql[index];
+
+      if (char == "'") {
+        buffer.write(char);
+
+        if (inSingleQuotedString &&
+            index + 1 < sql.length &&
+            sql[index + 1] == "'") {
+          buffer.write("'");
+          index++;
+          continue;
+        }
+
+        inSingleQuotedString = !inSingleQuotedString;
+        continue;
+      }
+
+      if (char == ';' && !inSingleQuotedString) {
+        yield buffer.toString();
+        buffer.clear();
+        continue;
+      }
+
+      buffer.write(char);
+    }
+
+    if (buffer.isNotEmpty) {
+      yield buffer.toString();
     }
   }
 

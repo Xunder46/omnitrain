@@ -173,7 +173,10 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
   Future<void> _openCreateExercise() async {
     final created = await Navigator.of(context).push<Exercise>(
       MaterialPageRoute(
-        builder: (_) => ExerciseEditorScreen(workoutState: widget.workoutState),
+        builder: (_) => ExerciseEditorScreen(
+          workoutState: widget.workoutState,
+          contextModality: widget.sessionModality,
+        ),
       ),
     );
 

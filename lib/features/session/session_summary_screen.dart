@@ -9,6 +9,8 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/effort_defaults.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/utils/session_feeling_utils.dart';
+import '../../core/utils/unit_formatter.dart';
+import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
@@ -26,6 +28,7 @@ class SessionSummaryScreen extends StatefulWidget {
   final RoutineState routineState;
   final SessionSummaryService sessionSummaryService;
   final Future<void> Function(String sessionId)? onSessionSaved;
+  final SettingsState? settingsState;
 
   const SessionSummaryScreen({
     super.key,
@@ -33,6 +36,7 @@ class SessionSummaryScreen extends StatefulWidget {
     required this.routineState,
     required this.sessionSummaryService,
     this.onSessionSaved,
+    this.settingsState,
   });
 
   @override
@@ -334,6 +338,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           routineState: widget.routineState,
           routineSessionService: _routineSessionService,
           sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
         ),
       ),
     );
@@ -1211,7 +1216,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         final sets =
             '${exercise.setsCompleted} set${exercise.setsCompleted != 1 ? 's' : ''}';
         if (exercise.bestWeight != null && exercise.bestWeight! > 0) {
-          subtitle = '$sets · Best ${_formatNumber(exercise.bestWeight!)} kg';
+          final bestWeightLabel = widget.settingsState != null
+              ? UnitFormatter.formatWeight(
+                  exercise.bestWeight!,
+                  widget.settingsState!,
+                )
+              : _formatWeight(exercise.bestWeight!);
+          subtitle = '$sets · Best $bestWeightLabel';
         } else {
           subtitle = sets;
         }
@@ -1269,8 +1280,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 8.0),
               child: Text(
-                '${pr.exerciseName}: New best ${_formatNumber(pr.newBest)} kg '
-                '(was ${_formatNumber(pr.previousBest)} kg)',
+                widget.settingsState != null
+                    ? '${pr.exerciseName}: New best ${UnitFormatter.formatWeight(pr.newBest, widget.settingsState!)} '
+                          '(was ${UnitFormatter.formatWeight(pr.previousBest, widget.settingsState!)})'
+                    : '${pr.exerciseName}: New best ${_formatWeight(pr.newBest)} '
+                          '(was ${_formatWeight(pr.previousBest)})',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -1356,17 +1370,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildCalendarGrid(ThemeData theme, DateTime now) {
+    final startOfWeek = widget.settingsState?.startOfWeek ?? 'monday';
     final firstDay = DateTime(now.year, now.month, 1);
-    final firstWeekday = firstDay.weekday; // 1=Mon
+    // Dart weekday: 1=Mon … 7=Sun
+    final int leadingBlanks = startOfWeek == 'sunday'
+        ? firstDay.weekday % 7   // Sun=0, Mon=1, … Sat=6
+        : firstDay.weekday - 1;  // Mon=0, Tue=1, … Sun=6
     final daysInMonth = _daysInMonth;
-    final totalSlots = daysInMonth + (firstWeekday - 1);
+    final totalSlots = daysInMonth + leadingBlanks;
     final rows = (totalSlots / 7).ceil();
 
     final cells = <Widget>[];
     final today = DateTime.now().day;
 
     for (int i = 0; i < rows * 7; i++) {
-      final dayNumber = i - (firstWeekday - 2);
+      final dayNumber = i - leadingBlanks + 1;
       if (dayNumber < 1 || dayNumber > daysInMonth) {
         cells.add(const SizedBox.shrink());
         continue;
@@ -1424,6 +1442,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   double _convertKgToPreferred(double kg) {
+    if (widget.settingsState != null) {
+      return UnitFormatter.convertWeight(kg, widget.settingsState!);
+    }
     if (_preferredWeightUnit == 'lbs') {
       return kg * 2.2046226218;
     }
@@ -1431,6 +1452,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   String _formatWeight(double valueKg) {
+    if (widget.settingsState != null) {
+      return UnitFormatter.formatWeight(valueKg, widget.settingsState!);
+    }
     final converted = _convertKgToPreferred(valueKg);
     return '${_formatNumber(converted)} $_preferredWeightUnit';
   }

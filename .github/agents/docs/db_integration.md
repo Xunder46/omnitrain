@@ -103,6 +103,10 @@ It also includes session/observation extensions:
 - `app_effort_observation.rpe_rating`
 - `app_effort_observation.rest_duration_ms`
 
+And exercise modality persistence for custom exercise parity:
+
+- `app_exercise.modality` (nullable for legacy rows)
+
 `scripts/sqlite_seed.sql` now seeds stable unit IDs and metric IDs, including:
 
 - `unit-cm`

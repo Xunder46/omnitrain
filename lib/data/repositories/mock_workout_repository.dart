@@ -581,8 +581,7 @@ class MockWorkoutRepository implements WorkoutRepository {
         final session = _sessions[segment.sessionId];
         if (session == null) continue;
 
-        final rawModality = session.modality;
-        final modality = rawModality == 'martial_arts' ? 'sports' : rawModality;
+        final modality = session.modality;
 
         result.putIfAbsent(modality, () => []).add(rest);
       }

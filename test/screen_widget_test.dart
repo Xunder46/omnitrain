@@ -109,6 +109,42 @@ void main() {
       expect(find.text('APPEARANCE'), findsOneWidget);
     });
 
+    testWidgets('renders retained sections in order with version footer', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('PREFERENCES'), findsOneWidget);
+      expect(find.text('TRAINING'), findsNothing);
+      expect(find.text('MEASUREMENTS'), findsNothing);
+      expect(find.text('APPEARANCE'), findsOneWidget);
+
+      expect(find.text('100 kg'), findsOneWidget);
+      expect(find.text('5 km'), findsOneWidget);
+      expect(find.text('Start of Week'), findsOneWidget);
+
+      final preferencesY = tester.getTopLeft(find.text('PREFERENCES')).dy;
+      final appearanceY = tester.getTopLeft(find.text('APPEARANCE')).dy;
+
+      expect(preferencesY, lessThan(appearanceY));
+
+      await tester.scrollUntilVisible(
+        find.text('Version 1.0.0'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Version 1.0.0'), findsOneWidget);
+    });
+
     testWidgets('shows only the five retained theme options', (
       WidgetTester tester,
     ) async {
@@ -537,6 +573,47 @@ void main() {
 
       // There should be an add exercise button (add icon)
       expect(find.byIcon(Icons.add), findsWidgets);
+    });
+
+    testWidgets('uses preferred lbs label for routine load editors', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final routineState = RoutineState(repo);
+      final workoutState = WorkoutState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await settingsState.setPreferredWeightUnit('lbs');
+      routineState.setAutosaveEnabled(false);
+      await routineState.createNewRoutine('Upper Day');
+
+      final exercises = await repo.getExercises();
+      final loadedExercise = exercises.firstWhere(
+        (e) =>
+            e.capabilities.contains('load') && e.capabilities.contains('reps'),
+        orElse: () => exercises.first,
+      );
+      await routineState.addExerciseToRoutine(loadedExercise, 'set');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+            settingsState: settingsState,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(loadedExercise.name).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('LBS'), findsOneWidget);
     });
 
     testWidgets('loads existing routine when templateId provided', (
@@ -1434,10 +1511,17 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
       await profileState.loadProfile();
 
       await tester.pumpWidget(
-        MaterialApp(home: ProfileScreen(profileState: profileState)),
+        MaterialApp(
+          home: ProfileScreen(
+            profileState: profileState,
+            settingsState: settingsState,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -1450,10 +1534,17 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
       await profileState.loadProfile();
 
       await tester.pumpWidget(
-        MaterialApp(home: ProfileScreen(profileState: profileState)),
+        MaterialApp(
+          home: ProfileScreen(
+            profileState: profileState,
+            settingsState: settingsState,
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -2503,6 +2594,8 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
       await profileState.loadProfile();
       const definition = ProfileMeasurements.bodyweight;
 
@@ -2512,6 +2605,7 @@ void main() {
             body: MeasurementHistoryChartSheet(
               profileState: profileState,
               definition: definition,
+              settingsState: settingsState,
               onLogNew: () async {},
             ),
           ),
@@ -2527,6 +2621,8 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
       await profileState.loadProfile();
       const definition = ProfileMeasurements.bodyweight;
 
@@ -2536,6 +2632,7 @@ void main() {
             body: MeasurementHistoryChartSheet(
               profileState: profileState,
               definition: definition,
+              settingsState: settingsState,
               onLogNew: () async {},
             ),
           ),
@@ -2544,6 +2641,44 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Log New Entry'), findsOneWidget);
+    });
+
+    testWidgets('formats unit-kg chart labels using preferred lbs setting', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'chart-weight-entry',
+          measurementType: 'bodyweight',
+          value: 80,
+          unitId: 'unit-kg',
+          recordedAtMs: 123456,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await settingsState.setPreferredWeightUnit('lbs');
+      await profileState.loadProfile();
+      const definition = ProfileMeasurements.bodyweight;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: definition,
+              settingsState: settingsState,
+              onLogNew: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('176.4 lbs'), findsOneWidget);
     });
   });
 
@@ -2675,7 +2810,7 @@ void main() {
             home: Scaffold(
               body: ExercisePickerDialog(
                 workoutState: workoutState,
-                sessionModality: Modality.martialArts,
+                sessionModality: Modality.sports,
               ),
             ),
           ),
@@ -2695,6 +2830,35 @@ void main() {
         );
       },
     );
+
+    testWidgets('sports modality recommends boxing exercises', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ExercisePickerDialog(
+              workoutState: workoutState,
+              sessionModality: Modality.sports,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Recommended'), findsOneWidget);
+      // Scroll down to ensure lazy-built list items are rendered
+      await tester.dragUntilVisible(
+        find.text('Heavy Bag Rounds'),
+        find.byType(ListView).first,
+        const Offset(0, -200),
+      );
+      expect(find.text('Heavy Bag Rounds'), findsOneWidget);
+    });
 
     testWidgets('shows exercises from repo', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 1200));
@@ -2829,6 +2993,7 @@ void main() {
       expect(find.text('Resistance'), findsOneWidget);
       expect(find.text('Sports'), findsOneWidget);
       expect(find.text('Isometric'), findsOneWidget);
+      expect(find.text('Martial Arts'), findsNothing);
     });
 
     testWidgets('shows Cancel button', (WidgetTester tester) async {
@@ -3079,6 +3244,59 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Weight adjustment'), findsNothing);
+    });
+
+    testWidgets('previous set banner respects lbs preference', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await settingsState.setPreferredWeightUnit('lbs');
+      await workoutState.markExerciseInfoHintSeen();
+      await workoutState.markExerciseNotesHintSeen();
+      await workoutState.createNewSession(modality: 'resistance_lifting');
+
+      final exercises = await repo.getExercises();
+      final loadedExercise = exercises.firstWhere(
+        (e) =>
+            e.capabilities.contains('sets') &&
+            e.capabilities.contains('load') &&
+            e.capabilities.contains('reps'),
+        orElse: () => exercises.first,
+      );
+      final effortId = await workoutState.addExerciseToSession(
+        loadedExercise,
+        effortKindOverride: 'set',
+      );
+      await workoutState.addEntry(effortId);
+      await workoutState.updateEntryValue(effortId, 0, 'reps', 8);
+      await workoutState.updateEntryValue(effortId, 0, 'weight', 100.0);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+            settingsState: settingsState,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(loadedExercise.name).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Log Set'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Previous: 8 reps @ 220.5 lbs'),
+        findsOneWidget,
+      );
     });
   });
 

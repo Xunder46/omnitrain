@@ -81,11 +81,9 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
         return newValue;
       case 'weight':
         final current = (widget.currentValue as double?) ?? 0.0;
-        final increment = 2.5; // 2.5 lbs per swipe unit
-        final newValue = (current + (change / 10) * increment).clamp(
-          0.0,
-          999.0,
-        );
+        final increment = 0.5; // 0.5 kg/lbs per swipe step
+        final steps = (change / 10).truncate();
+        final newValue = (current + steps * increment).clamp(0.0, 999.0);
         return double.parse(newValue.toStringAsFixed(1));
       case 'duration':
         final current = (widget.currentValue as int?) ?? 0;
@@ -101,11 +99,9 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
         return newValue;
       case 'extra-weight':
         final current = (widget.currentValue as double?) ?? 0.0;
-        final increment = 2.5; // 2.5 lbs/kg per swipe unit
-        final newValue = (current + (change / 10) * increment).clamp(
-          -100.0,
-          200.0,
-        );
+        final increment = 0.5; // 0.5 kg/lbs per swipe step
+        final steps = (change / 10).truncate();
+        final newValue = (current + steps * increment).clamp(-100.0, 200.0);
         return double.parse(newValue.toStringAsFixed(1));
       default:
         return widget.currentValue;

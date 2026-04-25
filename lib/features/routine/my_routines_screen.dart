@@ -4,6 +4,7 @@ import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../state/routine/routine_state.dart';
+import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import 'routine_setup_screen.dart';
 import '../session/workout_session_screen.dart';
@@ -15,6 +16,7 @@ class MyRoutinesScreen extends StatefulWidget {
   final WorkoutState? workoutState; // Optional for starting session
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
+  final SettingsState? settingsState;
 
   const MyRoutinesScreen({
     super.key,
@@ -22,6 +24,7 @@ class MyRoutinesScreen extends StatefulWidget {
     this.workoutState,
     required this.routineSessionService,
     required this.sessionSummaryService,
+    this.settingsState,
   });
 
   @override
@@ -199,6 +202,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
         builder: (_) => RoutineSetupScreen(
           routineState: widget.routineState,
           workoutState: widget.workoutState,
+          settingsState: widget.settingsState,
         ),
       ),
     ).then((_) {
@@ -214,6 +218,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
           routineState: widget.routineState,
           workoutState: widget.workoutState,
           templateId: templateId,
+          settingsState: widget.settingsState,
         ),
       ),
     ).then((_) {

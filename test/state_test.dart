@@ -1156,6 +1156,24 @@ void main() {
       expect(effortId, isNotEmpty);
     });
 
+    test('createCustomExercise persists modality and reloads from repository', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+
+      final created = await state.createCustomExercise(
+        name: 'Tempo Run Custom',
+        modality: 'cardio_endurance',
+        capabilities: ['time', 'distance'],
+      );
+
+      expect(created, isNotNull);
+      expect(created!.modality, 'cardio_endurance');
+
+      final loaded = await repo.getExerciseById(created.id);
+      expect(loaded, isNotNull);
+      expect(loaded!.modality, 'cardio_endurance');
+    });
+
     test(
       'updateSessionEndTime changes endedAtMs based on durationSecs',
       () async {
@@ -1236,7 +1254,7 @@ void main() {
       test('startRound creates an active RoundInstance', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(
@@ -1255,7 +1273,7 @@ void main() {
       test('completeRound sets round state to finished', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(
@@ -1274,7 +1292,7 @@ void main() {
       test('pauseRound and resumeRound cycle', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(
@@ -1297,7 +1315,7 @@ void main() {
       test('endRoundEarly finishes round immediately', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(
@@ -1316,7 +1334,7 @@ void main() {
       test('deleteRound removes instance', () async {
         final repo = await _freshRepo();
         final state = WorkoutState(repo);
-        await state.createNewSession(modality: 'martial_arts');
+        await state.createNewSession(modality: 'sports');
 
         final exercises = await repo.getExercises();
         final roundExercise = exercises.firstWhere(

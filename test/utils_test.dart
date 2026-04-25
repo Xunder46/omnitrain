@@ -5,7 +5,10 @@ import 'package:omnitrain/core/constants/modality_config.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/core/utils/observation_grouper.dart';
+import 'package:omnitrain/core/utils/unit_formatter.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
 
 // ── Minimal observation stub for ObservationGrouper tests ─────────────────
 // ObservationGrouper accesses .metricId, .valueInt, .valueReal, .valueBool
@@ -16,36 +19,136 @@ EffortObservation _obs({
   int? valueInt,
   double? valueReal,
   bool? valueBool,
-}) =>
-    EffortObservation(
-      id: 'obs-${metricId.hashCode}',
-      effortId: 'e-1',
-      metricId: metricId,
-      valueInt: valueInt,
-      valueReal: valueReal,
-      valueBool: valueBool,
-      createdAtMs: 0,
-      updatedAtMs: 0,
-    );
+}) => EffortObservation(
+  id: 'obs-${metricId.hashCode}',
+  effortId: 'e-1',
+  metricId: metricId,
+  valueInt: valueInt,
+  valueReal: valueReal,
+  valueBool: valueBool,
+  createdAtMs: 0,
+  updatedAtMs: 0,
+);
 
 Exercise _exercise({
   List<String> capabilities = const [],
   String disciplineId = 'cat-unknown',
-}) =>
-    Exercise(
-      id: 'ex-1',
-      ownerUserId: 'u-1',
-      disciplineId: disciplineId,
-      name: 'Test Exercise',
-      description: '',
-      movementPattern: 'push',
-      isArchived: false,
-      createdAtMs: 0,
-      updatedAtMs: 0,
-      capabilities: capabilities,
-    );
+  String? modality,
+}) => Exercise(
+  id: 'ex-1',
+  ownerUserId: 'u-1',
+  modality: modality,
+  disciplineId: disciplineId,
+  name: 'Test Exercise',
+  description: '',
+  movementPattern: 'push',
+  isArchived: false,
+  createdAtMs: 0,
+  updatedAtMs: 0,
+  capabilities: capabilities,
+);
 
 void main() {
+  group('UnitFormatter', () {
+    late MockWorkoutRepository repository;
+    late SettingsState settings;
+
+    setUp(() async {
+      repository = MockWorkoutRepository();
+      await repository.initialize();
+      settings = SettingsState(repository);
+      await settings.initialize();
+    });
+
+    test('formats weights using kg and lbs preferences', () async {
+      expect(UnitFormatter.weightLabel(settings), 'kg');
+      expect(UnitFormatter.weightLabelUpper(settings), 'KG');
+      expect(UnitFormatter.formatWeight(100.0, settings), '100 kg');
+      expect(UnitFormatter.formatWeightValue(100.0, settings), '100');
+
+      await settings.setPreferredWeightUnit('lbs');
+
+      expect(UnitFormatter.weightLabel(settings), 'lbs');
+      expect(UnitFormatter.weightLabelUpper(settings), 'LBS');
+      expect(UnitFormatter.formatWeight(100.0, settings), '220.5 lbs');
+      expect(UnitFormatter.formatWeightValue(100.0, settings), '220.5');
+      expect(
+        UnitFormatter.toCanonicalWeight(220.462, settings),
+        closeTo(100.0, 0.01),
+      );
+    });
+
+    test('formats distances using km and miles preferences', () async {
+      expect(UnitFormatter.distanceLabel(settings), 'km');
+      expect(UnitFormatter.distanceLabelUpper(settings), 'KM');
+      expect(UnitFormatter.formatDistance(5.0, settings), '5 km');
+      expect(UnitFormatter.formatDistanceValue(5.0, settings), '5');
+
+      await settings.setPreferredDistanceUnit('miles');
+
+      expect(UnitFormatter.distanceLabel(settings), 'mi');
+      expect(UnitFormatter.distanceLabelUpper(settings), 'MI');
+      expect(UnitFormatter.formatDistance(5.0, settings), '3.1 mi');
+      expect(UnitFormatter.formatDistanceValue(5.0, settings), '3.1');
+      expect(
+        UnitFormatter.toCanonicalDistance(3.106855, settings),
+        closeTo(5.0, 0.01),
+      );
+    });
+
+    test('respects explicit decimal overrides', () async {
+      expect(
+        UnitFormatter.formatWeight(80.0, settings, decimals: 2),
+        '80.00 kg',
+      );
+      expect(
+        UnitFormatter.formatDistance(5.0, settings, decimals: 2),
+        '5.00 km',
+      );
+
+      await settings.setPreferredDistanceUnit('miles');
+
+      expect(
+        UnitFormatter.formatDistanceValue(1.0, settings, decimals: 2),
+        '0.62',
+      );
+    });
+
+    test('normalizes raw unit values through centralized label helpers', () {
+      expect(UnitFormatter.weightLabelForUnit('kg'), 'kg');
+      expect(UnitFormatter.weightLabelForUnit('lbs'), 'lbs');
+      expect(UnitFormatter.weightLabelUpperForUnit('lbs'), 'LBS');
+
+      expect(UnitFormatter.distanceLabelForUnit('km'), 'km');
+      expect(UnitFormatter.distanceLabelForUnit('mi'), 'mi');
+      expect(UnitFormatter.distanceLabelForUnit('miles'), 'mi');
+      expect(UnitFormatter.distanceLabelUpperForUnit('mile'), 'MI');
+    });
+
+    test('copyWith updates modality when explicitly provided', () {
+      final original = _exercise(modality: 'cardio_endurance');
+      final copy = original.copyWith(modality: 'resistance_lifting');
+      expect(copy.modality, 'resistance_lifting');
+    });
+
+    test('copyWith preserves modality when not provided', () {
+      final original = _exercise(modality: 'isometric_stretching');
+      final copy = original.copyWith(name: 'Renamed');
+      expect(copy.modality, 'isometric_stretching');
+    });
+    
+    test('Exercise toMap/fromMap round-trips modality', () {
+      final original = _exercise(
+        modality: 'resistance_lifting',
+        capabilities: ['reps', 'load'],
+      );
+      final map = original.toMap();
+      final rebuilt = Exercise.fromMap(map);
+      expect(rebuilt.modality, 'resistance_lifting');
+      expect(rebuilt.name, original.name);
+    });
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // ObservationGrouper
   // ══════════════════════════════════════════════════════════════════════════
@@ -235,8 +338,15 @@ void main() {
     test('endOfDayMs returns 23:59:59.999 epoch ms', () {
       final date = DateTime(2025, 6, 15, 8);
       final ms = OmniDateUtils.endOfDayMs(date);
-      final endOfDay =
-          DateTime(2025, 6, 15, 23, 59, 59, 999).millisecondsSinceEpoch;
+      final endOfDay = DateTime(
+        2025,
+        6,
+        15,
+        23,
+        59,
+        59,
+        999,
+      ).millisecondsSinceEpoch;
       expect(ms, endOfDay);
     });
 
@@ -285,8 +395,11 @@ void main() {
       test('always produces a multiple of 7 cells', () {
         for (int month = 1; month <= 12; month++) {
           final grid = OmniDateUtils.buildMonthGrid(2025, month);
-          expect(grid.length % 7, 0,
-              reason: 'Month $month grid length ${grid.length} not multiple of 7');
+          expect(
+            grid.length % 7,
+            0,
+            reason: 'Month $month grid length ${grid.length} not multiple of 7',
+          );
         }
       });
 
@@ -365,10 +478,7 @@ void main() {
       test('same-year range omits year from start', () {
         final start = DateTime(2025, 3, 1).millisecondsSinceEpoch;
         final end = DateTime(2025, 6, 15).millisecondsSinceEpoch;
-        expect(
-          OmniDateUtils.formatRange(start, end),
-          'Mar 1 – Jun 15, 2025',
-        );
+        expect(OmniDateUtils.formatRange(start, end), 'Mar 1 – Jun 15, 2025');
       });
 
       test('cross-year range includes year on start', () {
@@ -387,8 +497,8 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('ModalityConfig', () {
-    test('configs map has 6 entries (5 modalities + null)', () {
-      expect(ModalityConfig.configs.length, 6);
+    test('configs map has 5 entries (4 modalities + null)', () {
+      expect(ModalityConfig.configs.length, 5);
       expect(ModalityConfig.configs.containsKey(null), true);
     });
 
@@ -408,6 +518,10 @@ void main() {
 
       test('returns null for unknown modality', () {
         expect(ModalityConfig.forModality('nonexistent'), isNull);
+      });
+
+      test('martial_arts is no longer a known modality (compat guard removed)', () {
+        expect(ModalityConfig.forModality('martial_arts'), isNull);
       });
     });
 
@@ -434,6 +548,176 @@ void main() {
       test('returns empty for Free Training', () {
         final config = ModalityConfig.forModality(null)!;
         expect(config.getAllMetrics(), isEmpty);
+      });
+    });
+
+    group('form modality helpers', () {
+      test('formCapabilities uses primary + secondary for cardio', () {
+        final config = ModalityConfig.forModality('cardio_endurance')!;
+        expect(config.formCapabilities, ['time', 'distance', 'rounds']);
+      });
+
+      test('formCapabilities uses primary + secondary for resistance', () {
+        final config = ModalityConfig.forModality('resistance_lifting')!;
+        expect(config.formCapabilities, ['reps', 'sets', 'load', 'time']);
+      });
+
+      test('formRequiredCapabilities map to expected modality-primary set', () {
+        expect(
+          ModalityConfig.forModality('cardio_endurance')!
+              .formRequiredCapabilities,
+          ['time', 'distance'],
+        );
+        expect(
+          ModalityConfig.forModality('resistance_lifting')!
+              .formRequiredCapabilities,
+          ['reps', 'load'],
+        );
+        expect(
+          ModalityConfig.forModality('isometric_stretching')!
+              .formRequiredCapabilities,
+          ['hold'],
+        );
+        expect(
+          ModalityConfig.forModality('sports')!.formRequiredCapabilities,
+          ['time', 'rounds'],
+        );
+      });
+
+      test('showMuscleGroupsInForm true for resistance and isometric only', () {
+        expect(
+          ModalityConfig.forModality('resistance_lifting')!
+              .showMuscleGroupsInForm,
+          isTrue,
+        );
+        expect(
+          ModalityConfig.forModality('isometric_stretching')!
+              .showMuscleGroupsInForm,
+          isTrue,
+        );
+        expect(
+          ModalityConfig.forModality('cardio_endurance')!
+              .showMuscleGroupsInForm,
+          isFalse,
+        );
+        expect(
+          ModalityConfig.forModality('sports')!.showMuscleGroupsInForm,
+          isFalse,
+        );
+      });
+
+      test('disciplinesForModality filters by categoryId', () {
+        final all = [
+          Discipline(
+            id: 'd-running',
+            categoryId: 'category-cardio',
+            key: 'running',
+            name: 'Running',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+          Discipline(
+            id: 'd-powerlifting',
+            categoryId: 'category-resistance',
+            key: 'powerlifting',
+            name: 'Powerlifting',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+          Discipline(
+            id: 'd-soccer',
+            categoryId: 'category-sports',
+            key: 'soccer',
+            name: 'Soccer',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+        ];
+
+        final cardio = ModalityConfig.disciplinesForModality(
+          'cardio_endurance',
+          all,
+        );
+        expect(cardio.map((d) => d.id).toList(), ['d-running']);
+
+        final sports = ModalityConfig.disciplinesForModality('sports', all);
+        expect(sports.map((d) => d.id).toList(), ['d-soccer']);
+      });
+
+      test('disciplinesForModality returns all in free-training context', () {
+        final all = [
+          Discipline(
+            id: 'd-1',
+            categoryId: 'category-cardio',
+            key: 'running',
+            name: 'Running',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+          Discipline(
+            id: 'd-2',
+            categoryId: 'category-resistance',
+            key: 'lifting',
+            name: 'Lifting',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+        ];
+
+        final filtered = ModalityConfig.disciplinesForModality(null, all);
+        expect(filtered.map((d) => d.id).toList(), ['d-1', 'd-2']);
+      });
+
+      test('formRequiredCapabilitiesLabel returns concrete inline message', () {
+        expect(
+          ModalityConfig.formRequiredCapabilitiesLabel('resistance_lifting'),
+          'Select at least one of: Reps, Load.',
+        );
+        expect(
+          ModalityConfig.formRequiredCapabilitiesLabel('isometric_stretching'),
+          'Select at least one of: Hold.',
+        );
+      });
+
+      test('modalityDisplayName returns expected chip labels', () {
+        expect(
+          ModalityConfig.modalityDisplayName('cardio_endurance'),
+          'Cardio / Endurance',
+        );
+        expect(
+          ModalityConfig.modalityDisplayName('resistance_lifting'),
+          'Resistance / Lifting',
+        );
+        expect(
+          ModalityConfig.modalityDisplayName('isometric_stretching'),
+          'Isometric / Stretching',
+        );
+        expect(ModalityConfig.modalityDisplayName('sports'), 'Sports');
+        expect(ModalityConfig.modalityDisplayName(null), 'Free Training');
+      });
+
+      test('legacyCapabilitiesForEdit returns only out-of-modality caps', () {
+        final legacy = ModalityConfig.legacyCapabilitiesForEdit(
+          'resistance_lifting',
+          ['reps', 'load', 'hold'],
+        );
+        expect(legacy, ['hold']);
+      });
+
+      test('legacyCapabilitiesForEdit returns empty when all are allowed', () {
+        final legacy = ModalityConfig.legacyCapabilitiesForEdit(
+          'resistance_lifting',
+          ['reps', 'load'],
+        );
+        expect(legacy, isEmpty);
+      });
+
+      test('legacyCapabilitiesForEdit returns empty for null modality', () {
+        final legacy = ModalityConfig.legacyCapabilitiesForEdit(
+          null,
+          ['reps'],
+        );
+        expect(legacy, isEmpty);
       });
     });
 
@@ -476,10 +760,6 @@ void main() {
         expect(ModalityConfig.getRoundsLabel('sports'), 'Periods');
       });
 
-      test('martial_arts → Rounds', () {
-        expect(ModalityConfig.getRoundsLabel('martial_arts'), 'Rounds');
-      });
-
       test('cardio_endurance → Intervals', () {
         expect(ModalityConfig.getRoundsLabel('cardio_endurance'), 'Intervals');
       });
@@ -516,15 +796,18 @@ void main() {
         expect(score, 40.0);
       });
 
-      test('no category match + no primary overlap → low score with penalty', () {
-        final config = ModalityConfig.forModality('resistance_lifting')!;
-        final score = config.calculateRelevanceScore(
-          exerciseCapabilities: ['unknown'],
-          exerciseCategoryId: 'different-category',
-        );
-        // 0 + 0 + 0 + 0 + 0 - 10 (no-overlap) = -10, clamped to 0
-        expect(score, 0.0);
-      });
+      test(
+        'no category match + no primary overlap → low score with penalty',
+        () {
+          final config = ModalityConfig.forModality('resistance_lifting')!;
+          final score = config.calculateRelevanceScore(
+            exerciseCapabilities: ['unknown'],
+            exerciseCategoryId: 'different-category',
+          );
+          // 0 + 0 + 0 + 0 + 0 - 10 (no-overlap) = -10, clamped to 0
+          expect(score, 0.0);
+        },
+      );
 
       test('anti-capability penalty reduces score', () {
         final config = ModalityConfig.forModality('resistance_lifting')!;
@@ -572,13 +855,13 @@ void main() {
       });
 
       test('score is clamped to 0 minimum', () {
-        final config = ModalityConfig.forModality('martial_arts')!;
-        // martial_arts anti: load, hold, distance (3 items)
+        final config = ModalityConfig.forModality('cardio_endurance')!;
+        // cardio anti: load, hold (2 items)
         final score = config.calculateRelevanceScore(
-          exerciseCapabilities: ['load', 'hold', 'distance'],
+          exerciseCapabilities: ['load', 'hold'],
           exerciseCategoryId: 'other-category',
         );
-        // 0 + 0 + 0 - 20 (3/3 anti) - 10 (no-overlap) = -30, clamped to 0
+        // 0 + 0 + 0 - 20 (2/2 anti) - 10 (no-overlap) = -30, clamped to 0
         expect(score, 0.0);
       });
 
@@ -748,11 +1031,14 @@ void main() {
       expect(defaults[MetricIds.extraWeight], 0.0);
     });
 
-    test('drill defaults include extraWeight and duration but not distance', () {
-      final defaults = EffortDefaults.getDefaultTargets('drill');
-      expect(defaults.containsKey(MetricIds.extraWeight), true);
-      expect(defaults.containsKey(MetricIds.distance), false);
-    });
+    test(
+      'drill defaults include extraWeight and duration but not distance',
+      () {
+        final defaults = EffortDefaults.getDefaultTargets('drill');
+        expect(defaults.containsKey(MetricIds.extraWeight), true);
+        expect(defaults.containsKey(MetricIds.distance), false);
+      },
+    );
 
     test('set defaults do not include extraWeight', () {
       final defaults = EffortDefaults.getDefaultTargets('set');

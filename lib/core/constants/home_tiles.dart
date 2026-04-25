@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'modality.dart';
 import 'modality_colors.dart';
-import 'omni_theme.dart';
 import '../../widgets/icons/overhead_press_icon.dart';
 
 /// Configuration for home screen modality tiles with cosmic aesthetic
@@ -46,7 +45,7 @@ class HomeTiles {
     HomeTileConfig(
       key: 'resistance',
       label: 'Resistance',
-      iconWidget: const OverheadPressIcon(size: 70),
+      iconWidget: OverheadPressIcon(size: 70),
       gradientColors: [Color(0xFF1A2F47), Color(0xFF152F42)],
       accentColor: ModalityColors.resistanceLifting,
       modality: Modality.resistanceLifting,

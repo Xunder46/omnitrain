@@ -21,20 +21,20 @@ Foundational constants live in `lib/core/constants/`. These define the vocabular
 | (null) | `null` | Free Training |
 
 ### Legacy Modalities (for backward compatibility)
-`martial_arts`, `strength_resistance`, `skill_technique`, `conditioning_mixed`, `mobility_flexibility`, `recovery_rehab`, `competition_match`
+`strength_resistance`, `skill_technique`, `conditioning_mixed`, `mobility_flexibility`, `recovery_rehab`, `competition_match`
 
-> **Note**: `martial_arts` was unified under `sports` in Feb 2026. The constant remains for data compatibility.
+> **Note**: `martial_arts` was fully retired in Apr 2026 (see `retire-martial-arts-category-plan.md`). Boxing, BJJ, and Muay Thai disciplines were reparented under `category-sports`. The constant and compat guard have been removed.
 
 ### Category Mappings
 
 - `modalityToCategoryId` — maps each primary modality to one `SportCategory` ID
   - `cardio_endurance` → `category-cardio`
   - `resistance_lifting` → `category-resistance`
-  - `sports` → `category-martial-arts` (primary)
+  - `sports` → `category-sports`
   - `isometric_stretching` → `category-isometric`
 
 - `modalityToCategoryIds` — plural version for exercise ranking
-  - `sports` maps to `['category-martial-arts', 'category-sports']` (unified coverage)
+  - `sports` maps to `['category-sports']`
 
 ---
 

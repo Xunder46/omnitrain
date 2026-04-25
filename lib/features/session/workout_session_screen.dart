@@ -6,6 +6,7 @@ import '../../core/constants/omni_theme.dart';
 import '../../core/constants/workout_constants.dart';
 import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/unit_formatter.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
@@ -2625,6 +2626,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
             onSessionSaved: widget.onSessionSaved,
+            settingsState: widget.settingsState,
           ),
         ),
       );
@@ -3617,12 +3619,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     return _buildStandardSessionListView(theme);
   }
 
-  String get _preferredWeightUnitLabel {
-    final preferred = widget.settingsState?.preferredWeightUnit
-        .toLowerCase()
-        .trim();
-    return preferred == 'lb' || preferred == 'lbs' ? 'LBS' : 'KG';
-  }
+  String get _preferredWeightUnitLabel => widget.settingsState != null
+      ? UnitFormatter.weightLabelUpper(widget.settingsState!)
+      : UnitFormatter.weightLabelUpperForUnit('kg');
 
   Widget _buildWeightAdjustmentSection({
     required ThemeData theme,
@@ -3712,7 +3711,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             InlineMetricEditor(
               metricType: 'weight',
               currentValue: weight,
-              unitLabel: 'LBS',
+              unitLabel: _preferredWeightUnitLabel,
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'weight', value),
             ),
@@ -4165,8 +4164,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       case 'set':
         final prevReps = previousEntry['reps'] as int? ?? 0;
         final prevWeight = previousEntry['weight'] as double? ?? 0.0;
-        statsText =
-            'Previous: $prevReps reps @ ${prevWeight.toStringAsFixed(1)} lbs';
+        statsText = widget.settingsState != null
+            ? 'Previous: $prevReps reps @ ${UnitFormatter.formatWeightValue(prevWeight, widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
+            : 'Previous: $prevReps reps @ ${prevWeight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
         break;
       case 'timed':
         // Use elapsedSecs (actual duration) rather than 'duration' (target preset)
@@ -4178,11 +4178,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final prevDistance = previousEntry['distance'] as double? ?? 0.0;
         final prevTimedMins = prevTimedSecs ~/ 60;
         final prevTimedRemSecs = prevTimedSecs % 60;
-        statsText =
-            'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${prevDistance.toStringAsFixed(1)} m';
+        statsText = widget.settingsState != null
+            ? 'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${UnitFormatter.formatDistanceValue(prevDistance, widget.settingsState!)} ${UnitFormatter.distanceLabel(widget.settingsState!)}'
+            : 'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${prevDistance.toStringAsFixed(1)} ${UnitFormatter.distanceLabelForUnit('km')}';
         final prevTimedExtraWeight = previousEntry['extra-weight'] as double?;
         if (prevTimedExtraWeight != null && prevTimedExtraWeight != 0.0) {
-          statsText += ' + ${prevTimedExtraWeight.toStringAsFixed(1)} kg';
+          statsText += widget.settingsState != null
+              ? ' + ${UnitFormatter.formatWeightValue(prevTimedExtraWeight, widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
+              : ' + ${prevTimedExtraWeight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
         }
         break;
       case 'round':
@@ -4206,8 +4209,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final prevDrillMins = prevDrillSecs ~/ 60;
         final prevDrillRemSecs = prevDrillSecs % 60;
         final ewSign = prevExtraWeight > 0 ? '+' : '';
-        statsText =
-            'Previous: ${prevDrillMins.toString().padLeft(2, '0')}:${prevDrillRemSecs.toString().padLeft(2, '0')} hold @ $ewSign${prevExtraWeight.toStringAsFixed(1)} lbs';
+        statsText = widget.settingsState != null
+            ? 'Previous: ${prevDrillMins.toString().padLeft(2, '0')}:${prevDrillRemSecs.toString().padLeft(2, '0')} hold @ $ewSign${UnitFormatter.formatWeightValue(prevExtraWeight.abs(), widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
+            : 'Previous: ${prevDrillMins.toString().padLeft(2, '0')}:${prevDrillRemSecs.toString().padLeft(2, '0')} hold @ $ewSign${prevExtraWeight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
         break;
       default:
         return const SizedBox.shrink();

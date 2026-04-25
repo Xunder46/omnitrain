@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
+import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
@@ -18,6 +19,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
+import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,6 +30,118 @@ Future<MockWorkoutRepository> _freshRepo() async {
 }
 
 void main() {
+  group('InlineMetricEditor interactions', () {
+    testWidgets('weight drag increments by 0.5', (WidgetTester tester) async {
+      double? updatedValue;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InlineMetricEditor(
+              metricType: 'weight',
+              currentValue: 10.0,
+              unitLabel: 'kg',
+              onValueChanged: (value) => updatedValue = value as double,
+            ),
+          ),
+        ),
+      );
+
+      await tester.drag(find.byType(InlineMetricEditor), const Offset(0, -10));
+      await tester.pump();
+
+      expect(updatedValue, 10.5);
+    });
+
+    testWidgets('extra-weight drag increments by 0.5', (
+      WidgetTester tester,
+    ) async {
+      double? updatedValue;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InlineMetricEditor(
+              metricType: 'extra-weight',
+              currentValue: 0.0,
+              unitLabel: 'lbs',
+              onValueChanged: (value) => updatedValue = value as double,
+            ),
+          ),
+        ),
+      );
+
+      await tester.drag(find.byType(InlineMetricEditor), const Offset(0, -10));
+      await tester.pump();
+
+      expect(updatedValue, 0.5);
+    });
+
+    testWidgets('fast weight drag still snaps to 0.5 increments', (
+      WidgetTester tester,
+    ) async {
+      double? updatedValue;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InlineMetricEditor(
+              metricType: 'weight',
+              currentValue: 10.0,
+              unitLabel: 'kg',
+              onValueChanged: (value) => updatedValue = value as double,
+            ),
+          ),
+        ),
+      );
+
+      final detector = tester.widget<GestureDetector>(
+        find.byType(GestureDetector),
+      );
+      detector.onVerticalDragUpdate!(
+        DragUpdateDetails(
+          delta: const Offset(0, -13),
+          globalPosition: Offset.zero,
+        ),
+      );
+      await tester.pump();
+
+      expect(updatedValue, 10.5);
+    });
+
+    testWidgets('fast extra-weight drag still snaps to 0.5 increments', (
+      WidgetTester tester,
+    ) async {
+      double? updatedValue;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: InlineMetricEditor(
+              metricType: 'extra-weight',
+              currentValue: 0.0,
+              unitLabel: 'lbs',
+              onValueChanged: (value) => updatedValue = value as double,
+            ),
+          ),
+        ),
+      );
+
+      final detector = tester.widget<GestureDetector>(
+        find.byType(GestureDetector),
+      );
+      detector.onVerticalDragUpdate!(
+        DragUpdateDetails(
+          delta: const Offset(0, -13),
+          globalPosition: Offset.zero,
+        ),
+      );
+      await tester.pump();
+
+      expect(updatedValue, 0.5);
+    });
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // WorkoutSessionScreen
   // ══════════════════════════════════════════════════════════════════════════
@@ -383,7 +497,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('ExerciseEditorScreen interactions', () {
-    testWidgets('submitting with empty name shows validation error', (
+    testWidgets('submitting with empty name and modality shows inline errors', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -398,10 +512,11 @@ void main() {
       await tester.tap(find.text('Save exercise'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Name is required'), findsOneWidget);
+      expect(find.text('Exercise name required.'), findsOneWidget);
+      expect(find.text('Select a modality.'), findsOneWidget);
     });
 
-    testWidgets('entering name and saving creates exercise in repo', (
+    testWidgets('entering required fields saves exercise with modality', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -415,9 +530,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Exercise name'),
+        find.widgetWithText(TextField, 'Exercise name'),
         'Power Clean',
       );
+      await tester.tap(find.text('Resistance / Lifting'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Reps'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Save exercise'));
@@ -426,9 +544,15 @@ void main() {
       final exercises = await repo.getExercises();
       expect(exercises.length, countBefore + 1);
       expect(exercises.any((e) => e.name == 'Power Clean'), isTrue);
+      expect(
+        exercises.any(
+          (e) => e.name == 'Power Clean' && e.modality == 'resistance_lifting',
+        ),
+        isTrue,
+      );
     });
 
-    testWidgets('tapping capability chip toggles its selected state', (
+    testWidgets('tapping capability chip toggles after selecting modality', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -440,7 +564,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Find the Reps chip (first capability chip)
+      await tester.tap(find.text('Resistance / Lifting'));
+      await tester.pumpAndSettle();
+
       final repsChip = find.widgetWithText(FilterChip, 'Reps');
       expect(repsChip, findsOneWidget);
 
@@ -453,14 +579,17 @@ void main() {
       expect(after, isNot(before));
     });
 
-    testWidgets('loads existing exercise data into form', (
+    testWidgets('loads existing exercise data into form with edit title', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final repo = await _freshRepo();
       final workoutState = WorkoutState(repo);
       final exercises = await repo.getExercises();
-      final existing = exercises.first;
+      final existing = exercises.first.copyWith(modality: 'resistance_lifting');
+
+      await repo.updateExercise(existing);
+      await workoutState.loadAllExercises();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -472,10 +601,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Exercise name should be pre-filled in the text field
       expect(find.text(existing.name), findsWidgets);
-      // Still shows New Exercise title
-      expect(find.text('New Exercise'), findsOneWidget);
+      expect(find.text('Edit Exercise'), findsOneWidget);
     });
   });
 
@@ -726,6 +853,70 @@ void main() {
         // appTheme should now be set (may be same if only one option exists)
         expect(settingsState.appTheme, isNotNull);
       }
+    });
+
+    testWidgets('unit toggles update preview values live', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('100 kg'), findsOneWidget);
+      expect(find.text('5 km'), findsOneWidget);
+
+      await tester.tap(find.text('lbs').first);
+      await tester.pumpAndSettle();
+
+      expect(settingsState.preferredWeightUnit, 'lbs');
+      expect(find.text('220.5 lbs'), findsOneWidget);
+
+      await tester.tap(find.text('mi').first);
+      await tester.pumpAndSettle();
+
+      expect(settingsState.preferredDistanceUnit, 'miles');
+      expect(find.text('3.1 mi'), findsOneWidget);
+    });
+
+    testWidgets('Start of Week selector persists the selected value', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
+      );
+      await tester.pumpAndSettle();
+
+      // Equipment and Modality Defaults rows are gone.
+      expect(find.text('Equipment'), findsNothing);
+      expect(find.text('Modality Defaults'), findsNothing);
+
+      // Start of Week row is present with its subtitle.
+      expect(find.text('Start of Week'), findsOneWidget);
+      expect(find.text('First day shown in the calendar'), findsOneWidget);
+
+      // Default is Monday.
+      expect(settingsState.startOfWeek, 'monday');
+
+      // Tap Sunday to change the preference.
+      await tester.tap(find.text('Sun'));
+      await tester.pumpAndSettle();
+
+      expect(settingsState.startOfWeek, 'sunday');
+
+      // Tap Monday to switch back.
+      await tester.tap(find.text('Mon'));
+      await tester.pumpAndSettle();
+
+      expect(settingsState.startOfWeek, 'monday');
     });
   });
 }

@@ -332,6 +332,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 workoutState: widget.workoutState,
                 routineSessionService: widget.routineSessionService,
                 sessionSummaryService: widget.sessionSummaryService,
+                settingsState: widget.settingsState,
               ),
             ),
           );
@@ -720,6 +721,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               routineState: widget.routineState,
               routineSessionService: widget.routineSessionService,
               sessionSummaryService: widget.sessionSummaryService,
+              settingsState: widget.settingsState,
             ),
           ),
         ),
@@ -741,7 +743,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         icon: Icons.person_outline,
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => ProfileScreen(profileState: widget.profileState),
+            builder: (_) => ProfileScreen(
+              profileState: widget.profileState,
+              settingsState: widget.settingsState,
+            ),
           ),
         ),
       ),

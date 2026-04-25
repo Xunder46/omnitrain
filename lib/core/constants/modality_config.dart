@@ -3,6 +3,8 @@
 /// Pure Dart - no platform dependencies.
 library;
 
+import '../../data/models/models.dart';
+
 /// Threshold score for determining "Recommended" exercises during exercise selection.
 /// Exercises with relevanceScore >= this threshold are considered well-suited for the modality.
 /// Scoring range is 0-100. A threshold of 50.0 means:
@@ -23,6 +25,8 @@ class ModalityConfig {
   final List<String> primaryCapabilities; // Core capabilities defining this modality
   final List<String> secondaryCapabilities; // Bonus/optional capabilities
   final List<String> antiCapabilities; // Signals poor fit for this modality
+  final List<String> formRequiredCapabilities; // Must select >=1 for create form validity
+  final bool showMuscleGroupsInForm; // Controls create form muscle group section visibility
 
   const ModalityConfig({
     required this.primaryMetric,
@@ -36,6 +40,8 @@ class ModalityConfig {
     this.primaryCapabilities = const [],
     this.secondaryCapabilities = const [],
     this.antiCapabilities = const [],
+    this.formRequiredCapabilities = const [],
+    this.showMuscleGroupsInForm = false,
   });
 
   /// Configuration map for all modalities
@@ -54,6 +60,8 @@ class ModalityConfig {
       primaryCapabilities: ['time', 'distance'],
       secondaryCapabilities: ['rounds'],
       antiCapabilities: ['load', 'hold'],
+      formRequiredCapabilities: ['time', 'distance'],
+      showMuscleGroupsInForm: false,
     ),
 
     // Resistance / Lifting - set-based with reps and load
@@ -70,22 +78,8 @@ class ModalityConfig {
       primaryCapabilities: ['reps', 'sets', 'load'],
       secondaryCapabilities: ['time'],
       antiCapabilities: ['distance', 'rounds', 'hold'],
-    ),
-
-    // Martial Arts - round-based time tracking
-    // Primary exercises: Boxing, BJJ, Muay Thai, wrestling
-    // Discipline category: category-martial-arts
-    'martial_arts': ModalityConfig(
-      primaryMetric: 'time',
-      secondaryMetrics: ['rounds'],
-      optionalMetrics: ['rpe'],
-      defaultInputType: 'round_timer',
-      structure: 'segmented',
-      effortKind: 'round',
-      categoryId: 'category-martial-arts',
-      primaryCapabilities: ['time', 'rounds'],
-      secondaryCapabilities: [],
-      antiCapabilities: ['load', 'hold', 'distance'],
+      formRequiredCapabilities: ['reps', 'load'],
+      showMuscleGroupsInForm: true,
     ),
 
     // Isometric / Stretching - hold time tracking
@@ -102,6 +96,8 @@ class ModalityConfig {
       primaryCapabilities: ['hold', 'time'],
       secondaryCapabilities: ['sets'],
       antiCapabilities: ['load', 'distance', 'rounds'],
+      formRequiredCapabilities: ['hold'],
+      showMuscleGroupsInForm: true,
     ),
 
     // Sports - segmented time with periods/halves/quarters
@@ -118,6 +114,8 @@ class ModalityConfig {
       primaryCapabilities: ['time', 'rounds'],
       secondaryCapabilities: ['distance'],
       antiCapabilities: ['load', 'hold'],
+      formRequiredCapabilities: ['time', 'rounds'],
+      showMuscleGroupsInForm: false,
     ),
 
     // Free Training (null modality) - user chooses per exercise
@@ -132,6 +130,8 @@ class ModalityConfig {
       primaryCapabilities: [],
       secondaryCapabilities: [],
       antiCapabilities: [],
+      formRequiredCapabilities: [],
+      showMuscleGroupsInForm: false,
     ),
   };
 
@@ -150,6 +150,89 @@ class ModalityConfig {
   List<String> getAllMetrics() {
     if (primaryMetric == null) return [];
     return [primaryMetric!, ...secondaryMetrics, ...optionalMetrics];
+  }
+
+  /// Capabilities that should be visible in the create/edit form for this modality.
+  List<String> get formCapabilities {
+    return [...primaryCapabilities, ...secondaryCapabilities];
+  }
+
+  /// Filter disciplines to those matching a modality's category affinity.
+  static List<Discipline> disciplinesForModality(
+    String? modality,
+    List<Discipline> allDisciplines,
+  ) {
+    final categoryId = forModality(modality)?.categoryId;
+    if (categoryId == null) {
+      return allDisciplines;
+    }
+    return allDisciplines.where((d) => d.categoryId == categoryId).toList();
+  }
+
+  /// Human-readable modality label for form chip/segment display.
+  static String modalityDisplayName(String? modality) {
+    switch (modality) {
+      case 'cardio_endurance':
+        return 'Cardio / Endurance';
+      case 'resistance_lifting':
+        return 'Resistance / Lifting';
+      case 'isometric_stretching':
+        return 'Isometric / Stretching';
+      case 'sports':
+        return 'Sports';
+      default:
+        return 'Free Training';
+    }
+  }
+
+  /// Concrete inline validation message for required capabilities.
+  static String formRequiredCapabilitiesLabel(String? modality) {
+    final required = forModality(modality)?.formRequiredCapabilities ?? const [];
+    if (required.isEmpty) {
+      return 'Select at least one capability.';
+    }
+    final labels = required.map(_capabilityDisplayName).join(', ');
+    return 'Select at least one of: $labels.';
+  }
+
+  /// Returns capabilities on an exercise that are outside the modality form set.
+  /// Used to surface legacy chips in edit mode.
+  static List<String> legacyCapabilitiesForEdit(
+    String? modality,
+    List<String> exerciseCapabilities,
+  ) {
+    if (modality == null) {
+      return const [];
+    }
+
+    final config = forModality(modality);
+    if (config == null) {
+      return const [];
+    }
+
+    final allowed = config.formCapabilities.toSet();
+    return exerciseCapabilities.where((cap) => !allowed.contains(cap)).toList();
+  }
+
+  static String _capabilityDisplayName(String capability) {
+    switch (capability) {
+      case 'time':
+        return 'Time';
+      case 'distance':
+        return 'Distance';
+      case 'rounds':
+        return 'Rounds';
+      case 'reps':
+        return 'Reps';
+      case 'sets':
+        return 'Sets';
+      case 'load':
+        return 'Load';
+      case 'hold':
+        return 'Hold';
+      default:
+        return capability;
+    }
   }
 
   /// Derive effort kind from chosen metric (for Free Training)
@@ -177,8 +260,6 @@ class ModalityConfig {
     switch (modality) {
       case 'sports':
         return 'Periods'; // Can be periods, halves, quarters
-      case 'martial_arts':
-        return 'Rounds';
       case 'cardio_endurance':
         return 'Intervals';
       default:

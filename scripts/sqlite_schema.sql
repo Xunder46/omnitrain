@@ -5,18 +5,17 @@ BEGIN TRANSACTION;
 --
 -- UNIFIED SPORTS MODALITY (Feb 2026 Refactor):
 -- ============================================== 
--- The 'sports' modality now encompasses both martial arts and sports exercises.
--- Home screen shows a unified "Sports" tile combining martial arts icon with sports modality.
--- Exercise ranking for sports modality pulls exercises from BOTH:
---   - category-martial-arts (Boxing, BJJ, Muay Thai, wrestling)
---   - category-sports (Soccer, basketball, tennis, team sports)
+-- The 'sports' modality now encompasses all sports disciplines, including martial arts.
+-- Home screen shows a unified "Sports" tile with a martial arts icon.
+-- Exercise ranking for sports modality pulls exercises from:
+--   - category-sports (Boxing, BJJ, Muay Thai, soccer, basketball, tennis, team sports)
 -- Feature constraints supported by sports modality:
 --   - Primary metric: time (round duration)
 --   - Secondary metrics: rounds (periods/halves/rounds)
 --   - Optional metrics: distance, rpe
 -- See Modality.modalityToCategoryIds in lib/core/constants/modality.dart
 -- Migration: SqliteWorkoutRepository.getExercisesRankedForModality() must filter by
---   categoryIds IN ('category-martial-arts', 'category-sports') when modality='sports'
+--   categoryIds IN ('category-sports') when modality='sports'
 --
 -- DELETE OPERATIONS (Phase 1 Implementation - Feb 2026):
 -- =========================================================
@@ -139,6 +138,7 @@ CREATE INDEX IF NOT EXISTS IX_discipline_category ON app_discipline(category_id)
 CREATE TABLE app_exercise (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT,
+  modality TEXT, -- Exercise modality: 'cardio_endurance', 'resistance_lifting', 'isometric_stretching', 'sports', or NULL for legacy exercises
   discipline_id TEXT,
   name TEXT NOT NULL,
   description TEXT,
@@ -194,7 +194,7 @@ CREATE TABLE app_training_session (
   title TEXT,
   note TEXT,
   location_text TEXT,
-  modality TEXT, -- Functional training type: 'cardio_endurance', 'resistance_lifting', 'martial_arts', 'isometric_stretching', 'sports', or NULL for 'Free Training'
+  modality TEXT, -- Functional training type: 'cardio_endurance', 'resistance_lifting', 'isometric_stretching', 'sports', or NULL for 'Free Training'
   intent TEXT,
   perceived_session_rpe REAL,
   session_feeling INTEGER, -- 1-5 scale, nullable (1=Rough, 5=Great)
@@ -568,21 +568,16 @@ CREATE TABLE app_exercise_tag (
 --     primaryCapabilities: ['reps', 'sets', 'load']
 --     secondaryCapabilities: ['time']
 --     antiCapabilities: ['distance', 'rounds', 'hold']
---   martial_arts:
---     categoryId: category-martial-arts
---     primaryCapabilities: ['time', 'rounds']
---     secondaryCapabilities: []
---     antiCapabilities: ['load', 'hold', 'distance']
---   isometric_stretching:
---     categoryId: category-isometric
---     primaryCapabilities: ['hold', 'time']
---     secondaryCapabilities: ['sets']
---     antiCapabilities: ['load', 'distance', 'rounds']
 --   sports:
 --     categoryId: category-sports
 --     primaryCapabilities: ['time', 'rounds']
 --     secondaryCapabilities: ['distance']
 --     antiCapabilities: ['load', 'hold']
+--   isometric_stretching:
+--     categoryId: category-isometric
+--     primaryCapabilities: ['hold', 'time']
+--     secondaryCapabilities: ['sets']
+--     antiCapabilities: ['load', 'distance', 'rounds']
 --
 -- Example: Barbell Squat with capabilities ['reps', 'sets', 'load', 'time']
 --   In resistance_lifting:  Score = 40 (discipline) + 30 (all 3 primary) + 0 (secondary) + 0 (no anti) = 70 → Recommended

@@ -2798,6 +2798,7 @@ class WorkoutState extends ChangeNotifier {
   /// Create a custom exercise in the library
   Future<Exercise?> createCustomExercise({
     required String name,
+    String? modality,
     String? description,
     String? disciplineId,
     List<String> capabilities = const [],
@@ -2817,6 +2818,7 @@ class WorkoutState extends ChangeNotifier {
       final exercise = Exercise(
         id: exerciseId,
         ownerUserId: 'user-1',
+        modality: modality,
         disciplineId: disciplineId,
         name: trimmedName,
         description: description?.trim().isEmpty == true ? null : description,
@@ -2839,6 +2841,47 @@ class WorkoutState extends ChangeNotifier {
       return exerciseWithCaps;
     } catch (e) {
       _setError('Failed to create exercise: $e');
+      return null;
+    }
+  }
+
+  /// Update an existing custom exercise in the library.
+  Future<Exercise?> updateCustomExercise({
+    required Exercise exercise,
+    List<String> capabilities = const [],
+    List<String> muscleGroupIds = const [],
+  }) async {
+    _clearError();
+
+    final trimmedName = exercise.name.trim();
+    if (trimmedName.isEmpty) {
+      _setError('Exercise name is required');
+      return null;
+    }
+
+    try {
+      final updated = exercise.copyWith(
+        name: trimmedName,
+        description: exercise.description?.trim().isEmpty == true
+            ? null
+            : exercise.description,
+      );
+
+      await _repository.updateExercise(updated);
+      await _repository.setExerciseCapabilities(updated.id, capabilities);
+      await _repository.setExerciseMuscleGroups(updated.id, muscleGroupIds);
+
+      final updatedWithCaps = updated.copyWith(capabilities: capabilities);
+      _exerciseCache[updated.id] = updatedWithCaps;
+      _allExercises = [
+        ..._allExercises.where((e) => e.id != updated.id),
+        updatedWithCaps,
+      ];
+
+      notifyListeners();
+      return updatedWithCaps;
+    } catch (e) {
+      _setError('Failed to update exercise: $e');
       return null;
     }
   }

@@ -167,7 +167,7 @@ Modal dialog for searching and selecting exercises. Receives `sessionModality` t
 - Real-time search with `TextField`
 - Exercises ranked by `getExercisesRankedForModality()` (relevance score)
 - Filter by discipline or muscle group
-- "Add Custom Exercise" button → opens `ExerciseEditorScreen`
+- "Add Custom Exercise" button → opens `ExerciseEditorScreen` with picker/session modality prefilled via `contextModality`
 - Returns selected `Exercise` on tap
 
 ### `MetricChooserDialog`

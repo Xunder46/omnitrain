@@ -22,8 +22,6 @@ class ModalityColorUtils {
         return 'Resistance / Lifting';
       case Modality.sports:
         return 'Sports';
-      case Modality.martialArts:
-        return 'Martial Arts';
       case Modality.isometricStretching:
         return 'Isometric / Stretching';
       default:

@@ -61,7 +61,7 @@ void main() {
 
       final exercises = await deps.repository.getExercises();
       final squat = exercises.firstWhere((e) => e.name.contains('Squat'));
-      final press = exercises.firstWhere((e) => e.name == 'Bench Press');
+      final press = exercises.firstWhere((e) => e.name.contains('Bench Press'));
       await deps.workoutState.addExerciseToSession(squat, chosenMetric: 'reps');
       await deps.workoutState.addExerciseToSession(press, chosenMetric: 'reps');
 

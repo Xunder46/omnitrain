@@ -7,7 +7,7 @@ Consolidate modality accent colors into a single source of truth derived from ho
 - Use home tile accent colors as the canonical values (no color changes):
   - `cardio_endurance` / Cardio-Endurance: `#43A047`
   - `resistance_lifting` / Strength-Resistance: `#5B9BD5`
-  - `sports` (and backward-compat `martial_arts`): `#E63946`
+  - `sports`: `#E63946`
   - `isometric_stretching`: `#FFA726`
   - `free_training` fallback: `#7E57C2`
 - Define one shared constants source for modality colors (preferred: `lib/core/constants/modality_colors.dart`).
@@ -48,7 +48,7 @@ Request has four explicit phases:
 2. [ ] Add canonical maps/helpers for:
    - modality key -> color
   - session summary group key -> color (for `strength`, `cardio`, `sports`, `isometric`)
-3. [ ] Keep compatibility mapping for legacy `martial_arts` -> sports color.
+3. [x] ~~Keep compatibility mapping for legacy `martial_arts` -> sports color.~~ (`martial_arts` retired Apr 2026 — mapping removed)
 4. [ ] Refactor `lib/core/utils/modality_color_utils.dart` to consume the new constants (remove duplicate color hex definitions from utility layer).
 
 ### Frontend Changes (@developer)

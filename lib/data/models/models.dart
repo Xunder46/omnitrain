@@ -89,6 +89,7 @@ class Discipline {
 class Exercise {
   final String id;
   final String? ownerUserId;
+  final String? modality;
   final String? disciplineId;
   final String name;
   final String? description;
@@ -110,6 +111,7 @@ class Exercise {
   Exercise({
     required this.id,
     this.ownerUserId,
+    this.modality,
     this.disciplineId,
     required this.name,
     this.description,
@@ -127,6 +129,7 @@ class Exercise {
   factory Exercise.fromMap(Map<String, dynamic> m) => Exercise(
     id: m['id'] as String,
     ownerUserId: m['owner_user_id'] as String?,
+    modality: m['modality'] as String?,
     disciplineId: m['discipline_id'] as String?,
     name: m['name'] as String,
     description: m['description'] as String?,
@@ -145,6 +148,7 @@ class Exercise {
   Map<String, dynamic> toMap() => {
     'id': id,
     'owner_user_id': ownerUserId,
+    'modality': modality,
     'discipline_id': disciplineId,
     'name': name,
     'description': description,

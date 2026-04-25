@@ -4,7 +4,6 @@ class ModalityDisplay {
   static const Map<String, String> names = {
     'cardio_endurance': 'Cardio / Endurance',
     'resistance_lifting': 'Resistance / Lifting',
-    'martial_arts': 'Martial Arts',
     'isometric_stretching': 'Isometric / Stretching',
     'sports': 'Sports',
   };
@@ -21,8 +20,6 @@ class ModalityDisplay {
     switch (modality) {
       case 'sports':
         return 'Periods'; // periods, halves, quarters
-      case 'martial_arts':
-        return 'Rounds';
       case 'cardio_endurance':
         return 'Intervals';
       default:
