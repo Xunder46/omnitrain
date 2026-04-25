@@ -1156,6 +1156,24 @@ void main() {
       expect(effortId, isNotEmpty);
     });
 
+    test('createCustomExercise persists modality and reloads from repository', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+
+      final created = await state.createCustomExercise(
+        name: 'Tempo Run Custom',
+        modality: 'cardio_endurance',
+        capabilities: ['time', 'distance'],
+      );
+
+      expect(created, isNotNull);
+      expect(created!.modality, 'cardio_endurance');
+
+      final loaded = await repo.getExerciseById(created.id);
+      expect(loaded, isNotNull);
+      expect(loaded!.modality, 'cardio_endurance');
+    });
+
     test(
       'updateSessionEndTime changes endedAtMs based on durationSecs',
       () async {

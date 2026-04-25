@@ -139,6 +139,7 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 |-------|------|-------------|
 | `id` | `String` | UUID |
 | `name` | `String` | Display name |
+| `modality` | `String?` | Exercise modality key: `cardio_endurance`, `resistance_lifting`, `isometric_stretching`, `sports`; nullable for pre-feature legacy/custom exercises |
 | `description` | `String?` | Optional description |
 | `disciplineId` | `String?` | FK to `Discipline` |
 | `isCustom` | `bool` | User-created vs seed data |
@@ -149,7 +150,7 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 **Extension methods** (in `lib/core/utils/exercise_helpers.dart`):
 - `supports(String capability)` — single capability check
 - `supportsAny(List<String>)` — any-of check
-- `copyWith({...})` — full copy constructor including `relevanceScore`
+- `copyWith({...})` — full copy constructor including `relevanceScore` and nullable `modality` (sentinel-backed)
 
 ### Discipline
 

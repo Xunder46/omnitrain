@@ -19,6 +19,7 @@ extension ExerciseCapabilities on Exercise {
   Exercise copyWith({
     String? id,
     String? ownerUserId,
+    Object? modality = _exerciseCopyWithUnset,
     String? disciplineId,
     String? name,
     String? description,
@@ -35,6 +36,9 @@ extension ExerciseCapabilities on Exercise {
     return Exercise(
       id: id ?? this.id,
       ownerUserId: ownerUserId ?? this.ownerUserId,
+      modality: modality == _exerciseCopyWithUnset
+          ? this.modality
+          : modality as String?,
       disciplineId: disciplineId ?? this.disciplineId,
       name: name ?? this.name,
       description: description ?? this.description,

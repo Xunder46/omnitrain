@@ -66,7 +66,8 @@ The primary state manager for active workout sessions. Manages the entire sessio
 | `addExerciseToSession(exercise, {chosenMetric})` | Creates effort with correct effortKind |
 | `removeExerciseFromSession(effortId)` | Deletes effort + observations + rounds |
 | `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance |
-| `createCustomExercise(name, {...})` | Creates new exercise in repository |
+| `createCustomExercise(name, {modality, ...})` | Creates new exercise in repository with persisted modality key |
+| `updateCustomExercise(exercise, {...})` | Updates existing exercise metadata + capability/muscle-group associations via repository interface |
 
 #### Observation Management
 

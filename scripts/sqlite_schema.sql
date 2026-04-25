@@ -138,6 +138,7 @@ CREATE INDEX IF NOT EXISTS IX_discipline_category ON app_discipline(category_id)
 CREATE TABLE app_exercise (
   id TEXT NOT NULL PRIMARY KEY,
   owner_user_id TEXT,
+  modality TEXT, -- Exercise modality: 'cardio_endurance', 'resistance_lifting', 'isometric_stretching', 'sports', or NULL for legacy exercises
   discipline_id TEXT,
   name TEXT NOT NULL,
   description TEXT,

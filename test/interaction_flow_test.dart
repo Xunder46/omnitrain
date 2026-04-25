@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
+import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
@@ -496,7 +497,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('ExerciseEditorScreen interactions', () {
-    testWidgets('submitting with empty name shows validation error', (
+    testWidgets('submitting with empty name and modality shows inline errors', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -511,10 +512,11 @@ void main() {
       await tester.tap(find.text('Save exercise'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Name is required'), findsOneWidget);
+      expect(find.text('Exercise name required.'), findsOneWidget);
+      expect(find.text('Select a modality.'), findsOneWidget);
     });
 
-    testWidgets('entering name and saving creates exercise in repo', (
+    testWidgets('entering required fields saves exercise with modality', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -528,9 +530,12 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Exercise name'),
+        find.widgetWithText(TextField, 'Exercise name'),
         'Power Clean',
       );
+      await tester.tap(find.text('Resistance / Lifting'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilterChip, 'Reps'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Save exercise'));
@@ -539,9 +544,15 @@ void main() {
       final exercises = await repo.getExercises();
       expect(exercises.length, countBefore + 1);
       expect(exercises.any((e) => e.name == 'Power Clean'), isTrue);
+      expect(
+        exercises.any(
+          (e) => e.name == 'Power Clean' && e.modality == 'resistance_lifting',
+        ),
+        isTrue,
+      );
     });
 
-    testWidgets('tapping capability chip toggles its selected state', (
+    testWidgets('tapping capability chip toggles after selecting modality', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -553,7 +564,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Find the Reps chip (first capability chip)
+      await tester.tap(find.text('Resistance / Lifting'));
+      await tester.pumpAndSettle();
+
       final repsChip = find.widgetWithText(FilterChip, 'Reps');
       expect(repsChip, findsOneWidget);
 
@@ -566,14 +579,17 @@ void main() {
       expect(after, isNot(before));
     });
 
-    testWidgets('loads existing exercise data into form', (
+    testWidgets('loads existing exercise data into form with edit title', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final repo = await _freshRepo();
       final workoutState = WorkoutState(repo);
       final exercises = await repo.getExercises();
-      final existing = exercises.first;
+      final existing = exercises.first.copyWith(modality: 'resistance_lifting');
+
+      await repo.updateExercise(existing);
+      await workoutState.loadAllExercises();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -585,10 +601,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Exercise name should be pre-filled in the text field
       expect(find.text(existing.name), findsWidgets);
-      // Still shows New Exercise title
-      expect(find.text('New Exercise'), findsOneWidget);
+      expect(find.text('Edit Exercise'), findsOneWidget);
     });
   });
 

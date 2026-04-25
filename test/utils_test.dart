@@ -33,9 +33,11 @@ EffortObservation _obs({
 Exercise _exercise({
   List<String> capabilities = const [],
   String disciplineId = 'cat-unknown',
+  String? modality,
 }) => Exercise(
   id: 'ex-1',
   ownerUserId: 'u-1',
+  modality: modality,
   disciplineId: disciplineId,
   name: 'Test Exercise',
   description: '',
@@ -121,6 +123,29 @@ void main() {
       expect(UnitFormatter.distanceLabelForUnit('mi'), 'mi');
       expect(UnitFormatter.distanceLabelForUnit('miles'), 'mi');
       expect(UnitFormatter.distanceLabelUpperForUnit('mile'), 'MI');
+    });
+
+    test('copyWith updates modality when explicitly provided', () {
+      final original = _exercise(modality: 'cardio_endurance');
+      final copy = original.copyWith(modality: 'resistance_lifting');
+      expect(copy.modality, 'resistance_lifting');
+    });
+
+    test('copyWith preserves modality when not provided', () {
+      final original = _exercise(modality: 'isometric_stretching');
+      final copy = original.copyWith(name: 'Renamed');
+      expect(copy.modality, 'isometric_stretching');
+    });
+    
+    test('Exercise toMap/fromMap round-trips modality', () {
+      final original = _exercise(
+        modality: 'resistance_lifting',
+        capabilities: ['reps', 'load'],
+      );
+      final map = original.toMap();
+      final rebuilt = Exercise.fromMap(map);
+      expect(rebuilt.modality, 'resistance_lifting');
+      expect(rebuilt.name, original.name);
     });
   });
 
@@ -523,6 +548,176 @@ void main() {
       test('returns empty for Free Training', () {
         final config = ModalityConfig.forModality(null)!;
         expect(config.getAllMetrics(), isEmpty);
+      });
+    });
+
+    group('form modality helpers', () {
+      test('formCapabilities uses primary + secondary for cardio', () {
+        final config = ModalityConfig.forModality('cardio_endurance')!;
+        expect(config.formCapabilities, ['time', 'distance', 'rounds']);
+      });
+
+      test('formCapabilities uses primary + secondary for resistance', () {
+        final config = ModalityConfig.forModality('resistance_lifting')!;
+        expect(config.formCapabilities, ['reps', 'sets', 'load', 'time']);
+      });
+
+      test('formRequiredCapabilities map to expected modality-primary set', () {
+        expect(
+          ModalityConfig.forModality('cardio_endurance')!
+              .formRequiredCapabilities,
+          ['time', 'distance'],
+        );
+        expect(
+          ModalityConfig.forModality('resistance_lifting')!
+              .formRequiredCapabilities,
+          ['reps', 'load'],
+        );
+        expect(
+          ModalityConfig.forModality('isometric_stretching')!
+              .formRequiredCapabilities,
+          ['hold'],
+        );
+        expect(
+          ModalityConfig.forModality('sports')!.formRequiredCapabilities,
+          ['time', 'rounds'],
+        );
+      });
+
+      test('showMuscleGroupsInForm true for resistance and isometric only', () {
+        expect(
+          ModalityConfig.forModality('resistance_lifting')!
+              .showMuscleGroupsInForm,
+          isTrue,
+        );
+        expect(
+          ModalityConfig.forModality('isometric_stretching')!
+              .showMuscleGroupsInForm,
+          isTrue,
+        );
+        expect(
+          ModalityConfig.forModality('cardio_endurance')!
+              .showMuscleGroupsInForm,
+          isFalse,
+        );
+        expect(
+          ModalityConfig.forModality('sports')!.showMuscleGroupsInForm,
+          isFalse,
+        );
+      });
+
+      test('disciplinesForModality filters by categoryId', () {
+        final all = [
+          Discipline(
+            id: 'd-running',
+            categoryId: 'category-cardio',
+            key: 'running',
+            name: 'Running',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+          Discipline(
+            id: 'd-powerlifting',
+            categoryId: 'category-resistance',
+            key: 'powerlifting',
+            name: 'Powerlifting',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+          Discipline(
+            id: 'd-soccer',
+            categoryId: 'category-sports',
+            key: 'soccer',
+            name: 'Soccer',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+        ];
+
+        final cardio = ModalityConfig.disciplinesForModality(
+          'cardio_endurance',
+          all,
+        );
+        expect(cardio.map((d) => d.id).toList(), ['d-running']);
+
+        final sports = ModalityConfig.disciplinesForModality('sports', all);
+        expect(sports.map((d) => d.id).toList(), ['d-soccer']);
+      });
+
+      test('disciplinesForModality returns all in free-training context', () {
+        final all = [
+          Discipline(
+            id: 'd-1',
+            categoryId: 'category-cardio',
+            key: 'running',
+            name: 'Running',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+          Discipline(
+            id: 'd-2',
+            categoryId: 'category-resistance',
+            key: 'lifting',
+            name: 'Lifting',
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          ),
+        ];
+
+        final filtered = ModalityConfig.disciplinesForModality(null, all);
+        expect(filtered.map((d) => d.id).toList(), ['d-1', 'd-2']);
+      });
+
+      test('formRequiredCapabilitiesLabel returns concrete inline message', () {
+        expect(
+          ModalityConfig.formRequiredCapabilitiesLabel('resistance_lifting'),
+          'Select at least one of: Reps, Load.',
+        );
+        expect(
+          ModalityConfig.formRequiredCapabilitiesLabel('isometric_stretching'),
+          'Select at least one of: Hold.',
+        );
+      });
+
+      test('modalityDisplayName returns expected chip labels', () {
+        expect(
+          ModalityConfig.modalityDisplayName('cardio_endurance'),
+          'Cardio / Endurance',
+        );
+        expect(
+          ModalityConfig.modalityDisplayName('resistance_lifting'),
+          'Resistance / Lifting',
+        );
+        expect(
+          ModalityConfig.modalityDisplayName('isometric_stretching'),
+          'Isometric / Stretching',
+        );
+        expect(ModalityConfig.modalityDisplayName('sports'), 'Sports');
+        expect(ModalityConfig.modalityDisplayName(null), 'Free Training');
+      });
+
+      test('legacyCapabilitiesForEdit returns only out-of-modality caps', () {
+        final legacy = ModalityConfig.legacyCapabilitiesForEdit(
+          'resistance_lifting',
+          ['reps', 'load', 'hold'],
+        );
+        expect(legacy, ['hold']);
+      });
+
+      test('legacyCapabilitiesForEdit returns empty when all are allowed', () {
+        final legacy = ModalityConfig.legacyCapabilitiesForEdit(
+          'resistance_lifting',
+          ['reps', 'load'],
+        );
+        expect(legacy, isEmpty);
+      });
+
+      test('legacyCapabilitiesForEdit returns empty for null modality', () {
+        final legacy = ModalityConfig.legacyCapabilitiesForEdit(
+          null,
+          ['reps'],
+        );
+        expect(legacy, isEmpty);
       });
     });
 
