@@ -217,4 +217,5 @@ void main() {
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
     expect(find.text('Open Calendar'), findsOneWidget);
   });
+
 }

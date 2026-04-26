@@ -14,9 +14,17 @@ class TimerAlertService {
   ];
 
   final Map<String, AudioPlayer> _players = {};
+  final bool? _isWebOverride;
+
+  TimerAlertService() : _isWebOverride = null;
+
+  @visibleForTesting
+  TimerAlertService.forTesting({required bool isWeb}) : _isWebOverride = isWeb;
+
+  bool get _isWeb => _isWebOverride ?? kIsWeb;
 
   Future<void> initialize() async {
-    if (kIsWeb) return;
+    if (_isWeb) return;
     try {
       final session = await AudioSession.instance;
       await session.configure(
@@ -48,21 +56,42 @@ class TimerAlertService {
   }
 
   Future<void> fireEffortTimerAlert(String soundId) async {
-    await _playSound(soundId, fallback: 'boxing_bell');
-    if (!kIsWeb) await HapticFeedback.heavyImpact();
+    await _playSound(
+      soundId,
+      fallback: 'boxing_bell',
+      alertType: 'effort_timer',
+    );
+    if (!_isWeb) await HapticFeedback.heavyImpact();
   }
 
   Future<void> fireRestPingAlert(String soundId) async {
-    await _playSound(soundId, fallback: 'soft_chime');
-    if (!kIsWeb) await HapticFeedback.lightImpact();
+    await _playSound(
+      soundId,
+      fallback: 'soft_chime',
+      alertType: 'rest_ping',
+    );
+    if (!_isWeb) await HapticFeedback.lightImpact();
   }
 
   Future<void> playPreview(String soundId) async {
-    await _playSound(soundId, fallback: 'boxing_bell');
+    await _playSound(
+      soundId,
+      fallback: 'boxing_bell',
+      alertType: 'sound_preview',
+    );
   }
 
-  Future<void> _playSound(String soundId, {required String fallback}) async {
-    if (kIsWeb) return;
+  Future<void> _playSound(
+    String soundId, {
+    required String fallback,
+    required String alertType,
+  }) async {
+    if (_isWeb) {
+      debugPrint(
+        '[TimerAlertService][web] alert=$alertType soundId=$soundId fallback=$fallback',
+      );
+      return;
+    }
     final player = _players[soundId] ?? _players[fallback];
     if (player == null) return;
     try {

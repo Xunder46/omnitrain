@@ -472,6 +472,8 @@ Existing test files: `test/settings_state_test.dart`, `test/screen_widget_test.d
 - [x] Phase 4: Rest ping firing logic
 - [x] Phase 5: Tests
 - [x] Code Review fixes: `timerAlertService` required everywhere, `_checkRestPings` active-entry-only, dead methods removed
+- [x] Follow-up: Web-only diagnostic logs for effort/rest/preview timer alerts
+- [x] Follow-up: testing-only constructor for web override and diagnostic log unit coverage
 
 ## Phase Status: **Complete**
 _Leave empty — specialist agents add notes here after completing phases._
