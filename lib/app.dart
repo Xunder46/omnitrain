@@ -10,6 +10,7 @@ import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
+import 'core/utils/timer_alert_service.dart';
 
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -26,6 +27,7 @@ class MyApp extends StatelessWidget {
   final PeriodState periodState;
   final ProfileState profileState;
   final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const MyApp({
     super.key,
@@ -40,6 +42,7 @@ class MyApp extends StatelessWidget {
     required this.periodState,
     required this.profileState,
     required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -95,6 +98,7 @@ class MyApp extends StatelessWidget {
                   periodState: periodState,
                   profileState: profileState,
                   settingsState: settingsState,
+                  timerAlertService: timerAlertService,
                 )
               : HomeScreen(
                   workoutState: workoutState,
@@ -106,6 +110,7 @@ class MyApp extends StatelessWidget {
                   periodState: periodState,
                   profileState: profileState,
                   settingsState: settingsState,
+                  timerAlertService: timerAlertService,
                 ),
         );
       },

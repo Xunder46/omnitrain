@@ -11,6 +11,7 @@ import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
+import 'core/utils/timer_alert_service.dart';
 
 /// Create the appropriate repository based on platform
 ///
@@ -47,6 +48,8 @@ void main() async {
     final profileState = ProfileState(repository);
     final settingsState = SettingsState(repository);
     await settingsState.initialize();
+    final timerAlertService = TimerAlertService();
+    await timerAlertService.initialize();
 
     // Create service with repository
     final routineSessionService = RoutineSessionService(repository);
@@ -65,6 +68,7 @@ void main() async {
         periodState: periodState,
         profileState: profileState,
         settingsState: settingsState,
+        timerAlertService: timerAlertService,
       ),
     );
   } catch (e) {

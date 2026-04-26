@@ -7,6 +7,7 @@ import '../../core/constants/workout_constants.dart';
 import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../core/utils/rest_ping_utils.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
@@ -30,7 +31,8 @@ class WorkoutSessionScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final Future<void> Function(String sessionId)? onSessionSaved;
   final String? initialFocusId;
-  final SettingsState? settingsState;
+  final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   /// When true the screen shows a frozen review/edit view of a completed session:
   /// no timers run, no set logging, values remain editable for correction.
@@ -50,7 +52,8 @@ class WorkoutSessionScreen extends StatefulWidget {
     required this.sessionSummaryService,
     this.onSessionSaved,
     this.initialFocusId,
-    this.settingsState,
+    required this.settingsState,
+    required this.timerAlertService,
     this.editMode = false,
     this.preferredModality,
   });
@@ -99,6 +102,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   // before the first async write resolves.
   final Set<String> _pendingRoundTransitions = {};
   final Set<String> _pendingTimedTransitions = {};
+
+  // Tracks the elapsed-seconds value at which the last rest ping fired per
+  // effort. Entry is removed when rest ends (so next rest starts fresh).
+  final Map<String, int> _lastRestPingFiredAt = {};
 
   // Edit mode buffer: tracks pending changes that haven't been saved yet.
   // Key: 'effortId-entryIndex', Value: map of metricKey -> value.
@@ -584,7 +591,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       // non-deterministically and can leave the round stuck in 'paused'.
       _effortTimers[timerKey]?.cancel();
       _effortRunning[timerKey] = false;
-      unawaited(TimerAlertService.fireTimerExpiredAlert());
+      unawaited(widget.timerAlertService.fireEffortTimerAlert(
+        widget.settingsState.effortTimerSound,
+      ));
       unawaited(widget.workoutState.completeRound(effortId, entryIndex));
     } else {
       // Open-ended efforts (timed/drill) — finish the TimedInstance and alert user.
@@ -592,7 +601,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       // pauseTimedEntry and create a write race with finishTimedEntry).
       _effortTimers[timerKey]?.cancel();
       _effortRunning[timerKey] = false;
-      unawaited(TimerAlertService.fireTimerExpiredAlert());
+      unawaited(widget.timerAlertService.fireEffortTimerAlert(
+        widget.settingsState.effortTimerSound,
+      ));
       unawaited(widget.workoutState.finishTimedEntry(effortId, entryIndex));
     }
   }
@@ -665,6 +676,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       }
       if (openRestEntryIndex != null) {
         await widget.workoutState.recordRestEnd(effortId, openRestEntryIndex);
+        _lastRestPingFiredAt.remove(effortId);
       }
     }
 
@@ -1155,6 +1167,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
           );
           if (mounted) setState(() {});
           unawaited(widget.workoutState.recordRestEnd(effortId, entryIndex));
+          _lastRestPingFiredAt.remove(effortId);
           widget.workoutState
               .startRound(effortId, entryIndex)
               .whenComplete(() => _pendingRoundTransitions.remove(timerKey));
@@ -1210,6 +1223,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         );
         if (mounted) setState(() {});
         unawaited(widget.workoutState.recordRestEnd(effortId, entryIndex));
+        _lastRestPingFiredAt.remove(effortId);
         widget.workoutState.startTimedEntry(effortId, entryIndex).whenComplete(
           () {
             _pendingTimedTransitions.remove(timerKey);
@@ -1550,7 +1564,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         .where((e) => e['blockId'] == block.id)
         .toList();
     final tileColors = OmniTheme.colorsForTheme(
-      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
+      widget.settingsState.appTheme,
     );
     // Segment ID for scoped Add Exercise (always first segment).
     final segmentId = widget.workoutState.segments.isNotEmpty
@@ -2043,6 +2057,32 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         _elapsedFormatted = '$mm:$ss';
       });
     }
+    _checkRestPings();
+  }
+
+  void _checkRestPings() {
+    final pingInterval = widget.settingsState.restPingInterval;
+    if (pingInterval == 0) return;
+    final pingSound = widget.settingsState.restPingSound;
+
+    for (final exercise in _exercises) {
+      final effortId = exercise['id'] as String;
+      final entryIndex = _currentSet - 1;
+      if (!widget.workoutState.hasRestRecord(effortId, entryIndex)) continue;
+      final elapsed = widget.workoutState.getRestElapsedSeconds(
+        effortId,
+        entryIndex,
+      );
+      final lastPinged = _lastRestPingFiredAt[effortId] ?? 0;
+      if (shouldFireRestPing(
+        elapsed: elapsed,
+        interval: pingInterval,
+        lastPinged: lastPinged,
+      )) {
+        _lastRestPingFiredAt[effortId] = elapsed;
+        unawaited(widget.timerAlertService.fireRestPingAlert(pingSound));
+      }
+    }
   }
 
   String _formatRestElapsed(String effortId, int entryIndex) {
@@ -2080,39 +2120,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final restKey = _getMostRecentOpenRestKey();
     if (restKey == null) return '00:00';
     return _formatRestElapsed(restKey.effortId, restKey.entryIndex);
-  }
-
-  int? _getRestDisplayEntryIndex(String effortId, int currentEntryIndex) {
-    final rests = widget.workoutState.getEntryRests(effortId);
-    int? exactEntryIndex;
-    int? latestOpenEntryIndex;
-
-    for (final rest in rests) {
-      if (rest.entryIndex == currentEntryIndex) {
-        exactEntryIndex = currentEntryIndex;
-      }
-      if (rest.restEndMs == null) {
-        if (latestOpenEntryIndex == null ||
-            rest.entryIndex > latestOpenEntryIndex) {
-          latestOpenEntryIndex = rest.entryIndex;
-        }
-      }
-    }
-
-    return latestOpenEntryIndex ?? exactEntryIndex;
-  }
-
-  bool _hasRestToDisplay(String effortId, int currentEntryIndex) {
-    return _getRestDisplayEntryIndex(effortId, currentEntryIndex) != null;
-  }
-
-  String _formatRestElapsedForDisplay(String effortId, int currentEntryIndex) {
-    final displayEntryIndex = _getRestDisplayEntryIndex(
-      effortId,
-      currentEntryIndex,
-    );
-    if (displayEntryIndex == null) return '00:00';
-    return _formatRestElapsed(effortId, displayEntryIndex);
   }
 
   Widget _buildRestOverlayChip(ThemeData theme, String elapsedText) {
@@ -2627,6 +2634,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             sessionSummaryService: widget.sessionSummaryService,
             onSessionSaved: widget.onSessionSaved,
             settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
           ),
         ),
       );
@@ -2704,6 +2712,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     for (final timer in _effortTimers.values) {
       timer?.cancel();
     }
+    _lastRestPingFiredAt.clear();
     // Remove any visible coach mark overlay before the widget tree tears down.
     _coachMarkEntry?.remove();
     _coachMarkEntry = null;
@@ -2714,7 +2723,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final themeColors = OmniTheme.colorsForTheme(
-      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
+      widget.settingsState.appTheme,
     );
     // Explicitly anchor FilledButton background to the active accent token so
     // the "Finish Workout" button — and any dialog opened from this screen —
@@ -3244,65 +3253,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     overlay.insert(entry);
   }
 
-  Widget _buildSegmentHeader(String name, ThemeData theme) {
-    final textMuted = OmniTheme.colorsForTheme(
-      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
-    ).textMuted;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-      child: Text(
-        name,
-        style: theme.textTheme.titleSmall?.copyWith(
-          color: textMuted,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSegmentHeaderRow(
-    SessionSegment segment,
-    ThemeData theme, {
-    required bool showAddButton,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              segment.name ?? 'Block ${segment.orderIndex + 1}',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: OmniTheme.colorsForTheme(
-                  widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
-                ).textMuted,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          if (showAddButton)
-            OutlinedButton.icon(
-              onPressed: () => _addExercise(segmentId: segment.id),
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add Exercise'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                side: BorderSide(color: theme.colorScheme.primary),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   String _buildExerciseSubtitle(Map<String, dynamic> exercise) {
     final entries = exercise['entries'] as List<dynamic>? ?? [];
     final effortKind = exercise['effortKind'] as String? ?? 'set';
@@ -3359,7 +3309,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final idx = _exercises.indexWhere((e) => e['id'] == effortId);
 
     final tileColors = OmniTheme.colorsForTheme(
-      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
+      widget.settingsState.appTheme,
     );
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -3555,7 +3505,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   /// and wraps itself in a [GestureDetector] that opens [_editSessionDuration].
   Widget _buildSessionTimeWidget(ThemeData theme) {
     final chipColors = OmniTheme.colorsForTheme(
-      widget.settingsState?.appTheme ?? OmniTheme.activeTheme,
+      widget.settingsState.appTheme,
     );
     final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -3619,9 +3569,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     return _buildStandardSessionListView(theme);
   }
 
-  String get _preferredWeightUnitLabel => widget.settingsState != null
-      ? UnitFormatter.weightLabelUpper(widget.settingsState!)
-      : UnitFormatter.weightLabelUpperForUnit('kg');
+  String get _preferredWeightUnitLabel => UnitFormatter.weightLabelUpper(widget.settingsState);
 
   Widget _buildWeightAdjustmentSection({
     required ThemeData theme,
@@ -4164,9 +4112,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       case 'set':
         final prevReps = previousEntry['reps'] as int? ?? 0;
         final prevWeight = previousEntry['weight'] as double? ?? 0.0;
-        statsText = widget.settingsState != null
-            ? 'Previous: $prevReps reps @ ${UnitFormatter.formatWeightValue(prevWeight, widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
-            : 'Previous: $prevReps reps @ ${prevWeight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
+        statsText = 'Previous: $prevReps reps @ ${UnitFormatter.formatWeightValue(prevWeight, widget.settingsState)} ${UnitFormatter.weightLabel(widget.settingsState)}';
         break;
       case 'timed':
         // Use elapsedSecs (actual duration) rather than 'duration' (target preset)
@@ -4178,14 +4124,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final prevDistance = previousEntry['distance'] as double? ?? 0.0;
         final prevTimedMins = prevTimedSecs ~/ 60;
         final prevTimedRemSecs = prevTimedSecs % 60;
-        statsText = widget.settingsState != null
-            ? 'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${UnitFormatter.formatDistanceValue(prevDistance, widget.settingsState!)} ${UnitFormatter.distanceLabel(widget.settingsState!)}'
-            : 'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${prevDistance.toStringAsFixed(1)} ${UnitFormatter.distanceLabelForUnit('km')}';
+        statsText = 'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${UnitFormatter.formatDistanceValue(prevDistance, widget.settingsState)} ${UnitFormatter.distanceLabel(widget.settingsState)}';
         final prevTimedExtraWeight = previousEntry['extra-weight'] as double?;
         if (prevTimedExtraWeight != null && prevTimedExtraWeight != 0.0) {
-          statsText += widget.settingsState != null
-              ? ' + ${UnitFormatter.formatWeightValue(prevTimedExtraWeight, widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
-              : ' + ${prevTimedExtraWeight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
+          statsText += ' + ${UnitFormatter.formatWeightValue(prevTimedExtraWeight, widget.settingsState)} ${UnitFormatter.weightLabel(widget.settingsState)}';
         }
         break;
       case 'round':
@@ -4209,9 +4151,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         final prevDrillMins = prevDrillSecs ~/ 60;
         final prevDrillRemSecs = prevDrillSecs % 60;
         final ewSign = prevExtraWeight > 0 ? '+' : '';
-        statsText = widget.settingsState != null
-            ? 'Previous: ${prevDrillMins.toString().padLeft(2, '0')}:${prevDrillRemSecs.toString().padLeft(2, '0')} hold @ $ewSign${UnitFormatter.formatWeightValue(prevExtraWeight.abs(), widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
-            : 'Previous: ${prevDrillMins.toString().padLeft(2, '0')}:${prevDrillRemSecs.toString().padLeft(2, '0')} hold @ $ewSign${prevExtraWeight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
+        statsText = 'Previous: ${prevDrillMins.toString().padLeft(2, '0')}:${prevDrillRemSecs.toString().padLeft(2, '0')} hold @ $ewSign${UnitFormatter.formatWeightValue(prevExtraWeight.abs(), widget.settingsState)} ${UnitFormatter.weightLabel(widget.settingsState)}';
         break;
       default:
         return const SizedBox.shrink();

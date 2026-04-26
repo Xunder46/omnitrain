@@ -255,4 +255,195 @@ void main() {
       greaterThanOrEqualTo(3.0),
     );
   });
+
+  // ─── Sound preferences — defaults ─────────────────────────────────────────
+
+  test('SettingsState defaults effortTimerSound to boxing_bell', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+    expect(state.effortTimerSound, 'boxing_bell');
+  });
+
+  test('SettingsState defaults restPingInterval to 0 (Off)', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+    expect(state.restPingInterval, 0);
+  });
+
+  test('SettingsState defaults restPingSound to soft_chime', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+    expect(state.restPingSound, 'soft_chime');
+  });
+
+  // ─── Sound preferences — set/get round-trips ──────────────────────────────
+
+  test('SettingsState persists and reloads effortTimerSound', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+    await state.setEffortTimerSound('digital_buzzer');
+    expect(state.effortTimerSound, 'digital_buzzer');
+
+    final reloaded = SettingsState(repository);
+    await reloaded.initialize();
+    expect(reloaded.effortTimerSound, 'digital_buzzer');
+  });
+
+  test('SettingsState persists and reloads restPingInterval', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+    await state.setRestPingInterval(60);
+    expect(state.restPingInterval, 60);
+
+    final reloaded = SettingsState(repository);
+    await reloaded.initialize();
+    expect(reloaded.restPingInterval, 60);
+  });
+
+  test('SettingsState persists and reloads restPingSound', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+    await state.setRestPingSound('signal_tone');
+    expect(state.restPingSound, 'signal_tone');
+
+    final reloaded = SettingsState(repository);
+    await reloaded.initialize();
+    expect(reloaded.restPingSound, 'signal_tone');
+  });
+
+  // ─── Sound preferences — validation / fallback ────────────────────────────
+
+  test(
+    'setEffortTimerSound with invalid id falls back to boxing_bell',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      final state = SettingsState(repository);
+      await state.initialize();
+      await state.setEffortTimerSound('not_a_real_sound');
+      expect(state.effortTimerSound, 'boxing_bell');
+    },
+  );
+
+  test(
+    'SettingsState falls back effortTimerSound to boxing_bell on invalid stored value',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      await repository.setPreferenceString('effort_timer_sound', 'garbage');
+      final state = SettingsState(repository);
+      await state.initialize();
+      expect(state.effortTimerSound, 'boxing_bell');
+    },
+  );
+
+  test(
+    'setRestPingInterval with invalid value falls back to 0',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      final state = SettingsState(repository);
+      await state.initialize();
+      await state.setRestPingInterval(999);
+      expect(state.restPingInterval, 0);
+    },
+  );
+
+  test(
+    'SettingsState falls back restPingInterval to 0 on invalid stored value',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      await repository.setPreferenceString('rest_ping_interval', 'not_a_number');
+      final state = SettingsState(repository);
+      await state.initialize();
+      expect(state.restPingInterval, 0);
+    },
+  );
+
+  test(
+    'setRestPingSound with invalid id falls back to soft_chime',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      final state = SettingsState(repository);
+      await state.initialize();
+      await state.setRestPingSound('not_a_real_sound');
+      expect(state.restPingSound, 'soft_chime');
+    },
+  );
+
+  test(
+    'SettingsState falls back restPingSound to soft_chime on invalid stored value',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      await repository.setPreferenceString('rest_ping_sound', 'garbage');
+      final state = SettingsState(repository);
+      await state.initialize();
+      expect(state.restPingSound, 'soft_chime');
+    },
+  );
+
+  // ─── Sound preferences — static metadata ──────────────────────────────────
+
+  test('SettingsState.validSoundIds contains exactly 5 entries', () {
+    expect(SettingsState.validSoundIds.length, 5);
+    expect(
+      SettingsState.validSoundIds,
+      containsAll([
+        'boxing_bell',
+        'digital_buzzer',
+        'soft_chime',
+        'double_tap',
+        'signal_tone',
+      ]),
+    );
+  });
+
+  test('SettingsState.restPingIntervalOptions contains exactly 7 entries', () {
+    expect(SettingsState.restPingIntervalOptions.length, 7);
+    expect(
+      SettingsState.restPingIntervalOptions.map((o) => o.value),
+      containsAll([0, 30, 45, 60, 90, 120, 180]),
+    );
+  });
+
+  test('SettingsState.soundDisplayNames has an entry for each validSoundId', () {
+    for (final id in SettingsState.validSoundIds) {
+      expect(
+        SettingsState.soundDisplayNames.containsKey(id),
+        isTrue,
+        reason: 'Missing display name for sound ID: $id',
+      );
+    }
+  });
+
+  test('setters call notifyListeners', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+
+    var notifyCount = 0;
+    state.addListener(() => notifyCount++);
+
+    await state.setEffortTimerSound('soft_chime');
+    await state.setRestPingInterval(60);
+    await state.setRestPingSound('boxing_bell');
+
+    expect(notifyCount, 3);
+  });
 }

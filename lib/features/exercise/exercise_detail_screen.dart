@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
+import '../../core/utils/timer_alert_service.dart';
+import '../../state/settings/settings_state.dart';
 import '../session/workout_session_screen.dart';
 
 // Thin compatibility wrapper: forward to WorkoutSessionScreen so
@@ -11,6 +13,8 @@ class ExerciseDetailScreen extends StatelessWidget {
   final RoutineState routineState;
   final SessionSummaryService sessionSummaryService;
   final String effortId;
+  final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const ExerciseDetailScreen({
     super.key,
@@ -18,6 +22,8 @@ class ExerciseDetailScreen extends StatelessWidget {
     required this.routineState,
     required this.sessionSummaryService,
     required this.effortId,
+    required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -27,6 +33,8 @@ class ExerciseDetailScreen extends StatelessWidget {
       routineState: routineState,
       sessionSummaryService: sessionSummaryService,
       initialFocusId: effortId,
+      settingsState: settingsState,
+      timerAlertService: timerAlertService,
     );
   }
 }

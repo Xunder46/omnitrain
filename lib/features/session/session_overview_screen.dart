@@ -6,6 +6,7 @@ import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
+import '../../core/utils/timer_alert_service.dart';
 import '../../data/models/models.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
@@ -16,6 +17,7 @@ class SessionOverviewScreen extends StatefulWidget {
   final RoutineState routineState;
   final SessionSummaryService sessionSummaryService;
   final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const SessionOverviewScreen({
     super.key,
@@ -23,6 +25,7 @@ class SessionOverviewScreen extends StatefulWidget {
     required this.routineState,
     required this.sessionSummaryService,
     required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -97,6 +100,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                 sessionSummaryService: widget.sessionSummaryService,
                 settingsState: widget.settingsState,
                 initialFocusId: effortId,
+                timerAlertService: widget.timerAlertService,
               ),
             ),
           );
@@ -331,6 +335,8 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                     sessionSummaryService:
                                         widget.sessionSummaryService,
                                     settingsState: widget.settingsState,
+                                    timerAlertService:
+                                        widget.timerAlertService,
                                   ),
                                 ),
                               );

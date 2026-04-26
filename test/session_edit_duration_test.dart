@@ -4,7 +4,9 @@ import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'helpers/fake_timer_alert_service.dart';
 
 void main() {
   // ── Shared setup ──────────────────────────────────────────────────────────
@@ -60,6 +62,8 @@ void main() {
                         workoutState: workoutState,
                         routineState: routineState,
                         sessionSummaryService: sessionSummaryService,
+                        timerAlertService: FakeTimerAlertService(),
+                        settingsState: SettingsState(MockWorkoutRepository()),
                         editMode: true,
                       ),
                     ),

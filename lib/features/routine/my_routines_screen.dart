@@ -6,6 +6,7 @@ import '../../widgets/layout/omni_gradient_background.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
+import '../../core/utils/timer_alert_service.dart';
 import 'routine_setup_screen.dart';
 import '../session/workout_session_screen.dart';
 
@@ -16,7 +17,8 @@ class MyRoutinesScreen extends StatefulWidget {
   final WorkoutState? workoutState; // Optional for starting session
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
-  final SettingsState? settingsState;
+  final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const MyRoutinesScreen({
     super.key,
@@ -24,7 +26,8 @@ class MyRoutinesScreen extends StatefulWidget {
     this.workoutState,
     required this.routineSessionService,
     required this.sessionSummaryService,
-    this.settingsState,
+    required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -303,6 +306,8 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
             workoutState: widget.workoutState!,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
           ),
         ),
       );

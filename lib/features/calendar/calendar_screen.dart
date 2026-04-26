@@ -10,6 +10,7 @@ import '../../state/routine/routine_state.dart';
 import '../../state/period/period_state.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
+import '../../core/utils/timer_alert_service.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../session/session_summary_screen.dart';
@@ -23,7 +24,8 @@ class CalendarScreen extends StatefulWidget {
   final RoutineState routineState;
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
-  final SettingsState? settingsState;
+  final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const CalendarScreen({
     super.key,
@@ -33,7 +35,8 @@ class CalendarScreen extends StatefulWidget {
     required this.routineState,
     required this.routineSessionService,
     required this.sessionSummaryService,
-    this.settingsState,
+    required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -45,11 +48,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
   static const _sundayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   List<String> get _weekLabels =>
-      (widget.settingsState?.startOfWeek ?? 'monday') == 'sunday'
+      widget.settingsState.startOfWeek == 'sunday'
           ? _sundayLabels
           : _mondayLabels;
 
-  String get _startOfWeek => widget.settingsState?.startOfWeek ?? 'monday';
+  String get _startOfWeek => widget.settingsState.startOfWeek;
 
   @override
   void initState() {
@@ -96,7 +99,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           child: ListenableBuilder(
             listenable: Listenable.merge([
               widget.calendarState,
-              if (widget.settingsState != null) widget.settingsState!,
+              widget.settingsState,
             ]),
             builder: (context, _) {
               return Column(
@@ -183,6 +186,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
               workoutState: widget.workoutState,
               routineState: widget.routineState,
               sessionSummaryService: widget.sessionSummaryService,
+              settingsState: widget.settingsState,
+              timerAlertService: widget.timerAlertService,
             ),
           ),
         );
@@ -200,6 +205,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
           workoutState: widget.workoutState,
           routineSessionService: widget.routineSessionService,
           sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
+          timerAlertService: widget.timerAlertService,
         ),
       ),
     );
