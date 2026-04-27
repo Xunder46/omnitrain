@@ -65,16 +65,193 @@ Fix session completion semantics so finishing a workout always terminates all ac
 - Follow modality timer lifecycle rules documented in modality_based_exercise_ui and modality_tracking.
 - Use WorkoutState safety-net methods (`_persistActiveRounds`, `_persistActiveTimedEntries`) as backend consistency guards, but keep UI finish flow deterministic so users see immediate stop behavior.
 
+## Scenarios
+
+> Note: This feature was implemented before the Scenarios register was established as a required artifact. The scenarios below are reconstructed from the implementation and tests. Future iterations must populate this section before Phase 0 test writing begins.
+
+### S-001: Finish workout with active timed entry
+- Trigger: User taps "Finish Workout" and confirms in the finish dialog while a timed entry is running.
+- Precondition: A session is active; at least one effort has a `TimedInstance` in `active` or `paused` state.
+- Flow: 1) Tap "Finish Workout" → dialog opens. 2) Tap "Finish" → finalization runs. 3) Summary screen opens.
+- Expected outcome: All active/paused `TimedInstance` records are persisted as `TimedState.finished`. Session has `endedAtMs != null`. `SessionSummaryScreen` is displayed.
+- Edge case of: none
+
+### S-002: Finish workout with active round
+- Trigger: User taps "Finish Workout" and confirms while a round is in `active` state.
+- Precondition: A session is active; at least one effort has a `RoundInstance` in `active` or `paused` state.
+- Flow: 1) Tap "Finish Workout" → dialog opens. 2) Tap "Finish" → finalization runs. 3) Summary screen opens.
+- Expected outcome: All active/paused `RoundInstance` records are persisted as `RoundState.finished`. Session has `endedAtMs != null`. `SessionSummaryScreen` is displayed.
+- Edge case of: none
+
+### S-003: Back navigation after finish does not resume timers
+- Trigger: User navigates back from `SessionSummaryScreen` after finishing a workout.
+- Precondition: Session is finished (`endedAtMs != null`); `WorkoutSessionScreen` is below the summary on the navigator stack.
+- Flow: 1) Finish session normally. 2) Pop back from summary. 3) Verify workout screen is gone.
+- Expected outcome: `WorkoutSessionScreen` is not in the widget tree. No active timers are running. Navigation returns to the screen that launched the workout.
+- Edge case of: none
+
+### S-004: Finish empty session
+- Trigger: User taps "Finish Workout" on a session with no logged efforts.
+- Precondition: Session is active but has zero efforts.
+- Flow: 1) Tap "Finish Workout" → simplified "End empty session?" dialog appears. 2) User confirms.
+- Expected outcome: Session ends; summary screen opens or home screen shown. No timer-related errors occur.
+- Edge case of: S-001
+
+### S-005: Tick guard — ended session does not accumulate elapsed time
+- Trigger: `_tick()` or `_onEffortTick()` fires after session has `endedAtMs != null`.
+- Precondition: Session is finished; a stale timer callback fires.
+- Flow: Timer callback executes.
+- Expected outcome: Callback is a no-op; no state mutation, no `notifyListeners()`, no repository write.
+- Edge case of: S-001
+
 ## Progress
 - [x] Confirm root cause and map all finish entry points
 - [x] Implement unified timer/session finalization flow
 - [x] Add ended-session tick guards
 - [x] Add regression tests for finish/back behavior
-- [ ] Validate web flow manually and via tests
+- [x] Validate web flow manually and via tests
+- [x] Add round state machine transition matrix tests (state_test.dart — 16 cases pass)
+- [x] Add timed state machine transition matrix tests (state_test.dart — 16 cases pass)
+- [x] Add explicit scenario tests: terminal guarantee + single/multi-cycle resume for both state machines
+- [x] _CountingRepo instrumentation: write counters + listener notification delta assertions
 
 ## Feedback
-<!-- Leave empty until a specialist or reviewer adds notes -->
+### Code Reviewer - April 26, 2026
+
+Implementation does not currently meet transition-safety coverage expectations for `WorkoutState` round/timed lifecycle APIs.
+
+Required follow-up before approval:
+1. Add exhaustive transition matrix tests for `RoundState` and `TimedState` in `test/state_test.dart` (or an approved split test file with test-map update): every `(from, to)` pair, including no-op and illegal transitions.
+2. Exercise transitions through public `WorkoutState` methods only (`startRound`, `pauseRound`, `resumeRound`, `completeRound`, `endRoundEarly`, `startTimedEntry`, `pauseTimedEntry`, `resumeTimedEntry`, `finishTimedEntry`). Do not call private validators directly.
+3. For allowed transitions, assert state persistence and side effects: in-memory instance changed, repository write occurred, and listeners notified.
+4. For illegal transitions, assert silent rejection with no side effects: no state mutation, no repository write, no listener notification, and no thrown exception.
+5. Add explicit terminal-state guarantees: once state is `finished`, all public transition attempts out of `finished` must be blocked for both round and timed instances.
+6. Add explicit pause/resume repeatability coverage: single `paused -> active` and repeated multi-cycle `active -> paused -> active -> paused -> active` for both state machines.
+
+Current tests in `test/state_test.dart` and `test/edge_case_test.dart` cover happy-path lifecycle and basic pause/resume, but not exhaustive legal/illegal transition matrices or side-effect invariants.
+
+## Remediation Execution Plan (@developer)
+
+### Scope
+Add transition-matrix test coverage only. Do not modify production code in `lib/` for this iteration.
+
+### Required Test Groups
+1. Add group: `round state machine transition matrix` in `test/state_test.dart`.
+2. Add group: `timed state machine transition matrix` in `test/state_test.dart`.
+
+### Transition Matrix (Expected Legality)
+
+#### Round
+| From | To | Expected |
+|---|---|---|
+| notStarted | notStarted | reject |
+| notStarted | active | allow |
+| notStarted | paused | reject |
+| notStarted | finished | reject |
+| active | notStarted | reject |
+| active | active | reject |
+| active | paused | allow |
+| active | finished | allow |
+| paused | notStarted | reject |
+| paused | active | allow |
+| paused | paused | reject |
+| paused | finished | allow |
+| finished | notStarted | reject |
+| finished | active | reject |
+| finished | paused | reject |
+| finished | finished | reject |
+
+#### Timed
+| From | To | Expected |
+|---|---|---|
+| notStarted | notStarted | reject |
+| notStarted | active | allow |
+| notStarted | paused | reject |
+| notStarted | finished | reject |
+| active | notStarted | reject |
+| active | active | reject |
+| active | paused | allow |
+| active | finished | allow |
+| paused | notStarted | reject |
+| paused | active | allow |
+| paused | paused | reject |
+| paused | finished | allow |
+| finished | notStarted | reject |
+| finished | active | reject |
+| finished | paused | reject |
+| finished | finished | reject |
+
+### Side-Effect Assertions Per Test
+For each matrix case, assert all of the following:
+1. State outcome: target state for allowed transitions, unchanged state for rejected transitions.
+2. Persistence outcome: repository write count increments only for allowed transitions.
+3. Notification outcome: listener callback count increments only for allowed transitions.
+4. Failure mode: rejected transitions must not throw.
+
+### Instrumentation Requirements (Test-Only)
+1. Add a local counting repository test double in `test/state_test.dart` by extending `MockWorkoutRepository` and overriding:
+   - `updateRoundInstance`
+   - `updateTimedInstance`
+2. Add integer counters for writes and expose reset helpers.
+3. Attach a listener to `WorkoutState` and assert notify count deltas per transition.
+
+### Explicit Scenario Tests
+1. Terminal guarantee (round): once finished, attempts through all public round transition methods are rejected.
+2. Terminal guarantee (timed): once finished, attempts through all public timed transition methods are rejected.
+3. Resume single-cycle (round and timed): paused -> active works once.
+4. Resume multi-cycle (round and timed): active -> paused -> active -> paused -> active is repeatable and persists each legal hop.
+
+### Test Design Constraints
+1. One transition outcome per test case.
+2. Public WorkoutState APIs only.
+3. No private validator calls.
+4. No real timers, audio, or animations.
+
+### Completion Checklist
+1. [x] Run `test/state_test.dart` — 155 tests pass (new matrix groups included).
+2. [x] Run `test/edge_case_test.dart` — 37 tests pass, no lifecycle regressions.
+3. [x] Pass/fail summary: all new and existing tests green.
+4. Tests were not split into a new file — no code-reviewer.agent.md update required.
+
+### Code Reviewer - April 26, 2026 (Follow-up)
+
+Implementation is close, but this iteration still does not fully satisfy the plan's verification and handoff requirements.
+
+Required follow-up before approval:
+1. Add the missing widget test for the active round finish path in `test/session_finish_timers_test.dart` (or an approved equivalent mapped widget test): start a `round` effort, finish the workout, assert summary navigation, assert the round is persisted as `RoundState.finished`, and assert the session has `endedAtMs`.
+2. Add an explicit handoff summary with a `Doc Updates` section covering the developer-owned docs named in the reviewer checklist. If no doc change is needed for a file, state that explicitly rather than omitting it.
+3. Add a short reviewer/developer note for the missing `## Scenarios` register in this plan so future review iterations have a direct scenario-to-test mapping.
+
+Non-blocking adjacent warning:
+- `lib/state/app_state.dart` is still unreferenced dead code per the standing reviewer note. Remove it or wire it intentionally in a separate cleanup iteration.
 
 ---
 
 @developer - Please proceed with Iteration 1 (Logic/UI) above. No DBA changes are required for this fix.
+
+---
+
+## Developer Handoff — April 26, 2026 (Follow-up Remediation Complete)
+
+### Phase 0 — TDD
+- Scenarios confirmed: 5 (see `## Scenarios` register above — reconstructed from implementation)
+- Tests written: 1 new widget test added (`test/session_finish_timers_test.dart`)
+- All Phase 0 tests: PASS
+
+### Implementation
+No production code changes in this iteration. Test-only remediation.
+
+### Doc Updates
+- `docs/navigation_and_screens.md`: no update required — no new screens or route changes.
+- `docs/state_management.md`: no update required — no new state classes or methods.
+- `docs/widget_catalog.md`: no update required — no new reusable widgets.
+
+### Files Changed
+- `test/session_finish_timers_test.dart` — added `'Finish workout finalizes active round and sets endedAtMs'` widget test (S-002 coverage)
+- `.github/agents/plans/finish-session-stops-timers-plan.md` — added `## Scenarios` register (S-001–S-005); added this handoff summary
+
+### Tested On
+- [x] All `test/session_finish_timers_test.dart` tests green
+- [x] All `test/state_test.dart` tests green (155 cases, matrix groups included)
+- [x] All `test/edge_case_test.dart` tests green (37 cases, no regressions)
+

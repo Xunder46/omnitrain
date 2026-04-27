@@ -184,6 +184,53 @@ void main() {
     expect(find.byType(WorkoutSessionScreen), findsNothing);
   });
 
+  testWidgets('Finish workout finalizes active round and sets endedAtMs', (
+    WidgetTester tester,
+  ) async {
+    final deps = await setupStates();
+
+    final exercises = await deps.repository.getExercises();
+    final roundExercise = exercises.firstWhere(
+      (e) => e.capabilities.contains('rounds'),
+      orElse: () => exercises.first,
+    );
+
+    final effortId = await deps.workoutState.addExerciseToSession(
+      roundExercise,
+      effortKindOverride: 'round',
+    );
+    await deps.workoutState.startRound(effortId, 0);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: WorkoutSessionScreen(
+          workoutState: deps.workoutState,
+          routineState: deps.routineState,
+          sessionSummaryService: deps.sessionSummaryService,
+          timerAlertService: FakeTimerAlertService(),
+          settingsState: SettingsState(deps.repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Finish Workout'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Finish').last);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SessionSummaryScreen), findsOneWidget);
+
+    final session = deps.workoutState.currentSession;
+    expect(session, isNotNull);
+    expect(session!.endedAtMs, isNotNull);
+
+    final rounds = deps.workoutState.getRoundsForEffort(effortId);
+    expect(rounds, isNotEmpty);
+    expect(rounds.first.state, RoundState.finished);
+  });
+
   testWidgets('Session summary shows Open Calendar button', (
     WidgetTester tester,
   ) async {
