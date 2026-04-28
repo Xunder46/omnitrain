@@ -54,4 +54,17 @@ class MetricIds {
     rpe: 'rpe',
     extraWeight: 'extra-weight',
   };
+
+  /// Maps shorthand metric keys to their unit IDs.
+  /// Used by [SessionCore] and [SessionSummaryBuilder] to attach unit metadata
+  /// to observation records.
+  static const Map<String, String> metricKeyToUnitId = {
+    'reps': unitReps,
+    'weight': unitKg,
+    'duration': unitSeconds,
+    'distance': unitMeters,
+    'rounds': unitRounds,
+    'round-duration': unitSeconds,
+    'extra-weight': unitKg,
+  };
 }

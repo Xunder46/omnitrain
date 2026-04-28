@@ -1,0 +1,652 @@
+import 'package:flutter/foundation.dart';
+
+import '../../core/constants/workout_constants.dart';
+import '../../data/models/models.dart';
+import '../../data/repositories/workout_repository.dart';
+
+class TimerManager {
+  final WorkoutRepository _repository;
+  final void Function() _notify;
+  final void Function(String) _setErrorCallback;
+  final void Function() _clearErrorCallback;
+  Map<String, List<EffortObservation>>? _observations;
+
+  final Map<String, List<RoundInstance>> _roundInstances = {};
+  final Map<String, List<TimedInstance>> _timedInstances = {};
+  final Map<String, List<EntryRest>> _entryRests = {};
+
+  TimerManager(
+    this._repository, {
+    required void Function() notify,
+    required void Function(String) setError,
+    required void Function() clearError,
+  }) : _notify = notify,
+       _setErrorCallback = setError,
+       _clearErrorCallback = clearError;
+
+  void bindObservations(Map<String, List<EffortObservation>> observations) {
+    _observations = observations;
+  }
+
+  List<RoundInstance> getRoundsForEffort(String effortId) {
+    return List.unmodifiable(_roundInstances[effortId] ?? []);
+  }
+
+  List<TimedInstance> getTimedInstancesForEffort(String effortId) {
+    return List.unmodifiable(_timedInstances[effortId] ?? []);
+  }
+
+  List<EntryRest> getEntryRests(String effortId) {
+    return List.unmodifiable(_entryRests[effortId] ?? []);
+  }
+
+  Map<String, List<RoundInstance>> get roundInstancesSnapshot =>
+      Map.unmodifiable(_roundInstances);
+
+  Map<String, List<TimedInstance>> get timedInstancesSnapshot =>
+      Map.unmodifiable(_timedInstances);
+
+  void setRoundInstances(String effortId, List<RoundInstance> rounds) {
+    _roundInstances[effortId] = rounds;
+  }
+
+  void setTimedInstances(String effortId, List<TimedInstance> timed) {
+    _timedInstances[effortId] = timed;
+  }
+
+  void setEntryRests(String effortId, List<EntryRest> rests) {
+    _entryRests[effortId] = rests;
+  }
+
+  void clearAll() {
+    _roundInstances.clear();
+    _timedInstances.clear();
+    _entryRests.clear();
+  }
+
+  void removeEffort(String effortId) {
+    _roundInstances.remove(effortId);
+    _timedInstances.remove(effortId);
+    _entryRests.remove(effortId);
+  }
+
+  bool _isValidRoundTransition(RoundState from, RoundState to) {
+    switch (from) {
+      case RoundState.notStarted:
+        return to == RoundState.active;
+      case RoundState.active:
+        return to == RoundState.paused || to == RoundState.finished;
+      case RoundState.paused:
+        return to == RoundState.active || to == RoundState.finished;
+      case RoundState.finished:
+        return false;
+    }
+  }
+
+  Future<void> addRound(
+    String effortId, {
+    int plannedDurationSecs = WorkoutConstants.defaultRoundDurationSecs,
+  }) async {
+    _clearError();
+    try {
+      final existing = _roundInstances[effortId] ?? [];
+      final roundIndex = existing.length;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final instance = RoundInstance(
+        id: 'round-$effortId-$roundIndex-$now',
+        effortId: effortId,
+        roundIndex: roundIndex,
+        plannedDurationSecs: plannedDurationSecs,
+        actualDurationSecs: 0,
+        startedAtMs: 0,
+        finishedAtMs: null,
+        completed: false,
+        state: RoundState.notStarted,
+        pausedAtMs: null,
+        totalPausedDurationMs: 0,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+      await _repository.createRoundInstance(instance);
+      _roundInstances.putIfAbsent(effortId, () => []).add(instance);
+      _notify();
+    } catch (e) {
+      _setError('Failed to add round: $e');
+    }
+  }
+
+  Future<void> startRound(String effortId, int roundIndex) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || roundIndex >= list.length) return;
+      final old = list[roundIndex];
+
+      if (!_isValidRoundTransition(old.state, RoundState.active)) {
+        debugPrint('Invalid round transition: ${old.state} -> active');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = old.copyWith(
+        state: RoundState.active,
+        startedAtMs: now,
+        updatedAtMs: now,
+      );
+      await _repository.updateRoundInstance(updated);
+      list[roundIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to start round: $e');
+    }
+  }
+
+  Future<void> pauseRound(String effortId, int roundIndex) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || roundIndex >= list.length) return;
+      final old = list[roundIndex];
+
+      if (!_isValidRoundTransition(old.state, RoundState.paused)) {
+        debugPrint('Invalid round transition: ${old.state} -> paused');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = old.copyWith(
+        state: RoundState.paused,
+        pausedAtMs: now,
+        updatedAtMs: now,
+      );
+      await _repository.updateRoundInstance(updated);
+      list[roundIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to pause round: $e');
+    }
+  }
+
+  Future<void> resumeRound(String effortId, int roundIndex) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || roundIndex >= list.length) return;
+      final old = list[roundIndex];
+
+      if (!_isValidRoundTransition(old.state, RoundState.active)) {
+        debugPrint('Invalid round transition: ${old.state} -> active');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final pauseDuration = old.pausedAtMs != null ? (now - old.pausedAtMs!) : 0;
+
+      final updated = old.copyWith(
+        state: RoundState.active,
+        totalPausedDurationMs: old.totalPausedDurationMs + pauseDuration,
+        pausedAtMs: null,
+        updatedAtMs: now,
+      );
+      await _repository.updateRoundInstance(updated);
+      list[roundIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to resume round: $e');
+    }
+  }
+
+  Future<void> completeRound(String effortId, int roundIndex) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || roundIndex >= list.length) return;
+      final old = list[roundIndex];
+
+      if (!_isValidRoundTransition(old.state, RoundState.finished)) {
+        debugPrint('Invalid round transition: ${old.state} -> finished (complete)');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final finishedAtMs =
+          old.startedAtMs + (old.plannedDurationSecs * 1000) + old.totalPausedDurationMs;
+
+      final updated = old.copyWith(
+        state: RoundState.finished,
+        actualDurationSecs: old.plannedDurationSecs,
+        finishedAtMs: finishedAtMs,
+        completed: true,
+        pausedAtMs: null,
+        updatedAtMs: now,
+      );
+      await _repository.updateRoundInstance(updated);
+      list[roundIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to complete round: $e');
+    }
+  }
+
+  Future<void> endRoundEarly(String effortId, int roundIndex) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || roundIndex >= list.length) return;
+      final old = list[roundIndex];
+
+      if (!_isValidRoundTransition(old.state, RoundState.finished)) {
+        debugPrint('Invalid round transition: ${old.state} -> finished (early)');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final totalPausedMs =
+          old.state == RoundState.paused && old.pausedAtMs != null
+          ? old.totalPausedDurationMs + (now - old.pausedAtMs!)
+          : old.totalPausedDurationMs;
+
+      final elapsedMs = old.startedAtMs > 0 ? (now - old.startedAtMs - totalPausedMs) : 0;
+      final actualDurationSecs = (elapsedMs / 1000).round().clamp(
+        0,
+        old.plannedDurationSecs * WorkoutConstants.roundActualDurationCapFactor,
+      );
+
+      final updated = old.copyWith(
+        state: RoundState.finished,
+        actualDurationSecs: actualDurationSecs,
+        finishedAtMs: now,
+        completed: false,
+        totalPausedDurationMs: totalPausedMs,
+        pausedAtMs: null,
+        updatedAtMs: now,
+      );
+      await _repository.updateRoundInstance(updated);
+      list[roundIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to end round early: $e');
+    }
+  }
+
+  Future<void> deleteRound(String effortId, int roundIndex) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || roundIndex >= list.length) return;
+      await _repository.deleteRoundInstance(list[roundIndex].id);
+      list.removeAt(roundIndex);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (int i = roundIndex; i < list.length; i++) {
+        final r = list[i];
+        final reindexed = r.copyWith(roundIndex: i, updatedAtMs: now);
+        list[i] = reindexed;
+        await _repository.updateRoundInstance(reindexed);
+      }
+      _notify();
+    } catch (e) {
+      _setError('Failed to delete round: $e');
+    }
+  }
+
+  Future<void> updateRoundPlannedDuration(
+    String effortId,
+    int roundIndex,
+    int newDurationSecs,
+  ) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || roundIndex >= list.length) return;
+      final old = list[roundIndex];
+
+      if (old.state == RoundState.finished) {
+        debugPrint('Cannot update planned duration for finished round');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = old.copyWith(
+        plannedDurationSecs: newDurationSecs,
+        updatedAtMs: now,
+      );
+      await _repository.updateRoundInstance(updated);
+      list[roundIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to update round duration: $e');
+    }
+  }
+
+  Future<void> persistActiveRounds() async {
+    for (final entry in _roundInstances.entries) {
+      final effortId = entry.key;
+      final rounds = entry.value;
+      for (int i = 0; i < rounds.length; i++) {
+        final round = rounds[i];
+        if (round.state == RoundState.active || round.state == RoundState.paused) {
+          await endRoundEarly(effortId, i);
+        }
+      }
+    }
+  }
+
+  bool _isValidTimedTransition(TimedState from, TimedState to) {
+    switch (from) {
+      case TimedState.notStarted:
+        return to == TimedState.active;
+      case TimedState.active:
+        return to == TimedState.paused || to == TimedState.finished;
+      case TimedState.paused:
+        return to == TimedState.active || to == TimedState.finished;
+      case TimedState.finished:
+        return false;
+    }
+  }
+
+  Future<void> addTimedEntry(
+    String effortId, {
+    int targetDurationSecs = 0,
+  }) async {
+    _clearError();
+    try {
+      final existing = _timedInstances[effortId] ?? [];
+      final entryIndex = existing.length;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final instance = TimedInstance(
+        id: 'timed-$effortId-$entryIndex-$now',
+        effortId: effortId,
+        entryIndex: entryIndex,
+        targetDurationSecs: targetDurationSecs,
+        actualDurationSecs: 0,
+        startedAtMs: 0,
+        finishedAtMs: null,
+        state: TimedState.notStarted,
+        pausedAtMs: null,
+        totalPausedDurationMs: 0,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+      await _repository.createTimedInstance(instance);
+      _timedInstances.putIfAbsent(effortId, () => []).add(instance);
+      _notify();
+    } catch (e) {
+      _setError('Failed to add timed entry: $e');
+    }
+  }
+
+  Future<void> startTimedEntry(String effortId, int entryIndex) async {
+    _clearError();
+    try {
+      final list = _timedInstances[effortId];
+      if (list == null || entryIndex >= list.length) return;
+      final old = list[entryIndex];
+
+      if (!_isValidTimedTransition(old.state, TimedState.active)) {
+        debugPrint('Invalid timed transition: ${old.state} -> active');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final offsetMs = old.targetDurationSecs > 0 ? old.targetDurationSecs * 1000 : 0;
+      final updated = old.copyWith(
+        state: TimedState.active,
+        startedAtMs: now - offsetMs,
+        targetDurationSecs: 0,
+        updatedAtMs: now,
+      );
+      await _repository.updateTimedInstance(updated);
+      list[entryIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to start timed entry: $e');
+    }
+  }
+
+  Future<void> pauseTimedEntry(String effortId, int entryIndex) async {
+    _clearError();
+    try {
+      final list = _timedInstances[effortId];
+      if (list == null || entryIndex >= list.length) return;
+      final old = list[entryIndex];
+
+      if (!_isValidTimedTransition(old.state, TimedState.paused)) {
+        debugPrint('Invalid timed transition: ${old.state} -> paused');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = old.copyWith(
+        state: TimedState.paused,
+        pausedAtMs: now,
+        updatedAtMs: now,
+      );
+      await _repository.updateTimedInstance(updated);
+      list[entryIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to pause timed entry: $e');
+    }
+  }
+
+  Future<void> resumeTimedEntry(String effortId, int entryIndex) async {
+    _clearError();
+    try {
+      final list = _timedInstances[effortId];
+      if (list == null || entryIndex >= list.length) return;
+      final old = list[entryIndex];
+
+      if (!_isValidTimedTransition(old.state, TimedState.active)) {
+        debugPrint('Invalid timed transition: ${old.state} -> active');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final pauseDuration = old.pausedAtMs != null ? (now - old.pausedAtMs!) : 0;
+
+      final updated = old.copyWith(
+        state: TimedState.active,
+        totalPausedDurationMs: old.totalPausedDurationMs + pauseDuration,
+        pausedAtMs: null,
+        updatedAtMs: now,
+      );
+      await _repository.updateTimedInstance(updated);
+      list[entryIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to resume timed entry: $e');
+    }
+  }
+
+  Future<void> finishTimedEntry(String effortId, int entryIndex) async {
+    _clearError();
+    try {
+      final list = _timedInstances[effortId];
+      if (list == null || entryIndex >= list.length) return;
+      final old = list[entryIndex];
+
+      if (!_isValidTimedTransition(old.state, TimedState.finished)) {
+        debugPrint('Invalid timed transition: ${old.state} -> finished');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final totalPausedMs =
+          old.state == TimedState.paused && old.pausedAtMs != null
+          ? old.totalPausedDurationMs + (now - old.pausedAtMs!)
+          : old.totalPausedDurationMs;
+
+      final elapsedMs = old.startedAtMs > 0 ? (now - old.startedAtMs - totalPausedMs) : 0;
+      final actualDurationSecs = (elapsedMs / 1000).round().clamp(0, 86400);
+
+      final updated = old.copyWith(
+        state: TimedState.finished,
+        actualDurationSecs: actualDurationSecs,
+        finishedAtMs: now,
+        totalPausedDurationMs: totalPausedMs,
+        pausedAtMs: null,
+        updatedAtMs: now,
+      );
+      await _repository.updateTimedInstance(updated);
+      list[entryIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to finish timed entry: $e');
+    }
+  }
+
+  Future<void> deleteTimedEntry(String effortId, int entryIndex) async {
+    _clearError();
+    try {
+      final list = _timedInstances[effortId];
+      if (list == null || entryIndex >= list.length) return;
+      await _repository.deleteTimedInstance(list[entryIndex].id);
+      list.removeAt(entryIndex);
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (int i = entryIndex; i < list.length; i++) {
+        final t = list[i];
+        final reindexed = t.copyWith(entryIndex: i, updatedAtMs: now);
+        list[i] = reindexed;
+        await _repository.updateTimedInstance(reindexed);
+      }
+
+      final observations = _observations?[effortId];
+      if (observations != null) {
+        final idPrefix = 'obs-$effortId-$entryIndex-';
+        final toDelete = observations.where((o) => o.id.startsWith(idPrefix)).toList();
+        for (final obs in toDelete) {
+          await _repository.deleteObservation(obs.id);
+        }
+        observations.removeWhere((o) => o.id.startsWith(idPrefix));
+      }
+
+      _notify();
+    } catch (e) {
+      _setError('Failed to delete timed entry: $e');
+    }
+  }
+
+  Future<void> updateTimedTargetDuration(
+    String effortId,
+    int entryIndex,
+    int newTargetSecs,
+  ) async {
+    _clearError();
+    try {
+      final list = _timedInstances[effortId];
+      if (list == null || entryIndex >= list.length) return;
+      final old = list[entryIndex];
+
+      if (old.state == TimedState.finished) {
+        debugPrint('Cannot update target duration for finished timed entry');
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = old.copyWith(
+        targetDurationSecs: newTargetSecs,
+        updatedAtMs: now,
+      );
+      await _repository.updateTimedInstance(updated);
+      list[entryIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to update timed target duration: $e');
+    }
+  }
+
+  Future<void> persistActiveTimedEntries() async {
+    for (final entry in _timedInstances.entries) {
+      final effortId = entry.key;
+      final entries = entry.value;
+      for (int i = 0; i < entries.length; i++) {
+        final timedEntry = entries[i];
+        if (timedEntry.state == TimedState.active || timedEntry.state == TimedState.paused) {
+          await finishTimedEntry(effortId, i);
+        }
+      }
+    }
+  }
+
+  Future<void> recordRestStart(String effortId, int entryIndex) async {
+    _clearError();
+
+    try {
+      final list = _entryRests.putIfAbsent(effortId, () => []);
+      if (list.any((r) => r.entryIndex == entryIndex)) {
+        return;
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      for (var i = 0; i < list.length; i++) {
+        final rest = list[i];
+        if (rest.restEndMs != null) continue;
+        final closed = rest.copyWith(restEndMs: now, updatedAtMs: now);
+        await _repository.updateEntryRest(closed);
+        list[i] = closed;
+      }
+
+      final rest = EntryRest(
+        id: 'rest-$effortId-$entryIndex',
+        effortId: effortId,
+        entryIndex: entryIndex,
+        restStartMs: now,
+        restEndMs: null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+
+      await _repository.createEntryRest(rest);
+      list.add(rest);
+      _notify();
+    } catch (e) {
+      _setError('Failed to record rest start: $e');
+    }
+  }
+
+  Future<void> recordRestEnd(String effortId, int entryIndex) async {
+    _clearError();
+
+    try {
+      final list = _entryRests[effortId];
+      if (list == null) return;
+
+      final idx = list.indexWhere((r) => r.entryIndex == entryIndex);
+      if (idx == -1) return;
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = list[idx].copyWith(restEndMs: now, updatedAtMs: now);
+
+      await _repository.updateEntryRest(updated);
+      list[idx] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to record rest end: $e');
+    }
+  }
+
+  int getRestElapsedSeconds(String effortId, int entryIndex) {
+    final list = _entryRests[effortId];
+    if (list == null) return 0;
+
+    try {
+      final rest = list.firstWhere((r) => r.entryIndex == entryIndex);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      return rest.elapsedSeconds(now);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  bool hasRestRecord(String effortId, int entryIndex) {
+    final list = _entryRests[effortId];
+    if (list == null) return false;
+    return list.any((r) => r.entryIndex == entryIndex);
+  }
+
+  void _setError(String message) => _setErrorCallback(message);
+
+  void _clearError() => _clearErrorCallback();
+}

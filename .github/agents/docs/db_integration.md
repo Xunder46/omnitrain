@@ -146,5 +146,40 @@ And exercise modality persistence for custom exercise parity:
 
 ---
 
-**Document Version**: 1.2
-**Last Updated**: April 8, 2026
+## Sub-Holder Architecture and Repository Access
+
+After the `workout-state-and-screen-refactor`, `WorkoutState` is a thin `ChangeNotifier` facade that constructs three sub-holders. Each sub-holder independently holds a `WorkoutRepository` reference — they do **not** share a single repository reference through the facade.
+
+```
+WorkoutRepository (injected into WorkoutState)
+   │
+   ├─► TimerManager(_repository, notify: ...)
+   │     Owns: RoundInstance, TimedInstance, EntryRest writes
+   │
+   ├─► ExerciseLibrary(_repository, notify: ...)
+   │     Owns: Exercise, ExerciseNote reads/writes
+   │
+   └─► SessionCore(_repository, notify: ..., timerManager, exerciseLibrary)
+         Owns: TrainingSession, SessionSegment, SegmentEffort, EffortObservation
+         Delegates timer creation to TimerManager
+         Delegates note cache clearing to ExerciseLibrary
+```
+
+All repository reads and writes go through the same `WorkoutRepository` interface. The concrete implementation (`HiveWorkoutRepository` or future `SqliteWorkoutRepository`) is injected once at app startup and passed to each sub-holder.
+
+### SyncService Integration Surface (forward-looking)
+
+When cloud sync is added, `SyncService` will be injected alongside `WorkoutRepository` at each sub-holder construction. The pattern is:
+
+```dart
+// After each successful repository write in SessionCore:
+await _repository.createSession(session);
+_syncService?.queueCreate(SyncEntity.session, session);
+```
+
+The same seam applies in `TimerManager` (for round/timed instance writes) and `ExerciseLibrary` (for exercise and note writes). No repository interface changes are required — `SyncService` is an additive injection.
+
+---
+
+**Document Version**: 1.3
+**Last Updated**: May 2026

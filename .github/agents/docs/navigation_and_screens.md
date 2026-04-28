@@ -89,7 +89,7 @@ HomeScreen
 |--------|------|---------|
 | `HomeScreen` | `lib/features/home/home_screen.dart` | 3×2 tile grid + maintenance sheet |
 | `SessionOverviewScreen` | `lib/features/session/session_overview_screen.dart` | Exercise list for current session, add/remove exercises |
-| `WorkoutSessionScreen` | `lib/features/session/workout_session_screen.dart` | Core workout tracking (list view + detail view) |
+| `WorkoutSessionScreen` | `lib/features/session/workout_session_screen.dart` | Core workout tracking (list view + detail view). Split into 4 Dart `part` files: main coordinator, `workout_session_timer_mixin.dart` (timer state/logic), `workout_session_list_view.dart` (list-view builders), `workout_session_detail_view.dart` (detail-view builders). Public API unchanged. |
 | `SessionSummaryScreen` | `lib/features/session/session_summary_screen.dart` | Post-workout summary, PRs, save-as-routine |
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |

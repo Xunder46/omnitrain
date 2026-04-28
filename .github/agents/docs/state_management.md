@@ -15,34 +15,70 @@ State classes follow strict rules:
 
 ## State Classes
 
-### `WorkoutState`
+### `WorkoutState` (Facade)
 
 **File**: `lib/state/workout/workout_state.dart`
 **Depends on**: `WorkoutRepository`
 
-The primary state manager for active workout sessions. Manages the entire session lifecycle.
+Thin `ChangeNotifier` facade. Constructs and holds `TimerManager`, `ExerciseLibrary`, and `SessionCore`, then delegates every public getter and method to the appropriate sub-holder. No business logic lives here.
 
-#### Key Responsibilities
-1. Session CRUD (create, load, end, discard)
-2. Exercise management (add, remove from session)
-3. Set/entry management (add, log, skip, delete)
-4. Observation persistence (reps, weight, duration, distance, RPE, extra weight)
-5. Round lifecycle (start, pause, resume, complete, end early)
-6. Exercise ranking (delegates to repository)
-7. Session summary computation
-8. Template draft building (for save-as-routine)
+**Construction order** (cross-references require this sequence):
+```dart
+_timerManager    = TimerManager(_repository, notify: notifyListeners);
+_exerciseLibrary = ExerciseLibrary(_repository, notify: notifyListeners);
+_sessionCore     = SessionCore(
+  _repository,
+  notify: notifyListeners,
+  timerManager: _timerManager,
+  exerciseLibrary: _exerciseLibrary,
+);
+```
+
+Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListeners()` calls still fire once from the single `ChangeNotifier` that consumers subscribe to. No consumer screen or test changes are required.
+
+**`notify` callback pattern**: Sub-holders are plain Dart objects (not ChangeNotifiers). They call the injected `notify` callback in place of `notifyListeners()`. This preserves the single-listener model and avoids the double-dispatch overhead of chaining multiple ChangeNotifiers.
+
+---
+
+### `SessionCore`
+
+**Files** (split for maintainability):
+- `session_core.dart` — core fields, getters, query methods (~211 lines)
+- `session_core_io.dart` — I/O operations (load, save, update) (~281 lines)
+- `session_core_entry.dart` — entry/exercise CRUD (~394 lines)
+- `session_core_lifecycle.dart` — session lifecycle management (~292 lines)
+
+**Depends on**: `WorkoutRepository`, `TimerManager`, `ExerciseLibrary`
+
+Handles all session lifecycle and CRUD concerns (Cluster A of the original `WorkoutState`). Calls `timerManager.addRound` / `addTimedEntry` when creating timer-based entries; calls `exerciseLibrary.clearNoteCache()` from `clearSession()`.
+
+#### SyncService Integration Surface (forward-looking)
+
+When cloud sync is added, `SyncService` will be injected into `SessionCore` at construction time:
+
+```dart
+// SessionCore(_repository, syncService: SyncService?, notify: ..., ...)
+//
+// After each successful repository write:
+// await _repository.createSession(session);
+// syncService?.queueCreate(SyncEntity.session, session);
+```
+
+The same pattern applies to `TimerManager` for `RoundInstance`/`TimedInstance` records and to `ExerciseLibrary` for exercise and note writes.
 
 #### Key State Fields
 
 | Field | Type | Purpose |
 |-------|------|---------|
 | `_currentSession` | `TrainingSession?` | Active session |
-| `_currentSegment` | `SessionSegment?` | Active segment (usually one per session) |
-| `_exercises` | `List<Map<String, dynamic>>` | Exercises with entries and observations |
-| `_exerciseCache` | `Map<String, Exercise>` | Cache of exercise definitions |
-| `_allExercises` | `List<Exercise>` | Full exercise list for ranking |
-| `_isLoading` | `bool` | Loading state |
+| `_segments` | `List<SessionSegment>` | Session segments (usually one) |
+| `_efforts` | `Map<String, List<SegmentEffort>>` | Efforts keyed by segment ID |
+| `_observations` | `Map<String, List<EffortObservation>>` | Observations keyed by effort ID |
+| `_sessionBlocks` | `Map<String, List<SessionBlock>>` | Blocks keyed by session ID |
+| `_exerciseCache` | `Map<String, Exercise>` | Cache of exercise definitions for active session |
 | `_currentModalityConfig` | `ModalityConfig?` | Active modality config |
+| `_isLoading` | `bool` | Loading state |
+| `_error` | `String?` | Last error message |
 
 #### Session Lifecycle Methods
 
@@ -78,6 +114,63 @@ The primary state manager for active workout sessions. Manages the entire sessio
 | `deleteLastEntry(effortId)` | Removes last set |
 | `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check |
 
+#### Routine Session Support
+
+| Method | Purpose |
+|--------|--------|
+| `populateSessionFromManifest(manifest)` | Loads exercises from `RoutineSessionManifest` |
+| `computeSessionSummary()` | Returns `SessionSummary`; counts `RoundState.finished` rounds (both natural completion and early-end logged rounds; not-started/active/paused are excluded) |
+| `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine |
+
+---
+
+### `SessionBlockManager`
+
+**File**: `lib/state/workout/session_block_manager.dart`
+**Depends on**: `WorkoutRepository`, `TimerManager`
+
+Encapsulates all session block CRUD and block-effort assignment logic. Extracted from `SessionCore` to keep each sub-holder within its size target.
+
+| Method | Purpose |
+|--------|--------|
+| `getSessionBlocks()` | Returns blocks for the current session sorted by `orderIndex` |
+| `addSessionBlock({String? name})` | Creates a new `SessionBlock`; if `name` is omitted, names the block with current wall-clock time (`"3:45 PM"`) — the mechanism behind time-stamped blocks in rolling sessions |
+| `updateSessionBlock(block)` | Persists changes to an existing block |
+| `deleteSessionBlock(blockId)` | Deletes a block and mirrors the cascade to in-memory effort/observation maps |
+| `reorderSessionBlocks(orderedIds)` | Reorders blocks for the current session |
+| `cloneSessionBlock(blockId)` | Deep-clones a block and all linked records via the repository |
+| `assignEffortToBlock(effortId, blockId)` | Assigns or unassigns an effort to a block |
+
+---
+
+### `SessionSummaryBuilder`
+
+**File**: `lib/state/workout/session_summary_builder.dart`
+**Depends on**: `WorkoutRepository`, `TimerManager`
+
+Extracted from `SessionCore` to isolate session summary computation. Called by `SessionCore.computeSessionSummary()`.
+
+| Method | Purpose |
+|--------|--------|
+| `computeSessionSummary(session, segments, efforts, observations, exerciseCache)` | Aggregates all session metrics into a `SessionSummary` model; counts finished rounds; sums durations |
+
+---
+
+### `TimerManager`
+
+**File**: `lib/state/workout/timer_manager.dart`
+**Depends on**: `WorkoutRepository`
+
+Handles all round, timed-entry, and rest state machines (Cluster B of the original `WorkoutState`). Notifies listeners via the injected `notify` callback.
+
+#### Key State Fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `_roundInstances` | `Map<String, List<RoundInstance>>` | Round instances keyed by effort ID |
+| `_timedInstances` | `Map<String, List<TimedInstance>>` | Timed instances keyed by effort ID |
+| `_entryRests` | `Map<String, List<EntryRest>>` | Rest records keyed by effort ID |
+
 #### Round Management (round effortKind only)
 
 | Method | Transition | Purpose |
@@ -92,6 +185,18 @@ The primary state manager for active workout sessions. Manages the entire sessio
 | `deleteRound(effortId, roundIndex)` | — | Removes round instance |
 | `getRoundsForEffort(effortId)` | — | Returns all rounds for an effort |
 
+#### Timed Management (timed / drill effortKind)
+
+| Method | Transition | Purpose |
+|--------|-----------|---------|
+| `addTimedEntry(effortId, {targetDurationSecs})` | — | Creates new `TimedInstance`; `targetDurationSecs` used as elapsed offset on first start |
+| `startTimedEntry(effortId, entryIndex)` | notStarted → active | Back-dates `startedAtMs` by any pre-set `targetDurationSecs` offset; clears target after first start so entry is open-ended |
+| `pauseTimedEntry(effortId, entryIndex)` | active → paused | Stamps `pausedAtMs` |
+| `resumeTimedEntry(effortId, entryIndex)` | paused → active | Folds pause duration into `totalPausedDurationMs`; clears `pausedAtMs` |
+| `finishTimedEntry(effortId, entryIndex)` | active/paused → finished | Derives `actualDurationSecs` from timestamps; folds final pause if paused |
+| `deleteTimedEntry(effortId, entryIndex)` | — | Removes instance and re-indexes subsequent entries |
+| `getTimedInstancesForEffort(effortId)` | — | Returns unmodifiable list of timed instances for an effort |
+
 #### Rest Tracking Methods
 
 | Method | Signature | Purpose |
@@ -104,26 +209,45 @@ The primary state manager for active workout sessions. Manages the entire sessio
 
 See [Rest Tracking](rest_tracking.md) for full architecture details.
 
-#### Routine Session Support
+---
+
+### `ExerciseLibrary`
+
+**File**: `lib/state/workout/exercise_library.dart`
+**Depends on**: `WorkoutRepository`
+
+Handles the exercise catalog, exercise notes, and coach-mark hint flags (Cluster C of the original `WorkoutState`). Exposes `clearNoteCache()` called by `SessionCore.clearSession()`.
+
+#### Key State Fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `_allExercises` | `List<Exercise>` | Full exercise catalog |
+| `_muscleGroups` | `List<String>` | Available muscle groups |
+| `_disciplines` | `List<String>` | Available disciplines |
+| `_exerciseNotes` | `Map<String, ExerciseNote>` | Notes keyed by exercise ID |
+| `_exerciseNoteLoadInFlight` | `Set<String>` | Guards concurrent note loads |
+| `_exerciseNoteSaveInFlight` | `List<Future<void>>` | Queued save operations |
+| `_exerciseNotesHintSeen` | `bool` | Coach-mark hint flag |
+| `_exerciseInfoHintSeen` | `bool` | Coach-mark hint flag |
+
+#### Key Methods
 
 | Method | Purpose |
-|--------|--------|
-| `populateSessionFromManifest(manifest)` | Loads exercises from `RoutineSessionManifest` |
-| `computeSessionSummary()` | Returns `SessionSummary`; counts `RoundState.finished` rounds (both natural completion and early-end logged rounds; not-started/active/paused are excluded) |
-| `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine |
-
-#### Session Block Management
-
-Session blocks organize efforts into named, time-stamped groups. They are the primary UI structure for rolling sessions but are present in all session types when content is added via the routine manifest flow.
-
-| Method | Purpose |
-|--------|--------|
-| `getSessionBlocks()` | Returns blocks for the current session sorted by `orderIndex` |
-| `addSessionBlock({String? name})` | Creates a new `SessionBlock` for the current session. If `name` is omitted the block is named with the current wall-clock time in `"h:mm AM/PM"` format (e.g. `"3:45 PM"`) — the mechanism behind time-stamped blocks in rolling sessions |
-| `updateSessionBlock(block)` | Persists changes to an existing block |
-| `deleteSessionBlock(blockId)` | Deletes a block and mirrors the repository cascade to in-memory effort/observation maps |
-| `reorderSessionBlocks(orderedIds)` | Reorders blocks for the current session |
-| `cloneSessionBlock(blockId)` | Deep-clones a block and all linked records via the repository |
+|--------|---------|
+| `loadAllExercises()` | Loads full exercise catalog |
+| `loadMuscleGroups()` / `loadDisciplines()` | Loads filter options |
+| `searchExercises(query)` | Filters exercises by name |
+| `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance score |
+| `createCustomExercise(name, {...})` | Creates exercise in repository and caches it |
+| `updateCustomExercise(exercise, {...})` | Updates exercise and refreshes cache |
+| `loadExerciseNote(exerciseId)` | Loads note with in-flight guard |
+| `saveExerciseNote(exerciseId, note, {sessionId})` | Saves note with debounce queue |
+| `getExerciseNote(exerciseId)` | Returns cached note or null |
+| `hasExerciseNote(exerciseId)` | Checks if a note exists |
+| `clearNoteCache()` | Clears note state; called by `SessionCore.clearSession()` |
+| `initExerciseHints()` | Loads hint flags from repository |
+| `markExerciseNotesHintSeen()` / `markExerciseInfoHintSeen()` | Persists hint flags |
 
 ---
 

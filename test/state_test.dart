@@ -2255,7 +2255,7 @@ class _CountingRepo extends MockWorkoutRepository {
 void _roundMatrixTests() {
   // Returns a state with one round-effort and one round instance in [fromState].
   Future<({_CountingRepo repo, WorkoutState state, String effortId})>
-  _setupRoundIn(RoundState fromState) async {
+  setupRoundIn(RoundState fromState) async {
     final repo = _CountingRepo();
     await repo.initialize();
     final state = WorkoutState(repo);
@@ -2290,7 +2290,7 @@ void _roundMatrixTests() {
     return (repo: repo, state: state, effortId: effortId);
   }
 
-  RoundState _roundState(WorkoutState state, String effortId) =>
+  RoundState roundState(WorkoutState state, String effortId) =>
       state.getRoundsForEffort(effortId).first.state;
 
   group('round state machine transition matrix', () {
@@ -2298,7 +2298,7 @@ void _roundMatrixTests() {
     // Calls the three methods that are invalid from notStarted; omits resumeRound
     // because the shared validator allows notStarted→active (covered in notStarted→active).
     test('notStarted → notStarted is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.notStarted);
+      final ctx = await setupRoundIn(RoundState.notStarted);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
@@ -2306,100 +2306,100 @@ void _roundMatrixTests() {
       await ctx.state.completeRound(ctx.effortId, 0);
       await ctx.state.endRoundEarly(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.notStarted);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.notStarted);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // notStarted → active  (allow)
     test('notStarted → active is allowed', () async {
-      final ctx = await _setupRoundIn(RoundState.notStarted);
+      final ctx = await setupRoundIn(RoundState.notStarted);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.active);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.active);
       expect(ctx.repo.roundWriteCount, 1);
       expect(notified, 1);
     });
 
     // notStarted → paused  (reject)
     test('notStarted → paused is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.notStarted);
+      final ctx = await setupRoundIn(RoundState.notStarted);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.notStarted);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.notStarted);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // notStarted → finished  (reject)
     test('notStarted → finished is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.notStarted);
+      final ctx = await setupRoundIn(RoundState.notStarted);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.endRoundEarly(ctx.effortId, 0);
       await ctx.state.completeRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.notStarted);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.notStarted);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // active → notStarted  (reject)
     test('active → notStarted is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.active);
+      final ctx = await setupRoundIn(RoundState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startRound(ctx.effortId, 0);
       await ctx.state.resumeRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.active);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.active);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // active → active  (reject)
     test('active → active is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.active);
+      final ctx = await setupRoundIn(RoundState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.active);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.active);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // active → paused  (allow)
     test('active → paused is allowed', () async {
-      final ctx = await _setupRoundIn(RoundState.active);
+      final ctx = await setupRoundIn(RoundState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.paused);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.paused);
       expect(ctx.repo.roundWriteCount, 1);
       expect(notified, 1);
     });
 
     // active → finished  (allow)
     test('active → finished is allowed', () async {
-      final ctx = await _setupRoundIn(RoundState.active);
+      final ctx = await setupRoundIn(RoundState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.endRoundEarly(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.finished);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
       expect(ctx.repo.roundWriteCount, 1);
       expect(notified, 1);
     });
@@ -2408,114 +2408,114 @@ void _roundMatrixTests() {
     // No API targets notStarted; assert state remains paused by calling paused→paused (rejected).
     // startRound from paused is valid (shared validator allows paused→active) so it is excluded here.
     test('paused → notStarted is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.paused);
+      final ctx = await setupRoundIn(RoundState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.paused);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.paused);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // paused → active  (allow)
     test('paused → active is allowed', () async {
-      final ctx = await _setupRoundIn(RoundState.paused);
+      final ctx = await setupRoundIn(RoundState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.resumeRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.active);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.active);
       expect(ctx.repo.roundWriteCount, 1);
       expect(notified, 1);
     });
 
     // paused → paused  (reject)
     test('paused → paused is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.paused);
+      final ctx = await setupRoundIn(RoundState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.paused);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.paused);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // paused → finished  (allow)
     test('paused → finished is allowed', () async {
-      final ctx = await _setupRoundIn(RoundState.paused);
+      final ctx = await setupRoundIn(RoundState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.endRoundEarly(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.finished);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
       expect(ctx.repo.roundWriteCount, 1);
       expect(notified, 1);
     });
 
     // finished → notStarted  (reject)
     test('finished → notStarted is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.finished);
+      final ctx = await setupRoundIn(RoundState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startRound(ctx.effortId, 0);
       await ctx.state.resumeRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.finished);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // finished → active  (reject)
     test('finished → active is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.finished);
+      final ctx = await setupRoundIn(RoundState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startRound(ctx.effortId, 0);
       await ctx.state.resumeRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.finished);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // finished → paused  (reject)
     test('finished → paused is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.finished);
+      final ctx = await setupRoundIn(RoundState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.finished);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // finished → finished  (reject)
     test('finished → finished is rejected', () async {
-      final ctx = await _setupRoundIn(RoundState.finished);
+      final ctx = await setupRoundIn(RoundState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.completeRound(ctx.effortId, 0);
       await ctx.state.endRoundEarly(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.finished);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // Terminal guarantee: finished blocks all public transition methods
     test('terminal guarantee: finished rejects all transition methods', () async {
-      final ctx = await _setupRoundIn(RoundState.finished);
+      final ctx = await setupRoundIn(RoundState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
@@ -2525,41 +2525,41 @@ void _roundMatrixTests() {
       await ctx.state.completeRound(ctx.effortId, 0);
       await ctx.state.endRoundEarly(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.finished);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
       expect(ctx.repo.roundWriteCount, 0);
       expect(notified, 0);
     });
 
     // Resume single-cycle: paused → active
     test('resume single-cycle: paused → active persists', () async {
-      final ctx = await _setupRoundIn(RoundState.paused);
+      final ctx = await setupRoundIn(RoundState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.resumeRound(ctx.effortId, 0);
 
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.active);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.active);
       expect(ctx.repo.roundWriteCount, 1);
       expect(notified, 1);
     });
 
     // Resume multi-cycle: active → paused → active → paused → active
     test('resume multi-cycle is repeatable', () async {
-      final ctx = await _setupRoundIn(RoundState.active);
+      final ctx = await setupRoundIn(RoundState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseRound(ctx.effortId, 0);
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.paused);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.paused);
 
       await ctx.state.resumeRound(ctx.effortId, 0);
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.active);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.active);
 
       await ctx.state.pauseRound(ctx.effortId, 0);
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.paused);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.paused);
 
       await ctx.state.resumeRound(ctx.effortId, 0);
-      expect(_roundState(ctx.state, ctx.effortId), RoundState.active);
+      expect(roundState(ctx.state, ctx.effortId), RoundState.active);
 
       expect(ctx.repo.roundWriteCount, 4);
       expect(notified, 4);
@@ -2571,7 +2571,7 @@ void _roundMatrixTests() {
 
 void _timedMatrixTests() {
   Future<({_CountingRepo repo, WorkoutState state, String effortId})>
-  _setupTimedIn(TimedState fromState) async {
+  setupTimedIn(TimedState fromState) async {
     final repo = _CountingRepo();
     await repo.initialize();
     final state = WorkoutState(repo);
@@ -2604,7 +2604,7 @@ void _timedMatrixTests() {
     return (repo: repo, state: state, effortId: effortId);
   }
 
-  TimedState _timedState(WorkoutState state, String effortId) =>
+  TimedState timedState(WorkoutState state, String effortId) =>
       state.getTimedInstancesForEffort(effortId).first.state;
 
   group('timed state machine transition matrix', () {
@@ -2612,106 +2612,106 @@ void _timedMatrixTests() {
     // Omits resumeTimedEntry: the shared validator allows notStarted→active, so
     // resumeTimedEntry would succeed from notStarted (covered in notStarted→active).
     test('notStarted → notStarted is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.notStarted);
+      final ctx = await setupTimedIn(TimedState.notStarted);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseTimedEntry(ctx.effortId, 0);
       await ctx.state.finishTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.notStarted);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.notStarted);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // notStarted → active  (allow)
     test('notStarted → active is allowed', () async {
-      final ctx = await _setupTimedIn(TimedState.notStarted);
+      final ctx = await setupTimedIn(TimedState.notStarted);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.active);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.active);
       expect(ctx.repo.timedWriteCount, 1);
       expect(notified, 1);
     });
 
     // notStarted → paused  (reject)
     test('notStarted → paused is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.notStarted);
+      final ctx = await setupTimedIn(TimedState.notStarted);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.notStarted);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.notStarted);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // notStarted → finished  (reject)
     test('notStarted → finished is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.notStarted);
+      final ctx = await setupTimedIn(TimedState.notStarted);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.finishTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.notStarted);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.notStarted);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // active → notStarted  (reject)
     test('active → notStarted is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.active);
+      final ctx = await setupTimedIn(TimedState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startTimedEntry(ctx.effortId, 0);
       await ctx.state.resumeTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.active);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.active);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // active → active  (reject)
     test('active → active is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.active);
+      final ctx = await setupTimedIn(TimedState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.active);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.active);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // active → paused  (allow)
     test('active → paused is allowed', () async {
-      final ctx = await _setupTimedIn(TimedState.active);
+      final ctx = await setupTimedIn(TimedState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.paused);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.paused);
       expect(ctx.repo.timedWriteCount, 1);
       expect(notified, 1);
     });
 
     // active → finished  (allow)
     test('active → finished is allowed', () async {
-      final ctx = await _setupTimedIn(TimedState.active);
+      final ctx = await setupTimedIn(TimedState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.finishTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.finished);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
       expect(ctx.repo.timedWriteCount, 1);
       expect(notified, 1);
     });
@@ -2719,113 +2719,113 @@ void _timedMatrixTests() {
     // paused → notStarted  (reject)
     // startTimedEntry from paused is valid (shared validator allows paused→active), excluded here.
     test('paused → notStarted is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.paused);
+      final ctx = await setupTimedIn(TimedState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.paused);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.paused);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // paused → active  (allow)
     test('paused → active is allowed', () async {
-      final ctx = await _setupTimedIn(TimedState.paused);
+      final ctx = await setupTimedIn(TimedState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.resumeTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.active);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.active);
       expect(ctx.repo.timedWriteCount, 1);
       expect(notified, 1);
     });
 
     // paused → paused  (reject)
     test('paused → paused is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.paused);
+      final ctx = await setupTimedIn(TimedState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.paused);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.paused);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // paused → finished  (allow)
     test('paused → finished is allowed', () async {
-      final ctx = await _setupTimedIn(TimedState.paused);
+      final ctx = await setupTimedIn(TimedState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.finishTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.finished);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
       expect(ctx.repo.timedWriteCount, 1);
       expect(notified, 1);
     });
 
     // finished → notStarted  (reject)
     test('finished → notStarted is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.finished);
+      final ctx = await setupTimedIn(TimedState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startTimedEntry(ctx.effortId, 0);
       await ctx.state.resumeTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.finished);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // finished → active  (reject)
     test('finished → active is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.finished);
+      final ctx = await setupTimedIn(TimedState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.startTimedEntry(ctx.effortId, 0);
       await ctx.state.resumeTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.finished);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // finished → paused  (reject)
     test('finished → paused is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.finished);
+      final ctx = await setupTimedIn(TimedState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.finished);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // finished → finished  (reject)
     test('finished → finished is rejected', () async {
-      final ctx = await _setupTimedIn(TimedState.finished);
+      final ctx = await setupTimedIn(TimedState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.finishTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.finished);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // Terminal guarantee: finished blocks all public transition methods
     test('terminal guarantee: finished rejects all transition methods', () async {
-      final ctx = await _setupTimedIn(TimedState.finished);
+      final ctx = await setupTimedIn(TimedState.finished);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
@@ -2834,41 +2834,41 @@ void _timedMatrixTests() {
       await ctx.state.resumeTimedEntry(ctx.effortId, 0);
       await ctx.state.finishTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.finished);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
       expect(ctx.repo.timedWriteCount, 0);
       expect(notified, 0);
     });
 
     // Resume single-cycle: paused → active
     test('resume single-cycle: paused → active persists', () async {
-      final ctx = await _setupTimedIn(TimedState.paused);
+      final ctx = await setupTimedIn(TimedState.paused);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.resumeTimedEntry(ctx.effortId, 0);
 
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.active);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.active);
       expect(ctx.repo.timedWriteCount, 1);
       expect(notified, 1);
     });
 
     // Resume multi-cycle: active → paused → active → paused → active
     test('resume multi-cycle is repeatable', () async {
-      final ctx = await _setupTimedIn(TimedState.active);
+      final ctx = await setupTimedIn(TimedState.active);
       int notified = 0;
       ctx.state.addListener(() => notified++);
 
       await ctx.state.pauseTimedEntry(ctx.effortId, 0);
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.paused);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.paused);
 
       await ctx.state.resumeTimedEntry(ctx.effortId, 0);
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.active);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.active);
 
       await ctx.state.pauseTimedEntry(ctx.effortId, 0);
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.paused);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.paused);
 
       await ctx.state.resumeTimedEntry(ctx.effortId, 0);
-      expect(_timedState(ctx.state, ctx.effortId), TimedState.active);
+      expect(timedState(ctx.state, ctx.effortId), TimedState.active);
 
       expect(ctx.repo.timedWriteCount, 4);
       expect(notified, 4);

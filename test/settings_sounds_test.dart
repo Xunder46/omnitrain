@@ -7,7 +7,7 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 void main() {
-  Future<SettingsState> _makeSettings() async {
+  Future<SettingsState> makeSettings() async {
     final repo = MockWorkoutRepository();
     await repo.initialize();
     final state = SettingsState(repo);
@@ -19,7 +19,7 @@ void main() {
     testWidgets('section header SOUNDS & ALERTS is present', (
       WidgetTester tester,
     ) async {
-      final settings = await _makeSettings();
+      final settings = await makeSettings();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -37,7 +37,7 @@ void main() {
     testWidgets('shows default Effort Timer Sound value Boxing Bell', (
       WidgetTester tester,
     ) async {
-      final settings = await _makeSettings();
+      final settings = await makeSettings();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -55,7 +55,7 @@ void main() {
     testWidgets('shows default Rest Ping value Off', (
       WidgetTester tester,
     ) async {
-      final settings = await _makeSettings();
+      final settings = await makeSettings();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -73,7 +73,7 @@ void main() {
     testWidgets('shows default Rest Ping Sound value Soft Chime', (
       WidgetTester tester,
     ) async {
-      final settings = await _makeSettings();
+      final settings = await makeSettings();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -92,7 +92,7 @@ void main() {
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(800, 3000));
-      final settings = await _makeSettings();
+      final settings = await makeSettings();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -115,7 +115,7 @@ void main() {
     testWidgets('tapping Effort Timer Sound row opens bottom sheet', (
       WidgetTester tester,
     ) async {
-      final settings = await _makeSettings();
+      final settings = await makeSettings();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -136,7 +136,7 @@ void main() {
     testWidgets('tapping Rest Ping row opens interval picker bottom sheet', (
       WidgetTester tester,
     ) async {
-      final settings = await _makeSettings();
+      final settings = await makeSettings();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -159,7 +159,7 @@ void main() {
     testWidgets('selecting an interval in the picker updates the state', (
       WidgetTester tester,
     ) async {
-      final settings = await _makeSettings();
+      final settings = await makeSettings();
       expect(settings.restPingInterval, 0);
 
       await tester.pumpWidget(

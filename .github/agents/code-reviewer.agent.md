@@ -9,7 +9,7 @@ handoffs:
     send: false
   - label: Hand off to Developer for fixes
     agent: developer
-    prompt: Please address UI/UX/logical issues as outlined above.
+    prompt: Please address issues as outlined above.
     send: false
   - label: Approve and close
     agent: conductor
