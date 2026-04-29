@@ -14,6 +14,7 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../core/utils/timer_alert_service.dart';
 import '../home/home_screen.dart';
 
 /// First-launch onboarding flow — three swipeable pages.
@@ -30,6 +31,7 @@ class OnboardingScreen extends StatefulWidget {
   final PeriodState periodState;
   final ProfileState profileState;
   final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const OnboardingScreen({
     super.key,
@@ -43,6 +45,7 @@ class OnboardingScreen extends StatefulWidget {
     required this.periodState,
     required this.profileState,
     required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -81,6 +84,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           periodState: widget.periodState,
           profileState: widget.profileState,
           settingsState: widget.settingsState,
+          timerAlertService: widget.timerAlertService,
         ),
       ),
     );

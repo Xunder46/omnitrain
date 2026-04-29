@@ -20,6 +20,7 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
+import 'helpers/fake_timer_alert_service.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -196,6 +197,7 @@ void main() {
             workoutState: deps.workoutState,
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
             settingsState: deps.settingsState,
             editMode: true,
           ),
@@ -218,6 +220,7 @@ void main() {
             workoutState: deps.workoutState,
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
             settingsState: deps.settingsState,
             editMode: true,
           ),
@@ -240,6 +243,7 @@ void main() {
             workoutState: deps.workoutState,
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
             settingsState: deps.settingsState,
           ),
         ),
@@ -264,6 +268,7 @@ void main() {
             workoutState: deps.workoutState,
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
             settingsState: deps.settingsState,
             editMode: true,
           ),
@@ -286,6 +291,7 @@ void main() {
             workoutState: deps.workoutState,
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
             settingsState: deps.settingsState,
           ),
         ),
@@ -308,6 +314,7 @@ void main() {
             workoutState: deps.workoutState,
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
             settingsState: deps.settingsState,
           ),
         ),
@@ -349,6 +356,8 @@ void main() {
             routineState: routineState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
+            settingsState: SettingsState(repo),
+            timerAlertService: FakeTimerAlertService(),
           ),
         ),
       );
@@ -388,6 +397,8 @@ void main() {
             routineState: routineState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
+            settingsState: SettingsState(repo),
+            timerAlertService: FakeTimerAlertService(),
           ),
         ),
       );
@@ -708,6 +719,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
             settingsState: settingsState,
           ),
         ),
@@ -738,6 +750,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
             settingsState: settingsState,
           ),
         ),
@@ -775,6 +788,8 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
+            settingsState: SettingsState(repo),
+            timerAlertService: FakeTimerAlertService(),
           ),
         ),
       );
@@ -811,6 +826,8 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
+            settingsState: SettingsState(repo),
+            timerAlertService: FakeTimerAlertService(),
           ),
         ),
       );
@@ -840,7 +857,7 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
+        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
       );
       await tester.pumpAndSettle();
 
@@ -863,7 +880,7 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
+        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
       );
       await tester.pumpAndSettle();
 
@@ -891,7 +908,7 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState)),
+        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
       );
       await tester.pumpAndSettle();
 

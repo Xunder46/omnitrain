@@ -8,9 +8,11 @@ import '../../state/routine/routine_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
+import '../../core/utils/timer_alert_service.dart';
 import '../../data/models/models.dart';
 import '../../core/constants/modality.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
+import '../../state/settings/settings_state.dart';
 import '../session/workout_session_screen.dart';
 import '../session/session_summary_screen.dart';
 
@@ -27,6 +29,8 @@ class DaySessionListScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
+  final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const DaySessionListScreen({
     super.key,
@@ -36,6 +40,8 @@ class DaySessionListScreen extends StatefulWidget {
     required this.workoutState,
     required this.routineSessionService,
     required this.sessionSummaryService,
+    required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -180,6 +186,8 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
             workoutState: widget.workoutState,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
           ),
         ),
       );
@@ -282,6 +290,8 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                   );
                 }
               },
+              settingsState: widget.settingsState,
+              timerAlertService: widget.timerAlertService,
             ),
           ),
         );

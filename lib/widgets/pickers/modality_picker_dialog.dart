@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 
 /// Dialog for selecting an exercise modality.
 ///
@@ -14,6 +15,8 @@ class ModalityPickerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Container(
@@ -38,9 +41,22 @@ class ModalityPickerDialog extends StatelessWidget {
             SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              child: TextButton(
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: themeColors.primary,
+                  backgroundColor: Colors.transparent,
+                  side: BorderSide(
+                    color: themeColors.primary.withValues(alpha: 0.75),
+                    width: 1,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
                 onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: TextStyle(color: Colors.grey)),
+                child: const Text('Cancel'),
               ),
             ),
           ],

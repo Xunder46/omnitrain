@@ -34,14 +34,16 @@ A **context-aware UI** that automatically configures its tracking controls, metr
 ```
 WorkoutSessionScreen (StatefulWidget)
 ├── State Management (_WorkoutSessionScreenState)
+│   ├── with WorkoutSessionTimerMixin (workout_session_timer_mixin.dart)
+│   │   ├── Per-effort timer state maps
+│   │   └── Timer lifecycle methods (toggle, tick, pause, freeze, persist)
 │   ├── Exercise list state
 │   ├── Current exercise/set tracking
-│   ├── Per-effort timer state (map-based)
 │   ├── Rest timer state
 │   └── View mode state (list vs detail)
-├── UI Modes
-│   ├── List View (exercise overview)
-│   └── Detail View (single exercise tracking)
+├── UI Modes (split across part files)
+│   ├── List View builders → workout_session_list_view.dart
+│   └── Detail View builders → workout_session_detail_view.dart
 └── Reusable Widgets
     ├── InlineMetricEditor (scrollable value adjustment)
     ├── Header (navigation + context)

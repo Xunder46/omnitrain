@@ -5,7 +5,9 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
+import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'helpers/fake_timer_alert_service.dart';
 
 void main() {
   Future<
@@ -67,6 +69,8 @@ void main() {
                         workoutState: workoutState,
                         routineState: routineState,
                         sessionSummaryService: sessionSummaryService,
+                        timerAlertService: FakeTimerAlertService(),
+                        settingsState: SettingsState(MockWorkoutRepository()),
                         editMode: true,
                       ),
                     ),

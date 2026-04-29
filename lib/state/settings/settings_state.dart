@@ -8,6 +8,35 @@ class SettingsState extends ChangeNotifier {
   static const String _preferredWeightUnitKey = 'preferred_weight_unit';
   static const String _preferredDistanceUnitKey = 'preferred_distance_unit';
   static const String _preferredStartOfWeekKey = 'preferred_start_of_week';
+  static const String _effortTimerSoundKey = 'effort_timer_sound';
+  static const String _restPingIntervalKey = 'rest_ping_interval';
+  static const String _restPingSoundKey = 'rest_ping_sound';
+
+  static const List<String> validSoundIds = [
+    'boxing_bell',
+    'digital_buzzer',
+    'soft_chime',
+    'double_tap',
+    'signal_tone',
+  ];
+
+  static const Map<String, String> soundDisplayNames = {
+    'boxing_bell': 'Boxing Bell',
+    'digital_buzzer': 'Digital Buzzer',
+    'soft_chime': 'Soft Chime',
+    'double_tap': 'Double Tap',
+    'signal_tone': 'Signal Tone',
+  };
+
+  static const List<({int value, String label})> restPingIntervalOptions = [
+    (value: 0, label: 'Off'),
+    (value: 30, label: '30s'),
+    (value: 45, label: '45s'),
+    (value: 60, label: '1 min'),
+    (value: 90, label: '1.5 min'),
+    (value: 120, label: '2 min'),
+    (value: 180, label: '3 min'),
+  ];
 
   final WorkoutRepository _repository;
 
@@ -17,11 +46,17 @@ class SettingsState extends ChangeNotifier {
   String _preferredWeightUnit = 'kg';
   String _preferredDistanceUnit = 'km';
   String _startOfWeek = 'monday';
+  String _effortTimerSound = 'boxing_bell';
+  int _restPingInterval = 0;
+  String _restPingSound = 'soft_chime';
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
   String get preferredDistanceUnit => _preferredDistanceUnit;
   String get startOfWeek => _startOfWeek;
+  String get effortTimerSound => _effortTimerSound;
+  int get restPingInterval => _restPingInterval;
+  String get restPingSound => _restPingSound;
 
   Future<void> initialize() async {
     await _loadFromPrefs();
@@ -70,6 +105,28 @@ class SettingsState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setEffortTimerSound(String soundId) async {
+    final v = validSoundIds.contains(soundId) ? soundId : 'boxing_bell';
+    _effortTimerSound = v;
+    await _repository.setPreferenceString(_effortTimerSoundKey, v);
+    notifyListeners();
+  }
+
+  Future<void> setRestPingInterval(int seconds) async {
+    final validValues = restPingIntervalOptions.map((o) => o.value).toList();
+    final v = validValues.contains(seconds) ? seconds : 0;
+    _restPingInterval = v;
+    await _repository.setPreferenceString(_restPingIntervalKey, v.toString());
+    notifyListeners();
+  }
+
+  Future<void> setRestPingSound(String soundId) async {
+    final v = validSoundIds.contains(soundId) ? soundId : 'soft_chime';
+    _restPingSound = v;
+    await _repository.setPreferenceString(_restPingSoundKey, v);
+    notifyListeners();
+  }
+
   Future<void> _loadFromPrefs() async {
     final savedTheme = await _repository.getPreferenceString(_themeKey);
     if (savedTheme != null) {
@@ -108,6 +165,33 @@ class SettingsState extends ChangeNotifier {
     _startOfWeek = normalizedSow == 'sunday' || normalizedSow == 'sun'
         ? 'sunday'
         : 'monday';
+
+    final savedEffortSound = await _repository.getPreferenceString(
+      _effortTimerSoundKey,
+    );
+    _effortTimerSound = savedEffortSound != null &&
+            validSoundIds.contains(savedEffortSound)
+        ? savedEffortSound
+        : 'boxing_bell';
+
+    final savedPingIntervalStr = await _repository.getPreferenceString(
+      _restPingIntervalKey,
+    );
+    final parsedInterval = int.tryParse(savedPingIntervalStr ?? '');
+    final validIntervalValues =
+        restPingIntervalOptions.map((o) => o.value).toList();
+    _restPingInterval = parsedInterval != null &&
+            validIntervalValues.contains(parsedInterval)
+        ? parsedInterval
+        : 0;
+
+    final savedRestSound = await _repository.getPreferenceString(
+      _restPingSoundKey,
+    );
+    _restPingSound = savedRestSound != null &&
+            validSoundIds.contains(savedRestSound)
+        ? savedRestSound
+        : 'soft_chime';
 
     notifyListeners();
   }

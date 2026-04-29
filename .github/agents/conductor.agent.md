@@ -9,7 +9,7 @@ handoffs:
     send: false
   - label: Hand off to Developer
     agent: developer
-    prompt: Please proceed with Phase 2 (Logic/UI). See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
+    prompt: Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
     send: false
   - label: Hand off to Code Reviewer
     agent: code-reviewer
@@ -301,7 +301,7 @@ If user does not object:
 
 OR
 
-@developer - Please proceed with Phase 2 (Logic/UI) above. Data layer is already complete.
+@developer - Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
 
 If user objects or changes scope:
 

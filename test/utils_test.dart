@@ -5,6 +5,7 @@ import 'package:omnitrain/core/constants/modality_config.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/core/utils/observation_grouper.dart';
+import 'package:omnitrain/core/utils/rest_ping_utils.dart';
 import 'package:omnitrain/core/utils/unit_formatter.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -1088,6 +1089,59 @@ void main() {
     test('rounds to nearest minute (30 seconds -> rounds up)', () {
       // 1 min 30 sec -> rounds to 2 min
       expect(OmniDateUtils.formatDurationHoursMins(90000), '2m');
+    });
+  });
+
+  // ── shouldFireRestPing ──────────────────────────────────────────────────
+
+  group('shouldFireRestPing', () {
+    test('returns true when elapsed is multiple of interval and not yet pinged', () {
+      expect(
+        shouldFireRestPing(elapsed: 60, interval: 60, lastPinged: 0),
+        isTrue,
+      );
+    });
+
+    test('returns false when already pinged at this elapsed value', () {
+      expect(
+        shouldFireRestPing(elapsed: 60, interval: 60, lastPinged: 60),
+        isFalse,
+      );
+    });
+
+    test('returns false when elapsed is zero', () {
+      expect(
+        shouldFireRestPing(elapsed: 0, interval: 60, lastPinged: 0),
+        isFalse,
+      );
+    });
+
+    test('returns false when elapsed is not a multiple of interval', () {
+      expect(
+        shouldFireRestPing(elapsed: 61, interval: 60, lastPinged: 0),
+        isFalse,
+      );
+    });
+
+    test('returns true when elapsed reaches a second multiple of interval', () {
+      expect(
+        shouldFireRestPing(elapsed: 120, interval: 60, lastPinged: 60),
+        isTrue,
+      );
+    });
+
+    test('returns false when interval is greater than elapsed', () {
+      expect(
+        shouldFireRestPing(elapsed: 30, interval: 60, lastPinged: 0),
+        isFalse,
+      );
+    });
+
+    test('returns false when interval is zero (disabled)', () {
+      expect(
+        shouldFireRestPing(elapsed: 60, interval: 0, lastPinged: 0),
+        isFalse,
+      );
     });
   });
 }

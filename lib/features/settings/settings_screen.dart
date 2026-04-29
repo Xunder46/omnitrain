@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
@@ -5,11 +6,17 @@ import '../../core/utils/unit_formatter.dart';
 import '../../state/settings/settings_state.dart';
 import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../core/utils/timer_alert_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
-  const SettingsScreen({super.key, required this.settingsState});
+  const SettingsScreen({
+    super.key,
+    required this.settingsState,
+    required this.timerAlertService,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +42,11 @@ class SettingsScreen extends StatelessWidget {
                   _MeasurementsSection(
                     settingsState: settingsState,
                     theme: theme,
+                  ),
+                  const SizedBox(height: 24),
+                  _SoundsAlertsSection(
+                    settingsState: settingsState,
+                    timerAlertService: timerAlertService,
                   ),
                   const SizedBox(height: 24),
                   OmniSurface(
@@ -144,6 +156,308 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── SOUNDS & ALERTS ───────────────────────────────────────────────────────
+
+class _SoundsAlertsSection extends StatelessWidget {
+  final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
+
+  const _SoundsAlertsSection({
+    required this.settingsState,
+    required this.timerAlertService,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHeader(title: 'SOUNDS & ALERTS'),
+          _SettingsRow(
+            label: 'Effort Timer Sound',
+            subtitle: 'Plays when a set or round timer expires',
+            trailing: Text(
+              SettingsState.soundDisplayNames[settingsState.effortTimerSound] ??
+                  settingsState.effortTimerSound,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: OmniTheme.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+            onTap: () => _showSoundPicker(
+              context,
+              title: 'Effort Timer Sound',
+              currentId: settingsState.effortTimerSound,
+              onSelected: settingsState.setEffortTimerSound,
+            ),
+          ),
+          _SurfaceDivider(theme: theme),
+          _SettingsRow(
+            label: 'Rest Ping',
+            subtitle: 'Periodic reminder during rest',
+            trailing: Text(
+              _intervalLabel(settingsState.restPingInterval),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: OmniTheme.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+            onTap: () => _showIntervalPicker(context),
+          ),
+          _SurfaceDivider(theme: theme),
+          _SettingsRow(
+            label: 'Rest Ping Sound',
+            subtitle: 'Sound used for the rest interval ping',
+            trailing: Text(
+              SettingsState.soundDisplayNames[settingsState.restPingSound] ??
+                  settingsState.restPingSound,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: OmniTheme.textSecondary,
+                fontSize: 13,
+              ),
+            ),
+            onTap: () => _showSoundPicker(
+              context,
+              title: 'Rest Ping Sound',
+              currentId: settingsState.restPingSound,
+              onSelected: settingsState.setRestPingSound,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _intervalLabel(int seconds) {
+    for (final opt in SettingsState.restPingIntervalOptions) {
+      if (opt.value == seconds) return opt.label;
+    }
+    return 'Off';
+  }
+
+  Future<void> _showSoundPicker(
+    BuildContext context, {
+    required String title,
+    required String currentId,
+    required void Function(String) onSelected,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _SoundPickerSheet(
+        title: title,
+        currentId: currentId,
+        timerAlertService: timerAlertService,
+        onSelected: (id) {
+          onSelected(id);
+        },
+      ),
+    );
+  }
+
+  Future<void> _showIntervalPicker(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _IntervalPickerSheet(
+        currentValue: settingsState.restPingInterval,
+        onSelected: (value) {
+          settingsState.setRestPingInterval(value);
+          Navigator.pop(ctx);
+        },
+      ),
+    );
+  }
+}
+
+class _SoundPickerSheet extends StatefulWidget {
+  final String title;
+  final String currentId;
+  final TimerAlertService timerAlertService;
+  final void Function(String) onSelected;
+
+  const _SoundPickerSheet({
+    required this.title,
+    required this.currentId,
+    required this.timerAlertService,
+    required this.onSelected,
+  });
+
+  @override
+  State<_SoundPickerSheet> createState() => _SoundPickerSheetState();
+}
+
+class _SoundPickerSheetState extends State<_SoundPickerSheet> {
+  late String _selectedId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedId = widget.currentId;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            for (final soundId in SettingsState.validSoundIds)
+              _SoundOptionTile(
+                soundId: soundId,
+                displayName:
+                    SettingsState.soundDisplayNames[soundId] ?? soundId,
+                isSelected: soundId == _selectedId,
+                onTap: () {
+                  setState(() => _selectedId = soundId);
+                  unawaited(widget.timerAlertService.playPreview(soundId));
+                  widget.onSelected(soundId);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SoundOptionTile extends StatelessWidget {
+  final String soundId;
+  final String displayName;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _SoundOptionTile({
+    required this.soundId,
+    required this.displayName,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListTile(
+      title: Text(
+        displayName,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: isSelected
+              ? theme.colorScheme.primary
+              : OmniTheme.textPrimary,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+        ),
+      ),
+      trailing: isSelected
+          ? Icon(Icons.check, color: theme.colorScheme.primary, size: 20)
+          : null,
+      onTap: onTap,
+    );
+  }
+}
+
+class _IntervalPickerSheet extends StatelessWidget {
+  final int currentValue;
+  final void Function(int) onSelected;
+
+  const _IntervalPickerSheet({
+    required this.currentValue,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Rest Ping Interval',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            for (final opt in SettingsState.restPingIntervalOptions)
+              ListTile(
+                title: Text(
+                  opt.label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: opt.value == currentValue
+                        ? theme.colorScheme.primary
+                        : OmniTheme.textPrimary,
+                    fontWeight: opt.value == currentValue
+                        ? FontWeight.w600
+                        : FontWeight.w400,
+                  ),
+                ),
+                trailing: opt.value == currentValue
+                    ? Icon(
+                        Icons.check,
+                        color: theme.colorScheme.primary,
+                        size: 20,
+                      )
+                    : null,
+                onTap: () => onSelected(opt.value),
+              ),
+            const SizedBox(height: 8),
+          ],
         ),
       ),
     );

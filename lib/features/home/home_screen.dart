@@ -20,6 +20,7 @@ import '../calendar/calendar_screen.dart';
 import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
+import '../../core/utils/timer_alert_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -31,6 +32,7 @@ class HomeScreen extends StatefulWidget {
   final PeriodState periodState;
   final ProfileState profileState;
   final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const HomeScreen({
     super.key,
@@ -43,6 +45,7 @@ class HomeScreen extends StatefulWidget {
     required this.periodState,
     required this.profileState,
     required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -277,6 +280,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               routineState: widget.routineState,
               sessionSummaryService: widget.sessionSummaryService,
               settingsState: widget.settingsState,
+              timerAlertService: widget.timerAlertService,
             ),
           ),
         );
@@ -333,6 +337,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 routineSessionService: widget.routineSessionService,
                 sessionSummaryService: widget.sessionSummaryService,
                 settingsState: widget.settingsState,
+                timerAlertService: widget.timerAlertService,
               ),
             ),
           );
@@ -352,6 +357,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             sessionSummaryService: widget.sessionSummaryService,
             settingsState: widget.settingsState,
             preferredModality: tile.modality,
+            timerAlertService: widget.timerAlertService,
           ),
         ),
       );
@@ -371,6 +377,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               sessionSummaryService: widget.sessionSummaryService,
               settingsState: widget.settingsState,
               preferredModality: tile.modality,
+              timerAlertService: widget.timerAlertService,
             ),
           ),
         );
@@ -440,6 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             sessionSummaryService: widget.sessionSummaryService,
             settingsState: widget.settingsState,
             preferredModality: tile.modality,
+            timerAlertService: widget.timerAlertService,
           ),
         ),
       );
@@ -568,6 +576,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
             settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
           ),
         ),
       );
@@ -722,6 +731,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               routineSessionService: widget.routineSessionService,
               sessionSummaryService: widget.sessionSummaryService,
               settingsState: widget.settingsState,
+              timerAlertService: widget.timerAlertService,
             ),
           ),
         ),
@@ -755,7 +765,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         icon: Icons.tune,
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => SettingsScreen(settingsState: widget.settingsState),
+            builder: (_) => SettingsScreen(
+              settingsState: widget.settingsState,
+              timerAlertService: widget.timerAlertService,
+            ),
           ),
         ),
       ),

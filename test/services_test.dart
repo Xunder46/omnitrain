@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/models/routine_session_manifest.dart';
 import 'package:omnitrain/core/models/session_summary.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
+import 'package:omnitrain/core/utils/timer_alert_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 
@@ -12,6 +14,22 @@ Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
   await repo.initialize();
   return repo;
+}
+
+Future<List<String>> _captureDebugPrint(Future<void> Function() action) async {
+  final logs = <String>[];
+  final original = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null) logs.add(message);
+  };
+
+  try {
+    await action();
+  } finally {
+    debugPrint = original;
+  }
+
+  return logs;
 }
 
 /// Creates a completed session with one set-based effort (reps × weight).
@@ -1332,6 +1350,48 @@ void main() {
       );
       expect(manifest.isEmpty, true);
       expect(manifest.totalExercises, 0);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TimerAlertService (web diagnostics)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('TimerAlertService web diagnostics', () {
+    test('logs effort timer alert with sound id on web', () async {
+      final service = TimerAlertService.forTesting(isWeb: true);
+
+      final logs = await _captureDebugPrint(() async {
+        await service.fireEffortTimerAlert('digital_buzzer');
+      });
+
+      expect(logs.where((m) => m.contains('[TimerAlertService][web]')), isNotEmpty);
+      expect(logs.where((m) => m.contains('alert=effort_timer')), isNotEmpty);
+      expect(logs.where((m) => m.contains('soundId=digital_buzzer')), isNotEmpty);
+    });
+
+    test('logs rest ping alert with sound id on web', () async {
+      final service = TimerAlertService.forTesting(isWeb: true);
+
+      final logs = await _captureDebugPrint(() async {
+        await service.fireRestPingAlert('soft_chime');
+      });
+
+      expect(logs.where((m) => m.contains('[TimerAlertService][web]')), isNotEmpty);
+      expect(logs.where((m) => m.contains('alert=rest_ping')), isNotEmpty);
+      expect(logs.where((m) => m.contains('soundId=soft_chime')), isNotEmpty);
+    });
+
+    test('logs sound preview request with sound id on web', () async {
+      final service = TimerAlertService.forTesting(isWeb: true);
+
+      final logs = await _captureDebugPrint(() async {
+        await service.playPreview('signal_tone');
+      });
+
+      expect(logs.where((m) => m.contains('[TimerAlertService][web]')), isNotEmpty);
+      expect(logs.where((m) => m.contains('alert=sound_preview')), isNotEmpty);
+      expect(logs.where((m) => m.contains('soundId=signal_tone')), isNotEmpty);
     });
   });
 }

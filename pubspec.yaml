@@ -38,6 +38,8 @@ dependencies:
   uuid: ^4.0.0              # unique IDs
   path: ^1.8.4              # file paths
   image_picker: ^1.1.2
+  just_audio: ^0.9.40
+  audio_session: ^0.1.21
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -72,6 +74,7 @@ flutter:
     - scripts/sqlite_schema.sql
     - scripts/sqlite_seed.sql
     - assets/icon/
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

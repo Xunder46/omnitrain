@@ -12,6 +12,7 @@ import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'helpers/fake_timer_alert_service.dart';
 
 void main() {
   test('Abyssal Neon uses deeper teal primary with white CTA text', () {
@@ -64,6 +65,7 @@ void main() {
         periodState: periodState,
         profileState: profileState,
         settingsState: settingsState,
+        timerAlertService: FakeTimerAlertService(),
       ),
     );
 

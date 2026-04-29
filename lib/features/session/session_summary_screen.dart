@@ -20,6 +20,7 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
+import '../../core/utils/timer_alert_service.dart';
 import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 
@@ -28,7 +29,8 @@ class SessionSummaryScreen extends StatefulWidget {
   final RoutineState routineState;
   final SessionSummaryService sessionSummaryService;
   final Future<void> Function(String sessionId)? onSessionSaved;
-  final SettingsState? settingsState;
+  final SettingsState settingsState;
+  final TimerAlertService timerAlertService;
 
   const SessionSummaryScreen({
     super.key,
@@ -36,7 +38,8 @@ class SessionSummaryScreen extends StatefulWidget {
     required this.routineState,
     required this.sessionSummaryService,
     this.onSessionSaved,
-    this.settingsState,
+    required this.settingsState,
+    required this.timerAlertService,
   });
 
   @override
@@ -51,7 +54,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   bool _hasShownFeelingSheet = false;
 
   Map<String, GroupDelta> _groupDeltas = {};
-  List<PRAchievement> _prs = [];
   Map<String, List<PRAchievement>> _prsByGroup = {};
   Map<String, SessionGroupMetrics> _groupMetrics = {};
   int _restTimeMs = 0;
@@ -76,22 +78,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     'rounds': 'Sports',
     'isometric': 'Isometric',
   };
-
-  /// Maps effortKind → canonical group key used for grouping/display.
-  static String _groupForEffort(String effortKind) {
-    switch (effortKind) {
-      case 'set':
-        return 'strength';
-      case 'timed':
-        return 'cardio';
-      case 'round':
-        return 'rounds';
-      case 'drill':
-        return 'isometric';
-      default:
-        return 'strength';
-    }
-  }
 
   @override
   void initState() {
@@ -145,7 +131,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
       setState(() {
         _groupDeltas = groupDeltas;
-        _prs = prs;
         _prsByGroup = groupedPrs;
         _groupMetrics = groupMetrics;
         _restTimeMs = restTimeMs;
@@ -318,6 +303,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           workoutState: widget.workoutState,
           routineState: widget.routineState,
           sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
+          timerAlertService: widget.timerAlertService,
           editMode: true,
         ),
       ),
@@ -339,6 +326,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           routineSessionService: _routineSessionService,
           sessionSummaryService: widget.sessionSummaryService,
           settingsState: widget.settingsState,
+          timerAlertService: widget.timerAlertService,
         ),
       ),
     );
@@ -778,370 +766,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  Widget _buildRpeCard(ThemeData theme) {
-    final session = widget.workoutState.currentSession;
-    final selected = session?.perceivedSessionRpe?.round();
-
-    return _SummaryCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Session RPE', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 6),
-          Text(
-            'How hard did this session feel overall?',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.65),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (int i = 1; i <= 10; i++)
-                GestureDetector(
-                  onTap: () async {
-                    final current = widget.workoutState.currentSession;
-                    if (current == null) return;
-                    await widget.workoutState.updateSessionRpe(
-                      current.id,
-                      i.toDouble(),
-                    );
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: selected == i
-                          ? theme.colorScheme.primary
-                          : Colors.white.withOpacity(0.05),
-                      border: Border.all(
-                        color: selected == i
-                            ? theme.colorScheme.primary
-                            : Colors.white.withOpacity(0.12),
-                        width: 1.5,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '$i',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: selected == i
-                              ? Colors.white
-                              : theme.colorScheme.onSurface.withOpacity(0.65),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Very easy',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  letterSpacing: 0.8,
-                  color: theme.colorScheme.onSurface.withOpacity(0.4),
-                ),
-              ),
-              Text(
-                'Max effort',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  letterSpacing: 0.8,
-                  color: theme.colorScheme.onSurface.withOpacity(0.4),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ──────────────────────────────────────────────────────────────────────────
-  // Exercise list section
-  // ──────────────────────────────────────────────────────────────────────────
-
-  Widget _buildExerciseListSection(ThemeData theme) {
-    final exercises = _summary.exercises;
-    if (exercises.isEmpty) return const SizedBox.shrink();
-
-    final session = widget.workoutState.currentSession;
-    if ((session?.isRolling ?? false) ||
-        widget.workoutState.getSessionBlocks().isNotEmpty) {
-      return _buildBlockGroupedExerciseList(theme, exercises);
-    }
-    return _buildModalityGroupedExerciseList(theme, exercises);
-  }
-
-  // ── Rolling: block-grouped layout ────────────────────────────────────────
-
-  Widget _buildBlockGroupedExerciseList(
-    ThemeData theme,
-    List<ExerciseSummary> exercises,
-  ) {
-    final blocks = widget.workoutState
-        .getSessionBlocks(); // sorted by orderIndex
-
-    // Map blockId → exercises in execution order.
-    final Map<String, List<ExerciseSummary>> byBlock = {};
-    final List<ExerciseSummary> unassigned = [];
-
-    for (final ex in exercises) {
-      if (ex.blockId == null) {
-        unassigned.add(ex);
-      } else {
-        byBlock.putIfAbsent(ex.blockId!, () => []).add(ex);
-      }
-    }
-
-    final groups = <_BlockGroup>[];
-
-    for (final block in blocks) {
-      final blockExercises = byBlock[block.id] ?? [];
-      if (blockExercises.isEmpty) continue;
-      blockExercises.sort(
-        (a, b) => a.executionOrder.compareTo(b.executionOrder),
-      );
-      groups.add(
-        _BlockGroup(
-          header: block.name,
-          timeMs: block.createdAtMs,
-          exercises: blockExercises,
-        ),
-      );
-    }
-
-    // Also include exercises for unknown blockIds (data inconsistency safety).
-    final knownBlockIds = blocks.map((b) => b.id).toSet();
-    for (final entry in byBlock.entries) {
-      if (!knownBlockIds.contains(entry.key)) {
-        unassigned.addAll(entry.value);
-      }
-    }
-
-    if (unassigned.isNotEmpty) {
-      unassigned.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
-      groups.add(
-        _BlockGroup(header: 'Other', timeMs: null, exercises: unassigned),
-      );
-    }
-
-    final items = <Widget>[];
-    for (int g = 0; g < groups.length; g++) {
-      final group = groups[g];
-
-      // Block header
-      items.add(_buildBlockHeader(theme, group.header, group.timeMs));
-      items.add(const SizedBox(height: 8));
-
-      for (int i = 0; i < group.exercises.length; i++) {
-        items.add(_buildExerciseTile(theme, group.exercises[i]));
-        if (i < group.exercises.length - 1) {
-          items.add(const SizedBox(height: 6));
-        }
-      }
-
-      if (g < groups.length - 1) {
-        items.add(const SizedBox(height: 16));
-        items.add(Divider(color: Colors.white.withOpacity(0.06), height: 1));
-        items.add(const SizedBox(height: 16));
-      }
-    }
-
-    return _SummaryCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Exercises', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 12),
-          ...items,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBlockHeader(ThemeData theme, String name, int? createdAtMs) {
-    final timeLabel = createdAtMs != null
-        ? _formatTimeOfDay(DateTime.fromMillisecondsSinceEpoch(createdAtMs))
-        : null;
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            name,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall?.copyWith(
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.onSurface.withOpacity(0.75),
-            ),
-          ),
-        ),
-        if (timeLabel != null)
-          Text(
-            timeLabel,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.45),
-            ),
-          ),
-      ],
-    );
-  }
-
-  String _formatTimeOfDay(DateTime dt) {
-    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final suffix = dt.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $suffix';
-  }
-
-  // ── Non-rolling: modality-grouped layout (original) ──────────────────────
-
-  Widget _buildModalityGroupedExerciseList(
-    ThemeData theme,
-    List<ExerciseSummary> exercises,
-  ) {
-    // Bucket exercises into groups, preserving arrival order within each.
-    final Map<String, List<ExerciseSummary>> groups = {};
-    for (final ex in exercises) {
-      final key = _groupForEffort(ex.effortKind);
-      groups.putIfAbsent(key, () => []).add(ex);
-    }
-
-    // Sort within each group by execution order (defensive; should already be ordered).
-    for (final list in groups.values) {
-      list.sort((a, b) => a.executionOrder.compareTo(b.executionOrder));
-    }
-
-    final orderedGroupKeys = _groupOrder.where(groups.containsKey).toList();
-
-    final items = <Widget>[];
-
-    for (int g = 0; g < orderedGroupKeys.length; g++) {
-      final key = orderedGroupKeys[g];
-      final groupExercises = groups[key]!;
-
-      items.add(
-        _buildExerciseGroupHeader(
-          theme,
-          key,
-          groupExercises,
-          _groupDeltas[key],
-        ),
-      );
-      items.add(const SizedBox(height: 8));
-
-      for (int i = 0; i < groupExercises.length; i++) {
-        items.add(_buildExerciseTile(theme, groupExercises[i]));
-        if (i < groupExercises.length - 1) {
-          items.add(const SizedBox(height: 6));
-        }
-      }
-
-      if (g < orderedGroupKeys.length - 1) {
-        items.add(const SizedBox(height: 16));
-        items.add(Divider(color: Colors.white.withOpacity(0.06), height: 1));
-        items.add(const SizedBox(height: 16));
-      }
-    }
-
-    return _SummaryCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Exercises', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 12),
-          ...items,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExerciseGroupHeader(
-    ThemeData theme,
-    String groupKey,
-    List<ExerciseSummary> exercises,
-    GroupDelta? delta,
-  ) {
-    final label = _groupLabels[groupKey] ?? groupKey;
-    final labelColor = ModalityColors.forSummaryGroupLabel(groupKey);
-    String aggregate = '';
-
-    switch (groupKey) {
-      case 'strength':
-        final totalSets = exercises.fold(0, (s, e) => s + e.setsCompleted);
-        aggregate = '$totalSets set${totalSets != 1 ? 's' : ''}';
-        break;
-      case 'cardio':
-        final totalMs = exercises.fold<int>(
-          0,
-          (s, e) => s + (e.totalDurationMs ?? 0),
-        );
-        aggregate = _formatDuration(totalMs);
-        break;
-      case 'rounds':
-        final totalRounds = exercises.fold(0, (s, e) => s + e.totalRounds);
-        aggregate = '$totalRounds round${totalRounds != 1 ? 's' : ''}';
-        break;
-      case 'isometric':
-        final totalMs = exercises.fold<int>(
-          0,
-          (s, e) => s + (e.totalDurationMs ?? 0),
-        );
-        aggregate = _formatDuration(totalMs);
-        break;
-    }
-
-    return Row(
-      children: [
-        Expanded(
-          child: Row(
-            children: [
-              Flexible(
-                child: Text(
-                  label.toUpperCase(),
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.5,
-                    color: labelColor,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              if (aggregate.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    '· $aggregate',
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      letterSpacing: 0.5,
-                      color: theme.colorScheme.onSurface.withOpacity(0.5),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        _buildGroupComparisonChip(theme, delta),
-      ],
-    );
-  }
-
   Widget _buildGroupComparisonChip(ThemeData theme, GroupDelta? delta) {
     final dimColor = theme.colorScheme.onSurface.withOpacity(0.65);
     final dimStyle = theme.textTheme.labelSmall?.copyWith(
@@ -1207,90 +831,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       return '$minutes min';
     }
     return '${(ms / 1000).round()}s';
-  }
-
-  Widget _buildExerciseTile(ThemeData theme, ExerciseSummary exercise) {
-    final String subtitle;
-    switch (exercise.effortKind) {
-      case 'set':
-        final sets =
-            '${exercise.setsCompleted} set${exercise.setsCompleted != 1 ? 's' : ''}';
-        if (exercise.bestWeight != null && exercise.bestWeight! > 0) {
-          final bestWeightLabel = widget.settingsState != null
-              ? UnitFormatter.formatWeight(
-                  exercise.bestWeight!,
-                  widget.settingsState!,
-                )
-              : _formatWeight(exercise.bestWeight!);
-          subtitle = '$sets · Best $bestWeightLabel';
-        } else {
-          subtitle = sets;
-        }
-        break;
-      case 'timed':
-        final ms = exercise.totalDurationMs ?? 0;
-        subtitle = ms > 0 ? _formatDuration(ms) : '—';
-        break;
-      case 'round':
-        final r = exercise.totalRounds;
-        subtitle = '$r round${r != 1 ? 's' : ''}';
-        break;
-      case 'drill':
-        final ms = exercise.totalDurationMs ?? 0;
-        subtitle = ms > 0 ? _formatDuration(ms) : '—';
-        break;
-      default:
-        subtitle = '${exercise.setsCompleted} entries';
-    }
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            exercise.name,
-            style: theme.textTheme.bodyMedium,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          subtitle,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurface.withOpacity(0.6),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPrsCard(ThemeData theme) {
-    return _SummaryCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.emoji_events, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text('PRs achieved', style: theme.textTheme.titleMedium),
-            ],
-          ),
-          const SizedBox(height: 12),
-          for (final pr in _prs)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              child: Text(
-                widget.settingsState != null
-                    ? '${pr.exerciseName}: New best ${UnitFormatter.formatWeight(pr.newBest, widget.settingsState!)} '
-                          '(was ${UnitFormatter.formatWeight(pr.previousBest, widget.settingsState!)})'
-                    : '${pr.exerciseName}: New best ${_formatWeight(pr.newBest)} '
-                          '(was ${_formatWeight(pr.previousBest)})',
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
-        ],
-      ),
-    );
   }
 
   Widget _buildNoteCard(ThemeData theme) {
@@ -1370,7 +910,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildCalendarGrid(ThemeData theme, DateTime now) {
-    final startOfWeek = widget.settingsState?.startOfWeek ?? 'monday';
+    final startOfWeek = widget.settingsState.startOfWeek;
     final firstDay = DateTime(now.year, now.month, 1);
     // Dart weekday: 1=Mon … 7=Sun
     final int leadingBlanks = startOfWeek == 'sunday'
@@ -1442,21 +982,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   double _convertKgToPreferred(double kg) {
-    if (widget.settingsState != null) {
-      return UnitFormatter.convertWeight(kg, widget.settingsState!);
-    }
-    if (_preferredWeightUnit == 'lbs') {
-      return kg * 2.2046226218;
-    }
-    return kg;
+    return UnitFormatter.convertWeight(kg, widget.settingsState);
   }
 
   String _formatWeight(double valueKg) {
-    if (widget.settingsState != null) {
-      return UnitFormatter.formatWeight(valueKg, widget.settingsState!);
-    }
-    final converted = _convertKgToPreferred(valueKg);
-    return '${_formatNumber(converted)} $_preferredWeightUnit';
+    return UnitFormatter.formatWeight(valueKg, widget.settingsState);
   }
 
   String _formatNumber(double value) {
@@ -1511,18 +1041,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     ];
     return months[month - 1];
   }
-}
-
-class _BlockGroup {
-  final String header;
-  final int? timeMs;
-  final List<ExerciseSummary> exercises;
-
-  const _BlockGroup({
-    required this.header,
-    required this.timeMs,
-    required this.exercises,
-  });
 }
 
 class _SummaryCard extends StatelessWidget {

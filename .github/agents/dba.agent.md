@@ -9,7 +9,7 @@ handoffs:
     send: false
   - label: Hand off to Developer
     agent: developer
-    prompt: Please proceed with Phase 2 (Logic/UI). IMPORTANT: Code must work on web (MockWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
+    prompt: Please proceed with Logic/UI Phase. IMPORTANT: Code must work on web (MockWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
     send: false
 ---
 
@@ -364,7 +364,7 @@ When all tasks are done:
 
 ```
 ### Phase 1 Complete ✓
-Data layer implemented. Models, repository interface, and Hive implementation ready. Developer can proceed with Phase 2.
+Data layer implemented. Models, repository interface, and Hive implementation ready. Developer can proceed with Logic/UI Phase.
 ```
 
 **Do NOT write detailed summaries.** One line describing what's ready for the next agent is enough.
