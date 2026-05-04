@@ -14,6 +14,12 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
     if (session == null) return;
     if (session.endedAtMs != null) return;
 
+    // Hold at 00:00 until the first exercise is added.
+    if (_exercises.isEmpty) {
+      if (mounted) setState(() => _elapsedFormatted = '00:00');
+      return;
+    }
+
     final elapsedMs =
         DateTime.now().millisecondsSinceEpoch - session.startedAtMs;
     final elapsedSeconds = (elapsedMs / 1000).toInt();

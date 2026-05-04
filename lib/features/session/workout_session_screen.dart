@@ -931,6 +931,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   Future<void> _addExercise({String? segmentId, String? blockId}) async {
+    // Capture before the dialog so we can detect when this is the first exercise.
+    final isFirstExercise = _exercises.isEmpty;
     final sessionModality = widget.workoutState.currentSession?.modality;
     final modality = sessionModality ?? widget.preferredModality;
 
@@ -1000,6 +1002,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
             );
           }
         }
+      }
+
+      // Reset the session start time to now when the FIRST exercise is added so
+      // the global elapsed timer begins from zero at the moment training starts.
+      if (effortId.isNotEmpty && isFirstExercise && !widget.editMode) {
+        await widget.workoutState.resetSessionTimerStart();
       }
 
       // Mark structural change AFTER we know the add succeeded.

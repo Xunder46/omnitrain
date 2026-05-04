@@ -81,6 +81,8 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.getSessionsByDateRange(fromMs, toMs);
   SessionEditSnapshot? snapshotSessionState() => _sessionCore.snapshotSessionState();
 
+  Future<void> resetSessionTimerStart() => _sessionCore.resetSessionTimerStart();
+
   Future<void> createNewSession({
     String? modality,
     String? title,

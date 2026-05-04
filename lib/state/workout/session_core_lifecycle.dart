@@ -40,6 +40,45 @@ extension SessionCoreLifecycleMethods on SessionCore {
     }
   }
 
+  /// Resets the session start timestamp to now.
+  ///
+  /// Called once when the first exercise is added to a live session so that
+  /// the global elapsed timer begins counting from the moment training actually
+  /// starts, rather than from when the empty session was created.
+  Future<void> resetSessionTimerStart() async {
+    if (_currentSession == null) return;
+
+    _clearError();
+
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updatedSession = TrainingSession(
+        id: _currentSession!.id,
+        ownerUserId: _currentSession!.ownerUserId,
+        routineTemplateId: _currentSession!.routineTemplateId,
+        startedAtMs: now,
+        endedAtMs: _currentSession!.endedAtMs,
+        title: _currentSession!.title,
+        note: _currentSession!.note,
+        locationText: _currentSession!.locationText,
+        modality: _currentSession!.modality,
+        intent: _currentSession!.intent,
+        perceivedSessionRpe: _currentSession!.perceivedSessionRpe,
+        sessionFeeling: _currentSession!.sessionFeeling,
+        qualityRating: _currentSession!.qualityRating,
+        isRolling: _currentSession!.isRolling,
+        createdAtMs: _currentSession!.createdAtMs,
+        updatedAtMs: now,
+      );
+
+      await _repository.updateSession(updatedSession);
+      _currentSession = updatedSession;
+      _notify();
+    } catch (e) {
+      _setError('Failed to reset session timer start: $e');
+    }
+  }
+
   Future<void> discardCurrentSession() async {
     if (_currentSession == null) return;
 

@@ -3833,6 +3833,39 @@ void main() {
     });
 
     testWidgets(
+      'empty session shows 00:00 timer and timer does not advance before first exercise',
+      (WidgetTester tester) async {
+        await tester.runAsync(() async {
+          final repo = await _freshRepo();
+          final workoutState = WorkoutState(repo);
+          final routineState = RoutineState(repo);
+          // Fresh session with no exercises.
+          await workoutState.createNewSession(isRolling: false);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: WorkoutSessionScreen(
+                workoutState: workoutState,
+                routineState: routineState,
+                sessionSummaryService: SessionSummaryService(repo),
+                timerAlertService: FakeTimerAlertService(),
+                settingsState: SettingsState(repo),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          // Timer chip should show 00:00.
+          expect(find.text('00:00'), findsWidgets);
+
+          // Advance wall clock by 2 seconds — timer must remain frozen at 00:00.
+          await tester.pump(const Duration(seconds: 2));
+          expect(find.text('00:00'), findsWidgets);
+        });
+      },
+    );
+
+    testWidgets(
       'non-rolling session displays exercises by execution order with createdAt tie-break',
       (WidgetTester tester) async {
         final repo = await _freshRepo();

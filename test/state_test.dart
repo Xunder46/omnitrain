@@ -1204,6 +1204,29 @@ void main() {
       expect(state.currentSession!.endedAtMs, original);
     });
 
+    test('resetSessionTimerStart updates startedAtMs to a later timestamp', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession();
+
+      final originalStart = state.currentSession!.startedAtMs;
+
+      // Small delay so the new timestamp is guaranteed to be >= the original.
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+      await state.resetSessionTimerStart();
+
+      expect(state.currentSession!.startedAtMs, greaterThanOrEqualTo(originalStart));
+    });
+
+    test('resetSessionTimerStart is no-op when no session exists', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+
+      // Must not throw even though no session has been created.
+      await expectLater(state.resetSessionTimerStart(), completes);
+      expect(state.currentSession, isNull);
+    });
+
     group('session feeling', () {
       test(
         'updateSessionFeeling persists value and rehydrates on historical reload',
