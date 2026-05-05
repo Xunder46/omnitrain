@@ -1498,16 +1498,50 @@ void main() {
 
           // Both entries have 2 companions each.
           var observations = await repo.getEffortObservations(effortId);
-          expect(observations.where((o) => o.id.contains('-0-')).length, 2);
-          expect(observations.where((o) => o.id.contains('-1-')).length, 2);
+          expect(
+            observations
+                .where(
+                  (o) =>
+                      o.id.endsWith('-0-distance') ||
+                      o.id.endsWith('-0-extra-weight'),
+                )
+                .length,
+            2,
+          );
+          expect(
+            observations
+                .where(
+                  (o) =>
+                      o.id.endsWith('-1-distance') ||
+                      o.id.endsWith('-1-extra-weight'),
+                )
+                .length,
+            2,
+          );
 
           // Delete entry 0 — both of its companions must be removed.
           await state.deleteEntry(effortId, 0);
 
           observations = await repo.getEffortObservations(effortId);
-          expect(observations.where((o) => o.id.contains('-0-')), isEmpty);
+          expect(
+            observations.where(
+              (o) =>
+                  o.id.endsWith('-0-distance') ||
+                  o.id.endsWith('-0-extra-weight'),
+            ),
+            isEmpty,
+          );
           // Entry 1 companions survive.
-          expect(observations.where((o) => o.id.contains('-1-')).length, 2);
+          expect(
+            observations
+                .where(
+                  (o) =>
+                      o.id.endsWith('-1-distance') ||
+                      o.id.endsWith('-1-extra-weight'),
+                )
+                .length,
+            2,
+          );
         },
       );
 

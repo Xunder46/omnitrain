@@ -3397,7 +3397,7 @@ void main() {
 
       await tester.tap(find.text(loadedExercise.name).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Log Set'));
+      await tester.tap(find.text('Log Set'));
       await tester.pumpAndSettle();
 
       expect(

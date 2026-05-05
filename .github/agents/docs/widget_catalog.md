@@ -240,6 +240,8 @@ Touch-optimized scrollable value input for workout environments. Swipe up/down t
 
 **Visual**: 72pt value, 12pt unit label, drag-responsive (updates during drag).
 
+**Session context (timer tap-to-toggle)**: In `WorkoutSessionScreen` detail view, the `InlineMetricEditor` for timer-based efforts (`timed`, `round`, `drill`) is wrapped in a `GestureDetector` with `onTap: _toggleEffortTimer`. A subtle play/pause icon overlay (20pt, 55% opacity) is positioned below the value, visible only when the timer is not finished. The GestureDetector uses `HitTestBehavior.opaque` to consume taps. On `timed` and `drill`, the Weight Adjustment control is placed outside the GestureDetector so it remains tappable.
+
 ---
 
 ## Presentation Models

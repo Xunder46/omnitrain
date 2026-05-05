@@ -175,7 +175,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Log set 1 (real): should start rest for entry 1.
-    await tester.tap(find.byTooltip('Log Set'));
+    await tester.tap(find.text('Log Set'));
     await tester.pumpAndSettle();
 
     var rests = deps.workoutState.getEntryRests(effortId);
@@ -184,7 +184,7 @@ void main() {
     expect(rests.first.restEndMs, isNull);
 
     // Log set 2 (skipped): should not create/reset rest windows.
-    await tester.tap(find.byTooltip('Log Set'));
+    await tester.tap(find.text('Log Set'));
     await tester.pumpAndSettle();
 
     rests = deps.workoutState.getEntryRests(effortId);
@@ -193,7 +193,7 @@ void main() {
     expect(rests.first.restEndMs, isNull);
 
     // Log set 3 (real): previous rest closes before next rest starts.
-    await tester.tap(find.byTooltip('Log Set'));
+    await tester.tap(find.text('Log Set'));
     await tester.pumpAndSettle();
 
     rests = List.of(deps.workoutState.getEntryRests(effortId))
@@ -250,7 +250,7 @@ void main() {
     await tester.tap(find.text(exercise.name));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Log Set'));
+    await tester.tap(find.text('Log Set'));
     await tester.pumpAndSettle();
 
     // Rest overlay should show the self_improvement icon
@@ -293,7 +293,7 @@ void main() {
       );
 
       // Click Log Set button
-      await tester.tap(find.byTooltip('Log Set'));
+      await tester.tap(find.text('Log Set'));
       await tester.pumpAndSettle();
 
       // NOW rest should be created for the next entry

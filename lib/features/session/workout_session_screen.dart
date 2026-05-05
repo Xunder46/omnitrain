@@ -731,7 +731,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     await _loadExercises();
   }
 
-  Future<void> _deleteLastSet() async {
+  Future<void> _deleteCurrentSet() async {
     if (_exercises.isEmpty) return;
 
     final exercise = _exercises[_currentExerciseIndex];
@@ -739,23 +739,24 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final exerciseName = exercise['name'] as String;
     final entries = exercise['entries'] as List<Map<String, dynamic>>;
     final effortKind = exercise['effortKind'] as String? ?? 'set';
+    final currentIndex = _currentSet - 1;
 
     if (entries.isEmpty) return;
 
+    final setLabel = effortKind == 'round'
+        ? 'Round'
+        : (effortKind == 'timed'
+              ? 'Interval'
+              : (effortKind == 'drill' ? 'Hold' : 'Set'));
+
     // If this is the last entry, warn that the exercise will be removed
     if (entries.length == 1) {
-      final setLabel = effortKind == 'round'
-          ? 'round'
-          : (effortKind == 'timed'
-                ? 'interval'
-                : (effortKind == 'drill' ? 'hold' : 'set'));
-
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Remove Exercise?'),
           content: Text(
-            'This is the last $setLabel for "$exerciseName". '
+            'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
             'Deleting it will remove the entire exercise from your session.\n\n'
             'Continue?',
           ),
@@ -794,7 +795,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
       // Delete the entry and remove the exercise
       if (widget.editMode) _hasStructuralChanges = true;
-      await widget.workoutState.deleteEntry(effortId, entries.length - 1);
+      _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
+      await widget.workoutState.deleteEntry(effortId, currentIndex);
       await widget.workoutState.removeExerciseFromSession(effortId);
       await _loadExercises();
 
@@ -809,15 +811,54 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       return;
     }
 
-    // Not the last entry - delete normally
+    // Multi-set: show confirmation before deleting current set
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete $setLabel?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     if (widget.editMode) _hasStructuralChanges = true;
-    await widget.workoutState.deleteEntry(effortId, entries.length - 1);
+    await widget.workoutState.deleteEntry(effortId, currentIndex);
     await _loadExercises();
 
-    // Adjust current set if needed
+    // Adjust current set if it now exceeds new entries length
     setState(() {
-      if (_currentSet > entries.length - 1) {
-        _currentSet = (entries.length - 1).clamp(1, entries.length);
+      final newCount = entries.length - 1;
+      if (_currentSet > newCount) {
+        _currentSet = newCount.clamp(1, newCount);
       }
     });
   }
@@ -885,6 +926,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   void _jumpToSet(int setNumber) {
+    // Auto-pause timer if in progress before jumping to another set.
+    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
+      final ex = _exercises[_currentExerciseIndex];
+      final effortId = ex['id'] as String;
+      final effortKind = ex['effortKind'] as String? ?? 'set';
+      if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
+        final timerKey = '$effortId-${_currentSet - 1}';
+        if (_effortRunning[timerKey] == true) {
+          _pauseEffortTimer(effortId, _currentSet - 1);
+        }
+      }
+    }
     setState(() {
       _currentSet = setNumber;
     });
@@ -900,6 +953,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   void _switchExercise(int delta) {
     final newIndex = _currentExerciseIndex + delta;
     if (newIndex < 0 || newIndex >= _exercises.length) return;
+    // Auto-pause timer if in progress before switching exercise.
+    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
+      final ex = _exercises[_currentExerciseIndex];
+      final effortId = ex['id'] as String;
+      final effortKind = ex['effortKind'] as String? ?? 'set';
+      if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
+        final timerKey = '$effortId-${_currentSet - 1}';
+        if (_effortRunning[timerKey] == true) {
+          _pauseEffortTimer(effortId, _currentSet - 1);
+        }
+      }
+    }
     unawaited(_focusExerciseDetail(newIndex));
   }
 

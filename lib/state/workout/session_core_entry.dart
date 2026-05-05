@@ -30,8 +30,8 @@ extension SessionCoreEntryMethods on SessionCore {
 
       _exerciseCache[exercise.id] = exercise;
 
-      final effortId = 'effort-$now';
       final currentEfforts = _efforts[segment.id] ?? [];
+      final effortId = 'effort-$now-${currentEfforts.length}';
       final effort = SegmentEffort(
         id: effortId,
         segmentId: segment.id,
