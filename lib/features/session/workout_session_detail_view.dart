@@ -96,15 +96,11 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
   }) {
     final key = '$effortId-$entryIndex';
     final isExpanded = _weightAdjustExpanded[key] ?? false;
-    final isNonZero = currentValue != 0.0;
-    final linkColor = !isExpanded && !isNonZero
-        ? OmniTheme.textSecondary.withOpacity(0.7)
-        : theme.colorScheme.primary;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 12),
+        const SizedBox(height: 50),
         TextButton(
           onPressed: () => setState(() {
             _weightAdjustExpanded[key] = !isExpanded;
@@ -126,7 +122,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           child: Text(
             'Weight adjustment',
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(color: linkColor),
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.primary),
           ),
         ),
         if (isExpanded)
@@ -216,9 +213,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         } else {
           timedDisplayValue = timedElapsed;
           timedUnitLabel = 'ELAPSED';
-          timedUnitLabelColor = timedIsRunning
-              ? theme.colorScheme.primary.withOpacity(0.8)
-              : null;
+          timedUnitLabelColor = null;
         }
 
         if (widget.editMode) {
@@ -261,7 +256,6 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(height: 24 + _kSessionScrollBottomExtra),
             GestureDetector(
               key: const Key('timer-gesture-detector'),
               onTap: isTimedFinished ? null : () => _toggleEffortTimer(effortId),
@@ -276,7 +270,6 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     isReadOnly: true,
                     onValueChanged: (_) {},
                   ),
-                  const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -285,7 +278,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                           timedIsRunning
                               ? Icons.pause_circle_outline
                               : Icons.play_circle_outline,
-                          size: 18,
+                          size: 30,
                           color: timedIsRunning
                               ? theme.colorScheme.primary.withOpacity(0.6)
                               : theme.colorScheme.onSurface.withAlpha(
@@ -293,21 +286,20 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                 ),
                         ),
                         const SizedBox(width: 6),
-                      ],
+                      ]
+                      else const SizedBox(height: 30), // keep space even when finished
                       Text(
                         isTimedFinished
-                            ? 'COMPLETED'
+                            ? ''
                             : (timedIsRunning
                                   ? 'RUNNING'
                                   : (isTimedStarted ? 'PAUSED' : 'STOPPED')),
                         style: theme.textTheme.labelMedium?.copyWith(
-                          color: isTimedFinished
-                              ? theme.colorScheme.primary
-                              : (timedIsRunning
-                                    ? theme.colorScheme.primary.withOpacity(0.8)
-                                    : theme.colorScheme.onSurface.withAlpha(
-                                        (0.5 * 255).round(),
-                                      )),
+                          color: timedIsRunning
+                                  ? theme.colorScheme.primary.withOpacity(0.8)
+                                  : theme.colorScheme.onSurface.withAlpha(
+                                      (0.5 * 255).round(),
+                                    ),
                           letterSpacing: 1,
                         ),
                       ),
@@ -450,23 +442,42 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (!isFinished)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (!isFinished) ...[
                         Icon(
                           (_effortRunning[timerKey] ?? false)
                               ? Icons.pause_circle_outline
                               : Icons.play_circle_outline,
-                          size: 18,
+                          size: 30,
                           color: (_effortRunning[timerKey] ?? false)
                               ? theme.colorScheme.primary.withOpacity(0.6)
                               : theme.colorScheme.onSurface.withAlpha(
                                   (0.35 * 255).round(),
                                 ),
                         ),
-                      ],
-                    ),
+                        const SizedBox(width: 6),
+                      ]
+                      else
+                        const SizedBox(height: 30),
+                      Text(
+                        isFinished
+                            ? ''
+                            : ((_effortRunning[timerKey] ?? false)
+                                  ? 'RUNNING'
+                                  : (isMidRound ? 'PAUSED' : 'STOPPED')),
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: (_effortRunning[timerKey] ?? false)
+                              ? theme.colorScheme.primary.withOpacity(0.8)
+                              : theme.colorScheme.onSurface.withAlpha(
+                                  (0.5 * 255).round(),
+                                ),
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -493,9 +504,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         } else {
           drillDisplayValue = drillElapsed;
           drillUnitLabel = 'ELAPSED';
-          drillUnitLabelColor = drillIsRunning
-              ? theme.colorScheme.primary.withOpacity(0.8)
-              : null;
+          drillUnitLabelColor = null;
         }
 
         if (widget.editMode) {
@@ -548,7 +557,6 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     isReadOnly: true,
                     onValueChanged: (_) {},
                   ),
-                  const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -557,7 +565,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                           drillIsRunning
                               ? Icons.pause_circle_outline
                               : Icons.play_circle_outline,
-                          size: 18,
+                          size: 30,
                           color: drillIsRunning
                               ? theme.colorScheme.primary.withOpacity(0.6)
                               : theme.colorScheme.onSurface.withAlpha(
@@ -565,21 +573,20 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                 ),
                         ),
                         const SizedBox(width: 6),
-                      ],
+                      ]
+                      else const SizedBox(height: 30), // keep space even when finished
                       Text(
                         isDrillFinished
-                            ? 'COMPLETED'
+                            ? ''
                             : (drillIsRunning
                                   ? 'RUNNING'
                                   : (isDrillStarted ? 'PAUSED' : 'STOPPED')),
                         style: theme.textTheme.labelMedium?.copyWith(
-                          color: isDrillFinished
-                              ? theme.colorScheme.primary
-                              : (drillIsRunning
-                                    ? theme.colorScheme.primary.withOpacity(0.8)
-                                    : theme.colorScheme.onSurface.withAlpha(
-                                        (0.5 * 255).round(),
-                                      )),
+                          color: drillIsRunning
+                                  ? theme.colorScheme.primary.withOpacity(0.8)
+                                  : theme.colorScheme.onSurface.withAlpha(
+                                      (0.5 * 255).round(),
+                                    ),
                           letterSpacing: 1,
                         ),
                       ),
@@ -642,11 +649,11 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             onTap: _deleteCurrentSet,
             customBorder: const CircleBorder(),
             child: Container(
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              constraints: const BoxConstraints(minWidth: 50, minHeight: 50),
               alignment: Alignment.center,
               child: Icon(
                 Icons.remove,
-                size: 20,
+                size: 24,
                 color: theme.colorScheme.onSurface
                     .withAlpha((0.35 * 255).round()),
               ),
@@ -670,11 +677,11 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             onTap: _addSet,
             customBorder: const CircleBorder(),
             child: Container(
-              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              constraints: const BoxConstraints(minWidth: 50, minHeight: 50),
               alignment: Alignment.center,
               child: Icon(
                 Icons.add,
-                size: 20,
+                size: 24,
                 color: theme.colorScheme.primary,
               ),
             ),
@@ -689,10 +696,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     String effortKind,
     ThemeData theme,
   ) {
-    if (_currentSet <= 1) return const SizedBox.shrink();
+    if (_currentSet <= 1) return const SizedBox(height: 16,);
 
     final entries = exercise['entries'] as List<Map<String, dynamic>>;
-    if (_currentSet - 2 >= entries.length) return const SizedBox.shrink();
+    if (_currentSet - 2 >= entries.length) return const SizedBox(height: 16,);
 
     final previousEntryIndex = _currentSet - 2;
     final previousEntry = entries[previousEntryIndex];
@@ -708,7 +715,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         final prevReps = previousEntry['reps'] as int? ?? 0;
         final prevWeight = previousEntry['weight'] as double? ?? 0.0;
         if (!isPreviousLogged) {
-          statsText = 'Previous: —';
+          statsText = '';
           break;
         }
         statsText =
@@ -720,7 +727,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             0;
         final prevDistance = previousEntry['distance'] as double? ?? 0.0;
         if (!isPreviousLogged) {
-          statsText = 'Previous: —';
+          statsText = '';
           break;
         }
         final prevTimedMins = prevTimedSecs ~/ 60;
@@ -739,7 +746,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             previousEntry['round-duration'] as int? ??
             WorkoutConstants.defaultRoundDurationSecs;
         if (!isPreviousLogged) {
-          statsText = 'Previous: —';
+          statsText = '';
           break;
         }
         final mins = prevRoundDur ~/ 60;
@@ -753,7 +760,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             0;
         final prevExtraWeight = previousEntry['extra-weight'] as double? ?? 0.0;
         if (!isPreviousLogged) {
-          statsText = 'Previous: —';
+          statsText = '';
           break;
         }
         final prevDrillMins = prevDrillSecs ~/ 60;
@@ -826,10 +833,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
     final effortKind = exercise['effortKind'] as String? ?? 'set';
-    final entries = exercise['entries'] as List<Map<String, dynamic>>;
+    final entryIndex = _currentSet - 1;
 
     // Determine whether current set has already been logged.
-    final isLogged = _isSetLogged(effortId, _currentSet - 1, effortKind);
+    final isLogged = _isSetLogged(effortId, entryIndex, effortKind);
 
     // Back nav arrow (left side)
     final backArrow = _buildNavArrow(
@@ -851,59 +858,91 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       theme: theme,
     );
 
-    // Center content: Log Set button OR nav arrow if already logged
-    Widget center;
     if (widget.editMode) {
-      // In edit mode, center is a plain nav arrow (no logging)
-      center = _buildNavArrow(
-        icon: Icons.arrow_forward,
-        label: 'Next',
-        isEnabled: true,
-        onPressed: _nextSetInEditMode,
-        theme: theme,
-      );
-    } else if (isLogged) {
-      // Already logged — show forward nav arrow in center
-      center = _buildNavArrow(
-        icon: Icons.arrow_forward,
-        label: 'Next Set',
-        isEnabled: true,
-        onPressed: _nextSet,
-        theme: theme,
-      );
-    } else {
-      // Not yet logged — show Log Set FilledButton
-      center = _buildLogSetButton(effortKind, theme);
-    }
-
-    if (widget.editMode) {
-      // Edit mode: back | center (nav arrow) | forward
+      // Edit mode keeps simple navigation-only controls.
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          backArrow,
-          center,
-          forwardArrow,
-        ],
+        children: [backArrow, forwardArrow],
       );
     }
 
-    // Live mode: back | Log Set (expanded) OR nav arrow (compact) | forward
+    // Live mode center control state:
+    // 1) Logged entries show status label.
+    // 2) Timer entries that never started show Start.
+    // 3) Otherwise show log button.
+    Widget centerControl;
+    if (isLogged) {
+      centerControl = _buildLoggedLabel(theme);
+    } else if (_isTimerEntryNotStarted(effortKind, effortId, entryIndex)) {
+      centerControl = _buildStartTimerButton(effortId, theme);
+    } else {
+      centerControl = _buildLogSetButton(effortKind, theme);
+    }
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         backArrow,
-        if (!isLogged)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: center,
-            ),
-          )
-        else
-          center,
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: centerControl,
+          ),
+        ),
         forwardArrow,
       ],
+    );
+  }
+
+  bool _isTimerEntryNotStarted(
+    String effortKind,
+    String effortId,
+    int entryIndex,
+  ) {
+    if (effortKind == 'timed' || effortKind == 'drill') {
+      final instance = _getTimedInstance(effortId, entryIndex);
+      return (instance?.state ?? TimedState.notStarted) == TimedState.notStarted;
+    }
+    if (effortKind == 'round') {
+      final round = _getRoundInstance(effortId, entryIndex);
+      return (round?.state ?? RoundState.notStarted) == RoundState.notStarted;
+    }
+    return false;
+  }
+
+  Widget _buildLoggedLabel(ThemeData theme) {
+    return SizedBox(
+      height: 64,
+      child: Center(
+        child: Text(
+          'LOGGED',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.primary.withOpacity(0.9),
+            letterSpacing: 1.2,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStartTimerButton(String effortId, ThemeData theme) {
+    return Tooltip(
+      message: 'Start',
+      child: FilledButton(
+        style: ButtonStyle(
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          minimumSize: WidgetStateProperty.all(
+            const Size(double.infinity, 64),
+          ),
+        ),
+        onPressed: () => _toggleEffortTimer(effortId),
+        child: const Text('Start'),
+      ),
     );
   }
 
@@ -941,11 +980,11 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         style: ButtonStyle(
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
           minimumSize: WidgetStateProperty.all(
-            const Size(double.infinity, 48),
+            const Size(double.infinity, 64),
           ),
         ),
         onPressed: _logSet,
@@ -974,7 +1013,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             onTap: onPressed,
             customBorder: const CircleBorder(),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(20),
               child: Icon(
                 icon,
                 size: 24,
