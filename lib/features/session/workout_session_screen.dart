@@ -755,7 +755,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
               ? 'Interval'
               : (effortKind == 'drill' ? 'Hold' : 'Set'));
 
-    // If this is the last entry, warn that the exercise will be removed
+    final isLogged = _isSetLogged(effortId, currentIndex, effortKind);
+
+    // If this is the last entry, always warn since it removes the entire exercise
     if (entries.length == 1) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -817,44 +819,46 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       return;
     }
 
-    // Multi-set: show confirmation before deleting current set
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete $setLabel?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
+    // Multi-set: only confirm if the set has been logged
+    if (isLogged) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Delete logged $setLabel?'),
+          content: const Text('This cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
                   ),
                 ),
               ),
+              child: const Text('Cancel'),
             ),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
                   ),
                 ),
               ),
+              child: const Text('Delete'),
             ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
 
-    if (confirmed != true) return;
+      if (confirmed != true) return;
+    }
 
     if (widget.editMode) _hasStructuralChanges = true;
     await widget.workoutState.deleteEntry(effortId, currentIndex);
