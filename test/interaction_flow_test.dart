@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/profile_measurements.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
@@ -8,6 +9,8 @@ import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
 import 'package:omnitrain/features/period/create_period_screen.dart';
 import 'package:omnitrain/features/period/period_list_screen.dart';
+import 'package:omnitrain/features/profile/profile_screen.dart';
+import 'package:omnitrain/features/profile/widgets/measurement_history_chart_sheet.dart';
 import 'package:omnitrain/features/routine/my_routines_screen.dart';
 import 'package:omnitrain/features/routine/routine_setup_screen.dart';
 import 'package:omnitrain/features/session/session_overview_screen.dart';
@@ -15,6 +18,7 @@ import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/state/period/period_state.dart';
+import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -1005,5 +1009,265 @@ void main() {
 
       expect(settingsState.startOfWeek, 'monday');
     });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MeasurementHistoryChartSheet – delete interaction (S-011 through S-015)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('MeasurementHistoryChartSheet delete flow', () {
+    Future<void> _pumpSheet(
+      WidgetTester tester,
+      ProfileState profileState,
+      SettingsState settingsState,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: ProfileMeasurements.bodyweight,
+              settingsState: settingsState,
+              onLogNew: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    // S-011: long-press opens delete dialog
+    testWidgets('long-press on chart dot opens delete dialog', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'del-entry-1',
+          measurementType: 'bodyweight',
+          value: 80.0,
+          unitId: 'unit-kg',
+          recordedAtMs: DateTime(2025, 3, 14).millisecondsSinceEpoch,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+
+      await _pumpSheet(tester, profileState, settingsState);
+
+      // Long-press the GestureDetector tap target covering the dot.
+      await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete entry?'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+    });
+
+    // S-012: cancel preserves chart
+    testWidgets('cancelling delete dialog leaves chart unchanged', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'del-cancel-1',
+          measurementType: 'bodyweight',
+          value: 80.0,
+          unitId: 'unit-kg',
+          recordedAtMs: DateTime(2025, 3, 14).millisecondsSinceEpoch,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+
+      await _pumpSheet(tester, profileState, settingsState);
+
+      await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Chart still present (hint text visible = entries still there)
+      expect(
+        find.text('Tap a point to view · Long-press to delete'),
+        findsOneWidget,
+      );
+      // Entry still in repo
+      final history =
+          await profileState.getMeasurementHistory('bodyweight');
+      expect(history, hasLength(1));
+    });
+
+    // S-013: confirm delete (non-final) refreshes chart
+    testWidgets('confirming delete removes entry and keeps chart', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'del-keep-1',
+          measurementType: 'bodyweight',
+          value: 80.0,
+          unitId: 'unit-kg',
+          recordedAtMs: now - 2000,
+        ),
+      );
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'del-keep-2',
+          measurementType: 'bodyweight',
+          value: 82.0,
+          unitId: 'unit-kg',
+          recordedAtMs: now,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+
+      await _pumpSheet(tester, profileState, settingsState);
+
+      // Long-press the first dot (index 0 of the ordered entry list).
+      await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      // One entry remains — hint text still visible.
+      expect(
+        find.text('Tap a point to view · Long-press to delete'),
+        findsOneWidget,
+      );
+      final history =
+          await profileState.getMeasurementHistory('bodyweight');
+      expect(history, hasLength(1));
+    });
+
+    // S-014: confirm delete (final) transitions to empty state
+    testWidgets('deleting last entry transitions to empty state', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'del-last-1',
+          measurementType: 'bodyweight',
+          value: 80.0,
+          unitId: 'unit-kg',
+          recordedAtMs: DateTime(2025, 4, 1).millisecondsSinceEpoch,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+
+      await _pumpSheet(tester, profileState, settingsState);
+
+      await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+
+      // Empty state shown, hint text gone.
+      expect(find.text('No entries yet'), findsOneWidget);
+      expect(
+        find.text('Tap a point to view · Long-press to delete'),
+        findsNothing,
+      );
+
+      // Log New Entry button still present (S-018).
+      expect(find.text('Log New Entry'), findsOneWidget);
+    });
+
+    // S-015: tap-to-select is preserved (does NOT open dialog)
+    testWidgets('tap on chart dot does not open dialog', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'tap-select-1',
+          measurementType: 'bodyweight',
+          value: 80.0,
+          unitId: 'unit-kg',
+          recordedAtMs: DateTime(2025, 3, 14).millisecondsSinceEpoch,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+
+      await _pumpSheet(tester, profileState, settingsState);
+
+      await tester.tap(find.byKey(const ValueKey('chart_dot_0')));
+      await tester.pumpAndSettle();
+
+      // No dialog should have opened.
+      expect(find.text('Delete entry?'), findsNothing);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ProfileMeasurements – validation methods (S-006, S-007)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('ProfileMeasurements validation', () {
+    testWidgets(
+      'validationRangeFor returns correct kg range for bodyweight',
+      (WidgetTester tester) async {
+        final range =
+            ProfileMeasurements.validationRangeFor('bodyweight', 'kg');
+        expect(range.min, 20.0);
+        expect(range.max, 300.0);
+      },
+    );
+
+    testWidgets(
+      'validationRangeFor returns correct lbs range for bodyweight',
+      (WidgetTester tester) async {
+        final range =
+            ProfileMeasurements.validationRangeFor('bodyweight', 'lbs');
+        expect(range.min, 40.0);
+        expect(range.max, 600.0);
+      },
+    );
+
+    testWidgets(
+      'validationUnitLabel returns kg for bodyweight in kg mode',
+      (WidgetTester tester) async {
+        final label = ProfileMeasurements.validationUnitLabel('bodyweight', 'kg');
+        expect(label, 'kg');
+      },
+    );
+
+    testWidgets(
+      'validationUnitLabel returns lbs for bodyweight in lbs mode',
+      (WidgetTester tester) async {
+        final label = ProfileMeasurements.validationUnitLabel('bodyweight', 'lbs');
+        expect(label, 'lbs');
+      },
+    );
+
+    testWidgets(
+      'validationUnitLabel returns percent for body_fat_pct',
+      (WidgetTester tester) async {
+        final label =
+            ProfileMeasurements.validationUnitLabel('body_fat_pct', 'kg');
+        expect(label, '%');
+      },
+    );
   });
 }

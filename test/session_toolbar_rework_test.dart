@@ -376,8 +376,8 @@ void main() {
   });
 
   group('Toolbar Rework — Delete Confirmation (Phase E)', () {
-    // S-014: Tapping delete shows confirmation dialog
-    testWidgets('S-014: tapping delete shows AlertDialog', (tester) async {
+    // S-014: Unlogged multi-set delete proceeds without confirmation
+    testWidgets('S-014: deleting unlogged set does not show AlertDialog', (tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final deps = await _buildDeps(modality: 'resistance_lifting');
       final repo = await _freshRepo();
@@ -396,11 +396,16 @@ void main() {
       await tester.tap(find.byIcon(Icons.remove));
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.textContaining('of 1'),
+        findsOneWidget,
+        reason: 'Unlogged set should be deleted immediately without warning',
+      );
     });
 
-    // S-015: Confirming delete removes the CURRENT set (not always last)
-    testWidgets('S-015: confirming delete removes current set', (tester) async {
+    // S-015: Logged multi-set delete requires confirmation and then removes
+    testWidgets('S-015: logged set delete requires confirmation', (tester) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
       final deps = await _buildDeps(modality: 'resistance_lifting');
       final repo = await _freshRepo();
@@ -422,9 +427,21 @@ void main() {
       // Verify we are on set 2 of 3
       expect(find.textContaining('Set 2 of 3'), findsOneWidget);
 
+      // Log set 2 so deletion requires confirmation.
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+      await tester.pumpAndSettle();
+
+      // Logging auto-advances to set 3, so navigate back to logged set 2.
+      await tester.tap(find.byIcon(Icons.arrow_back).last);
+      await tester.pumpAndSettle();
+
       // Delete set 2
       await tester.tap(find.byIcon(Icons.remove));
       await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.textContaining('Delete logged Set?'), findsOneWidget);
+
       await tester.tap(find.text('Delete'));
       await tester.pumpAndSettle();
 
@@ -436,8 +453,8 @@ void main() {
       );
     });
 
-    // S-016: Cancelling delete dialog preserves the set
-    testWidgets('S-016: cancelling delete dialog preserves set count', (
+    // S-016: Cancelling logged-set delete preserves set count
+    testWidgets('S-016: cancelling logged set delete preserves set count', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -455,8 +472,18 @@ void main() {
 
       expect(find.textContaining('of 2'), findsOneWidget);
 
+      // Mark current set logged so delete path prompts.
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+      await tester.pumpAndSettle();
+
+      // Logging auto-advances to set 2, so go back to logged set 1.
+      await tester.tap(find.byIcon(Icons.arrow_back).last);
+      await tester.pumpAndSettle();
+
       await tester.tap(find.byIcon(Icons.remove));
       await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
 

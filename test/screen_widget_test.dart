@@ -2755,6 +2755,79 @@ void main() {
 
       expect(find.text('176.4 lbs'), findsOneWidget);
     });
+
+    // S-016: Helper text visible when entries exist
+    testWidgets('shows hint text when entries exist', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'hint-entry',
+          measurementType: 'bodyweight',
+          value: 75.0,
+          unitId: 'unit-kg',
+          recordedAtMs: 1000,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+      const definition = ProfileMeasurements.bodyweight;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: definition,
+              settingsState: settingsState,
+              onLogNew: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Tap a point to view \u00b7 Long-press to delete'),
+        findsOneWidget,
+      );
+    });
+
+    // S-017: Helper text hidden in empty state
+    testWidgets('hides hint text when no entries exist', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+      const definition = ProfileMeasurements.bodyweight;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: definition,
+              settingsState: settingsState,
+              onLogNew: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Tap a point to view \u00b7 Long-press to delete'),
+        findsNothing,
+      );
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════

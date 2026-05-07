@@ -73,6 +73,10 @@ class _MeasurementHistoryChartSheetState
                 _buildChart(theme),
               const SizedBox(height: 12),
               if (!_isLoading && _entries.isNotEmpty) _buildLabelStrip(theme),
+              if (!_isLoading && _entries.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _buildHintText(theme),
+              ],
               const SizedBox(height: 12),
               Divider(color: theme.colorScheme.onSurface.withOpacity(0.12)),
               const SizedBox(height: 8),
@@ -208,6 +212,94 @@ class _MeasurementHistoryChartSheetState
     );
   }
 
+  Widget _buildHintText(ThemeData theme) {
+    return Center(
+      child: Text(
+        'Tap a point to view \u00b7 Long-press to delete',
+        textAlign: TextAlign.center,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: OmniTheme.textSecondary.withOpacity(0.55),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelete(int index) async {
+    final entry = _entries[index];
+    final date = DateTime.fromMillisecondsSinceEpoch(entry.recordedAtMs);
+    final dateLabel = _formatDate(date);
+    final valueLabel = entry.unitId == 'unit-kg'
+        ? UnitFormatter.formatWeight(entry.value, widget.settingsState)
+        : '${ProfileMeasurements.formatValue(entry.value)} '
+              '${ProfileMeasurements.unitLabelFor(entry.unitId)}';
+
+    if (!mounted) return;
+    final theme = Theme.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete entry?'),
+        content: Text(
+          '$dateLabel \u00b7 $valueLabel will be removed from your history.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.all(
+                theme.colorScheme.error,
+              ),
+              foregroundColor: WidgetStateProperty.all(
+                theme.colorScheme.onError,
+              ),
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await widget.profileState.deleteMeasurementEntry(
+        entry.id,
+        widget.definition.type,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete entry: $e')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+    });
+    await _loadEntries();
+  }
+
   Future<void> _handleLogNew() async {
     await widget.onLogNew();
     if (!mounted) return;
@@ -263,12 +355,14 @@ class _MeasurementHistoryChartSheetState
                       left: x - 24,
                       top: y - 24,
                       child: GestureDetector(
+                        key: ValueKey('chart_dot_$i'),
                         behavior: HitTestBehavior.translucent,
                         onTap: () {
                           setState(() {
                             _selectedIndex = i;
                           });
                         },
+                        onLongPress: () => _confirmDelete(i),
                         child: const SizedBox(width: 48, height: 48),
                       ),
                     );

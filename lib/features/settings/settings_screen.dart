@@ -39,25 +39,31 @@ class SettingsScreen extends StatelessWidget {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
+                  const _SectionHeader(title: 'PREFERENCES'),
+                  const SizedBox(height: 8),
                   _MeasurementsSection(
                     settingsState: settingsState,
                     theme: theme,
                   ),
                   const SizedBox(height: 24),
+                  const _SectionHeader(title: 'SOUNDS & ALERTS'),
+                  const SizedBox(height: 8),
                   _SoundsAlertsSection(
                     settingsState: settingsState,
                     timerAlertService: timerAlertService,
                   ),
                   const SizedBox(height: 24),
+                  const _SectionHeader(title: 'WORKOUT'),
+                  const SizedBox(height: 8),
                   _WorkoutSection(settingsState: settingsState),
                   const SizedBox(height: 24),
+                  const _SectionHeader(title: 'APPEARANCE'),
+                  const SizedBox(height: 8),
                   OmniSurface(
                     padding: const EdgeInsets.all(0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const _SectionHeader(title: 'APPEARANCE'),
-                        const SizedBox(height: 14),
                         GridView.builder(
                           shrinkWrap: true,
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -178,7 +184,6 @@ class _SoundsAlertsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(title: 'SOUNDS & ALERTS'),
           _SettingsRow(
             label: 'Effort Timer Sound',
             subtitle: 'Plays when a set or round timer expires',
@@ -475,7 +480,6 @@ class _MeasurementsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(title: 'PREFERENCES'),
           _SettingsRow(
             label: 'Start of Week',
             subtitle: 'First day shown in the calendar',
@@ -600,7 +604,6 @@ class _WorkoutSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(title: 'WORKOUT'),
           _SettingsRow(
             label: 'Feeling Survey',
             subtitle: 'Ask how the workout felt after finishing',
@@ -625,7 +628,7 @@ class _SectionHeader extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Text(
         title,
         style: theme.textTheme.labelSmall?.copyWith(
