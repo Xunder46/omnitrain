@@ -49,21 +49,18 @@ class SettingsScreen extends StatelessWidget {
                     timerAlertService: timerAlertService,
                   ),
                   const SizedBox(height: 24),
+                  _WorkoutSection(settingsState: settingsState),
+                  const SizedBox(height: 24),
                   OmniSurface(
+                    padding: const EdgeInsets.all(0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'APPEARANCE',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            letterSpacing: 2,
-                            color: OmniTheme.textSecondary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        const _SectionHeader(title: 'APPEARANCE'),
                         const SizedBox(height: 14),
                         GridView.builder(
                           shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                           physics: const NeverScrollableScrollPhysics(),
                           // Ghost-pad odd counts so the last row is never a
                           // lone tile. When count becomes even after the
@@ -379,9 +376,7 @@ class _SoundOptionTile extends StatelessWidget {
       title: Text(
         displayName,
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: isSelected
-              ? theme.colorScheme.primary
-              : OmniTheme.textPrimary,
+          color: isSelected ? theme.colorScheme.primary : OmniTheme.textPrimary,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
@@ -585,6 +580,33 @@ class _MeasurementsSection extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkoutSection extends StatelessWidget {
+  final SettingsState settingsState;
+
+  const _WorkoutSection({required this.settingsState});
+
+  @override
+  Widget build(BuildContext context) {
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHeader(title: 'WORKOUT'),
+          _SettingsRow(
+            label: 'Feeling Survey',
+            subtitle: 'Ask how the workout felt after finishing',
+            trailing: Switch(
+              value: settingsState.showFeelingSurvey,
+              onChanged: settingsState.setShowFeelingSurvey,
             ),
           ),
         ],

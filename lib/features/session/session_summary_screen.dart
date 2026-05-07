@@ -185,6 +185,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Future<void> _showFeelingSheet(BuildContext context) async {
+    if (!widget.settingsState.showFeelingSurvey) return;
     if (_hasShownFeelingSheet) return;
 
     final session = widget.workoutState.currentSession;
@@ -914,8 +915,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final firstDay = DateTime(now.year, now.month, 1);
     // Dart weekday: 1=Mon … 7=Sun
     final int leadingBlanks = startOfWeek == 'sunday'
-        ? firstDay.weekday % 7   // Sun=0, Mon=1, … Sat=6
-        : firstDay.weekday - 1;  // Mon=0, Tue=1, … Sun=6
+        ? firstDay.weekday %
+              7 // Sun=0, Mon=1, … Sat=6
+        : firstDay.weekday - 1; // Mon=0, Tue=1, … Sun=6
     final daysInMonth = _daysInMonth;
     final totalSlots = daysInMonth + leadingBlanks;
     final rows = (totalSlots / 7).ceil();

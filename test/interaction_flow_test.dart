@@ -772,6 +772,36 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('SessionSummaryScreen interactions', () {
+    testWidgets(
+      'does not show feeling survey sheet when disabled in settings',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        await workoutState.createNewSession();
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await settingsState.setShowFeelingSurvey(false);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SessionSummaryScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+              settingsState: settingsState,
+              timerAlertService: FakeTimerAlertService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('How did it feel?'), findsNothing);
+      },
+    );
+
     testWidgets('tapping overflow menu reveals session action items', (
       WidgetTester tester,
     ) async {
@@ -849,6 +879,31 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('SettingsScreen interactions', () {
+    testWidgets('toggling feeling survey updates SettingsState', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(settingsState.showFeelingSurvey, isTrue);
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      expect(settingsState.showFeelingSurvey, isFalse);
+    });
+
     testWidgets('tapping a theme option updates SettingsState appTheme', (
       WidgetTester tester,
     ) async {
@@ -857,7 +912,12 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -880,7 +940,12 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -908,7 +973,12 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 

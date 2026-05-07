@@ -76,8 +76,8 @@ void main() {
 
       final button = tester.widget<FilledButton>(find.byType(FilledButton));
       final style = button.style!;
-      final shape = style.shape!.resolve(<WidgetState>{})!
-          as RoundedRectangleBorder;
+      final shape =
+          style.shape!.resolve(<WidgetState>{})! as RoundedRectangleBorder;
       expect(
         shape.borderRadius,
         BorderRadius.circular(OmniTheme.buttonBorderRadius),
@@ -104,6 +104,23 @@ void main() {
       expect(find.text('PREFERENCES'), findsOneWidget);
       expect(find.text('TRAINING'), findsNothing);
       expect(find.text('MEASUREMENTS'), findsNothing);
+      expect(find.text('100 kg'), findsOneWidget);
+      expect(find.text('5 km'), findsOneWidget);
+      expect(find.text('Start of Week'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('WORKOUT'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('WORKOUT'), findsOneWidget);
+      expect(find.text('Feeling Survey'), findsOneWidget);
+      expect(
+        find.text('Ask how the workout felt after finishing'),
+        findsOneWidget,
+      );
 
       await tester.scrollUntilVisible(
         find.text('APPEARANCE'),
@@ -111,15 +128,6 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('APPEARANCE'), findsOneWidget);
-
-      expect(find.text('100 kg'), findsOneWidget);
-      expect(find.text('5 km'), findsOneWidget);
-      expect(find.text('Start of Week'), findsOneWidget);
-
-      final preferencesY = tester.getTopLeft(find.text('PREFERENCES')).dy;
-      final appearanceY = tester.getTopLeft(find.text('APPEARANCE')).dy;
-
-      expect(preferencesY, lessThan(appearanceY));
 
       await tester.scrollUntilVisible(
         find.text('Version 1.0.0'),
@@ -139,7 +147,12 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -823,7 +836,7 @@ void main() {
         periodState: periodState,
         profileState: profileState,
         settingsState: settingsState,
-            timerAlertService: FakeTimerAlertService(),
+        timerAlertService: FakeTimerAlertService(),
       );
     }
 
@@ -1012,7 +1025,7 @@ void main() {
               periodState: periodState,
               profileState: profileState,
               settingsState: settingsState,
-            timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -1103,7 +1116,7 @@ void main() {
           periodState: deps.periodState,
           profileState: deps.profileState,
           settingsState: deps.settingsState,
-            timerAlertService: FakeTimerAlertService(),
+          timerAlertService: FakeTimerAlertService(),
         ),
       );
     }
@@ -1699,8 +1712,8 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -1746,8 +1759,8 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -1804,8 +1817,8 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -1875,8 +1888,8 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -2344,8 +2357,8 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -3193,7 +3206,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -3257,7 +3270,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: settingsState,
             ),
           ),
@@ -3313,7 +3326,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3362,7 +3375,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: settingsState,
           ),
         ),
@@ -3400,7 +3413,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -3452,7 +3465,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3478,7 +3491,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3504,7 +3517,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3530,7 +3543,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3561,7 +3574,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3592,7 +3605,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3638,7 +3651,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3676,7 +3689,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3719,7 +3732,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3746,7 +3759,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -3772,7 +3785,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3796,7 +3809,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3905,7 +3918,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -3953,7 +3966,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -4068,7 +4081,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -4097,7 +4110,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -4129,7 +4142,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),

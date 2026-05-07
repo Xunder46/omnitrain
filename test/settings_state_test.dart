@@ -9,7 +9,9 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 // WCAG 2.1 contrast helpers used by contrast regression tests.
 // ---------------------------------------------------------------------------
 double _linearizeChannel(double c) {
-  return c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+  return c <= 0.04045
+      ? c / 12.92
+      : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
 }
 
 double _relativeLuminance(Color color) {
@@ -158,6 +160,38 @@ void main() {
     expect(reloaded.preferredDistanceUnit, 'miles');
   });
 
+  test('SettingsState defaults feeling survey to enabled', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+
+    final settingsState = SettingsState(repository);
+    await settingsState.initialize();
+
+    expect(settingsState.showFeelingSurvey, isTrue);
+  });
+
+  test(
+    'SettingsState persists and reloads feeling survey preference',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+
+      final settingsState = SettingsState(repository);
+      await settingsState.initialize();
+      await settingsState.setShowFeelingSurvey(false);
+
+      expect(
+        await repository.getPreferenceString('show_feeling_survey'),
+        'false',
+      );
+
+      final reloaded = SettingsState(repository);
+      await reloaded.initialize();
+
+      expect(reloaded.showFeelingSurvey, isFalse);
+    },
+  );
+
   test('SettingsState normalizes invalid saved distance unit to km', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
@@ -200,7 +234,6 @@ void main() {
     },
   );
 
-
   // ─── Malachite Core ────────────────────────────────────────────────────────
 
   test('Malachite Core colorsForTheme returns deep emerald primary', () {
@@ -209,7 +242,10 @@ void main() {
   });
 
   test('Malachite Core display name is verbatim', () {
-    expect(OmniTheme.displayNameForTheme(AppTheme.malachiteCore), 'Malachite Core');
+    expect(
+      OmniTheme.displayNameForTheme(AppTheme.malachiteCore),
+      'Malachite Core',
+    );
   });
 
   test('SettingsState persists and reloads malachiteCore theme', () async {
@@ -349,41 +385,38 @@ void main() {
     },
   );
 
-  test(
-    'setRestPingInterval with invalid value falls back to 0',
-    () async {
-      final repository = MockWorkoutRepository();
-      await repository.initialize();
-      final state = SettingsState(repository);
-      await state.initialize();
-      await state.setRestPingInterval(999);
-      expect(state.restPingInterval, 0);
-    },
-  );
+  test('setRestPingInterval with invalid value falls back to 0', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+    await state.setRestPingInterval(999);
+    expect(state.restPingInterval, 0);
+  });
 
   test(
     'SettingsState falls back restPingInterval to 0 on invalid stored value',
     () async {
       final repository = MockWorkoutRepository();
       await repository.initialize();
-      await repository.setPreferenceString('rest_ping_interval', 'not_a_number');
+      await repository.setPreferenceString(
+        'rest_ping_interval',
+        'not_a_number',
+      );
       final state = SettingsState(repository);
       await state.initialize();
       expect(state.restPingInterval, 0);
     },
   );
 
-  test(
-    'setRestPingSound with invalid id falls back to soft_chime',
-    () async {
-      final repository = MockWorkoutRepository();
-      await repository.initialize();
-      final state = SettingsState(repository);
-      await state.initialize();
-      await state.setRestPingSound('not_a_real_sound');
-      expect(state.restPingSound, 'soft_chime');
-    },
-  );
+  test('setRestPingSound with invalid id falls back to soft_chime', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+    await state.setRestPingSound('not_a_real_sound');
+    expect(state.restPingSound, 'soft_chime');
+  });
 
   test(
     'SettingsState falls back restPingSound to soft_chime on invalid stored value',
@@ -421,15 +454,18 @@ void main() {
     );
   });
 
-  test('SettingsState.soundDisplayNames has an entry for each validSoundId', () {
-    for (final id in SettingsState.validSoundIds) {
-      expect(
-        SettingsState.soundDisplayNames.containsKey(id),
-        isTrue,
-        reason: 'Missing display name for sound ID: $id',
-      );
-    }
-  });
+  test(
+    'SettingsState.soundDisplayNames has an entry for each validSoundId',
+    () {
+      for (final id in SettingsState.validSoundIds) {
+        expect(
+          SettingsState.soundDisplayNames.containsKey(id),
+          isTrue,
+          reason: 'Missing display name for sound ID: $id',
+        );
+      }
+    },
+  );
 
   test('setters call notifyListeners', () async {
     final repository = MockWorkoutRepository();
