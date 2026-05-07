@@ -818,6 +818,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
   }
 
   Widget _buildSetIndicator(int totalSets, String effortKind, ThemeData theme) {
+    final currentEffortId = _exercises[_currentExerciseIndex]['id'] as String;
+    final isTimerRunning = _effortRunning['$currentEffortId-${_currentSet - 1}'] ?? false;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -833,7 +836,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 false;
 
             return GestureDetector(
-              onTap: () => _jumpToSet(index + 1),
+              onTap: isTimerRunning ? null : () => _jumpToSet(index + 1),
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 6),
                 width: isCurrent ? 14 : 10,
@@ -867,14 +870,16 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     // Determine whether current set has already been logged.
     final isLogged = _isSetLogged(effortId, entryIndex, effortKind);
 
+    // Nav arrows are locked while the exercise timer is actively running.
+    final isTimerRunning = _effortRunning['$effortId-$entryIndex'] ?? false;
+
     // Back nav arrow (left side)
+    final canGoBack = !isTimerRunning && (_currentSet > 1 || _currentExerciseIndex > 0);
     final backArrow = _buildNavArrow(
       icon: Icons.arrow_back,
       label: 'Previous Set',
-      isEnabled: _currentSet > 1 || _currentExerciseIndex > 0,
-      onPressed: (_currentSet > 1 || _currentExerciseIndex > 0)
-          ? _previousSet
-          : null,
+      isEnabled: canGoBack,
+      onPressed: canGoBack ? _previousSet : null,
       theme: theme,
     );
 
@@ -882,8 +887,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     final forwardArrow = _buildNavArrow(
       icon: Icons.arrow_forward,
       label: 'Next',
-      isEnabled: true,
-      onPressed: widget.editMode ? _nextSetInEditMode : _nextSet,
+      isEnabled: !isTimerRunning,
+      onPressed: isTimerRunning ? null : (widget.editMode ? _nextSetInEditMode : _nextSet),
       theme: theme,
     );
 

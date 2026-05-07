@@ -283,7 +283,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             (_) => _onEffortTick(effortId, entryIndex),
           );
           if (mounted) setState(() {});
-          unawaited(widget.workoutState.recordRestEnd(effortId, entryIndex));
+          unawaited(widget.workoutState.closeAllOpenRests(effortId));
           _lastRestPingFiredAt.remove(effortId);
           widget.workoutState
               .startRound(effortId, entryIndex)
@@ -344,7 +344,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           (_) => _onEffortTick(effortId, entryIndex),
         );
         if (mounted) setState(() {});
-        unawaited(widget.workoutState.recordRestEnd(effortId, entryIndex));
+        unawaited(widget.workoutState.closeAllOpenRests(effortId));
         _lastRestPingFiredAt.remove(effortId);
         widget.workoutState.startTimedEntry(effortId, entryIndex).whenComplete(
           () {

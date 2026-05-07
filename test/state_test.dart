@@ -1765,6 +1765,118 @@ void main() {
         final rests = state.getEntryRests(effortId);
         expect(rests.first.restEndMs, isNotNull);
       });
+
+      test('closeAllOpenRests is a no-op when there are no rests', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(
+          exercises.first,
+          chosenMetric: 'reps',
+        );
+
+        // No rests at all — must not throw
+        await expectLater(state.closeAllOpenRests(effortId), completes);
+        expect(state.getEntryRests(effortId), isEmpty);
+      });
+
+      test('closeAllOpenRests closes a single open rest', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(
+          exercises.first,
+          chosenMetric: 'reps',
+        );
+
+        await state.recordRestStart(effortId, 0);
+        expect(state.getEntryRests(effortId).first.restEndMs, isNull);
+
+        await state.closeAllOpenRests(effortId);
+
+        final rests = state.getEntryRests(effortId);
+        expect(rests, hasLength(1));
+        expect(rests.first.restEndMs, isNotNull);
+      });
+
+      test(
+        'closeAllOpenRests closes all open rests regardless of entryIndex',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          // recordRestStart auto-closes any prior open rest before creating a
+          // new one, so after these two calls entry 0 is closed and entry 2
+          // is the single open rest. This mirrors the real bug scenario: a rest
+          // was opened for entry X (here 0), the user skipped ahead, and later
+          // a rest was opened for entry 2. closeAllOpenRests must close whatever
+          // is still open regardless of which entryIndex it belongs to.
+          await state.recordRestStart(effortId, 0);
+          await state.recordRestStart(effortId, 2);
+
+          // Confirm only entry-2 rest is open before calling closeAllOpenRests.
+          final beforeClose = state.getEntryRests(effortId);
+          final openBefore = beforeClose.where((r) => r.restEndMs == null);
+          expect(openBefore, hasLength(1));
+          expect(openBefore.first.entryIndex, 2);
+
+          await state.closeAllOpenRests(effortId);
+
+          final afterClose = state.getEntryRests(effortId);
+          final openAfter = afterClose.where((r) => r.restEndMs == null);
+          expect(openAfter, isEmpty);
+          // All records must have a restEndMs
+          for (final r in afterClose) {
+            expect(r.restEndMs, isNotNull);
+          }
+        },
+      );
+
+      test(
+        'closeAllOpenRests skips already-closed rests and only closes open ones',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          // Open and immediately close rest for entry 0.
+          await state.recordRestStart(effortId, 0);
+          await state.recordRestEnd(effortId, 0);
+
+          // Open rest for entry 1, leave it open.
+          await state.recordRestStart(effortId, 1);
+
+          await state.closeAllOpenRests(effortId);
+
+          final rests = state.getEntryRests(effortId);
+          // Both must be closed now.
+          for (final r in rests) {
+            expect(r.restEndMs, isNotNull);
+          }
+          // The entry-0 restEndMs must not have been changed (it was already
+          // closed before closeAllOpenRests was called).
+          final rest0 = rests.firstWhere((r) => r.entryIndex == 0);
+          final rest1 = rests.firstWhere((r) => r.entryIndex == 1);
+          expect(rest0.restEndMs, lessThan(rest1.restEndMs!));
+        },
+      );
     });
 
     test('updateSessionRpe persists RPE value', () async {

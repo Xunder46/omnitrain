@@ -184,6 +184,8 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.recordRestStart(effortId, entryIndex);
   Future<void> recordRestEnd(String effortId, int entryIndex) =>
       _timerManager.recordRestEnd(effortId, entryIndex);
+  Future<void> closeAllOpenRests(String effortId) =>
+      _timerManager.closeAllOpenRests(effortId);
   int getRestElapsedSeconds(String effortId, int entryIndex) =>
       _timerManager.getRestElapsedSeconds(effortId, entryIndex);
   bool hasRestRecord(String effortId, int entryIndex) =>
