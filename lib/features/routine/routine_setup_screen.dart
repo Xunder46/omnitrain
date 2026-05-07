@@ -6,6 +6,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/constants/workout_constants.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/settings/settings_state.dart';
@@ -1532,6 +1533,8 @@ extension on _RoutineSetupScreenState {
   }
 
   Widget _buildSetControls(int totalEntries, TemplateEffort effort) {
+    final canAddSet = totalEntries < WorkoutConstants.maxEntriesPerEffort;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1546,8 +1549,10 @@ extension on _RoutineSetupScreenState {
           children: [
             _buildIconButton(
               Icons.playlist_add,
-              () => _addSet(effort),
-              tooltip: 'Add set',
+              canAddSet ? () => _addSet(effort) : null,
+              tooltip: canAddSet
+                  ? 'Add set'
+                  : 'Max ${WorkoutConstants.maxEntriesPerEffort} entries',
             ),
             const SizedBox(width: 24),
             _buildIconButton(
@@ -1589,10 +1594,16 @@ extension on _RoutineSetupScreenState {
   }
 
   Future<void> _addSet(TemplateEffort effort) async {
-    await widget.routineState.addSetForEffort(effort.id, effort.effortKind);
     final targets = widget.routineState.getEffortTargets(effort.id);
     final setCount = _getSetCount(effort, targets);
-    _updateUi(() => _currentSet = setCount);
+    if (setCount >= WorkoutConstants.maxEntriesPerEffort) {
+      return;
+    }
+
+    await widget.routineState.addSetForEffort(effort.id, effort.effortKind);
+    final updatedTargets = widget.routineState.getEffortTargets(effort.id);
+    final updatedSetCount = _getSetCount(effort, updatedTargets);
+    _updateUi(() => _currentSet = updatedSetCount);
   }
 
   Future<void> _deleteLastSet(TemplateEffort effort) async {
@@ -1644,16 +1655,19 @@ extension on _RoutineSetupScreenState {
 
   Widget _buildIconButton(
     IconData icon,
-    VoidCallback onPressed, {
+    VoidCallback? onPressed, {
     String? tooltip,
   }) {
     final theme = Theme.of(context);
+    final isEnabled = onPressed != null;
     return Tooltip(
       message: tooltip ?? '',
       child: IconButton(
         onPressed: onPressed,
         icon: Icon(icon),
-        color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
+        color: isEnabled
+            ? theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())
+            : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
         iconSize: 28,
       ),
     );

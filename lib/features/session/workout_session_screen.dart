@@ -724,6 +724,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
+    final entries =
+        exercise['entries'] as List<Map<String, dynamic>>? ?? const [];
+
+    if (entries.length >= WorkoutConstants.maxEntriesPerEffort) {
+      return;
+    }
 
     // Mark structural change so the discard-confirmation fires on Back.
     if (widget.editMode) _hasStructuralChanges = true;
@@ -931,7 +937,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       final ex = _exercises[_currentExerciseIndex];
       final effortId = ex['id'] as String;
       final effortKind = ex['effortKind'] as String? ?? 'set';
-      if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
+      if (effortKind == 'timed' ||
+          effortKind == 'drill' ||
+          effortKind == 'round') {
         final timerKey = '$effortId-${_currentSet - 1}';
         if (_effortRunning[timerKey] == true) {
           _pauseEffortTimer(effortId, _currentSet - 1);
@@ -958,7 +966,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       final ex = _exercises[_currentExerciseIndex];
       final effortId = ex['id'] as String;
       final effortKind = ex['effortKind'] as String? ?? 'set';
-      if (effortKind == 'timed' || effortKind == 'drill' || effortKind == 'round') {
+      if (effortKind == 'timed' ||
+          effortKind == 'drill' ||
+          effortKind == 'round') {
         final timerKey = '$effortId-${_currentSet - 1}';
         if (_effortRunning[timerKey] == true) {
           _pauseEffortTimer(effortId, _currentSet - 1);
@@ -1243,9 +1253,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeColors = OmniTheme.colorsForTheme(
-      widget.settingsState.appTheme,
-    );
+    final themeColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
     // Explicitly anchor FilledButton background to the active accent token so
     // the "Finish Workout" button â€” and any dialog opened from this screen â€”
     // cannot inherit a stale or reset colorScheme.primary from an intervening

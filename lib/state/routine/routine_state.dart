@@ -3,10 +3,10 @@ import 'package:flutter/foundation.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../core/constants/effort_defaults.dart';
-
+import '../../core/constants/workout_constants.dart';
 
 /// State management for routine (workout template) creation and management.
-/// 
+///
 /// Extends ChangeNotifier to provide reactive updates to UI.
 /// All data operations go through the injected WorkoutRepository,
 /// making this code work with both MockWorkoutRepository (web) and future
@@ -39,8 +39,10 @@ class RoutineState extends ChangeNotifier {
 
   List<WorkoutTemplate> get routines => List.unmodifiable(_routines);
   WorkoutTemplate? get currentTemplate => _currentTemplate;
-  List<TemplateSegment> get currentSegments => List.unmodifiable(_currentSegments);
-  List<TemplateEffort> get currentEfforts => List.unmodifiable(_flattenedEfforts());
+  List<TemplateSegment> get currentSegments =>
+      List.unmodifiable(_currentSegments);
+  List<TemplateEffort> get currentEfforts =>
+      List.unmodifiable(_flattenedEfforts());
   List<TemplateTarget> get currentTargets => List.unmodifiable(_currentTargets);
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -221,8 +223,9 @@ class RoutineState extends ChangeNotifier {
   /// Count planned sessions linked to a template (for delete warning UI).
   Future<int> countPlannedSessionsForTemplate(String templateId) async {
     try {
-      final sessions =
-          await _repository.getPlannedSessionsByTemplateId(templateId);
+      final sessions = await _repository.getPlannedSessionsByTemplateId(
+        templateId,
+      );
       return sessions.length;
     } catch (e) {
       return 0;
@@ -337,7 +340,11 @@ class RoutineState extends ChangeNotifier {
   }
 
   /// Update segment metadata
-  Future<void> updateSegment(String segmentId, {String? name, String? segmentType}) async {
+  Future<void> updateSegment(
+    String segmentId, {
+    String? name,
+    String? segmentType,
+  }) async {
     _clearError();
 
     try {
@@ -385,9 +392,7 @@ class RoutineState extends ChangeNotifier {
   Future<void> cloneSegment(String segmentId) async {
     _clearError();
     try {
-      final sourceIndex = _currentSegments.indexWhere(
-        (s) => s.id == segmentId,
-      );
+      final sourceIndex = _currentSegments.indexWhere((s) => s.id == segmentId);
       if (sourceIndex == -1) return;
       final source = _currentSegments[sourceIndex];
 
@@ -538,7 +543,9 @@ class RoutineState extends ChangeNotifier {
       for (final entry in _segmentEfforts.entries) {
         entry.value.removeWhere((e) => e.id == templateEffortId);
       }
-      _currentTargets.removeWhere((t) => t.templateEffortId == templateEffortId);
+      _currentTargets.removeWhere(
+        (t) => t.templateEffortId == templateEffortId,
+      );
       _scheduleAutosave();
       notifyListeners();
     } catch (e) {
@@ -578,7 +585,10 @@ class RoutineState extends ChangeNotifier {
   }
 
   /// Update tracking method for an effort
-  Future<void> updateEffortKind(String templateEffortId, String effortKind) async {
+  Future<void> updateEffortKind(
+    String templateEffortId,
+    String effortKind,
+  ) async {
     _clearError();
 
     try {
@@ -721,8 +731,15 @@ class RoutineState extends ChangeNotifier {
 
     try {
       final targets = getEffortTargets(templateEffortId);
+      final currentSetCount = targets.isEmpty
+          ? 0
+          : (_getMaxSetIndex(targets) + 1);
+      if (currentSetCount >= WorkoutConstants.maxEntriesPerEffort) {
+        return;
+      }
+
       final lastSetIndex = _getMaxSetIndex(targets);
-      final newSetIndex = lastSetIndex + 1;
+      final newSetIndex = currentSetCount;
 
       final previousTargets = lastSetIndex >= 0
           ? getEffortTargetsForSet(templateEffortId, lastSetIndex)
@@ -732,8 +749,7 @@ class RoutineState extends ChangeNotifier {
       // so the first set of a round effort starts with the correct default rather
       // than the generic 3-min boxing fallback.
       final exerciseId = _findEffortById(templateEffortId)?.exerciseId;
-      final exerciseDefault =
-          exerciseId != null
+      final exerciseDefault = exerciseId != null
           ? _exerciseCache[exerciseId]?.defaultRoundDurationSecs
           : null;
 
@@ -833,7 +849,9 @@ class RoutineState extends ChangeNotifier {
     switch (target.metricId) {
       case 'metric-weight':
       case 'metric-distance':
-        return target.targetMin ?? target.targetMax ?? target.targetInt?.toDouble();
+        return target.targetMin ??
+            target.targetMax ??
+            target.targetInt?.toDouble();
       default:
         return target.targetInt ?? target.targetMin?.round();
     }
@@ -883,8 +901,11 @@ class RoutineState extends ChangeNotifier {
     final result = List<TemplateEffort>.empty(growable: true);
 
     for (final segment in orderedSegments) {
-      final efforts = [...(_segmentEfforts[segment.id] ?? <TemplateEffort>[])].cast<TemplateEffort>()
-        ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      final efforts =
+          [
+              ...(_segmentEfforts[segment.id] ?? <TemplateEffort>[]),
+            ].cast<TemplateEffort>()
+            ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
       result.addAll(efforts);
     }
 
@@ -905,10 +926,10 @@ class RoutineState extends ChangeNotifier {
     try {
       await _repository.createTemplate(_currentTemplate!);
 
-      final existingSegments =
-          await _repository.getTemplateSegments(_currentTemplate!.id);
-      final currentSegmentIds =
-          _currentSegments.map((s) => s.id).toSet();
+      final existingSegments = await _repository.getTemplateSegments(
+        _currentTemplate!.id,
+      );
+      final currentSegmentIds = _currentSegments.map((s) => s.id).toSet();
       for (final segment in existingSegments) {
         if (!currentSegmentIds.contains(segment.id)) {
           await _repository.deleteTemplateSegment(segment.id);
@@ -917,8 +938,9 @@ class RoutineState extends ChangeNotifier {
 
       for (final segment in _currentSegments) {
         await _repository.createTemplateSegment(segment);
-        final existingEfforts =
-            await _repository.getTemplateEfforts(segment.id);
+        final existingEfforts = await _repository.getTemplateEfforts(
+          segment.id,
+        );
         final currentEfforts = _segmentEfforts[segment.id] ?? [];
         final currentEffortIds = currentEfforts.map((e) => e.id).toSet();
 
@@ -931,8 +953,9 @@ class RoutineState extends ChangeNotifier {
         for (final effort in currentEfforts) {
           await _repository.createTemplateEffort(effort);
 
-          final existingTargets =
-              await _repository.getTemplateTargets(effort.id);
+          final existingTargets = await _repository.getTemplateTargets(
+            effort.id,
+          );
           final currentTargets = getEffortTargets(effort.id);
           final currentTargetIds = currentTargets.map((t) => t.id).toSet();
 
