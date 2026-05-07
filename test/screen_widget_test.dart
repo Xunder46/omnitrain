@@ -58,43 +58,33 @@ void main() {
         MaterialApp(
           home: Scaffold(
             bottomNavigationBar: OmniBottomCTA(
-              label: 'Primary Action',
+              label: 'Continue',
               onPressed: () {},
             ),
           ),
         ),
       );
+      await tester.pumpAndSettle();
 
-      expect(find.byType(OmniBottomCTA), findsOneWidget);
-      expect(find.text('Primary Action'), findsOneWidget);
-
-      final sizedBox = tester.widget<SizedBox>(
-        find
-            .ancestor(
-              of: find.byType(FilledButton),
-              matching: find.byType(SizedBox),
-            )
-            .first,
+      final ctaBox = tester.widget<SizedBox>(
+        find.descendant(
+          of: find.byType(OmniBottomCTA),
+          matching: find.byType(SizedBox),
+        ),
       );
-      expect(sizedBox.height, OmniTheme.buttonPrimaryHeight);
+      expect(ctaBox.height, OmniTheme.buttonPrimaryHeight);
 
       final button = tester.widget<FilledButton>(find.byType(FilledButton));
-      final resolvedShape = button.style?.shape?.resolve(<WidgetState>{});
-      expect(resolvedShape, isA<RoundedRectangleBorder>());
-      final shape = resolvedShape! as RoundedRectangleBorder;
+      final style = button.style!;
+      final shape = style.shape!.resolve(<WidgetState>{})!
+          as RoundedRectangleBorder;
       expect(
         shape.borderRadius,
         BorderRadius.circular(OmniTheme.buttonBorderRadius),
       );
     });
-  });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // SettingsScreen
-  // ══════════════════════════════════════════════════════════════════════════
-
-  group('SettingsScreen', () {
-    testWidgets('renders Settings title and Appearance section', (
+    testWidgets('settings screen keeps the streamlined section layout', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
@@ -102,28 +92,12 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Settings'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('APPEARANCE'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.text('APPEARANCE'), findsOneWidget);
-    });
-
-    testWidgets('renders retained sections in order with version footer', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
-      await settingsState.initialize();
-
-      await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 

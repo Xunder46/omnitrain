@@ -60,7 +60,7 @@ Blocks are displayed in `WorkoutSessionScreen` sorted by `orderIndex`. This give
 |---------|-----------------|-----------------|
 | Session duration counter | Visible in header | **Hidden** (`isRolling` suppresses it) |
 | Segment blocks | Present if session has multiple segments | Present; named by time |
-| Finish / Done flow | Ends session with elapsed time recorded | Ends session; `endedAtMs` is set on explicit finish |
+| Finish / Done flow | Empty sessions discard immediately and return to HomeScreen; non-empty sessions end with elapsed time recorded | Empty sessions discard immediately and return to HomeScreen; non-empty sessions end the rolling session and set `endedAtMs` on explicit finish |
 
 The duration suppression is handled inline in `WorkoutSessionScreen`:
 
@@ -89,6 +89,8 @@ There is no separate first-time-only sheet. The guidance text is always visible 
 Rolling sessions are only available via the **Free Training tile** on `HomeScreen`. No other modality tile offers this option. The toggle is presented every time the sheet opens — it is not hidden after first use.
 
 When an active rolling session exists and the user taps the Free Training tile, the app navigates directly back to `WorkoutSessionScreen` without showing a conflict dialog (because all modality tiles can legitimately log exercises into a rolling session).
+
+If the user finishes a Free Training session before logging any exercises, the app discards that empty session and pops back to `HomeScreen` immediately. No confirmation dialog or summary screen is shown for empty Free Training sessions.
 
 ---
 
@@ -123,4 +125,4 @@ When an active rolling session exists and the user taps the Free Training tile, 
 ---
 
 **Document Version**: 1.0
-**Last Updated**: April 11, 2026
+**Last Updated**: May 5, 2026

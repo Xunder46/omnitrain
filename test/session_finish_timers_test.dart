@@ -82,10 +82,12 @@ void main() {
     expect(timedEntries.first.state, TimedState.finished);
   });
 
-  testWidgets('empty session: Finish Workout exits immediately without dialog', (
+  testWidgets('empty free-training session exits immediately without dialog', (
     WidgetTester tester,
   ) async {
     final deps = await setupStates();
+
+    expect(deps.workoutState.currentSession?.modality, isNull);
 
     await tester.pumpWidget(
       MaterialApp(

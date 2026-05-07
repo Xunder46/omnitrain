@@ -638,56 +638,67 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         label = 'Set $_currentSet of $totalEntries';
     }
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Minus — remove-set (secondary, lower prominence)
-        Tooltip(
-          message: 'Remove set',
-          child: InkWell(
-            onTap: _deleteCurrentSet,
-            customBorder: const CircleBorder(),
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 50, minHeight: 50),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.remove,
-                size: 24,
-                color: theme.colorScheme.onSurface
-                    .withAlpha((0.35 * 255).round()),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactSpacing = constraints.maxWidth < 320 ? 2.0 : 4.0;
+        final compactLetterSpacing = constraints.maxWidth < 320 ? 1.0 : 2.0;
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Minus — remove-set (secondary, lower prominence)
+            Tooltip(
+              message: 'Remove set',
+              child: InkWell(
+                onTap: _deleteCurrentSet,
+                customBorder: const CircleBorder(),
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 50, minHeight: 50),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.remove,
+                    size: 24,
+                    color: theme.colorScheme.onSurface
+                        .withAlpha((0.35 * 255).round()),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: theme.textTheme.titleMedium?.copyWith(
-            letterSpacing: 2,
-            color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(width: 4),
-        // Plus — add-set (primary, higher prominence)
-        Tooltip(
-          message: 'Add set',
-          child: InkWell(
-            onTap: _addSet,
-            customBorder: const CircleBorder(),
-            child: Container(
-              constraints: const BoxConstraints(minWidth: 50, minHeight: 50),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.add,
-                size: 24,
-                color: theme.colorScheme.primary,
+            SizedBox(width: compactSpacing),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  letterSpacing: compactLetterSpacing,
+                  color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ),
-        ),
-      ],
+            SizedBox(width: compactSpacing),
+            // Plus — add-set (primary, higher prominence)
+            Tooltip(
+              message: 'Add set',
+              child: InkWell(
+                onTap: _addSet,
+                customBorder: const CircleBorder(),
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 50, minHeight: 50),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.add,
+                    size: 24,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

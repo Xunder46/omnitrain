@@ -148,12 +148,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  void _openPeriods(BuildContext context) {
-    Navigator.of(context).push(
+  Future<void> _openPeriods(BuildContext context) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PeriodListScreen(periodState: widget.periodState),
       ),
     );
+    if (context.mounted) {
+      widget.calendarState.refresh();
+    }
   }
 
   Future<void> _onDayTap(BuildContext context, DateTime date) async {

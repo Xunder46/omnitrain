@@ -973,12 +973,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   /// - NOT in edit mode (edit mode is for reviewing completed sessions)
   /// - Session has no exercises yet
   /// - First load (auto-open not yet attempted)
-  /// - Not a rolling session (rolling sessions use per-block add buttons)
+  /// - Not a rolling session with existing blocks
   bool _shouldAutoOpenPicker() {
+    final hasBlocks = widget.workoutState.getSessionBlocks().isNotEmpty;
     return !widget.editMode &&
         _exercises.isEmpty &&
         !_autoOpenAttempted &&
-        !widget.workoutState.isRollingSession;
+        (!widget.workoutState.isRollingSession || !hasBlocks);
   }
 
   /// Schedule the exercise picker to open after the current frame renders.
@@ -1060,6 +1061,29 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       if (effortId.isNotEmpty && blockId != null) {
         try {
           await widget.workoutState.assignEffortToBlock(effortId, blockId);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to assign exercise to block: $e')),
+            );
+          }
+        }
+      }
+
+      // Rolling sessions display exercises grouped in blocks. Session-level add
+      // actions (no explicit blockId) create a new time-named block per add.
+      if (effortId.isNotEmpty &&
+          blockId == null &&
+          widget.workoutState.isRollingSession) {
+        try {
+          await widget.workoutState.addSessionBlock();
+          final blocks = widget.workoutState.getSessionBlocks();
+          if (blocks.isNotEmpty) {
+            await widget.workoutState.assignEffortToBlock(
+              effortId,
+              blocks.last.id,
+            );
+          }
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

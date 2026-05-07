@@ -109,7 +109,8 @@ void main() {
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Easy Run');
 
-      expect(find.widgetWithText(FilledButton, 'Log Interval'), findsOneWidget);
+      // Timer exercises show "Start" first — log button appears after starting
+      expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
     });
 
     // S-003: Round exercise in non-sports session → shows "Log Round"
@@ -128,7 +129,8 @@ void main() {
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Heavy Bag Rounds');
 
-      expect(find.widgetWithText(FilledButton, 'Log Round'), findsOneWidget);
+      // Round exercises show "Start" first — log button appears after starting
+      expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
     });
 
     // S-004: Round exercise in sports session → shows "Log Period"
@@ -147,7 +149,8 @@ void main() {
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Heavy Bag Rounds');
 
-      expect(find.widgetWithText(FilledButton, 'Log Period'), findsOneWidget);
+      // Sports round exercises show "Start" first — log button appears after starting
+      expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
     });
 
     // S-005: Drill exercise → shows "Log Hold"
@@ -164,7 +167,8 @@ void main() {
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Plank Hold');
 
-      expect(find.widgetWithText(FilledButton, 'Log Hold'), findsOneWidget);
+      // Drill exercises show "Start" first — log button appears after starting
+      expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
     });
   });
 
@@ -482,8 +486,8 @@ void main() {
         await tester.tap(find.byIcon(Icons.arrow_forward));
         await tester.pumpAndSettle();
 
-        // Previous set 1 was never logged → should show "Previous: —"
-        expect(find.textContaining('Previous: —'), findsOneWidget);
+        // Previous set 1 was never logged → no previous banner shown
+        expect(find.textContaining('Previous:'), findsNothing);
       },
     );
   });

@@ -71,8 +71,10 @@ HomeScreen
   │                                    └── ⋮ menu → Edit → RoutineSetupScreen (existing)
   │                                               → Delete → confirmation dialog
   │
-  ├── Free Training Tile ──→ SessionOverviewScreen (modality = null)
-  │                            └── (same flow as modality tiles above)
+  ├── Free Training Tile ──→ Free Training start sheet
+  │                            ├── Rolling Session toggle
+  │                            └── Start Session ──→ WorkoutSessionScreen (modality = null)
+  │                                                  └── Empty finish discards the session and returns to HomeScreen
   │
     └── Maintenance Sheet
       ├── Calendar ──→ CalendarScreen
