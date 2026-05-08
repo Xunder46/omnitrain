@@ -97,7 +97,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // Add a set
-    await tester.tap(find.byTooltip('Add set'));
+    final addSetButton = find.byIcon(Icons.add);
+    await tester.ensureVisible(addSetButton);
+    await tester.tap(addSetButton);
     await tester.pumpAndSettle();
 
     // Back from detail to list view via custom back button

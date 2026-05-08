@@ -411,3 +411,4 @@ to give Flutter the layout hint.
 Implementation done. All Phase 0 tests green. Ready for Code Reviewer.
 
 ## Feedback
+- Empty-session finish semantics were later updated after Item 1 shipped: standard and Free Training empty sessions now discard immediately and return to the previous screen instead of showing the old confirmation dialog.

@@ -13,14 +13,18 @@ extension SessionCoreEntryMethods on SessionCore {
 
     try {
       final segment = segmentId != null
-          ? _segments.firstWhere((s) => s.id == segmentId, orElse: () => _segments.first)
+          ? _segments.firstWhere(
+              (s) => s.id == segmentId,
+              orElse: () => _segments.first,
+            )
           : _segments.first;
       final now = DateTime.now().millisecondsSinceEpoch;
 
       String effortKind;
       if (effortKindOverride != null) {
         effortKind = effortKindOverride;
-      } else if (_currentModalityConfig != null && _currentSession?.modality != null) {
+      } else if (_currentModalityConfig != null &&
+          _currentSession?.modality != null) {
         effortKind = _currentModalityConfig!.effortKind;
       } else if (chosenMetric != null) {
         effortKind = ModalityConfig.effortKindFromMetric(chosenMetric);
@@ -30,8 +34,8 @@ extension SessionCoreEntryMethods on SessionCore {
 
       _exerciseCache[exercise.id] = exercise;
 
-      final effortId = 'effort-$now';
       final currentEfforts = _efforts[segment.id] ?? [];
+      final effortId = 'effort-$now-${currentEfforts.length}';
       final effort = SegmentEffort(
         id: effortId,
         segmentId: segment.id,
@@ -69,20 +73,38 @@ extension SessionCoreEntryMethods on SessionCore {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final existingObservations = _observations[effortId] ?? <EffortObservation>[];
+      final existingObservations =
+          _observations[effortId] ?? <EffortObservation>[];
       final entryIndex = effort.effortKind == 'set'
-          ? existingObservations.where((o) => o.metricId == MetricIds.reps).length
+          ? existingObservations
+                .where((o) => o.metricId == MetricIds.reps)
+                .length
           : existingObservations.length ~/ 2;
+
+      final existingEntryCount = effort.effortKind == 'round'
+          ? _timerManager.getRoundsForEffort(effortId).length
+          : ((effort.effortKind == 'timed' || effort.effortKind == 'drill')
+                ? _timerManager.getTimedInstancesForEffort(effortId).length
+                : existingObservations
+                      .where((o) => o.metricId == MetricIds.reps)
+                      .length);
+      if (existingEntryCount >= WorkoutConstants.maxEntriesPerEffort) {
+        return;
+      }
 
       if (effort.effortKind == 'round') {
         final existingRounds = _timerManager.getRoundsForEffort(effortId);
-        final exerciseDefault = _exerciseCache[effort.exerciseId]?.defaultRoundDurationSecs;
+        final exerciseDefault =
+            _exerciseCache[effort.exerciseId]?.defaultRoundDurationSecs;
         final previousDuration = existingRounds.isNotEmpty
             ? existingRounds.last.plannedDurationSecs
             : (previousValues?['round-duration'] as int?) ??
                   exerciseDefault ??
                   WorkoutConstants.defaultRoundDurationSecs;
-        await _timerManager.addRound(effortId, plannedDurationSecs: previousDuration);
+        await _timerManager.addRound(
+          effortId,
+          plannedDurationSecs: previousDuration,
+        );
         return;
       }
 
@@ -91,7 +113,10 @@ extension SessionCoreEntryMethods on SessionCore {
         final timedIndex = existing.length;
         final targetDuration = (previousValues?['duration'] as int?) ?? 0;
 
-        await _timerManager.addTimedEntry(effortId, targetDurationSecs: targetDuration);
+        await _timerManager.addTimedEntry(
+          effortId,
+          targetDurationSecs: targetDuration,
+        );
 
         final obsToCreate = <EffortObservation>[];
         if (effort.effortKind == 'timed') {
@@ -164,7 +189,11 @@ extension SessionCoreEntryMethods on SessionCore {
               updatedAtMs: now,
             ),
           );
-          final hasLoad = _exerciseCache[effort.exerciseId]?.capabilities.contains('load') ?? false;
+          final hasLoad =
+              _exerciseCache[effort.exerciseId]?.capabilities.contains(
+                'load',
+              ) ??
+              false;
           if (!hasLoad) {
             observations.add(
               EffortObservation(
@@ -214,14 +243,24 @@ extension SessionCoreEntryMethods on SessionCore {
     _clearError();
 
     try {
-      if (metricKey == 'round-duration' && _findEffort(effortId)?.effortKind == 'round') {
-        await _timerManager.updateRoundPlannedDuration(effortId, entryIndex, value as int);
+      if (metricKey == 'round-duration' &&
+          _findEffort(effortId)?.effortKind == 'round') {
+        await _timerManager.updateRoundPlannedDuration(
+          effortId,
+          entryIndex,
+          value as int,
+        );
         return;
       }
 
       final effortKind = _findEffort(effortId)?.effortKind;
-      if (metricKey == 'duration' && (effortKind == 'timed' || effortKind == 'drill')) {
-        await _timerManager.updateTimedTargetDuration(effortId, entryIndex, value as int);
+      if (metricKey == 'duration' &&
+          (effortKind == 'timed' || effortKind == 'drill')) {
+        await _timerManager.updateTimedTargetDuration(
+          effortId,
+          entryIndex,
+          value as int,
+        );
         return;
       }
 
@@ -240,7 +279,8 @@ extension SessionCoreEntryMethods on SessionCore {
       if (entryIndex < matchingObservations.length) {
         final obsIndex = matchingObservations[entryIndex].key;
         final oldObs = observations[obsIndex];
-        final shouldClearSkipMarker = metricKey == 'reps' && value is int && value > 0;
+        final shouldClearSkipMarker =
+            metricKey == 'reps' && value is int && value > 0;
         final newObs = EffortObservation(
           id: oldObs.id,
           effortId: oldObs.effortId,
@@ -342,7 +382,9 @@ extension SessionCoreEntryMethods on SessionCore {
       if (observations == null) return;
 
       final idPrefix = 'obs-$effortId-$entryIndex-';
-      final obsToDelete = observations.where((o) => o.id.startsWith(idPrefix)).toList();
+      final obsToDelete = observations
+          .where((o) => o.id.startsWith(idPrefix))
+          .toList();
 
       if (obsToDelete.isNotEmpty) {
         for (final obs in obsToDelete) {
@@ -365,7 +407,10 @@ extension SessionCoreEntryMethods on SessionCore {
           await _repository.deleteObservation(obs.id);
         }
 
-        observations.removeRange(startIndex, endIndex.clamp(0, observations.length));
+        observations.removeRange(
+          startIndex,
+          endIndex.clamp(0, observations.length),
+        );
       }
 
       _notify();

@@ -724,6 +724,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
+    final entries =
+        exercise['entries'] as List<Map<String, dynamic>>? ?? const [];
+
+    if (entries.length >= WorkoutConstants.maxEntriesPerEffort) {
+      return;
+    }
 
     // Mark structural change so the discard-confirmation fires on Back.
     if (widget.editMode) _hasStructuralChanges = true;
@@ -731,7 +737,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     await _loadExercises();
   }
 
-  Future<void> _deleteLastSet() async {
+  Future<void> _deleteCurrentSet() async {
     if (_exercises.isEmpty) return;
 
     final exercise = _exercises[_currentExerciseIndex];
@@ -739,23 +745,26 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final exerciseName = exercise['name'] as String;
     final entries = exercise['entries'] as List<Map<String, dynamic>>;
     final effortKind = exercise['effortKind'] as String? ?? 'set';
+    final currentIndex = _currentSet - 1;
 
     if (entries.isEmpty) return;
 
-    // If this is the last entry, warn that the exercise will be removed
-    if (entries.length == 1) {
-      final setLabel = effortKind == 'round'
-          ? 'round'
-          : (effortKind == 'timed'
-                ? 'interval'
-                : (effortKind == 'drill' ? 'hold' : 'set'));
+    final setLabel = effortKind == 'round'
+        ? 'Round'
+        : (effortKind == 'timed'
+              ? 'Interval'
+              : (effortKind == 'drill' ? 'Hold' : 'Set'));
 
+    final isLogged = _isSetLogged(effortId, currentIndex, effortKind);
+
+    // If this is the last entry, always warn since it removes the entire exercise
+    if (entries.length == 1) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Remove Exercise?'),
           content: Text(
-            'This is the last $setLabel for "$exerciseName". '
+            'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
             'Deleting it will remove the entire exercise from your session.\n\n'
             'Continue?',
           ),
@@ -794,7 +803,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
       // Delete the entry and remove the exercise
       if (widget.editMode) _hasStructuralChanges = true;
-      await widget.workoutState.deleteEntry(effortId, entries.length - 1);
+      _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
+      await widget.workoutState.deleteEntry(effortId, currentIndex);
       await widget.workoutState.removeExerciseFromSession(effortId);
       await _loadExercises();
 
@@ -809,15 +819,56 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       return;
     }
 
-    // Not the last entry - delete normally
+    // Multi-set: only confirm if the set has been logged
+    if (isLogged) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Delete logged $setLabel?'),
+          content: const Text('This cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ButtonStyle(
+                shape: WidgetStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      OmniTheme.buttonUtilityRadius,
+                    ),
+                  ),
+                ),
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+    }
+
     if (widget.editMode) _hasStructuralChanges = true;
-    await widget.workoutState.deleteEntry(effortId, entries.length - 1);
+    await widget.workoutState.deleteEntry(effortId, currentIndex);
     await _loadExercises();
 
-    // Adjust current set if needed
+    // Adjust current set if it now exceeds new entries length
     setState(() {
-      if (_currentSet > entries.length - 1) {
-        _currentSet = (entries.length - 1).clamp(1, entries.length);
+      final newCount = entries.length - 1;
+      if (_currentSet > newCount) {
+        _currentSet = newCount.clamp(1, newCount);
       }
     });
   }
@@ -885,6 +936,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   void _jumpToSet(int setNumber) {
+    // Auto-pause timer if in progress before jumping to another set.
+    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
+      final ex = _exercises[_currentExerciseIndex];
+      final effortId = ex['id'] as String;
+      final effortKind = ex['effortKind'] as String? ?? 'set';
+      if (effortKind == 'timed' ||
+          effortKind == 'drill' ||
+          effortKind == 'round') {
+        final timerKey = '$effortId-${_currentSet - 1}';
+        if (_effortRunning[timerKey] == true) {
+          _pauseEffortTimer(effortId, _currentSet - 1);
+        }
+      }
+    }
     setState(() {
       _currentSet = setNumber;
     });
@@ -900,6 +965,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   void _switchExercise(int delta) {
     final newIndex = _currentExerciseIndex + delta;
     if (newIndex < 0 || newIndex >= _exercises.length) return;
+    // Auto-pause timer if in progress before switching exercise.
+    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
+      final ex = _exercises[_currentExerciseIndex];
+      final effortId = ex['id'] as String;
+      final effortKind = ex['effortKind'] as String? ?? 'set';
+      if (effortKind == 'timed' ||
+          effortKind == 'drill' ||
+          effortKind == 'round') {
+        final timerKey = '$effortId-${_currentSet - 1}';
+        if (_effortRunning[timerKey] == true) {
+          _pauseEffortTimer(effortId, _currentSet - 1);
+        }
+      }
+    }
     unawaited(_focusExerciseDetail(newIndex));
   }
 
@@ -908,12 +987,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   /// - NOT in edit mode (edit mode is for reviewing completed sessions)
   /// - Session has no exercises yet
   /// - First load (auto-open not yet attempted)
-  /// - Not a rolling session (rolling sessions use per-block add buttons)
+  /// - Not a rolling session with existing blocks
   bool _shouldAutoOpenPicker() {
+    final hasBlocks = widget.workoutState.getSessionBlocks().isNotEmpty;
     return !widget.editMode &&
         _exercises.isEmpty &&
         !_autoOpenAttempted &&
-        !widget.workoutState.isRollingSession;
+        (!widget.workoutState.isRollingSession || !hasBlocks);
   }
 
   /// Schedule the exercise picker to open after the current frame renders.
@@ -931,6 +1011,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   Future<void> _addExercise({String? segmentId, String? blockId}) async {
+    // Capture before the dialog so we can detect when this is the first exercise.
+    final isFirstExercise = _exercises.isEmpty;
     final sessionModality = widget.workoutState.currentSession?.modality;
     final modality = sessionModality ?? widget.preferredModality;
 
@@ -1002,6 +1084,35 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         }
       }
 
+      // Rolling sessions display exercises grouped in blocks. Session-level add
+      // actions (no explicit blockId) create a new time-named block per add.
+      if (effortId.isNotEmpty &&
+          blockId == null &&
+          widget.workoutState.isRollingSession) {
+        try {
+          await widget.workoutState.addSessionBlock();
+          final blocks = widget.workoutState.getSessionBlocks();
+          if (blocks.isNotEmpty) {
+            await widget.workoutState.assignEffortToBlock(
+              effortId,
+              blocks.last.id,
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to assign exercise to block: $e')),
+            );
+          }
+        }
+      }
+
+      // Reset the session start time to now when the FIRST exercise is added so
+      // the global elapsed timer begins from zero at the moment training starts.
+      if (effortId.isNotEmpty && isFirstExercise && !widget.editMode) {
+        await widget.workoutState.resetSessionTimerStart();
+      }
+
       // Mark structural change AFTER we know the add succeeded.
       if (widget.editMode && effortId.isNotEmpty) _hasStructuralChanges = true;
       await _loadExercises();
@@ -1009,7 +1120,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       if (effortId.isNotEmpty) {
         final idx = _exercises.indexWhere((e) => e['id'] == effortId);
         if (idx != -1) {
-          unawaited(_focusExerciseDetail(idx));
+          await _focusExerciseDetail(idx);
         }
       }
     }
@@ -1146,9 +1257,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeColors = OmniTheme.colorsForTheme(
-      widget.settingsState.appTheme,
-    );
+    final themeColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
     // Explicitly anchor FilledButton background to the active accent token so
     // the "Finish Workout" button â€” and any dialog opened from this screen â€”
     // cannot inherit a stale or reset colorScheme.primary from an intervening

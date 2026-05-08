@@ -57,47 +57,9 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
         .getExercisesWithEntries()
         .isNotEmpty;
     if (!hasExercises) {
-      final emptyConfirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('End empty session?'),
-          content: const Text(
-            'No exercises have been logged. Are you sure you want to finish?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Finish'),
-            ),
-          ],
-        ),
-      );
-
-      if (emptyConfirmed == true && mounted) {
-        await _finishSession();
-      }
+      // No exercises logged — discard the empty session and exit immediately.
+      await widget.workoutState.discardCurrentSession();
+      if (mounted) Navigator.of(context).pop();
       return;
     }
 

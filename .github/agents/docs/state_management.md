@@ -456,6 +456,24 @@ Post-workout analytics.
 
 Groups flat observation lists by effort kind into structured per-set maps. Used by both session display and summary computation.
 
+### `WorkoutSessionTimerMixin` (UI timer state)
+
+**File**: `lib/features/session/workout_session_timer_mixin.dart`
+
+`part of workout_session_screen.dart`. Mixed into `_WorkoutSessionScreenState`. Owns per-effort timer UI state and lifecycle — translating `TimerManager` state into local widget fields (`_effortRunning`, `_timedState`, `_roundState`, etc.).
+
+**Key fields added (toolbar rework)**:
+- `_inProgressKeys` (`Set<String>`) — tracks `effortId-entryIndex` keys whose timer has been started at least once and not yet finished. Enforces the global in-progress lock: only one timer can be active at a time.
+
+**Key behaviors**:
+- `_restoreTimerStateFromPersisted`: populates `_inProgressKeys` for any persisted `active`/`paused` state on session restore.
+- `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows SnackBar `"Another set is still in progress. Pause or finish it before starting a new timer."` and returns early.
+- `_resetTimerState`: removes key from `_inProgressKeys` (called after set is logged/finished).
+
+**Auto-pause hooks** (in `workout_session_screen.dart`):
+- `_jumpToSet()` — checks if current set's timer is running (`_effortRunning[timerKey] == true`) and calls `_pauseEffortTimer` before navigating to a different set.
+- `_switchExercise()` — same auto-pause check before switching to a different exercise.
+
 ### `TimerAlertService`
 
 **File**: `lib/core/utils/timer_alert_service.dart`

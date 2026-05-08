@@ -404,7 +404,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: 110,
+                bottom: 130,
                 child: Center(
                   child: _buildRestOverlayChip(
                     theme,
@@ -572,7 +572,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: 110,
+                bottom: 130,
                 child: Center(
                   child: _buildRestOverlayChip(
                     theme,
@@ -801,7 +801,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                                 effortKind,
                                 theme,
                               ),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 10),
                               _buildSetProgress(
                                 entries.length,
                                 effortKind,
@@ -827,7 +827,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     ),
 
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                       child: _buildSetControls(theme),
                     ),
 
@@ -845,7 +845,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 110,
+                  bottom: 130,
                   child: Center(
                     child: _buildRestOverlayChip(
                       theme,
@@ -901,6 +901,8 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     fontWeight: FontWeight.w600,
                     color: OmniTheme.textPrimary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -914,6 +916,8 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                         ? Theme.of(context).colorScheme.primary
                         : OmniTheme.textSecondary,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 if (!_showListView && (currentSegmentName?.isNotEmpty ?? false))
                   Padding(
@@ -923,6 +927,8 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: OmniTheme.textSecondary,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
               ],

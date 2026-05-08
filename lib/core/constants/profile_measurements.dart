@@ -1,3 +1,9 @@
+import '../utils/unit_formatter.dart';
+
+// Validation range record used by log-entry save logic.
+// min/max are expressed in the unit the user is currently typing in.
+typedef _Range = ({double min, double max});
+
 class ProfileMeasurementDefinition {
   final String type;
   final String label;
@@ -109,6 +115,50 @@ class ProfileMeasurements {
     thigh,
     arm,
   ];
+
+  // ── Validation ranges ────────────────────────────────────────────────────
+
+  // Ranges for non-weight types and for kg weight types.
+  static const Map<String, _Range> _kgRanges = {
+    'bodyweight': (min: 20, max: 300),
+    'height': (min: 50, max: 250),
+    'body_fat_pct': (min: 1, max: 100),
+    'lean_mass': (min: 20, max: 200),
+    'waist_cm': (min: 30, max: 200),
+    'chest_cm': (min: 30, max: 200),
+    'hips_cm': (min: 30, max: 200),
+    'thigh_cm': (min: 20, max: 100),
+    'arm_cm': (min: 15, max: 80),
+  };
+
+  // Display-unit lbs ranges for weight types.
+  static const Map<String, _Range> _lbsRanges = {
+    'bodyweight': (min: 40, max: 600),
+    'lean_mass': (min: 40, max: 440),
+  };
+
+  /// Returns the valid [min, max] range for [type] in the unit the user is
+  /// currently typing in. [weightUnit] should be
+  /// [SettingsState.preferredWeightUnit] (e.g. `'kg'` or `'lbs'`).
+  static _Range validationRangeFor(String type, String weightUnit) {
+    final isLbs = UnitFormatter.normalizeWeightUnit(weightUnit) == 'lbs';
+    if (isLbs && _lbsRanges.containsKey(type)) {
+      return _lbsRanges[type]!;
+    }
+    return _kgRanges[type] ?? (min: 0, max: double.infinity);
+  }
+
+  /// Returns the display unit label used in validation error messages for
+  /// [type]. For weight types, respects the user's [weightUnit] preference.
+  static String validationUnitLabel(String type, String weightUnit) {
+    final def = definitionFor(type);
+    if (def.unitId == 'unit-kg') {
+      return UnitFormatter.weightLabelForUnit(weightUnit);
+    }
+    return def.unitLabel;
+  }
+
+  // ── Other helpers ─────────────────────────────────────────────────────────
 
   static ProfileMeasurementDefinition definitionFor(String type) {
     for (final definition in all) {

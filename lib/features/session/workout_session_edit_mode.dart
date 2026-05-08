@@ -1,5 +1,141 @@
 part of 'workout_session_screen.dart';
 
+// ── Shared duration-entry dialog ──────────────────────────────────────────────
+//
+// A free function (not an extension method) so every part file in the library
+// can call it directly without going through the state extension.
+
+/// Opens an h / m / s duration-entry dialog pre-filled with [initialSecs].
+///
+/// Returns the confirmed duration in whole seconds, or `null` if the user
+/// taps Cancel.  Used by Session Time editing, timed-entry editing, drill-
+/// entry editing, round-entry editing, Add Set on timed/drill, and Add Round
+/// on round — six entry points, one shared dialog.
+Future<int?> _showDurationEntryDialog(
+  BuildContext context, {
+  String title = 'Edit Duration',
+  String subtitle = '',
+  required int initialSecs,
+}) async {
+  final h = initialSecs ~/ 3600;
+  final m = (initialSecs % 3600) ~/ 60;
+  final s = initialSecs % 60;
+
+  final hhCtrl = TextEditingController(text: h.toString());
+  final mmCtrl = TextEditingController(text: m.toString().padLeft(2, '0'));
+  final ssCtrl = TextEditingController(text: s.toString().padLeft(2, '0'));
+
+  final theme = Theme.of(context);
+
+  final int? result = await showDialog<int>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: Text(title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (subtitle.isNotEmpty) ...[
+            Text(
+              subtitle,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: OmniTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: hhCtrl,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  decoration: const InputDecoration(
+                    labelText: 'Hours',
+                    suffixText: 'h',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: mmCtrl,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  decoration: const InputDecoration(
+                    labelText: 'Min',
+                    suffixText: 'm',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: ssCtrl,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  decoration: const InputDecoration(
+                    labelText: 'Sec',
+                    suffixText: 's',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: ButtonStyle(
+            shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  OmniTheme.buttonUtilityRadius,
+                ),
+              ),
+            ),
+          ),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final hVal = int.tryParse(hhCtrl.text.trim()) ?? 0;
+            final mVal = int.tryParse(mmCtrl.text.trim()) ?? 0;
+            final sVal = int.tryParse(ssCtrl.text.trim()) ?? 0;
+            Navigator.pop(context, hVal * 3600 + mVal * 60 + sVal);
+          },
+          style: ButtonStyle(
+            shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  OmniTheme.buttonUtilityRadius,
+                ),
+              ),
+            ),
+          ),
+          child: const Text('Apply'),
+        ),
+      ],
+    ),
+  );
+
+  // Defer controller disposal until the dialog exit animation completes.
+  // Disposing immediately causes "used after being disposed" errors because
+  // the dialog's TextField widgets briefly outlive the showDialog future.
+  Future.delayed(const Duration(milliseconds: 300), () {
+    hhCtrl.dispose();
+    mmCtrl.dispose();
+    ssCtrl.dispose();
+  });
+
+  return result;
+}
+
 /// Edit-mode helpers for [WorkoutSessionScreen].
 ///
 /// Extension on [_WorkoutSessionScreenState] — because this file is a `part of`
@@ -68,123 +204,16 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
   /// the change is persisted only when the user taps "Save Changes".
   Future<void> _editSessionDuration() async {
     if (!widget.editMode) return;
-    final current = _pendingDurationSecs ?? 0;
-    final h = current ~/ 3600;
-    final m = (current % 3600) ~/ 60;
-    final s = current % 60;
-
-    final hhCtrl = TextEditingController(text: h.toString());
-    final mmCtrl = TextEditingController(text: m.toString().padLeft(2, '0'));
-    final ssCtrl = TextEditingController(text: s.toString().padLeft(2, '0'));
-
-    int? result;
-    result = await showDialog<int>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Edit Session Duration'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Adjust the total duration of this session.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: OmniTheme.textSecondary),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: hhCtrl,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    decoration: const InputDecoration(
-                      labelText: 'Hours',
-                      suffixText: 'h',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: mmCtrl,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    decoration: const InputDecoration(
-                      labelText: 'Min',
-                      suffixText: 'm',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: ssCtrl,
-                    keyboardType: TextInputType.number,
-                    textAlign: TextAlign.center,
-                    decoration: const InputDecoration(
-                      labelText: 'Sec',
-                      suffixText: 's',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final hVal = int.tryParse(hhCtrl.text.trim()) ?? 0;
-              final mVal = int.tryParse(mmCtrl.text.trim()) ?? 0;
-              final sVal = int.tryParse(ssCtrl.text.trim()) ?? 0;
-              Navigator.pop(context, hVal * 3600 + mVal * 60 + sVal);
-            },
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Apply'),
-          ),
-        ],
-      ),
+    final result = await _showDurationEntryDialog(
+      context,
+      title: 'Edit Session Duration',
+      subtitle: 'Adjust the total duration of this session.',
+      initialSecs: _pendingDurationSecs ?? 0,
     );
-    // Defer controller disposal until the dialog exit animation completes.
-    // Disposing immediately causes "used after being disposed" errors because
-    // the dialog's TextField widgets briefly outlive the showDialog future.
-    Future.delayed(const Duration(milliseconds: 300), () {
-      hhCtrl.dispose();
-      mmCtrl.dispose();
-      ssCtrl.dispose();
-    });
-
     if (result != null && result > 0 && mounted) {
       setState(() {
         _pendingDurationSecs = result;
-        _reformatElapsed(result as int);
+        _reformatElapsed(result);
       });
     }
   }
@@ -329,8 +358,14 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
   /// Structural changes (add/remove exercise, add/remove set) were already
   /// persisted immediately to the repository when they occurred, so only the
   /// metric edit buffer needs to be flushed here.
+  ///
+  /// Duration metrics are routed to the appropriate instance-level write
+  /// methods rather than to observation writes:
+  ///   - `'elapsedSecs'` on timed/drill → [WorkoutState.setTimedEntryDuration]
+  ///   - `'round-duration'` on round → [WorkoutState.setRoundDuration]
+  /// All other metric keys continue to use [WorkoutState.updateEntryValue].
   Future<void> _saveEditChanges() async {
-    // Persist all buffered metric changes to the repository.
+    // ── Step 1: flush metric edits ──────────────────────────────────────────
     for (final entry in _editBuffer.entries) {
       final parts = entry.key.split('-');
       if (parts.length < 2) continue;
@@ -339,24 +374,52 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
       final entryIndex = int.tryParse(parts.last);
       if (entryIndex == null) continue;
 
+      final effortKind = _getEffortKind(effortId);
       final metrics = entry.value;
+
       for (final metricEntry in metrics.entries) {
-        await widget.workoutState.updateEntryValue(
-          effortId,
-          entryIndex,
-          metricEntry.key,
-          metricEntry.value,
-        );
+        if (metricEntry.key == 'elapsedSecs' &&
+            (effortKind == 'timed' || effortKind == 'drill')) {
+          // Write directly to the TimedInstance (in-memory + repository)
+          // so computeSessionSummary picks up the updated elapsedMs.
+          await widget.workoutState.setTimedEntryDuration(
+            effortId,
+            entryIndex,
+            metricEntry.value as int,
+          );
+        } else if (metricEntry.key == 'round-duration' &&
+            effortKind == 'round') {
+          // Write directly to the RoundInstance (in-memory + repository)
+          // so computeSessionSummary picks up the updated elapsedMs.
+          await widget.workoutState.setRoundDuration(
+            effortId,
+            entryIndex,
+            metricEntry.value as int,
+          );
+        } else {
+          // All other metric keys (reps, weight, extra-weight, distance, etc.)
+          await widget.workoutState.updateEntryValue(
+            effortId,
+            entryIndex,
+            metricEntry.key,
+            metricEntry.value,
+          );
+        }
       }
     }
 
-    // Persist session duration change if any.
+    // ── Step 2: normalise all non-finished rounds to finished ───────────────
+    // Ensures a historical session never contains rounds in notStarted / active
+    // / paused states after the user saves.
+    await widget.workoutState.normalizeRoundsToFinished();
+
+    // ── Step 3: persist session duration change if any ──────────────────────
     if (_hasDurationChanged()) {
       await widget.workoutState.updateSessionEndTime(_pendingDurationSecs!);
       _originalDurationSecs = _pendingDurationSecs;
     }
 
-    // Commit: clear rollback state so the snapshot is never used accidentally.
+    // ── Step 4: clear rollback state ────────────────────────────────────────
     _editBuffer.clear();
     _hasStructuralChanges = false;
     _editSnapshot = null;

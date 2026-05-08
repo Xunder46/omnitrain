@@ -44,6 +44,20 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
   /// Keys for timed-state transitions in-flight (debounce double-taps).
   final Set<String> _pendingTimedTransitions = {};
 
+  /// Keys for effort entries whose timer has been started at least once and
+  /// has not yet been logged (reset). Cleared by [_resetTimerState].
+  /// Used to prevent starting a second concurrent timer.
+  final Set<String> _inProgressKeys = {};
+
+  /// Returns the first in-progress timer key that is NOT [currentKey],
+  /// or null if no other timer is in-progress.
+  String? _getAnotherInProgressKey(String currentKey) {
+    for (final key in _inProgressKeys) {
+      if (key != currentKey) return key;
+    }
+    return null;
+  }
+
   // ── Timer restore from persisted state ───────────────────────────────────
 
   /// Restore timer UI state from persisted [TimedInstance] and [RoundInstance]
@@ -76,11 +90,13 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
               } else {
                 _effortElapsed[timerKey] = elapsedSecs;
                 _effortRunning[timerKey] ??= false;
+                _inProgressKeys.add(timerKey);
               }
             case TimedState.paused:
               _effortElapsed[timerKey] =
                   (instance.elapsedMs / 1000).round();
               _effortRunning[timerKey] = false;
+              _inProgressKeys.add(timerKey);
             case TimedState.finished:
               _effortElapsed[timerKey] = instance.actualDurationSecs;
               _effortAlerted[timerKey] = instance.targetDurationSecs > 0;
@@ -107,10 +123,12 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
               } else {
                 _effortElapsed[timerKey] = elapsedSecs;
                 _effortRunning[timerKey] ??= false;
+                _inProgressKeys.add(timerKey);
               }
             case RoundState.paused:
               _effortElapsed[timerKey] = (round.elapsedMs / 1000).round();
               _effortRunning[timerKey] = false;
+              _inProgressKeys.add(timerKey);
             case RoundState.finished:
               _effortElapsed[timerKey] = round.actualDurationSecs;
               _effortAlerted[timerKey] = round.completed;
@@ -133,6 +151,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     _effortElapsed[timerKey] = 0;
     _effortTargetDuration.remove(timerKey);
     _effortAlerted[timerKey] = false;
+    _inProgressKeys.remove(timerKey);
   }
 
   int _getEffortTargetDuration(
@@ -241,6 +260,21 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
               .resumeRound(effortId, entryIndex)
               .whenComplete(() => _pendingRoundTransitions.remove(timerKey));
         case RoundState.notStarted:
+          // In-progress lock: block if another set's timer is already running.
+          final otherKey = _getAnotherInProgressKey(timerKey);
+          if (otherKey != null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Another set is still in progress. Pause or finish it before starting a new timer.",
+                  ),
+                ),
+              );
+            }
+            return;
+          }
+          _inProgressKeys.add(timerKey);
           _pendingRoundTransitions.add(timerKey);
           _effortRunning[timerKey] = true;
           _effortTimers[timerKey]?.cancel();
@@ -249,7 +283,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             (_) => _onEffortTick(effortId, entryIndex),
           );
           if (mounted) setState(() {});
-          unawaited(widget.workoutState.recordRestEnd(effortId, entryIndex));
+          unawaited(widget.workoutState.closeAllOpenRests(effortId));
           _lastRestPingFiredAt.remove(effortId);
           widget.workoutState
               .startRound(effortId, entryIndex)
@@ -287,6 +321,21 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             .resumeTimedEntry(effortId, entryIndex)
             .whenComplete(() => _pendingTimedTransitions.remove(timerKey));
       case TimedState.notStarted:
+        // In-progress lock: block if another set's timer is already running.
+        final otherKey = _getAnotherInProgressKey(timerKey);
+        if (otherKey != null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  "Another set is still in progress. Pause or finish it before starting a new timer.",
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        _inProgressKeys.add(timerKey);
         _pendingTimedTransitions.add(timerKey);
         _effortRunning[timerKey] = true;
         _effortTimers[timerKey]?.cancel();
@@ -295,7 +344,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           (_) => _onEffortTick(effortId, entryIndex),
         );
         if (mounted) setState(() {});
-        unawaited(widget.workoutState.recordRestEnd(effortId, entryIndex));
+        unawaited(widget.workoutState.closeAllOpenRests(effortId));
         _lastRestPingFiredAt.remove(effortId);
         widget.workoutState.startTimedEntry(effortId, entryIndex).whenComplete(
           () {

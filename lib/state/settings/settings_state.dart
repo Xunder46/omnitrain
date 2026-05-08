@@ -8,6 +8,7 @@ class SettingsState extends ChangeNotifier {
   static const String _preferredWeightUnitKey = 'preferred_weight_unit';
   static const String _preferredDistanceUnitKey = 'preferred_distance_unit';
   static const String _preferredStartOfWeekKey = 'preferred_start_of_week';
+  static const String _showFeelingSurveyKey = 'show_feeling_survey';
   static const String _effortTimerSoundKey = 'effort_timer_sound';
   static const String _restPingIntervalKey = 'rest_ping_interval';
   static const String _restPingSoundKey = 'rest_ping_sound';
@@ -46,6 +47,7 @@ class SettingsState extends ChangeNotifier {
   String _preferredWeightUnit = 'kg';
   String _preferredDistanceUnit = 'km';
   String _startOfWeek = 'monday';
+  bool _showFeelingSurvey = true;
   String _effortTimerSound = 'boxing_bell';
   int _restPingInterval = 0;
   String _restPingSound = 'soft_chime';
@@ -54,6 +56,7 @@ class SettingsState extends ChangeNotifier {
   String get preferredWeightUnit => _preferredWeightUnit;
   String get preferredDistanceUnit => _preferredDistanceUnit;
   String get startOfWeek => _startOfWeek;
+  bool get showFeelingSurvey => _showFeelingSurvey;
   String get effortTimerSound => _effortTimerSound;
   int get restPingInterval => _restPingInterval;
   String get restPingSound => _restPingSound;
@@ -101,6 +104,15 @@ class SettingsState extends ChangeNotifier {
     await _repository.setPreferenceString(
       _preferredStartOfWeekKey,
       _startOfWeek,
+    );
+    notifyListeners();
+  }
+
+  Future<void> setShowFeelingSurvey(bool value) async {
+    _showFeelingSurvey = value;
+    await _repository.setPreferenceString(
+      _showFeelingSurveyKey,
+      value.toString(),
     );
     notifyListeners();
   }
@@ -166,11 +178,17 @@ class SettingsState extends ChangeNotifier {
         ? 'sunday'
         : 'monday';
 
+    final savedShowFeelingSurvey = await _repository.getPreferenceString(
+      _showFeelingSurveyKey,
+      defaultValue: 'true',
+    );
+    _showFeelingSurvey = savedShowFeelingSurvey != 'false';
+
     final savedEffortSound = await _repository.getPreferenceString(
       _effortTimerSoundKey,
     );
-    _effortTimerSound = savedEffortSound != null &&
-            validSoundIds.contains(savedEffortSound)
+    _effortTimerSound =
+        savedEffortSound != null && validSoundIds.contains(savedEffortSound)
         ? savedEffortSound
         : 'boxing_bell';
 
@@ -178,18 +196,19 @@ class SettingsState extends ChangeNotifier {
       _restPingIntervalKey,
     );
     final parsedInterval = int.tryParse(savedPingIntervalStr ?? '');
-    final validIntervalValues =
-        restPingIntervalOptions.map((o) => o.value).toList();
-    _restPingInterval = parsedInterval != null &&
-            validIntervalValues.contains(parsedInterval)
+    final validIntervalValues = restPingIntervalOptions
+        .map((o) => o.value)
+        .toList();
+    _restPingInterval =
+        parsedInterval != null && validIntervalValues.contains(parsedInterval)
         ? parsedInterval
         : 0;
 
     final savedRestSound = await _repository.getPreferenceString(
       _restPingSoundKey,
     );
-    _restPingSound = savedRestSound != null &&
-            validSoundIds.contains(savedRestSound)
+    _restPingSound =
+        savedRestSound != null && validSoundIds.contains(savedRestSound)
         ? savedRestSound
         : 'soft_chime';
 

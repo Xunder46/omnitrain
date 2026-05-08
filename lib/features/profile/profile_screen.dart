@@ -629,6 +629,41 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
       return;
     }
 
+    // Reject zero and negative values explicitly.
+    if (value <= 0) {
+      setState(() {
+        _valueError = 'Enter a value greater than 0.';
+      });
+      return;
+    }
+
+    // Per-measurement validation range check.
+    final weightUnit = widget.settingsState.preferredWeightUnit;
+    final range = ProfileMeasurements.validationRangeFor(
+      widget.definition.type,
+      weightUnit,
+    );
+    final unitLabel = ProfileMeasurements.validationUnitLabel(
+      widget.definition.type,
+      weightUnit,
+    );
+    if (value < range.min || value > range.max) {
+      final minLabel = range.min == range.min.truncateToDouble()
+          ? range.min.toInt().toString()
+          : range.min.toStringAsFixed(1);
+      final maxLabel = range.max == range.max.truncateToDouble()
+          ? range.max.toInt().toString()
+          : range.max.toStringAsFixed(1);
+      setState(() {
+        _valueError =
+            'Enter a value between $minLabel and $maxLabel $unitLabel.';
+      });
+      return;
+    }
+
+    // Silently truncate to one decimal place (no rounding).
+    final truncated = (value * 10).truncate() / 10;
+
     setState(() {
       _isSaving = true;
       _valueError = null;
@@ -636,8 +671,8 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
 
     try {
       final canonicalValue = widget.definition.unitId == 'unit-kg'
-          ? UnitFormatter.toCanonicalWeight(value, widget.settingsState)
-          : value;
+          ? UnitFormatter.toCanonicalWeight(truncated, widget.settingsState)
+          : truncated;
       await widget.profileState.logMeasurement(
         widget.definition.type,
         canonicalValue,

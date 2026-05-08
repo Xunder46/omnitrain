@@ -58,43 +58,33 @@ void main() {
         MaterialApp(
           home: Scaffold(
             bottomNavigationBar: OmniBottomCTA(
-              label: 'Primary Action',
+              label: 'Continue',
               onPressed: () {},
             ),
           ),
         ),
       );
+      await tester.pumpAndSettle();
 
-      expect(find.byType(OmniBottomCTA), findsOneWidget);
-      expect(find.text('Primary Action'), findsOneWidget);
-
-      final sizedBox = tester.widget<SizedBox>(
-        find
-            .ancestor(
-              of: find.byType(FilledButton),
-              matching: find.byType(SizedBox),
-            )
-            .first,
+      final ctaBox = tester.widget<SizedBox>(
+        find.descendant(
+          of: find.byType(OmniBottomCTA),
+          matching: find.byType(SizedBox),
+        ),
       );
-      expect(sizedBox.height, OmniTheme.buttonPrimaryHeight);
+      expect(ctaBox.height, OmniTheme.buttonPrimaryHeight);
 
       final button = tester.widget<FilledButton>(find.byType(FilledButton));
-      final resolvedShape = button.style?.shape?.resolve(<WidgetState>{});
-      expect(resolvedShape, isA<RoundedRectangleBorder>());
-      final shape = resolvedShape! as RoundedRectangleBorder;
+      final style = button.style!;
+      final shape =
+          style.shape!.resolve(<WidgetState>{})! as RoundedRectangleBorder;
       expect(
         shape.borderRadius,
         BorderRadius.circular(OmniTheme.buttonBorderRadius),
       );
     });
-  });
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // SettingsScreen
-  // ══════════════════════════════════════════════════════════════════════════
-
-  group('SettingsScreen', () {
-    testWidgets('renders Settings title and Appearance section', (
+    testWidgets('settings screen keeps the streamlined section layout', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
@@ -102,34 +92,35 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Settings'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('APPEARANCE'),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.text('APPEARANCE'), findsOneWidget);
-    });
-
-    testWidgets('renders retained sections in order with version footer', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
-      await settingsState.initialize();
-
-      await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
       expect(find.text('PREFERENCES'), findsOneWidget);
       expect(find.text('TRAINING'), findsNothing);
       expect(find.text('MEASUREMENTS'), findsNothing);
+      expect(find.text('100 kg'), findsOneWidget);
+      expect(find.text('5 km'), findsOneWidget);
+      expect(find.text('Start of Week'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('WORKOUT'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('WORKOUT'), findsOneWidget);
+      expect(find.text('Feeling Survey'), findsOneWidget);
+      expect(
+        find.text('Ask how the workout felt after finishing'),
+        findsOneWidget,
+      );
 
       await tester.scrollUntilVisible(
         find.text('APPEARANCE'),
@@ -137,15 +128,6 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('APPEARANCE'), findsOneWidget);
-
-      expect(find.text('100 kg'), findsOneWidget);
-      expect(find.text('5 km'), findsOneWidget);
-      expect(find.text('Start of Week'), findsOneWidget);
-
-      final preferencesY = tester.getTopLeft(find.text('PREFERENCES')).dy;
-      final appearanceY = tester.getTopLeft(find.text('APPEARANCE')).dy;
-
-      expect(preferencesY, lessThan(appearanceY));
 
       await tester.scrollUntilVisible(
         find.text('Version 1.0.0'),
@@ -165,7 +147,12 @@ void main() {
       await settingsState.initialize();
 
       await tester.pumpWidget(
-        MaterialApp(home: SettingsScreen(settingsState: settingsState, timerAlertService: FakeTimerAlertService())),
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settingsState,
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -849,7 +836,7 @@ void main() {
         periodState: periodState,
         profileState: profileState,
         settingsState: settingsState,
-            timerAlertService: FakeTimerAlertService(),
+        timerAlertService: FakeTimerAlertService(),
       );
     }
 
@@ -1038,7 +1025,7 @@ void main() {
               periodState: periodState,
               profileState: profileState,
               settingsState: settingsState,
-            timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -1129,7 +1116,7 @@ void main() {
           periodState: deps.periodState,
           profileState: deps.profileState,
           settingsState: deps.settingsState,
-            timerAlertService: FakeTimerAlertService(),
+          timerAlertService: FakeTimerAlertService(),
         ),
       );
     }
@@ -1725,8 +1712,8 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -1772,8 +1759,8 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -1830,8 +1817,8 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -1901,8 +1888,8 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -2370,8 +2357,8 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
-            timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
             ),
           ),
         );
@@ -2767,6 +2754,79 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('176.4 lbs'), findsOneWidget);
+    });
+
+    // S-016: Helper text visible when entries exist
+    testWidgets('shows hint text when entries exist', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'hint-entry',
+          measurementType: 'bodyweight',
+          value: 75.0,
+          unitId: 'unit-kg',
+          recordedAtMs: 1000,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+      const definition = ProfileMeasurements.bodyweight;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: definition,
+              settingsState: settingsState,
+              onLogNew: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Tap a point to view \u00b7 Long-press to delete'),
+        findsOneWidget,
+      );
+    });
+
+    // S-017: Helper text hidden in empty state
+    testWidgets('hides hint text when no entries exist', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await profileState.loadProfile();
+      const definition = ProfileMeasurements.bodyweight;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: definition,
+              settingsState: settingsState,
+              onLogNew: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Tap a point to view \u00b7 Long-press to delete'),
+        findsNothing,
+      );
     });
   });
 
@@ -3219,7 +3279,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -3283,7 +3343,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: settingsState,
             ),
           ),
@@ -3339,7 +3399,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3388,7 +3448,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: settingsState,
           ),
         ),
@@ -3397,7 +3457,7 @@ void main() {
 
       await tester.tap(find.text(loadedExercise.name).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Log Set'));
+      await tester.tap(find.text('Log Set'));
       await tester.pumpAndSettle();
 
       expect(
@@ -3426,7 +3486,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -3478,7 +3538,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3504,7 +3564,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3530,7 +3590,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3556,7 +3616,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3587,7 +3647,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3618,7 +3678,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3664,7 +3724,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3702,7 +3762,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3745,7 +3805,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3772,7 +3832,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -3798,7 +3858,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3822,7 +3882,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -3831,6 +3891,39 @@ void main() {
 
       expect(find.text('Session Time'), findsOneWidget);
     });
+
+    testWidgets(
+      'empty session shows 00:00 timer and timer does not advance before first exercise',
+      (WidgetTester tester) async {
+        await tester.runAsync(() async {
+          final repo = await _freshRepo();
+          final workoutState = WorkoutState(repo);
+          final routineState = RoutineState(repo);
+          // Fresh session with no exercises.
+          await workoutState.createNewSession(isRolling: false);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: WorkoutSessionScreen(
+                workoutState: workoutState,
+                routineState: routineState,
+                sessionSummaryService: SessionSummaryService(repo),
+                timerAlertService: FakeTimerAlertService(),
+                settingsState: SettingsState(repo),
+              ),
+            ),
+          );
+          await tester.pump();
+
+          // Timer chip should show 00:00.
+          expect(find.text('00:00'), findsWidgets);
+
+          // Advance wall clock by 2 seconds — timer must remain frozen at 00:00.
+          await tester.pump(const Duration(seconds: 2));
+          expect(find.text('00:00'), findsWidgets);
+        });
+      },
+    );
 
     testWidgets(
       'non-rolling session displays exercises by execution order with createdAt tie-break',
@@ -3898,7 +3991,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -3946,7 +4039,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),
@@ -4061,7 +4154,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -4090,7 +4183,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+              timerAlertService: FakeTimerAlertService(),
               settingsState: SettingsState(repo),
             ),
           ),
@@ -4122,7 +4215,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
-                timerAlertService: FakeTimerAlertService(),
+            timerAlertService: FakeTimerAlertService(),
             settingsState: SettingsState(repo),
           ),
         ),

@@ -39,31 +39,34 @@ class SettingsScreen extends StatelessWidget {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
+                  const _SectionHeader(title: 'PREFERENCES'),
+                  const SizedBox(height: 8),
                   _MeasurementsSection(
                     settingsState: settingsState,
                     theme: theme,
                   ),
                   const SizedBox(height: 24),
+                  const _SectionHeader(title: 'SOUNDS & ALERTS'),
+                  const SizedBox(height: 8),
                   _SoundsAlertsSection(
                     settingsState: settingsState,
                     timerAlertService: timerAlertService,
                   ),
                   const SizedBox(height: 24),
+                  const _SectionHeader(title: 'WORKOUT'),
+                  const SizedBox(height: 8),
+                  _WorkoutSection(settingsState: settingsState),
+                  const SizedBox(height: 24),
+                  const _SectionHeader(title: 'APPEARANCE'),
+                  const SizedBox(height: 8),
                   OmniSurface(
+                    padding: const EdgeInsets.all(0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'APPEARANCE',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            letterSpacing: 2,
-                            color: OmniTheme.textSecondary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
                         GridView.builder(
                           shrinkWrap: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                           physics: const NeverScrollableScrollPhysics(),
                           // Ghost-pad odd counts so the last row is never a
                           // lone tile. When count becomes even after the
@@ -181,7 +184,6 @@ class _SoundsAlertsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(title: 'SOUNDS & ALERTS'),
           _SettingsRow(
             label: 'Effort Timer Sound',
             subtitle: 'Plays when a set or round timer expires',
@@ -379,9 +381,7 @@ class _SoundOptionTile extends StatelessWidget {
       title: Text(
         displayName,
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: isSelected
-              ? theme.colorScheme.primary
-              : OmniTheme.textPrimary,
+          color: isSelected ? theme.colorScheme.primary : OmniTheme.textPrimary,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
@@ -480,7 +480,6 @@ class _MeasurementsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHeader(title: 'PREFERENCES'),
           _SettingsRow(
             label: 'Start of Week',
             subtitle: 'First day shown in the calendar',
@@ -593,6 +592,32 @@ class _MeasurementsSection extends StatelessWidget {
   }
 }
 
+class _WorkoutSection extends StatelessWidget {
+  final SettingsState settingsState;
+
+  const _WorkoutSection({required this.settingsState});
+
+  @override
+  Widget build(BuildContext context) {
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SettingsRow(
+            label: 'Feeling Survey',
+            subtitle: 'Ask how the workout felt after finishing',
+            trailing: Switch(
+              value: settingsState.showFeelingSurvey,
+              onChanged: settingsState.setShowFeelingSurvey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   final String title;
 
@@ -603,7 +628,7 @@ class _SectionHeader extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Text(
         title,
         style: theme.textTheme.labelSmall?.copyWith(

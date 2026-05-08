@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/workout_constants.dart';
 import 'package:omnitrain/core/models/routine_session_manifest.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -653,6 +654,36 @@ void main() {
       expect(state.getEffortTargetsForSet(effortId, 1), isNotEmpty);
     });
 
+    test('addSetForEffort respects max entry cap', () async {
+      final repo = await _freshRepo();
+      final state = RoutineState(repo);
+      state.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await state.createNewRoutine('Routine');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
+
+      // Effort starts with set 0, then add beyond the cap.
+      for (int i = 0; i < 30; i++) {
+        await state.addSetForEffort(effortId, 'set');
+      }
+
+      expect(
+        state.getEffortTargetsForSet(
+          effortId,
+          WorkoutConstants.maxEntriesPerEffort - 1,
+        ),
+        isNotEmpty,
+      );
+      expect(
+        state.getEffortTargetsForSet(
+          effortId,
+          WorkoutConstants.maxEntriesPerEffort,
+        ),
+        isEmpty,
+      );
+    });
+
     test('removeLastSetForEffort removes targets for last set', () async {
       final repo = await _freshRepo();
       final state = RoutineState(repo);
@@ -1156,23 +1187,26 @@ void main() {
       expect(effortId, isNotEmpty);
     });
 
-    test('createCustomExercise persists modality and reloads from repository', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
+    test(
+      'createCustomExercise persists modality and reloads from repository',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
 
-      final created = await state.createCustomExercise(
-        name: 'Tempo Run Custom',
-        modality: 'cardio_endurance',
-        capabilities: ['time', 'distance'],
-      );
+        final created = await state.createCustomExercise(
+          name: 'Tempo Run Custom',
+          modality: 'cardio_endurance',
+          capabilities: ['time', 'distance'],
+        );
 
-      expect(created, isNotNull);
-      expect(created!.modality, 'cardio_endurance');
+        expect(created, isNotNull);
+        expect(created!.modality, 'cardio_endurance');
 
-      final loaded = await repo.getExerciseById(created.id);
-      expect(loaded, isNotNull);
-      expect(loaded!.modality, 'cardio_endurance');
-    });
+        final loaded = await repo.getExerciseById(created.id);
+        expect(loaded, isNotNull);
+        expect(loaded!.modality, 'cardio_endurance');
+      },
+    );
 
     test(
       'updateSessionEndTime changes endedAtMs based on durationSecs',
@@ -1202,6 +1236,35 @@ void main() {
 
       await state.updateSessionEndTime(-100);
       expect(state.currentSession!.endedAtMs, original);
+    });
+
+    test(
+      'resetSessionTimerStart updates startedAtMs to a later timestamp',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final originalStart = state.currentSession!.startedAtMs;
+
+        // Small delay so the new timestamp is guaranteed to be >= the original.
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+        await state.resetSessionTimerStart();
+
+        expect(
+          state.currentSession!.startedAtMs,
+          greaterThanOrEqualTo(originalStart),
+        );
+      },
+    );
+
+    test('resetSessionTimerStart is no-op when no session exists', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+
+      // Must not throw even though no session has been created.
+      await expectLater(state.resetSessionTimerStart(), completes);
+      expect(state.currentSession, isNull);
     });
 
     group('session feeling', () {
@@ -1349,6 +1412,28 @@ void main() {
         await state.deleteRound(effortId, 0);
         expect(state.getRoundsForEffort(effortId), isEmpty);
       });
+
+      test('addEntry for round respects max entry cap', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'sports');
+
+        final exercises = await repo.getExercises();
+        final roundExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('rounds'),
+          orElse: () => exercises.first,
+        );
+        final effortId = await state.addExerciseToSession(roundExercise);
+
+        for (int i = 0; i < 30; i++) {
+          await state.addEntry(effortId);
+        }
+
+        expect(
+          state.getRoundsForEffort(effortId),
+          hasLength(WorkoutConstants.maxEntriesPerEffort),
+        );
+      });
     });
 
     group('timed lifecycle', () {
@@ -1475,16 +1560,50 @@ void main() {
 
           // Both entries have 2 companions each.
           var observations = await repo.getEffortObservations(effortId);
-          expect(observations.where((o) => o.id.contains('-0-')).length, 2);
-          expect(observations.where((o) => o.id.contains('-1-')).length, 2);
+          expect(
+            observations
+                .where(
+                  (o) =>
+                      o.id.endsWith('-0-distance') ||
+                      o.id.endsWith('-0-extra-weight'),
+                )
+                .length,
+            2,
+          );
+          expect(
+            observations
+                .where(
+                  (o) =>
+                      o.id.endsWith('-1-distance') ||
+                      o.id.endsWith('-1-extra-weight'),
+                )
+                .length,
+            2,
+          );
 
           // Delete entry 0 — both of its companions must be removed.
           await state.deleteEntry(effortId, 0);
 
           observations = await repo.getEffortObservations(effortId);
-          expect(observations.where((o) => o.id.contains('-0-')), isEmpty);
+          expect(
+            observations.where(
+              (o) =>
+                  o.id.endsWith('-0-distance') ||
+                  o.id.endsWith('-0-extra-weight'),
+            ),
+            isEmpty,
+          );
           // Entry 1 companions survive.
-          expect(observations.where((o) => o.id.contains('-1-')).length, 2);
+          expect(
+            observations
+                .where(
+                  (o) =>
+                      o.id.endsWith('-1-distance') ||
+                      o.id.endsWith('-1-extra-weight'),
+                )
+                .length,
+            2,
+          );
         },
       );
 
@@ -1515,6 +1634,28 @@ void main() {
           expect(targetMetricIds, contains('metric-duration'));
         },
       );
+
+      test('addEntry for timed respects max entry cap', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'cardio_endurance');
+
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('time'),
+          orElse: () => exercises.first,
+        );
+        final effortId = await state.addExerciseToSession(timedExercise);
+
+        for (int i = 0; i < 30; i++) {
+          await state.addEntry(effortId);
+        }
+
+        expect(
+          state.getTimedInstancesForEffort(effortId),
+          hasLength(WorkoutConstants.maxEntriesPerEffort),
+        );
+      });
     });
 
     group('set extra-weight support', () {
@@ -1559,6 +1700,33 @@ void main() {
           expect(refreshedEntry['extra-weight'], -15.0);
         },
       );
+
+      test('addEntry for set respects max entry cap', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession(modality: 'resistance_lifting');
+
+        final exercises = await repo.getExercises();
+        final setExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('sets'),
+          orElse: () => exercises.first,
+        );
+
+        final effortId = await state.addExerciseToSession(
+          setExercise,
+          effortKindOverride: 'set',
+        );
+
+        for (int i = 0; i < 30; i++) {
+          await state.addEntry(effortId);
+        }
+
+        final exerciseEntry = state.getExercisesWithEntries().firstWhere(
+          (e) => e['id'] == effortId,
+        );
+        final entries = exerciseEntry['entries'] as List<dynamic>;
+        expect(entries.length, WorkoutConstants.maxEntriesPerEffort);
+      });
     });
 
     group('rest lifecycle', () {
@@ -1597,6 +1765,121 @@ void main() {
         final rests = state.getEntryRests(effortId);
         expect(rests.first.restEndMs, isNotNull);
       });
+
+      test('closeAllOpenRests is a no-op when there are no rests', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(
+          exercises.first,
+          chosenMetric: 'reps',
+        );
+
+        // No rests at all — must not throw
+        await expectLater(state.closeAllOpenRests(effortId), completes);
+        expect(state.getEntryRests(effortId), isEmpty);
+      });
+
+      test('closeAllOpenRests closes a single open rest', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(
+          exercises.first,
+          chosenMetric: 'reps',
+        );
+
+        await state.recordRestStart(effortId, 0);
+        expect(state.getEntryRests(effortId).first.restEndMs, isNull);
+
+        await state.closeAllOpenRests(effortId);
+
+        final rests = state.getEntryRests(effortId);
+        expect(rests, hasLength(1));
+        expect(rests.first.restEndMs, isNotNull);
+      });
+
+      test(
+        'closeAllOpenRests closes all open rests regardless of entryIndex',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          // recordRestStart auto-closes any prior open rest before creating a
+          // new one, so after these two calls entry 0 is closed and entry 2
+          // is the single open rest. This mirrors the real bug scenario: a rest
+          // was opened for entry X (here 0), the user skipped ahead, and later
+          // a rest was opened for entry 2. closeAllOpenRests must close whatever
+          // is still open regardless of which entryIndex it belongs to.
+          await state.recordRestStart(effortId, 0);
+          await state.recordRestStart(effortId, 2);
+
+          // Confirm only entry-2 rest is open before calling closeAllOpenRests.
+          final beforeClose = state.getEntryRests(effortId);
+          final openBefore = beforeClose.where((r) => r.restEndMs == null);
+          expect(openBefore, hasLength(1));
+          expect(openBefore.first.entryIndex, 2);
+
+          await state.closeAllOpenRests(effortId);
+
+          final afterClose = state.getEntryRests(effortId);
+          final openAfter = afterClose.where((r) => r.restEndMs == null);
+          expect(openAfter, isEmpty);
+          // All records must have a restEndMs
+          for (final r in afterClose) {
+            expect(r.restEndMs, isNotNull);
+          }
+        },
+      );
+
+      test(
+        'closeAllOpenRests skips already-closed rests and only closes open ones',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          // Open and immediately close rest for entry 0.
+          await state.recordRestStart(effortId, 0);
+          await state.recordRestEnd(effortId, 0);
+
+          // Add delay to ensure different timestamps
+          await Future.delayed(const Duration(milliseconds: 10));
+
+          // Open rest for entry 1, leave it open.
+          await state.recordRestStart(effortId, 1);
+
+          await state.closeAllOpenRests(effortId);
+
+          final rests = state.getEntryRests(effortId);
+          // Both must be closed now.
+          for (final r in rests) {
+            expect(r.restEndMs, isNotNull);
+          }
+          // The entry-0 restEndMs must not have been changed (it was already
+          // closed before closeAllOpenRests was called).
+          final rest0 = rests.firstWhere((r) => r.entryIndex == 0);
+          final rest1 = rests.firstWhere((r) => r.entryIndex == 1);
+          expect(rest0.restEndMs, lessThan(rest1.restEndMs!));
+        },
+      );
     });
 
     test('updateSessionRpe persists RPE value', () async {
@@ -2514,21 +2797,24 @@ void _roundMatrixTests() {
     });
 
     // Terminal guarantee: finished blocks all public transition methods
-    test('terminal guarantee: finished rejects all transition methods', () async {
-      final ctx = await setupRoundIn(RoundState.finished);
-      int notified = 0;
-      ctx.state.addListener(() => notified++);
+    test(
+      'terminal guarantee: finished rejects all transition methods',
+      () async {
+        final ctx = await setupRoundIn(RoundState.finished);
+        int notified = 0;
+        ctx.state.addListener(() => notified++);
 
-      await ctx.state.startRound(ctx.effortId, 0);
-      await ctx.state.pauseRound(ctx.effortId, 0);
-      await ctx.state.resumeRound(ctx.effortId, 0);
-      await ctx.state.completeRound(ctx.effortId, 0);
-      await ctx.state.endRoundEarly(ctx.effortId, 0);
+        await ctx.state.startRound(ctx.effortId, 0);
+        await ctx.state.pauseRound(ctx.effortId, 0);
+        await ctx.state.resumeRound(ctx.effortId, 0);
+        await ctx.state.completeRound(ctx.effortId, 0);
+        await ctx.state.endRoundEarly(ctx.effortId, 0);
 
-      expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
-      expect(ctx.repo.roundWriteCount, 0);
-      expect(notified, 0);
-    });
+        expect(roundState(ctx.state, ctx.effortId), RoundState.finished);
+        expect(ctx.repo.roundWriteCount, 0);
+        expect(notified, 0);
+      },
+    );
 
     // Resume single-cycle: paused → active
     test('resume single-cycle: paused → active persists', () async {
@@ -2824,20 +3110,23 @@ void _timedMatrixTests() {
     });
 
     // Terminal guarantee: finished blocks all public transition methods
-    test('terminal guarantee: finished rejects all transition methods', () async {
-      final ctx = await setupTimedIn(TimedState.finished);
-      int notified = 0;
-      ctx.state.addListener(() => notified++);
+    test(
+      'terminal guarantee: finished rejects all transition methods',
+      () async {
+        final ctx = await setupTimedIn(TimedState.finished);
+        int notified = 0;
+        ctx.state.addListener(() => notified++);
 
-      await ctx.state.startTimedEntry(ctx.effortId, 0);
-      await ctx.state.pauseTimedEntry(ctx.effortId, 0);
-      await ctx.state.resumeTimedEntry(ctx.effortId, 0);
-      await ctx.state.finishTimedEntry(ctx.effortId, 0);
+        await ctx.state.startTimedEntry(ctx.effortId, 0);
+        await ctx.state.pauseTimedEntry(ctx.effortId, 0);
+        await ctx.state.resumeTimedEntry(ctx.effortId, 0);
+        await ctx.state.finishTimedEntry(ctx.effortId, 0);
 
-      expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
-      expect(ctx.repo.timedWriteCount, 0);
-      expect(notified, 0);
-    });
+        expect(timedState(ctx.state, ctx.effortId), TimedState.finished);
+        expect(ctx.repo.timedWriteCount, 0);
+        expect(notified, 0);
+      },
+    );
 
     // Resume single-cycle: paused → active
     test('resume single-cycle: paused → active persists', () async {

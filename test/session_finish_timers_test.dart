@@ -82,10 +82,12 @@ void main() {
     expect(timedEntries.first.state, TimedState.finished);
   });
 
-  testWidgets('empty session shows simplified end empty session dialog', (
+  testWidgets('empty free-training session exits immediately without dialog', (
     WidgetTester tester,
   ) async {
     final deps = await setupStates();
+
+    expect(deps.workoutState.currentSession?.modality, isNull);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -108,20 +110,22 @@ void main() {
     await tester.tap(find.text('Finish Workout'));
     await tester.pumpAndSettle();
 
-    expect(find.text('End empty session?'), findsOneWidget);
-    expect(
-      find.text(
-        'No exercises have been logged. Are you sure you want to finish?',
-      ),
-      findsOneWidget,
-    );
+    // No dialog should appear — the screen just exits.
+    expect(find.text('End empty session?'), findsNothing);
     expect(find.text('Finish Workout?'), findsNothing);
+    // The WorkoutSessionScreen is no longer in the tree.
+    expect(find.text('Finish Workout'), findsNothing);
   });
 
   testWidgets('Back after finish does not return to active workout screen', (
     WidgetTester tester,
   ) async {
     final deps = await setupStates();
+
+    // Add an exercise so the session is non-empty and goes through the
+    // normal finish dialog → summary flow.
+    final exercises = await deps.repository.getExercises();
+    await deps.workoutState.addExerciseToSession(exercises.first);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -152,12 +156,6 @@ void main() {
 
     await tester.tap(find.text('Open Workout'));
     await tester.pumpAndSettle();
-
-    // Empty session auto-opens the exercise picker; close it before proceeding.
-    if (find.byIcon(Icons.close).evaluate().isNotEmpty) {
-      await tester.tap(find.byIcon(Icons.close).first);
-      await tester.pumpAndSettle();
-    }
 
     await tester.tap(find.text('Finish Workout'));
     await tester.pumpAndSettle();
@@ -236,6 +234,10 @@ void main() {
   ) async {
     final deps = await setupStates();
 
+    // Add an exercise so the session is non-empty and reaches the summary screen.
+    final exercises = await deps.repository.getExercises();
+    await deps.workoutState.addExerciseToSession(exercises.first);
+
     await tester.pumpWidget(
       MaterialApp(
         home: WorkoutSessionScreen(
@@ -249,12 +251,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Empty session auto-opens the exercise picker; close it before proceeding.
-    if (find.byIcon(Icons.close).evaluate().isNotEmpty) {
-      await tester.tap(find.byIcon(Icons.close).first);
-      await tester.pumpAndSettle();
-    }
-
     await tester.tap(find.text('Finish Workout'));
     await tester.pumpAndSettle();
 
@@ -262,6 +258,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
+
+    // Dismiss the "How did it feel?" rating sheet if present.
+    if (find.text('How did it feel?').evaluate().isNotEmpty) {
+      await tester.tap(find.text('3').last);
+      await tester.pumpAndSettle();
+    }
+
+    // Scroll down to ensure the calendar card (and Open Calendar button) is built.
+    await tester.scrollUntilVisible(
+      find.text('Open Calendar'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
     expect(find.text('Open Calendar'), findsOneWidget);
   });
 

@@ -1,5 +1,8 @@
 /// Application-wide constants for workout tracking
 class WorkoutConstants {
+  /// Maximum number of entries (sets/rounds/intervals/holds) per effort.
+  static const int maxEntriesPerEffort = 12;
+
   /// Default planned duration for round-based exercises (in seconds)
   static const int defaultRoundDurationSecs = 180; // 3 minutes
 
