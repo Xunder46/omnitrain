@@ -1860,6 +1860,9 @@ void main() {
           await state.recordRestStart(effortId, 0);
           await state.recordRestEnd(effortId, 0);
 
+          // Add delay to ensure different timestamps
+          await Future.delayed(const Duration(milliseconds: 10));
+
           // Open rest for entry 1, leave it open.
           await state.recordRestStart(effortId, 1);
 
