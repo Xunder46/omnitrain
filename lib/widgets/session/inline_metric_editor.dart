@@ -24,6 +24,11 @@ class InlineMetricEditor extends StatefulWidget {
   /// When true, the unit is shown inline beside the value instead of below it.
   final bool showUnitInline;
 
+  /// Optional tap handler.  Coexists with the vertical-drag handler on the
+  /// underlying [GestureDetector]; Flutter's gesture arena disambiguates
+  /// short press-lifts (tap) from drags (movement).
+  final VoidCallback? onTap;
+
   /// Called when value changes, passes new value
   final Function(dynamic) onValueChanged;
 
@@ -35,6 +40,7 @@ class InlineMetricEditor extends StatefulWidget {
     this.isReadOnly = false,
     this.unitLabelColor,
     this.showUnitInline = false,
+    this.onTap,
     required this.onValueChanged,
   });
 
@@ -128,6 +134,7 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     );
 
     return GestureDetector(
+      onTap: widget.onTap,
       onVerticalDragUpdate: widget.isReadOnly
           ? null
           : (details) {

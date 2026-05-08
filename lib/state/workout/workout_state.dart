@@ -180,6 +180,29 @@ class WorkoutState extends ChangeNotifier {
     String effortId, int entryIndex, int newTargetSecs,
   ) => _timerManager.updateTimedTargetDuration(effortId, entryIndex, newTargetSecs);
 
+  // ── Retrospective edit methods (edit mode only) ──────────────────────────
+
+  /// Sets a timed/drill entry to finished with the given duration.
+  /// Intended only for retrospective edits; bypasses live-timer state guards.
+  Future<void> setTimedEntryDuration(
+    String effortId,
+    int entryIndex,
+    int durationSecs,
+  ) => _timerManager.setTimedInstanceFinished(effortId, entryIndex, durationSecs);
+
+  /// Sets a round instance to finished with the given actual duration.
+  /// Intended only for retrospective edits; bypasses live-timer state guards.
+  Future<void> setRoundDuration(
+    String effortId,
+    int roundIndex,
+    int durationSecs,
+  ) => _timerManager.setRoundFinished(effortId, roundIndex, durationSecs);
+
+  /// Normalises every non-finished round in the current session to `finished`.
+  /// Called at the end of edit-mode save to ensure no stale round states remain.
+  Future<void> normalizeRoundsToFinished() =>
+      _timerManager.normalizeAllRoundsToFinished();
+
   Future<void> recordRestStart(String effortId, int entryIndex) =>
       _timerManager.recordRestStart(effortId, entryIndex);
   Future<void> recordRestEnd(String effortId, int entryIndex) =>

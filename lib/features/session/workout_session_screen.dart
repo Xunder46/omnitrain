@@ -1120,7 +1120,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       if (effortId.isNotEmpty) {
         final idx = _exercises.indexWhere((e) => e['id'] == effortId);
         if (idx != -1) {
-          unawaited(_focusExerciseDetail(idx));
+          await _focusExerciseDetail(idx);
         }
       }
     }

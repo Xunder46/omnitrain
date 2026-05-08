@@ -668,6 +668,105 @@ class TimerManager {
     }
   }
 
+  // ── Retrospective edit methods (edit mode only) ────────────────────────
+
+  /// Sets a [TimedInstance] to `finished` with a caller-specified duration,
+  /// bypassing the normal state-machine transition guards.
+  ///
+  /// Intended exclusively for retrospective (edit-mode) corrections where the
+  /// user is changing a logged duration after the session has ended.  Do NOT
+  /// use in the live-workout timer flow — that path calls [finishTimedEntry].
+  Future<void> setTimedInstanceFinished(
+    String effortId,
+    int entryIndex,
+    int durationSecs,
+  ) async {
+    _clearError();
+    try {
+      final list = _timedInstances[effortId];
+      if (list == null || entryIndex >= list.length) return;
+      final old = list[entryIndex];
+      final now = DateTime.now().millisecondsSinceEpoch;
+      // Synthesise timestamps so elapsedMs == durationSecs * 1000.
+      final startedAtMs =
+          old.startedAtMs > 0 ? old.startedAtMs : now - (durationSecs * 1000);
+      final finishedAtMs = startedAtMs + (durationSecs * 1000);
+      final updated = old.copyWith(
+        state: TimedState.finished,
+        actualDurationSecs: durationSecs,
+        startedAtMs: startedAtMs,
+        finishedAtMs: finishedAtMs,
+        totalPausedDurationMs: 0,
+        pausedAtMs: null,
+        updatedAtMs: now,
+      );
+      await _repository.updateTimedInstance(updated);
+      list[entryIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to set timed entry duration: $e');
+    }
+  }
+
+  /// Sets a [RoundInstance] to `finished` with a caller-specified duration,
+  /// bypassing the normal state-machine transition guards.
+  ///
+  /// Intended exclusively for retrospective (edit-mode) corrections.
+  Future<void> setRoundFinished(
+    String effortId,
+    int roundIndex,
+    int durationSecs,
+  ) async {
+    _clearError();
+    try {
+      final list = _roundInstances[effortId];
+      if (list == null || roundIndex >= list.length) return;
+      final old = list[roundIndex];
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final startedAtMs =
+          old.startedAtMs > 0 ? old.startedAtMs : now - (durationSecs * 1000);
+      final finishedAtMs = startedAtMs + (durationSecs * 1000);
+      final plannedDurationSecs =
+          old.plannedDurationSecs > 0 ? old.plannedDurationSecs : durationSecs;
+      final updated = old.copyWith(
+        state: RoundState.finished,
+        actualDurationSecs: durationSecs,
+        plannedDurationSecs: plannedDurationSecs,
+        startedAtMs: startedAtMs,
+        finishedAtMs: finishedAtMs,
+        completed: true,
+        totalPausedDurationMs: 0,
+        pausedAtMs: null,
+        updatedAtMs: now,
+      );
+      await _repository.updateRoundInstance(updated);
+      list[roundIndex] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to set round duration: $e');
+    }
+  }
+
+  /// Normalises every non-finished round in the session to `finished`, using
+  /// its [plannedDurationSecs] as the actual duration.
+  ///
+  /// Called at the end of [_saveEditChanges] so that a historical session never
+  /// contains rounds in notStarted / active / paused states after the user saves.
+  Future<void> normalizeAllRoundsToFinished() async {
+    for (final entry in _roundInstances.entries) {
+      final effortId = entry.key;
+      final rounds = entry.value;
+      for (int i = 0; i < rounds.length; i++) {
+        final round = rounds[i];
+        if (round.state != RoundState.finished) {
+          final durationSecs =
+              round.plannedDurationSecs > 0 ? round.plannedDurationSecs : 0;
+          await setRoundFinished(effortId, i, durationSecs);
+        }
+      }
+    }
+  }
+
   void _setError(String message) => _setErrorCallback(message);
 
   void _clearError() => _clearErrorCallback();

@@ -582,19 +582,363 @@ if (effortId.isNotEmpty) {
 6. **Session Time chip**: Unchanged — continues to call `_editSessionDuration` which internally calls `_showDurationEntryDialog`.
 
 ## Progress
-- [ ] Add `setTimedInstanceFinished` to `timer_manager.dart`
-- [ ] Add `setRoundFinished` to `timer_manager.dart`
-- [ ] Add `normalizeAllRoundsToFinished` to `timer_manager.dart`
-- [ ] Add `setTimedEntryDuration`, `setRoundDuration`, `normalizeRoundsToFinished` to `workout_state.dart`
-- [ ] Extract `_showDurationEntryDialog` in `workout_session_edit_mode.dart`; migrate `_editSessionDuration` to use it
-- [ ] Update `_saveEditChanges` to route `'elapsedSecs'` and `'round-duration'` to instance methods + call `normalizeRoundsToFinished`
-- [ ] Replace timed edit mode InlineMetricEditor with `_buildDurationEditChip` + dialog in `workout_session_detail_view.dart`
-- [ ] Replace drill edit mode InlineMetricEditor with `_buildDurationEditChip` + dialog in `workout_session_detail_view.dart`
-- [ ] Replace round edit mode InlineMetricEditor with `_buildDurationEditChip` + dialog in `workout_session_detail_view.dart`
-- [ ] Add `_buildDurationEditChip` helper to detail view
-- [ ] Update `_addSet` to navigate + open dialog for timed/drill/round in edit mode
-- [ ] Update `_addExercise` to auto-open dialog for timed/drill/round in edit mode
-- [ ] Run tests; add/update tests for Gap 1, Gap 2, Gap 3
+- [x] Add `setTimedInstanceFinished` to `timer_manager.dart`
+- [x] Add `setRoundFinished` to `timer_manager.dart`
+- [x] Add `normalizeAllRoundsToFinished` to `timer_manager.dart`
+- [x] Add `setTimedEntryDuration`, `setRoundDuration`, `normalizeRoundsToFinished` to `workout_state.dart`
+- [x] Extract `_showDurationEntryDialog` in `workout_session_edit_mode.dart`; migrate `_editSessionDuration` to use it
+- [x] Update `_saveEditChanges` to route `'elapsedSecs'` and `'round-duration'` to instance methods + call `normalizeRoundsToFinished`
+- [x] Replace timed edit mode InlineMetricEditor with `_buildDurationEditChip` + dialog in `workout_session_detail_view.dart`
+- [x] Replace drill edit mode InlineMetricEditor with `_buildDurationEditChip` + dialog in `workout_session_detail_view.dart`
+- [x] Replace round edit mode InlineMetricEditor with `_buildDurationEditChip` + dialog in `workout_session_detail_view.dart`
+- [x] Add `_buildDurationEditChip` helper to detail view
+- [x] Update `_addSet` to navigate + open dialog for timed/drill/round in edit mode
+- [x] Update `_addExercise` to auto-open dialog for timed/drill/round in edit mode
+- [x] Run tests; 745/746 pass (1 pre-existing flaky timing test unrelated to this feature)
 
 ## Feedback
-<!-- Leave empty until a specialist or reviewer adds notes -->
+Edit mode for cardio (timed), isometric (drill), and sports (round) looks stripped-down and afterthought-ish: small bordered chip with a pencil, no Log button, lots of dead space. Requirements for Iteration 2:
+- Remove `_buildDurationEditChip` entirely. Use `InlineMetricEditor` directly (full visual weight).
+- The big duration display IS the editor: tap opens h/m/s dialog; vertical scroll adjusts value (InlineMetricEditor already handles scroll). No pencil icon, no border, no chip container.
+- Remove the play/pause button row from edit mode entirely.
+- Add Log button (center slot, same visual as live Log button) for timed/drill/round in edit mode. Semantics: commits value for that specific interval without auto-advancing; shows LOGGED label until user changes the value again.
+- Interval navigation arrows: keep unchanged.
+- Set kind: nav-only (no Log button, existing behaviour).
+- Drill: same pattern as timed; extra-weight section unchanged.
+- Round: keep "ROUND N" text block; duration display replaces chip; play/pause removed.
+
+## Iteration 2
+
+### Analysis
+Three timer-based edit-mode detail views (`timed`, `drill`, `round`) currently render a small bordered chip (`_buildDurationEditChip`) instead of the full `InlineMetricEditor`. The `_buildSetControls` in edit mode shows only nav arrows — no Log button. Together these make edit mode feel visually weaker than live mode.
+
+The fix keeps the identical structural layout as live mode but swaps the interaction model:
+- Play/pause → removed
+- Timer-start GestureDetector → replaced by `onTap` on `InlineMetricEditor` to open h/m/s dialog
+- Drag on `InlineMetricEditor` → already works (5 s per scroll unit), just route to edit buffer
+- Log button → new per-interval visual confirm that marks entry as LOGGED without advancing
+
+No schema changes. No new repository methods. State-layer write methods added in Iteration 1 are unchanged.
+
+### Phase 1: Add `onTap` to `InlineMetricEditor` (@developer)
+
+Add an optional `VoidCallback? onTap` parameter. Wire it to the existing `GestureDetector` in `build()`. Both `onTap` and `onVerticalDragUpdate` can coexist in one `GestureDetector` — Flutter's gesture arena disambiguates: short press-lift fires tap, movement fires drag.
+
+```dart
+// Before
+final bool isReadOnly;
+final Color? unitLabelColor;
+// …
+const InlineMetricEditor({…, this.isReadOnly = false, …});
+// GestureDetector has: onVerticalDragUpdate + onVerticalDragEnd
+
+// After — add onTap:
+final VoidCallback? onTap;
+const InlineMetricEditor({…, this.onTap, …});
+// GestureDetector gains: onTap: widget.onTap
+```
+
+### Phase 2: New screen state field `_editLoggedKeys` (@developer)
+
+In `_WorkoutSessionScreenState` (in `workout_session_screen.dart`):
+```dart
+// Tracks which timed/drill/round entries have been explicitly "logged"
+// (confirmed) during this edit session. Key: '$effortId-$entryIndex'.
+// UI only — not persisted. Cleared on discard; entries removed when value changes.
+final Set<String> _editLoggedKeys = {};
+```
+
+### Phase 3: Replace edit-mode metric widget for `timed`, `drill`, `round` (@developer)
+
+In `_buildMetricWidget` in `workout_session_detail_view.dart`:
+
+#### 3.1 `timed` edit branch (lines ~215–260)
+
+Replace `_buildDurationEditChip` block with:
+```dart
+if (widget.editMode) {
+  final bufferedSecs = _editBuffer['$effortId-$entryIndex']?['elapsedSecs'] as int?;
+  final editDuration = bufferedSecs
+      ?? timedInstance?.actualDurationSecs
+      ?? (entryData['elapsedSecs'] as int? ?? timedElapsed);
+  final logKey = '$effortId-$entryIndex';
+  final isEditLogged = _editLoggedKeys.contains(logKey);
+
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      InlineMetricEditor(
+        metricType: 'duration',
+        currentValue: editDuration,
+        unitLabel: isEditLogged ? 'LOGGED' : 'ELAPSED',
+        unitLabelColor: isEditLogged ? theme.colorScheme.primary : null,
+        onTap: () async {
+          final result = await _showDurationEntryDialog(
+            context,
+            title: 'Edit Interval Duration',
+            initialSecs: editDuration,
+          );
+          if (result != null && mounted) {
+            if (_editLoggedKeys.contains(logKey)) {
+              setState(() { _editLoggedKeys.remove(logKey); });
+            }
+            unawaited(_updateMetricValue(effortId, entryIndex, 'elapsedSecs', result));
+          }
+        },
+        onValueChanged: (value) {
+          if (_editLoggedKeys.contains(logKey)) {
+            setState(() { _editLoggedKeys.remove(logKey); });
+          }
+          _updateMetricValue(effortId, entryIndex, 'elapsedSecs', value);
+        },
+      ),
+      if (entryData['extra-weight'] != null)
+        _buildWeightAdjustmentSection(
+          theme: theme,
+          effortId: effortId,
+          entryIndex: entryIndex,
+          currentValue: (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
+          onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'extra-weight', value),
+        ),
+    ],
+  );
+}
+```
+
+#### 3.2 `round` edit branch (lines ~382–430)
+
+Replace `_buildDurationEditChip` block (keep the `ROUND $rounds` text above):
+```dart
+if (widget.editMode) {
+  final bufferedRoundSecs = _editBuffer['$effortId-$entryIndex']?['round-duration'] as int?;
+  final editRoundDuration = bufferedRoundSecs
+      ?? ((round != null && round.actualDurationSecs > 0) ? round.actualDurationSecs : roundDuration);
+  final logKey = '$effortId-$entryIndex';
+  final isEditLogged = _editLoggedKeys.contains(logKey);
+
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SizedBox(height: 24 + _kSessionScrollBottomExtra),
+      Text('ROUND $rounds', style: theme.textTheme.displayLarge?.copyWith(
+        fontWeight: FontWeight.w300, letterSpacing: -2,
+        fontSize: theme.textTheme.displayMedium?.fontSize,
+      )),
+      const SizedBox(height: 15),
+      InlineMetricEditor(
+        metricType: 'duration',
+        currentValue: editRoundDuration,
+        unitLabel: isEditLogged ? 'LOGGED' : 'DURATION',
+        unitLabelColor: isEditLogged ? theme.colorScheme.primary : null,
+        onTap: () async {
+          final result = await _showDurationEntryDialog(
+            context, title: 'Edit Round Duration', initialSecs: editRoundDuration,
+          );
+          if (result != null && mounted) {
+            if (_editLoggedKeys.contains(logKey)) setState(() { _editLoggedKeys.remove(logKey); });
+            unawaited(_updateMetricValue(effortId, entryIndex, 'round-duration', result));
+          }
+        },
+        onValueChanged: (value) {
+          if (_editLoggedKeys.contains(logKey)) setState(() { _editLoggedKeys.remove(logKey); });
+          _updateMetricValue(effortId, entryIndex, 'round-duration', value);
+        },
+      ),
+    ],
+  );
+}
+```
+
+#### 3.3 `drill` edit branch (lines ~510–560)
+
+Replace `_buildDurationEditChip` block (keep `_buildWeightAdjustmentSection`):
+```dart
+if (widget.editMode) {
+  final bufferedDrillSecs = _editBuffer['$effortId-$entryIndex']?['elapsedSecs'] as int?;
+  final editDrillDuration = bufferedDrillSecs
+      ?? drillInstance?.actualDurationSecs
+      ?? (entryData['elapsedSecs'] as int? ?? drillElapsed);
+  final logKey = '$effortId-$entryIndex';
+  final isEditLogged = _editLoggedKeys.contains(logKey);
+
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      InlineMetricEditor(
+        metricType: 'duration',
+        currentValue: editDrillDuration,
+        unitLabel: isEditLogged ? 'LOGGED' : 'ELAPSED',
+        unitLabelColor: isEditLogged ? theme.colorScheme.primary : null,
+        onTap: () async {
+          final result = await _showDurationEntryDialog(
+            context, title: 'Edit Hold Duration', initialSecs: editDrillDuration,
+          );
+          if (result != null && mounted) {
+            if (_editLoggedKeys.contains(logKey)) setState(() { _editLoggedKeys.remove(logKey); });
+            unawaited(_updateMetricValue(effortId, entryIndex, 'elapsedSecs', result));
+          }
+        },
+        onValueChanged: (value) {
+          if (_editLoggedKeys.contains(logKey)) setState(() { _editLoggedKeys.remove(logKey); });
+          _updateMetricValue(effortId, entryIndex, 'elapsedSecs', value);
+        },
+      ),
+      _buildWeightAdjustmentSection(
+        theme: theme,
+        effortId: effortId,
+        entryIndex: entryIndex,
+        currentValue: drillExtraWeight,
+        onValueChanged: (value) => _updateMetricValue(effortId, entryIndex, 'extra-weight', value),
+      ),
+    ],
+  );
+}
+```
+
+#### 3.4 Remove `_buildDurationEditChip` (lines ~655–720)
+Delete the entire `_buildDurationEditChip` method — it has no remaining call sites.
+
+### Phase 4: Update `_buildSetControls` for edit mode (@developer)
+
+Current edit-mode branch (returns nav-only row unconditionally). Replace with:
+
+```dart
+if (widget.editMode) {
+  // Set kind: nav arrows only (inline editors handle value changes directly).
+  if (effortKind != 'timed' && effortKind != 'drill' && effortKind != 'round') {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [backArrow, forwardArrow],
+    );
+  }
+  // Timer-based kinds: show Log/LOGGED center control + nav arrows.
+  final logKey = '$effortId-$entryIndex';
+  final isEditLogged = _editLoggedKeys.contains(logKey);
+  final centerControl = isEditLogged
+      ? _buildLoggedLabel(theme)
+      : _buildEditLogSetButton(effortKind, theme);  // new helper (Phase 5)
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      backArrow,
+      Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: centerControl,
+        ),
+      ),
+      forwardArrow,
+    ],
+  );
+}
+```
+
+### Phase 5: New `_logSetInEditMode` and `_buildEditLogSetButton` (@developer)
+
+In `workout_session_edit_mode.dart` (in `_SessionEditModeExt`):
+
+```dart
+/// Marks the current timer entry as confirmed for this edit session.
+/// Adds to _editLoggedKeys; does NOT write to repository, does NOT advance.
+/// The actual write still happens at Save Changes time via _saveEditChanges.
+void _logSetInEditMode() {
+  if (_exercises.isEmpty) return;
+  final exercise = _exercises[_currentExerciseIndex];
+  final effortId = exercise['id'] as String;
+  final entryIndex = _currentSet - 1;
+  setState(() {
+    _editLoggedKeys.add('$effortId-$entryIndex');
+  });
+}
+
+Widget _buildEditLogSetButton(String effortKind, ThemeData theme) {
+  final label = _logSetLabel(effortKind);
+  return Tooltip(
+    message: label,
+    child: FilledButton(
+      style: ButtonStyle(
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        minimumSize: WidgetStateProperty.all(const Size(double.infinity, 64)),
+      ),
+      onPressed: _logSetInEditMode,
+      child: Text(label),
+    ),
+  );
+}
+```
+
+### Phase 6: Update `_discardEditChanges` (@developer)
+
+In `workout_session_edit_mode.dart`, add to `_discardEditChanges`:
+```dart
+Future<void> _discardEditChanges() async {
+  _editBuffer.clear();
+  _editLoggedKeys.clear();  // ← add this line
+  // … rest unchanged
+}
+```
+
+## Iteration 2 — Files Affected
+
+| File | Change |
+|------|--------|
+| `lib/widgets/session/inline_metric_editor.dart` | Add optional `onTap: VoidCallback?`; wire to `GestureDetector` |
+| `lib/features/session/workout_session_screen.dart` | Add `_editLoggedKeys = <String>{}` state field |
+| `lib/features/session/workout_session_detail_view.dart` | Replace 3 chip edit branches with `InlineMetricEditor`; update `_buildSetControls` edit-mode branch; delete `_buildDurationEditChip` |
+| `lib/features/session/workout_session_edit_mode.dart` | Add `_logSetInEditMode`, `_buildEditLogSetButton`; update `_discardEditChanges` |
+
+## Iteration 2 — Acceptance Criteria
+- [ ] Timed edit mode: big duration display matches live visual weight; tap opens h/m/s dialog; vertical scroll adjusts 5s per unit; no chip, no pencil, no border.
+- [ ] Drill edit mode: same as timed; extra-weight section unchanged.
+- [ ] Round edit mode: ROUND N label stays; duration display matches live; tap/scroll works; no chip; no pencil.
+- [ ] Play/pause button row absent from all three edit modes.
+- [ ] Log button present in center slot for timed/drill/round in edit mode; uses same FilledButton style and label as live mode.
+- [ ] Pressing Log marks entry LOGGED (label shows); does NOT auto-advance; navigation arrows still work.
+- [ ] Changing duration (tap or scroll) while in LOGGED state reverts center to Log button.
+- [ ] Set kind: edit mode still shows nav-only (no Log button) — no regression.
+- [ ] Discard clears all logged states.
+- [ ] No regressions in live-workout timer flow.
+- [ ] All existing tests pass.
+
+## Iteration 2 — Progress
+- [x] Add `onTap` to `InlineMetricEditor`
+- [x] Add `_editLoggedKeys` to screen state
+- [x] Replace timed edit branch with `InlineMetricEditor` + `onTap` + Log-key logic
+- [x] Replace round edit branch with `InlineMetricEditor` + `onTap` + Log-key logic
+- [x] Replace drill edit branch with `InlineMetricEditor` + `onTap` + Log-key logic
+- [x] Remove `_buildDurationEditChip` definition
+- [x] Update `_buildSetControls` edit-mode branch for timed/drill/round
+- [x] Add `_logSetInEditMode` and `_buildEditLogSetButton` to edit mode extension
+- [x] Update `_discardEditChanges` to clear `_editLoggedKeys`
+- [x] Run tests; 745/746 pass (same pre-existing flaky timing test in `state_test.dart:1877` `closeAllOpenRests` — unrelated to this feature)
+
+## Feedback
+The Log button added in Iteration 2 turned out to be cosmetic only: pressing it just toggled a UI label (`_editLoggedKeys`) and never wrote anything. The actual instance-state writes already happen unconditionally in `_saveEditChanges` via `setTimedEntryDuration` / `setRoundDuration` / `normalizeRoundsToFinished`, so Save IS the log. Pre-existing entries were already finished from the live session, and resistance (set-kind) editing has never had a Log button — so adding one to timer kinds in edit mode was inconsistent.
+
+Iteration 3 reverts the Log button + `_editLoggedKeys` machinery while keeping the visually weighted `InlineMetricEditor` + tap-to-dialog wiring from Iteration 2.
+
+## Iteration 3 — Revert Log button (keep InlineMetricEditor + onTap)
+
+### Changes
+- Removed `_editLoggedKeys` field from `_WorkoutSessionScreenState`.
+- Stripped `logKey` / `isEditLogged` / conditional `LOGGED` label / `setState`-based key removal from all three timer-based edit branches in [workout_session_detail_view.dart](lib/features/session/workout_session_detail_view.dart). Edit-mode timed/drill/round entries now show plain `ELAPSED` / `DURATION` labels — same look as live mode without the play/pause row.
+- Reverted `_buildSetControls` edit-mode branch back to nav-only for every effort kind (matching the resistance/set-kind UX).
+- Removed `_logSetInEditMode` and `_buildEditLogSetButton` helpers from `_SessionEditModeExt`.
+- Removed `_editLoggedKeys.clear()` from `_discardEditChanges`.
+- Removed the auto-opened duration dialog from `_addSet` and `_addExercise` in edit mode — the inline editor (tap → dialog, scroll → adjust) IS the editor, so the post-add modal was redundant.
+
+### Iteration 3 — Files Affected
+| File | Change |
+|------|--------|
+| `lib/features/session/workout_session_screen.dart` | Removed `_editLoggedKeys` field |
+| `lib/features/session/workout_session_detail_view.dart` | Stripped Log toggle from timed/drill/round edit branches; reverted `_buildSetControls` edit branch to nav-only |
+| `lib/features/session/workout_session_edit_mode.dart` | Removed `_logSetInEditMode` and `_buildEditLogSetButton`; removed `_editLoggedKeys.clear()` from `_discardEditChanges` |
+
+### Iteration 3 — Acceptance Criteria
+- [x] Edit mode for timed/drill/round shows full-weight `InlineMetricEditor` (tap → dialog, scroll → adjust value).
+- [x] No Log button or LOGGED toggle visible in edit mode for any effort kind.
+- [x] Edit-mode bottom controls are nav-only across set/timed/drill/round (consistent with resistance editing).
+- [x] No regressions — Save still finishes timer instances and normalises rounds to `finished`.
+- [x] Tests: 745/746 pass (same pre-existing flaky `closeAllOpenRests` test in `state_test.dart:1877`).

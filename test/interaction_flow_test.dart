@@ -1016,7 +1016,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('MeasurementHistoryChartSheet delete flow', () {
-    Future<void> _pumpSheet(
+    Future<void> pumpSheet(
       WidgetTester tester,
       ProfileState profileState,
       SettingsState settingsState,
@@ -1056,7 +1056,7 @@ void main() {
       await settingsState.initialize();
       await profileState.loadProfile();
 
-      await _pumpSheet(tester, profileState, settingsState);
+      await pumpSheet(tester, profileState, settingsState);
 
       // Long-press the GestureDetector tap target covering the dot.
       await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
@@ -1086,7 +1086,7 @@ void main() {
       await settingsState.initialize();
       await profileState.loadProfile();
 
-      await _pumpSheet(tester, profileState, settingsState);
+      await pumpSheet(tester, profileState, settingsState);
 
       await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
       await tester.pumpAndSettle();
@@ -1134,7 +1134,7 @@ void main() {
       await settingsState.initialize();
       await profileState.loadProfile();
 
-      await _pumpSheet(tester, profileState, settingsState);
+      await pumpSheet(tester, profileState, settingsState);
 
       // Long-press the first dot (index 0 of the ordered entry list).
       await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
@@ -1172,7 +1172,7 @@ void main() {
       await settingsState.initialize();
       await profileState.loadProfile();
 
-      await _pumpSheet(tester, profileState, settingsState);
+      await pumpSheet(tester, profileState, settingsState);
 
       await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
       await tester.pumpAndSettle();
@@ -1210,7 +1210,7 @@ void main() {
       await settingsState.initialize();
       await profileState.loadProfile();
 
-      await _pumpSheet(tester, profileState, settingsState);
+      await pumpSheet(tester, profileState, settingsState);
 
       await tester.tap(find.byKey(const ValueKey('chart_dot_0')));
       await tester.pumpAndSettle();

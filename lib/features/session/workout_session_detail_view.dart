@@ -217,17 +217,37 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         }
 
         if (widget.editMode) {
+          // Prefer buffered value so the editor reflects pending edits immediately.
+          final bufferedSecs =
+              _editBuffer['$effortId-$entryIndex']?['elapsedSecs'] as int?;
           final editDuration =
+              bufferedSecs ??
               timedInstance?.actualDurationSecs ??
               (entryData['elapsedSecs'] as int? ?? timedElapsed);
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(height: 24 + _kSessionScrollBottomExtra),
               InlineMetricEditor(
                 metricType: 'duration',
                 currentValue: editDuration,
                 unitLabel: 'ELAPSED',
+                onTap: () async {
+                  final result = await _showDurationEntryDialog(
+                    context,
+                    title: 'Edit Interval Duration',
+                    initialSecs: editDuration,
+                  );
+                  if (result != null && mounted) {
+                    unawaited(
+                      _updateMetricValue(
+                        effortId,
+                        entryIndex,
+                        'elapsedSecs',
+                        result,
+                      ),
+                    );
+                  }
+                },
                 onValueChanged: (value) => _updateMetricValue(
                   effortId,
                   entryIndex,
@@ -371,10 +391,14 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             : (isMidRound ? 'REMAINING' : 'DURATION');
 
         if (widget.editMode) {
+          // Prefer buffered value so the editor reflects pending edits immediately.
+          final bufferedRoundSecs =
+              _editBuffer['$effortId-$entryIndex']?['round-duration'] as int?;
           final editRoundDuration =
-              (round != null && round.actualDurationSecs > 0)
-              ? round.actualDurationSecs
-              : roundDuration;
+              bufferedRoundSecs ??
+              ((round != null && round.actualDurationSecs > 0)
+                  ? round.actualDurationSecs
+                  : roundDuration);
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -392,6 +416,23 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 metricType: 'duration',
                 currentValue: editRoundDuration,
                 unitLabel: 'DURATION',
+                onTap: () async {
+                  final result = await _showDurationEntryDialog(
+                    context,
+                    title: 'Edit Round Duration',
+                    initialSecs: editRoundDuration,
+                  );
+                  if (result != null && mounted) {
+                    unawaited(
+                      _updateMetricValue(
+                        effortId,
+                        entryIndex,
+                        'round-duration',
+                        result,
+                      ),
+                    );
+                  }
+                },
                 onValueChanged: (value) => _updateMetricValue(
                   effortId,
                   entryIndex,
@@ -508,7 +549,11 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         }
 
         if (widget.editMode) {
+          // Prefer buffered value so the editor reflects pending edits immediately.
+          final bufferedDrillSecs =
+              _editBuffer['$effortId-$entryIndex']?['elapsedSecs'] as int?;
           final editDrillDuration =
+              bufferedDrillSecs ??
               drillInstance?.actualDurationSecs ??
               (entryData['elapsedSecs'] as int? ?? drillElapsed);
           return Column(
@@ -518,6 +563,23 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 metricType: 'duration',
                 currentValue: editDrillDuration,
                 unitLabel: 'ELAPSED',
+                onTap: () async {
+                  final result = await _showDurationEntryDialog(
+                    context,
+                    title: 'Edit Hold Duration',
+                    initialSecs: editDrillDuration,
+                  );
+                  if (result != null && mounted) {
+                    unawaited(
+                      _updateMetricValue(
+                        effortId,
+                        entryIndex,
+                        'elapsedSecs',
+                        result,
+                      ),
+                    );
+                  }
+                },
                 onValueChanged: (value) => _updateMetricValue(
                   effortId,
                   entryIndex,
@@ -878,7 +940,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     );
 
     if (widget.editMode) {
-      // Edit mode keeps simple navigation-only controls.
+      // Edit mode keeps simple navigation-only controls for every effort kind.
+      // Saving is what commits values (and finishes timer instances), so a
+      // per-set Log button would be cosmetic only.
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [backArrow, forwardArrow],
