@@ -868,14 +868,16 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     String effortKind,
     ThemeData theme,
   ) {
+    final effortId = _exercises[_currentExerciseIndex]['id'] as String;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(totalSets, (index) {
-            final isCompleted = index < _currentSet - 1;
             final isCurrent = index == _currentSet - 1;
+            final isActuallyLogged = _isSetLogged(effortId, index, effortKind);
             final isSkipped =
                 _skippedSets[_exercises[_currentExerciseIndex]['id']]?.contains(
                   index,
@@ -890,11 +892,11 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 height: isCurrent ? 14 : 10,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isCompleted && !isSkipped
+                  color: isActuallyLogged && !isSkipped
                       ? theme.colorScheme.primary.withOpacity(0.8)
-                      : isCurrent
+                      : isCurrent && !isActuallyLogged
                       ? theme.colorScheme.primary.withAlpha(
-                          (0.5 * 255).round(),
+                          (0.35 * 255).round(),
                         )
                       : theme.colorScheme.onSurface.withAlpha(
                           (0.2 * 255).round(),

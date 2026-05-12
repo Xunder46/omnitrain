@@ -328,7 +328,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     final efforts = widget.routineState.getEffortsForSegment(segment.id);
 
     return Card(
-      color: OmniTheme.surfaceColor.withOpacity(0.7),
+      color: theme.colorScheme.surface.withOpacity(0.7),
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -511,52 +511,62 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     return Positioned(
       left: 0,
       right: 0,
-      bottom: 10,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 20, 12, 1),
+      bottom: 0,
+      child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Colors.transparent,
-              theme.colorScheme.surface.withOpacity(0.95),
+              theme.colorScheme.surface.withOpacity(0.0),
+              theme.colorScheme.surface.withOpacity(0.92),
               theme.colorScheme.surface,
             ],
-            stops: const [0.0, 0.3, 1.0],
+            stops: const [0.0, 0.35, 1.0],
           ),
         ),
         child: SafeArea(
           top: false,
+          minimum: const EdgeInsets.fromLTRB(16, 24, 16, 16),
           child: Row(
             children: [
               Expanded(
-                child: OutlinedButton(
-                  onPressed: _discardAndPop,
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                child: SizedBox(
+                  height: OmniTheme.buttonPrimaryHeight,
+                  child: OutlinedButton(
+                    onPressed: _discardAndPop,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonBorderRadius,
+                        ),
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    child: const Text('Cancel'),
                   ),
-                  child: const Text('Cancel'),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FilledButton(
-                  onPressed: _saveRoutine,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  height: OmniTheme.buttonPrimaryHeight,
+                  child: FilledButton(
+                    onPressed: _saveRoutine,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonBorderRadius,
+                        ),
+                      ),
                     ),
+                    child: const Text('Save'),
                   ),
-                  child: const Text('Save'),
                 ),
               ),
             ],

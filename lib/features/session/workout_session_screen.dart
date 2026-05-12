@@ -139,6 +139,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Prevents re-opening on subsequent _loadExercises() calls.
   bool _autoOpenAttempted = false;
 
+  // Guard against concurrent add/delete-set operations triggered by rapid taps.
+  bool _isStructuralOp = false;
+
   // GlobalKeys used to locate the header icon buttons for coach mark positioning.
   final GlobalKey _notesIconKey = GlobalKey();
   final GlobalKey _infoIconKey = GlobalKey();
@@ -720,157 +723,165 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   Future<void> _addSet() async {
-    if (_exercises.isEmpty) return;
+    if (_isStructuralOp || _exercises.isEmpty) return;
 
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
     final entries =
         exercise['entries'] as List<Map<String, dynamic>>? ?? const [];
 
-    if (entries.length >= WorkoutConstants.maxEntriesPerEffort) {
-      return;
-    }
+    if (entries.length >= WorkoutConstants.maxEntriesPerEffort) return;
 
-    // Mark structural change so the discard-confirmation fires on Back.
-    if (widget.editMode) _hasStructuralChanges = true;
-    await widget.workoutState.addEntry(effortId);
-    await _loadExercises();
+    _isStructuralOp = true;
+    try {
+      // Mark structural change so the discard-confirmation fires on Back.
+      if (widget.editMode) _hasStructuralChanges = true;
+      await widget.workoutState.addEntry(effortId);
+      await _loadExercises();
+    } finally {
+      _isStructuralOp = false;
+    }
   }
 
   Future<void> _deleteCurrentSet() async {
-    if (_exercises.isEmpty) return;
+    if (_isStructuralOp || _exercises.isEmpty) return;
+    _isStructuralOp = true;
 
-    final exercise = _exercises[_currentExerciseIndex];
-    final effortId = exercise['id'] as String;
-    final exerciseName = exercise['name'] as String;
-    final entries = exercise['entries'] as List<Map<String, dynamic>>;
-    final effortKind = exercise['effortKind'] as String? ?? 'set';
-    final currentIndex = _currentSet - 1;
+    try {
+      final exercise = _exercises[_currentExerciseIndex];
+      final effortId = exercise['id'] as String;
+      final exerciseName = exercise['name'] as String;
+      final entries = exercise['entries'] as List<Map<String, dynamic>>;
+      final effortKind = exercise['effortKind'] as String? ?? 'set';
+      final currentIndex = _currentSet - 1;
 
-    if (entries.isEmpty) return;
+      if (entries.isEmpty) return;
 
-    final setLabel = effortKind == 'round'
-        ? 'Round'
-        : (effortKind == 'timed'
-              ? 'Interval'
-              : (effortKind == 'drill' ? 'Hold' : 'Set'));
+      final setLabel = effortKind == 'round'
+          ? 'Round'
+          : (effortKind == 'timed'
+                ? 'Interval'
+                : (effortKind == 'drill' ? 'Hold' : 'Set'));
 
-    final isLogged = _isSetLogged(effortId, currentIndex, effortKind);
+      final isLogged = _isSetLogged(effortId, currentIndex, effortKind);
 
-    // If this is the last entry, always warn since it removes the entire exercise
-    if (entries.length == 1) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Remove Exercise?'),
-          content: Text(
-            'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
-            'Deleting it will remove the entire exercise from your session.\n\n'
-            'Continue?',
+      // If this is the last entry, always warn since it removes the entire exercise
+      if (entries.length == 1) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Remove Exercise?'),
+            content: Text(
+              'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
+              'Deleting it will remove the entire exercise from your session.\n\n'
+              'Continue?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                style: ButtonStyle(
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
+                    ),
+                  ),
+                ),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ButtonStyle(
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
+                    ),
+                  ),
+                ),
+                child: const Text('Confirm'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
+        );
+
+        if (confirmed != true) return;
+
+        // Delete the entry and remove the exercise
+        if (widget.editMode) _hasStructuralChanges = true;
+        _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
+        await widget.workoutState.deleteEntry(effortId, currentIndex);
+        await widget.workoutState.removeExerciseFromSession(effortId);
+        await _loadExercises();
+
+        // Navigate back to list view
+        if (mounted) {
+          setState(() {
+            _showListView = true;
+            _currentExerciseIndex = 0;
+            _currentSet = 1;
+          });
+        }
+        return;
+      }
+
+      // Multi-set: only confirm if the set has been logged
+      if (isLogged) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Delete logged $setLabel?'),
+            content: const Text('This cannot be undone.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                style: ButtonStyle(
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
                     ),
                   ),
                 ),
+                child: const Text('Cancel'),
               ),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ButtonStyle(
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonUtilityRadius,
+                      ),
                     ),
                   ),
                 ),
+                child: const Text('Delete'),
               ),
-              child: const Text('Confirm'),
-            ),
-          ],
-        ),
-      );
+            ],
+          ),
+        );
 
-      if (confirmed != true) return;
+        if (confirmed != true) return;
+      }
 
-      // Delete the entry and remove the exercise
       if (widget.editMode) _hasStructuralChanges = true;
-      _inProgressKeys.removeWhere((k) => k.startsWith('$effortId-'));
       await widget.workoutState.deleteEntry(effortId, currentIndex);
-      await widget.workoutState.removeExerciseFromSession(effortId);
       await _loadExercises();
 
-      // Navigate back to list view
-      if (mounted) {
-        setState(() {
-          _showListView = true;
-          _currentExerciseIndex = 0;
-          _currentSet = 1;
-        });
-      }
-      return;
+      // Adjust current set if it now exceeds new entries length
+      setState(() {
+        final newCount = entries.length - 1;
+        if (_currentSet > newCount) {
+          _currentSet = newCount.clamp(1, newCount);
+        }
+      });
+    } finally {
+      _isStructuralOp = false;
     }
-
-    // Multi-set: only confirm if the set has been logged
-    if (isLogged) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Delete logged $setLabel?'),
-          content: const Text('This cannot be undone.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Delete'),
-            ),
-          ],
-        ),
-      );
-
-      if (confirmed != true) return;
-    }
-
-    if (widget.editMode) _hasStructuralChanges = true;
-    await widget.workoutState.deleteEntry(effortId, currentIndex);
-    await _loadExercises();
-
-    // Adjust current set if it now exceeds new entries length
-    setState(() {
-      final newCount = entries.length - 1;
-      if (_currentSet > newCount) {
-        _currentSet = newCount.clamp(1, newCount);
-      }
-    });
   }
 
   Future<void> _updateMetricValue(
