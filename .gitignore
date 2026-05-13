@@ -47,6 +47,21 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# iOS CocoaPods
+ios/Pods/
+ios/Podfile.lock
+ios/Flutter/Flutter-Debug.xcconfig
+ios/Flutter/Flutter-Release.xcconfig
+ios/Flutter/Flutter-Profile.xcconfig
+ios/Runner.xcworkspace/
+
+# macOS CocoaPods
+macos/Pods/
+macos/Podfile.lock
+macos/Flutter/Flutter-Debug.xcconfig
+macos/Flutter/Flutter-Release.xcconfig
+macos/Flutter/Flutter-Profile.xcconfig
+macos/Runner.xcworkspace/
 
 # user-specific
 /docs/copilot-agents/

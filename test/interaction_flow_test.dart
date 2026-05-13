@@ -9,7 +9,6 @@ import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
 import 'package:omnitrain/features/period/create_period_screen.dart';
 import 'package:omnitrain/features/period/period_list_screen.dart';
-import 'package:omnitrain/features/profile/profile_screen.dart';
 import 'package:omnitrain/features/profile/widgets/measurement_history_chart_sheet.dart';
 import 'package:omnitrain/features/routine/my_routines_screen.dart';
 import 'package:omnitrain/features/routine/routine_setup_screen.dart';
