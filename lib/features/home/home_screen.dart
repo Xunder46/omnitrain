@@ -54,8 +54,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   static const double _minSheetExtent = 0.10;
-  static const double _midSheetExtent = 0.45;
-  static const double _maxSheetExtent = 0.92;
+  double _maxSheetExtent = 0.9;
 
   late final DraggableScrollableController _sheetController;
   late final ValueNotifier<double> _sheetExtent;
@@ -584,6 +583,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildMaintenanceSheet(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    // `context` here is the outer Scaffold context, so `padding.top` is the
+    // status-bar safe-area only.  Add `kToolbarHeight` explicitly to account
+    // for the transparent AppBar so the sheet top lands at the TRAIN title
+    // level instead of covering the logo.
+    _maxSheetExtent =
+        ((mq.size.height - mq.padding.top - kToolbarHeight) / mq.size.height)
+            .clamp(0.5, 0.9);
+
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {
         _sheetExtent.value = notification.extent;
@@ -595,12 +603,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         maxChildSize: _maxSheetExtent,
         initialChildSize: _minSheetExtent,
         snap: true,
-        snapSizes: const [_minSheetExtent, _midSheetExtent, _maxSheetExtent],
+        snapSizes: [_minSheetExtent, _maxSheetExtent],
         builder: (context, scrollController) {
           return ValueListenableBuilder<double>(
             valueListenable: _sheetExtent,
             builder: (context, extent, child) {
-              final t = _extentToProgress(extent);
+              final t = ((extent - _minSheetExtent) /
+                      (_maxSheetExtent - _minSheetExtent))
+                  .clamp(0.0, 1.0);
               final contentOpacity = t.clamp(0.0, 1.0);
               final slideOffset = 20.0 * (1.0 - t);
 
@@ -691,7 +701,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       padding: const EdgeInsets.only(top: 10, bottom: 12),
       child: Center(
         child: GestureDetector(
-          onTap: () => _snapSheet(_midSheetExtent),
+          onTap: () => _snapSheet(_maxSheetExtent),
           child: AnimatedBuilder(
             animation: _hintOffset,
             builder: (context, child) {
@@ -701,8 +711,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               );
             },
             child: Container(
-              width: 40,
-              height: 4,
+              width: 50,
+              height: 6,
               decoration: BoxDecoration(
                 color: OmniTheme.colorsForTheme(
                   widget.settingsState.appTheme,
@@ -804,10 +814,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  double _extentToProgress(double extent) {
-    final t = (extent - _minSheetExtent) / (_maxSheetExtent - _minSheetExtent);
-    return t.clamp(0.0, 1.0);
-  }
 }
 
 class _MaintenanceItem {
