@@ -25,49 +25,56 @@ class OmniBottomCTA extends StatelessWidget {
         ? theme.colorScheme.onError
         : theme.colorScheme.onPrimary;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            surface.withOpacity(0.0),
-            surface.withOpacity(0.92),
-            surface,
-          ],
-          stops: const [0.0, 0.35, 1.0],
+    return Material(
+      type: MaterialType.transparency,
+      elevation: 0,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              surface.withOpacity(0.0),
+              surface.withOpacity(0.92),
+              surface,
+            ],
+            stops: const [0.0, 0.35, 1.0],
+          ),
         ),
-      ),
-      child: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: SizedBox(
-          width: double.infinity,
-          height: OmniTheme.buttonPrimaryHeight,
-          child: FilledButton(
-            onPressed: onPressed,
-            style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.disabled)) {
-                  return theme.colorScheme.onSurface.withOpacity(0.12);
-                }
-                return backgroundColor;
-              }),
-              foregroundColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.disabled)) {
-                  return theme.colorScheme.onSurface.withOpacity(0.38);
-                }
-                return foregroundColor;
-              }),
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonBorderRadius,
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+            child: SizedBox(
+              width: double.infinity,
+              height: OmniTheme.buttonPrimaryHeight,
+              child: FilledButton(
+                onPressed: onPressed,
+                style: ButtonStyle(
+                  backgroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.disabled)) {
+                      return theme.colorScheme.onSurface.withOpacity(0.12);
+                    }
+                    return backgroundColor;
+                  }),
+                  foregroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.disabled)) {
+                      return theme.colorScheme.onSurface.withOpacity(0.38);
+                    }
+                    return foregroundColor;
+                  }),
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        OmniTheme.buttonBorderRadius,
+                      ),
+                    ),
                   ),
                 ),
+                child: Text(label),
               ),
             ),
-            child: Text(label),
           ),
         ),
       ),

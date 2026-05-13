@@ -53,7 +53,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
-  static const double _minSheetExtent = 0.07;
+  static const double _minSheetExtent = 0.10;
   static const double _midSheetExtent = 0.45;
   static const double _maxSheetExtent = 0.92;
 
@@ -155,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           children: [
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(30.0, 15.0, 16.0, 0.0),
+                padding: const EdgeInsets.fromLTRB(16.0, 15.0, 16.0, 0.0),
                 child: Column(
                   children: [
                     Text(
@@ -181,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         listenable: widget.workoutState,
                         builder: (context, child) {
                           const standardGridSpacing = 16.0;
-                          const utilitySectionGap = standardGridSpacing * 3;
+                          const utilitySectionGap = standardGridSpacing * 2;
 
                           final session = widget.workoutState.currentSession;
                           final isRoutineSession = session?.intent == 'routine';

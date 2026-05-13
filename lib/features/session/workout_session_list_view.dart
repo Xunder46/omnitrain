@@ -13,18 +13,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
       widget.settingsState.appTheme,
     );
     final chip = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: chipColors.surface.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(8),
-        border: widget.editMode
-            ? Border.all(
-                color: theme.colorScheme.primary.withAlpha(
-                  (0.45 * 255).round(),
-                ),
-              )
-            : null,
-      ),
+      margin: const EdgeInsets.only(bottom: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

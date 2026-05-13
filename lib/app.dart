@@ -148,6 +148,22 @@ ThemeData buildTheme({
     colorScheme: colorScheme,
     scaffoldBackgroundColor: background,
     dividerColor: divider,
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      elevation: 0,
+      backgroundColor: Colors.transparent,
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      elevation: 0,
+      shadowColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      backgroundColor: Colors.transparent,
+      indicatorColor: Colors.transparent,
+    ),
+    bottomAppBarTheme: const BottomAppBarThemeData(
+      elevation: 0,
+      color: Colors.transparent,
+      shadowColor: Colors.transparent,
+    ),
     textTheme: TextTheme(
       bodyLarge: TextStyle(color: textPrimary),
       bodyMedium: TextStyle(color: textSecondary),
