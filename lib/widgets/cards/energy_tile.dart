@@ -51,6 +51,7 @@ class _EnergyTileState extends State<EnergyTile> {
   }
 
   Widget _buildSurface() {
+    final isActive = widget.isActive;
     final baseDecoration = BoxDecoration(
       borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
       gradient: LinearGradient(
@@ -62,22 +63,36 @@ class _EnergyTileState extends State<EnergyTile> {
         color: OmniTheme.surfaceBorderColor,
         width: OmniTheme.surfaceBorderWidth,
       ),
-      boxShadow: [
-        OmniTheme.deepShadow,
-        // Accent glow - ambient color effect
-        BoxShadow(
-          color: widget.accentColor.withOpacity(0.35),
-          blurRadius: 40,
-          spreadRadius: -10,
-        ),
-        // Enhanced glow when active
-        if (widget.isActive)
-          BoxShadow(
-            color: widget.accentColor.withOpacity(0.55),
-            blurRadius: 24,
-            spreadRadius: 2,
-          ),
-      ],
+      // Keep active tile shadow behavior unchanged.
+      // Inactive tiles use color-matched shadows from their own palette.
+      boxShadow: isActive
+          ? [
+              OmniTheme.deepShadow,
+              BoxShadow(
+                color: widget.accentColor.withOpacity(0.35),
+                blurRadius: 40,
+                spreadRadius: -10,
+              ),
+              BoxShadow(
+                color: widget.accentColor.withOpacity(0.55),
+                blurRadius: 24,
+                spreadRadius: 2,
+              ),
+            ]
+          : [
+              BoxShadow(
+                color: widget.accentColor.withOpacity(0.32),
+                blurRadius: 26,
+                spreadRadius: -8,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: widget.gradientColors.last.withOpacity(0.18),
+                blurRadius: 16,
+                spreadRadius: -12,
+                offset: const Offset(0, 6),
+              ),
+            ],
     );
 
     return Container(
