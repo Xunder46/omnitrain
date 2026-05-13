@@ -12,7 +12,6 @@ import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../data/models/models.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../session/session_summary_screen.dart';
 import 'day_session_list_screen.dart';
 import '../period/period_list_screen.dart';
@@ -44,13 +43,28 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  static const _mondayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _sundayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  static const _mondayLabels = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
+  static const _sundayLabels = [
+    'Sun',
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+  ];
 
-  List<String> get _weekLabels =>
-      widget.settingsState.startOfWeek == 'sunday'
-          ? _sundayLabels
-          : _mondayLabels;
+  List<String> get _weekLabels => widget.settingsState.startOfWeek == 'sunday'
+      ? _sundayLabels
+      : _mondayLabels;
 
   String get _startOfWeek => widget.settingsState.startOfWeek;
 
@@ -66,6 +80,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Calendar'),
@@ -94,55 +109,50 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ],
       ),
-      body: OmniGradientBackground(
-        child: SafeArea(
-          child: ListenableBuilder(
-            listenable: Listenable.merge([
-              widget.calendarState,
-              widget.settingsState,
-            ]),
-            builder: (context, _) {
-              return Column(
-                children: [
-                  _MonthHeader(
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: Listenable.merge([
+            widget.calendarState,
+            widget.settingsState,
+          ]),
+          builder: (context, _) {
+            return Column(
+              children: [
+                _MonthHeader(
+                  year: widget.calendarState.year,
+                  month: widget.calendarState.month,
+                  onPrevious: widget.calendarState.goToPreviousMonth,
+                  onNext: widget.calendarState.goToNextMonth,
+                ),
+                _WeekDayRow(labels: _weekLabels),
+                if (widget.calendarState.isLoading)
+                  const Expanded(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else ...[
+                  _MonthGrid(
                     year: widget.calendarState.year,
                     month: widget.calendarState.month,
-                    onPrevious: widget.calendarState.goToPreviousMonth,
-                    onNext: widget.calendarState.goToNextMonth,
+                    entriesByDay: widget.calendarState.entriesByDay,
+                    periods: widget.calendarState.periods,
+                    startOfWeek: _startOfWeek,
+                    onDayTap: (date) => _onDayTap(context, date),
                   ),
-                  _WeekDayRow(labels: _weekLabels),
-                  if (widget.calendarState.isLoading)
-                    const Expanded(
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  else ...[
-                    _MonthGrid(
-                      year: widget.calendarState.year,
-                      month: widget.calendarState.month,
-                      entriesByDay: widget.calendarState.entriesByDay,
-                      periods: widget.calendarState.periods,
-                      startOfWeek: _startOfWeek,
-                      onDayTap: (date) => _onDayTap(context, date),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: _MonthlyStatsStrip(
+                      completedSessions:
+                          widget.calendarState.completedSessionCount,
+                      totalTrainingMs: widget.calendarState.totalTrainingMs,
+                      streakDays: widget.calendarState.streakDays,
+                      modalityBreakdown: widget.calendarState.modalityBreakdown,
+                      isActiveStreak: widget.calendarState.isActiveStreak,
                     ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: _MonthlyStatsStrip(
-                        completedSessions:
-                            widget.calendarState.completedSessionCount,
-                        totalTrainingMs:
-                            widget.calendarState.totalTrainingMs,
-                        streakDays: widget.calendarState.streakDays,
-                        modalityBreakdown:
-                            widget.calendarState.modalityBreakdown,
-                        isActiveStreak:
-                            widget.calendarState.isActiveStreak,
-                      ),
-                    ),
-                  ],
+                  ),
                 ],
-              );
-            },
-          ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -320,7 +330,11 @@ class _MonthGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final grid = OmniDateUtils.buildMonthGrid(year, month, startOfWeek: startOfWeek);
+    final grid = OmniDateUtils.buildMonthGrid(
+      year,
+      month,
+      startOfWeek: startOfWeek,
+    );
 
     return GridView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -463,7 +477,10 @@ class _SessionIndicators extends StatelessWidget {
                 Container(
                   width: 14.0,
                   height: 14.0,
-                  margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 1,
+                    vertical: 1,
+                  ),
                   alignment: Alignment.center,
                   child: Text(
                     '+$overflow',
@@ -560,10 +577,7 @@ class _MonthlyStatsStrip extends StatelessWidget {
           Container(
             width: 11,
             height: 11,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 5),
           Text(tileLabel, style: labelStyle),
@@ -596,9 +610,7 @@ class _MonthlyStatsStrip extends StatelessWidget {
               children: [
                 _CompactStat(
                   label: 'SESSIONS',
-                  value: completedSessions > 0
-                      ? '$completedSessions'
-                      : '—',
+                  value: completedSessions > 0 ? '$completedSessions' : '—',
                 ),
                 _CompactStat(
                   label: 'TIME',
@@ -609,8 +621,8 @@ class _MonthlyStatsStrip extends StatelessWidget {
                   value: completedSessions == 0
                       ? '—'
                       : (streakDays >= 3
-                          ? '🔥 ${streakDays}d'
-                          : (streakDays == 0 ? '0' : '${streakDays}d')),
+                            ? '🔥 ${streakDays}d'
+                            : (streakDays == 0 ? '0' : '${streakDays}d')),
                 ),
               ],
             ),
@@ -624,7 +636,7 @@ class _MonthlyStatsStrip extends StatelessWidget {
               ),
             ],
           ],
-          ),
+        ),
       ],
     );
   }

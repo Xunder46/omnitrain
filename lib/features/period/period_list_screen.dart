@@ -4,7 +4,6 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
 import '../../state/period/period_state.dart';
 import '../../data/models/models.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import 'create_period_screen.dart';
 
@@ -36,45 +35,43 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: OmniGradientBackground(
-        child: SafeArea(
-          child: ListenableBuilder(
-            listenable: widget.periodState,
-            builder: (context, _) {
-              if (widget.periodState.isLoading) {
-                return const Center(child: CircularProgressIndicator());
-              }
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: widget.periodState,
+          builder: (context, _) {
+            if (widget.periodState.isLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-              final periods = widget.periodState.periods;
-              if (periods.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'No training periods yet.',
-                        style: TextStyle(
-                          color: OmniTheme.textSecondary.withOpacity(0.6),
-                          fontSize: 15,
-                        ),
+            final periods = widget.periodState.periods;
+            if (periods.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'No training periods yet.',
+                      style: TextStyle(
+                        color: OmniTheme.textSecondary.withOpacity(0.6),
+                        fontSize: 15,
                       ),
-                    ],
-                  ),
-                );
-              }
-
-              return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 128),
-                itemCount: periods.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) => _PeriodRow(
-                  period: periods[index],
-                  onEdit: () => _openEdit(context, periods[index]),
-                  onDelete: () => _confirmDelete(context, periods[index]),
+                    ),
+                  ],
                 ),
               );
-            },
-          ),
+            }
+
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 128),
+              itemCount: periods.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) => _PeriodRow(
+                period: periods[index],
+                onEdit: () => _openEdit(context, periods[index]),
+                onDelete: () => _confirmDelete(context, periods[index]),
+              ),
+            );
+          },
         ),
       ),
       bottomNavigationBar: OmniBottomCTA(

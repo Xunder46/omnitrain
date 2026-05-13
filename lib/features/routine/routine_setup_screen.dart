@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../core/constants/modality_config.dart';
@@ -107,9 +106,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        body: OmniGradientBackground(
-          child: SafeArea(child: Center(child: CircularProgressIndicator())),
-        ),
+        extendBody: true,
+        body: SafeArea(child: Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -182,37 +180,36 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: OmniGradientBackground(
-        child: Stack(
-          children: [
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(theme),
-                  const SizedBox(height: 8),
-                  _buildRoutineNameField(theme),
-                  const SizedBox(height: 12),
-                  _buildRoutineDescriptionField(theme),
-                  const SizedBox(height: 12),
-                  _buildRoutineModalityField(theme),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
-                      children: [
-                        for (final entry in segments.asMap().entries)
-                          _buildSegmentCard(entry.key, entry.value, theme),
-                        const SizedBox(height: 12),
-                        _buildAddBlockButton(theme),
-                      ],
-                    ),
+      extendBody: true,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(theme),
+                const SizedBox(height: 8),
+                _buildRoutineNameField(theme),
+                const SizedBox(height: 12),
+                _buildRoutineDescriptionField(theme),
+                const SizedBox(height: 12),
+                _buildRoutineModalityField(theme),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+                    children: [
+                      for (final entry in segments.asMap().entries)
+                        _buildSegmentCard(entry.key, entry.value, theme),
+                      const SizedBox(height: 12),
+                      _buildAddBlockButton(theme),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            _buildBottomActions(theme),
-          ],
-        ),
+          ),
+          _buildBottomActions(theme),
+        ],
       ),
     );
   }
@@ -593,116 +590,113 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: OmniGradientBackground(
-        child: GestureDetector(
-          onHorizontalDragEnd: (details) {
-            if (details.primaryVelocity == null) return;
-            if (details.primaryVelocity! > 200) {
-              _previousSet();
-            } else if (details.primaryVelocity! < -200) {
-              _nextSet();
-            }
-          },
-          onVerticalDragEnd: (details) {
-            if (details.primaryVelocity == null) return;
-            if (details.primaryVelocity! < -200) {
-              _switchExercise(1);
-            } else if (details.primaryVelocity! > 200) {
-              _switchExercise(-1);
-            }
-          },
-          child: SafeArea(
-            child: Stack(
-              children: [
-                Column(
-                  children: [
-                    _buildHeader(theme),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 8,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              segment?.name ?? 'Block',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: OmniTheme.textSecondary,
-                              ),
+      extendBody: true,
+      body: GestureDetector(
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity == null) return;
+          if (details.primaryVelocity! > 200) {
+            _previousSet();
+          } else if (details.primaryVelocity! < -200) {
+            _nextSet();
+          }
+        },
+        onVerticalDragEnd: (details) {
+          if (details.primaryVelocity == null) return;
+          if (details.primaryVelocity! < -200) {
+            _switchExercise(1);
+          } else if (details.primaryVelocity! > 200) {
+            _switchExercise(-1);
+          }
+        },
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  _buildHeader(theme),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            segment?.name ?? 'Block',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: OmniTheme.textSecondary,
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              exercise?.name ?? 'Unknown Exercise',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                color: OmniTheme.textPrimary,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            exercise?.name ?? 'Unknown Exercise',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              color: OmniTheme.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              _getTrackingLabel(effort.effortKind),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primary.withOpacity(
-                                  0.2,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                _getTrackingLabel(effort.effortKind),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                          ),
+                          const SizedBox(height: 24),
+                          Center(
+                            child: _buildMetricWidget(effort, targets, theme),
+                          ),
+                          const SizedBox(height: 16),
+                          Center(
+                            child: _buildSetProgress(
+                              setCount,
+                              effort.effortKind,
+                              theme,
                             ),
-                            const SizedBox(height: 24),
-                            Center(
-                              child: _buildMetricWidget(effort, targets, theme),
+                          ),
+                          const SizedBox(height: 12),
+                          Center(
+                            child: _buildPreviousSetStats(
+                              effort,
+                              targets,
+                              theme,
                             ),
-                            const SizedBox(height: 16),
-                            Center(
-                              child: _buildSetProgress(
-                                setCount,
-                                effort.effortKind,
-                                theme,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Center(
-                              child: _buildPreviousSetStats(
-                                effort,
-                                targets,
-                                theme,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Center(child: _buildSetIndicator(setCount, theme)),
-                            const SizedBox(height: 80),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 12),
+                          Center(child: _buildSetIndicator(setCount, theme)),
+                          const SizedBox(height: 80),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: _buildSetControls(setCount, effort),
-                    ),
+                  ),
+                ],
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: _buildSetControls(setCount, effort),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

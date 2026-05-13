@@ -11,7 +11,6 @@ import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../core/constants/home_tiles.dart';
 import '../../core/constants/omni_theme.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/cards/energy_tile.dart';
 import '../../widgets/cards/maintenance_tile.dart';
 import '../session/workout_session_screen.dart';
@@ -138,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Image.asset(
@@ -149,114 +149,112 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: OmniGradientBackground(
-        child: Stack(
-          children: [
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16.0, 15.0, 16.0, 0.0),
-                child: Column(
-                  children: [
-                    Text(
-                      'TRAIN',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 2.0,
-                        color: OmniTheme.textPrimary,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withOpacity(0.5),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 15.0, 16.0, 0.0),
+              child: Column(
+                children: [
+                  Text(
+                    'TRAIN',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2.0,
+                      color: OmniTheme.textPrimary,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withOpacity(0.5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 30),
-                    // Grid view with training modalities
-                    Expanded(
-                      child: ListenableBuilder(
-                        listenable: widget.workoutState,
-                        builder: (context, child) {
-                          const standardGridSpacing = 16.0;
-                          const utilitySectionGap = standardGridSpacing * 2;
+                  ),
+                  const SizedBox(height: 30),
+                  // Grid view with training modalities
+                  Expanded(
+                    child: ListenableBuilder(
+                      listenable: widget.workoutState,
+                      builder: (context, child) {
+                        const standardGridSpacing = 16.0;
+                        const utilitySectionGap = standardGridSpacing * 1.5;
 
-                          final session = widget.workoutState.currentSession;
-                          final isRoutineSession = session?.intent == 'routine';
-                          final hasActiveSession =
-                              widget.workoutState.hasActiveSession;
+                        final session = widget.workoutState.currentSession;
+                        final isRoutineSession = session?.intent == 'routine';
+                        final hasActiveSession =
+                            widget.workoutState.hasActiveSession;
 
-                          final tiles = HomeTiles.all
-                              .map((tile) {
-                                final isActive =
-                                    hasActiveSession &&
-                                    (tile.key == 'my_routines'
-                                        ? isRoutineSession
-                                        : tile.modality == null
-                                        ? session?.modality == null &&
-                                              !isRoutineSession
-                                        : session?.modality == tile.modality);
+                        final tiles = HomeTiles.all
+                            .map((tile) {
+                              final isActive =
+                                  hasActiveSession &&
+                                  (tile.key == 'my_routines'
+                                      ? isRoutineSession
+                                      : tile.modality == null
+                                      ? session?.modality == null &&
+                                            !isRoutineSession
+                                      : session?.modality == tile.modality);
 
-                                return EnergyTile(
-                                  title: tile.label,
-                                  icon: tile.iconData,
-                                  iconWidget: tile.iconWidget,
-                                  gradientColors: tile.gradientColors,
-                                  accentColor: tile.accentColor,
-                                  isActive: isActive,
-                                  onTap: () =>
-                                      _handleTileTap(context, tile, isActive),
-                                );
-                              })
-                              .toList(growable: false);
+                              return EnergyTile(
+                                title: tile.label,
+                                icon: tile.iconData,
+                                iconWidget: tile.iconWidget,
+                                gradientColors: tile.gradientColors,
+                                accentColor: tile.accentColor,
+                                isActive: isActive,
+                                onTap: () =>
+                                    _handleTileTap(context, tile, isActive),
+                              );
+                            })
+                            .toList(growable: false);
 
-                          return CustomScrollView(
-                            slivers: [
-                              SliverGrid(
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      mainAxisSpacing: standardGridSpacing,
-                                      crossAxisSpacing: standardGridSpacing,
-                                      childAspectRatio: 1.0,
-                                    ),
-                                delegate: SliverChildBuilderDelegate((
-                                  context,
-                                  index,
-                                ) {
-                                  return tiles[index];
-                                }, childCount: 4),
-                              ),
-                              const SliverToBoxAdapter(
-                                child: SizedBox(height: utilitySectionGap),
-                              ),
-                              SliverGrid(
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      crossAxisSpacing: standardGridSpacing,
-                                      childAspectRatio: 1.0,
-                                    ),
-                                delegate: SliverChildBuilderDelegate((
-                                  context,
-                                  index,
-                                ) {
-                                  return tiles[index + 4];
-                                }, childCount: 2),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
+                        return CustomScrollView(
+                          slivers: [
+                            SliverGrid(
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    mainAxisSpacing: standardGridSpacing,
+                                    crossAxisSpacing: standardGridSpacing,
+                                    childAspectRatio: 1.0,
+                                  ),
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                return tiles[index];
+                              }, childCount: 4),
+                            ),
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: utilitySectionGap),
+                            ),
+                            SliverGrid(
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    crossAxisSpacing: standardGridSpacing,
+                                    childAspectRatio: 1.0,
+                                  ),
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                return tiles[index + 4];
+                              }, childCount: 2),
+                            ),
+                          ],
+                        );
+                      },
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            _buildMaintenanceSheet(context),
-          ],
-        ),
+          ),
+          _buildMaintenanceSheet(context),
+        ],
       ),
     );
   }
@@ -608,9 +606,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           return ValueListenableBuilder<double>(
             valueListenable: _sheetExtent,
             builder: (context, extent, child) {
-              final t = ((extent - _minSheetExtent) /
-                      (_maxSheetExtent - _minSheetExtent))
-                  .clamp(0.0, 1.0);
+              final t =
+                  ((extent - _minSheetExtent) /
+                          (_maxSheetExtent - _minSheetExtent))
+                      .clamp(0.0, 1.0);
               final contentOpacity = t.clamp(0.0, 1.0);
               final slideOffset = 20.0 * (1.0 - t);
 
@@ -813,7 +812,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       curve: Curves.easeOut,
     );
   }
-
 }
 
 class _MaintenanceItem {

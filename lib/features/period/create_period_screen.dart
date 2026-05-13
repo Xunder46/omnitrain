@@ -4,7 +4,6 @@ import '../../core/utils/modality_color_utils.dart';
 import '../../state/period/period_state.dart';
 import '../../core/constants/modality.dart';
 import '../../data/models/models.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 
 class CreatePeriodScreen extends StatefulWidget {
@@ -94,173 +93,166 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
         label: 'Save',
         onPressed: _isSaving ? null : _submit,
       ),
-      body: OmniGradientBackground(
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 128),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Name ─────────────────────────────────────────────
-                TextField(
-                  controller: _nameCtrl,
-                  maxLength: 50,
-                  decoration: InputDecoration(
-                    labelText: 'Period Name *',
-                    border: const OutlineInputBorder(),
-                    errorText: _nameError,
-                    counterText: '',
-                  ),
-                  onChanged: (_) {
-                    if (_nameError != null) {
-                      setState(() => _nameError = null);
-                    }
-                  },
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 128),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Name ─────────────────────────────────────────────
+              TextField(
+                controller: _nameCtrl,
+                maxLength: 50,
+                decoration: InputDecoration(
+                  labelText: 'Period Name *',
+                  border: const OutlineInputBorder(),
+                  errorText: _nameError,
+                  counterText: '',
                 ),
-                const SizedBox(height: 16),
+                onChanged: (_) {
+                  if (_nameError != null) {
+                    setState(() => _nameError = null);
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
 
-                // ── Date range ───────────────────────────────────────
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DateField(
-                        label: 'Start Date',
-                        value: _startDate,
-                        onTap: () => _pickDate(isStart: true),
-                      ),
+              // ── Date range ───────────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: _DateField(
+                      label: 'Start Date',
+                      value: _startDate,
+                      onTap: () => _pickDate(isStart: true),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _DateField(
-                        label: 'End Date',
-                        value: _endDate,
-                        onTap: () => _pickDate(isStart: false),
-                      ),
-                    ),
-                  ],
-                ),
-                if (_dateError != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    _dateError!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 12,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _DateField(
+                      label: 'End Date',
+                      value: _endDate,
+                      onTap: () => _pickDate(isStart: false),
                     ),
                   ),
                 ],
-                if (_overlapError != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    _overlapError!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-
-                // ── Focus modalities ─────────────────────────────────
-                const Text(
-                  'Focus Modalities (optional)',
+              ),
+              if (_dateError != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _dateError!,
                   style: TextStyle(
-                    color: OmniTheme.textSecondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 12,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _allModalities.map((m) {
-                    final selected = _focusModalities.contains(m);
-                    final color = ModalityColorUtils.colorForModality(m);
-                    return FilterChip(
-                      label: Text(ModalityColorUtils.labelForModality(m)),
-                      selected: selected,
-                      selectedColor: color.withOpacity(0.25),
-                      checkmarkColor: color,
-                      labelStyle: TextStyle(
-                        color: selected ? color : OmniTheme.textSecondary,
-                        fontSize: 12,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                      ),
-                      onSelected: (val) {
-                        setState(() {
-                          if (val) {
-                            _focusModalities.add(m);
-                          } else {
-                            _focusModalities.remove(m);
-                          }
-                        });
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-
-                // ── Color ─────────────────────────────────────────────
-                const Text(
-                  'Calendar Color',
-                  style: TextStyle(
-                    color: OmniTheme.textSecondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: _colorPalette.map((colorHex) {
-                    final color = Color(
-                      int.parse(colorHex.substring(1), radix: 16) + 0xFF000000,
-                    );
-                    final isSelected = _selectedColor == colorHex;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedColor = colorHex),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                          border: isSelected
-                              ? Border.all(
-                                  color: OmniTheme.textPrimary,
-                                  width: 3,
-                                )
-                              : null,
-                        ),
-                        child: isSelected
-                            ? const Icon(
-                                Icons.check,
-                                color: Colors.white,
-                                size: 18,
-                              )
-                            : null,
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-
-                // ── Notes ─────────────────────────────────────────────
-                TextField(
-                  controller: _notesCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Notes (optional)',
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
-                  ),
-                  maxLines: 3,
                 ),
               ],
-            ),
+              if (_overlapError != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _overlapError!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+
+              // ── Focus modalities ─────────────────────────────────
+              const Text(
+                'Focus Modalities (optional)',
+                style: TextStyle(
+                  color: OmniTheme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _allModalities.map((m) {
+                  final selected = _focusModalities.contains(m);
+                  final color = ModalityColorUtils.colorForModality(m);
+                  return FilterChip(
+                    label: Text(ModalityColorUtils.labelForModality(m)),
+                    selected: selected,
+                    selectedColor: color.withOpacity(0.25),
+                    checkmarkColor: color,
+                    labelStyle: TextStyle(
+                      color: selected ? color : OmniTheme.textSecondary,
+                      fontSize: 12,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                    onSelected: (val) {
+                      setState(() {
+                        if (val) {
+                          _focusModalities.add(m);
+                        } else {
+                          _focusModalities.remove(m);
+                        }
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Color ─────────────────────────────────────────────
+              const Text(
+                'Calendar Color',
+                style: TextStyle(
+                  color: OmniTheme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: _colorPalette.map((colorHex) {
+                  final color = Color(
+                    int.parse(colorHex.substring(1), radix: 16) + 0xFF000000,
+                  );
+                  final isSelected = _selectedColor == colorHex;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedColor = colorHex),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: isSelected
+                            ? Border.all(color: OmniTheme.textPrimary, width: 3)
+                            : null,
+                      ),
+                      child: isSelected
+                          ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 18,
+                            )
+                          : null,
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Notes ─────────────────────────────────────────────
+              TextField(
+                controller: _notesCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+                maxLines: 3,
+              ),
+            ],
           ),
         ),
       ),

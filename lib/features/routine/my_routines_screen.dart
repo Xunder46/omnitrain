@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -45,6 +44,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('My Routines'),
@@ -60,139 +60,133 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
         backgroundColor: Theme.of(context).colorScheme.primary,
         child: Icon(Icons.add),
       ),
-      body: OmniGradientBackground(
-        child: SafeArea(
-          child: ListenableBuilder(
-            listenable: widget.routineState,
-            builder: (context, child) {
-              final theme = Theme.of(context);
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: widget.routineState,
+          builder: (context, child) {
+            final theme = Theme.of(context);
 
-              if (widget.routineState.isLoading) {
-                return Center(child: CircularProgressIndicator());
-              }
+            if (widget.routineState.isLoading) {
+              return Center(child: CircularProgressIndicator());
+            }
 
-              final routines = widget.routineState.routines;
+            final routines = widget.routineState.routines;
 
-              if (routines.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: OmniTheme.textPrimary.withOpacity(0.3),
-                            width: 2,
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.folder_open,
-                          size: 60,
-                          color: OmniTheme.textPrimary.withOpacity(0.6),
+            if (routines.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: OmniTheme.textPrimary.withOpacity(0.3),
+                          width: 2,
                         ),
                       ),
-                      SizedBox(height: 32),
-                      Text(
-                        'No Routines Yet',
+                      child: Icon(
+                        Icons.folder_open,
+                        size: 60,
+                        color: OmniTheme.textPrimary.withOpacity(0.6),
+                      ),
+                    ),
+                    SizedBox(height: 32),
+                    Text(
+                      'No Routines Yet',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: OmniTheme.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 16),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 32.0),
+                      child: Text(
+                        'Create your first routine to get started',
+                        textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: OmniTheme.textPrimary,
-                        ),
-                      ),
-                      SizedBox(height: 16),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 32.0),
-                        child: Text(
-                          'Create your first routine to get started',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: OmniTheme.textPrimary.withOpacity(0.7),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              return ListView.builder(
-                padding: EdgeInsets.all(16),
-                itemCount: routines.length,
-                itemBuilder: (context, index) {
-                  final routine = routines[index];
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: 12),
-                    child: Card(
-                      color: theme.colorScheme.surface.withOpacity(0.8),
-                      elevation: 4,
-                      child: ListTile(
-                        contentPadding: EdgeInsets.all(12),
-                        onTap: () => _startRoutine(context, routine.id),
-                        leading: Icon(
-                          Icons.fitness_center,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 28,
-                        ),
-                        title: Text(
-                          routine.name,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onSurface,
-                          ),
-                        ),
-                        subtitle: Text(
-                          'Created ${_formatDate(DateTime.fromMillisecondsSinceEpoch(routine.createdAtMs))}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface.withOpacity(0.7),
-                          ),
-                        ),
-                        trailing: PopupMenuButton(
-                          color: theme.colorScheme.surface.withOpacity(0.8),
-                          itemBuilder: (context) => [
-                            PopupMenuItem(
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.edit,
-                                    size: 20,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text('Edit'),
-                                ],
-                              ),
-                              onTap: () => _editRoutine(context, routine.id),
-                            ),
-                            PopupMenuItem(
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.delete,
-                                    size: 20,
-                                    color: Colors.red,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text('Delete'),
-                                ],
-                              ),
-                              onTap: () => _confirmDelete(context, routine.id),
-                            ),
-                          ],
+                          fontSize: 16,
+                          color: OmniTheme.textPrimary.withOpacity(0.7),
                         ),
                       ),
                     ),
-                  );
-                },
+                  ],
+                ),
               );
-            },
-          ),
+            }
+
+            return ListView.builder(
+              padding: EdgeInsets.all(16),
+              itemCount: routines.length,
+              itemBuilder: (context, index) {
+                final routine = routines[index];
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Card(
+                    color: theme.colorScheme.surface.withOpacity(0.8),
+                    elevation: 4,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.all(12),
+                      onTap: () => _startRoutine(context, routine.id),
+                      leading: Icon(
+                        Icons.fitness_center,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 28,
+                      ),
+                      title: Text(
+                        routine.name,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Created ${_formatDate(DateTime.fromMillisecondsSinceEpoch(routine.createdAtMs))}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                      trailing: PopupMenuButton(
+                        color: theme.colorScheme.surface.withOpacity(0.8),
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.edit,
+                                  size: 20,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                SizedBox(width: 8),
+                                Text('Edit'),
+                              ],
+                            ),
+                            onTap: () => _editRoutine(context, routine.id),
+                          ),
+                          PopupMenuItem(
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, size: 20, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Delete'),
+                              ],
+                            ),
+                            onTap: () => _confirmDelete(context, routine.id),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         ),
       ),
     );

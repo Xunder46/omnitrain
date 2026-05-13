@@ -14,6 +14,7 @@ import 'core/utils/timer_alert_service.dart';
 
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
+import 'widgets/layout/omni_gradient_background.dart';
 
 class MyApp extends StatelessWidget {
   final WorkoutRepository repository;
@@ -84,6 +85,8 @@ class MyApp extends StatelessWidget {
           title: 'Omnitrain',
           debugShowCheckedModeBanner: false,
           theme: appTheme.copyWith(textTheme: textTheme),
+          builder: (context, child) =>
+              OmniGradientBackground(child: child ?? const SizedBox.shrink()),
           // Splash screen temporarily disabled - showing home screen directly
           // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
           home: showOnboarding
@@ -146,8 +149,15 @@ ThemeData buildTheme({
     useMaterial3: true,
     brightness: brightness,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: background,
+    scaffoldBackgroundColor: Colors.transparent,
     dividerColor: divider,
+    appBarTheme: const AppBarTheme(
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      shadowColor: Colors.transparent,
+    ),
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       elevation: 0,
       backgroundColor: Colors.transparent,

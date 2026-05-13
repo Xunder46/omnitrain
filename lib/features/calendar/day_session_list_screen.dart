@@ -11,7 +11,6 @@ import '../../core/services/session_summary_service.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../data/models/models.dart';
 import '../../core/constants/modality.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../state/settings/settings_state.dart';
 import '../session/workout_session_screen.dart';
 import '../session/session_summary_screen.dart';
@@ -72,98 +71,97 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
         (OmniDateUtils.isToday(widget.date) ? ' · Today' : '');
 
     return Scaffold(
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(title),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: OmniGradientBackground(
-        child: SafeArea(
-          child: ListenableBuilder(
-            listenable: widget.calendarState,
-            builder: (context, _) {
-              final completed = _completedEntries;
-              final inProgress = _inProgressEntries;
-              final planned = _plannedEntries;
-              final isEmpty =
-                  completed.isEmpty && inProgress.isEmpty && planned.isEmpty;
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: widget.calendarState,
+          builder: (context, _) {
+            final completed = _completedEntries;
+            final inProgress = _inProgressEntries;
+            final planned = _plannedEntries;
+            final isEmpty =
+                completed.isEmpty && inProgress.isEmpty && planned.isEmpty;
 
-              return Column(
-                children: [
-                  Expanded(
-                    child: isEmpty
-                        ? _EmptyState(isPast: _isPast)
-                        : ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                            children: [
-                              if (completed.isNotEmpty) ...[
-                                const _SectionHeader(title: 'Completed'),
-                                ...completed.map(
-                                  (e) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: _SessionRow(
-                                      entry: e,
-                                      routineState: widget.routineState,
-                                      onTap: () => _tapCompleted(context, e),
-                                      onEdit: null,
-                                      onDelete: null,
-                                    ),
+            return Column(
+              children: [
+                Expanded(
+                  child: isEmpty
+                      ? _EmptyState(isPast: _isPast)
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          children: [
+                            if (completed.isNotEmpty) ...[
+                              const _SectionHeader(title: 'Completed'),
+                              ...completed.map(
+                                (e) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _SessionRow(
+                                    entry: e,
+                                    routineState: widget.routineState,
+                                    onTap: () => _tapCompleted(context, e),
+                                    onEdit: null,
+                                    onDelete: null,
                                   ),
                                 ),
-                                if (planned.isNotEmpty)
-                                  const SizedBox(height: 12),
-                              ],
-                              if (planned.isNotEmpty) ...[
-                                const _SectionHeader(title: 'Planned'),
-                                ...planned.map((e) {
-                                  final isEditable = _isTodayOrFuture;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: _SessionRow(
-                                      entry: e,
-                                      routineState: widget.routineState,
-                                      onTap: isEditable
-                                          ? () => _tapPlanned(context, e)
-                                          : null,
-                                      onEdit: isEditable
-                                          ? () => _editPlanned(context, e)
-                                          : null,
-                                      onDelete: isEditable
-                                          ? () => _deletePlanned(
-                                              context,
-                                              e.plannedSession!,
-                                            )
-                                          : null,
-                                    ),
-                                  );
-                                }),
-                              ],
-                              if (inProgress.isNotEmpty) ...[
+                              ),
+                              if (planned.isNotEmpty)
                                 const SizedBox(height: 12),
-                                const _SectionHeader(title: 'In Progress'),
-                                ...inProgress.map(
-                                  (e) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 8),
-                                    child: _SessionRow(
-                                      entry: e,
-                                      routineState: widget.routineState,
-                                      onTap: null,
-                                      onEdit: null,
-                                      onDelete: null,
-                                    ),
+                            ],
+                            if (planned.isNotEmpty) ...[
+                              const _SectionHeader(title: 'Planned'),
+                              ...planned.map((e) {
+                                final isEditable = _isTodayOrFuture;
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _SessionRow(
+                                    entry: e,
+                                    routineState: widget.routineState,
+                                    onTap: isEditable
+                                        ? () => _tapPlanned(context, e)
+                                        : null,
+                                    onEdit: isEditable
+                                        ? () => _editPlanned(context, e)
+                                        : null,
+                                    onDelete: isEditable
+                                        ? () => _deletePlanned(
+                                            context,
+                                            e.plannedSession!,
+                                          )
+                                        : null,
+                                  ),
+                                );
+                              }),
+                            ],
+                            if (inProgress.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              const _SectionHeader(title: 'In Progress'),
+                              ...inProgress.map(
+                                (e) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _SessionRow(
+                                    entry: e,
+                                    routineState: widget.routineState,
+                                    onTap: null,
+                                    onEdit: null,
+                                    onDelete: null,
                                   ),
                                 ),
-                              ],
+                              ),
                             ],
-                          ),
-                  ),
-                  if (_isTodayOrFuture)
-                    _AddButton(onTap: () => _addPlanned(context)),
-                ],
-              );
-            },
-          ),
+                          ],
+                        ),
+                ),
+                if (_isTodayOrFuture)
+                  _AddButton(onTap: () => _addPlanned(context)),
+              ],
+            );
+          },
         ),
       ),
     );

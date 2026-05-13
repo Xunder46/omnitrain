@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/settings/settings_state.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
 
@@ -24,6 +23,7 @@ class SettingsScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -31,134 +31,135 @@ class SettingsScreen extends StatelessWidget {
         elevation: 0,
         title: const Text('Settings'),
       ),
-      body: OmniGradientBackground(
-        child: SafeArea(
-          child: ListenableBuilder(
-            listenable: settingsState,
-            builder: (context, child) {
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                children: [
-                  const _SectionHeader(title: 'PREFERENCES'),
-                  const SizedBox(height: 8),
-                  _MeasurementsSection(
-                    settingsState: settingsState,
-                    theme: theme,
-                  ),
-                  const SizedBox(height: 24),
-                  const _SectionHeader(title: 'SOUNDS & ALERTS'),
-                  const SizedBox(height: 8),
-                  _SoundsAlertsSection(
-                    settingsState: settingsState,
-                    timerAlertService: timerAlertService,
-                  ),
-                  const SizedBox(height: 24),
-                  const _SectionHeader(title: 'WORKOUT'),
-                  const SizedBox(height: 8),
-                  _WorkoutSection(settingsState: settingsState),
-                  const SizedBox(height: 24),
-                  const _SectionHeader(title: 'APPEARANCE'),
-                  const SizedBox(height: 8),
-                  OmniSurface(
-                    padding: const EdgeInsets.all(0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GridView.builder(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          physics: const NeverScrollableScrollPhysics(),
-                          // Ghost-pad odd counts so the last row is never a
-                          // lone tile. When count becomes even after the
-                          // bake-off pruning pass this expression collapses
-                          // to plain length with no visual change needed.
-                          itemCount: AppTheme.values.length.isOdd
-                              ? AppTheme.values.length + 1
-                              : AppTheme.values.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                                childAspectRatio: 2.8,
-                              ),
-                          itemBuilder: (context, index) {
-                            // Ghost slot that balances an odd-count final row.
-                            if (index >= AppTheme.values.length) {
-                              return const SizedBox.shrink();
-                            }
-                            final appTheme = AppTheme.values[index];
-                            final isSelected =
-                                settingsState.appTheme == appTheme;
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: settingsState,
+          builder: (context, child) {
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              children: [
+                const _SectionHeader(title: 'PREFERENCES'),
+                const SizedBox(height: 8),
+                _MeasurementsSection(
+                  settingsState: settingsState,
+                  theme: theme,
+                ),
+                const SizedBox(height: 24),
+                const _SectionHeader(title: 'SOUNDS & ALERTS'),
+                const SizedBox(height: 8),
+                _SoundsAlertsSection(
+                  settingsState: settingsState,
+                  timerAlertService: timerAlertService,
+                ),
+                const SizedBox(height: 24),
+                const _SectionHeader(title: 'WORKOUT'),
+                const SizedBox(height: 8),
+                _WorkoutSection(settingsState: settingsState),
+                const SizedBox(height: 24),
+                const _SectionHeader(title: 'APPEARANCE'),
+                const SizedBox(height: 8),
+                OmniSurface(
+                  padding: const EdgeInsets.all(0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GridView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
+                        physics: const NeverScrollableScrollPhysics(),
+                        // Ghost-pad odd counts so the last row is never a
+                        // lone tile. When count becomes even after the
+                        // bake-off pruning pass this expression collapses
+                        // to plain length with no visual change needed.
+                        itemCount: AppTheme.values.length.isOdd
+                            ? AppTheme.values.length + 1
+                            : AppTheme.values.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                              childAspectRatio: 2.8,
+                            ),
+                        itemBuilder: (context, index) {
+                          // Ghost slot that balances an odd-count final row.
+                          if (index >= AppTheme.values.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final appTheme = AppTheme.values[index];
+                          final isSelected = settingsState.appTheme == appTheme;
 
-                            return GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => settingsState.setAppTheme(appTheme),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                curve: Curves.easeInOut,
-                                alignment: Alignment.center,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => settingsState.setAppTheme(appTheme),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeInOut,
+                              alignment: Alignment.center,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? theme.colorScheme.surface.withOpacity(
+                                        0.88,
+                                      )
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonUtilityRadius,
                                 ),
-                                decoration: BoxDecoration(
+                                border: Border.all(
                                   color: isSelected
-                                      ? theme.colorScheme.surface.withOpacity(
-                                          0.88,
-                                        )
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(
-                                    OmniTheme.buttonUtilityRadius,
-                                  ),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? theme.colorScheme.primary
-                                        : theme.colorScheme.onSurface
-                                              .withOpacity(0.25),
-                                  ),
-                                ),
-                                child: Text(
-                                  OmniTheme.displayNameForTheme(appTheme),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: isSelected
-                                        ? theme.colorScheme.onSurface
-                                        : OmniTheme.textSecondary,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
-                                  ),
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.onSurface.withOpacity(
+                                          0.25,
+                                        ),
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
+                              child: Text(
+                                OmniTheme.displayNameForTheme(appTheme),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: isSelected
+                                      ? theme.colorScheme.onSurface
+                                      : OmniTheme.textSecondary,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'Version 1.0.0',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: OmniTheme.textMuted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Version 1.0.0',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: OmniTheme.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 40),
-                ],
-              );
-            },
-          ),
+                ),
+                const SizedBox(height: 40),
+              ],
+            );
+          },
         ),
       ),
     );

@@ -8,7 +8,6 @@ import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_surface.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
 import 'widgets/profile_avatar_image_stub.dart'
@@ -48,50 +47,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Profile'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: OmniGradientBackground(
-        child: SafeArea(
-          child: ListenableBuilder(
-            listenable: widget.profileState,
-            builder: (context, _) {
-              final profile = widget.profileState.profile;
-              if (widget.profileState.isLoading && profile == null) {
-                return const Center(child: CircularProgressIndicator());
-              }
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: widget.profileState,
+          builder: (context, _) {
+            final profile = widget.profileState.profile;
+            if (widget.profileState.isLoading && profile == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                children: [
-                  _buildIdentitySection(theme, profile),
-                  const SizedBox(height: 24),
-                  _buildMeasurementSection(
-                    theme,
-                    title: 'MEASUREMENTS',
-                    definitions: ProfileMeasurements.primary,
-                  ),
-                  const SizedBox(height: 14),
-                  _buildMeasurementSection(
-                    theme,
-                    definitions: ProfileMeasurements.additional,
-                  ),
-                  if (widget.profileState.error != null) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      widget.profileState.error!,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.error,
-                      ),
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              children: [
+                _buildIdentitySection(theme, profile),
+                const SizedBox(height: 24),
+                _buildMeasurementSection(
+                  theme,
+                  title: 'MEASUREMENTS',
+                  definitions: ProfileMeasurements.primary,
+                ),
+                const SizedBox(height: 14),
+                _buildMeasurementSection(
+                  theme,
+                  definitions: ProfileMeasurements.additional,
+                ),
+                if (widget.profileState.error != null) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.profileState.error!,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.error,
                     ),
-                  ],
+                  ),
                 ],
-              );
-            },
-          ),
+              ],
+            );
+          },
         ),
       ),
     );

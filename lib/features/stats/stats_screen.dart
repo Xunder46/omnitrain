@@ -10,7 +10,6 @@ import '../../core/utils/date_utils.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_surface.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -83,7 +82,9 @@ class _StatsScreenState extends State<StatsScreen> {
       final counts = List.filled(30, 0);
       for (final s in recentSessions) {
         if (s.endedAtMs == null) continue;
-        final sessionDateTime = DateTime.fromMillisecondsSinceEpoch(s.startedAtMs);
+        final sessionDateTime = DateTime.fromMillisecondsSinceEpoch(
+          s.startedAtMs,
+        );
         final sessionDay = DateTime(
           sessionDateTime.year,
           sessionDateTime.month,
@@ -155,41 +156,42 @@ class _StatsScreenState extends State<StatsScreen> {
     return ListenableBuilder(
       listenable: widget.settingsState,
       builder: (context, _) {
-        final themeColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
+        final themeColors = OmniTheme.colorsForTheme(
+          widget.settingsState.appTheme,
+        );
 
         return Scaffold(
           backgroundColor: Colors.transparent,
+          extendBody: true,
           extendBodyBehindAppBar: true,
           appBar: AppBar(
             title: const Text('Stats'),
             backgroundColor: Colors.transparent,
             elevation: 0,
           ),
-          body: OmniGradientBackground(
-            child: SafeArea(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-                      children: _totalSessions == 0
-                          ? [_buildEmptyState(context, themeColors)]
-                          : [
-                              _buildSectionLabel('ALL TIME', themeColors),
-                              const SizedBox(height: 8),
-                              _buildAggregateCard(context, themeColors),
+          body: SafeArea(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                    children: _totalSessions == 0
+                        ? [_buildEmptyState(context, themeColors)]
+                        : [
+                            _buildSectionLabel('ALL TIME', themeColors),
+                            const SizedBox(height: 8),
+                            _buildAggregateCard(context, themeColors),
+                            const SizedBox(height: 24),
+                            _buildSectionLabel('ACTIVITY', themeColors),
+                            const SizedBox(height: 8),
+                            _buildActivityCard(context, themeColors),
+                            if (_restAvgsByModality.isNotEmpty) ...[
                               const SizedBox(height: 24),
-                              _buildSectionLabel('ACTIVITY', themeColors),
+                              _buildSectionLabel('REST TIME', themeColors),
                               const SizedBox(height: 8),
-                              _buildActivityCard(context, themeColors),
-                              if (_restAvgsByModality.isNotEmpty) ...[
-                                const SizedBox(height: 24),
-                                _buildSectionLabel('REST TIME', themeColors),
-                                const SizedBox(height: 8),
-                                _buildRestTimeCard(context, themeColors),
-                              ],
+                              _buildRestTimeCard(context, themeColors),
                             ],
-                    ),
-            ),
+                          ],
+                  ),
           ),
         );
       },
@@ -208,7 +210,10 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _buildAggregateCard(BuildContext context, OmniThemeColors themeColors) {
+  Widget _buildAggregateCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
     final theme = Theme.of(context);
 
     return OmniSurface(
@@ -285,10 +290,7 @@ class _StatsScreenState extends State<StatsScreen> {
                   '${OmniDateUtils.shortMonthName(thirtyDaysAgo.month)} ${thirtyDaysAgo.day}'
                   ' – '
                   '${OmniDateUtils.shortMonthName(today.month)} ${today.day}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: themeColors.textMuted,
-                  ),
+                  style: TextStyle(fontSize: 11, color: themeColors.textMuted),
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.end,
                 ),
@@ -371,10 +373,8 @@ class _StatsScreenState extends State<StatsScreen> {
                       show: true,
                       drawVerticalLine: false,
                       horizontalInterval: yInterval,
-                      getDrawingHorizontalLine: (_) => FlLine(
-                        color: themeColors.divider,
-                        strokeWidth: 1,
-                      ),
+                      getDrawingHorizontalLine: (_) =>
+                          FlLine(color: themeColors.divider, strokeWidth: 1),
                     ),
                     borderData: FlBorderData(show: false),
                     barGroups: List.generate(30, (i) {
@@ -434,16 +434,18 @@ class _StatsScreenState extends State<StatsScreen> {
         }
       }
       if (spots.isEmpty) continue;
-      lineBars.add(LineChartBarData(
-        spots: spots,
-        color: ModalityColors.forModality(modality),
-        isCurved: true,
-        curveSmoothness: 0.3,
-        barWidth: 2,
-        isStrokeCapRound: true,
-        dotData: const FlDotData(show: false),
-        belowBarData: BarAreaData(show: false),
-      ));
+      lineBars.add(
+        LineChartBarData(
+          spots: spots,
+          color: ModalityColors.forModality(modality),
+          isCurved: true,
+          curveSmoothness: 0.3,
+          barWidth: 2,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+      );
     }
 
     if (lineBars.isEmpty) return const SizedBox.shrink();
@@ -532,8 +534,8 @@ class _StatsScreenState extends State<StatsScreen> {
                         final align = idx == 0
                             ? TextAlign.left
                             : idx == 29
-                                ? TextAlign.right
-                                : TextAlign.center;
+                            ? TextAlign.right
+                            : TextAlign.center;
                         return Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
@@ -553,10 +555,8 @@ class _StatsScreenState extends State<StatsScreen> {
                   show: true,
                   drawVerticalLine: false,
                   horizontalInterval: yInterval,
-                  getDrawingHorizontalLine: (_) => FlLine(
-                    color: themeColors.divider,
-                    strokeWidth: 1,
-                  ),
+                  getDrawingHorizontalLine: (_) =>
+                      FlLine(color: themeColors.divider, strokeWidth: 1),
                 ),
                 borderData: FlBorderData(show: false),
                 lineBarsData: lineBars,
@@ -624,10 +624,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             'Complete your first session to see stats here.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: themeColors.textMuted,
-            ),
+            style: TextStyle(fontSize: 13, color: themeColors.textMuted),
           ),
           const SizedBox(height: 16),
         ],

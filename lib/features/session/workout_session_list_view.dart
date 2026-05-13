@@ -9,9 +9,6 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
   // ── Session time widget ───────────────────────────────────────────────────
 
   Widget _buildSessionTimeWidget(ThemeData theme) {
-    final chipColors = OmniTheme.colorsForTheme(
-      widget.settingsState.appTheme,
-    );
     final chip = Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -119,9 +116,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     final effortId = exercise['id'] as String;
     final idx = _exercises.indexWhere((e) => e['id'] == effortId);
 
-    final tileColors = OmniTheme.colorsForTheme(
-      widget.settingsState.appTheme,
-    );
+    final tileColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -153,9 +148,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     final blockExercises = _exercises
         .where((e) => e['blockId'] == block.id)
         .toList();
-    final tileColors = OmniTheme.colorsForTheme(
-      widget.settingsState.appTheme,
-    );
+    final tileColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
     final segmentId = widget.workoutState.segments.isNotEmpty
         ? widget.workoutState.segments.first.id
         : null;
@@ -312,7 +305,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             child: OutlinedButton(
               onPressed: () async {
                 await widget.workoutState.addSessionBlock();
-                if (mounted) setState(() {});
+                _updateUi(() {});
               },
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -341,79 +334,73 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: OmniGradientBackground(
-        child: Stack(
-          children: [
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(theme),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: blocks.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: _kBottomControlsClearance,
-                              ),
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 480,
-                                ),
-                                child: _buildAddExerciseAndBlockBar(
-                                  theme,
-                                  segmentId: segmentId,
-                                ),
-                              ),
+      extendBody: true,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(theme),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: blocks.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: _kBottomControlsClearance,
                             ),
-                          )
-                        : ListView(
-                            padding: const EdgeInsets.fromLTRB(
-                              0,
-                              0,
-                              0,
-                              _kBottomControlsClearance,
-                            ),
-                            children: [
-                              for (int i = 0; i < blocks.length; i++)
-                                _buildSessionBlockCard(blocks[i], theme),
-                              const SizedBox(height: 24),
-                              _buildAddExerciseAndBlockBar(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 480),
+                              child: _buildAddExerciseAndBlockBar(
                                 theme,
                                 segmentId: segmentId,
                               ),
-                              const SizedBox(height: 8),
-                            ],
+                            ),
                           ),
-                  ),
-                ],
-              ),
-            ),
-            if (!widget.editMode && _hasGlobalRestToDisplay())
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 130,
-                child: Center(
-                  child: _buildRestOverlayChip(
-                    theme,
-                    _formatGlobalRestElapsed(),
-                  ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(
+                            0,
+                            0,
+                            0,
+                            _kBottomControlsClearance,
+                          ),
+                          children: [
+                            for (int i = 0; i < blocks.length; i++)
+                              _buildSessionBlockCard(blocks[i], theme),
+                            const SizedBox(height: 24),
+                            _buildAddExerciseAndBlockBar(
+                              theme,
+                              segmentId: segmentId,
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
                 ),
-              ),
+              ],
+            ),
+          ),
+          if (!widget.editMode && _hasGlobalRestToDisplay())
             Positioned(
               left: 0,
               right: 0,
-              bottom: 0,
-              child: OmniBottomCTA(
-                label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-                onPressed: widget.editMode
-                    ? _saveEditChanges
-                    : _showFinishSessionDialog,
+              bottom: 130,
+              child: Center(
+                child: _buildRestOverlayChip(theme, _formatGlobalRestElapsed()),
               ),
             ),
-          ],
-        ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: OmniBottomCTA(
+              label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+              onPressed: widget.editMode
+                  ? _saveEditChanges
+                  : _showFinishSessionDialog,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -432,52 +419,49 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     if (_exercises.isEmpty && blocks.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        body: OmniGradientBackground(
-          child: Stack(
-            children: [
-              SafeArea(
-                child: Column(
-                  children: [
-                    _buildHeader(theme),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Row(
-                        children: [_buildSessionTimeWidget(theme)],
-                      ),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: _kBottomControlsClearance,
-                          ),
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 480),
-                            child: _buildAddExerciseAndBlockBar(
-                              theme,
-                              segmentId: segmentId,
-                            ),
+        extendBody: true,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(theme),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(children: [_buildSessionTimeWidget(theme)]),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: _kBottomControlsClearance,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 480),
+                          child: _buildAddExerciseAndBlockBar(
+                            theme,
+                            segmentId: segmentId,
                           ),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: OmniBottomCTA(
-                  label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-                  onPressed: widget.editMode
-                      ? _saveEditChanges
-                      : _showFinishSessionDialog,
-                ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: OmniBottomCTA(
+                label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+                onPressed: widget.editMode
+                    ? _saveEditChanges
+                    : _showFinishSessionDialog,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -516,72 +500,65 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: OmniGradientBackground(
-        child: Stack(
-          children: [
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(theme),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(children: [_buildSessionTimeWidget(theme)]),
-                  ),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        0,
-                        8,
-                        0,
-                        _kBottomControlsClearance,
-                      ),
-                      children: [
-                        for (final item in items)
-                          if (item.block != null)
-                            _buildSessionBlockCard(item.block!, theme)
-                          else
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
-                              child: _buildExerciseTile(item.exercise!, theme),
-                            ),
-                        const SizedBox(height: 24),
-                        _buildAddExerciseAndBlockBar(
-                          theme,
-                          segmentId: segmentId,
-                        ),
-                        const SizedBox(height: 8),
-                      ],
+      extendBody: true,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(theme),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(children: [_buildSessionTimeWidget(theme)]),
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(
+                      0,
+                      8,
+                      0,
+                      _kBottomControlsClearance,
                     ),
-                  ),
-                ],
-              ),
-            ),
-            if (!widget.editMode && _hasGlobalRestToDisplay())
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 130,
-                child: Center(
-                  child: _buildRestOverlayChip(
-                    theme,
-                    _formatGlobalRestElapsed(),
+                    children: [
+                      for (final item in items)
+                        if (item.block != null)
+                          _buildSessionBlockCard(item.block!, theme)
+                        else
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+                            child: _buildExerciseTile(item.exercise!, theme),
+                          ),
+                      const SizedBox(height: 24),
+                      _buildAddExerciseAndBlockBar(theme, segmentId: segmentId),
+                      const SizedBox(height: 8),
+                    ],
                   ),
                 ),
-              ),
+              ],
+            ),
+          ),
+          if (!widget.editMode && _hasGlobalRestToDisplay())
             Positioned(
               left: 0,
               right: 0,
-              bottom: 0,
-              child: OmniBottomCTA(
-                label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-                onPressed: widget.editMode
-                    ? _saveEditChanges
-                    : _showFinishSessionDialog,
+              bottom: 130,
+              child: Center(
+                child: _buildRestOverlayChip(theme, _formatGlobalRestElapsed()),
               ),
             ),
-          ],
-        ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: OmniBottomCTA(
+              label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+              onPressed: widget.editMode
+                  ? _saveEditChanges
+                  : _showFinishSessionDialog,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -635,60 +612,58 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        body: const OmniGradientBackground(
-          child: Center(child: CircularProgressIndicator()),
-        ),
+        extendBody: true,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_hasError) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        body: OmniGradientBackground(
-          child: SafeArea(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
+        extendBody: true,
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Error Loading Session',
+                  style: theme.textTheme.headlineMedium?.copyWith(
                     color: theme.colorScheme.error,
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Error Loading Session',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    _errorMessage,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: OmniTheme.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Text(
-                      _errorMessage,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: OmniTheme.textSecondary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  FilledButton(
-                    onPressed: _loadExercises,
-                    style: ButtonStyle(
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            OmniTheme.buttonBorderRadius,
-                          ),
+                ),
+                const SizedBox(height: 32),
+                FilledButton(
+                  onPressed: _loadExercises,
+                  style: ButtonStyle(
+                    shape: WidgetStateProperty.all(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonBorderRadius,
                         ),
                       ),
                     ),
-                    child: const Text('Retry'),
                   ),
-                ],
-              ),
+                  child: const Text('Retry'),
+                ),
+              ],
             ),
           ),
         ),
@@ -702,34 +677,33 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     if (_exercises.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        body: OmniGradientBackground(
-          child: SafeArea(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'No exercises yet',
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      color: OmniTheme.textPrimary,
-                    ),
+        extendBody: true,
+        body: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'No exercises yet',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: OmniTheme.textPrimary,
                   ),
-                  const SizedBox(height: 32),
-                  FilledButton(
-                    onPressed: _addExercise,
-                    style: ButtonStyle(
-                      shape: WidgetStateProperty.all(
-                        RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            OmniTheme.buttonBorderRadius,
-                          ),
+                ),
+                const SizedBox(height: 32),
+                FilledButton(
+                  onPressed: _addExercise,
+                  style: ButtonStyle(
+                    shape: WidgetStateProperty.all(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonBorderRadius,
                         ),
                       ),
                     ),
-                    child: const Text('Add First Exercise'),
                   ),
-                ],
-              ),
+                  child: const Text('Add First Exercise'),
+                ),
+              ],
             ),
           ),
         ),
@@ -745,105 +719,100 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: OmniGradientBackground(
-        child: GestureDetector(
-          onHorizontalDragEnd: (details) {
-            if (details.primaryVelocity! > 200) {
-              if (widget.editMode) {
-                _nextSetInEditMode();
-              } else {
-                _skipSet();
-              }
-            } else if (details.primaryVelocity! < -200) {
-              _previousSet();
+      extendBody: true,
+      body: GestureDetector(
+        onHorizontalDragEnd: (details) {
+          if (details.primaryVelocity! > 200) {
+            if (widget.editMode) {
+              _nextSetInEditMode();
+            } else {
+              _skipSet();
             }
-          },
-          onVerticalDragEnd: (details) {
-            // Up swipe = next exercise; down swipe = previous exercise
-            if (details.primaryVelocity! < -200) {
-              // Swipe up = next exercise
-              _switchExercise(1);
-            } else if (details.primaryVelocity! > 200) {
-              // Swipe down = previous exercise
-              _switchExercise(-1);
-            }
-          },
-          child: Stack(
-            children: [
-              SafeArea(
-                child: Column(
-                  children: [
-                    _buildHeader(theme),
+          } else if (details.primaryVelocity! < -200) {
+            _previousSet();
+          }
+        },
+        onVerticalDragEnd: (details) {
+          // Up swipe = next exercise; down swipe = previous exercise
+          if (details.primaryVelocity! < -200) {
+            // Swipe up = next exercise
+            _switchExercise(1);
+          } else if (details.primaryVelocity! > 200) {
+            // Swipe down = previous exercise
+            _switchExercise(-1);
+          }
+        },
+        child: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(theme),
 
-                    const SizedBox(height: 0),
+                  const SizedBox(height: 0),
 
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _buildMetricWidget(
-                                exercise,
-                                currentEntry,
-                                effortKind,
-                                theme,
-                              ),
-                              const SizedBox(height: 10),
-                              _buildSetProgress(
-                                entries.length,
-                                effortKind,
-                                theme,
-                              ),
-                              const SizedBox(height: 16),
-                              _buildPreviousSetStats(
-                                exercise,
-                                effortKind,
-                                theme,
-                              ),
-                              const SizedBox(height: 16),
-                              _buildSetIndicator(
-                                entries.length,
-                                effortKind,
-                                theme,
-                              ),
-                              SizedBox(height: 24 + _kSessionScrollBottomExtra),
-                            ],
-                          ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildMetricWidget(
+                              exercise,
+                              currentEntry,
+                              effortKind,
+                              theme,
+                            ),
+                            const SizedBox(height: 10),
+                            _buildSetProgress(
+                              entries.length,
+                              effortKind,
+                              theme,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildPreviousSetStats(exercise, effortKind, theme),
+                            const SizedBox(height: 16),
+                            _buildSetIndicator(
+                              entries.length,
+                              effortKind,
+                              theme,
+                            ),
+                            SizedBox(height: 24 + _kSessionScrollBottomExtra),
+                          ],
                         ),
                       ),
                     ),
+                  ),
 
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                      child: _buildSetControls(theme),
-                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                    child: _buildSetControls(theme),
+                  ),
 
-                    const SizedBox(height: 32),
-                  ],
-                ),
+                  const SizedBox(height: 32),
+                ],
               ),
-              // Rest timer overlay in lower half (hide in edit mode or when exercise timer is running).
-              // Uses the global helper so the overlay persists after crossing an exercise
-              // boundary (the open rest lives under the previous exercise's effortId).
-              if (!widget.editMode &&
-                  _hasGlobalRestToDisplay() &&
-                  !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ??
-                      false))
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 130,
-                  child: Center(
-                    child: _buildRestOverlayChip(
-                      theme,
-                      _formatGlobalRestElapsed(),
-                    ),
+            ),
+            // Rest timer overlay in lower half (hide in edit mode or when exercise timer is running).
+            // Uses the global helper so the overlay persists after crossing an exercise
+            // boundary (the open rest lives under the previous exercise's effortId).
+            if (!widget.editMode &&
+                _hasGlobalRestToDisplay() &&
+                !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ??
+                    false))
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 130,
+                child: Center(
+                  child: _buildRestOverlayChip(
+                    theme,
+                    _formatGlobalRestElapsed(),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
@@ -864,7 +833,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               // Detail view → back to list view
               // List view   → exit (with unsaved-changes check in edit mode)
               if (!_showListView) {
-                setState(() {
+                _updateUi(() {
                   _showListView = true;
                 });
               } else if (widget.editMode) {

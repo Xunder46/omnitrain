@@ -3,7 +3,6 @@ import '../../core/constants/modality_config.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 
 class ExerciseEditorScreen extends StatefulWidget {
@@ -52,7 +51,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       text: widget.initialExercise?.description ?? '',
     );
 
-    _selectedModality = widget.initialExercise?.modality ?? widget.contextModality;
+    _selectedModality =
+        widget.initialExercise?.modality ?? widget.contextModality;
     _selectedDisciplineId = widget.initialExercise?.disciplineId;
     _selectedCapabilities.addAll(
       widget.initialExercise?.capabilities ?? const [],
@@ -115,24 +115,30 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
   }
 
   bool get _showMuscleGroups {
-    return ModalityConfig.forModality(_selectedModality)?.showMuscleGroupsInForm == true;
+    return ModalityConfig.forModality(
+          _selectedModality,
+        )?.showMuscleGroupsInForm ==
+        true;
   }
 
   List<String> get _allowedCapabilities {
-    return ModalityConfig.forModality(_selectedModality)?.formCapabilities ?? const [];
+    return ModalityConfig.forModality(_selectedModality)?.formCapabilities ??
+        const [];
   }
 
   void _onModalityChanged(String modality) {
     if (_isModalityReadOnly) return;
 
-    final allowedCaps = ModalityConfig.forModality(modality)?.formCapabilities ?? const [];
+    final allowedCaps =
+        ModalityConfig.forModality(modality)?.formCapabilities ?? const [];
     final allowedSet = allowedCaps.toSet();
 
     setState(() {
       _selectedModality = modality;
       _selectedCapabilities.removeWhere((cap) => !allowedSet.contains(cap));
       _selectedDisciplineId = null;
-      if (ModalityConfig.forModality(modality)?.showMuscleGroupsInForm != true) {
+      if (ModalityConfig.forModality(modality)?.showMuscleGroupsInForm !=
+          true) {
         _selectedMuscleGroupIds.clear();
       }
       _modalityError = null;
@@ -145,7 +151,10 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     required String? selectedDisciplineId,
   }) {
     if (selectedDisciplineId == null) return null;
-    final scoped = ModalityConfig.disciplinesForModality(modality, _disciplines);
+    final scoped = ModalityConfig.disciplinesForModality(
+      modality,
+      _disciplines,
+    );
     final exists = scoped.any((d) => d.id == selectedDisciplineId);
     return exists ? selectedDisciplineId : null;
   }
@@ -154,8 +163,14 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     if (_isSaving) return;
 
     final trimmedName = _nameController.text.trim();
-    final requiredCaps = ModalityConfig.forModality(_selectedModality)?.formRequiredCapabilities ?? const [];
-    final hasRequiredCapability = requiredCaps.any(_selectedCapabilities.contains);
+    final requiredCaps =
+        ModalityConfig.forModality(
+          _selectedModality,
+        )?.formRequiredCapabilities ??
+        const [];
+    final hasRequiredCapability = requiredCaps.any(
+      _selectedCapabilities.contains,
+    );
 
     String? modalityError;
     String? nameError;
@@ -168,7 +183,9 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       nameError = 'Exercise name required.';
     }
     if (_selectedModality != null && !hasRequiredCapability) {
-      capabilityError = ModalityConfig.formRequiredCapabilitiesLabel(_selectedModality);
+      capabilityError = ModalityConfig.formRequiredCapabilitiesLabel(
+        _selectedModality,
+      );
     }
 
     if (modalityError != null || nameError != null || capabilityError != null) {
@@ -247,13 +264,10 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: Colors.transparent,
+        extendBody: true,
         extendBodyBehindAppBar: true,
         appBar: appBar,
-        body: OmniGradientBackground(
-          child: const SafeArea(
-            child: Center(child: CircularProgressIndicator()),
-          ),
-        ),
+        body: const SafeArea(child: Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -262,175 +276,179 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: appBar,
-      body: OmniGradientBackground(
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Modality', style: theme.textTheme.titleMedium),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Modality', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _modalityOptions.map((modality) {
+                  final selected = _selectedModality == modality;
+                  return ChoiceChip(
+                    label: Text(ModalityConfig.modalityDisplayName(modality)),
+                    selected: selected,
+                    onSelected: _isModalityReadOnly
+                        ? null
+                        : (_) => _onModalityChanged(modality),
+                  );
+                }).toList(),
+              ),
+              if (_modalityError != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _modalityError!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+              ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  labelText: 'Exercise name',
+                  border: const OutlineInputBorder(),
+                  errorText: _nameError,
+                ),
+                textInputAction: TextInputAction.next,
+                onChanged: (_) {
+                  if (_nameError != null) {
+                    setState(() {
+                      _nameError = null;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description (optional)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String?>(
+                initialValue: _selectedDisciplineId,
+                decoration: const InputDecoration(
+                  labelText: 'Discipline',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('None'),
+                  ),
+                  ...filteredDisciplines.map(
+                    (discipline) => DropdownMenuItem<String?>(
+                      value: discipline.id,
+                      child: Text(discipline.name),
+                    ),
+                  ),
+                ],
+                onChanged: _selectedModality == null
+                    ? null
+                    : (value) {
+                        setState(() {
+                          _selectedDisciplineId = value;
+                        });
+                      },
+              ),
+              const SizedBox(height: 20),
+              Text('Capabilities', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _allowedCapabilities.map((capabilityId) {
+                  final isSelected = _selectedCapabilities.contains(
+                    capabilityId,
+                  );
+                  return FilterChip(
+                    label: Text(_capabilityLabel(capabilityId)),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedCapabilities.add(capabilityId);
+                        } else {
+                          _selectedCapabilities.remove(capabilityId);
+                        }
+                        _capabilityError = null;
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              if (visibleLegacyCaps.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _modalityOptions.map((modality) {
-                    final selected = _selectedModality == modality;
-                    return ChoiceChip(
-                      label: Text(ModalityConfig.modalityDisplayName(modality)),
-                      selected: selected,
-                      onSelected: _isModalityReadOnly
-                          ? null
-                          : (_) => _onModalityChanged(modality),
+                  children: visibleLegacyCaps.map((capabilityId) {
+                    final isSelected = _selectedCapabilities.contains(
+                      capabilityId,
+                    );
+                    return FilterChip(
+                      label: Text('${_capabilityLabel(capabilityId)} (Legacy)'),
+                      selected: isSelected,
+                      disabledColor: theme.colorScheme.surfaceContainerHighest,
+                      onSelected: isSelected
+                          ? (_) {
+                              setState(() {
+                                _selectedCapabilities.remove(capabilityId);
+                                _capabilityError = null;
+                              });
+                            }
+                          : null,
                     );
                   }).toList(),
                 ),
-                if (_modalityError != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    _modalityError!,
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Exercise name',
-                    border: const OutlineInputBorder(),
-                    errorText: _nameError,
-                  ),
-                  textInputAction: TextInputAction.next,
-                  onChanged: (_) {
-                    if (_nameError != null) {
-                      setState(() {
-                        _nameError = null;
-                      });
-                    }
-                  },
+                const SizedBox(height: 6),
+                Text(
+                  'Legacy capability',
+                  style: TextStyle(color: theme.colorScheme.error),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Description (optional)',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 3,
+              ],
+              if (_capabilityError != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _capabilityError!,
+                  style: TextStyle(color: theme.colorScheme.error),
                 ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String?>(
-                  initialValue: _selectedDisciplineId,
-                  decoration: const InputDecoration(
-                    labelText: 'Discipline',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('None'),
-                    ),
-                    ...filteredDisciplines.map(
-                      (discipline) => DropdownMenuItem<String?>(
-                        value: discipline.id,
-                        child: Text(discipline.name),
-                      ),
-                    ),
-                  ],
-                  onChanged: _selectedModality == null
-                      ? null
-                      : (value) {
-                          setState(() {
-                            _selectedDisciplineId = value;
-                          });
-                        },
-                ),
+              ],
+              if (_showMuscleGroups) ...[
                 const SizedBox(height: 20),
-                Text('Capabilities', style: theme.textTheme.titleMedium),
+                Text('Muscle groups', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _allowedCapabilities.map((capabilityId) {
-                    final isSelected = _selectedCapabilities.contains(capabilityId);
+                  children: _muscleGroups.map((muscle) {
+                    final isSelected = _selectedMuscleGroupIds.contains(
+                      muscle.id,
+                    );
                     return FilterChip(
-                      label: Text(_capabilityLabel(capabilityId)),
+                      label: Text(muscle.name),
                       selected: isSelected,
                       onSelected: (selected) {
                         setState(() {
                           if (selected) {
-                            _selectedCapabilities.add(capabilityId);
+                            _selectedMuscleGroupIds.add(muscle.id);
                           } else {
-                            _selectedCapabilities.remove(capabilityId);
+                            _selectedMuscleGroupIds.remove(muscle.id);
                           }
-                          _capabilityError = null;
                         });
                       },
                     );
                   }).toList(),
                 ),
-                if (visibleLegacyCaps.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: visibleLegacyCaps.map((capabilityId) {
-                      final isSelected = _selectedCapabilities.contains(capabilityId);
-                      return FilterChip(
-                        label: Text('${_capabilityLabel(capabilityId)} (Legacy)'),
-                        selected: isSelected,
-                        disabledColor: theme.colorScheme.surfaceContainerHighest,
-                        onSelected: isSelected
-                            ? (_) {
-                                setState(() {
-                                  _selectedCapabilities.remove(capabilityId);
-                                  _capabilityError = null;
-                                });
-                              }
-                            : null,
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Legacy capability',
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
-                ],
-                if (_capabilityError != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    _capabilityError!,
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
-                ],
-                if (_showMuscleGroups) ...[
-                  const SizedBox(height: 20),
-                  Text('Muscle groups', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _muscleGroups.map((muscle) {
-                      final isSelected = _selectedMuscleGroupIds.contains(muscle.id);
-                      return FilterChip(
-                        label: Text(muscle.name),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedMuscleGroupIds.add(muscle.id);
-                            } else {
-                              _selectedMuscleGroupIds.remove(muscle.id);
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ],
               ],
-            ),
+            ],
           ),
         ),
       ),

@@ -15,7 +15,6 @@ import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
@@ -534,96 +533,104 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: OmniGradientBackground(
-        child: Stack(
-          children: [
-            SafeArea(
-              bottom: false,
-              child: CustomScrollView(
-                slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
+      extendBody: true,
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                      PopupMenuButton<String>(
-                        onSelected: (value) {
-                          switch (value) {
-                            case 'edit':
-                              _openEditSession();
-                              break;
-                            case 'save':
-                              _openSaveAsRoutineSheet();
-                              break;
-                            case 'discard':
-                              _showDiscardDialog();
-                              break;
-                          }
-                        },
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(value: 'edit', child: Text('Edit Session')),
-                          PopupMenuItem(
-                            value: 'save',
-                            child: Text('Save as Routine'),
-                          ),
-                          PopupMenuItem(value: 'discard', child: Text('Discard')),
-                        ],
-                      ),
-                    ],
+                        PopupMenuButton<String>(
+                          onSelected: (value) {
+                            switch (value) {
+                              case 'edit':
+                                _openEditSession();
+                                break;
+                              case 'save':
+                                _openSaveAsRoutineSheet();
+                                break;
+                              case 'discard':
+                                _showDiscardDialog();
+                                break;
+                            }
+                          },
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text('Edit Session'),
+                            ),
+                            PopupMenuItem(
+                              value: 'save',
+                              child: Text('Save as Routine'),
+                            ),
+                            PopupMenuItem(
+                              value: 'discard',
+                              child: Text('Discard'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    _buildHeaderCard(theme),
-                    const SizedBox(height: 16),
-                    _buildStatsCard(theme),
-                    ..._buildGroupCards(theme),
-                    _buildNoteCard(theme),
-                    const SizedBox(height: 16),
-                    _buildCalendarCard(theme),
-                    if (_isLoading)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 24.0),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: theme.colorScheme.primary,
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      _buildHeaderCard(theme),
+                      const SizedBox(height: 16),
+                      _buildStatsCard(theme),
+                      ..._buildGroupCards(theme),
+                      _buildNoteCard(theme),
+                      const SizedBox(height: 16),
+                      _buildCalendarCard(theme),
+                      if (_isLoading)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 24.0),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: theme.colorScheme.primary,
+                            ),
                           ),
                         ),
-                      ),
-                    const SizedBox(height: 120),
-                  ]),
+                      const SizedBox(height: 120),
+                    ]),
+                  ),
                 ),
-              ),
-                ],
-              ),
+              ],
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: OmniBottomCTA(
-                label: 'Done',
-                onPressed: _finishAndSaveSession,
-              ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: OmniBottomCTA(
+              label: 'Done',
+              onPressed: _finishAndSaveSession,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

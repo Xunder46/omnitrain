@@ -12,7 +12,6 @@ import '../../state/profile/profile_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../home/home_screen.dart';
@@ -96,69 +95,65 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: OmniGradientBackground(
-        child: Stack(
-          children: [
-            // ─── Page content ───────────────────────────────────────────
-            PageView(
-              controller: _pageController,
-              onPageChanged: (i) => setState(() => _currentPage = i),
-              children: [
-                _buildWelcomePage(themeColors),
-                _buildHowYouTrainPage(themeColors),
-                _buildHowYouPlanPage(context, themeColors),
-              ],
-            ),
+      body: Stack(
+        children: [
+          // ─── Page content ───────────────────────────────────────────
+          PageView(
+            controller: _pageController,
+            onPageChanged: (i) => setState(() => _currentPage = i),
+            children: [
+              _buildWelcomePage(themeColors),
+              _buildHowYouTrainPage(themeColors),
+              _buildHowYouPlanPage(context, themeColors),
+            ],
+          ),
 
-            // ─── Top bar: Skip button (hidden on last page) ──────────────
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topRight,
-                child: AnimatedOpacity(
-                  opacity: _currentPage < _pageCount - 1 ? 1.0 : 0.0,
-                  duration: OmniTheme.animationDuration,
-                  child: IgnorePointer(
-                    ignoring: _currentPage >= _pageCount - 1,
-                    child: TextButton(
-                      style: TextButton.styleFrom(
-                        foregroundColor: themeColors.textMuted,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            OmniTheme.buttonUtilityRadius,
-                          ),
+          // ─── Top bar: Skip button (hidden on last page) ──────────────
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: AnimatedOpacity(
+                opacity: _currentPage < _pageCount - 1 ? 1.0 : 0.0,
+                duration: OmniTheme.animationDuration,
+                child: IgnorePointer(
+                  ignoring: _currentPage >= _pageCount - 1,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: themeColors.textMuted,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonUtilityRadius,
                         ),
                       ),
-                      onPressed: () => _complete(context),
-                      child: const Text('Skip'),
                     ),
+                    onPressed: () => _complete(context),
+                    child: const Text('Skip'),
                   ),
                 ),
               ),
             ),
+          ),
 
-            // ─── Bottom: Page dots ───────────────────────────────────────
-            SafeArea(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 32),
-                  child: _PageDots(
-                    count: _pageCount,
-                    current: _currentPage,
-                    activeColor: themeColors.primary,
-                    inactiveColor: themeColors.textMuted.withValues(
-                      alpha: 0.35,
-                    ),
-                  ),
+          // ─── Bottom: Page dots ───────────────────────────────────────
+          SafeArea(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 32),
+                child: _PageDots(
+                  count: _pageCount,
+                  current: _currentPage,
+                  activeColor: themeColors.primary,
+                  inactiveColor: themeColors.textMuted.withValues(alpha: 0.35),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

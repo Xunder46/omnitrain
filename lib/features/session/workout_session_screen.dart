@@ -14,7 +14,6 @@ import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
@@ -100,6 +99,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   @override
   Timer? _ticker;
   String _elapsedFormatted = '00:00';
+
+  void _updateUi(VoidCallback callback) {
+    if (!mounted) return;
+    setState(callback);
+  }
 
   // Tracks the elapsed-seconds value at which the last rest ping fired per
   // effort. Entry is removed when rest ends (so next rest starts fresh).

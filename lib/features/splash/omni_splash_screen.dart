@@ -10,7 +10,6 @@ import '../../state/period/period_state.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
 import '../../widgets/logo/animated_zen_halo.dart';
 import '../home/home_screen.dart';
 
@@ -108,28 +107,26 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: OmniGradientBackground(
-        child: Center(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Zen Event Horizon Logo
-                const AnimatedZenHalo(size: 160.0),
-                const SizedBox(height: 32),
-                // App Name
-                Text(
-                  'OMNITRAIN',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 4.0,
-                    color: Colors.white.withOpacity(0.85),
-                  ),
+      body: Center(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Zen Event Horizon Logo
+              const AnimatedZenHalo(size: 160.0),
+              const SizedBox(height: 32),
+              // App Name
+              Text(
+                'OMNITRAIN',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 4.0,
+                  color: Colors.white.withOpacity(0.85),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

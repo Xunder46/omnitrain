@@ -30,26 +30,29 @@ class OmniGradientBackground extends StatelessWidget {
           ? Stack(
               children: [
                 // Radial highlight overlay
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment.topCenter,
-                      radius: 1.5,
-                      colors: [
-                        Colors.white.withOpacity(0.05),
-                        Colors.transparent,
-                      ],
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment.topCenter,
+                        radius: 1.5,
+                        colors: [
+                          Colors.white.withOpacity(0.05),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   ),
                 ),
                 // Film grain noise overlay (if enabled)
                 if (OmniTheme.enableBackgroundNoise)
-                  CustomPaint(
-                    painter: NoiseOverlayPainter(
-                      opacity: OmniTheme.backgroundNoiseOpacity,
-                      scale: OmniTheme.backgroundNoiseScale,
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: NoiseOverlayPainter(
+                        opacity: OmniTheme.backgroundNoiseOpacity,
+                        scale: OmniTheme.backgroundNoiseScale,
+                      ),
                     ),
-                    child: Container(),
                   ),
                 // Content
                 child,
@@ -59,12 +62,13 @@ class OmniGradientBackground extends StatelessWidget {
               children: [
                 // Film grain noise overlay (if enabled)
                 if (OmniTheme.enableBackgroundNoise)
-                  CustomPaint(
-                    painter: NoiseOverlayPainter(
-                      opacity: OmniTheme.backgroundNoiseOpacity,
-                      scale: OmniTheme.backgroundNoiseScale,
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: NoiseOverlayPainter(
+                        opacity: OmniTheme.backgroundNoiseOpacity,
+                        scale: OmniTheme.backgroundNoiseScale,
+                      ),
                     ),
-                    child: Container(),
                   ),
                 // Content
                 child,
