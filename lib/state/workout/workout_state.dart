@@ -57,8 +57,10 @@ class WorkoutState extends ChangeNotifier {
   List<Exercise> get allExercises => _exerciseLibrary.allExercises;
   List<MuscleGroup> get muscleGroups => _exerciseLibrary.muscleGroups;
   List<Discipline> get disciplines => _exerciseLibrary.disciplines;
-  bool get shouldShowExerciseNotesHint => _exerciseLibrary.shouldShowExerciseNotesHint;
-  bool get shouldShowExerciseInfoHint => _exerciseLibrary.shouldShowExerciseInfoHint;
+  bool get shouldShowExerciseNotesHint =>
+      _exerciseLibrary.shouldShowExerciseNotesHint;
+  bool get shouldShowExerciseInfoHint =>
+      _exerciseLibrary.shouldShowExerciseInfoHint;
 
   List<SegmentEffort> getEffortsForSegment(String segmentId) =>
       _sessionCore.getEffortsForSegment(segmentId);
@@ -70,18 +72,24 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.getTimedInstancesForEffort(effortId);
   List<EntryRest> getEntryRests(String effortId) =>
       _timerManager.getEntryRests(effortId);
-  Exercise? getExercise(String? exerciseId) => _sessionCore.getExercise(exerciseId);
+  Exercise? getExercise(String? exerciseId) =>
+      _sessionCore.getExercise(exerciseId);
   List<SessionBlock> getSessionBlocks() => _sessionCore.getSessionBlocks();
-  List<Map<String, dynamic>> getExercisesWithEntries() => _sessionCore.getExercisesWithEntries();
-  SessionSummary computeSessionSummary() => _sessionCore.computeSessionSummary();
+  List<Map<String, dynamic>> getExercisesWithEntries() =>
+      _sessionCore.getExercisesWithEntries();
+  SessionSummary computeSessionSummary() =>
+      _sessionCore.computeSessionSummary();
   List<SessionTemplateExercise> buildTemplateDraftExercises() =>
       _sessionCore.buildTemplateDraftExercises();
-  Future<List<TrainingSession>> getAllSessions() => _sessionCore.getAllSessions();
+  Future<List<TrainingSession>> getAllSessions() =>
+      _sessionCore.getAllSessions();
   Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs) =>
       _sessionCore.getSessionsByDateRange(fromMs, toMs);
-  SessionEditSnapshot? snapshotSessionState() => _sessionCore.snapshotSessionState();
+  SessionEditSnapshot? snapshotSessionState() =>
+      _sessionCore.snapshotSessionState();
 
-  Future<void> resetSessionTimerStart() => _sessionCore.resetSessionTimerStart();
+  Future<void> resetSessionTimerStart() =>
+      _sessionCore.resetSessionTimerStart();
 
   Future<void> createNewSession({
     String? modality,
@@ -91,8 +99,11 @@ class WorkoutState extends ChangeNotifier {
     bool isRolling = false,
     bool includeDefaultSegment = true,
   }) => _sessionCore.createNewSession(
-    modality: modality, title: title, intent: intent,
-    routineTemplateId: routineTemplateId, isRolling: isRolling,
+    modality: modality,
+    title: title,
+    intent: intent,
+    routineTemplateId: routineTemplateId,
+    isRolling: isRolling,
     includeDefaultSegment: includeDefaultSegment,
   );
   Future<void> loadHistoricalSession(String sessionId) =>
@@ -102,7 +113,8 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.populateSessionFromManifest(manifest);
   Future<void> endSession() => _sessionCore.endSession();
   Future<void> discardCurrentSession() => _sessionCore.discardCurrentSession();
-  Future<void> updateSessionNote(String note) => _sessionCore.updateSessionNote(note);
+  Future<void> updateSessionNote(String note) =>
+      _sessionCore.updateSessionNote(note);
   Future<void> updateSessionEndTime(int durationSecs) =>
       _sessionCore.updateSessionEndTime(durationSecs);
   Future<void> updateSessionFeeling(String sessionId, int feeling) =>
@@ -119,13 +131,20 @@ class WorkoutState extends ChangeNotifier {
     String? effortKindOverride,
     String? segmentId,
   }) => _sessionCore.addExerciseToSession(
-    exercise, chosenMetric: chosenMetric,
-    effortKindOverride: effortKindOverride, segmentId: segmentId,
+    exercise,
+    chosenMetric: chosenMetric,
+    effortKindOverride: effortKindOverride,
+    segmentId: segmentId,
   );
-  Future<void> addEntry(String effortId, {Map<String, dynamic>? previousValues}) =>
-      _sessionCore.addEntry(effortId, previousValues: previousValues);
+  Future<void> addEntry(
+    String effortId, {
+    Map<String, dynamic>? previousValues,
+  }) => _sessionCore.addEntry(effortId, previousValues: previousValues);
   Future<void> updateEntryValue(
-    String effortId, int entryIndex, String metricKey, dynamic value,
+    String effortId,
+    int entryIndex,
+    String metricKey,
+    dynamic value,
   ) => _sessionCore.updateEntryValue(effortId, entryIndex, metricKey, value);
   Future<void> markSetSkipped(String effortId, int entryIndex) =>
       _sessionCore.markSetSkipped(effortId, entryIndex);
@@ -134,7 +153,8 @@ class WorkoutState extends ChangeNotifier {
   Future<void> removeExerciseFromSession(String effortId) =>
       _sessionCore.removeExerciseFromSession(effortId);
 
-  Future<String> addSessionBlock({String? name}) => _sessionCore.addSessionBlock(name: name);
+  Future<String> addSessionBlock({String? name}) =>
+      _sessionCore.addSessionBlock(name: name);
   Future<void> updateSessionBlock(SessionBlock block) =>
       _sessionCore.updateSessionBlock(block);
   Future<void> deleteSessionBlock(String blockId) =>
@@ -147,7 +167,10 @@ class WorkoutState extends ChangeNotifier {
       _sessionCore.assignEffortToBlock(effortId, blockId);
 
   Future<void> addRound(String effortId, {int plannedDurationSecs = 180}) =>
-      _timerManager.addRound(effortId, plannedDurationSecs: plannedDurationSecs);
+      _timerManager.addRound(
+        effortId,
+        plannedDurationSecs: plannedDurationSecs,
+      );
   Future<void> startRound(String effortId, int roundIndex) =>
       _timerManager.startRound(effortId, roundIndex);
   Future<void> pauseRound(String effortId, int roundIndex) =>
@@ -161,11 +184,20 @@ class WorkoutState extends ChangeNotifier {
   Future<void> deleteRound(String effortId, int roundIndex) =>
       _timerManager.deleteRound(effortId, roundIndex);
   Future<void> updateRoundPlannedDuration(
-    String effortId, int roundIndex, int newDurationSecs,
-  ) => _timerManager.updateRoundPlannedDuration(effortId, roundIndex, newDurationSecs);
+    String effortId,
+    int roundIndex,
+    int newDurationSecs,
+  ) => _timerManager.updateRoundPlannedDuration(
+    effortId,
+    roundIndex,
+    newDurationSecs,
+  );
 
   Future<void> addTimedEntry(String effortId, {int targetDurationSecs = 0}) =>
-      _timerManager.addTimedEntry(effortId, targetDurationSecs: targetDurationSecs);
+      _timerManager.addTimedEntry(
+        effortId,
+        targetDurationSecs: targetDurationSecs,
+      );
   Future<void> startTimedEntry(String effortId, int entryIndex) =>
       _timerManager.startTimedEntry(effortId, entryIndex);
   Future<void> pauseTimedEntry(String effortId, int entryIndex) =>
@@ -177,8 +209,14 @@ class WorkoutState extends ChangeNotifier {
   Future<void> deleteTimedEntry(String effortId, int entryIndex) =>
       _timerManager.deleteTimedEntry(effortId, entryIndex);
   Future<void> updateTimedTargetDuration(
-    String effortId, int entryIndex, int newTargetSecs,
-  ) => _timerManager.updateTimedTargetDuration(effortId, entryIndex, newTargetSecs);
+    String effortId,
+    int entryIndex,
+    int newTargetSecs,
+  ) => _timerManager.updateTimedTargetDuration(
+    effortId,
+    entryIndex,
+    newTargetSecs,
+  );
 
   // ── Retrospective edit methods (edit mode only) ──────────────────────────
 
@@ -188,7 +226,11 @@ class WorkoutState extends ChangeNotifier {
     String effortId,
     int entryIndex,
     int durationSecs,
-  ) => _timerManager.setTimedInstanceFinished(effortId, entryIndex, durationSecs);
+  ) => _timerManager.setTimedInstanceFinished(
+    effortId,
+    entryIndex,
+    durationSecs,
+  );
 
   /// Sets a round instance to finished with the given actual duration.
   /// Intended only for retrospective edits; bypasses live-timer state guards.
@@ -218,27 +260,43 @@ class WorkoutState extends ChangeNotifier {
   Future<void> loadMuscleGroups() => _exerciseLibrary.loadMuscleGroups();
   Future<void> loadDisciplines() => _exerciseLibrary.loadDisciplines();
   Future<List<Exercise>> searchExercises({
-    String? searchText, String? disciplineId, List<String>? muscleGroupIds,
+    String? searchText,
+    String? disciplineId,
+    List<String>? muscleGroupIds,
   }) => _exerciseLibrary.searchExercises(
-    searchText: searchText, disciplineId: disciplineId, muscleGroupIds: muscleGroupIds,
+    searchText: searchText,
+    disciplineId: disciplineId,
+    muscleGroupIds: muscleGroupIds,
   );
   Future<List<Exercise>> getExercisesRankedForModality({
-    String? modality, String? searchText, String? disciplineId, List<String>? muscleGroupIds,
+    String? modality,
+    String? searchText,
+    String? disciplineId,
+    List<String>? muscleGroupIds,
   }) => _exerciseLibrary.getExercisesRankedForModality(
-    modality: modality, searchText: searchText,
-    disciplineId: disciplineId, muscleGroupIds: muscleGroupIds,
+    modality: modality,
+    searchText: searchText,
+    disciplineId: disciplineId,
+    muscleGroupIds: muscleGroupIds,
   );
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) =>
       _exerciseLibrary.getExerciseMuscleGroups(exerciseId);
 
   Future<Exercise?> createCustomExercise({
     required String name,
-    String? modality, String? description, String? disciplineId,
-    List<String> capabilities = const [], List<String> muscleGroupIds = const [],
+    String? modality,
+    String? description,
+    String? disciplineId,
+    List<String> capabilities = const [],
+    List<String> muscleGroupIds = const [],
   }) async {
     final exercise = await _exerciseLibrary.createCustomExercise(
-      name: name, modality: modality, description: description,
-      disciplineId: disciplineId, capabilities: capabilities, muscleGroupIds: muscleGroupIds,
+      name: name,
+      modality: modality,
+      description: description,
+      disciplineId: disciplineId,
+      capabilities: capabilities,
+      muscleGroupIds: muscleGroupIds,
     );
     if (exercise != null) _sessionCore.cacheExercise(exercise);
     return exercise;
@@ -246,10 +304,13 @@ class WorkoutState extends ChangeNotifier {
 
   Future<Exercise?> updateCustomExercise({
     required Exercise exercise,
-    List<String> capabilities = const [], List<String> muscleGroupIds = const [],
+    List<String> capabilities = const [],
+    List<String> muscleGroupIds = const [],
   }) async {
     final updated = await _exerciseLibrary.updateCustomExercise(
-      exercise: exercise, capabilities: capabilities, muscleGroupIds: muscleGroupIds,
+      exercise: exercise,
+      capabilities: capabilities,
+      muscleGroupIds: muscleGroupIds,
     );
     if (updated != null) _sessionCore.cacheExercise(updated);
     return updated;
@@ -258,16 +319,83 @@ class WorkoutState extends ChangeNotifier {
   Future<void> loadExerciseNote(String exerciseId) =>
       _exerciseLibrary.loadExerciseNote(exerciseId);
   Future<void> saveExerciseNote(
-    String exerciseId, String text, {String? sessionId}
-  ) => _exerciseLibrary.saveExerciseNote(exerciseId, text, sessionId: sessionId);
+    String exerciseId,
+    String text, {
+    String? sessionId,
+  }) =>
+      _exerciseLibrary.saveExerciseNote(exerciseId, text, sessionId: sessionId);
   ExerciseNote? getExerciseNote(String exerciseId) =>
       _exerciseLibrary.getExerciseNote(exerciseId);
-  bool hasExerciseNote(String exerciseId) => _exerciseLibrary.hasExerciseNote(exerciseId);
+  bool hasExerciseNote(String exerciseId) =>
+      _exerciseLibrary.hasExerciseNote(exerciseId);
   Future<void> initExerciseHints() => _exerciseLibrary.initExerciseHints();
-  Future<void> markExerciseNotesHintSeen() => _exerciseLibrary.markExerciseNotesHintSeen();
-  Future<void> markExerciseInfoHintSeen() => _exerciseLibrary.markExerciseInfoHintSeen();
+  Future<void> markExerciseNotesHintSeen() =>
+      _exerciseLibrary.markExerciseNotesHintSeen();
+  Future<void> markExerciseInfoHintSeen() =>
+      _exerciseLibrary.markExerciseInfoHintSeen();
   Future<void> resetExerciseHintsForTesting() =>
       _exerciseLibrary.resetExerciseHintsForTesting();
+
+  // ── Session persistence / cold-start resume ───────────────────────────────
+
+  /// Returns the most recent session with no endedAtMs (i.e. never finished),
+  /// or null if there are none. Silently deletes any older duplicates.
+  /// Always returns null on error — never throws. Safe to call on cold start.
+  Future<TrainingSession?> checkForInProgressSession() async {
+    try {
+      final sessions = await _repository.getInProgressSessions();
+      if (sessions.isEmpty) return null;
+      // sessions is already sorted most-recent first by the repository contract
+      final candidate = sessions.first;
+      // Clean up any older duplicates (should not normally happen)
+      for (final old in sessions.skip(1)) {
+        try {
+          await _repository.deleteSession(old.id);
+        } catch (_) {
+          // Best-effort cleanup; ignore individual failures
+        }
+      }
+      return candidate;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[WorkoutState] checkForInProgressSession error: $e');
+      return null;
+    }
+  }
+
+  /// Deletes a session by id without affecting the current in-memory session.
+  /// Used by the resume modal's Discard action.
+  Future<void> deleteSessionById(String id) async {
+    try {
+      await _repository.deleteSession(id);
+    } catch (e) {
+      // ignore: avoid_print
+      print('[WorkoutState] deleteSessionById error: $e');
+    }
+  }
+
+  /// Counts all set-like observations logged in a session.
+  /// Read-only helper for resume UI; does not mutate in-memory state.
+  Future<int> countSetsForSession(String sessionId) async {
+    try {
+      final segments = await _repository.getSessionSegments(sessionId);
+      var count = 0;
+      for (final segment in segments) {
+        final efforts = await _repository.getSegmentEfforts(segment.id);
+        for (final effort in efforts) {
+          final observations = await _repository.getEffortObservations(
+            effort.id,
+          );
+          count += observations.length;
+        }
+      }
+      return count;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[WorkoutState] countSetsForSession error: $e');
+      return 0;
+    }
+  }
 
   void _setError(String message) {
     _error = message;

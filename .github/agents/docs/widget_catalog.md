@@ -7,6 +7,10 @@ Reusable UI components live in `lib/widgets/` and are organized by purpose. All 
 - Local UI state only (e.g., `_isPressed`, animation controllers)
 - Design tokens from `OmniTheme` (never hardcoded colors/sizes)
 
+Note on resume dialog:
+- The cold-start `Unfinished Session` dialog is implemented as a private, screen-local widget in `HomeScreen` (`_ResumeSessionDialog`).
+- It is intentionally not promoted into `lib/widgets/` because it is feature-specific and not reused across screens.
+
 ---
 
 ## Directory Structure

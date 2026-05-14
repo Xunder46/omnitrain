@@ -239,6 +239,17 @@ CREATE TABLE app_user_profile (
 --   WHERE e.exercise_id = ?
 --     AND t.ended_at_ms IS NOT NULL
 --     AND (? IS NULL OR o.metric_id = ?);
+--
+-- ACTIVE SESSION PERSISTENCE (May 2026):
+-- - WorkoutRepository.getInProgressSessions():
+--   SELECT * FROM app_training_session
+--   WHERE ended_at_ms IS NULL
+--   ORDER BY started_at_ms DESC;
+--
+--   Used at cold-start to detect dangling in-progress sessions.
+--   The caller (WorkoutState.checkForInProgressSession) keeps only the most
+--   recent result and calls deleteSession() for any older duplicates.
+--   Malformed rows should be caught by the Dart parse layer, not the query.
 
 CREATE TABLE app_session_discipline (
   session_id TEXT NOT NULL,

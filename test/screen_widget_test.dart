@@ -1038,6 +1038,35 @@ void main() {
         expect(find.byType(MyRoutinesScreen), findsNothing);
       },
     );
+
+    testWidgets('shows unfinished-session resume modal on cold start', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      await repo.createSession(
+        TrainingSession(
+          id: 'resume-1',
+          ownerUserId: 'user-1',
+          startedAtMs: now,
+          title: 'Morning Cardio',
+          modality: Modality.cardioEndurance,
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+
+      final screen = await buildHomeScreen(repo);
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unfinished Session'), findsOneWidget);
+      expect(find.text('Morning Cardio'), findsOneWidget);
+      expect(find.textContaining('sets logged'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Discard'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Continue'), findsOneWidget);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════

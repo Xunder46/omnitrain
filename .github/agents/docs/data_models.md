@@ -38,6 +38,11 @@ TrainingSession
 | `qualityRating` | `int?` | Reserved nullable quality field |
 | `isRolling` | `bool` | Marks the session as using the rolling/continuous format. Exercises are grouped into named time-stamped segment blocks; session duration display is suppressed. Defaults to `false`. |
 
+Active session persistence semantics:
+- A session is considered in-progress when `endedAtMs == null`.
+- Cold-start resume flow reads these in-progress rows and surfaces only the most recent session.
+- No model changes were required for resume behavior.
+
 ### SessionSegment
 
 | Field | Type | Description |

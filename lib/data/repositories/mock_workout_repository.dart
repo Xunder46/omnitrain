@@ -239,6 +239,15 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<List<TrainingSession>> getInProgressSessions() async {
+    final result = _sessions.values
+        .where((s) => s.endedAtMs == null)
+        .toList();
+    result.sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
+    return result;
+  }
+
+  @override
   Future<List<TrainingSession>> getSessionsByDateRange(
     int fromMs,
     int toMs,

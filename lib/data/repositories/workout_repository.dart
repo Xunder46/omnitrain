@@ -21,6 +21,11 @@ abstract class WorkoutRepository {
   Future<TrainingSession?> getSession(String id);
   Future<List<TrainingSession>> getAllSessions();
   Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs);
+
+  /// Returns sessions that have not yet been finished (endedAtMs == null),
+  /// sorted by startedAtMs descending (most recent first).
+  /// Malformed records are skipped gracefully — never throws.
+  Future<List<TrainingSession>> getInProgressSessions();
   Future<double?> getPersonalRecordCandidates(
     String exerciseId, {
     String? metricId,

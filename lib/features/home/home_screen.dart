@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../data/models/models.dart';
+import '../../core/constants/modality.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../state/workout/workout_state.dart';
@@ -59,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final ValueNotifier<double> _sheetExtent;
   late final AnimationController _hintController;
   late final Animation<double> _hintOffset;
+  bool _resumeCheckDone = false;
 
   @override
   void initState() {
@@ -96,6 +99,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         unawaited(_playHintAnimationBurst());
       });
     }
+
+    // Cold-start resume check: only runs once per app launch.
+    // Warm resume (app backgrounded but not killed) already has in-memory
+    // session state — hasActiveSession guard short-circuits the check.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _resumeCheckDone) return;
+      _resumeCheckDone = true;
+      if (widget.workoutState.hasActiveSession) return;
+      final session = await widget.workoutState.checkForInProgressSession();
+      if (session == null || !mounted) return;
+      unawaited(_showResumeSessionModal(context, session));
+    });
   }
 
   @override
@@ -448,6 +463,109 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
       );
+    }
+  }
+
+  // ── Active session resume ────────────────────────────────────────────────
+
+  /// Converts a modality key to a human-readable label for display in the
+  /// resume modal. Falls back to the raw key if unrecognised.
+  String _modalityLabel(String? modality) {
+    switch (modality) {
+      case Modality.cardioEndurance:
+        return 'Cardio';
+      case Modality.resistanceLifting:
+        return 'Resistance';
+      case Modality.sports:
+        return 'Sports';
+      case Modality.isometricStretching:
+        return 'Isometric';
+      case null:
+        return 'Free Training';
+      default:
+        return modality;
+    }
+  }
+
+  /// Formats a millisecond epoch as a concise start-time string.
+  /// e.g. "Today at 09:41" / "Yesterday at 14:22" / "Mon 12 May at 08:00".
+  String _formatSessionStart(int startedAtMs) {
+    final started = DateTime.fromMillisecondsSinceEpoch(startedAtMs);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final startDay = DateTime(started.year, started.month, started.day);
+    final diff = today.difference(startDay).inDays;
+
+    final hh = started.hour.toString().padLeft(2, '0');
+    final mm = started.minute.toString().padLeft(2, '0');
+    final time = '$hh:$mm';
+
+    if (diff == 0) return 'Today at $time';
+    if (diff == 1) return 'Yesterday at $time';
+
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final wd = weekdays[started.weekday - 1];
+    final mo = months[started.month - 1];
+    return '$wd ${started.day} $mo at $time';
+  }
+
+  /// Shows the cold-start resume modal over the home screen.
+  /// Visual treatment mirrors the existing "Start New Session?" AlertDialog.
+  Future<void> _showResumeSessionModal(
+    BuildContext context,
+    TrainingSession session,
+  ) async {
+    final sessionLabel = session.title?.isNotEmpty == true
+        ? session.title!
+        : _modalityLabel(session.modality);
+    final startedText = _formatSessionStart(session.startedAtMs);
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return _ResumeSessionDialog(
+          sessionLabel: sessionLabel,
+          startedText: startedText,
+          setCountFuture: widget.workoutState.countSetsForSession(session.id),
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      // Continue: restore session into memory then navigate.
+      await widget.workoutState.loadHistoricalSession(session.id);
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
+          ),
+        ),
+      );
+    } else if (result == false) {
+      // Discard: delete from storage; no in-memory side effects.
+      await widget.workoutState.deleteSessionById(session.id);
     }
   }
 
@@ -824,4 +942,87 @@ class _MaintenanceItem {
     required this.icon,
     required this.onTap,
   });
+}
+
+/// Dialog shown on cold-start when an unfinished session is found in storage.
+/// Returns true (Continue) or false (Discard) to the caller.
+class _ResumeSessionDialog extends StatefulWidget {
+  final String sessionLabel;
+  final String startedText;
+  final Future<int> setCountFuture;
+
+  const _ResumeSessionDialog({
+    required this.sessionLabel,
+    required this.startedText,
+    required this.setCountFuture,
+  });
+
+  @override
+  State<_ResumeSessionDialog> createState() => _ResumeSessionDialogState();
+}
+
+class _ResumeSessionDialogState extends State<_ResumeSessionDialog> {
+  bool _confirmingDiscard = false;
+
+  static ButtonStyle get _actionButtonStyle => ButtonStyle(
+    shape: WidgetStateProperty.all(
+      RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Unfinished Session'),
+      content: FutureBuilder<int>(
+        future: widget.setCountFuture,
+        builder: (context, snapshot) {
+          final setCount = snapshot.data;
+          final countText = setCount == null
+              ? ''
+              : setCount == 1
+              ? ' - 1 set logged'
+              : ' - $setCount sets logged';
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.sessionLabel,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${widget.startedText}$countText',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      actions: [
+        TextButton(
+          style: _actionButtonStyle,
+          onPressed: () {
+            if (!_confirmingDiscard) {
+              setState(() => _confirmingDiscard = true);
+            } else {
+              Navigator.of(context).pop(false);
+            }
+          },
+          child: Text(_confirmingDiscard ? 'Confirm Discard' : 'Discard'),
+        ),
+        FilledButton(
+          style: _actionButtonStyle,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Continue'),
+        ),
+      ],
+    );
+  }
 }

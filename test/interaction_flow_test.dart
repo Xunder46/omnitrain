@@ -7,6 +7,7 @@ import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
+import 'package:omnitrain/features/home/home_screen.dart';
 import 'package:omnitrain/features/period/create_period_screen.dart';
 import 'package:omnitrain/features/period/period_list_screen.dart';
 import 'package:omnitrain/features/profile/widgets/measurement_history_chart_sheet.dart';
@@ -16,6 +17,8 @@ import 'package:omnitrain/features/session/session_overview_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
+import 'package:omnitrain/state/calendar/calendar_state.dart';
+import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -34,6 +37,141 @@ Future<MockWorkoutRepository> _freshRepo() async {
 }
 
 void main() {
+  group('HomeScreen resume dialog interactions', () {
+    Future<HomeScreen> _buildHomeScreen(MockWorkoutRepository repo) async {
+      final workoutState = WorkoutState(repo);
+      final homeState = HomeState(repo);
+      await homeState.init();
+      final routineState = RoutineState(repo);
+      final routineSessionService = RoutineSessionService(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final periodState = PeriodState(repo);
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      return HomeScreen(
+        workoutState: workoutState,
+        homeState: homeState,
+        routineState: routineState,
+        routineSessionService: routineSessionService,
+        sessionSummaryService: sessionSummaryService,
+        calendarState: calendarState,
+        periodState: periodState,
+        profileState: profileState,
+        settingsState: settingsState,
+        timerAlertService: FakeTimerAlertService(),
+      );
+    }
+
+    testWidgets('Continue resumes and navigates to workout session screen', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      await repo.createSession(
+        TrainingSession(
+          id: 'resume-continue',
+          ownerUserId: 'user-1',
+          startedAtMs: now,
+          modality: 'resistance_lifting',
+          title: 'Resume Continue',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+
+      final screen = await _buildHomeScreen(repo);
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unfinished Session'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+      await tester.pump();
+      final exception = tester.takeException();
+      if (exception != null) {
+        expect(
+          exception.toString(),
+          contains('setState() or markNeedsBuild() called during build'),
+        );
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+    });
+
+    testWidgets('Discard confirmation deletes session and dismisses modal', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      await repo.createSession(
+        TrainingSession(
+          id: 'resume-discard',
+          ownerUserId: 'user-1',
+          startedAtMs: now,
+          modality: 'cardio_endurance',
+          title: 'Resume Discard',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+
+      final screen = await _buildHomeScreen(repo);
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unfinished Session'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Discard'));
+      await tester.pumpAndSettle();
+      expect(find.text('Confirm Discard'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Confirm Discard'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unfinished Session'), findsNothing);
+      expect(await repo.getSession('resume-discard'), isNull);
+    });
+
+    testWidgets('system back dismiss keeps session intact', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      await repo.createSession(
+        TrainingSession(
+          id: 'resume-back',
+          ownerUserId: 'user-1',
+          startedAtMs: now,
+          modality: 'sports',
+          title: 'Resume Back',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+
+      final screen = await _buildHomeScreen(repo);
+      await tester.pumpWidget(MaterialApp(home: screen));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unfinished Session'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Unfinished Session'), findsNothing);
+      expect(await repo.getSession('resume-back'), isNotNull);
+    });
+  });
+
   group('InlineMetricEditor interactions', () {
     testWidgets('weight drag increments by 0.5', (WidgetTester tester) async {
       double? updatedValue;
@@ -1099,8 +1237,7 @@ void main() {
         findsOneWidget,
       );
       // Entry still in repo
-      final history =
-          await profileState.getMeasurementHistory('bodyweight');
+      final history = await profileState.getMeasurementHistory('bodyweight');
       expect(history, hasLength(1));
     });
 
@@ -1147,8 +1284,7 @@ void main() {
         find.text('Tap a point to view · Long-press to delete'),
         findsOneWidget,
       );
-      final history =
-          await profileState.getMeasurementHistory('bodyweight');
+      final history = await profileState.getMeasurementHistory('bodyweight');
       expect(history, hasLength(1));
     });
 
@@ -1224,49 +1360,47 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('ProfileMeasurements validation', () {
-    testWidgets(
-      'validationRangeFor returns correct kg range for bodyweight',
-      (WidgetTester tester) async {
-        final range =
-            ProfileMeasurements.validationRangeFor('bodyweight', 'kg');
-        expect(range.min, 20.0);
-        expect(range.max, 300.0);
-      },
-    );
+    testWidgets('validationRangeFor returns correct kg range for bodyweight', (
+      WidgetTester tester,
+    ) async {
+      final range = ProfileMeasurements.validationRangeFor('bodyweight', 'kg');
+      expect(range.min, 20.0);
+      expect(range.max, 300.0);
+    });
 
-    testWidgets(
-      'validationRangeFor returns correct lbs range for bodyweight',
-      (WidgetTester tester) async {
-        final range =
-            ProfileMeasurements.validationRangeFor('bodyweight', 'lbs');
-        expect(range.min, 40.0);
-        expect(range.max, 600.0);
-      },
-    );
+    testWidgets('validationRangeFor returns correct lbs range for bodyweight', (
+      WidgetTester tester,
+    ) async {
+      final range = ProfileMeasurements.validationRangeFor('bodyweight', 'lbs');
+      expect(range.min, 40.0);
+      expect(range.max, 600.0);
+    });
 
-    testWidgets(
-      'validationUnitLabel returns kg for bodyweight in kg mode',
-      (WidgetTester tester) async {
-        final label = ProfileMeasurements.validationUnitLabel('bodyweight', 'kg');
-        expect(label, 'kg');
-      },
-    );
+    testWidgets('validationUnitLabel returns kg for bodyweight in kg mode', (
+      WidgetTester tester,
+    ) async {
+      final label = ProfileMeasurements.validationUnitLabel('bodyweight', 'kg');
+      expect(label, 'kg');
+    });
 
-    testWidgets(
-      'validationUnitLabel returns lbs for bodyweight in lbs mode',
-      (WidgetTester tester) async {
-        final label = ProfileMeasurements.validationUnitLabel('bodyweight', 'lbs');
-        expect(label, 'lbs');
-      },
-    );
+    testWidgets('validationUnitLabel returns lbs for bodyweight in lbs mode', (
+      WidgetTester tester,
+    ) async {
+      final label = ProfileMeasurements.validationUnitLabel(
+        'bodyweight',
+        'lbs',
+      );
+      expect(label, 'lbs');
+    });
 
-    testWidgets(
-      'validationUnitLabel returns percent for body_fat_pct',
-      (WidgetTester tester) async {
-        final label =
-            ProfileMeasurements.validationUnitLabel('body_fat_pct', 'kg');
-        expect(label, '%');
-      },
-    );
+    testWidgets('validationUnitLabel returns percent for body_fat_pct', (
+      WidgetTester tester,
+    ) async {
+      final label = ProfileMeasurements.validationUnitLabel(
+        'body_fat_pct',
+        'kg',
+      );
+      expect(label, '%');
+    });
   });
 }

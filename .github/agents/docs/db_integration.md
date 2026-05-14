@@ -59,6 +59,13 @@ flutter test test/profile_data_layer_test.dart
 - `deleteMeasurementEntry(String entryId)`
 - `updateSessionFeeling(String sessionId, int feeling)`
 
+Active session persistence API:
+
+- `getInProgressSessions()`
+  - Returns sessions where `endedAtMs == null`
+  - Sorted by `startedAtMs` descending (most recent first)
+  - Hive implementation skips malformed records with per-row try/catch (no throw)
+
 Any repository implementation must satisfy this full contract and remain compile-safe.
 
 ---
@@ -76,6 +83,12 @@ Behavior:
 - Measurement entries are saved by entry id.
 - Measurement history is filtered by `measurementType` and sorted `recordedAtMs` descending.
 - Latest measurement is derived from sorted history.
+
+Session persistence behavior:
+
+- `getInProgressSessions()` scans `sessions` box values.
+- Parse failures for malformed rows are caught and skipped; valid rows still return.
+- Returned list is sorted desc by `startedAtMs`.
 
 ### Hive Migration Keys
 
@@ -181,5 +194,5 @@ The same seam applies in `TimerManager` (for round/timed instance writes) and `E
 
 ---
 
-**Document Version**: 1.3
-**Last Updated**: May 2026
+**Document Version**: 1.4
+**Last Updated**: May 13, 2026

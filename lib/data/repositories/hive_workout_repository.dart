@@ -507,6 +507,25 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<List<TrainingSession>> getInProgressSessions() async {
+    final result = <TrainingSession>[];
+    for (final raw in _sessionsBox.values) {
+      try {
+        final session = TrainingSession.fromMap(_asStringMap(raw));
+        if (session.endedAtMs == null) {
+          result.add(session);
+        }
+      } catch (e) {
+        // Malformed record — skip silently rather than crash.
+        // ignore: avoid_print
+        print('[HiveWorkoutRepository] Skipping malformed session record: $e');
+      }
+    }
+    result.sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
+    return result;
+  }
+
+  @override
   Future<List<TrainingSession>> getSessionsByDateRange(
     int fromMs,
     int toMs,

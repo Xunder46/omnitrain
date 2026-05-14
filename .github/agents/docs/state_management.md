@@ -38,6 +38,18 @@ Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListene
 
 **`notify` callback pattern**: Sub-holders are plain Dart objects (not ChangeNotifiers). They call the injected `notify` callback in place of `notifyListeners()`. This preserves the single-listener model and avoids the double-dispatch overhead of chaining multiple ChangeNotifiers.
 
+#### Active Session Persistence Helpers
+
+`WorkoutState` includes cold-start lifecycle helpers that are intentionally facade-level (not in `SessionCore`):
+
+| Method | Purpose |
+|--------|---------|
+| `checkForInProgressSession()` | Reads repository `getInProgressSessions()`, returns most recent dangling session, and best-effort deletes older duplicates |
+| `deleteSessionById(String id)` | Deletes a session by id without mutating current in-memory session |
+| `countSetsForSession(String sessionId)` | Read-only aggregate count of `EffortObservation` rows across all session segments/efforts for resume dialog display |
+
+These methods keep feature screens on the state boundary and avoid direct repository access from `features/`.
+
 ---
 
 ### `SessionCore`

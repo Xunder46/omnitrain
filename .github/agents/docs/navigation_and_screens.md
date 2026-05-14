@@ -151,6 +151,14 @@ When the user returns to the home screen with an active session:
 - **Modality tiles**: If the active session's modality matches the tile, tapping resumes the session (navigates to `WorkoutSessionScreen`)
 - **My Routines tile**: If the active session has `intent == 'routine'`, tapping navigates directly to `WorkoutSessionScreen`
 
+Cold-start persistence resume:
+- On first frame of `HomeScreen`, when `workoutState.hasActiveSession == false`, state checks storage for in-progress sessions.
+- If one exists, an `AlertDialog` titled `Unfinished Session` is shown.
+- `Continue` restores the historical session and pushes `WorkoutSessionScreen`.
+- `Discard` uses one confirmation tap (`Discard` -> `Confirm Discard`) and deletes by id.
+- System back-dismiss returns `null` and preserves the stored session (no delete side effect).
+- If multiple dangling sessions exist, only the most recent is surfaced; older ones are cleaned up by state.
+
 When tapping a different modality tile while a session is active:
 - A confirmation dialog appears: "Start New Session? Current session will be saved."
 - Confirming ends the current session and creates a new one
@@ -165,5 +173,5 @@ When tapping a different modality tile while a session is active:
 
 ---
 
-**Document Version**: 1.3
-**Last Updated**: March 22, 2026
+**Document Version**: 1.4
+**Last Updated**: May 13, 2026
