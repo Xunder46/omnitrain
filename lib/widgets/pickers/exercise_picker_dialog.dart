@@ -271,6 +271,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
 
               // Search field
               TextField(
+                textCapitalization: TextCapitalization.none,
                 controller: _searchController,
                 decoration: InputDecoration(
                   hintText: 'Search exercises...',

@@ -667,10 +667,10 @@ class RoutineState extends ChangeNotifier {
             t.setIndex == setIndex,
       );
 
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final targetId = existingIndex >= 0
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final targetId = existingIndex >= 0
           ? _currentTargets[existingIndex].id
-          : 'ttar-$now';
+          : _buildTargetId(templateEffortId, metricId, setIndex);
 
       final target = TemplateTarget(
         id: targetId,
@@ -843,6 +843,20 @@ class RoutineState extends ChangeNotifier {
       if (index > maxIndex) maxIndex = index;
     }
     return maxIndex;
+  }
+
+  String _buildTargetId(
+    String templateEffortId,
+    String metricId,
+    int? setIndex,
+  ) {
+    final micros = DateTime.now().microsecondsSinceEpoch;
+    final safeMetric = metricId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final safeEffort = templateEffortId.replaceAll(
+      RegExp(r'[^a-zA-Z0-9_-]'),
+      '_',
+    );
+    return 'ttar-$safeEffort-$safeMetric-${setIndex ?? 0}-$micros';
   }
 
   dynamic _targetValueForMetric(TemplateTarget target) {

@@ -36,6 +36,8 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
@@ -52,5 +54,7 @@
 	<string>Omnitrain uses your photo library so you can choose a profile photo.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Omnitrain may save profile photo edits to your photo library when supported.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access is not used by this app.</string>
 </dict>
 </plist>

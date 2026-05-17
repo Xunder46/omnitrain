@@ -86,7 +86,11 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: appTheme.copyWith(textTheme: textTheme),
           builder: (context, child) =>
-              OmniGradientBackground(child: child ?? const SizedBox.shrink()),
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                child: OmniGradientBackground(child: child ?? const SizedBox.shrink()),
+              ),
           // Splash screen temporarily disabled - showing home screen directly
           // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
           home: showOnboarding

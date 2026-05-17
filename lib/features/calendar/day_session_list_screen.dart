@@ -979,6 +979,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             const SizedBox(height: 12),
 
             TextField(
+
+              textCapitalization: TextCapitalization.words,
+
               controller: _titleCtrl,
               decoration: const InputDecoration(
                 labelText: 'Title (optional)',
@@ -987,6 +990,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             ),
             const SizedBox(height: 12),
             TextField(
+              textCapitalization: TextCapitalization.sentences,
               controller: _noteCtrl,
               decoration: const InputDecoration(
                 labelText: 'Notes (optional)',

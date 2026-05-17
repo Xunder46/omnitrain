@@ -101,6 +101,7 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
             children: [
               // ── Name ─────────────────────────────────────────────
               TextField(
+                textCapitalization: TextCapitalization.words,
                 controller: _nameCtrl,
                 maxLength: 50,
                 decoration: InputDecoration(
@@ -244,6 +245,7 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
 
               // ── Notes ─────────────────────────────────────────────
               TextField(
+                textCapitalization: TextCapitalization.sentences,
                 controller: _notesCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Notes (optional)',

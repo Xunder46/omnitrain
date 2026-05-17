@@ -47,6 +47,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# iOS build artifacts
+ios/build/
+
 # iOS CocoaPods
 ios/Pods/
 ios/Podfile.lock

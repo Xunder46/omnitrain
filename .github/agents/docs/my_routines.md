@@ -320,25 +320,32 @@ Dual-view screen for building/editing a routine.
 - **Routine name field**: `TextField` at the top
 - **Exercise list**: `ReorderableListView.builder` with drag handles
   - Each `ExerciseCard` shows: drag handle, exercise name, tracking label (e.g., "Track by Reps & Sets")
-  - ⋮ menu: "Change Tracking" or "Remove"
+  - ⋮ menu: "Change Tracking", "Edit Rest", or "Remove"
   - Tap card → opens detail view for that exercise
 - **Add button**: (+) in bottom-right corner
 - **Bottom actions**: Cancel / Save buttons
 
 #### Detail View (per-exercise)
 - Navigated to by tapping an exercise card in list view
-- Shows: exercise name, tracking label chip, metric editors, set progress
+- Shows: exercise name, tracking label chip, metric editors, previous-set stats, set progress, and navigation controls
 - **Metric editors**: Same `InlineMetricEditor` widget used in live sessions
   - `set` → Reps + Weight scrollers
   - `timed` → Duration scroller
   - `round` → Round counter + Duration scroller
   - `drill` → Hold Time + Extra Weight scrollers
+- Weight labels respect the active `SettingsState` unit preference when available
 - **Set navigation**: Previous Set / Next Set arrows, set dots indicator
-- **Set management**: Add Set (+) / Delete Last Set (trash) buttons
+- **Set management**: inline controls now flank the centered progress label
+  - remove-set button on the left
+  - `Set/Interval/Round/Hold X of Y` label in the middle
+  - add-set button on the right
+- Remove-set is only enabled on the final entry when more than one set exists; add-set is capped by `WorkoutConstants.maxEntriesPerEffort`
 - **Previous set stats**: Shows last set's values for reference (e.g., "Previous: 10 reps @ 135.0 lbs")
 - **Swipe gestures**:
   - Horizontal: Navigate between sets
   - Vertical: Navigate between exercises
+
+This detail view was intentionally brought into closer parity with the live `WorkoutSessionScreen` so routine editing and live execution share the same mental model.
 
 #### Smart Defaults for Targets
 When adding a set, targets auto-fill from the previous set:

@@ -654,6 +654,35 @@ void main() {
       expect(state.getEffortTargetsForSet(effortId, 1), isNotEmpty);
     });
 
+    test('added sets persist after save and reopen routine', () async {
+      final repo = await _freshRepo();
+      final state = RoutineState(repo);
+      state.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await state.createNewRoutine('Persisted Sets');
+      final effortId = await state.addExerciseToRoutine(exercises.first, 'set');
+
+      await state.setTargetValue(
+        effortId,
+        'metric-reps',
+        'unit-reps',
+        setIndex: 0,
+        targetInt: 8,
+      );
+      await state.addSetForEffort(effortId, 'set');
+
+      await state.saveRoutine();
+      final templateId = state.currentTemplate!.id;
+
+      state.clearCurrentRoutine();
+      await state.loadRoutineForEditing(templateId);
+
+      final reloadedEffort = state.currentEfforts.first.id;
+      expect(state.getEffortTargetsForSet(reloadedEffort, 0), isNotEmpty);
+      expect(state.getEffortTargetsForSet(reloadedEffort, 1), isNotEmpty);
+    });
+
     test('addSetForEffort respects max entry cap', () async {
       final repo = await _freshRepo();
       final state = RoutineState(repo);
@@ -1141,6 +1170,79 @@ void main() {
       await state.deletePeriod(id);
 
       expect(state.periods, isEmpty);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkoutState – checkForInProgressSession
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('WorkoutState.checkForInProgressSession', () {
+    TrainingSession _makeSession(String id, int startedAtMs, {int? endedAtMs}) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      return TrainingSession(
+        id: id,
+        ownerUserId: 'u-test',
+        startedAtMs: startedAtMs,
+        endedAtMs: endedAtMs,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+    }
+
+    test('returns null when no sessions exist', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+
+      final result = await state.checkForInProgressSession();
+
+      expect(result, isNull);
+    });
+
+    test('returns null when all sessions are completed', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await repo.createSession(_makeSession('s-1', now - 10000, endedAtMs: now - 5000));
+      await repo.createSession(_makeSession('s-2', now - 20000, endedAtMs: now - 15000));
+
+      final result = await state.checkForInProgressSession();
+
+      expect(result, isNull);
+    });
+
+    test('returns the single in-progress session', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await repo.createSession(_makeSession('s-open', now - 5000));
+
+      final result = await state.checkForInProgressSession();
+
+      expect(result, isNotNull);
+      expect(result!.id, 's-open');
+    });
+
+    test('returns most recent and deletes older in-progress sessions', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      // Newer session
+      await repo.createSession(_makeSession('s-new', now - 1000));
+      // Older dangling sessions
+      await repo.createSession(_makeSession('s-old-1', now - 10000));
+      await repo.createSession(_makeSession('s-old-2', now - 20000));
+
+      final result = await state.checkForInProgressSession();
+
+      expect(result, isNotNull);
+      expect(result!.id, 's-new');
+
+      // Older sessions should have been deleted
+      expect(await repo.getSession('s-old-1'), isNull);
+      expect(await repo.getSession('s-old-2'), isNull);
+      // Most recent kept
+      expect(await repo.getSession('s-new'), isNotNull);
     });
   });
 

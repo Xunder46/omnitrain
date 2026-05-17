@@ -47,7 +47,7 @@ Future<int?> _showDurationEntryDialog(
           Row(
             children: [
               Expanded(
-                child: TextField(
+                child: NumericFieldWithDoneBar(
                   controller: hhCtrl,
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,
@@ -60,7 +60,7 @@ Future<int?> _showDurationEntryDialog(
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: TextField(
+                child: NumericFieldWithDoneBar(
                   controller: mmCtrl,
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,
@@ -73,7 +73,7 @@ Future<int?> _showDurationEntryDialog(
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: TextField(
+                child: NumericFieldWithDoneBar(
                   controller: ssCtrl,
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,

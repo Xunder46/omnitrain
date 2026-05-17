@@ -2,247 +2,127 @@
 
 ## Overview
 
-OmniTrain supports **multiple app themes** selectable at runtime from the Settings screen. The selected theme is persisted across sessions and applied reactively to all screens without a restart. All theme tokens, including gradient colors, surface colors, and primary accent, are sourced from a single centralised resolver.
+OmniTrain's Settings screen is fully implemented. It owns persisted preferences for:
+
+- calendar display (`Start of Week`)
+- measurement units (`Weight`, `Distance`)
+- timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`)
+- workout follow-up (`Feeling Survey`)
+- appearance (`AppTheme` selection)
+
+All settings apply immediately. There is no save button and no staged draft state.
 
 ---
 
-## Available Themes
-
-| Enum Value | Display Name | Primary Accent | Character |
-|------------|-------------|----------------|-----------|
-| `AppTheme.abyssalNeon` | Abyssal Neon | `#2DE2E6` (Neon Cyan) | Deep navy gradient, electric cyan accents |
-| `AppTheme.forgeEmber` | Forge & Ember | `#FF6B35` (Ember Orange) | Dark amber-black gradient, molten orange accents |
-| `AppTheme.obsidianVolt` | Obsidian Volt | `#EAE000` (Electric Yellow) | Near-black gradient, volt yellow accents |
-| `AppTheme.circuitGreen` | Circuit Green | `#00E676` (Circuit Green) | Deep forest-black gradient, vivid green accents |
-| `AppTheme.voidPulse` | Void Pulse | `#8B5CF6` (Ultraviolet) | Deep violet-black gradient, ultraviolet accents — meditative, focused, late-night training |
-| `AppTheme.arcticCore` | Arctic Core | `#B8E4F9` (Ice Blue-White) | Cold slate-black gradient, ice-white blue accents — clinical, precision, instrument-sharp |
-| `AppTheme.crimsonDojo` | Crimson Dojo | `#E53935` (Blood Red) | Deep maroon-black gradient, blood-red accents — combat sport, aggression, martial arts |
-| `AppTheme.titaniumRose` | Titanium Rose | `#F72585` (Neon Magenta) | Dark charcoal-violet gradient, neon magenta accents — explosive, high-intensity, unapologetic |
----
-
-## Token System: `OmniTheme`
+## Theme System
 
 **File**: `lib/core/constants/omni_theme.dart`
 
 ### `AppTheme` Enum
 
 ```dart
-enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, circuitGreen, voidPulse, arcticCore, crimsonDojo, titaniumRose }
+enum AppTheme {
+  abyssalNeon,
+  forgeEmber,
+  obsidianVolt,
+  voidPulse,
+  crimsonDojo,
+  malachiteCore,
+}
 ```
 
-### Color Token Record
+### Available Themes
+
+| Enum Value | Display Name | Primary Accent | Character |
+|------------|--------------|----------------|-----------|
+| `AppTheme.abyssalNeon` | Abyssal Neon | `#00B4B8` | Deep navy with cyan instrumentation |
+| `AppTheme.forgeEmber` | Forge & Ember | `#FF6B35` | Molten orange, industrial warmth |
+| `AppTheme.obsidianVolt` | Obsidian Volt | `#D4A017` | Dark amber-electric contrast |
+| `AppTheme.voidPulse` | Void Pulse | `#8B5CF6` | Deep violet, late-night focus |
+| `AppTheme.crimsonDojo` | Crimson Dojo | `#E53935` | Combat-sport red, heavier contrast |
+| `AppTheme.malachiteCore` | Malachite Core | `#1A9A4A` | Deep mineral green, grounded and earthy |
+
+For full palette values and visual rationale, see [Design System](design_system.md).
+
+### `OmniTheme` Token Resolver
 
 `OmniTheme.colorsForTheme(AppTheme theme)` returns a typed record with these fields:
 
-| Token Field | Role |
-|-------------|------|
-| `backgroundTop` | Top color of the full-screen gradient |
-| `backgroundBottom` | Bottom color of the full-screen gradient |
-| `surface` | Card / panel / sheet background |
-| `primary` | Interactive elements, accents, active states |
-| `secondary` | Supporting accents |
-| `textMuted` | Tertiary / placeholder text |
-| `divider` | Separator lines |
-| `surfaceBorder` | Subtle surface boundary color |
+| Token Field | Purpose |
+|-------------|---------|
+| `backgroundTop` | Top stop of the app gradient |
+| `backgroundBottom` | Bottom stop of the app gradient |
+| `surface` | Surface and sheet background |
+| `primary` | Primary CTA / active accent |
+| `secondary` | Supporting accent |
+| `textMuted` | Secondary and metadata text |
+| `divider` | Dividers and low-emphasis separators |
+| `surfaceBorder` | Subtle surface outline |
 
-### Exact Color Values
+### Helper API
 
-#### `abyssalNeon`
-| Token | Value |
-|-------|-------|
-| backgroundTop | `Color(0xFF0F1F33)` |
-| backgroundBottom | `Color(0xFF060B14)` |
-| surface | `Color(0xFF0E223A)` |
-| primary | `Color(0xFF2DE2E6)` |
-| secondary | `Color(0xFF1B9AAA)` |
-| textMuted | `Color(0xFF9BA4B5)` |
-| divider | `Color(0xFF1F2937)` |
-| surfaceBorder | `Color(0x0FFFFFFF)` |
+| Member | Purpose |
+|--------|---------|
+| `OmniTheme.colorsForTheme(theme)` | Returns the token record for a theme |
+| `OmniTheme.displayNameForTheme(theme)` | Returns the user-facing theme name |
+| `OmniTheme.activeTheme` | Global fallback for widgets not passed `SettingsState` |
 
-#### `forgeEmber`
-| Token | Value |
-|-------|-------|
-| backgroundTop | `Color(0xFF1C1008)` |
-| backgroundBottom | `Color(0xFF0A0603)` |
-| surface | `Color(0xFF211407)` |
-| primary | `Color(0xFFFF6B35)` |
-| secondary | `Color(0xFFCC4A1A)` |
-| textMuted | `Color(0xFFA07060)` |
-| divider | `Color(0xFF2A1C10)` |
-| surfaceBorder | `Color(0x0DFFFFFF)` |
-
-#### `obsidianVolt`
-| Token | Value |
-|-------|-------|
-| backgroundTop | `Color(0xFF111111)` |
-| backgroundBottom | `Color(0xFF050505)` |
-| surface | `Color(0xFF161616)` |
-| primary | `Color(0xFFEAE000)` |
-| secondary | `Color(0xFFB8B000)` |
-| textMuted | `Color(0xFF666666)` |
-| divider | `Color(0xFF1F1F1F)` |
-| surfaceBorder | `Color(0x12FFFFFF)` |
-
-#### `circuitGreen`
-| Token | Value |
-|-------|-------|
-| backgroundTop | `Color(0xFF071210)` |
-| backgroundBottom | `Color(0xFF030806)` |
-| surface | `Color(0xFF091714)` |
-| primary | `Color(0xFF00E676)` |
-| secondary | `Color(0xFF00A854)` |
-| textMuted | `Color(0xFF4A7A5A)` |
-| divider | `Color(0xFF102018)` |
-| surfaceBorder | `Color(0x0DFFFFFF)` |
-
-#### `voidPulse`
-| Token | Value |
-|-------|-------|
-| backgroundTop | `Color(0xFF0D0A1A)` |
-| backgroundBottom | `Color(0xFF050308)` |
-| surface | `Color(0xFF110D20)` |
-| primary | `Color(0xFF8B5CF6)` |
-| secondary | `Color(0xFF6D3FD4)` |
-| textMuted | `Color(0xFF6B5B8A)` |
-| divider | `Color(0xFF1A1230)` |
-| surfaceBorder | `Color(0x0FFFFFFF)` |
-
-#### `arcticCore`
-| Token | Value |
-|-------|-------|
-| backgroundTop | `Color(0xFF0A0E14)` |
-| backgroundBottom | `Color(0xFF04060A)` |
-| surface | `Color(0xFF0D1219)` |
-| primary | `Color(0xFFB8E4F9)` |
-| secondary | `Color(0xFF7AB8D8)` |
-| textMuted | `Color(0xFF4A5E72)` |
-| divider | `Color(0xFF111820)` |
-| surfaceBorder | `Color(0x12FFFFFF)` |
-
-#### `crimsonDojo`
-| Token | Value |
-|-------|-------|
-| backgroundTop | `Color(0xFF1A0806)` |
-| backgroundBottom | `Color(0xFF080302)` |
-| surface | `Color(0xFF1F0A08)` |
-| primary | `Color(0xFFE53935)` |
-| secondary | `Color(0xFFB71C1C)` |
-| textMuted | `Color(0xFF7A3530)` |
-| divider | `Color(0xFF2A0F0C)` |
-| surfaceBorder | `Color(0x0DFFFFFF)` |
-
-#### `titaniumRose`
-| Token | Value |
-|-------|-------|
-| backgroundTop | `Color(0xFF120A14)` |
-| backgroundBottom | `Color(0xFF060308)` |
-| surface | `Color(0xFF170C1A)` |
-| primary | `Color(0xFFF72585)` |
-| secondary | `Color(0xFFC1006A)` |
-| textMuted | `Color(0xFF6B3D5E)` |
-| divider | `Color(0xFF1E1020)` |
-| surfaceBorder | `Color(0x0FFFFFFF)` |
-
-### Helper Methods
-
-| Method | Signature | Purpose |
-|--------|-----------|---------|
-| `colorsForTheme` | `(AppTheme) → OmniThemeColors` | Returns token record for a given theme |
-| `displayNameForTheme` | `(AppTheme) → String` | Returns user-facing display name |
-| `activeTheme` | `static AppTheme get` | Low-refactor global accessor for widgets not receiving SettingsState via constructor |
+`MyApp` rebuilds `MaterialApp` through a `ListenableBuilder` watching `SettingsState`, so theme changes propagate immediately without restart.
 
 ---
 
 ## SettingsState
 
 **File**: `lib/state/settings/settings_state.dart`
-**Depends on**: `SharedPreferences`
 
-A `ChangeNotifier` that owns the persisted app theme selection.
+`SettingsState` is a `ChangeNotifier` backed by `WorkoutRepository` preference storage.
 
-### State Fields
+### Persisted Fields
 
-| Field | Type | Default |
-|-------|------|---------|
-| `_appTheme` | `AppTheme` | `AppTheme.abyssalNeon` |
+| Field | Type | Default | Preference Key |
+|-------|------|---------|----------------|
+| `appTheme` | `AppTheme` | `abyssalNeon` | `app_theme` |
+| `preferredWeightUnit` | `String` | `kg` | `preferred_weight_unit` |
+| `preferredDistanceUnit` | `String` | `km` | `preferred_distance_unit` |
+| `startOfWeek` | `String` | `monday` | `preferred_start_of_week` |
+| `showFeelingSurvey` | `bool` | `true` | `show_feeling_survey` |
+| `effortTimerSound` | `String` | `boxing_bell` | `effort_timer_sound` |
+| `restPingInterval` | `int` | `0` (`Off`) | `rest_ping_interval` |
+| `restPingSound` | `String` | `soft_chime` | `rest_ping_sound` |
+
+### Sound Options
+
+Valid sound IDs:
+
+- `boxing_bell`
+- `digital_buzzer`
+- `soft_chime`
+- `double_tap`
+- `signal_tone`
+
+Valid rest ping intervals:
+
+- `0` (`Off`)
+- `30`
+- `45`
+- `60`
+- `90`
+- `120`
+- `180`
 
 ### Public API
 
-| Member | Signature | Purpose |
-|--------|-----------|---------|
-| `appTheme` | `AppTheme get` | Currently selected theme |
-| `setAppTheme` | `(AppTheme) → Future<void>` | Persists selection by `enum.name` and calls `notifyListeners()` |
-| `_loadFromPrefs` | private | Reads `'app_theme'` key from SharedPreferences on init; falls back to `abyssalNeon` if missing/invalid |
-
-### Persistence
-
-- Key: `'app_theme'`
-- Storage: `SharedPreferences`
-- Value format: `AppTheme.name` string (e.g. `'forgeEmber'`)
-- Fallback on invalid/missing key: `AppTheme.abyssalNeon`
-
----
-
-## Dependency Injection
-
-`SettingsState` is created in `main.dart` before `runApp()` and threaded through the constructor chain:
-
-```
-main.dart
-  → SettingsState()   (initialized with await settingsState._loadFromPrefs())
-  → MyApp(settingsState, ...)
-    → HomeScreen(settingsState, ...)
-      → WorkoutSessionScreen(settingsState, ...)   (for OmniTheme.activeTheme fallback)
-      → SessionOverviewScreen(settingsState, ...)
-      → SessionSummaryScreen(settingsState, ...)
-      → SettingsScreen(settingsState)
-```
-
-`OmniTheme.activeTheme` is set from `settingsState.appTheme` at the top-level `ListenableBuilder` so that widgets deep in the tree that do not receive `settingsState` have a low-refactor path to the active token values.
-
----
-
-## Reactive MaterialApp Rebuild
-
-`MyApp` wraps its `MaterialApp` in a `ListenableBuilder` (or `AnimatedBuilder`) listening to `settingsState`:
-
-```dart
-ListenableBuilder(
-  listenable: settingsState,
-  builder: (context, _) {
-    OmniTheme.activeTheme = settingsState.appTheme;  // sync global accessor
-    return MaterialApp(
-      theme: buildTheme(appTheme: settingsState.appTheme),
-      ...
-    );
-  },
-)
-```
-
-This causes `MaterialApp` to rebuild immediately when the user selects a new theme — no restart or delay.
-
----
-
-## `buildTheme` in `app.dart`
-
-**File**: `lib/app.dart`
-
-Signature: `ThemeData buildTheme({AppTheme appTheme = AppTheme.abyssalNeon})`
-
-- Derives `colorScheme.primary` from `OmniTheme.colorsForTheme(appTheme).primary`
-- All other theme values unchanged from the original Abyssal Neon theme
-
----
-
-## `OmniGradientBackground`
-
-**File**: `lib/widgets/layout/omni_gradient_background.dart`
-
-Now reads active theme gradient tokens instead of hardcoded values:
-
-- Gradient uses `themeColors.backgroundTop` → `themeColors.backgroundBottom`
-- Radial highlight and noise overlay behavior is **unchanged**
-- `themeColors` is resolved from `OmniTheme.colorsForTheme(OmniTheme.activeTheme)`
+| Method | Purpose |
+|--------|---------|
+| `initialize()` | Loads all persisted preferences |
+| `setAppTheme(theme)` | Persists theme and notifies listeners |
+| `setPreferredWeightUnit(unit)` | Normalizes to `kg` or `lbs` |
+| `setPreferredDistanceUnit(unit)` | Normalizes to `km` or `miles` |
+| `setStartOfWeek(value)` | Normalizes to `monday` or `sunday` |
+| `setShowFeelingSurvey(value)` | Enables/disables the post-workout survey |
+| `setEffortTimerSound(soundId)` | Persists the effort-timer alert sound |
+| `setRestPingInterval(seconds)` | Persists periodic rest reminders |
+| `setRestPingSound(soundId)` | Persists the rest-ping sound |
 
 ---
 
@@ -250,53 +130,82 @@ Now reads active theme gradient tokens instead of hardcoded values:
 
 **File**: `lib/features/settings/settings_screen.dart`
 
-Accessible via: `HomeScreen` → Maintenance sheet → Settings
+Entry path: `HomeScreen` → Maintenance sheet → `SettingsScreen`
 
-### Appearance Section
+The screen is organized into four surfaced sections plus a low-emphasis version footer.
 
-Displays a segmented theme selector with all three `AppTheme.values`:
+### 1. Preferences
 
-- Each option shows a **10 px circular color swatch** (using that theme's `primary` color) to the left of the theme display name
-- Selected option: surfaced styling with primary-accent border
-- Unselected: transparent with muted border
-- Tapping an option calls `settingsState.setAppTheme(theme)` — **no save button**; applies instantly
+Rows in the `PREFERENCES` section:
 
-### Interaction Rules
+- `Start of Week`: segmented toggle (`Sun` / `Mon`) used by calendar views
+- `Weight`: segmented toggle (`kg` / `lbs`) used by weight displays and editors
+- `Distance`: segmented toggle (`km` / `mi`) used by cardio and timed exercise displays
 
-- Theme changes apply immediately and persist
-- The selector uses the same animated-container interaction pattern as other settings UI
-- No other settings categories are implemented yet beyond Appearance
+Below those rows, a `PREVIEW` card renders example values for both weight and distance using the active unit preferences.
+
+### 2. Sounds & Alerts
+
+Rows in the `SOUNDS & ALERTS` section:
+
+- `Effort Timer Sound`: bottom-sheet picker for the sound played when a timed effort or round expires
+- `Rest Ping`: bottom-sheet picker for the periodic interval reminder during an open rest
+- `Rest Ping Sound`: bottom-sheet picker for the sound used by the rest ping
+
+Behavior notes:
+
+- tapping a sound option plays an immediate preview through `TimerAlertService.playPreview(...)`
+- effort timer completion uses `fireEffortTimerAlert(...)` and adds heavy haptics on native platforms
+- rest ping uses `fireRestPingAlert(...)` and adds light haptics on native platforms
+- web safely no-ops audio playback and logs debug output instead of throwing
+
+### 3. Workout
+
+Rows in the `WORKOUT` section:
+
+- `Feeling Survey`: toggle for whether the session summary flow asks how the workout felt after finishing
+
+This setting is on by default.
+
+### 4. Appearance
+
+The `APPEARANCE` section renders a two-column theme grid from `AppTheme.values`.
+
+Interaction rules:
+
+- tapping a tile calls `settingsState.setAppTheme(appTheme)` directly
+- the selected tile uses surfaced fill plus a primary-colored border
+- when the theme count is odd, the grid renders one ghost slot so the last row is visually balanced instead of showing a lone tile
+
+### Version Footer
+
+The screen ends with a centered, low-emphasis footer currently rendered as `Version 1.0.0`.
+
+### Removed Surface
+
+The Settings screen no longer includes account-management rows such as sign-in, export-data, or account-removal actions. The current implementation is limited to preferences, alert behavior, workout follow-up, and appearance.
 
 ---
 
-## Token Usage Rules (Updated)
+## Theme Wiring Summary
 
-1. **All feature screens and widgets must not hardcode hex color values**. Use `OmniTheme.colorsForTheme(OmniTheme.activeTheme)` or receive theme colors via constructor/argument.
-2. `modality_colors.dart` is **not** affected by theme selection — modality accents are intentionally fixed regardless of theme.
-3. `OmniSurface` resolves surface/border colors from the active theme token path so glass-panel surfaces automatically adapt.
-4. Maintenance sheet background, drag handle, and `MaintenanceTile` fill/icon colors all react to the active theme.
-
----
-
-## Screen-Level Theme Wiring Summary
-
-| Screen | How It Gets Theme Colors |
-|--------|--------------------------|
-| `HomeScreen` maintenance sheet | `OmniTheme.colorsForTheme(settingsState.appTheme)` |
-| `SessionOverviewScreen` | Receives `settingsState` via constructor |
-| `SessionSummaryScreen` | Receives `settingsState` via constructor (feeling sheet uses active tokens) |
-| `WorkoutSessionScreen` | Receives `settingsState`; falls back to `OmniTheme.activeTheme` when null (edit-mode entry path) |
-| `SettingsScreen` | Receives `settingsState` directly |
+| Surface | Theme Source |
+|---------|--------------|
+| `MaterialApp` | `buildTheme(appTheme: settingsState.appTheme)` |
+| `OmniGradientBackground` | `OmniTheme.colorsForTheme(OmniTheme.activeTheme)` |
+| `OmniSurface` | Active theme surface + border tokens |
+| Maintenance sheet and tiles | Active theme token resolver |
+| Session / summary / settings screens | Constructor-injected `SettingsState` with `OmniTheme.activeTheme` fallback where needed |
 
 ---
 
 ## Related Documentation
 
-- [Design System](design_system.md) — Visual identity, color token roles, and design rules
-- [Navigation & Screens](navigation_and_screens.md) — SettingsScreen navigation path
-- [State Management](state_management.md) — SettingsState in the dependency graph
+- [Design System](design_system.md) — visual identity, palette intent, and token usage
+- [Navigation & Screens](navigation_and_screens.md) — where Settings lives in the app flow
+- [State Management](state_management.md) — `SettingsState` in the dependency graph
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: March 22, 2026
+**Document Version**: 2.0
+**Last Updated**: May 17, 2026

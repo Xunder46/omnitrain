@@ -2,66 +2,153 @@
 
 ## Purpose
 
-Add a lightweight path for users to define an exercise that does not exist in the library, without leaving the exercise picker flow.
+Add and edit custom exercises without leaving the picker flow, while keeping the form aligned with OmniTrain's modality system.
+
+The current editor is **modality-first**: the chosen modality drives which disciplines, capability chips, and muscle-group controls are shown.
+
+---
+
+## Screen API
+
+**File**: `lib/features/exercise/exercise_editor_screen.dart`
+
+`ExerciseEditorScreen` accepts three inputs:
+
+| Parameter | Purpose |
+|-----------|---------|
+| `workoutState` | Repository-backed state object used to load reference data and save |
+| `initialExercise` | Optional exercise for edit mode |
+| `contextModality` | Optional prefill from the calling flow |
+
+Create flow typically passes `contextModality` and leaves `initialExercise` null.
+
+---
 
 ## Entry Points
 
-- Exercise picker dialog button: "Add Custom Exercise".
-- Opens the `ExerciseEditorScreen` via `Navigator.push`.
+- `ExercisePickerDialog` → `Add Custom Exercise`
+- Any edit flow that pushes `ExerciseEditorScreen(initialExercise: exercise)`
 
-## UI Surface (ExerciseEditorScreen)
+---
 
-### Form Fields
+## Form Structure
 
-- **Exercise name** (required)
-- **Description** (optional)
-- **Discipline** (dropdown, optional)
-- **Capabilities** (multi-select chips)
-- **Muscle groups** (multi-select chips)
+### 1. Modality (required)
 
-### States
+The form starts with four modality chips:
 
-- **Loading**: loads disciplines + muscle groups before showing the form.
-- **Saving**: disables the Save button while persisting.
-- **Error**: shows a SnackBar when creation fails.
+- `Cardio / Endurance`
+- `Resistance / Lifting`
+- `Sports`
+- `Isometric / Stretching`
 
-### Validation
+Behavior:
 
-- Name is required; empty or whitespace-only names are rejected.
+- create mode can prefill the modality from `contextModality`
+- edit mode locks the modality if the existing exercise already has a non-null modality
+- changing modality clears capabilities that are no longer valid for the new modality
+- changing modality resets the selected discipline and may hide muscle groups
 
-## Create Flow (Picker -> Editor -> Picker)
+### 2. Name and Description
 
-1. User taps "Add Custom Exercise" in the exercise picker.
-2. `ExerciseEditorScreen` opens and loads reference data (disciplines + muscle groups).
-3. User completes form and taps "Save exercise".
-4. `WorkoutState.createCustomExercise(...)` persists:
-   - New `Exercise` with id `exercise-<timestamp>`
-   - Capabilities
-   - Muscle group links
-5. Editor closes with the created `Exercise` as the route result.
-6. Picker refreshes:
-   - Updates search text to the new exercise name
-   - Re-runs the ranked search to show the newly created entry
+- `Exercise name` is required and uses `TextCapitalization.words`
+- `Description` is optional and uses `TextCapitalization.sentences`
 
-## Data Model + Persistence
+### 3. Discipline
 
-### `WorkoutState.createCustomExercise`
+The discipline dropdown is filtered by the selected modality's category affinity through `ModalityConfig.disciplinesForModality(...)`.
 
-- Generates a timestamp id and constructs `Exercise`.
-- Persists:
-  - `createExercise(exercise)`
-  - `setExerciseCapabilities(exerciseId, capabilities)`
-  - `setExerciseMuscleGroups(exerciseId, muscleGroupIds)`
-- Updates `_exerciseCache` and `_allExercises` in memory.
-- Returns the created exercise or `null` on error.
+If no modality is selected yet, the dropdown is disabled.
 
-## Notes
+### 4. Capabilities
 
-- The editor accepts an optional `initialExercise`, but the create flow does not pass one.
-- The picker maintains ranked ordering for the active modality after creation.
+Capabilities are rendered from `ModalityConfig.formCapabilities`, not from the full global capability list.
+
+| Modality | Capability Chips | Save Requires One Of | Muscle Groups | Discipline Scope |
+|----------|------------------|----------------------|---------------|------------------|
+| `cardio_endurance` | `time`, `distance`, `rounds` | `time`, `distance` | Hidden | `category-cardio` |
+| `resistance_lifting` | `reps`, `sets`, `load`, `time` | `reps`, `load` | Shown | `category-resistance` |
+| `sports` | `time`, `rounds`, `distance` | `time`, `rounds` | Hidden | `category-sports` |
+| `isometric_stretching` | `hold`, `time`, `sets` | `hold` | Shown | `category-isometric` |
+
+### 5. Muscle Groups
+
+Muscle-group chips are only shown when `ModalityConfig.showMuscleGroupsInForm` is true.
+
+That currently means:
+
+- `resistance_lifting`
+- `isometric_stretching`
+
+---
+
+## Validation Rules
+
+The form validates before save:
+
+- modality must be selected
+- exercise name must be non-empty after trim
+- at least one required capability for the chosen modality must be selected
+
+Validation messages are stored locally in `_modalityError`, `_nameError`, and `_capabilityError` and rendered inline.
+
+---
+
+## Legacy Capability Handling
+
+Edit mode preserves compatibility with older exercises whose saved capabilities no longer belong to the current modality form.
+
+Behavior:
+
+- unsupported saved capabilities are surfaced as `(Legacy)` chips
+- legacy chips are visible only in edit mode
+- they cannot be newly added from the current form
+- they can be removed from the saved exercise
+
+This behavior is driven by `ModalityConfig.legacyCapabilitiesForEdit(...)`.
+
+---
+
+## Save Flow
+
+1. The editor loads disciplines and muscle groups through `WorkoutState`.
+2. The user fills the form and taps `Save exercise`.
+3. The screen validates modality, name, and required capabilities.
+4. On success, the screen calls one of:
+   - `WorkoutState.createCustomExercise(...)`
+   - `WorkoutState.updateCustomExercise(...)`
+5. Capabilities and muscle-group ids are sorted before persistence.
+6. The saved `Exercise` is popped as the route result.
+
+If persistence fails, the screen shows a `SnackBar` with the `WorkoutState.error` message or a fallback error string.
+
+---
+
+## Persistence Notes
+
+Create mode persists:
+
+- a new `Exercise`
+- capability links
+- muscle-group links
+
+Edit mode persists:
+
+- the updated `Exercise` fields (`name`, `description`, `disciplineId`, `modality`, `updatedAtMs`)
+- the new capability set
+- the new muscle-group set
+
+The picker flow refreshes and re-ranks results after the editor returns.
+
+---
 
 ## Related Files
 
-- [lib/features/exercise/exercise_editor_screen.dart](lib/features/exercise/exercise_editor_screen.dart)
-- [lib/widgets/pickers/exercise_picker_dialog.dart](lib/widgets/pickers/exercise_picker_dialog.dart)
-- [lib/state/workout/workout_state.dart](lib/state/workout/workout_state.dart)
+- [modality_tracking.md](modality_tracking.md)
+- [constants_reference.md](constants_reference.md)
+- [navigation_and_screens.md](navigation_and_screens.md)
+
+---
+
+**Document Version**: 2.0
+**Last Updated**: May 17, 2026

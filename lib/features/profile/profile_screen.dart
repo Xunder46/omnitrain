@@ -9,6 +9,7 @@ import '../../data/models/models.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
 import 'widgets/profile_avatar_image_stub.dart'
     if (dart.library.io) 'widgets/profile_avatar_image_io.dart';
@@ -308,6 +309,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return AlertDialog(
           title: const Text('Edit Name'),
           content: TextField(
+            textCapitalization: TextCapitalization.words,
             controller: controller,
             autofocus: true,
             decoration: const InputDecoration(
@@ -574,7 +576,7 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                TextField(
+                NumericFieldWithDoneBar(
                   controller: _valueController,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,

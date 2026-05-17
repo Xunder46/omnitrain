@@ -30,54 +30,9 @@ Make active workout sessions durable across app lifecycle events (OS kill, force
 - [ ] Modal does not appear on warm resume (`workoutState.hasActiveSession == true` suppresses the check)
 - [ ] Corrupted/unreadable session record in Hive is caught, logged, and skipped (no crash, no modal)
 - [ ] All new paths covered by unit tests
-- [ ] Resume dialog back-dismiss (`result == null`) preserves session and does not trigger delete
-- [ ] Resume modal displays true sets logged (observation count), not effort/exercise count
-- [ ] Home feature does not directly access repository for resume modal metrics (state boundary preserved)
-- [ ] Malformed Hive session record path is covered by an automated test
-- [ ] Resume dialog has widget and interaction coverage for Continue, Discard, and back-dismiss behavior
 
 ## Scenarios
-### S-001: Cold start with one in-progress session
-- Trigger: App launches to `HomeScreen` after process kill.
-- Precondition: Exactly one stored session has `endedAtMs == null`; in-memory state has no active session.
-- Flow: `HomeScreen.initState` post-frame callback calls `checkForInProgressSession()`, then shows resume modal.
-- Expected outcome: Modal appears with session label, formatted start time, and sets logged count.
-- Edge case of: none
-
-### S-002: Continue from resume modal
-- Trigger: User taps `Continue` in resume modal.
-- Precondition: Resume modal is visible for a valid session id.
-- Flow: `loadHistoricalSession(sessionId)` completes, then navigation pushes `WorkoutSessionScreen`.
-- Expected outcome: Session is restored in memory and user lands on `WorkoutSessionScreen`.
-- Edge case of: S-001
-
-### S-003: Discard from resume modal
-- Trigger: User taps `Discard`, then taps `Confirm Discard`.
-- Precondition: Resume modal is visible for a valid session id.
-- Flow: First tap arms confirmation state; second tap pops `false`; caller deletes session by id.
-- Expected outcome: Session record is removed from storage; modal dismissed; home remains clean.
-- Edge case of: S-001
-
-### S-004: Back-dismiss resume modal preserves session
-- Trigger: System back action dismisses resume modal.
-- Precondition: Resume modal is visible.
-- Flow: Dialog returns `null`; caller branches only on explicit `true`/`false`.
-- Expected outcome: No delete is executed and session remains in storage.
-- Edge case of: S-001
-
-### S-005: Multiple dangling in-progress sessions
-- Trigger: Cold start calls `checkForInProgressSession()`.
-- Precondition: More than one stored session has `endedAtMs == null`.
-- Flow: Repository returns sorted list desc by `startedAtMs`; state keeps first and best-effort deletes older ones.
-- Expected outcome: Most recent session is returned; older dangling sessions are removed.
-- Edge case of: S-001
-
-### S-006: Malformed session record in Hive
-- Trigger: `getInProgressSessions()` iterates sessions.
-- Precondition: At least one row/map is not parseable by `TrainingSession.fromMap`.
-- Flow: Parse throws in try/catch; record is skipped and processing continues.
-- Expected outcome: No crash; malformed record excluded from results; valid records still returned.
-- Edge case of: S-001
+(Populated by Developer agent during Phase 0)
 
 ---
 
@@ -195,73 +150,98 @@ Reuse the same `ButtonStyle` with `RoundedRectangleBorder(borderRadius: BorderRa
 - **Warm resume guard** — `workoutState.hasActiveSession` being true means in-memory state is intact; the post-frame callback short-circuits immediately
 - **Set count query** — accessing `workoutState.repository` directly for the display-only count is acceptable since it is read-only and scoped to the modal display; alternatively, a new `countSetsForSession(String sessionId)` can be added to the repository interface if developer prefers a cleaner API
 
+## Progress (Iteration 1 — Abandoned)
+- [x] Phase 1: Repository — `getInProgressSessions()` in interface + both implementations
+- [x] Phase 2: State — `checkForInProgressSession()` + `deleteSessionById()` on `WorkoutState`
+- [ ] Phase 3: UI — **Replaced by Iteration 2 (silent restore, no dialog)**
+- [ ] Phase 4: Tests — **Updated by Iteration 2**
+
 ---
 
-## Iteration 2
+## Iteration 2 — Silent State Restore (No Dialog)
 
-### Analysis
-Code review identified one merge-blocking defect and four quality gaps. Scope is to implement all feedback items: preserve session on back-dismiss, compute true set counts, enforce feature-to-state boundary, add malformed-record test coverage, and add widget/interaction tests for resume dialog flows. No schema or model migration is required.
+### Design Change
+**Previous approach (Iteration 1)**: Show an "Unfinished Session" modal on cold start asking the user to Continue or Discard.
 
-### DB Changes
-- None
+**New approach**: On cold start, silently restore the session into memory with no dialog. The home screen tile lights up as active (same as if the user had just started a session), and the user can tap it to return to the workout. No interruption, no decision required.
 
-### Backend / State Changes
-1. Update `WorkoutState` with a read-only method for resume modal metric lookup (recommended: `Future<int> countSetsForSession(String sessionId)`) so UI does not call repository directly.
-2. Implement set counting as total `EffortObservation` rows across all efforts in all session segments.
-3. Keep method side-effect free: no mutation of active in-memory session.
+**Rationale**: App-state restoration should be invisible. If the OS killed the app, it should just come back to life. The user didn't explicitly end the session — the session should just be there.
 
-### Frontend Changes
-1. Fix resume dialog result handling in home screen:
-   - `result == true` → continue
-   - `result == false` → discard/delete
-   - `result == null` (system back-dismiss) → no-op, preserve session
-2. Replace effort/exercise metric copy with sets logged copy and use state method above.
-3. Remove direct repository access from home feature for modal metric lookup.
+### What Changes in Iteration 2
 
-### Test Changes
-1. Add repository-focused malformed-record test for Hive `getInProgressSessions()` that verifies bad records are skipped without crash.
-2. Add widget/render test for resume dialog content and action visibility.
-3. Add interaction tests for:
-   - Continue flow resumes and navigates.
-   - Discard flow deletes and dismisses.
-   - Back-dismiss leaves session intact (regression test for critical bug).
-4. Add or update unit tests for `WorkoutState.countSetsForSession` set counting behavior.
+**Removed entirely**:
+- `_showResumeSessionModal()` method and all dialog/confirmation UI
+- `_ResumeSessionDialog` widget
+- `_countEffortsForSession()` / `countSetsForSession()` (was only used for the dialog)
+- `deleteSessionById()` on `WorkoutState` (was only used by the Discard flow — if still present from Iteration 1, remove or keep as unused; session deletion is handled by existing `clearSession()`)
+- Any import of `intl` / `DateFormat` added solely for the modal
+
+**What stays the same**:
+- `getInProgressSessions()` repository method (still needed for the check)
+- `checkForInProgressSession()` on `WorkoutState` (still needed; still cleans up older dangling sessions)
+- `_resumeCheckDone` guard flag (still needed to prevent repeat loads on warm resume)
+
+**HomeScreen post-frame callback (new implementation)**:
+```dart
+WidgetsBinding.instance.addPostFrameCallback((_) async {
+  if (!mounted || _resumeCheckDone) return;
+  _resumeCheckDone = true;
+  // Warm resume: in-memory session already exists — nothing to do
+  if (widget.workoutState.hasActiveSession) return;
+  final session = await widget.workoutState.checkForInProgressSession();
+  if (session == null || !mounted) return;
+  // Silent restore — no dialog, just reload session state
+  await widget.workoutState.loadHistoricalSession(session.id);
+  // No navigation: home screen tile now shows as active; user taps to continue
+});
+```
 
 ### Implementation Steps
 
-#### Phase 1: State & Boundary (@developer)
-1. [ ] Add `countSetsForSession(String sessionId)` to `WorkoutState`.
-2. [ ] Implement counting using repository reads inside state only.
-3. [ ] Ensure implementation handles empty segments/efforts and returns `0` safely.
+#### Phase 1: Data Layer (unchanged — verify it exists)
+1. [ ] Confirm `getInProgressSessions()` is on `WorkoutRepository` interface
+2. [ ] Confirm `HiveWorkoutRepository` implements it (with try/catch for malformed records)
+3. [ ] Confirm `MockWorkoutRepository` implements it
 
-#### Phase 2: UI Regression Fixes (@developer)
-4. [ ] Update home resume dialog result branching to explicit `true/false/null` handling.
-5. [ ] Replace modal metric label/value to true sets logged.
-6. [ ] Refactor home modal metric retrieval to call `WorkoutState` method (no direct repository in feature).
+If any of the above are missing, implement as specified in Iteration 1 DB Changes above.
 
-#### Phase 3: Automated Tests (@developer)
-7. [ ] Add malformed Hive record test for in-progress session query.
-8. [ ] Add resume dialog widget test coverage.
-9. [ ] Add resume dialog interaction tests for Continue, Discard, and back-dismiss.
-10. [ ] Add unit tests for `countSetsForSession` correctness across multi-segment sessions.
+#### Phase 2: State Layer (unchanged — verify it exists)
+4. [ ] Confirm `WorkoutState.checkForInProgressSession()` exists and returns most recent session, deletes older ones
+5. [ ] Confirm `WorkoutState.loadHistoricalSession(String id)` is already public (it is — no change needed)
+
+#### Phase 3: UI Layer (new — replaces Iteration 1 Phase 3)
+6. [ ] Add `_resumeCheckDone = false` field to `_HomeScreenState`
+7. [ ] Add the silent-restore post-frame callback to `initState` (see code above)
+8. [ ] **Remove** `_showResumeSessionModal`, `_showDiscardConfirmation`, `_countEffortsForSession`, `_getModalityLabel`, `_formatStartTime` if they were added in Iteration 1
+9. [ ] **Remove** any `_ResumeSessionDialog` widget class if it was added
+
+#### Phase 4: Tests
+10. [ ] New test: cold start with one unfinished session → `workoutState.hasActiveSession` is true after `initState` + settle
+11. [ ] New test: cold start with no sessions → `workoutState.hasActiveSession` remains false
+12. [ ] New test: warm resume (session already in memory) → `checkForInProgressSession` is NOT called
+13. [ ] Update `test/screen_widget_test.dart` — remove any test expecting the "Unfinished Session" dialog; replace with test confirming the tile becomes active after cold start
+14. [ ] Verify `test/session_resume_test.dart` state-layer tests still pass
 
 ### Files Affected
-- `lib/state/workout/workout_state.dart`
-- `lib/features/home/home_screen.dart`
-- `lib/data/repositories/hive_workout_repository.dart` (tests only if helper exposure needed)
-- `test/session_resume_test.dart`
-- `test/screen_widget_test.dart`
-- `test/interaction_flow_test.dart`
+- `lib/data/repositories/workout_repository.dart` — verify interface method (add if missing)
+- `lib/data/repositories/hive_workout_repository.dart` — verify implementation (add if missing)
+- `lib/data/repositories/mock_workout_repository.dart` — verify implementation (add if missing)
+- `lib/state/workout/workout_state.dart` — verify `checkForInProgressSession()` (add if missing); remove dialog-only helpers if present
+- `lib/features/home/home_screen.dart` — add `_resumeCheckDone` + silent-restore callback; remove all modal code
+- `test/screen_widget_test.dart` — update dialog-related assertions
+- `test/session_resume_test.dart` — verify existing state-layer tests still pass
 
 ### Notes
-- Fast-track to Developer-only is **not** applicable because this pass includes user-visible metric semantics and adds a new state method.
-- Keep repository interface unchanged unless tests prove state cannot compute set counts via existing reads.
-- Preserve existing dialog visual style and action ordering.
+- No auto-navigation on cold start — home screen tile becomes active, user taps it to go back in
+- `loadHistoricalSession` is already the correct method: it restores segments, efforts, observations, rest timers, round/timed instances, and sets `hasActiveSession = true`
+- Timer state (rest timers, round/timed elapsed) is already wall-clock based and will resume from correct timestamps without any extra logic
+- Architecture is cleaner: no dialog, no count query, no date formatting in HomeScreen
 
-## Progress
-- [x] Iteration 2 Phase 1: Add set counting method in state boundary
-- [x] Iteration 2 Phase 2: Fix dialog branching and metric semantics
-- [x] Iteration 2 Phase 3: Add malformed-record + widget + interaction tests
+## Progress (Iteration 2)
+- [ ] Phase 1: Data layer — verify/add repository methods
+- [ ] Phase 2: State layer — verify/add `checkForInProgressSession()`
+- [ ] Phase 3: UI layer — silent restore callback, remove modal code
+- [ ] Phase 4: Tests — update and verify
 
 ## Feedback
-(No pending feedback. Add new reviewer notes here.)
+[Leave empty until a specialist or reviewer adds notes]

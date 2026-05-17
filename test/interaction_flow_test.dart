@@ -24,6 +24,7 @@ import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_timer_alert_service.dart';
@@ -37,8 +38,56 @@ Future<MockWorkoutRepository> _freshRepo() async {
 }
 
 void main() {
-  group('HomeScreen resume dialog interactions', () {
-    Future<HomeScreen> _buildHomeScreen(MockWorkoutRepository repo) async {
+  group('HomeScreen active-session affordance', () {
+    Future<({
+      HomeScreen screen,
+      WorkoutState workoutState,
+      String sessionId,
+    })> _buildHomeWithLoadedSession(MockWorkoutRepository repo) async {
+      final seedState = WorkoutState(repo);
+      await seedState.createNewSession(modality: 'resistance_lifting');
+      final exercises = await repo.getExercises();
+      final effortId = await seedState.addExerciseToSession(exercises.first);
+      await seedState.updateEntryValue(effortId, 0, 'reps', 12);
+      final sessionId = seedState.currentSession!.id;
+
+      final workoutState = WorkoutState(repo);
+      await workoutState.loadHistoricalSession(sessionId);
+
+      final homeState = HomeState(repo);
+      await homeState.init();
+      final routineState = RoutineState(repo);
+      final routineSessionService = RoutineSessionService(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final periodState = PeriodState(repo);
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+
+      final screen = HomeScreen(
+        workoutState: workoutState,
+        homeState: homeState,
+        routineState: routineState,
+        routineSessionService: routineSessionService,
+        sessionSummaryService: sessionSummaryService,
+        calendarState: calendarState,
+        periodState: periodState,
+        profileState: profileState,
+        settingsState: settingsState,
+        timerAlertService: FakeTimerAlertService(),
+      );
+
+      return (
+        screen: screen,
+        workoutState: workoutState,
+        sessionId: sessionId,
+      );
+    }
+
+    Future<HomeScreen> _buildHomeWithoutSession(MockWorkoutRepository repo) async {
       final workoutState = WorkoutState(repo);
       final homeState = HomeState(repo);
       await homeState.init();
@@ -67,108 +116,57 @@ void main() {
       );
     }
 
-    testWidgets('Continue resumes and navigates to workout session screen', (
+    testWidgets(
+      'cold-start loaded session shows active tile without launch modal and tap resumes',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final setup = await _buildHomeWithLoadedSession(repo);
+
+        await tester.pumpWidget(MaterialApp(home: setup.screen));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Unfinished Session'), findsNothing);
+        expect(find.text('Confirm Discard'), findsNothing);
+
+        final activeTiles = tester
+            .widgetList<EnergyTile>(find.byType(EnergyTile))
+            .where((tile) => tile.isActive)
+            .toList();
+        expect(activeTiles.length, 1);
+        expect(activeTiles.single.title, 'Resistance');
+
+        await tester.tap(find.text('Resistance'));
+        await tester.pump();
+        tester.takeException();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+        expect(setup.workoutState.currentSession?.id, setup.sessionId);
+        final firstSegmentId = setup.workoutState.segments.first.id;
+        final resumedEffortId =
+            setup.workoutState.getEffortsForSegment(firstSegmentId).first.id;
+        final reps = setup.workoutState
+          .getObservationsForEffort(resumedEffortId)
+          .firstWhere((obs) => obs.valueInt == 12);
+        expect(reps.valueInt, 12);
+      },
+    );
+
+    testWidgets('cold start with no in-progress session has no active tile', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final screen = await _buildHomeWithoutSession(repo);
 
-      await repo.createSession(
-        TrainingSession(
-          id: 'resume-continue',
-          ownerUserId: 'user-1',
-          startedAtMs: now,
-          modality: 'resistance_lifting',
-          title: 'Resume Continue',
-          createdAtMs: now,
-          updatedAtMs: now,
-        ),
-      );
-
-      final screen = await _buildHomeScreen(repo);
       await tester.pumpWidget(MaterialApp(home: screen));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Unfinished Session'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
-      await tester.pump();
-      final exception = tester.takeException();
-      if (exception != null) {
-        expect(
-          exception.toString(),
-          contains('setState() or markNeedsBuild() called during build'),
-        );
-      }
-      await tester.pumpAndSettle();
-
-      expect(find.byType(WorkoutSessionScreen), findsOneWidget);
-    });
-
-    testWidgets('Discard confirmation deletes session and dismisses modal', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final now = DateTime.now().millisecondsSinceEpoch;
-
-      await repo.createSession(
-        TrainingSession(
-          id: 'resume-discard',
-          ownerUserId: 'user-1',
-          startedAtMs: now,
-          modality: 'cardio_endurance',
-          title: 'Resume Discard',
-          createdAtMs: now,
-          updatedAtMs: now,
-        ),
-      );
-
-      final screen = await _buildHomeScreen(repo);
-      await tester.pumpWidget(MaterialApp(home: screen));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Unfinished Session'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(TextButton, 'Discard'));
-      await tester.pumpAndSettle();
-      expect(find.text('Confirm Discard'), findsOneWidget);
-
-      await tester.tap(find.widgetWithText(TextButton, 'Confirm Discard'));
       await tester.pumpAndSettle();
 
       expect(find.text('Unfinished Session'), findsNothing);
-      expect(await repo.getSession('resume-discard'), isNull);
-    });
-
-    testWidgets('system back dismiss keeps session intact', (
-      WidgetTester tester,
-    ) async {
-      final repo = await _freshRepo();
-      final now = DateTime.now().millisecondsSinceEpoch;
-
-      await repo.createSession(
-        TrainingSession(
-          id: 'resume-back',
-          ownerUserId: 'user-1',
-          startedAtMs: now,
-          modality: 'sports',
-          title: 'Resume Back',
-          createdAtMs: now,
-          updatedAtMs: now,
-        ),
-      );
-
-      final screen = await _buildHomeScreen(repo);
-      await tester.pumpWidget(MaterialApp(home: screen));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Unfinished Session'), findsOneWidget);
-
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-
-      expect(find.text('Unfinished Session'), findsNothing);
-      expect(await repo.getSession('resume-back'), isNotNull);
+      final activeTiles = tester
+          .widgetList<EnergyTile>(find.byType(EnergyTile))
+          .where((tile) => tile.isActive)
+          .toList();
+      expect(activeTiles, isEmpty);
     });
   });
 

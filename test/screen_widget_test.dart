@@ -678,6 +678,98 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('Exercises'), findsOneWidget);
     });
+
+    testWidgets('tapping exercise card opens detail view', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await routineState.createNewRoutine('Detail View');
+      await routineState.addExerciseToRoutine(exercises.first, 'set');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap the exercise card to open detail view
+      await tester.tap(find.text(exercises.first.name));
+      await tester.pumpAndSettle();
+
+      // Detail view should show inline add/remove set controls flanking the
+      // set-progress label (session-parity design).
+      expect(find.byKey(const Key('routine-add-set')), findsOneWidget);
+      expect(find.byKey(const Key('routine-remove-set')), findsOneWidget);
+      expect(find.text('Set 1 of 1'), findsOneWidget);
+    });
+
+    testWidgets('sets can be added in detail view', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await routineState.createNewRoutine('Add Set Detail');
+      await routineState.addExerciseToRoutine(exercises.first, 'set');
+
+      // Seed explicit set 0 target so add-set creates set 1 and advances to 2/2.
+      final seededEffortId = routineState.currentEfforts.first.id;
+      await routineState.setTargetValue(
+        seededEffortId,
+        'metric-reps',
+        'unit-reps',
+        setIndex: 0,
+        targetInt: 10,
+      );
+
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap the exercise card to open detail view
+      await tester.tap(find.text(exercises.first.name));
+      await tester.pumpAndSettle();
+
+      // Initially shows 1 set
+      expect(find.text('Set 1 of 1'), findsOneWidget);
+
+      // Tap the inline add-set button using its key for reliable targeting
+      await tester.tap(find.byKey(const Key('routine-add-set')));
+      // Pump through the async addSetForEffort + setState cycle
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpAndSettle();
+
+      // After adding, view advances to the new set: Set 2 of 2
+      expect(find.text('Set 2 of 2'), findsOneWidget);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1039,33 +1131,17 @@ void main() {
       },
     );
 
-    testWidgets('shows unfinished-session resume modal on cold start', (
+    testWidgets('does not show unfinished-session launch modal copy', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final now = DateTime.now().millisecondsSinceEpoch;
-
-      await repo.createSession(
-        TrainingSession(
-          id: 'resume-1',
-          ownerUserId: 'user-1',
-          startedAtMs: now,
-          title: 'Morning Cardio',
-          modality: Modality.cardioEndurance,
-          createdAtMs: now,
-          updatedAtMs: now,
-        ),
-      );
-
       final screen = await buildHomeScreen(repo);
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pumpAndSettle();
 
-      expect(find.text('Unfinished Session'), findsOneWidget);
-      expect(find.text('Morning Cardio'), findsOneWidget);
-      expect(find.textContaining('sets logged'), findsOneWidget);
-      expect(find.widgetWithText(TextButton, 'Discard'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Continue'), findsOneWidget);
+      expect(find.text('Unfinished Session'), findsNothing);
+      expect(find.text('Confirm Discard'), findsNothing);
+      expect(find.textContaining('sets logged'), findsNothing);
     });
   });
 

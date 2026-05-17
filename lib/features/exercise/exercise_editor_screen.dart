@@ -307,6 +307,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
               ],
               const SizedBox(height: 16),
               TextField(
+                textCapitalization: TextCapitalization.words,
                 controller: _nameController,
                 decoration: InputDecoration(
                   labelText: 'Exercise name',
@@ -324,6 +325,7 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
               ),
               const SizedBox(height: 16),
               TextField(
+                textCapitalization: TextCapitalization.sentences,
                 controller: _descriptionController,
                 decoration: const InputDecoration(
                   labelText: 'Description (optional)',

@@ -32,14 +32,20 @@ This documentation describes the architecture, features, and conventions of Omni
 | [Modality-Based Exercise UI](modality_based_exercise_ui.md) | The adaptive workout session screen — per-modality controls, timer management, swipe gestures |
 | [Exercise Info & Notes](exercise_info_and_notes.md) | Workout session detail header sheets: exercise info reference and persistent per-exercise notes |
 | [Exercise Ranking](exercise_ranking.md) | How exercises are scored and sorted for the exercise picker |
-| [Create New Exercise](create_new_exercise.md) | Custom exercise creation from the picker |
+| [Create New Exercise](create_new_exercise.md) | Modality-aware custom exercise creation and editing |
 | [My Routines](my_routines.md) | Reusable workout template system — CRUD, template-to-session conversion, UI |
 | [Calendar & Periods](calendar_periods.md) | Month calendar planning, day-session management, and non-overlapping training periods |
 | [Session Summary](session_summary.md) | Post-workout analytics — PRs, volume comparison, save-as-routine |
 | [Profile & Measurements](profile_and_measurements.md) | Profile identity, avatar flow, body measurement logging, and history chart behavior |
-| [Theme & Settings](theme_and_settings.md) | Multi-theme system (AppTheme enum, OmniTheme tokens), SettingsState, SettingsScreen appearance section |
-| [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, first-time onboarding sheet |
+| [Theme & Settings](theme_and_settings.md) | Theme system, measurement/calendar preferences, timer alerts, workout toggles, and Settings screen behavior |
+| [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, and inline start-sheet guidance |
 | [Stats Screen](stats_screen.md) | All-time session aggregates, streak, 30-day activity bar chart, rest averages by modality |
+
+### Release & Operations
+| Document | Description |
+|----------|-------------|
+| [iOS TestFlight Release Checklist](../../../docs/releases/ios-testflight.md) | Release workflow, archive/upload steps, and pre-release checks |
+| [May 2026 Plan Review](../../../docs/releases/2026-05-plan-review.md) | Summary of the implementation plans reviewed for Apr 17-May 17, 2026 and the docs they affected |
 
 ### Architecture & Technical
 | Document | Description |
@@ -164,4 +170,4 @@ Profile measurement rules implemented in code:
 
 ---
 
-**Last Updated**: April 11, 2026
+**Last Updated**: May 17, 2026

@@ -108,41 +108,39 @@ Column(
 ```dart
 Column(
   children: [
-    InlineMetricEditor(metricType: 'duration', ...), // Shows elapsed or preset
-    Play/Pause Button,
+    InlineMetricEditor(metricType: 'duration', onTap: _toggleEffortTimer, ...),
     Status Text (RUNNING/STOPPED),
   ]
 )
 ```
 **User Flow**: 
-- Option A: Tap play → timer counts up → tap "Log Set" when done
-- Option B: Scroll to preset duration → tap "Log Set" without timer
+- Option A: Tap the duration display to start or pause timing → tap "Log Interval" when done
+- Option B: Scroll to a preset duration → tap "Log Interval" without starting the timer
 
 #### `effortKind == 'round'` (Martial Arts/Sports)
 ```dart
 Column(
   children: [
     Text('ROUND X', fontSize: 72),  // Large round counter
-    InlineMetricEditor(metricType: 'duration', ...), // Shows countdown or preset
-    Play/Pause Button,
+    InlineMetricEditor(metricType: 'duration', onTap: _toggleEffortTimer, ...),
     Status Text (RUNNING/STOPPED),
   ]
 )
 ```
-**User Flow**: Start timer → countdown from round duration → bell sound at 0:00 (future) → log round
+**User Flow**: Tap the duration display to start or pause the countdown → configured effort-timer sound fires at 0:00 → tap "Log Round" or "Log Period"
 **Terminology Adaptation**: "ROUND" for martial arts, "PERIOD" for sports modality
 
 #### `effortKind == 'drill'` (Isometric/Stretching)
 ```dart
 Column(
   children: [
-    InlineMetricEditor(metricType: 'duration', ...), // Hold time timer
+    InlineMetricEditor(metricType: 'duration', onTap: _toggleEffortTimer, ...), // Hold time timer
     InlineMetricEditor(metricType: 'extra-weight', ...), // Extra load (negative = band assist, positive = added load)
-    Play/Pause Button,
     Status Text (RUNNING/STOPPED),
   ]
 )
 ```
+**User Flow**: Tap the duration display to time the hold → adjust extra weight if needed → tap "Log Hold"
 **User Flow**: Start timer for hold → release and stop timer → adjust extra weight → log entry
 
 ---
@@ -172,10 +170,10 @@ class InlineMetricEditor extends StatefulWidget {
 | Metric Type | Increment per 10px Drag | Range |
 |-------------|------------------------|-------|
 | `reps` | ±1 rep | 0–999 |
-| `weight` | ±2.5 lbs | 0.0–999.0 |
+| `weight` | ±0.5 kg/lbs | 0.0–999.0 |
 | `duration` | ±5 seconds | 0–3600 |
 | `rpe` | ±1 point | 1–10 |
-| `extra-weight` | ±2.5 | -100.0–200.0 |
+| `extra-weight` | ±0.5 kg/lbs | -100.0–200.0 |
 
 **Visual Design**:
 - 72pt display value (massive for glanceability)
@@ -313,20 +311,34 @@ Container(
 
 ### 6. Set Navigation and Control
 
-**Bottom Control Bar** (always visible in detail view):
+Detail view now uses two distinct control rows instead of a single toolbar.
+
+**Set Progress Row**:
 
 | Control | Icon | Function | Position |
 |---------|------|----------|----------|
-| Previous Set | ← | Navigate to previous set | Left |
-| Play/Pause | ▶/⏸ | Start/stop timer (timer-based only) | Center-left |
-| Add Set | + | Add new entry to current exercise | Center |
-| Delete Set | 🗑 | Remove last set | Center-right |
-| Log Set | ✓ | Save current set, advance to next | Right (primary) |
+| Remove Entry | − | Delete the current entry; may remove the whole exercise if it is the last one | Left |
+| Progress Label | — | Shows `Set/Interval/Round/Hold X of Y` | Center |
+| Add Set | + | Add a new entry to the current exercise | Right |
 
-**Button Styling**:
-- **Log Set (primary action)**: Large circular button, primary color, 28px icon
-- **Previous Set**: Medium circular button, 10% surface, 24px icon
-- **Other actions**: Icon buttons, 50% opacity, 28px icon
+**Action Row**:
+
+| Control | Function | Notes |
+|---------|----------|-------|
+| Back Arrow | Navigate to previous set or previous exercise | Disabled only when nothing exists behind the current position |
+| Center Action | `Start`, `Log ...`, or `LOGGED` state | Timer entries show `Start` before first activation; logged entries show status text instead of a button |
+| Forward Arrow | Move to the next set or exercise | Always visible |
+
+**Timer Control Rule**:
+
+- timed, round, and drill entries are started or paused from the timer display itself
+- there is no separate play button in the action row
+- jumping to another set auto-pauses any active timer first
+
+**Delete / Remove Rule**:
+
+- removing a logged entry shows a confirmation dialog
+- removing the last remaining entry shows a stronger confirmation because it deletes the whole exercise from the session
 
 **Swipe Gestures** (Detail View):
 - **Horizontal swipes**:
@@ -515,9 +527,9 @@ theme.colorScheme.primaryContainer
 **Recovery**: Retry button calls `_loadExercises()` again
 
 ### Set Skip vs Delete
-- **Skip Set**: Advance without logging (set dot remains hollow)
-- **Delete Set**: Remove last set from repository (set dot removed)
-- Use case: Skip = "I'm too tired for this set", Delete = "I added extra set by mistake"
+- **Skip Set**: Advance without logging via forward navigation (set dot remains hollow)
+- **Remove Entry**: Minus button deletes the current entry (set dot removed)
+- Use case: Skip = "I'm moving on without logging this effort", Remove = "This entry should not exist"
 
 ### Modality Change Warning
 **Trigger**: User taps different modality tile while session active
@@ -534,7 +546,7 @@ theme.colorScheme.primaryContainer
 ## Performance Optimizations
 
 ### Timer Update Frequency
-- **Session timer**: 1 second interval (display only)
+- **Session timer**: 1 second interval (display only), derived from `session.startedAtMs` and held at `00:00` until the first exercise is added
 - **Effort timers**: 1 second interval (persisted on pause)
 - **Rest timer**: 1 second interval (display only)
 

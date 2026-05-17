@@ -452,6 +452,7 @@ class _ExerciseNoteSheetState extends State<_ExerciseNoteSheet> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: TextField(
+              textCapitalization: TextCapitalization.sentences,
               controller: _controller,
               maxLines: null,
               autofocus: true,

@@ -91,13 +91,13 @@ HomeScreen
 |--------|------|---------|
 | `HomeScreen` | `lib/features/home/home_screen.dart` | 3×2 tile grid + maintenance sheet |
 | `SessionOverviewScreen` | `lib/features/session/session_overview_screen.dart` | Exercise list for current session, add/remove exercises |
-| `WorkoutSessionScreen` | `lib/features/session/workout_session_screen.dart` | Core workout tracking (list view + detail view). Split into 4 Dart `part` files: main coordinator, `workout_session_timer_mixin.dart` (timer state/logic), `workout_session_list_view.dart` (list-view builders), `workout_session_detail_view.dart` (detail-view builders). Public API unchanged. **Toolbar layout (detail view):** back arrow · delete · center button (Log Set FilledButton for incomplete sets, or nav arrow for logged sets) · add set · forward arrow. Timer control via tap on timer display (play/pause icon overlay); no play button in toolbar. Timer auto-pauses on set navigation. Delete shows confirmation dialog. |
+| `WorkoutSessionScreen` | `lib/features/session/workout_session_screen.dart` | Core workout tracking (list view + detail view). Split into 4 Dart `part` files: main coordinator, `workout_session_timer_mixin.dart` (timer state/logic), `workout_session_list_view.dart` (list-view builders), `workout_session_detail_view.dart` (detail-view builders). Detail view uses an inline set-progress row (`remove · label · add`) plus a back / start-or-log / forward action row. Timer control lives on the timer display itself, and the session clock stays at `00:00` until the first exercise is added. Removing a logged entry or the last remaining entry confirms before deletion. |
 | `SessionSummaryScreen` | `lib/features/session/session_summary_screen.dart` | Post-workout summary, PRs, save-as-routine |
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |
 | `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create/edit custom exercises with modality-aware capability/discipline filtering; accepts optional `contextModality` for session-prefill |
 | `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
-| `SettingsScreen` | `lib/features/settings/settings_screen.dart` | Measurement unit preferences, training placeholder controls, appearance theme selector, and a low-emphasis version footer |
+| `SettingsScreen` | `lib/features/settings/settings_screen.dart` | Calendar start-of-week, weight/distance units, timer alert preferences, feeling survey toggle, appearance theme selector, and a low-emphasis version footer |
 | `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: all-time sessions, total training time, current streak, 30-day bar chart |
 | `OnboardingScreen` | `lib/features/onboarding/onboarding_screen.dart` | First-launch 3-page swipeable intro. Page 1: app pitch. Page 2: modality tiles with accent colors and one-liners. Page 3: calendar features + Get Started button. Completion sets `onboarding_complete` preference key via `repository.setPreferenceBool` and calls `pushReplacement` to `HomeScreen`. |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
@@ -173,5 +173,5 @@ When tapping a different modality tile while a session is active:
 
 ---
 
-**Document Version**: 1.4
-**Last Updated**: May 13, 2026
+**Document Version**: 1.5
+**Last Updated**: May 17, 2026

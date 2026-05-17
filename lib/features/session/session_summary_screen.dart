@@ -440,6 +440,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
+                      textCapitalization: TextCapitalization.words,
                       controller: nameController,
                       decoration: const InputDecoration(
                         labelText: 'Routine name',
@@ -873,6 +874,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           Text('Session note', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           TextField(
+            textCapitalization: TextCapitalization.sentences,
             controller: _noteController,
             onChanged: _handleNoteChanged,
             maxLines: 3,

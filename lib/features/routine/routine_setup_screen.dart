@@ -12,6 +12,7 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
+import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -139,7 +140,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back, color: OmniTheme.textPrimary),
+            icon: Icon(
+              Icons.arrow_back,
+              color: theme.colorScheme.onSurface,
+            ),
             onPressed: () {
               if (!_showListView) {
                 setState(() => _showListView = true);
@@ -157,14 +161,16 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                   exerciseName,
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: OmniTheme.textPrimary,
+                    color: theme.colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: OmniTheme.textSecondary,
+                    color:
+                        theme.textTheme.bodyMedium?.color ??
+                        theme.colorScheme.onSurface.withOpacity(0.7),
                   ),
                 ),
               ],
@@ -218,6 +224,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: TextField(
+        textCapitalization: TextCapitalization.words,
         controller: _nameController,
         onChanged: (value) => widget.routineState.updateRoutineName(value),
         decoration: InputDecoration(
@@ -247,6 +254,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: TextField(
+        textCapitalization: TextCapitalization.sentences,
         controller: _descriptionController,
         onChanged: (value) =>
             widget.routineState.updateRoutineDescription(value),
@@ -343,7 +351,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                       Text(
                         segment.name ?? 'Block ${index + 1}',
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: OmniTheme.textPrimary,
+                          color: theme.colorScheme.onSurface,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -351,7 +359,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                       Text(
                         _segmentLabel(segment.segmentType),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: OmniTheme.textSecondary,
+                          color:
+                              theme.textTheme.bodyMedium?.color ??
+                              theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),
                     ],
@@ -451,6 +461,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                   final effort = efforts[effortIndex];
                   final exercise = _exerciseCache[effort.exerciseId];
                   final restLabel = _formatRestLabel(effort);
+                  final targets = widget.routineState.getEffortTargets(effort.id);
+                  final setCount = _getSetCount(effort, targets);
 
                   return ExerciseCard(
                     key: ValueKey(effort.id),
@@ -458,6 +470,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                     effort: effort,
                     exercise: exercise,
                     restLabel: restLabel,
+                    setCount: setCount,
                     onDelete: () => _removeExercise(effort.id),
                     onChangeTracking: () =>
                         _changeTracking(context, effort, exercise),
@@ -587,6 +600,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     if (_currentSet > setCount) {
       _currentSet = setCount;
     }
+    final canAddSet = setCount < WorkoutConstants.maxEntriesPerEffort;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -626,14 +640,16 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                           Text(
                             segment?.name ?? 'Block',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.textSecondary,
+                              color:
+                                  theme.textTheme.bodyMedium?.color ??
+                                  theme.colorScheme.onSurface.withOpacity(0.7),
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             exercise?.name ?? 'Unknown Exercise',
                             style: theme.textTheme.headlineSmall?.copyWith(
-                              color: OmniTheme.textPrimary,
+                              color: theme.colorScheme.onSurface,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -663,7 +679,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                           Center(
                             child: _buildSetProgress(
                               setCount,
-                              effort.effortKind,
+                              effort,
+                              canAddSet,
                               theme,
                             ),
                           ),
@@ -842,6 +859,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
+              textCapitalization: TextCapitalization.sentences,
               controller: nameController,
               decoration: const InputDecoration(labelText: 'Block Name'),
             ),
@@ -970,7 +988,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
+            NumericFieldWithDoneBar(
               controller: restController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(labelText: 'Rest seconds'),
@@ -1063,6 +1081,7 @@ class ExerciseCard extends StatelessWidget {
   final TemplateEffort effort;
   final Exercise? exercise;
   final String? restLabel;
+  final int setCount;
   final VoidCallback onDelete;
   final VoidCallback onChangeTracking;
   final VoidCallback onEditRest;
@@ -1074,6 +1093,7 @@ class ExerciseCard extends StatelessWidget {
     required this.effort,
     required this.exercise,
     this.restLabel,
+    required this.setCount,
     required this.onDelete,
     required this.onChangeTracking,
     required this.onEditRest,
@@ -1084,7 +1104,7 @@ class ExerciseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      color: OmniTheme.surfaceColor.withOpacity(0.7),
+      color: theme.colorScheme.surface.withOpacity(0.7),
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1097,9 +1117,9 @@ class ExerciseCard extends StatelessWidget {
             children: [
               ReorderableDragStartListener(
                 index: index,
-                child: const Icon(
+                child: Icon(
                   Icons.drag_indicator,
-                  color: Colors.grey,
+                  color: theme.colorScheme.onSurface.withOpacity(0.55),
                   size: 20,
                 ),
               ),
@@ -1111,7 +1131,7 @@ class ExerciseCard extends StatelessWidget {
                     Text(
                       exercise?.name ?? 'Unknown Exercise',
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: OmniTheme.textPrimary,
+                        color: theme.colorScheme.onSurface,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1119,7 +1139,9 @@ class ExerciseCard extends StatelessWidget {
                     Text(
                       _getTrackingLabel(effort.effortKind),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.textSecondary,
+                        color:
+                            theme.textTheme.bodyMedium?.color ??
+                            theme.colorScheme.onSurface.withOpacity(0.7),
                       ),
                     ),
                     if (restLabel != null) ...[
@@ -1131,6 +1153,13 @@ class ExerciseCard extends StatelessWidget {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 8),
+                    Text(
+                      '$setCount set${setCount == 1 ? '' : 's'}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1401,11 +1430,12 @@ extension on _RoutineSetupScreenState {
 
   Widget _buildSetProgress(
     int totalEntries,
-    String effortKind,
+    TemplateEffort effort,
+    bool canAddSet,
     ThemeData theme,
   ) {
     String label;
-    switch (effortKind) {
+    switch (effort.effortKind) {
       case 'set':
         label = 'Set $_currentSet of $totalEntries';
         break;
@@ -1422,13 +1452,81 @@ extension on _RoutineSetupScreenState {
         label = 'Set $_currentSet of $totalEntries';
     }
 
-    return Text(
-      label,
-      style: theme.textTheme.titleMedium?.copyWith(
-        letterSpacing: 2,
-        color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
-        fontWeight: FontWeight.w500,
-      ),
+    // Only allow removing the last set to prevent mid-sequence deletion.
+    final canRemove = totalEntries > 1 && _currentSet == totalEntries;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactSpacing = constraints.maxWidth < 320 ? 2.0 : 4.0;
+        final compactLetterSpacing = constraints.maxWidth < 320 ? 1.0 : 2.0;
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Tooltip(
+              message: 'Remove set',
+              child: InkWell(
+                key: const Key('routine-remove-set'),
+                onTap: canRemove ? () => _deleteLastSet(effort) : null,
+                customBorder: const CircleBorder(),
+                child: Container(
+                  constraints:
+                      const BoxConstraints(minWidth: 50, minHeight: 50),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.remove,
+                    size: 24,
+                    color: canRemove
+                        ? theme.colorScheme.onSurface
+                            .withAlpha((0.35 * 255).round())
+                        : theme.colorScheme.onSurface
+                            .withAlpha((0.15 * 255).round()),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: compactSpacing),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  letterSpacing: compactLetterSpacing,
+                  color: theme.colorScheme.onSurface
+                      .withAlpha((0.6 * 255).round()),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            SizedBox(width: compactSpacing),
+            Tooltip(
+              message: canAddSet
+                  ? 'Add set'
+                  : 'Max ${WorkoutConstants.maxEntriesPerEffort} entries',
+              child: InkWell(
+                key: const Key('routine-add-set'),
+                onTap: canAddSet ? () => _addSet(effort) : null,
+                customBorder: const CircleBorder(),
+                child: Container(
+                  constraints:
+                      const BoxConstraints(minWidth: 50, minHeight: 50),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.add,
+                    size: 24,
+                    color: canAddSet
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface
+                            .withAlpha((0.2 * 255).round()),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1537,8 +1635,6 @@ extension on _RoutineSetupScreenState {
   }
 
   Widget _buildSetControls(int totalEntries, TemplateEffort effort) {
-    final canAddSet = totalEntries < WorkoutConstants.maxEntriesPerEffort;
-
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1547,24 +1643,6 @@ extension on _RoutineSetupScreenState {
           label: 'Previous Set',
           isEnabled: _currentSet > 1,
           onPressed: _currentSet > 1 ? _previousSet : null,
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildIconButton(
-              Icons.playlist_add,
-              canAddSet ? () => _addSet(effort) : null,
-              tooltip: canAddSet
-                  ? 'Add set'
-                  : 'Max ${WorkoutConstants.maxEntriesPerEffort} entries',
-            ),
-            const SizedBox(width: 24),
-            _buildIconButton(
-              Icons.delete_outline,
-              () => _deleteLastSet(effort),
-              tooltip: 'Delete last set',
-            ),
-          ],
         ),
         _buildArrowButton(
           icon: Icons.arrow_forward,
@@ -1653,26 +1731,6 @@ extension on _RoutineSetupScreenState {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildIconButton(
-    IconData icon,
-    VoidCallback? onPressed, {
-    String? tooltip,
-  }) {
-    final theme = Theme.of(context);
-    final isEnabled = onPressed != null;
-    return Tooltip(
-      message: tooltip ?? '',
-      child: IconButton(
-        onPressed: onPressed,
-        icon: Icon(icon),
-        color: isEnabled
-            ? theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())
-            : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
-        iconSize: 28,
       ),
     );
   }

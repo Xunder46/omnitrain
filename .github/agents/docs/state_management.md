@@ -379,22 +379,37 @@ Manages profile identity and body-measurement flows used by `ProfileScreen`.
 **File**: `lib/state/settings/settings_state.dart`
 **Depends on**: `WorkoutRepository`
 
-Owns persisted app appearance and measurement preferences. See [Theme & Settings](theme_and_settings.md) for full documentation.
+Owns persisted app appearance, calendar, timer-alert, and workout follow-up preferences. See [Theme & Settings](theme_and_settings.md) for full documentation.
 
 | Field | Type | Default |
 |-------|------|--------|
 | `_appTheme` | `AppTheme` | `AppTheme.abyssalNeon` |
 | `_preferredWeightUnit` | `String` | `'kg'` |
 | `_preferredDistanceUnit` | `String` | `'km'` |
+| `_startOfWeek` | `String` | `'monday'` |
+| `_showFeelingSurvey` | `bool` | `true` |
+| `_effortTimerSound` | `String` | `'boxing_bell'` |
+| `_restPingInterval` | `int` | `0` |
+| `_restPingSound` | `String` | `'soft_chime'` |
 
 | Method | Purpose |
 |--------|--------|
 | `appTheme` | Getter — current selected theme |
 | `preferredWeightUnit` | Getter — current displayed load unit (`kg` or `lbs`) |
 | `preferredDistanceUnit` | Getter — current displayed distance unit (`km` or `miles`) |
+| `startOfWeek` | Getter — current calendar week start (`monday` or `sunday`) |
+| `showFeelingSurvey` | Getter — whether to show the post-workout feeling prompt |
+| `effortTimerSound` | Getter — selected alert sound for timer completion |
+| `restPingInterval` | Getter — periodic rest reminder interval in seconds |
+| `restPingSound` | Getter — selected rest-ping sound |
 | `setAppTheme(AppTheme)` | Persists theme by enum name and notifies listeners for immediate UI updates |
 | `setPreferredWeightUnit(String)` | Normalizes/persists the display weight unit and notifies listeners |
 | `setPreferredDistanceUnit(String)` | Normalizes/persists the display distance unit and notifies listeners |
+| `setStartOfWeek(String)` | Normalizes/persists the calendar week start and notifies listeners |
+| `setShowFeelingSurvey(bool)` | Persists the post-workout survey toggle |
+| `setEffortTimerSound(String)` | Persists the selected effort-timer alert sound |
+| `setRestPingInterval(int)` | Persists the periodic rest reminder interval |
+| `setRestPingSound(String)` | Persists the selected rest-ping sound |
 | `_loadFromPrefs()` | Private — restores theme and unit preferences from repository-backed preference keys on init |
 
 ---
@@ -490,8 +505,15 @@ Groups flat observation lists by effort kind into structured per-set maps. Used 
 
 **File**: `lib/core/utils/timer_alert_service.dart`
 
-Static utility for timer expiration feedback:
-- `fireTimerExpiredAlert()` → `HapticFeedback.heavyImpact()` (skipped on web) + `SystemSound.play(SystemSoundType.alert)`
+Audio-backed service for effort timer completion, rest-ping reminders, and settings previews.
+
+Key behavior:
+
+- `initialize()` configures `audio_session` on native platforms and preloads the bundled MP3 assets through `just_audio`
+- `fireEffortTimerAlert(soundId)` plays the selected effort-timer sound and adds heavy haptic feedback on native platforms
+- `fireRestPingAlert(soundId)` plays the selected rest-ping sound and adds light haptic feedback on native platforms
+- `playPreview(soundId)` is used by the Settings sound picker to audition a sound immediately
+- web does not attempt playback; it exits safely with debug logging instead
 
 ---
 
@@ -509,8 +531,8 @@ WorkoutRepository (interface)
   ├─ RoutineSessionService
   └─ SessionSummaryService
 
-SharedPreferences
-  └─ SettingsState    ← theme persistence only
+WorkoutRepository
+  └─ SettingsState    ← preference persistence (theme, units, alerts, calendar, workout toggles)
 
 AppState (standalone, singleton, minimal)
 ```

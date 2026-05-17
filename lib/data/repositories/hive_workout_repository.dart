@@ -507,25 +507,6 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<List<TrainingSession>> getInProgressSessions() async {
-    final result = <TrainingSession>[];
-    for (final raw in _sessionsBox.values) {
-      try {
-        final session = TrainingSession.fromMap(_asStringMap(raw));
-        if (session.endedAtMs == null) {
-          result.add(session);
-        }
-      } catch (e) {
-        // Malformed record — skip silently rather than crash.
-        // ignore: avoid_print
-        print('[HiveWorkoutRepository] Skipping malformed session record: $e');
-      }
-    }
-    result.sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
-    return result;
-  }
-
-  @override
   Future<List<TrainingSession>> getSessionsByDateRange(
     int fromMs,
     int toMs,
@@ -1841,5 +1822,27 @@ class HiveWorkoutRepository implements WorkoutRepository {
     m['block_id'] = blockId;
     m['updated_at_ms'] = DateTime.now().millisecondsSinceEpoch;
     await _effortsBox.put(effortId, m);
+  }
+
+  @override
+  Future<List<TrainingSession>> getInProgressSessions() async {
+    final List<TrainingSession> inProgressSessions = [];
+    try {
+      for (final sessionMap in _sessionsBox.values) {
+        try {
+          final map = _asStringMap(sessionMap);
+          if (map['ended_at_ms'] == null) {
+            inProgressSessions.add(TrainingSession.fromMap(map));
+          }
+        } catch (e) {
+          // Log and skip malformed records
+          print('Malformed session record skipped: $e');
+        }
+      }
+      inProgressSessions.sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
+    } catch (e) {
+      print('Error retrieving in-progress sessions: $e');
+    }
+    return inProgressSessions;
   }
 }

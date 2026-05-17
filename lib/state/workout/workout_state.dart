@@ -336,64 +336,20 @@ class WorkoutState extends ChangeNotifier {
   Future<void> resetExerciseHintsForTesting() =>
       _exerciseLibrary.resetExerciseHintsForTesting();
 
-  // ── Session persistence / cold-start resume ───────────────────────────────
-
-  /// Returns the most recent session with no endedAtMs (i.e. never finished),
-  /// or null if there are none. Silently deletes any older duplicates.
-  /// Always returns null on error — never throws. Safe to call on cold start.
   Future<TrainingSession?> checkForInProgressSession() async {
     try {
       final sessions = await _repository.getInProgressSessions();
       if (sessions.isEmpty) return null;
-      // sessions is already sorted most-recent first by the repository contract
-      final candidate = sessions.first;
-      // Clean up any older duplicates (should not normally happen)
-      for (final old in sessions.skip(1)) {
-        try {
-          await _repository.deleteSession(old.id);
-        } catch (_) {
-          // Best-effort cleanup; ignore individual failures
-        }
+
+      // Delete older dangling sessions
+      for (var i = 1; i < sessions.length; i++) {
+        await _repository.deleteSession(sessions[i].id);
       }
-      return candidate;
+
+      return sessions.first;
     } catch (e) {
-      // ignore: avoid_print
-      print('[WorkoutState] checkForInProgressSession error: $e');
+      print('Error checking for in-progress sessions: $e');
       return null;
-    }
-  }
-
-  /// Deletes a session by id without affecting the current in-memory session.
-  /// Used by the resume modal's Discard action.
-  Future<void> deleteSessionById(String id) async {
-    try {
-      await _repository.deleteSession(id);
-    } catch (e) {
-      // ignore: avoid_print
-      print('[WorkoutState] deleteSessionById error: $e');
-    }
-  }
-
-  /// Counts all set-like observations logged in a session.
-  /// Read-only helper for resume UI; does not mutate in-memory state.
-  Future<int> countSetsForSession(String sessionId) async {
-    try {
-      final segments = await _repository.getSessionSegments(sessionId);
-      var count = 0;
-      for (final segment in segments) {
-        final efforts = await _repository.getSegmentEfforts(segment.id);
-        for (final effort in efforts) {
-          final observations = await _repository.getEffortObservations(
-            effort.id,
-          );
-          count += observations.length;
-        }
-      }
-      return count;
-    } catch (e) {
-      // ignore: avoid_print
-      print('[WorkoutState] countSetsForSession error: $e');
-      return 0;
     }
   }
 

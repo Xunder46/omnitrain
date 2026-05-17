@@ -12,6 +12,7 @@ import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
+import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
@@ -1150,6 +1151,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       builder: (context) => AlertDialog(
         title: const Text('Rename Block'),
         content: TextField(
+          textCapitalization: TextCapitalization.sentences,
           controller: ctrl,
           autofocus: true,
           decoration: const InputDecoration(labelText: 'Block name'),
