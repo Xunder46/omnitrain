@@ -5,6 +5,7 @@ import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 import '../../features/exercise/exercise_editor_screen.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/navigation/navigation.dart';
 
 /// Dialog for selecting an exercise with search and filters
 class ExercisePickerDialog extends StatefulWidget {
@@ -171,12 +172,11 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
   }
 
   Future<void> _openCreateExercise() async {
-    final created = await Navigator.of(context).push<Exercise>(
-      MaterialPageRoute(
-        builder: (_) => ExerciseEditorScreen(
-          workoutState: widget.workoutState,
-          contextModality: widget.sessionModality,
-        ),
+    final created = await OmniNavigator.push<Exercise>(
+      context,
+      (_) => ExerciseEditorScreen(
+        workoutState: widget.workoutState,
+        contextModality: widget.sessionModality,
       ),
     );
 

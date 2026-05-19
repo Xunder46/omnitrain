@@ -1,8 +1,36 @@
 # Navigation & Screen Map
 
+## Navigation Contract
+
+> **Rule**: All screen-level navigation goes through `OmniNavigator`. `OmniRoute` and `OmniFadeRoute` are the only route types used for screen pushes. Any `MaterialPageRoute` or `PageRouteBuilder` outside `lib/core/navigation/` is a **code-review blocker**.
+
+### Architecture
+
+```
+OmniNavigator.push / pushReplacement / pushReplacementFade
+    └── OmniRoute<T> / OmniFadeRoute<T>
+            └── OmniGradientBackground  ← wraps every pushed page
+                    └── Screen widget
+```
+
+The app-level `OmniGradientBackground` (in `app.dart` `builder:`) covers static areas (status bar, overscroll, sheet gaps). Each `OmniRoute` also wraps its page in `OmniGradientBackground` and sets `opaque = true`, ensuring the incoming route fully occludes the outgoing one at every animation frame and eliminating transition bleed-through.
+
+### When to use each method
+
+| Method | Use case |
+|---|---|
+| `OmniNavigator.push(context, (_) => Screen(...))` | Standard forward navigation |
+| `OmniNavigator.pushReplacement(context, (_) => Screen(...))` | Replace current route (e.g. session → summary) |
+| `OmniNavigator.pushReplacementFade(context, (_) => Screen(...))` | Fade-replace (splash → home) |
+| `OmniNavigator.popUntil(context, predicate)` | Pop multiple routes (e.g. back to root) |
+
+See `docs/navigation_contract.md` for the full rationale.
+
+---
+
 ## Overview
 
-OmniTrain uses **imperative navigation** (`Navigator.push` / `Navigator.pop`). There is no named-route system or declarative router (no GoRouter, no AutoRoute). All dependencies are passed via constructor injection — no Provider, Riverpod, or Bloc.
+OmniTrain uses **imperative navigation** via `OmniNavigator` (wrapping Flutter's `Navigator.push` / `Navigator.pop`). There is no named-route system or declarative router (no GoRouter, no AutoRoute). All dependencies are passed via constructor injection — no Provider, Riverpod, or Bloc.
 
 ---
 

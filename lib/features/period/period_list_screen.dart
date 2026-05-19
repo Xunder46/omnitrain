@@ -6,6 +6,7 @@ import '../../state/period/period_state.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import 'create_period_screen.dart';
+import '../../core/navigation/navigation.dart';
 
 class PeriodListScreen extends StatefulWidget {
   final PeriodState periodState;
@@ -82,10 +83,9 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
   }
 
   Future<void> _openCreate(BuildContext context) async {
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => CreatePeriodScreen(periodState: widget.periodState),
-      ),
+    final created = await OmniNavigator.push<bool>(
+      context,
+      (_) => CreatePeriodScreen(periodState: widget.periodState),
     );
     if (created == true) {
       // PeriodState.createPeriod already calls load() internally.
@@ -93,12 +93,11 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
   }
 
   Future<void> _openEdit(BuildContext context, TrainingPeriod period) async {
-    final edited = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => CreatePeriodScreen(
-          periodState: widget.periodState,
-          existingPeriod: period,
-        ),
+    final edited = await OmniNavigator.push<bool>(
+      context,
+      (_) => CreatePeriodScreen(
+        periodState: widget.periodState,
+        existingPeriod: period,
       ),
     );
     if (edited == true) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/navigation/navigation.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
 import '../../core/utils/session_feeling_utils.dart';
@@ -178,15 +179,14 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
     await widget.workoutState.loadHistoricalSession(sessionId);
 
     if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => SessionSummaryScreen(
-            workoutState: widget.workoutState,
-            routineState: widget.routineState,
-            sessionSummaryService: widget.sessionSummaryService,
-            settingsState: widget.settingsState,
-            timerAlertService: widget.timerAlertService,
-          ),
+      OmniNavigator.push(
+        context,
+        (_) => SessionSummaryScreen(
+          workoutState: widget.workoutState,
+          routineState: widget.routineState,
+          sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
+          timerAlertService: widget.timerAlertService,
         ),
       );
     }
@@ -265,32 +265,31 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
 
       // Navigate to workout screen.
       if (context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => WorkoutSessionScreen(
-              workoutState: widget.workoutState,
-              routineState: widget.routineState,
-              sessionSummaryService: widget.sessionSummaryService,
-              onSessionSaved: (sessionId) async {
-                try {
-                  await widget.calendarState.completePlannedSession(
-                    ps.id,
-                    sessionId,
-                  );
-                } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Session saved, but failed to link planned session: $e',
-                      ),
+        OmniNavigator.push(
+          context,
+          (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+            onSessionSaved: (sessionId) async {
+              try {
+                await widget.calendarState.completePlannedSession(
+                  ps.id,
+                  sessionId,
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Session saved, but failed to link planned session: $e',
                     ),
-                  );
-                }
-              },
-              settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService,
-            ),
+                  ),
+                );
+              }
+            },
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
           ),
         );
       }

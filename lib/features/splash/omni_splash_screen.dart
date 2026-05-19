@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/navigation/navigation.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../state/workout/workout_state.dart';
@@ -73,25 +74,19 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
     // Auto-navigate after splash duration
     Future.delayed(widget.duration, () {
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => HomeScreen(
-              workoutState: widget.workoutState,
-              homeState: widget.homeState,
-              routineState: widget.routineState,
-              routineSessionService: widget.routineSessionService,
-              sessionSummaryService: widget.sessionSummaryService,
-              calendarState: widget.calendarState,
-              periodState: widget.periodState,
-              profileState: widget.profileState,
-              settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService,
-            ),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-            transitionDuration: const Duration(milliseconds: 600),
+        OmniNavigator.pushReplacementFade(
+          context,
+          (_) => HomeScreen(
+            workoutState: widget.workoutState,
+            homeState: widget.homeState,
+            routineState: widget.routineState,
+            routineSessionService: widget.routineSessionService,
+            sessionSummaryService: widget.sessionSummaryService,
+            calendarState: widget.calendarState,
+            periodState: widget.periodState,
+            profileState: widget.profileState,
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
           ),
         );
       }

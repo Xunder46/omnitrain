@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/navigation/navigation.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
@@ -92,16 +93,15 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
           effortKindOverride: effortKindOverride,
         );
         if (effortId.isNotEmpty) {
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => WorkoutSessionScreen(
-                workoutState: widget.workoutState,
-                routineState: widget.routineState,
-                sessionSummaryService: widget.sessionSummaryService,
-                settingsState: widget.settingsState,
-                initialFocusId: effortId,
-                timerAlertService: widget.timerAlertService,
-              ),
+          await OmniNavigator.push(
+            context,
+            (_) => WorkoutSessionScreen(
+              workoutState: widget.workoutState,
+              routineState: widget.routineState,
+              sessionSummaryService: widget.sessionSummaryService,
+              settingsState: widget.settingsState,
+              initialFocusId: effortId,
+              timerAlertService: widget.timerAlertService,
             ),
           );
         }
@@ -327,17 +327,16 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                     child: FilledButton(
                       onPressed: exercises.isNotEmpty
                           ? () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => WorkoutSessionScreen(
-                                    workoutState: widget.workoutState,
-                                    routineState: widget.routineState,
-                                    sessionSummaryService:
-                                        widget.sessionSummaryService,
-                                    settingsState: widget.settingsState,
-                                    timerAlertService:
-                                        widget.timerAlertService,
-                                  ),
+                              await OmniNavigator.push(
+                                context,
+                                (_) => WorkoutSessionScreen(
+                                  workoutState: widget.workoutState,
+                                  routineState: widget.routineState,
+                                  sessionSummaryService:
+                                      widget.sessionSummaryService,
+                                  settingsState: widget.settingsState,
+                                  timerAlertService:
+                                      widget.timerAlertService,
                                 ),
                               );
                               await _initializeSession();

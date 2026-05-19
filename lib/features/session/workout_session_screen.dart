@@ -18,6 +18,7 @@ import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
+import '../../core/navigation/navigation.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import 'session_summary_screen.dart';
 
@@ -32,6 +33,18 @@ part 'workout_session_global_timer.dart';
 const double _kSessionScrollBottomExtra = 24.0;
 const double _kBottomControlsClearance = 140.0 + _kSessionScrollBottomExtra;
 const Duration _kTimerUpdateInterval = Duration(seconds: 1);
+
+Future<T?> _pushSessionReplacement<T, TO>(
+  BuildContext context,
+  WidgetBuilder builder, {
+  TO? result,
+}) {
+  return OmniNavigator.pushReplacement<T, TO>(
+    context,
+    builder,
+    result: result,
+  );
+}
 
 /// Actions surfaced by the "Unsaved changes" dialog shown when the user
 /// tries to leave edit mode without saving.

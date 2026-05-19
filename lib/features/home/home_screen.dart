@@ -11,7 +11,7 @@ import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../core/constants/home_tiles.dart';
 import '../../core/constants/omni_theme.dart';
-import '../../widgets/layout/omni_gradient_background.dart';
+import '../../core/navigation/navigation.dart';
 import '../../widgets/cards/energy_tile.dart';
 import '../../widgets/cards/maintenance_tile.dart';
 import '../session/workout_session_screen.dart';
@@ -163,8 +163,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: OmniGradientBackground(
-        child: Stack(
+      body: Stack(
           children: [
             SafeArea(
               child: Padding(
@@ -194,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         listenable: widget.workoutState,
                         builder: (context, child) {
                           const standardGridSpacing = 16.0;
-                          const utilitySectionGap = standardGridSpacing * 2;
+                          const utilitySectionGap = standardGridSpacing * 1.7;
 
                           final session = widget.workoutState.currentSession;
                           final isRoutineSession = session?.intent == 'routine';
@@ -271,7 +270,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _buildMaintenanceSheet(context),
           ],
         ),
-      ),
     );
   }
 
@@ -286,17 +284,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Special case: My Routines tile
     if (tile.key == 'my_routines') {
       if (isActive) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => WorkoutSessionScreen(
+        OmniNavigator.push(context, (_) => WorkoutSessionScreen(
               workoutState: widget.workoutState,
               routineState: widget.routineState,
               sessionSummaryService: widget.sessionSummaryService,
               settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService,
-            ),
-          ),
-        );
+              timerAlertService: widget.timerAlertService));
       } else {
         // Guard: any active session (rolling or otherwise) conflicts with
         // starting a routine, which would create a new competing session.
@@ -342,18 +335,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           widget.workoutState.clearSession();
         }
         if (context.mounted) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => MyRoutinesScreen(
+          OmniNavigator.push(context, (_) => MyRoutinesScreen(
                 routineState: widget.routineState,
                 workoutState: widget.workoutState,
                 routineSessionService: widget.routineSessionService,
                 sessionSummaryService: widget.sessionSummaryService,
                 settingsState: widget.settingsState,
-                timerAlertService: widget.timerAlertService,
-              ),
-            ),
-          );
+                timerAlertService: widget.timerAlertService));
         }
       }
       return;
@@ -362,18 +350,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // All other tiles are modality-based workout tiles (including Free Training).
     // If tapping the currently active tile, navigate directly to the session.
     if (isActive) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(
+      OmniNavigator.push(context, (_) => WorkoutSessionScreen(
             workoutState: widget.workoutState,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
             settingsState: widget.settingsState,
             preferredModality: tile.modality,
-            timerAlertService: widget.timerAlertService,
-          ),
-        ),
-      );
+            timerAlertService: widget.timerAlertService));
       return;
     }
 
@@ -382,18 +365,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (widget.workoutState.isRollingSession) {
         // Rolling session: navigate directly — no dialog, no new session.
         // Pass the tapped tile's modality so ExercisePickerDialog pre-filters.
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => WorkoutSessionScreen(
+        OmniNavigator.push(context, (_) => WorkoutSessionScreen(
               workoutState: widget.workoutState,
               routineState: widget.routineState,
               sessionSummaryService: widget.sessionSummaryService,
               settingsState: widget.settingsState,
               preferredModality: tile.modality,
-              timerAlertService: widget.timerAlertService,
-            ),
-          ),
-        );
+              timerAlertService: widget.timerAlertService));
         return;
       }
 
@@ -452,18 +430,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await widget.workoutState.createNewSession(modality: tile.modality);
 
     if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(
+      OmniNavigator.push(context, (_) => WorkoutSessionScreen(
             workoutState: widget.workoutState,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
             settingsState: widget.settingsState,
             preferredModality: tile.modality,
-            timerAlertService: widget.timerAlertService,
-          ),
-        ),
-      );
+            timerAlertService: widget.timerAlertService));
     }
   }
 
@@ -582,17 +555,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     widget.workoutState.clearSession();
     await widget.workoutState.createNewSession(isRolling: isRolling);
     if (context.mounted) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(
+      OmniNavigator.push(context, (_) => WorkoutSessionScreen(
             workoutState: widget.workoutState,
             routineState: widget.routineState,
             sessionSummaryService: widget.sessionSummaryService,
             settingsState: widget.settingsState,
-            timerAlertService: widget.timerAlertService,
-          ),
-        ),
-      );
+            timerAlertService: widget.timerAlertService));
     }
   }
 
@@ -746,9 +714,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Calendar',
         icon: Icons.calendar_today,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => CalendarScreen(
+        onTap: () => OmniNavigator.push(context, (_) => CalendarScreen(
               calendarState: widget.calendarState,
               periodState: widget.periodState,
               workoutState: widget.workoutState,
@@ -756,46 +722,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               routineSessionService: widget.routineSessionService,
               sessionSummaryService: widget.sessionSummaryService,
               settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService,
-            ),
-          ),
-        ),
+              timerAlertService: widget.timerAlertService)),
       ),
       _MaintenanceItem(
         title: 'Stats',
         icon: Icons.query_stats,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => StatsScreen(
+        onTap: () => OmniNavigator.push(context, (_) => StatsScreen(
               workoutState: widget.workoutState,
-              settingsState: widget.settingsState,
-            ),
-          ),
-        ),
+              settingsState: widget.settingsState)),
       ),
       _MaintenanceItem(
         title: 'Profile',
         icon: Icons.person_outline,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ProfileScreen(
+        onTap: () => OmniNavigator.push(context, (_) => ProfileScreen(
               profileState: widget.profileState,
-              settingsState: widget.settingsState,
-            ),
-          ),
-        ),
+              settingsState: widget.settingsState)),
       ),
       _MaintenanceItem(
         title: 'Settings',
         icon: Icons.tune,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => SettingsScreen(
+        onTap: () => OmniNavigator.push(context, (_) => SettingsScreen(
               settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService,
-            ),
-          ),
-        ),
+              timerAlertService: widget.timerAlertService)),
       ),
     ];
 

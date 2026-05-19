@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/navigation/navigation.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
 import '../../core/constants/home_tiles.dart';
@@ -159,10 +160,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _openPeriods(BuildContext context) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PeriodListScreen(periodState: widget.periodState),
-      ),
+    await OmniNavigator.push(
+      context,
+      (_) => PeriodListScreen(periodState: widget.periodState),
     );
     if (context.mounted) {
       widget.calendarState.refresh();
@@ -193,15 +193,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _openSessionSummary(BuildContext context, String sessionId) {
     widget.workoutState.loadHistoricalSession(sessionId).then((_) {
       if (context.mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => SessionSummaryScreen(
-              workoutState: widget.workoutState,
-              routineState: widget.routineState,
-              sessionSummaryService: widget.sessionSummaryService,
-              settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService,
-            ),
+        OmniNavigator.push(
+          context,
+          (_) => SessionSummaryScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
           ),
         );
       }
@@ -209,18 +208,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _openDayList(BuildContext context, DateTime date) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DaySessionListScreen(
-          date: date,
-          calendarState: widget.calendarState,
-          routineState: widget.routineState,
-          workoutState: widget.workoutState,
-          routineSessionService: widget.routineSessionService,
-          sessionSummaryService: widget.sessionSummaryService,
-          settingsState: widget.settingsState,
-          timerAlertService: widget.timerAlertService,
-        ),
+    await OmniNavigator.push(
+      context,
+      (_) => DaySessionListScreen(
+        date: date,
+        calendarState: widget.calendarState,
+        routineState: widget.routineState,
+        workoutState: widget.workoutState,
+        routineSessionService: widget.routineSessionService,
+        sessionSummaryService: widget.sessionSummaryService,
+        settingsState: widget.settingsState,
+        timerAlertService: widget.timerAlertService,
       ),
     );
     // Refresh calendar after returning from day list (user may have added/deleted).

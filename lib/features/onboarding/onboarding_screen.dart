@@ -4,6 +4,7 @@ import '../../core/constants/modality_colors.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
+import '../../core/navigation/navigation.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/home/home_state.dart';
@@ -71,20 +72,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _complete(BuildContext context) async {
     await widget.repository.setPreferenceBool('onboarding_complete', true);
     if (!context.mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => HomeScreen(
-          workoutState: widget.workoutState,
-          homeState: widget.homeState,
-          routineState: widget.routineState,
-          routineSessionService: widget.routineSessionService,
-          sessionSummaryService: widget.sessionSummaryService,
-          calendarState: widget.calendarState,
-          periodState: widget.periodState,
-          profileState: widget.profileState,
-          settingsState: widget.settingsState,
-          timerAlertService: widget.timerAlertService,
-        ),
+    OmniNavigator.pushReplacement(
+      context,
+      (_) => HomeScreen(
+        workoutState: widget.workoutState,
+        homeState: widget.homeState,
+        routineState: widget.routineState,
+        routineSessionService: widget.routineSessionService,
+        sessionSummaryService: widget.sessionSummaryService,
+        calendarState: widget.calendarState,
+        periodState: widget.periodState,
+        profileState: widget.profileState,
+        settingsState: widget.settingsState,
+        timerAlertService: widget.timerAlertService,
       ),
     );
   }

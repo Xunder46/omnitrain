@@ -157,16 +157,15 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
 
       if (!mounted) return;
 
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => SessionSummaryScreen(
-            workoutState: widget.workoutState,
-            routineState: widget.routineState,
-            sessionSummaryService: widget.sessionSummaryService,
-            onSessionSaved: widget.onSessionSaved,
-            settingsState: widget.settingsState,
-            timerAlertService: widget.timerAlertService,
-          ),
+      await _pushSessionReplacement(
+        context,
+        (_) => SessionSummaryScreen(
+          workoutState: widget.workoutState,
+          routineState: widget.routineState,
+          sessionSummaryService: widget.sessionSummaryService,
+          onSessionSaved: widget.onSessionSaved,
+          settingsState: widget.settingsState,
+          timerAlertService: widget.timerAlertService,
         ),
       );
     } catch (e) {

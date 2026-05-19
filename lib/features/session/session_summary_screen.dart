@@ -22,6 +22,7 @@ import '../../data/models/models.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
+import '../../core/navigation/navigation.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -297,16 +298,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Future<void> _openEditSession() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => WorkoutSessionScreen(
-          workoutState: widget.workoutState,
-          routineState: widget.routineState,
-          sessionSummaryService: widget.sessionSummaryService,
-          settingsState: widget.settingsState,
-          timerAlertService: widget.timerAlertService,
-          editMode: true,
-        ),
+    await OmniNavigator.push(
+      context,
+      (_) => WorkoutSessionScreen(
+        workoutState: widget.workoutState,
+        routineState: widget.routineState,
+        sessionSummaryService: widget.sessionSummaryService,
+        settingsState: widget.settingsState,
+        timerAlertService: widget.timerAlertService,
+        editMode: true,
       ),
     );
 
@@ -316,18 +316,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Future<void> _openCalendarScreen() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CalendarScreen(
-          calendarState: _calendarState,
-          periodState: _periodState,
-          workoutState: widget.workoutState,
-          routineState: widget.routineState,
-          routineSessionService: _routineSessionService,
-          sessionSummaryService: widget.sessionSummaryService,
-          settingsState: widget.settingsState,
-          timerAlertService: widget.timerAlertService,
-        ),
+    await OmniNavigator.push(
+      context,
+      (_) => CalendarScreen(
+        calendarState: _calendarState,
+        periodState: _periodState,
+        workoutState: widget.workoutState,
+        routineState: widget.routineState,
+        routineSessionService: _routineSessionService,
+        sessionSummaryService: widget.sessionSummaryService,
+        settingsState: widget.settingsState,
+        timerAlertService: widget.timerAlertService,
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/navigation/navigation.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../state/routine/routine_state.dart';
@@ -193,14 +194,12 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
   }
 
   void _createNewRoutine(BuildContext context) async {
-    Navigator.push(
+    OmniNavigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => RoutineSetupScreen(
-          routineState: widget.routineState,
-          workoutState: widget.workoutState,
-          settingsState: widget.settingsState,
-        ),
+      (_) => RoutineSetupScreen(
+        routineState: widget.routineState,
+        workoutState: widget.workoutState,
+        settingsState: widget.settingsState,
       ),
     ).then((_) {
       widget.routineState.loadRoutines();
@@ -208,15 +207,13 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
   }
 
   void _editRoutine(BuildContext context, String templateId) async {
-    Navigator.push(
+    OmniNavigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => RoutineSetupScreen(
-          routineState: widget.routineState,
-          workoutState: widget.workoutState,
-          templateId: templateId,
-          settingsState: widget.settingsState,
-        ),
+      (_) => RoutineSetupScreen(
+        routineState: widget.routineState,
+        workoutState: widget.workoutState,
+        templateId: templateId,
+        settingsState: widget.settingsState,
       ),
     ).then((_) {
       widget.routineState.loadRoutines();
@@ -292,17 +289,15 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       await widget.workoutState!.populateSessionFromManifest(manifest);
 
       // Navigate to workout session
-      Navigator.popUntil(context, (route) => route.isFirst);
-      Navigator.push(
+      OmniNavigator.popUntil(context, (route) => route.isFirst);
+      OmniNavigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => WorkoutSessionScreen(
-            workoutState: widget.workoutState!,
-            routineState: widget.routineState,
-            sessionSummaryService: widget.sessionSummaryService,
-            settingsState: widget.settingsState,
-            timerAlertService: widget.timerAlertService,
-          ),
+        (_) => WorkoutSessionScreen(
+          workoutState: widget.workoutState!,
+          routineState: widget.routineState,
+          sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
+          timerAlertService: widget.timerAlertService,
         ),
       );
     } catch (e) {
