@@ -425,7 +425,7 @@ HomeScreen → My Routines tile
 
 ### Create Custom Exercise (Picker)
 
-1. User taps "Add Custom Exercise" in `ExercisePickerDialog`
+1. User taps "New Exercise" in `ExercisePickerDialog`
 2. App opens `ExerciseEditorScreen` (form with name, description, discipline, capabilities, muscle groups)
 3. User saves → `WorkoutState.createCustomExercise(...)` persists the new exercise
 4. Editor closes and returns the new `Exercise`

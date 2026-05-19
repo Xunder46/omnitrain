@@ -26,7 +26,7 @@ Create flow typically passes `contextModality` and leaves `initialExercise` null
 
 ## Entry Points
 
-- `ExercisePickerDialog` → `Add Custom Exercise`
+- `ExercisePickerDialog` → `New Exercise`
 - Any edit flow that pushes `ExerciseEditorScreen(initialExercise: exercise)`
 
 ---

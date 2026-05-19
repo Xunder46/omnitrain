@@ -32,7 +32,7 @@ The Create New Exercise form currently shows all seven capabilities, all discipl
 - [ ] No confirmation dialog on mid-edit modality change
 - [ ] Validation messages appear inline adjacent to the field (not in a top-level banner)
 - [ ] Validation messages name the specific expected input (e.g. "Select at least one of: Reps, Load")
-- [ ] "Add Custom Exercise" entry point from exercise picker continues to work
+- [ ] "New Exercise" entry point from exercise picker continues to work
 - [ ] After save, picker refreshes and pre-fills search with the new exercise's name
 - [ ] Existing custom exercises (no modality) continue to appear in the library and open for editing per Section 4.1 rules
 

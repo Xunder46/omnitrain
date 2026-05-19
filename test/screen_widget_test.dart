@@ -3032,7 +3032,7 @@ void main() {
       }
     });
 
-    testWidgets('shows Add Custom Exercise button', (
+    testWidgets('shows New Exercise button', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(800, 1200));
@@ -3048,7 +3048,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Add Custom Exercise'), findsOneWidget);
+      expect(find.text('New Exercise'), findsOneWidget);
     });
 
     testWidgets(

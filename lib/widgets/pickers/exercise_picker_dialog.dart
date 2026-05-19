@@ -253,7 +253,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                   icon: const Icon(Icons.add),
                   label: const FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text('Add Custom Exercise'),
+                    child: Text('New Exercise'),
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: theme.colorScheme.primary,

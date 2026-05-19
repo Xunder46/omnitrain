@@ -19,7 +19,7 @@ Pre-TestFlight theme cleanup and contrast hardening for OmniTrain. This pass rem
 - Shorten the Settings theme selector automatically to five options at runtime.
 - Enforce color-role discipline on the exercise picker:
   - primary CTA = filled accent + white text
-  - Add Custom Exercise = outlined accent only
+  - New Exercise = outlined accent only
   - search field resting border = subtle surface border only
   - Recommended label = secondary text, not accent
   - metadata chips/tags = ghost treatment using surface border + muted text
@@ -36,7 +36,7 @@ Pre-TestFlight theme cleanup and contrast hardening for OmniTrain. This pass rem
 - [x] Exercise picker tags use ghost styling with no accent fill.
 - [x] Exercise picker `Recommended` label uses secondary text color, not accent.
 - [x] Exercise picker search field resting state uses the theme surface-border token; accent appears only on focus/active state.
-- [x] `Add Custom Exercise` remains outlined with accent border + accent text and no fill.
+- [x] `New Exercise` remains outlined with accent border + accent text and no fill.
 - [x] `Finish Workout` CTA uses the primary accent fill with white text on all retained themes.
 - [x] `Obsidian Volt` primary is shifted away from pure neon yellow toward a warmer amber-volt tone and is visually calmer than `#EAE000`.
 - [x] `Crimson Dojo` CTA fill resolves to the primary `#E53935`, not the darker secondary `#B71C1C`.
@@ -72,7 +72,7 @@ This is a fast-track Developer task: no schema changes, no new repository method
 2. [x] Confirm [lib/state/settings/settings_state.dart](lib/state/settings/settings_state.dart) already falls back safely when a removed persisted theme name is encountered; keep this behavior intact.
 3. [x] Update [lib/features/settings/settings_screen.dart](lib/features/settings/settings_screen.dart) only as needed so the option grid renders the shortened `AppTheme.values` list with no stale references.
 4. [x] Refine [lib/widgets/pickers/exercise_picker_dialog.dart](lib/widgets/pickers/exercise_picker_dialog.dart):
-   - keep `Add Custom Exercise` as outlined accent treatment
+   - keep `New Exercise` as outlined accent treatment
    - move `Recommended` header to `OmniTheme.textSecondary`/theme secondary text
    - change discipline and muscle chips to ghost styling using transparent or surface-level background, `surfaceBorder`, and `textMuted`
    - ensure exercise title remains dominant and subtitle remains secondary
