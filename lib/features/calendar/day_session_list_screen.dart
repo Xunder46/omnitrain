@@ -413,9 +413,8 @@ class _EmptyState extends StatelessWidget {
     return Center(
       child: Text(
         isPast ? 'No sessions on this day.' : 'No sessions planned yet.',
-        style: TextStyle(
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
           color: OmniTheme.textSecondary.withOpacity(0.6),
-          fontSize: 15,
         ),
       ),
     );
@@ -432,8 +431,7 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8, top: 4),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 13,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
           fontWeight: FontWeight.w700,
           color: OmniTheme.textSecondary,
           letterSpacing: 0.5,
@@ -466,7 +464,10 @@ class _AddButton extends StatelessWidget {
           ),
           onPressed: onTap,
           icon: const Icon(Icons.add),
-          label: const Text('Add Planned Session'),
+          label: const FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text('Add Planned Session'),
+          ),
         ),
       ),
     );
@@ -532,10 +533,9 @@ class _SessionRow extends StatelessWidget {
             ),
             title: Text(
               label,
-              style: const TextStyle(
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: OmniTheme.textPrimary,
                 fontWeight: FontWeight.w600,
-                fontSize: 14,
               ),
             ),
             subtitle: Column(
@@ -544,14 +544,15 @@ class _SessionRow extends StatelessWidget {
               children: [
                 Text(
                   subtitle,
-                  style: TextStyle(color: stateColor, fontSize: 12),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: stateColor,
+                  ),
                 ),
                 if (entry.isCompleted && entry.session != null)
                   Text(
                     _formatTimeDuration(entry.session!),
-                    style: TextStyle(
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: themeColors.textMuted,
-                      fontSize: 12,
                     ),
                   ),
               ],
@@ -740,8 +741,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                   widget.initial == null
                       ? 'Add Planned Session'
                       : 'Edit Session',
-                  style: const TextStyle(
-                    fontSize: 16,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: OmniTheme.textPrimary,
                   ),
@@ -756,10 +756,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             ),
             const SizedBox(height: 16),
 
-            const Text(
+            Text(
               'Session Type',
-              style: TextStyle(
-                fontSize: 12,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: OmniTheme.textSecondary,
               ),
@@ -1012,8 +1011,11 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                   ),
                 ),
                 onPressed: _submit,
-                child: Text(
-                  widget.initial == null ? 'Add Session' : 'Save Changes',
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    widget.initial == null ? 'Add Session' : 'Save Changes',
+                  ),
                 ),
               ),
             ),

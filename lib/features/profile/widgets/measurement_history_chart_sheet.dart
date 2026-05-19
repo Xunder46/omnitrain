@@ -207,7 +207,10 @@ class _MeasurementHistoryChartSheetState
           ),
         ),
         onPressed: _handleLogNew,
-        child: const Text('Log New Entry'),
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text('Log New Entry'),
+        ),
       ),
     );
   }
@@ -452,6 +455,7 @@ class _MeasurementHistoryChartSheetState
                     _formatDate(date),
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: OmniTheme.textSecondary.withOpacity(0.60),
+                      // [E] Chart axis — dense instrumentation label; getTitlesWidget has no BuildContext
                       fontSize: 10,
                     ),
                   ),

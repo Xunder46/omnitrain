@@ -296,7 +296,10 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                   ),
                 ),
               ),
-              child: const Text('Add Exercise'),
+              child: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('Add Exercise'),
+              ),
             ),
           ),
           const SizedBox(height: 8),

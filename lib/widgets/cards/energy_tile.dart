@@ -138,9 +138,8 @@ class _EnergyTileState extends State<EnergyTile> {
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.clip,
-                  style: TextStyle(
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     color: OmniTheme.textPrimary,
-                    fontSize: 16,
                     fontWeight: FontWeight.w500,
                     letterSpacing: OmniTheme.titleLetterSpacing,
                     height: 1,

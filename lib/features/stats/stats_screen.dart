@@ -177,16 +177,16 @@ class _StatsScreenState extends State<StatsScreen> {
                     children: _totalSessions == 0
                         ? [_buildEmptyState(context, themeColors)]
                         : [
-                            _buildSectionLabel('ALL TIME', themeColors),
+                            _buildSectionLabel(context, 'ALL TIME', themeColors),
                             const SizedBox(height: 8),
                             _buildAggregateCard(context, themeColors),
                             const SizedBox(height: 24),
-                            _buildSectionLabel('ACTIVITY', themeColors),
+                            _buildSectionLabel(context, 'ACTIVITY', themeColors),
                             const SizedBox(height: 8),
                             _buildActivityCard(context, themeColors),
                             if (_restAvgsByModality.isNotEmpty) ...[
                               const SizedBox(height: 24),
-                              _buildSectionLabel('REST TIME', themeColors),
+                              _buildSectionLabel(context, 'REST TIME', themeColors),
                               const SizedBox(height: 8),
                               _buildRestTimeCard(context, themeColors),
                             ],
@@ -198,11 +198,14 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _buildSectionLabel(String label, OmniThemeColors themeColors) {
+  Widget _buildSectionLabel(
+    BuildContext context,
+    String label,
+    OmniThemeColors themeColors,
+  ) {
     return Text(
       label,
-      style: TextStyle(
-        fontSize: 11,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
         fontWeight: FontWeight.w600,
         letterSpacing: 3.0,
         color: themeColors.textMuted,
@@ -290,7 +293,9 @@ class _StatsScreenState extends State<StatsScreen> {
                   '${OmniDateUtils.shortMonthName(thirtyDaysAgo.month)} ${thirtyDaysAgo.day}'
                   ' – '
                   '${OmniDateUtils.shortMonthName(today.month)} ${today.day}',
-                  style: TextStyle(fontSize: 11, color: themeColors.textMuted),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: themeColors.textMuted,
+                  ),
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.end,
                 ),
@@ -336,6 +341,8 @@ class _StatsScreenState extends State<StatsScreen> {
                               child: Text(
                                 intVal.toString(),
                                 style: TextStyle(
+                                  // [E] Chart axis — dense instrumentation label,
+                                  // getTitlesWidget callback has no BuildContext
                                   fontSize: 10,
                                   color: themeColors.textMuted,
                                 ),
@@ -360,6 +367,8 @@ class _StatsScreenState extends State<StatsScreen> {
                               child: Text(
                                 '${OmniDateUtils.shortMonthName(date.month)} ${date.day}',
                                 style: TextStyle(
+                                  // [E] Chart axis — dense instrumentation label,
+                                  // getTitlesWidget callback has no BuildContext
                                   fontSize: 9,
                                   color: themeColors.textMuted,
                                 ),
@@ -471,7 +480,9 @@ class _StatsScreenState extends State<StatsScreen> {
             '${OmniDateUtils.shortMonthName(thirtyDaysAgo.month)} ${thirtyDaysAgo.day}'
             ' – '
             '${OmniDateUtils.shortMonthName(today.month)} ${today.day}',
-            style: TextStyle(fontSize: 11, color: themeColors.textMuted),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: themeColors.textMuted,
+            ),
           ),
           const SizedBox(height: 16),
           SizedBox(
@@ -510,6 +521,8 @@ class _StatsScreenState extends State<StatsScreen> {
                           child: Text(
                             label,
                             style: TextStyle(
+                              // [E] Chart axis — dense instrumentation label,
+                              // getTitlesWidget callback has no BuildContext
                               fontSize: 10,
                               color: themeColors.textMuted,
                             ),
@@ -542,6 +555,8 @@ class _StatsScreenState extends State<StatsScreen> {
                             label,
                             textAlign: align,
                             style: TextStyle(
+                              // [E] Chart axis — dense instrumentation label,
+                              // getTitlesWidget callback has no BuildContext
                               fontSize: 9,
                               color: themeColors.textMuted,
                             ),
@@ -586,8 +601,7 @@ class _StatsScreenState extends State<StatsScreen> {
                   const SizedBox(width: 4),
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: themeColors.textMuted,
                     ),
                   ),
@@ -624,7 +638,9 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             'Complete your first session to see stats here.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: themeColors.textMuted),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: themeColors.textMuted,
+            ),
           ),
           const SizedBox(height: 16),
         ],

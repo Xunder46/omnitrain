@@ -102,8 +102,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             controller: _pageController,
             onPageChanged: (i) => setState(() => _currentPage = i),
             children: [
-              _buildWelcomePage(themeColors),
-              _buildHowYouTrainPage(themeColors),
+              _buildWelcomePage(context, themeColors),
+              _buildHowYouTrainPage(context, themeColors),
               _buildHowYouPlanPage(context, themeColors),
             ],
           ),
@@ -159,7 +159,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   // ── Page 1: Welcome ─────────────────────────────────────────────────────────
-  Widget _buildWelcomePage(OmniThemeColors themeColors) {
+  Widget _buildWelcomePage(BuildContext context, OmniThemeColors themeColors) {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -175,8 +175,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Text(
               'OMNITRAIN',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 40,
+              style: Theme.of(context).textTheme.displayLarge?.copyWith(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 3.0,
                 color: themeColors.primary,
@@ -186,10 +185,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Text(
               'one app for every way you train',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w400,
-                letterSpacing: OmniTheme.titleLetterSpacing,
                 color: themeColors.textMuted,
               ),
             ),
@@ -202,7 +199,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   // ── Page 2: How You Train ────────────────────────────────────────────────────
-  Widget _buildHowYouTrainPage(OmniThemeColors themeColors) {
+  Widget _buildHowYouTrainPage(BuildContext context, OmniThemeColors themeColors) {
     const modalities = [
       _ModalityData(
         name: 'Cardio / Endurance',
@@ -241,17 +238,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 32),
             Text(
               'How You Train',
-              style: TextStyle(
-                fontSize: 26,
+              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                 fontWeight: FontWeight.bold,
-                letterSpacing: OmniTheme.titleLetterSpacing,
                 color: themeColors.primary,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'OmniTrain adapts its interface to the way you actually train.',
-              style: TextStyle(fontSize: 14, color: themeColors.textMuted),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: themeColors.textMuted,
+              ),
             ),
             const SizedBox(height: 20),
             Expanded(
@@ -283,17 +280,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 32),
             Text(
               'How You Plan',
-              style: TextStyle(
-                fontSize: 26,
+              style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                 fontWeight: FontWeight.bold,
-                letterSpacing: OmniTheme.titleLetterSpacing,
                 color: themeColors.primary,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               'Your training calendar keeps everything in one place.',
-              style: TextStyle(fontSize: 14, color: themeColors.textMuted),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: themeColors.textMuted,
+              ),
             ),
             const SizedBox(height: 28),
             _PlanFeatureBullet(
@@ -333,12 +330,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 ),
                 onPressed: () => _complete(context),
-                child: const Text(
-                  'Get Started',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    letterSpacing: 0.5,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Get Started',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
               ),
@@ -459,8 +458,7 @@ class _ModalityTile extends StatelessWidget {
                               maxLines: 2,
                               softWrap: true,
                               overflow: TextOverflow.visible,
-                              style: TextStyle(
-                                fontSize: 15,
+                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: OmniTheme.textPrimary,
                                 letterSpacing: OmniTheme.titleLetterSpacing,
@@ -474,8 +472,7 @@ class _ModalityTile extends StatelessWidget {
                         padding: const EdgeInsets.only(left: 18),
                         child: Text(
                           data.description,
-                          style: TextStyle(
-                            fontSize: 13,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: themeColors.textMuted,
                           ),
                         ),
@@ -519,8 +516,7 @@ class _PlanFeatureBullet extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
-                fontSize: 15,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: OmniTheme.textPrimary,
                 letterSpacing: OmniTheme.titleLetterSpacing,
               ),

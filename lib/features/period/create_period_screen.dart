@@ -142,9 +142,8 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                 const SizedBox(height: 4),
                 Text(
                   _dateError!,
-                  style: TextStyle(
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.error,
-                    fontSize: 12,
                   ),
                 ),
               ],
@@ -152,20 +151,18 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                 const SizedBox(height: 4),
                 Text(
                   _overlapError!,
-                  style: TextStyle(
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.error,
-                    fontSize: 12,
                   ),
                 ),
               ],
               const SizedBox(height: 20),
 
               // ── Focus modalities ─────────────────────────────────
-              const Text(
+              Text(
                 'Focus Modalities (optional)',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: OmniTheme.textSecondary,
-                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -181,9 +178,8 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                     selected: selected,
                     selectedColor: color.withOpacity(0.25),
                     checkmarkColor: color,
-                    labelStyle: TextStyle(
+                    labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
                       color: selected ? color : OmniTheme.textSecondary,
-                      fontSize: 12,
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                     ),
                     onSelected: (val) {
@@ -201,11 +197,10 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
               const SizedBox(height: 20),
 
               // ── Color ─────────────────────────────────────────────
-              const Text(
+              Text(
                 'Calendar Color',
-                style: TextStyle(
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: OmniTheme.textSecondary,
-                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -398,11 +393,10 @@ class _DateField extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: TextStyle(
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: value != null
                 ? OmniTheme.textPrimary
                 : OmniTheme.textSecondary.withOpacity(0.5),
-            fontSize: 14,
           ),
         ),
       ),

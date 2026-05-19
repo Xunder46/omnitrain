@@ -244,4 +244,116 @@ class OmniTheme {
 
   /// Fixed size for icon-only square buttons.
   static const double buttonIconSize = 60.0;
+
+  // ═══════════════════════════════════════════════════════════
+  // TEXT SCALE CLAMP
+  // ═══════════════════════════════════════════════════════════
+
+  /// Minimum allowed system text scale factor.
+  /// Prevents text from becoming unreadably tiny on small Android devices.
+  static const double kTextScaleMin = 1.1;
+
+  /// Maximum allowed system text scale factor.
+  /// Above this threshold dense screens (session logger, calendar) remain
+  /// usable but feel tighter — accepted tradeoff between aesthetics and
+  /// accessibility. Configured once in MaterialApp.builder; never per-screen.
+  static const double kTextScaleMax = 1.6;
+
+  // ═══════════════════════════════════════════════════════════
+  // TEXT THEME
+  // ═══════════════════════════════════════════════════════════
+
+  /// Builds the full application TextTheme.
+  ///
+  /// All 13 Material 3 roles are specified so that feature code has exactly
+  /// one correct path: `Theme.of(context).textTheme.<role>?.copyWith(...)`.
+  /// Raw `TextStyle(fontSize: N)` declarations are a review blocker outside
+  /// of chart-axis labels — see typography_contract.md.
+  static TextTheme buildTextTheme({
+    required Color textPrimary,
+    required Color textSecondary,
+  }) {
+    return ThemeData.dark().textTheme.copyWith(
+      // Display — hero headings (onboarding splash)
+      displayLarge: TextStyle(
+        fontSize: 40,
+        fontWeight: FontWeight.w700,
+        color: textPrimary,
+        letterSpacing: -0.5,
+      ),
+      displayMedium: TextStyle(
+        fontSize: 32,
+        fontWeight: FontWeight.w700,
+        color: textPrimary,
+      ),
+      displaySmall: TextStyle(
+        fontSize: 28,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+      ),
+      // Headlines — section titles, feature page titles
+      headlineLarge: TextStyle(
+        fontSize: 26,
+        fontWeight: FontWeight.w700,
+        color: textPrimary,
+      ),
+      headlineMedium: TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+      ),
+      headlineSmall: TextStyle(
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+      ),
+      // Titles — sheet headers, screen names
+      titleLarge: TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: textPrimary,
+      ),
+      titleMedium: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+        letterSpacing: titleLetterSpacing,
+      ),
+      titleSmall: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: textPrimary,
+      ),
+      // Body — descriptions, row content
+      bodyLarge: TextStyle(
+        fontSize: 15,
+        color: textPrimary,
+      ),
+      bodyMedium: TextStyle(
+        fontSize: 14,
+        color: textSecondary,
+      ),
+      bodySmall: TextStyle(
+        fontSize: 13,
+        color: textSecondary,
+      ),
+      // Labels — dense instrumentation, chips, metadata
+      labelLarge: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.1,
+        color: textPrimary,
+      ),
+      labelMedium: TextStyle(
+        fontSize: 12,
+        letterSpacing: titleLetterSpacing,
+        color: textSecondary,
+      ),
+      labelSmall: TextStyle(
+        fontSize: 11,
+        letterSpacing: 0.5,
+        color: textSecondary,
+      ),
+    );
+  }
 }

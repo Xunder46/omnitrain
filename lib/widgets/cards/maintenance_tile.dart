@@ -69,9 +69,8 @@ class _MaintenanceTileState extends State<MaintenanceTile> {
           Text(
             widget.title,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: themeColors.textMuted,
-              fontSize: 15,
               fontWeight: FontWeight.w600,
               letterSpacing: OmniTheme.titleLetterSpacing,
               height: 1.1,

@@ -187,10 +187,9 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                     child: Text(
                       'HOW TO PERFORM',
-                      style: theme.textTheme.bodySmall?.copyWith(
+                      style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.onSurface.withOpacity(0.45),
                         letterSpacing: 2.0,
-                        fontSize: 11,
                       ),
                     ),
                   ),
@@ -479,9 +478,8 @@ class _ExerciseNoteSheetState extends State<_ExerciseNoteSheet> {
                 alignment: Alignment.centerRight,
                 child: Text(
                   '${_controller.text.length}/∞',
-                  style: theme.textTheme.bodySmall?.copyWith(
+                  style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurface.withOpacity(0.45),
-                    fontSize: 11,
                   ),
                 ),
               ),
@@ -667,9 +665,8 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
                     Text(
                       widget.label,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: Colors.white.withOpacity(0.9),
-                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                         height: 1.4,
                       ),
@@ -686,8 +683,7 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          textStyle: const TextStyle(
-                            fontSize: 12,
+                          textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),

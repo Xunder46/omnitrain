@@ -114,8 +114,7 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
               // App Name
               Text(
                 'OMNITRAIN',
-                style: TextStyle(
-                  fontSize: 24,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                   letterSpacing: 4.0,
                   color: Colors.white.withOpacity(0.85),

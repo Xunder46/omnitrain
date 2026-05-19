@@ -258,12 +258,7 @@ class _MonthHeader extends StatelessWidget {
             child: Text(
               '${OmniDateUtils.fullMonthName(month)} $year',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: OmniTheme.textPrimary,
-                letterSpacing: 0.4,
-              ),
+              style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
           IconButton(
@@ -293,8 +288,7 @@ class _WeekDayRow extends StatelessWidget {
                 child: Center(
                   child: Text(
                     l,
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: OmniTheme.textSecondary.withOpacity(0.7),
                       letterSpacing: 0.5,
@@ -428,8 +422,7 @@ class _DayCell extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               '${date.day}',
-              style: TextStyle(
-                fontSize: 12,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
                 fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
                 color: isToday
                     ? Theme.of(context).colorScheme.primary
@@ -482,8 +475,7 @@ class _SessionIndicators extends StatelessWidget {
                   alignment: Alignment.center,
                   child: Text(
                     '+$overflow',
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: OmniTheme.textSecondary.withOpacity(0.75),
                       fontWeight: FontWeight.w600,
                       height: 1.0,
@@ -564,9 +556,7 @@ class _MonthlyStatsStrip extends StatelessWidget {
             orElse: () => HomeTiles.all.first,
           )
           .label;
-      const labelStyle = TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w500,
+      final chipStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
         color: OmniTheme.textSecondary,
       );
       return Row(
@@ -578,15 +568,11 @@ class _MonthlyStatsStrip extends StatelessWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 5),
-          Text(tileLabel, style: labelStyle),
+          Text(tileLabel, style: chipStyle),
           const SizedBox(width: 4),
           Text(
             '${entry.value}',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: OmniTheme.textSecondary,
-            ),
+            style: chipStyle?.copyWith(fontWeight: FontWeight.w600),
           ),
         ],
       );
@@ -654,8 +640,7 @@ class _CompactStat extends StatelessWidget {
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 13,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
             fontWeight: FontWeight.w600,
             letterSpacing: 1.2,
             color: OmniTheme.textSecondary.withOpacity(0.55),
@@ -664,9 +649,7 @@ class _CompactStat extends StatelessWidget {
         const SizedBox(height: 7),
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 30,
-            fontWeight: FontWeight.w700,
+          style: Theme.of(context).textTheme.displayMedium?.copyWith(
             letterSpacing: -0.5,
             color: OmniTheme.textPrimary,
           ),

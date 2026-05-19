@@ -97,8 +97,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                     SizedBox(height: 32),
                     Text(
                       'No Routines Yet',
-                      style: TextStyle(
-                        fontSize: 24,
+                      style: theme.textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: OmniTheme.textPrimary,
                       ),
@@ -109,8 +108,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                       child: Text(
                         'Create your first routine to get started',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
+                        style: theme.textTheme.titleSmall?.copyWith(
                           color: OmniTheme.textPrimary.withOpacity(0.7),
                         ),
                       ),
@@ -140,16 +138,14 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                       ),
                       title: Text(
                         routine.name,
-                        style: TextStyle(
-                          fontSize: 16,
+                        style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: theme.colorScheme.onSurface,
                         ),
                       ),
                       subtitle: Text(
                         'Created ${_formatDate(DateTime.fromMillisecondsSinceEpoch(routine.createdAtMs))}',
-                        style: TextStyle(
-                          fontSize: 12,
+                        style: theme.textTheme.labelMedium?.copyWith(
                           color: theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),

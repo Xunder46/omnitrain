@@ -48,21 +48,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Custom text theme with explicit font sizes (accessibility-compliant)
-    final textTheme = ThemeData.dark().textTheme.copyWith(
-      labelSmall: const TextStyle(
-        fontSize: 18,
-        letterSpacing: 2,
-        color: Colors.white,
-      ),
-      labelLarge: const TextStyle(
-        fontSize: 18,
-        letterSpacing: 2,
-        color: Colors.white,
-        decorationColor: Colors.white,
-      ),
-    );
-
     return ListenableBuilder(
       listenable: settingsState,
       builder: (context, child) {
@@ -84,13 +69,28 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           title: 'Omnitrain',
           debugShowCheckedModeBanner: false,
-          theme: appTheme.copyWith(textTheme: textTheme),
-          builder: (context, child) =>
-              GestureDetector(
+          theme: appTheme,
+          // Global text scale clamp: honours accessibility scaling within a
+          // sensible range. Below 0.9 text shrinks to unreadable; above 1.3
+          // dense screens (session logger, calendar) feel tight but remain
+          // functional. Configured here only — never re-implemented per screen.
+          builder: (context, child) {
+            final mq = MediaQuery.of(context);
+            final rawScale = mq.textScaler.scale(1.0);
+            final clamped = rawScale.clamp(
+              OmniTheme.kTextScaleMin,
+              OmniTheme.kTextScaleMax,
+            );
+            return MediaQuery(
+              data: mq.copyWith(textScaler: TextScaler.linear(clamped)),
+              child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                child: OmniGradientBackground(child: child ?? const SizedBox.shrink()),
+                child: OmniGradientBackground(
+                    child: child ?? const SizedBox.shrink()),
               ),
+            );
+          },
           // Splash screen temporarily disabled - showing home screen directly
           // home: OmniSplashScreen(workoutState: workoutState, homeState: homeState),
           home: showOnboarding
@@ -178,10 +178,9 @@ ThemeData buildTheme({
       color: Colors.transparent,
       shadowColor: Colors.transparent,
     ),
-    textTheme: TextTheme(
-      bodyLarge: TextStyle(color: textPrimary),
-      bodyMedium: TextStyle(color: textSecondary),
-      labelLarge: TextStyle(color: textPrimary),
+    textTheme: OmniTheme.buildTextTheme(
+      textPrimary: textPrimary,
+      textSecondary: textSecondary,
     ),
   );
 }

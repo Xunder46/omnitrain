@@ -52,8 +52,7 @@ class MaintenancePlaceholderScreen extends StatelessWidget {
                 const SizedBox(height: 32),
                 Text(
                   'Coming Soon',
-                  style: TextStyle(
-                    fontSize: 24,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
                     color: OmniTheme.textPrimary,
@@ -70,8 +69,7 @@ class MaintenancePlaceholderScreen extends StatelessWidget {
                 Text(
                   description,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     color: OmniTheme.textPrimary.withOpacity(0.7),
                     height: 1.5,
                   ),

@@ -1167,7 +1167,9 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: themeColors.textMuted),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: themeColors.textMuted,
+            ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -1190,16 +1192,14 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
               children: [
                 Text(
                   'Rough',
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: theme.textTheme.labelSmall?.copyWith(
                     letterSpacing: 1.0,
                     color: themeColors.textMuted,
                   ),
                 ),
                 Text(
                   'Great',
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: theme.textTheme.labelSmall?.copyWith(
                     letterSpacing: 1.0,
                     color: themeColors.textMuted,
                   ),
@@ -1238,8 +1238,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
           child: Center(
             child: Text(
               number.toString(),
-              style: TextStyle(
-                fontSize: 22,
+              style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w500,
                 color: isSelected
                     ? Colors.white

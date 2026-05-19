@@ -205,7 +205,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: OmniTheme.textSecondary.withOpacity(0.7),
-                fontSize: 12,
                 letterSpacing: 2.0,
                 fontWeight: FontWeight.w600,
               ),

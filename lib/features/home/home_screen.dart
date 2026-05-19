@@ -172,8 +172,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   children: [
                     Text(
                       'TRAIN',
-                      style: TextStyle(
-                        fontSize: 18,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                         letterSpacing: 2.0,
                         color: OmniTheme.textPrimary,
@@ -498,8 +497,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   Text(
                     'Free Training',
-                    style: TextStyle(
-                      fontSize: 20,
+                    style: Theme.of(innerCtx).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: OmniTheme.textPrimary,
                     ),
@@ -534,7 +532,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         Navigator.of(innerCtx).pop();
                         _startFreeSession(context, isRolling: isRolling);
                       },
-                      child: const Text('Start Session'),
+                      child: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text('Start Session'),
+                      ),
                     ),
                   ),
                 ],
@@ -638,10 +639,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 children: [
                                   Text(
                                     'HUB',
-                                    style: TextStyle(
+                                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
                                       color: OmniTheme.textSecondary
                                           .withOpacity(0.7),
-                                      fontSize: 12,
                                       letterSpacing: 3.0,
                                       fontWeight: FontWeight.w600,
                                     ),

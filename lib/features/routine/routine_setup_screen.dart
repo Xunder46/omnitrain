@@ -556,7 +556,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                         ),
                       ),
                     ),
-                    child: const Text('Cancel'),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Cancel'),
+                    ),
                   ),
                 ),
               ),
@@ -575,7 +578,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                         ),
                       ),
                     ),
-                    child: const Text('Save'),
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('Save'),
+                    ),
                   ),
                 ),
               ),

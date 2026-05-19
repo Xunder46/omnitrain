@@ -52,9 +52,8 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
                   children: [
                     Text(
                       'No training periods yet.',
-                      style: TextStyle(
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: OmniTheme.textSecondary.withOpacity(0.6),
-                        fontSize: 15,
                       ),
                     ),
                   ],
@@ -193,10 +192,9 @@ class _PeriodRow extends StatelessWidget {
             Expanded(
               child: Text(
                 period.name,
-                style: TextStyle(
+                style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
-                  fontSize: 14,
                 ),
               ),
             ),
@@ -211,9 +209,10 @@ class _PeriodRow extends StatelessWidget {
                 ),
                 child: Text(
                   'Active',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.primary,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -226,8 +225,7 @@ class _PeriodRow extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               dateRange,
-              style: TextStyle(
-                fontSize: 12,
+              style: theme.textTheme.labelMedium?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.55),
               ),
             ),
@@ -248,8 +246,7 @@ class _PeriodRow extends StatelessWidget {
                     ),
                     child: Text(
                       ModalityColorUtils.labelForModality(m),
-                      style: TextStyle(
-                        fontSize: 10,
+                      style: theme.textTheme.labelSmall?.copyWith(
                         color: c,
                         fontWeight: FontWeight.w500,
                       ),

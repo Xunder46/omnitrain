@@ -30,8 +30,7 @@ class ModalityPickerDialog extends StatelessWidget {
           children: [
             Text(
               'Select Exercise Modality',
-              style: TextStyle(
-                fontSize: 18,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
               ),
@@ -110,19 +109,17 @@ class ModalityPickerDialog extends StatelessWidget {
                       children: [
                         Text(
                           displayName,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                         ),
                         SizedBox(height: 4),
                         Text(
                           _getModalityDescription(modality),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[400],
-                          ),
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: Colors.grey[400],
+                        ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
