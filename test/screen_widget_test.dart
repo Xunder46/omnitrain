@@ -3155,6 +3155,67 @@ void main() {
 
       expect(find.text('No exercises found'), findsOneWidget);
     });
+
+    testWidgets('New Exercise label is not wrapped in shrink-to-fit FittedBox',
+        (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ExercisePickerDialog(workoutState: workoutState),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.ancestor(
+          of: find.text('New Exercise'),
+          matching: find.byType(FittedBox),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+        'New Exercise label type role is more prominent than dropdown value text',
+        (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ExercisePickerDialog(workoutState: workoutState),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // After Fix 1, 'New Exercise' Text has no explicit downscaled style
+      final newExerciseText =
+          tester.widget<Text>(find.text('New Exercise'));
+      expect(newExerciseText.style?.fontSize, isNull,
+          reason:
+              'New Exercise label must not have an explicit downscaled fontSize');
+
+      // After Fix 2, dropdown 'All' Text has an explicitly small style (bodySmall)
+      final allTextWidgets =
+          tester.widgetList<Text>(find.text('All')).toList();
+      expect(allTextWidgets, isNotEmpty,
+          reason: 'Discipline/Muscle dropdowns should show selected value');
+      for (final w in allTextWidgets) {
+        expect(w.style?.fontSize, isNotNull,
+            reason: 'Dropdown value text must have an explicit muted style');
+        expect(w.style!.fontSize!, lessThan(14.0),
+            reason:
+                'Dropdown value text must be smaller than standard body text');
+      }
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -3458,7 +3519,7 @@ void main() {
         await tester.tap(find.text(timedExercise.name).first);
         await tester.pumpAndSettle();
 
-        final linkFinder = find.widgetWithText(TextButton, 'Weight adjustment');
+        final linkFinder = find.widgetWithText(OutlinedButton, 'Weight adjustment');
         await tester.ensureVisible(linkFinder);
 
         expect(linkFinder, findsOneWidget);
@@ -3567,6 +3628,85 @@ void main() {
 
       expect(
         find.textContaining('Previous: 8 reps @ 220.5 lbs'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'weight adjustment renders as OutlinedButton with expand icon, not plain TextButton',
+        (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      await repo.setPreferenceString('preferred_weight_unit', 'kg');
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await workoutState.markExerciseInfoHintSeen();
+      await workoutState.markExerciseNotesHintSeen();
+      await workoutState.createNewSession(modality: 'cardio_endurance');
+
+      final exercises = await repo.getExercises();
+      final timedExercise = exercises.firstWhere(
+        (e) => e.capabilities.contains('time'),
+        orElse: () => exercises.first,
+      );
+      await workoutState.addExerciseToSession(
+        timedExercise,
+        effortKindOverride: 'timed',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: settingsState,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(timedExercise.name).first);
+      await tester.pumpAndSettle();
+
+      final outlinedFinder =
+          find.widgetWithText(OutlinedButton, 'Weight adjustment');
+      await tester.ensureVisible(outlinedFinder);
+      final outlinedButton = tester.widget<OutlinedButton>(outlinedFinder);
+      final theme = Theme.of(tester.element(outlinedFinder));
+      final resolvedForeground = outlinedButton.style?.foregroundColor
+          ?.resolve(<WidgetState>{});
+      final resolvedSide = outlinedButton.style?.side?.resolve(<WidgetState>{});
+
+      // Must render as OutlinedButton, not plain TextButton
+      expect(outlinedFinder, findsOneWidget);
+      expect(
+        find.widgetWithText(TextButton, 'Weight adjustment'),
+        findsNothing,
+      );
+      expect(resolvedForeground, theme.colorScheme.primary);
+      expect(resolvedSide?.color, theme.colorScheme.primary);
+
+      // Must show expand icon when collapsed
+      expect(
+        find.descendant(
+          of: outlinedFinder,
+          matching: find.byIcon(Icons.expand_more),
+        ),
+        findsOneWidget,
+      );
+
+      // Tap to expand — icon must flip to expand_less
+      await tester.tap(outlinedFinder);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: outlinedFinder,
+          matching: find.byIcon(Icons.expand_less),
+        ),
         findsOneWidget,
       );
     });

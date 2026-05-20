@@ -101,29 +101,23 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(height: 50),
-        TextButton(
+        OutlinedButton.icon(
           onPressed: () => setState(() {
             _weightAdjustExpanded[key] = !isExpanded;
           }),
-          style: ButtonStyle(
-            padding: WidgetStateProperty.all(
-              const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-            ),
-            minimumSize: WidgetStateProperty.all(Size.zero),
+          icon: Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
+          label: const Text('Weight adjustment'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: theme.colorScheme.primary,
+            side: BorderSide(color: theme.colorScheme.primary),
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            shape: WidgetStateProperty.all(
-              RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  OmniTheme.buttonUtilityRadius,
-                ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                OmniTheme.buttonUtilityRadius,
               ),
             ),
-          ),
-          child: Text(
-            'Weight adjustment',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.primary),
           ),
         ),
         if (isExpanded)

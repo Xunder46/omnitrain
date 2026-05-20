@@ -251,10 +251,7 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                 child: OutlinedButton.icon(
                   onPressed: _openCreateExercise,
                   icon: const Icon(Icons.add),
-                  label: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('New Exercise'),
-                  ),
+                  label: const Text('New Exercise'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: theme.colorScheme.primary,
                     backgroundColor: Colors.transparent,
@@ -315,6 +312,9 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                     child: DropdownButtonFormField<String>(
                       initialValue: _selectedDisciplineId,
                       isExpanded: true,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: OmniTheme.textSecondary,
+                      ),
                       decoration: InputDecoration(
                         enabledBorder: OutlineInputBorder(
                           borderSide: BorderSide(
@@ -342,13 +342,24 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                         isDense: true,
                       ),
                       items: [
-                        const DropdownMenuItem(value: null, child: Text('All')),
+                        DropdownMenuItem(
+                          value: null,
+                          child: Text(
+                            'All',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: OmniTheme.textSecondary,
+                            ),
+                          ),
+                        ),
                         ..._disciplines.map(
                           (d) => DropdownMenuItem(
                             value: d.id,
                             child: Text(
                               d.name,
                               overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: OmniTheme.textSecondary,
+                              ),
                             ),
                           ),
                         ),
@@ -364,6 +375,9 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                     child: DropdownButtonFormField<String>(
                       initialValue: _selectedMuscleGroupId,
                       isExpanded: true,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: OmniTheme.textSecondary,
+                      ),
                       decoration: InputDecoration(
                         enabledBorder: OutlineInputBorder(
                           borderSide: BorderSide(
@@ -391,13 +405,24 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
                         isDense: true,
                       ),
                       items: [
-                        const DropdownMenuItem(value: null, child: Text('All')),
+                        DropdownMenuItem(
+                          value: null,
+                          child: Text(
+                            'All',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: OmniTheme.textSecondary,
+                            ),
+                          ),
+                        ),
                         ..._muscleGroups.map(
                           (mg) => DropdownMenuItem(
                             value: mg.id,
                             child: Text(
                               mg.name,
                               overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: OmniTheme.textSecondary,
+                              ),
                             ),
                           ),
                         ),
