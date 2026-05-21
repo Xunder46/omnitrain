@@ -216,298 +216,312 @@ class _ExercisePickerDialogState extends State<ExercisePickerDialog> {
 
     return Theme(
       data: pickerTheme,
-      child: Dialog(
-        backgroundColor: themeColors.surface,
-        surfaceTintColor: Colors.transparent,
-        clipBehavior: Clip.antiAlias,
-        child: Container(
-          decoration: BoxDecoration(color: themeColors.surface),
-          width: MediaQuery.of(context).size.width * 0.9,
-          height: MediaQuery.of(context).size.height * 0.8,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Select Exercise',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
+      child: MediaQuery.removeViewInsets(
+        context: context,
+        removeBottom: true,
+        child: Dialog(
+          backgroundColor: themeColors.surface,
+          surfaceTintColor: Colors.transparent,
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            decoration: BoxDecoration(color: themeColors.surface),
+            width: MediaQuery.of(context).size.width * 0.9,
+            height: MediaQuery.of(context).size.height * 0.86,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Select Exercise',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _openCreateExercise,
-                  icon: const Icon(Icons.add),
-                  label: const Text('New Exercise'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: theme.colorScheme.primary,
-                    backgroundColor: Colors.transparent,
-                    side: BorderSide(
-                      color: theme.colorScheme.primary,
-                      width: 1.5,
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-
-              // Search field
-              TextField(
-                textCapitalization: TextCapitalization.none,
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Search exercises...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            _searchExercises();
-                          },
-                        )
-                      : null,
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: themeColors.surfaceBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: theme.colorScheme.primary),
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: themeColors.surfaceBorder),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Filter row
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _selectedDisciplineId,
-                      isExpanded: true,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.textSecondary,
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _openCreateExercise,
+                    icon: const Icon(Icons.add),
+                    label: const Text('New Exercise'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: theme.colorScheme.primary,
+                      backgroundColor: Colors.transparent,
+                      side: BorderSide(
+                        color: theme.colorScheme.primary,
+                        width: 1.5,
                       ),
-                      decoration: InputDecoration(
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeColors.surfaceBorder,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.primary,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        labelText: 'Discipline',
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeColors.surfaceBorder,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        isDense: true,
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: null,
-                          child: Text(
-                            'All',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.textSecondary,
-                            ),
-                          ),
-                        ),
-                        ..._disciplines.map(
-                          (d) => DropdownMenuItem(
-                            value: d.id,
-                            child: Text(
-                              d.name,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: OmniTheme.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedDisciplineId = value);
-                        _searchExercises();
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _selectedMuscleGroupId,
-                      isExpanded: true,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.textSecondary,
-                      ),
-                      decoration: InputDecoration(
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeColors.surfaceBorder,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: theme.colorScheme.primary,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        labelText: 'Muscle',
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(
-                            color: themeColors.surfaceBorder,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        isDense: true,
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: null,
-                          child: Text(
-                            'All',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.textSecondary,
-                            ),
-                          ),
-                        ),
-                        ..._muscleGroups.map(
-                          (mg) => DropdownMenuItem(
-                            value: mg.id,
-                            child: Text(
-                              mg.name,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: OmniTheme.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _selectedMuscleGroupId = value);
-                        _searchExercises();
-                      },
-                    ),
-                  ),
-                ],
-              ),
-
-              // Clear filters button (only show when filters are active)
-              if (_selectedDisciplineId != null ||
-                  _selectedMuscleGroupId != null ||
-                  _searchController.text.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: TextButton.icon(
-                    onPressed: _clearFilters,
-                    style: TextButton.styleFrom(
-                      foregroundColor: OmniTheme.textSecondary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(
                           OmniTheme.buttonUtilityRadius,
                         ),
                       ),
                     ),
-                    icon: const Icon(Icons.clear_all, size: 16),
-                    label: const Text('Clear Filters'),
                   ),
                 ),
+                const SizedBox(height: 16),
 
-              const SizedBox(height: 16),
-
-              // Results count
-              Text(
-                '${_filteredExercises.length} exercise${_filteredExercises.length != 1 ? 's' : ''} found',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                // Search field
+                TextField(
+                  textCapitalization: TextCapitalization.none,
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search exercises...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                              _searchExercises();
+                            },
+                          )
+                        : null,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: themeColors.surfaceBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: theme.colorScheme.primary),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: themeColors.surfaceBorder),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 12),
 
-              // Exercise list
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _filteredExercises.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.search_off,
-                              size: 64,
-                              color: theme.colorScheme.onSurface.withValues(
-                                alpha: 0.3,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No exercises found',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(
-                                  alpha: 0.6,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Try adjusting your filters',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface.withValues(
-                                  alpha: 0.5,
-                                ),
-                              ),
-                            ),
-                          ],
+                // Filter row
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _selectedDisciplineId,
+                        isExpanded: true,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: OmniTheme.textSecondary,
                         ),
-                      )
-                    : _buildExerciseList(theme),
-              ),
-            ],
+                        decoration: InputDecoration(
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: themeColors.surfaceBorder,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.primary,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          labelText: 'Discipline',
+                          border: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: themeColors.surfaceBorder,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          isDense: true,
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: null,
+                            child: Text(
+                              'All',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: OmniTheme.textSecondary,
+                              ),
+                            ),
+                          ),
+                          ..._disciplines.map(
+                            (d) => DropdownMenuItem(
+                              value: d.id,
+                              child: Text(
+                                d.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: OmniTheme.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() => _selectedDisciplineId = value);
+                          _searchExercises();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _selectedMuscleGroupId,
+                        isExpanded: true,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: OmniTheme.textSecondary,
+                        ),
+                        decoration: InputDecoration(
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: themeColors.surfaceBorder,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.primary,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          labelText: 'Muscle',
+                          border: OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: themeColors.surfaceBorder,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          isDense: true,
+                        ),
+                        items: [
+                          DropdownMenuItem(
+                            value: null,
+                            child: Text(
+                              'All',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: OmniTheme.textSecondary,
+                              ),
+                            ),
+                          ),
+                          ..._muscleGroups.map(
+                            (mg) => DropdownMenuItem(
+                              value: mg.id,
+                              child: Text(
+                                mg.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: OmniTheme.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() => _selectedMuscleGroupId = value);
+                          _searchExercises();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Clear filters button (only show when filters are active)
+                if (_selectedDisciplineId != null ||
+                    _selectedMuscleGroupId != null ||
+                    _searchController.text.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: TextButton.icon(
+                      onPressed: _clearFilters,
+                      style: TextButton.styleFrom(
+                        foregroundColor: OmniTheme.textSecondary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            OmniTheme.buttonUtilityRadius,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.clear_all, size: 16),
+                      label: const Text('Clear Filters'),
+                    ),
+                  ),
+
+                const SizedBox(height: 16),
+
+                // Results count
+                Text(
+                  '${_filteredExercises.length} exercise${_filteredExercises.length != 1 ? 's' : ''} found',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Exercise list
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _filteredExercises.isEmpty
+                      ? LayoutBuilder(
+                          builder: (context, constraints) {
+                            return SingleChildScrollView(
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: constraints.maxHeight,
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.search_off,
+                                        size: 64,
+                                        color: theme.colorScheme.onSurface
+                                            .withValues(alpha: 0.3),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'No exercises found',
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                              color: theme.colorScheme.onSurface
+                                                  .withValues(alpha: 0.6),
+                                            ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Try adjusting your filters',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme.colorScheme.onSurface
+                                                  .withValues(alpha: 0.5),
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : _buildExerciseList(theme),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -388,6 +388,11 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                         )
                       : null,
                 ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Add exercise to block',
+                  onPressed: () => _addExercise(context, segment.id),
+                ),
                 PopupMenuButton(
                   color: theme.colorScheme.surface,
                   itemBuilder: (context) => [
@@ -479,25 +484,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                   );
                 },
               ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _addExercise(context, segment.id),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Exercise'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: BorderSide(color: theme.colorScheme.primary),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+
           ],
         ),
       ),

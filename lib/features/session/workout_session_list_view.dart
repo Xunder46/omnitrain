@@ -168,6 +168,12 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     ),
                   ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  tooltip: 'Add exercise to block',
+                  onPressed: () =>
+                      _addExercise(segmentId: segmentId, blockId: block.id),
+                ),
                 PopupMenuButton<String>(
                   color: theme.colorScheme.surface,
                   onSelected: (value) async {
@@ -240,28 +246,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 _buildExerciseTile(ex, theme),
                 const SizedBox(height: 8),
               ],
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                        _addExercise(segmentId: segmentId, blockId: block.id),
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Add Exercise'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: BorderSide(color: theme.colorScheme.primary),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          OmniTheme.buttonUtilityRadius,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+
           ],
         ),
       ),
