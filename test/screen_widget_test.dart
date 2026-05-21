@@ -1858,7 +1858,7 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Add Planned Session'));
+        await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
         await tester.pumpAndSettle();
 
         expect(find.text('Session Type'), findsOneWidget);
@@ -1867,6 +1867,289 @@ void main() {
           findsOneWidget,
         );
         expect(find.widgetWithText(OutlinedButton, 'Routine'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'planned session form uses active theme tokens for sheet, title, and close icon',
+      (WidgetTester tester) async {
+        addTearDown(() => OmniTheme.activeTheme = AppTheme.abyssalNeon);
+        OmniTheme.activeTheme = AppTheme.forgeEmber;
+
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        final forgeTokens = OmniTheme.colorsForTheme(AppTheme.forgeEmber);
+        final forgeTheme = buildTheme(
+          theme: AppTheme.forgeEmber,
+          brightness: Brightness.dark,
+          background: forgeTokens.backgroundBottom,
+          surface: forgeTokens.surface,
+          secondary: forgeTokens.secondary,
+          textPrimary: const Color(0xFFE6EDF3),
+          textSecondary: forgeTokens.textMuted,
+          divider: forgeTokens.divider,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: forgeTheme,
+            home: DaySessionListScreen(
+              date: DateTime(2099, 12, 31),
+              calendarState: calendarState,
+              routineState: routineState,
+              workoutState: workoutState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
+        await tester.pumpAndSettle();
+
+        final tokens = OmniTheme.colorsForTheme(AppTheme.forgeEmber);
+        final sheetContainer = tester.widget<Container>(
+          find.byWidgetPredicate((widget) {
+            if (widget is! Container) return false;
+            final decoration = widget.decoration;
+            if (decoration is! BoxDecoration) return false;
+            return decoration.borderRadius ==
+                const BorderRadius.vertical(top: Radius.circular(20));
+          }).first,
+        );
+        final sheetDecoration = sheetContainer.decoration! as BoxDecoration;
+        expect(sheetDecoration.color, tokens.surface);
+
+        final titleText = tester.widget<Text>(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Add Planned Session'),
+          ),
+        );
+        expect(titleText.style?.color, tokens.textMuted);
+
+        final closeButton = tester.widget<IconButton>(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.widgetWithIcon(IconButton, Icons.close),
+          ),
+        );
+        expect(closeButton.color, tokens.textMuted);
+      },
+    );
+
+    testWidgets(
+      'planned session form reflects new theme tokens after theme switch and rebuild',
+      (WidgetTester tester) async {
+        addTearDown(() => OmniTheme.activeTheme = AppTheme.abyssalNeon);
+
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+
+        Future<void> pumpDayScreen() async {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DaySessionListScreen(
+                date: DateTime(2099, 12, 31),
+                calendarState: calendarState,
+                routineState: routineState,
+                workoutState: workoutState,
+                routineSessionService: routineSessionService,
+                sessionSummaryService: sessionSummaryService,
+                settingsState: SettingsState(repo),
+                timerAlertService: FakeTimerAlertService(),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
+          await tester.pumpAndSettle();
+        }
+
+        OmniTheme.activeTheme = AppTheme.forgeEmber;
+        await pumpDayScreen();
+
+        Color sheetColorForTopRadiusSheet() {
+          final container = tester.widget<Container>(
+            find.byWidgetPredicate((widget) {
+              if (widget is! Container) return false;
+              final decoration = widget.decoration;
+              if (decoration is! BoxDecoration) return false;
+              return decoration.borderRadius ==
+                  const BorderRadius.vertical(top: Radius.circular(20));
+            }).first,
+          );
+          final decoration = container.decoration! as BoxDecoration;
+          return decoration.color!;
+        }
+
+        final closeA = tester.widget<IconButton>(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.widgetWithIcon(IconButton, Icons.close),
+          ),
+        );
+        final sheetA = sheetColorForTopRadiusSheet();
+        final tokensA = OmniTheme.colorsForTheme(AppTheme.forgeEmber);
+        expect(sheetA, tokensA.surface);
+        expect(closeA.color, tokensA.textMuted);
+
+        await tester.tap(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.widgetWithIcon(IconButton, Icons.close),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        OmniTheme.activeTheme = AppTheme.malachiteCore;
+        await pumpDayScreen();
+
+        final closeB = tester.widget<IconButton>(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.widgetWithIcon(IconButton, Icons.close),
+          ),
+        );
+        final sheetB = sheetColorForTopRadiusSheet();
+        final tokensB = OmniTheme.colorsForTheme(AppTheme.malachiteCore);
+        expect(sheetB, tokensB.surface);
+        expect(closeB.color, tokensB.textMuted);
+        expect(sheetB, isNot(sheetA));
+      },
+    );
+
+    testWidgets(
+      'planned session mode toggle keeps selected and unselected styles theme-consistent',
+      (WidgetTester tester) async {
+        addTearDown(() => OmniTheme.activeTheme = AppTheme.abyssalNeon);
+        OmniTheme.activeTheme = AppTheme.forgeEmber;
+
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        final forgeTokens = OmniTheme.colorsForTheme(AppTheme.forgeEmber);
+        final forgeTheme = buildTheme(
+          theme: AppTheme.forgeEmber,
+          brightness: Brightness.dark,
+          background: forgeTokens.backgroundBottom,
+          surface: forgeTokens.surface,
+          secondary: forgeTokens.secondary,
+          textPrimary: const Color(0xFFE6EDF3),
+          textSecondary: forgeTokens.textMuted,
+          divider: forgeTokens.divider,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: forgeTheme,
+            home: DaySessionListScreen(
+              date: DateTime(2099, 12, 31),
+              calendarState: calendarState,
+              routineState: routineState,
+              workoutState: workoutState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
+        await tester.pumpAndSettle();
+
+        final bottomSheet = find.byType(BottomSheet);
+        final selectedStyle = tester
+            .widget<FilledButton>(
+              find.descendant(
+                of: bottomSheet,
+                matching: find.widgetWithText(FilledButton, 'Free Training'),
+              ),
+            )
+            .style!;
+        final unselectedStyle = tester
+            .widget<OutlinedButton>(
+              find.descendant(
+                of: bottomSheet,
+                matching: find.widgetWithText(OutlinedButton, 'Routine'),
+              ),
+            )
+            .style!;
+
+        final selectedBackground = selectedStyle.backgroundColor?.resolve({});
+        final selectedBorder = selectedStyle.side?.resolve({});
+        final unselectedBorder = unselectedStyle.side?.resolve({});
+
+        expect(
+          selectedBackground,
+          OmniTheme
+              .colorsForTheme(AppTheme.forgeEmber)
+              .primary
+              .withValues(alpha: 0.22),
+        );
+        expect(
+          selectedBorder?.color,
+          OmniTheme
+              .colorsForTheme(AppTheme.forgeEmber)
+              .primary
+              .withValues(alpha: 0.75),
+        );
+
+        await tester.tap(
+          find.descendant(
+            of: bottomSheet,
+            matching: find.widgetWithText(OutlinedButton, 'Routine'),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final selectedRoutineStyle = tester
+            .widget<FilledButton>(
+              find.descendant(
+                of: bottomSheet,
+                matching: find.widgetWithText(FilledButton, 'Routine'),
+              ),
+            )
+            .style!;
+        final unselectedFreeStyle = tester
+            .widget<OutlinedButton>(
+              find.descendant(
+                of: bottomSheet,
+                matching: find.widgetWithText(OutlinedButton, 'Free Training'),
+              ),
+            )
+            .style!;
+
+        final selectedRoutineBackground =
+            selectedRoutineStyle.backgroundColor?.resolve({});
+        final selectedRoutineBorder = selectedRoutineStyle.side?.resolve({});
+        final unselectedFreeBorder = unselectedFreeStyle.side?.resolve({});
+
+        expect(selectedRoutineBackground, selectedBackground);
+        expect(selectedRoutineBorder?.color, selectedBorder?.color);
+        expect(unselectedFreeBorder?.color, unselectedBorder?.color);
       },
     );
 

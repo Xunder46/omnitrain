@@ -721,15 +721,18 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-        decoration: const BoxDecoration(
-          color: OmniTheme.surfaceColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: themeColors.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -741,16 +744,16 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                   widget.initial == null
                       ? 'Add Planned Session'
                       : 'Edit Session',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: OmniTheme.textPrimary,
+                    color: themeColors.textMuted,
                   ),
                 ),
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),
-                  color: OmniTheme.textSecondary,
+                  color: themeColors.textMuted,
                 ),
               ],
             ),
@@ -758,9 +761,9 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
 
             Text(
               'Session Type',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              style: theme.textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: OmniTheme.textSecondary,
+                color: themeColors.textMuted,
               ),
             ),
             const SizedBox(height: 8),
@@ -771,40 +774,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 Expanded(
                   child: (_mode == 'free')
                       ? FilledButton(
-                          style: ButtonStyle(
-                            minimumSize: WidgetStateProperty.all(
-                              const Size.fromHeight(52),
-                            ),
-                            padding: WidgetStateProperty.all(
-                              const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                            ),
-                            backgroundColor: WidgetStateProperty.all(
-                              OmniTheme.zenCoreGlowColor.withValues(
-                                alpha: 0.22,
-                              ),
-                            ),
-                            foregroundColor: WidgetStateProperty.all(
-                              OmniTheme.textPrimary,
-                            ),
-                            side: WidgetStateProperty.all(
-                              BorderSide(
-                                color: OmniTheme.zenCoreGlowColor.withValues(
-                                  alpha: 0.75,
-                                ),
-                                width: 1.2,
-                              ),
-                            ),
-                            shape: WidgetStateProperty.all(
-                              RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonBorderRadius,
-                                ),
-                              ),
-                            ),
-                          ),
+                          style: _selectedModeButtonStyle(theme),
                           onPressed: () => setState(() => _mode = 'free'),
                           child: const Text(
                             'Free Training',
@@ -813,35 +783,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                           ),
                         )
                       : OutlinedButton(
-                          style: ButtonStyle(
-                            minimumSize: WidgetStateProperty.all(
-                              const Size.fromHeight(52),
-                            ),
-                            padding: WidgetStateProperty.all(
-                              const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                            ),
-                            foregroundColor: WidgetStateProperty.all(
-                              OmniTheme.textSecondary,
-                            ),
-                            side: WidgetStateProperty.all(
-                              BorderSide(
-                                color: OmniTheme.textSecondary.withValues(
-                                  alpha: 0.45,
-                                ),
-                                width: 1.2,
-                              ),
-                            ),
-                            shape: WidgetStateProperty.all(
-                              RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonBorderRadius,
-                                ),
-                              ),
-                            ),
-                          ),
+                          style: _unselectedModeButtonStyle(theme),
                           onPressed: () => setState(() => _mode = 'free'),
                           child: const Text(
                             'Free Training',
@@ -854,40 +796,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                 Expanded(
                   child: (_mode == 'routine')
                       ? FilledButton(
-                          style: ButtonStyle(
-                            minimumSize: WidgetStateProperty.all(
-                              const Size.fromHeight(52),
-                            ),
-                            padding: WidgetStateProperty.all(
-                              const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                            ),
-                            backgroundColor: WidgetStateProperty.all(
-                              OmniTheme.zenCoreGlowColor.withValues(
-                                alpha: 0.22,
-                              ),
-                            ),
-                            foregroundColor: WidgetStateProperty.all(
-                              OmniTheme.textPrimary,
-                            ),
-                            side: WidgetStateProperty.all(
-                              BorderSide(
-                                color: OmniTheme.zenCoreGlowColor.withValues(
-                                  alpha: 0.75,
-                                ),
-                                width: 1.2,
-                              ),
-                            ),
-                            shape: WidgetStateProperty.all(
-                              RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonBorderRadius,
-                                ),
-                              ),
-                            ),
-                          ),
+                          style: _selectedModeButtonStyle(theme),
                           onPressed: () => setState(() => _mode = 'routine'),
                           child: const Text(
                             'Routine',
@@ -896,35 +805,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
                           ),
                         )
                       : OutlinedButton(
-                          style: ButtonStyle(
-                            minimumSize: WidgetStateProperty.all(
-                              const Size.fromHeight(52),
-                            ),
-                            padding: WidgetStateProperty.all(
-                              const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                            ),
-                            foregroundColor: WidgetStateProperty.all(
-                              OmniTheme.textSecondary,
-                            ),
-                            side: WidgetStateProperty.all(
-                              BorderSide(
-                                color: OmniTheme.textSecondary.withValues(
-                                  alpha: 0.45,
-                                ),
-                                width: 1.2,
-                              ),
-                            ),
-                            shape: WidgetStateProperty.all(
-                              RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  OmniTheme.buttonBorderRadius,
-                                ),
-                              ),
-                            ),
-                          ),
+                          style: _unselectedModeButtonStyle(theme),
                           onPressed: () => setState(() => _mode = 'routine'),
                           child: const Text(
                             'Routine',
@@ -942,10 +823,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
               DropdownButtonFormField<String?>(
                 initialValue: _selectedModality,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Modality',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: _fieldDecoration('Modality', theme),
                 items: _modalities
                     .map(
                       (m) => DropdownMenuItem<String?>(
@@ -960,10 +838,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
               DropdownButtonFormField<String?>(
                 initialValue: _selectedTemplateId,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Routine',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: _fieldDecoration('Routine', theme),
                 items: widget.routineState.routines
                     .map(
                       (t) => DropdownMenuItem<String?>(
@@ -977,23 +852,17 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
             const SizedBox(height: 12),
 
             TextField(
-
               textCapitalization: TextCapitalization.words,
-
               controller: _titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Title (optional)',
-                border: OutlineInputBorder(),
-              ),
+              style: theme.textTheme.bodyMedium,
+              decoration: _fieldDecoration('Title (optional)', theme),
             ),
             const SizedBox(height: 12),
             TextField(
               textCapitalization: TextCapitalization.sentences,
               controller: _noteCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Notes (optional)',
-                border: OutlineInputBorder(),
-              ),
+              style: theme.textTheme.bodyMedium,
+              decoration: _fieldDecoration('Notes (optional)', theme),
               maxLines: 2,
             ),
             const SizedBox(height: 20),
@@ -1020,6 +889,73 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  ButtonStyle _selectedModeButtonStyle(ThemeData theme) {
+    return ButtonStyle(
+      minimumSize: WidgetStateProperty.all(const Size.fromHeight(52)),
+      padding: WidgetStateProperty.all(
+        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      ),
+      backgroundColor: WidgetStateProperty.all(
+        theme.colorScheme.primary.withValues(alpha: 0.22),
+      ),
+      foregroundColor: WidgetStateProperty.all(theme.colorScheme.onSurface),
+      side: WidgetStateProperty.all(
+        BorderSide(
+          color: theme.colorScheme.primary.withValues(alpha: 0.75),
+          width: 1.2,
+        ),
+      ),
+      shape: WidgetStateProperty.all(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+        ),
+      ),
+    );
+  }
+
+  ButtonStyle _unselectedModeButtonStyle(ThemeData theme) {
+    return ButtonStyle(
+      minimumSize: WidgetStateProperty.all(const Size.fromHeight(52)),
+      padding: WidgetStateProperty.all(
+        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      ),
+      foregroundColor: WidgetStateProperty.all(theme.colorScheme.onSurface),
+      side: WidgetStateProperty.all(
+        BorderSide(
+          color: theme.colorScheme.outline.withValues(alpha: 0.55),
+          width: 1.2,
+        ),
+      ),
+      shape: WidgetStateProperty.all(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _fieldDecoration(String label, ThemeData theme) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: theme.textTheme.bodyMedium?.copyWith(
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(
+          color: theme.colorScheme.outline.withValues(alpha: 0.55),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.4),
+      ),
+      border: OutlineInputBorder(
+        borderSide: BorderSide(
+          color: theme.colorScheme.outline.withValues(alpha: 0.55),
         ),
       ),
     );
