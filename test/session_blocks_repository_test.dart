@@ -282,8 +282,9 @@ void main() {
       );
       expect(clonedObservations, hasLength(1));
       expect(clonedObservations.first.id, isNot('obs-source'));
-      expect(clonedObservations.first.valueInt, 0);
-      expect(clonedObservations.first.valueReal, 0.0);
+      // Values must be preserved from the source — not reset to zero.
+      expect(clonedObservations.first.valueInt, 10);
+      expect(clonedObservations.first.valueReal, isNull);
       expect(clonedObservations.first.valueText, isNull);
       expect(clonedObservations.first.valueBool, isNull);
       expect(clonedObservations.first.rpeRating, isNull);
@@ -414,6 +415,159 @@ void main() {
 
       expect(cloned.name, isNot(contains('(2)')));
       expect(cloned.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    });
+
+    test('cloneSessionBlock preserves all observation numeric values', () async {
+      await repository.createSession(
+        TrainingSession(
+          id: 'session-numvals',
+          ownerUserId: 'local-user',
+          startedAtMs: 1000,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repository.createSegment(
+        SessionSegment(
+          id: 'segment-numvals',
+          sessionId: 'session-numvals',
+          orderIndex: 0,
+          segmentType: 'mixed',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-numvals-src',
+          sessionId: 'session-numvals',
+          name: 'Source',
+          orderIndex: 0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: 'effort-numvals',
+          segmentId: 'segment-numvals',
+          orderIndex: 0,
+          effortKind: 'set',
+          blockId: 'block-numvals-src',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Create an observation with all value fields populated.
+      await repository.createObservation(
+        EffortObservation(
+          id: 'obs-numvals',
+          effortId: 'effort-numvals',
+          metricId: 'metric-weight',
+          unitId: 'unit-kg',
+          valueInt: 5,
+          valueReal: 102.5,
+          valueText: 'some note',
+          rpeRating: 8,
+          restDurationMs: 90000,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final newBlockId = await repository.cloneSessionBlock('block-numvals-src');
+      final allEfforts = await repository.getSegmentEfforts('segment-numvals');
+      final clonedEffort = allEfforts.firstWhere((e) => e.blockId == newBlockId);
+      final clonedObs = await repository.getEffortObservations(clonedEffort.id);
+
+      expect(clonedObs, hasLength(1));
+      expect(clonedObs.first.id, isNot('obs-numvals'));
+      expect(clonedObs.first.metricId, 'metric-weight');
+      expect(clonedObs.first.unitId, 'unit-kg');
+      expect(clonedObs.first.valueInt, 5);
+      expect(clonedObs.first.valueReal, 102.5);
+      expect(clonedObs.first.valueText, 'some note');
+      expect(clonedObs.first.rpeRating, 8);
+      expect(clonedObs.first.restDurationMs, 90000);
+    });
+
+    test('cloneSessionBlock produces independent copy — mutating clone does not affect source', () async {
+      await repository.createSession(
+        TrainingSession(
+          id: 'session-independence',
+          ownerUserId: 'local-user',
+          startedAtMs: 1000,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repository.createSegment(
+        SessionSegment(
+          id: 'segment-independence',
+          sessionId: 'session-independence',
+          orderIndex: 0,
+          segmentType: 'mixed',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-indep-src',
+          sessionId: 'session-independence',
+          name: 'Source',
+          orderIndex: 0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repository.createEffort(
+        SegmentEffort(
+          id: 'effort-indep',
+          segmentId: 'segment-independence',
+          orderIndex: 0,
+          effortKind: 'set',
+          blockId: 'block-indep-src',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repository.createObservation(
+        EffortObservation(
+          id: 'obs-indep',
+          effortId: 'effort-indep',
+          metricId: 'metric-reps',
+          valueInt: 12,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final newBlockId = await repository.cloneSessionBlock('block-indep-src');
+      final allEfforts = await repository.getSegmentEfforts('segment-independence');
+      final clonedEffort = allEfforts.firstWhere((e) => e.blockId == newBlockId);
+      final clonedObs = (await repository.getEffortObservations(clonedEffort.id)).first;
+
+      // Mutate the cloned observation.
+      await repository.updateObservation(
+        EffortObservation(
+          id: clonedObs.id,
+          effortId: clonedObs.effortId,
+          metricId: clonedObs.metricId,
+          valueInt: 99,
+          createdAtMs: clonedObs.createdAtMs,
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+
+      // Source observation must be unchanged.
+      final sourceObs = await repository.getEffortObservations('effort-indep');
+      expect(sourceObs.first.valueInt, 12);
+
+      // Cloned observation reflects the mutation.
+      final mutatedObs = await repository.getEffortObservations(clonedEffort.id);
+      expect(mutatedObs.first.valueInt, 99);
     });
   });
 }

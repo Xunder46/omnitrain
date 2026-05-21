@@ -92,16 +92,10 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         final seconds = totalDuration % 60;
         return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')} total';
       case 'round':
-        final completedRounds = widget.workoutState
+        final totalRounds = widget.workoutState
             .getRoundsForEffort(effortId)
-            .where(
-              (round) =>
-                  round.completed &&
-                  round.startedAtMs > 0 &&
-                  round.finishedAtMs != null,
-            )
             .length;
-        return '$completedRounds round${completedRounds != 1 ? 's' : ''}';
+        return '$totalRounds round${totalRounds != 1 ? 's' : ''}';
       case 'drill':
         return '${entries.length} hold${entries.length != 1 ? 's' : ''}';
       default:

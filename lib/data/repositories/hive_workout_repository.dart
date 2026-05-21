@@ -1735,7 +1735,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
       );
       await _effortsBox.put(newEffortId, newEffort.toMap());
 
-      // Clone observations with values reset to zero/null
+      // Clone observations — preserve all numeric values from the source
       for (final obsEntry in _observationsBox.toMap().entries) {
         final obsMap = _asStringMap(obsEntry.value);
         if (obsMap['effort_id'] != originalEffort.id) continue;
@@ -1745,12 +1745,12 @@ class HiveWorkoutRepository implements WorkoutRepository {
           effortId: newEffortId,
           metricId: obs.metricId,
           unitId: obs.unitId,
-          valueInt: 0,
-          valueReal: 0.0,
-          valueText: null,
-          valueBool: null,
-          rpeRating: null,
-          restDurationMs: null,
+          valueInt: obs.valueInt,
+          valueReal: obs.valueReal,
+          valueText: obs.valueText,
+          valueBool: obs.valueBool,
+          rpeRating: obs.rpeRating,
+          restDurationMs: obs.restDurationMs,
           createdAtMs: nowMs,
           updatedAtMs: nowMs,
         );
