@@ -716,6 +716,40 @@ void main() {
       expect(find.text('Set 1 of 1'), findsOneWidget);
     });
 
+    testWidgets('tracking selection shows ModalityPickerDialog', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await routineState.createNewRoutine('Tracking Picker');
+      await routineState.addExerciseToRoutine(exercises.first, 'set');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final exerciseCard = tester.widget<ExerciseCard>(find.byType(ExerciseCard));
+      exerciseCard.onChangeTracking();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ModalityPickerDialog), findsOneWidget);
+      expect(find.text('Select Exercise Modality'), findsOneWidget);
+    });
+
     testWidgets('sets can be added in detail view', (
       WidgetTester tester,
     ) async {

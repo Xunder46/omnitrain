@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../widgets/pickers/exercise_picker_dialog.dart';
-import '../../widgets/pickers/metric_chooser_dialog.dart';
+import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/constants/metric_ids.dart';
@@ -740,23 +740,19 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
     _exerciseCache[exercise.id] = exercise;
 
-    // Step 2: Pick tracking method
-    // If exercise has only one capability, auto-select it
-    final deduped = _deduplicateCapabilities(exercise.capabilities);
-    String? chosenMetric;
+    // Step 2: Pick modality using the shared picker.
+    final modalityResult = await showDialog<(bool, String?)>(
+      context: context,
+      builder: (_) => const ModalityPickerDialog(),
+    );
 
-    if (deduped.length == 1) {
-      chosenMetric = deduped.first;
-    } else {
-      chosenMetric = await showDialog<String>(
-        context: context,
-        builder: (_) => MetricChooserDialog(exercise: exercise),
-      );
+    if (modalityResult == null) return;
 
-      if (chosenMetric == null) return;
-    }
+    final (_, pickedModality) = modalityResult;
+    if (pickedModality == null) return;
 
-    final effortKind = ModalityConfig.effortKindFromMetric(chosenMetric);
+    final effortKind =
+        ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
 
     await widget.routineState.addExerciseToRoutine(
       exercise,
@@ -830,22 +826,18 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   ) async {
     if (exercise == null) return;
 
-    // If exercise has only one capability, auto-select it
-    final deduped = _deduplicateCapabilities(exercise.capabilities);
-    String? chosenMetric;
+    final modalityResult = await showDialog<(bool, String?)>(
+      context: context,
+      builder: (_) => const ModalityPickerDialog(),
+    );
 
-    if (deduped.length == 1) {
-      chosenMetric = deduped.first;
-    } else {
-      chosenMetric = await showDialog<String>(
-        context: context,
-        builder: (_) => MetricChooserDialog(exercise: exercise),
-      );
+    if (modalityResult == null) return;
 
-      if (chosenMetric == null) return;
-    }
+    final (_, pickedModality) = modalityResult;
+    if (pickedModality == null) return;
 
-    final effortKind = ModalityConfig.effortKindFromMetric(chosenMetric);
+    final effortKind =
+        ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
     await widget.routineState.updateEffortKind(effort.id, effortKind);
   }
 
@@ -1751,22 +1743,4 @@ extension on _RoutineSetupScreenState {
       _currentSet = 1;
     });
   }
-}
-
-/// Deduplicate reps/sets/load capabilities into a single reps option
-List<String> _deduplicateCapabilities(List<String> capabilities) {
-  final strSet = capabilities.toSet();
-  final repsLoadSetVariants = {'reps', 'sets', 'load'};
-
-  // Remove sets and load if any of the reps/sets/load variants exist
-  if (strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
-    strSet.removeWhere((cap) => cap == 'sets' || cap == 'load');
-    // Ensure 'reps' is included as the canonical value
-    if (!strSet.contains('reps') &&
-        strSet.any((cap) => repsLoadSetVariants.contains(cap))) {
-      strSet.add('reps');
-    }
-  }
-
-  return strSet.toList();
 }
