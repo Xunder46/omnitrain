@@ -543,6 +543,7 @@ CREATE TABLE app_exercise_tag (
 --   'reps'     - Repetition counting (e.g., strength exercises)
 --   'sets'     - Set grouping (e.g., strength exercises)
 --   'load'     - External weight/resistance (e.g., barbell exercises)
+--   'bilateral' - One side at a time; log both sides as one combined set
 --   'hold'     - Isometric hold duration (e.g., planks, wall sits)
 --   'rounds'   - Round/period segmentation (e.g., boxing, sports)
 --

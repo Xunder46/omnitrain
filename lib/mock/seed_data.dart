@@ -18,7 +18,8 @@ class SeedData {
       id: 'category-resistance',
       key: 'resistance_lifting',
       name: 'Resistance / Lifting',
-      description: 'Weightlifting, bodybuilding, powerlifting, strength training',
+      description:
+          'Weightlifting, bodybuilding, powerlifting, strength training',
       iconName: 'fitness_center',
       sortOrder: 2,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -38,7 +39,8 @@ class SeedData {
       id: 'category-sports',
       key: 'sports',
       name: 'Sports',
-      description: 'Boxing, BJJ, Muay Thai, wrestling, soccer, basketball, tennis, team sports',
+      description:
+          'Boxing, BJJ, Muay Thai, wrestling, soccer, basketball, tennis, team sports',
       iconName: 'sports_soccer',
       sortOrder: 5,
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -410,7 +412,8 @@ class SeedData {
     Exercise(
       id: 'exercise-easy-run',
       name: 'Easy Run',
-      description: 'A low-intensity, conversational-pace run that forms the backbone of any endurance program. Most of your weekly running volume should live here.',
+      description:
+          'A low-intensity, conversational-pace run that forms the backbone of any endurance program. Most of your weekly running volume should live here.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Run at a pace where you could hold a full conversation — if you can only speak in short phrases, you\'re going too hard.',
@@ -424,7 +427,8 @@ class SeedData {
     Exercise(
       id: 'exercise-long-run',
       name: 'Long Run',
-      description: 'The weekly endurance-builder. A sustained easy-to-moderate effort longer than your other runs, designed to develop aerobic capacity and fatigue resistance.',
+      description:
+          'The weekly endurance-builder. A sustained easy-to-moderate effort longer than your other runs, designed to develop aerobic capacity and fatigue resistance.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Start at a conversational pace and hold it — don\'t progress into tempo territory.',
@@ -438,7 +442,8 @@ class SeedData {
     Exercise(
       id: 'exercise-tempo-run',
       name: 'Tempo Run',
-      description: 'A sustained effort at lactate threshold pace — "comfortably hard." Trains the body to clear lactate efficiently and raises the speed you can hold without blowing up.',
+      description:
+          'A sustained effort at lactate threshold pace — "comfortably hard." Trains the body to clear lactate efficiently and raises the speed you can hold without blowing up.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Effort is 7–8 out of 10: you can speak in short phrases but not hold a conversation.',
@@ -452,7 +457,8 @@ class SeedData {
     Exercise(
       id: 'exercise-interval-run',
       name: 'Interval Run',
-      description: 'Repeated hard efforts with recovery between, performed above threshold pace. Builds VO2 max and raw speed.',
+      description:
+          'Repeated hard efforts with recovery between, performed above threshold pace. Builds VO2 max and raw speed.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Work intervals are hard — 8–9 out of 10 effort, too hard to speak more than a word or two.',
@@ -466,7 +472,8 @@ class SeedData {
     Exercise(
       id: 'exercise-hill-repeats',
       name: 'Hill Repeats',
-      description: 'Repeated uphill efforts with recovery on the way back down. Builds leg strength, running economy, and VO2 max with reduced impact compared to flat intervals.',
+      description:
+          'Repeated uphill efforts with recovery on the way back down. Builds leg strength, running economy, and VO2 max with reduced impact compared to flat intervals.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Pick a hill with a 4–8% grade — steep enough to feel it, not so steep you can\'t run.',
@@ -480,7 +487,8 @@ class SeedData {
     Exercise(
       id: 'exercise-fartlek',
       name: 'Fartlek',
-      description: 'Swedish for "speed play" — an unstructured run mixing surges of fast running with easy sections, played by feel rather than a stopwatch.',
+      description:
+          'Swedish for "speed play" — an unstructured run mixing surges of fast running with easy sections, played by feel rather than a stopwatch.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Pick landmarks on the fly: "hard to that lamppost, easy to the next tree."',
@@ -494,7 +502,8 @@ class SeedData {
     Exercise(
       id: 'exercise-recovery-run',
       name: 'Recovery Run',
-      description: 'A very slow, short run performed the day after a hard session. Promotes blood flow and aids recovery without adding meaningful training stress.',
+      description:
+          'A very slow, short run performed the day after a hard session. Promotes blood flow and aids recovery without adding meaningful training stress.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Slower than your easy pace — embarrassingly slow if it needs to be.',
@@ -507,7 +516,8 @@ class SeedData {
     Exercise(
       id: 'exercise-track-repeats',
       name: 'Track Repeats',
-      description: 'Measured interval efforts on a running track, typically 400m to 1600m repeats. Precise pace control makes this a favorite for serious training.',
+      description:
+          'Measured interval efforts on a running track, typically 400m to 1600m repeats. Precise pace control makes this a favorite for serious training.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Know your target pace before you step on the track — winging it defeats the purpose.',
@@ -521,7 +531,8 @@ class SeedData {
     Exercise(
       id: 'exercise-progression-run',
       name: 'Progression Run',
-      description: 'A run that starts easy and gradually increases pace, finishing at or near tempo effort. Teaches pacing discipline and builds late-run strength.',
+      description:
+          'A run that starts easy and gradually increases pace, finishing at or near tempo effort. Teaches pacing discipline and builds late-run strength.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Start truly easy — Zone 2, conversational.',
@@ -534,7 +545,8 @@ class SeedData {
     Exercise(
       id: 'exercise-time-trial',
       name: 'Time Trial',
-      description: 'An all-out effort over a fixed distance or duration. A benchmark for current fitness and a useful hard day when you need to measure yourself.',
+      description:
+          'An all-out effort over a fixed distance or duration. A benchmark for current fitness and a useful hard day when you need to measure yourself.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Warm up thoroughly — 15–20 minutes including a few strides at target pace.',
@@ -548,7 +560,8 @@ class SeedData {
     Exercise(
       id: 'exercise-barbell-squat',
       name: 'Barbell Back Squat',
-      description: 'The foundational compound lift for developing lower-body strength and size. The bar rests across the upper back while the lifter squats to depth and drives back up.',
+      description:
+          'The foundational compound lift for developing lower-body strength and size. The bar rests across the upper back while the lifter squats to depth and drives back up.',
       movementPattern: 'squat',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -564,7 +577,8 @@ class SeedData {
     Exercise(
       id: 'exercise-front-squat',
       name: 'Barbell Front Squat',
-      description: 'A squat variation with the bar racked across the front delts, emphasizing the quads and demanding an upright torso.',
+      description:
+          'A squat variation with the bar racked across the front delts, emphasizing the quads and demanding an upright torso.',
       movementPattern: 'squat',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -579,7 +593,8 @@ class SeedData {
     Exercise(
       id: 'exercise-goblet-squat',
       name: 'Goblet Squat',
-      description: 'A dumbbell or kettlebell squat held at chest height, excellent for learning depth, posture, and bracing.',
+      description:
+          'A dumbbell or kettlebell squat held at chest height, excellent for learning depth, posture, and bracing.',
       movementPattern: 'squat',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -594,7 +609,8 @@ class SeedData {
     Exercise(
       id: 'exercise-dumbbell-split-squat',
       name: 'Dumbbell Split Squat',
-      description: 'A split-stance single-leg squat with dumbbells held at the sides, building unilateral leg strength and stability.',
+      description:
+          'A split-stance single-leg squat with dumbbells held at the sides, building unilateral leg strength and stability.',
       movementPattern: 'squat',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -609,7 +625,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bulgarian-split-squat',
       name: 'Bulgarian Split Squat',
-      description: 'A rear-foot elevated split squat that loads the front leg heavily and punishes hip and ankle mobility limitations.',
+      description:
+          'A rear-foot elevated split squat that loads the front leg heavily and punishes hip and ankle mobility limitations.',
       movementPattern: 'squat',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -624,7 +641,8 @@ class SeedData {
     Exercise(
       id: 'exercise-hack-squat',
       name: 'Hack Squat',
-      description: 'A machine-based squat with the back supported against an angled pad, isolating the quads with minimal spinal load.',
+      description:
+          'A machine-based squat with the back supported against an angled pad, isolating the quads with minimal spinal load.',
       movementPattern: 'squat',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -638,7 +656,8 @@ class SeedData {
     Exercise(
       id: 'exercise-leg-press',
       name: 'Leg Press',
-      description: 'A seated or angled machine squat that loads the legs while supporting the torso, allowing heavy loads with low technical demand.',
+      description:
+          'A seated or angled machine squat that loads the legs while supporting the torso, allowing heavy loads with low technical demand.',
       movementPattern: 'squat',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -653,7 +672,8 @@ class SeedData {
     Exercise(
       id: 'exercise-pistol-squat',
       name: 'Pistol Squat',
-      description: 'A bodyweight single-leg squat to a full depth, the benchmark for unilateral lower-body strength and mobility.',
+      description:
+          'A bodyweight single-leg squat to a full depth, the benchmark for unilateral lower-body strength and mobility.',
       movementPattern: 'squat',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -669,7 +689,8 @@ class SeedData {
     Exercise(
       id: 'exercise-deadlift',
       name: 'Conventional Deadlift',
-      description: 'The benchmark pull from the floor — hinge, grip, and lift. The most complete test of posterior chain strength.',
+      description:
+          'The benchmark pull from the floor — hinge, grip, and lift. The most complete test of posterior chain strength.',
       movementPattern: 'hinge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -685,7 +706,8 @@ class SeedData {
     Exercise(
       id: 'exercise-sumo-deadlift',
       name: 'Sumo Deadlift',
-      description: 'A deadlift with a wide stance and hands inside the knees, shortening the range of motion and emphasizing the hips and inner thighs.',
+      description:
+          'A deadlift with a wide stance and hands inside the knees, shortening the range of motion and emphasizing the hips and inner thighs.',
       movementPattern: 'hinge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -700,7 +722,8 @@ class SeedData {
     Exercise(
       id: 'exercise-romanian-deadlift-barbell',
       name: 'Romanian Deadlift (Barbell)',
-      description: 'A hip-hinge pull from the top down, stopping just below the knees. Loads the hamstrings and glutes under a long stretch.',
+      description:
+          'A hip-hinge pull from the top down, stopping just below the knees. Loads the hamstrings and glutes under a long stretch.',
       movementPattern: 'hinge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -715,7 +738,8 @@ class SeedData {
     Exercise(
       id: 'exercise-romanian-deadlift-dumbbell',
       name: 'Romanian Deadlift (Dumbbell)',
-      description: 'A hip hinge performed with dumbbells at the sides, offering a friendlier entry point to the movement pattern and more freedom of motion.',
+      description:
+          'A hip hinge performed with dumbbells at the sides, offering a friendlier entry point to the movement pattern and more freedom of motion.',
       movementPattern: 'hinge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -730,7 +754,8 @@ class SeedData {
     Exercise(
       id: 'exercise-good-morning',
       name: 'Good Morning',
-      description: 'A hip-hinge with the barbell on the upper back, isolating the posterior chain without grip or arm involvement.',
+      description:
+          'A hip-hinge with the barbell on the upper back, isolating the posterior chain without grip or arm involvement.',
       movementPattern: 'hinge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -745,7 +770,8 @@ class SeedData {
     Exercise(
       id: 'exercise-barbell-hip-thrust',
       name: 'Barbell Hip Thrust',
-      description: 'A glute-dominant hip extension performed with the upper back on a bench and a loaded bar across the hips.',
+      description:
+          'A glute-dominant hip extension performed with the upper back on a bench and a loaded bar across the hips.',
       movementPattern: 'hinge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -760,7 +786,8 @@ class SeedData {
     Exercise(
       id: 'exercise-kettlebell-swing',
       name: 'Kettlebell Swing',
-      description: 'A dynamic two-handed hip hinge that uses the kettlebell\'s momentum to train explosive hip extension.',
+      description:
+          'A dynamic two-handed hip hinge that uses the kettlebell\'s momentum to train explosive hip extension.',
       movementPattern: 'hinge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -775,7 +802,8 @@ class SeedData {
     Exercise(
       id: 'exercise-back-extension',
       name: 'Back Extension',
-      description: 'A posterior-chain exercise performed on a 45-degree bench or GHD, extending the hips against gravity with optional load.',
+      description:
+          'A posterior-chain exercise performed on a 45-degree bench or GHD, extending the hips against gravity with optional load.',
       movementPattern: 'hinge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -791,7 +819,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bench-press',
       name: 'Barbell Bench Press',
-      description: 'The benchmark horizontal press — a barbell press from the chest while lying flat, training chest, shoulders, and triceps.',
+      description:
+          'The benchmark horizontal press — a barbell press from the chest while lying flat, training chest, shoulders, and triceps.',
       movementPattern: 'horizontal_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -807,7 +836,8 @@ class SeedData {
     Exercise(
       id: 'exercise-incline-bench-press',
       name: 'Incline Barbell Bench Press',
-      description: 'A bench press performed on a 30–45 degree incline, shifting emphasis to the upper chest and front delts.',
+      description:
+          'A bench press performed on a 30–45 degree incline, shifting emphasis to the upper chest and front delts.',
       movementPattern: 'horizontal_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -822,7 +852,8 @@ class SeedData {
     Exercise(
       id: 'exercise-decline-bench-press',
       name: 'Decline Barbell Bench Press',
-      description: 'A bench press on a decline bench, emphasizing the lower chest with a shorter range of motion than flat bench.',
+      description:
+          'A bench press on a decline bench, emphasizing the lower chest with a shorter range of motion than flat bench.',
       movementPattern: 'horizontal_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -836,7 +867,8 @@ class SeedData {
     Exercise(
       id: 'exercise-dumbbell-bench-press',
       name: 'Flat Dumbbell Bench Press',
-      description: 'A horizontal press with dumbbells, allowing a deeper stretch and independent arm paths. Great for pec development and shoulder-friendly pressing.',
+      description:
+          'A horizontal press with dumbbells, allowing a deeper stretch and independent arm paths. Great for pec development and shoulder-friendly pressing.',
       movementPattern: 'horizontal_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -851,7 +883,8 @@ class SeedData {
     Exercise(
       id: 'exercise-incline-dumbbell-bench-press',
       name: 'Incline Dumbbell Bench Press',
-      description: 'An incline press with dumbbells, combining upper-chest emphasis with a fuller range of motion than the barbell version.',
+      description:
+          'An incline press with dumbbells, combining upper-chest emphasis with a fuller range of motion than the barbell version.',
       movementPattern: 'horizontal_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -866,7 +899,8 @@ class SeedData {
     Exercise(
       id: 'exercise-push-up',
       name: 'Push-Up',
-      description: 'The foundational bodyweight horizontal press. Trains the chest, shoulders, triceps, and core under a plank position.',
+      description:
+          'The foundational bodyweight horizontal press. Trains the chest, shoulders, triceps, and core under a plank position.',
       movementPattern: 'horizontal_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -881,7 +915,8 @@ class SeedData {
     Exercise(
       id: 'exercise-dip',
       name: 'Dip',
-      description: 'A bodyweight press between parallel bars, heavily loading the chest and triceps. Can be weighted with a belt for progression.',
+      description:
+          'A bodyweight press between parallel bars, heavily loading the chest and triceps. Can be weighted with a belt for progression.',
       movementPattern: 'horizontal_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -896,7 +931,8 @@ class SeedData {
     Exercise(
       id: 'exercise-machine-chest-press',
       name: 'Machine Chest Press',
-      description: 'A seated chest press on a plate-loaded or selectorized machine, offering a controlled press path with lower stability demands.',
+      description:
+          'A seated chest press on a plate-loaded or selectorized machine, offering a controlled press path with lower stability demands.',
       movementPattern: 'horizontal_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -912,7 +948,8 @@ class SeedData {
     Exercise(
       id: 'exercise-barbell-row',
       name: 'Barbell Bent-Over Row',
-      description: 'A compound horizontal pull with the torso hinged forward, loading the entire back. Demands strict posture to avoid the lower back.',
+      description:
+          'A compound horizontal pull with the torso hinged forward, loading the entire back. Demands strict posture to avoid the lower back.',
       movementPattern: 'horizontal_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -927,7 +964,8 @@ class SeedData {
     Exercise(
       id: 'exercise-pendlay-row',
       name: 'Pendlay Row',
-      description: 'A strict barbell row performed with the torso parallel to the floor, resetting the bar on the ground between each rep.',
+      description:
+          'A strict barbell row performed with the torso parallel to the floor, resetting the bar on the ground between each rep.',
       movementPattern: 'horizontal_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -941,7 +979,8 @@ class SeedData {
     Exercise(
       id: 'exercise-dumbbell-row',
       name: 'Dumbbell Row',
-      description: 'A single-arm row braced against a bench, isolating one side of the back at a time with a long range of motion.',
+      description:
+          'A single-arm row braced against a bench, isolating one side of the back at a time with a long range of motion.',
       movementPattern: 'horizontal_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -956,7 +995,8 @@ class SeedData {
     Exercise(
       id: 'exercise-seated-cable-row',
       name: 'Seated Cable Row',
-      description: 'A seated row with a cable and handle attachment, providing constant tension across the full range of the pull.',
+      description:
+          'A seated row with a cable and handle attachment, providing constant tension across the full range of the pull.',
       movementPattern: 'horizontal_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -971,7 +1011,8 @@ class SeedData {
     Exercise(
       id: 'exercise-chest-supported-row',
       name: 'Chest-Supported Row',
-      description: 'A row performed face-down on an incline bench, removing the lower back from the equation so the back muscles do all the work.',
+      description:
+          'A row performed face-down on an incline bench, removing the lower back from the equation so the back muscles do all the work.',
       movementPattern: 'horizontal_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -986,7 +1027,8 @@ class SeedData {
     Exercise(
       id: 'exercise-t-bar-row',
       name: 'T-Bar Row',
-      description: 'A heavy-loadable row using a landmine or dedicated T-bar station, pulled from a hinged position with a neutral grip.',
+      description:
+          'A heavy-loadable row using a landmine or dedicated T-bar station, pulled from a hinged position with a neutral grip.',
       movementPattern: 'horizontal_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1001,7 +1043,8 @@ class SeedData {
     Exercise(
       id: 'exercise-inverted-row',
       name: 'Inverted Row',
-      description: 'A bodyweight horizontal pull performed under a fixed bar, the rowing equivalent of a push-up. Scales easily by adjusting foot position.',
+      description:
+          'A bodyweight horizontal pull performed under a fixed bar, the rowing equivalent of a push-up. Scales easily by adjusting foot position.',
       movementPattern: 'horizontal_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1016,7 +1059,8 @@ class SeedData {
     Exercise(
       id: 'exercise-face-pull',
       name: 'Face Pull',
-      description: 'A high-cable row with a rope, pulled toward the forehead. Trains the rear delts and upper back — a staple for shoulder health.',
+      description:
+          'A high-cable row with a rope, pulled toward the forehead. Trains the rear delts and upper back — a staple for shoulder health.',
       movementPattern: 'horizontal_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1032,7 +1076,8 @@ class SeedData {
     Exercise(
       id: 'exercise-overhead-press',
       name: 'Barbell Overhead Press',
-      description: 'A standing press of a barbell from the front rack to overhead — the benchmark test of upper-body pressing strength.',
+      description:
+          'A standing press of a barbell from the front rack to overhead — the benchmark test of upper-body pressing strength.',
       movementPattern: 'vertical_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1047,7 +1092,8 @@ class SeedData {
     Exercise(
       id: 'exercise-dumbbell-shoulder-press',
       name: 'Standing Dumbbell Shoulder Press',
-      description: 'An overhead press with dumbbells, performed standing. Demands more stability than the seated or barbell version.',
+      description:
+          'An overhead press with dumbbells, performed standing. Demands more stability than the seated or barbell version.',
       movementPattern: 'vertical_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1062,7 +1108,8 @@ class SeedData {
     Exercise(
       id: 'exercise-seated-dumbbell-shoulder-press',
       name: 'Seated Dumbbell Shoulder Press',
-      description: 'A supported overhead press with dumbbells and a vertical bench, reducing lower-back demand for cleaner shoulder isolation.',
+      description:
+          'A supported overhead press with dumbbells and a vertical bench, reducing lower-back demand for cleaner shoulder isolation.',
       movementPattern: 'vertical_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1077,7 +1124,8 @@ class SeedData {
     Exercise(
       id: 'exercise-landmine-press',
       name: 'Landmine Press',
-      description: 'A single-arm press using a barbell anchored at one end, pressed at an upward angle. Shoulder-friendly alternative to a vertical overhead press.',
+      description:
+          'A single-arm press using a barbell anchored at one end, pressed at an upward angle. Shoulder-friendly alternative to a vertical overhead press.',
       movementPattern: 'vertical_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1092,7 +1140,8 @@ class SeedData {
     Exercise(
       id: 'exercise-arnold-press',
       name: 'Arnold Press',
-      description: 'A dumbbell overhead press that rotates through the lift, starting with palms toward you and finishing with palms forward. Hits all three deltoid heads.',
+      description:
+          'A dumbbell overhead press that rotates through the lift, starting with palms toward you and finishing with palms forward. Hits all three deltoid heads.',
       movementPattern: 'vertical_push',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1108,7 +1157,8 @@ class SeedData {
     Exercise(
       id: 'exercise-pullup',
       name: 'Pull-Up',
-      description: 'A bodyweight vertical pull from a bar with an overhand grip. The benchmark upper-body pulling movement.',
+      description:
+          'A bodyweight vertical pull from a bar with an overhand grip. The benchmark upper-body pulling movement.',
       movementPattern: 'vertical_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1123,7 +1173,8 @@ class SeedData {
     Exercise(
       id: 'exercise-chin-up',
       name: 'Chin-Up',
-      description: 'A vertical pull-up performed with a supinated (palms-toward-you) grip, shifting emphasis to the biceps while still heavily training the back.',
+      description:
+          'A vertical pull-up performed with a supinated (palms-toward-you) grip, shifting emphasis to the biceps while still heavily training the back.',
       movementPattern: 'vertical_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1137,7 +1188,8 @@ class SeedData {
     Exercise(
       id: 'exercise-lat-pulldown',
       name: 'Lat Pulldown',
-      description: 'A cable machine vertical pull that mimics the pull-up pattern, letting the lifter load below bodyweight for volume work.',
+      description:
+          'A cable machine vertical pull that mimics the pull-up pattern, letting the lifter load below bodyweight for volume work.',
       movementPattern: 'vertical_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1152,7 +1204,8 @@ class SeedData {
     Exercise(
       id: 'exercise-neutral-grip-pulldown',
       name: 'Neutral-Grip Pulldown',
-      description: 'A lat pulldown with a parallel-grip handle, placing the shoulders in a stronger, more comfortable position than overhand.',
+      description:
+          'A lat pulldown with a parallel-grip handle, placing the shoulders in a stronger, more comfortable position than overhand.',
       movementPattern: 'vertical_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1167,7 +1220,8 @@ class SeedData {
     Exercise(
       id: 'exercise-straight-arm-pulldown',
       name: 'Straight-Arm Pulldown',
-      description: 'A cable isolation for the lats performed with straight arms, driving the bar from overhead down to the thighs.',
+      description:
+          'A cable isolation for the lats performed with straight arms, driving the bar from overhead down to the thighs.',
       movementPattern: 'vertical_pull',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1183,7 +1237,8 @@ class SeedData {
     Exercise(
       id: 'exercise-walking-lunge',
       name: 'Walking Lunge',
-      description: 'A forward-stepping lunge performed continuously, challenging balance, coordination, and single-leg strength with every step.',
+      description:
+          'A forward-stepping lunge performed continuously, challenging balance, coordination, and single-leg strength with every step.',
       movementPattern: 'lunge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1198,7 +1253,8 @@ class SeedData {
     Exercise(
       id: 'exercise-reverse-lunge',
       name: 'Reverse Lunge',
-      description: 'A backward-stepping lunge that\'s easier on the knees than a forward lunge, emphasizing the glutes and front-leg quad.',
+      description:
+          'A backward-stepping lunge that\'s easier on the knees than a forward lunge, emphasizing the glutes and front-leg quad.',
       movementPattern: 'lunge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1213,7 +1269,8 @@ class SeedData {
     Exercise(
       id: 'exercise-step-up',
       name: 'Dumbbell Step-Up',
-      description: 'A single-leg exercise stepping onto a raised surface, emphasizing the glute and quad of the working leg.',
+      description:
+          'A single-leg exercise stepping onto a raised surface, emphasizing the glute and quad of the working leg.',
       movementPattern: 'lunge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1228,7 +1285,8 @@ class SeedData {
     Exercise(
       id: 'exercise-single-leg-rdl',
       name: 'Single-Leg Romanian Deadlift',
-      description: 'A unilateral hip hinge balanced on one leg, training the hamstrings, glutes, and hip stabilizers.',
+      description:
+          'A unilateral hip hinge balanced on one leg, training the hamstrings, glutes, and hip stabilizers.',
       movementPattern: 'lunge',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1244,7 +1302,8 @@ class SeedData {
     Exercise(
       id: 'exercise-lateral-raise',
       name: 'Dumbbell Lateral Raise',
-      description: 'An isolation exercise lifting dumbbells out to the sides, targeting the side delt for shoulder width.',
+      description:
+          'An isolation exercise lifting dumbbells out to the sides, targeting the side delt for shoulder width.',
       movementPattern: 'shoulder_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1259,7 +1318,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cable-lateral-raise',
       name: 'Cable Lateral Raise',
-      description: 'A lateral raise performed from a low cable, offering constant tension through the full range of the lift.',
+      description:
+          'A lateral raise performed from a low cable, offering constant tension through the full range of the lift.',
       movementPattern: 'shoulder_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1274,7 +1334,8 @@ class SeedData {
     Exercise(
       id: 'exercise-rear-delt-fly',
       name: 'Rear Delt Fly',
-      description: 'A reverse fly performed with dumbbells or a reverse pec-deck, isolating the rear delts and upper back.',
+      description:
+          'A reverse fly performed with dumbbells or a reverse pec-deck, isolating the rear delts and upper back.',
       movementPattern: 'shoulder_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1289,7 +1350,8 @@ class SeedData {
     Exercise(
       id: 'exercise-front-raise',
       name: 'Front Raise',
-      description: 'A frontal-plane shoulder raise with a dumbbell or plate, isolating the front delt.',
+      description:
+          'A frontal-plane shoulder raise with a dumbbell or plate, isolating the front delt.',
       movementPattern: 'shoulder_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1303,7 +1365,8 @@ class SeedData {
     Exercise(
       id: 'exercise-upright-row',
       name: 'Upright Row',
-      description: 'A vertical pull to the chest with a barbell or dumbbells, hitting the side delts and traps. Use a wider grip if shoulders complain.',
+      description:
+          'A vertical pull to the chest with a barbell or dumbbells, hitting the side delts and traps. Use a wider grip if shoulders complain.',
       movementPattern: 'shoulder_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1319,7 +1382,8 @@ class SeedData {
     Exercise(
       id: 'exercise-barbell-curl',
       name: 'Barbell Curl',
-      description: 'The benchmark bicep exercise — a standing curl of a barbell with a shoulder-width grip.',
+      description:
+          'The benchmark bicep exercise — a standing curl of a barbell with a shoulder-width grip.',
       movementPattern: 'arm_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1333,7 +1397,8 @@ class SeedData {
     Exercise(
       id: 'exercise-dumbbell-curl',
       name: 'Dumbbell Curl',
-      description: 'A bicep curl with dumbbells, allowing each arm to work independently and the wrists to rotate through the movement.',
+      description:
+          'A bicep curl with dumbbells, allowing each arm to work independently and the wrists to rotate through the movement.',
       movementPattern: 'arm_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1347,7 +1412,8 @@ class SeedData {
     Exercise(
       id: 'exercise-hammer-curl',
       name: 'Hammer Curl',
-      description: 'A curl with a neutral grip, emphasizing the brachialis and forearm alongside the biceps.',
+      description:
+          'A curl with a neutral grip, emphasizing the brachialis and forearm alongside the biceps.',
       movementPattern: 'arm_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1361,7 +1427,8 @@ class SeedData {
     Exercise(
       id: 'exercise-preacher-curl',
       name: 'Preacher Curl',
-      description: 'A curl performed on a preacher bench, locking the upper arm in place to isolate the biceps with no momentum.',
+      description:
+          'A curl performed on a preacher bench, locking the upper arm in place to isolate the biceps with no momentum.',
       movementPattern: 'arm_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1376,7 +1443,8 @@ class SeedData {
     Exercise(
       id: 'exercise-triceps-pressdown',
       name: 'Triceps Pressdown',
-      description: 'A cable isolation for the triceps, pressing a bar or rope down from chest height to full extension.',
+      description:
+          'A cable isolation for the triceps, pressing a bar or rope down from chest height to full extension.',
       movementPattern: 'arm_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1391,7 +1459,8 @@ class SeedData {
     Exercise(
       id: 'exercise-overhead-triceps-extension',
       name: 'Overhead Triceps Extension',
-      description: 'A triceps extension performed with the arm overhead, emphasizing the long head of the triceps under stretch.',
+      description:
+          'A triceps extension performed with the arm overhead, emphasizing the long head of the triceps under stretch.',
       movementPattern: 'arm_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1405,7 +1474,8 @@ class SeedData {
     Exercise(
       id: 'exercise-skullcrusher',
       name: 'Skullcrusher',
-      description: 'A lying triceps extension with a barbell or EZ-bar, lowered toward the forehead and pressed back up. A classic triceps mass-builder.',
+      description:
+          'A lying triceps extension with a barbell or EZ-bar, lowered toward the forehead and pressed back up. A classic triceps mass-builder.',
       movementPattern: 'arm_isolation',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1421,7 +1491,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cable-pull-through',
       name: 'Cable Pull-Through',
-      description: 'A cable-loaded hip hinge, pulled between the legs from behind. Teaches the hinge pattern with less technical demand than a deadlift.',
+      description:
+          'A cable-loaded hip hinge, pulled between the legs from behind. Teaches the hinge pattern with less technical demand than a deadlift.',
       movementPattern: 'posterior_chain',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1436,7 +1507,8 @@ class SeedData {
     Exercise(
       id: 'exercise-glute-kickback',
       name: 'Glute Kickback',
-      description: 'A single-leg hip extension against cable or machine resistance, isolating the glute on the working side.',
+      description:
+          'A single-leg hip extension against cable or machine resistance, isolating the glute on the working side.',
       movementPattern: 'posterior_chain',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1451,7 +1523,8 @@ class SeedData {
     Exercise(
       id: 'exercise-nordic-curl',
       name: 'Nordic Curl',
-      description: 'A brutal bodyweight hamstring curl performed from a kneeling position with anchored feet, lowering under eccentric control.',
+      description:
+          'A brutal bodyweight hamstring curl performed from a kneeling position with anchored feet, lowering under eccentric control.',
       movementPattern: 'posterior_chain',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1467,7 +1540,8 @@ class SeedData {
     Exercise(
       id: 'exercise-standing-calf-raise',
       name: 'Standing Calf Raise',
-      description: 'A loaded calf raise performed standing, emphasizing the gastrocnemius with the knee straight.',
+      description:
+          'A loaded calf raise performed standing, emphasizing the gastrocnemius with the knee straight.',
       movementPattern: 'calves',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1482,7 +1556,8 @@ class SeedData {
     Exercise(
       id: 'exercise-seated-calf-raise',
       name: 'Seated Calf Raise',
-      description: 'A calf raise performed seated with the knees bent, shifting emphasis to the soleus beneath the gastrocnemius.',
+      description:
+          'A calf raise performed seated with the knees bent, shifting emphasis to the soleus beneath the gastrocnemius.',
       movementPattern: 'calves',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1498,7 +1573,8 @@ class SeedData {
     Exercise(
       id: 'exercise-farmers-carry',
       name: "Farmer's Carry",
-      description: 'A loaded walk with heavy dumbbells or trap bar, training grip, core, and whole-body stability. Time- or distance-based.',
+      description:
+          'A loaded walk with heavy dumbbells or trap bar, training grip, core, and whole-body stability. Time- or distance-based.',
       movementPattern: 'loaded_core',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1513,7 +1589,8 @@ class SeedData {
     Exercise(
       id: 'exercise-pallof-press',
       name: 'Pallof Press',
-      description: 'An anti-rotation core exercise performed at a cable, pressing a handle straight out while resisting the cable\'s pull to one side.',
+      description:
+          'An anti-rotation core exercise performed at a cable, pressing a handle straight out while resisting the cable\'s pull to one side.',
       movementPattern: 'loaded_core',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1528,7 +1605,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cable-woodchop',
       name: 'Cable Woodchop',
-      description: 'A rotational core exercise on a cable, pulling a handle diagonally across the body. Trains rotation and anti-rotation together.',
+      description:
+          'A rotational core exercise on a cable, pulling a handle diagonally across the body. Trains rotation and anti-rotation together.',
       movementPattern: 'loaded_core',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1544,7 +1622,8 @@ class SeedData {
     Exercise(
       id: 'exercise-hanging-leg-raise',
       name: 'Hanging Leg Raise',
-      description: 'A hanging abdominal exercise lifting the legs from vertical to horizontal or higher. Trains the entire anterior core.',
+      description:
+          'A hanging abdominal exercise lifting the legs from vertical to horizontal or higher. Trains the entire anterior core.',
       movementPattern: 'abs',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1559,7 +1638,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cable-crunch',
       name: 'Cable Crunch',
-      description: 'A loaded crunch performed kneeling in front of a high cable with a rope attachment, letting you progressively overload the abs.',
+      description:
+          'A loaded crunch performed kneeling in front of a high cable with a rope attachment, letting you progressively overload the abs.',
       movementPattern: 'abs',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1574,7 +1654,8 @@ class SeedData {
     Exercise(
       id: 'exercise-ab-wheel-rollout',
       name: 'Ab Wheel Rollout',
-      description: 'An anti-extension core exercise rolling an ab wheel forward while holding a rigid body. Punishing and highly effective.',
+      description:
+          'An anti-extension core exercise rolling an ab wheel forward while holding a rigid body. Punishing and highly effective.',
       movementPattern: 'abs',
       disciplineId: 'discipline-bodybuilding',
       howToSteps: [
@@ -1590,7 +1671,8 @@ class SeedData {
     Exercise(
       id: 'exercise-heavy-bag-rounds',
       name: 'Heavy Bag Rounds',
-      description: 'Timed rounds on the heavy bag — combinations, power work, and conditioning at moderate-to-high intensity.',
+      description:
+          'Timed rounds on the heavy bag — combinations, power work, and conditioning at moderate-to-high intensity.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Hands back to the guard after every punch — no hanging.',
@@ -1604,7 +1686,8 @@ class SeedData {
     Exercise(
       id: 'exercise-shadowboxing',
       name: 'Shadowboxing',
-      description: 'Timed rounds of punching in open space — footwork, head movement, and combination rehearsal without resistance.',
+      description:
+          'Timed rounds of punching in open space — footwork, head movement, and combination rehearsal without resistance.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Watch yourself in a mirror or film one round to audit form.',
@@ -1618,7 +1701,8 @@ class SeedData {
     Exercise(
       id: 'exercise-pad-work',
       name: 'Pad Work',
-      description: 'Timed rounds with a coach or partner holding focus mitts or Thai pads — called combinations, reactive work, and counters.',
+      description:
+          'Timed rounds with a coach or partner holding focus mitts or Thai pads — called combinations, reactive work, and counters.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Respond to the call, don\'t anticipate it.',
@@ -1632,7 +1716,8 @@ class SeedData {
     Exercise(
       id: 'exercise-speed-bag',
       name: 'Speed Bag',
-      description: 'Timed rounds on the speed bag — rhythm, hand speed, and shoulder endurance.',
+      description:
+          'Timed rounds on the speed bag — rhythm, hand speed, and shoulder endurance.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Strike with the side of the fist on the downswing, not a punch.',
@@ -1646,7 +1731,8 @@ class SeedData {
     Exercise(
       id: 'exercise-double-end-bag',
       name: 'Double-End Bag',
-      description: 'Timed rounds on a tethered reflex bag — timing, accuracy, and defensive reactions against a moving target.',
+      description:
+          'Timed rounds on a tethered reflex bag — timing, accuracy, and defensive reactions against a moving target.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Stay in range — close enough to hit, far enough to slip.',
@@ -1660,7 +1746,8 @@ class SeedData {
     Exercise(
       id: 'exercise-sparring',
       name: 'Sparring',
-      description: 'Live rounds with a partner at an agreed intensity. Technique-focused light sparring or harder competition-prep rounds.',
+      description:
+          'Live rounds with a partner at an agreed intensity. Technique-focused light sparring or harder competition-prep rounds.',
       disciplineId: 'discipline-boxing',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -1668,7 +1755,8 @@ class SeedData {
     Exercise(
       id: 'exercise-defensive-drills',
       name: 'Defensive Drills',
-      description: 'Timed rounds of slipping, rolling, parrying, and blocking against a partner\'s feed or shadowed in open space.',
+      description:
+          'Timed rounds of slipping, rolling, parrying, and blocking against a partner\'s feed or shadowed in open space.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Move the head off the centerline, not just back.',
@@ -1682,7 +1770,8 @@ class SeedData {
     Exercise(
       id: 'exercise-footwork-drills',
       name: 'Footwork Drills',
-      description: 'Timed rounds of movement patterns — pivots, cuts, in-and-out rhythm, lateral steps. Done on floor markings, ladder, or open space.',
+      description:
+          'Timed rounds of movement patterns — pivots, cuts, in-and-out rhythm, lateral steps. Done on floor markings, ladder, or open space.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Stay in stance — the feet never cross.',
@@ -1696,7 +1785,8 @@ class SeedData {
     Exercise(
       id: 'exercise-conditioning-rounds',
       name: 'Conditioning Rounds',
-      description: 'High-output rounds — bag work, pads, or shadow — run at competition intensity to build round-specific conditioning.',
+      description:
+          'High-output rounds — bag work, pads, or shadow — run at competition intensity to build round-specific conditioning.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Throw in volume — don\'t pace.',
@@ -1710,7 +1800,8 @@ class SeedData {
     Exercise(
       id: 'exercise-technical-rounds',
       name: 'Technical Rounds',
-      description: 'Low-intensity rounds focused on one technical element — a specific combination, footwork pattern, or defensive sequence.',
+      description:
+          'Low-intensity rounds focused on one technical element — a specific combination, footwork pattern, or defensive sequence.',
       disciplineId: 'discipline-boxing',
       howToSteps: [
         'Pick one thing to work on before the round starts.',
@@ -1725,7 +1816,8 @@ class SeedData {
     Exercise(
       id: 'exercise-plank-hold',
       name: 'Plank Hold',
-      description: 'Front-facing isometric hold supported on forearms and toes, targeting the anterior core, shoulders, and glutes. A baseline test of full-body bracing.',
+      description:
+          'Front-facing isometric hold supported on forearms and toes, targeting the anterior core, shoulders, and glutes. A baseline test of full-body bracing.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Stack elbows directly under shoulders, forearms parallel.',
@@ -1739,7 +1831,8 @@ class SeedData {
     Exercise(
       id: 'exercise-side-plank',
       name: 'Side Plank',
-      description: 'Lateral isometric hold on one forearm and the side of one foot, targeting the obliques, quadratus lumborum, and shoulder stabilizers.',
+      description:
+          'Lateral isometric hold on one forearm and the side of one foot, targeting the obliques, quadratus lumborum, and shoulder stabilizers.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Stack shoulder over elbow, feet stacked or staggered for balance.',
@@ -1753,7 +1846,8 @@ class SeedData {
     Exercise(
       id: 'exercise-wall-sit',
       name: 'Wall Sit',
-      description: 'Isometric squat hold with the back flat against a wall and thighs parallel to the floor. Targets the quads, with secondary glute and calf engagement.',
+      description:
+          'Isometric squat hold with the back flat against a wall and thighs parallel to the floor. Targets the quads, with secondary glute and calf engagement.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Slide down until thighs are parallel to the floor — knees at roughly 90 degrees.',
@@ -1767,7 +1861,8 @@ class SeedData {
     Exercise(
       id: 'exercise-dead-hang',
       name: 'Dead Hang',
-      description: 'Passive isometric hang from a pull-up bar with arms fully extended. Trains grip endurance and decompresses the shoulders and spine.',
+      description:
+          'Passive isometric hang from a pull-up bar with arms fully extended. Trains grip endurance and decompresses the shoulders and spine.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Grip the bar at roughly shoulder width, thumbs wrapped.',
@@ -1780,7 +1875,8 @@ class SeedData {
     Exercise(
       id: 'exercise-hollow-body-hold',
       name: 'Hollow Body Hold',
-      description: 'Supine isometric hold with arms overhead and legs extended, pressing the low back firmly into the floor. Trains anterior core tension used in gymnastics and Olympic lifting.',
+      description:
+          'Supine isometric hold with arms overhead and legs extended, pressing the low back firmly into the floor. Trains anterior core tension used in gymnastics and Olympic lifting.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Press the low back flat — no daylight between the floor and your spine.',
@@ -1794,7 +1890,8 @@ class SeedData {
     Exercise(
       id: 'exercise-glute-bridge-hold',
       name: 'Glute Bridge Hold',
-      description: 'Supine hip-extension hold with shoulders on the floor, knees bent, hips driven up. Targets the glutes and hamstrings.',
+      description:
+          'Supine hip-extension hold with shoulders on the floor, knees bent, hips driven up. Targets the glutes and hamstrings.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Feet flat, heels close enough that a brushed fingertip barely touches them.',
@@ -1807,7 +1904,8 @@ class SeedData {
     Exercise(
       id: 'exercise-l-sit-hold',
       name: 'L-Sit Hold',
-      description: 'Seated isometric hold with the body supported on straight arms, legs extended straight out parallel to the floor. Trains the anterior core, hip flexors, and tricep lockout.',
+      description:
+          'Seated isometric hold with the body supported on straight arms, legs extended straight out parallel to the floor. Trains the anterior core, hip flexors, and tricep lockout.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Press down hard through straight arms to lift the hips clear of the floor.',
@@ -1820,7 +1918,8 @@ class SeedData {
     Exercise(
       id: 'exercise-isometric-pushup-hold',
       name: 'Isometric Push-Up Hold',
-      description: 'Paused hold at the bottom of a push-up, typically with the chest an inch off the floor. Targets the chest, triceps, and anterior core.',
+      description:
+          'Paused hold at the bottom of a push-up, typically with the chest an inch off the floor. Targets the chest, triceps, and anterior core.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Lower to the bottom of a push-up and hold — chest hovering just off the floor.',
@@ -1833,7 +1932,8 @@ class SeedData {
     Exercise(
       id: 'exercise-calf-raise-hold',
       name: 'Calf Raise Hold',
-      description: 'Isometric hold at the top of a calf raise, up on the balls of the feet. Trains calf endurance and ankle stability.',
+      description:
+          'Isometric hold at the top of a calf raise, up on the balls of the feet. Trains calf endurance and ankle stability.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Rise to the top of a calf raise on both feet.',
@@ -1846,7 +1946,8 @@ class SeedData {
     Exercise(
       id: 'exercise-split-squat-hold',
       name: 'Split Squat Hold',
-      description: 'Unilateral isometric lunge hold in the bottom position. Targets the front-leg quad and glute, with a long-lever stretch on the rear-leg hip flexor.',
+      description:
+          'Unilateral isometric lunge hold in the bottom position. Targets the front-leg quad and glute, with a long-lever stretch on the rear-leg hip flexor.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Front knee stacked over the front ankle, rear knee hovering an inch off the floor.',
@@ -1860,7 +1961,8 @@ class SeedData {
     Exercise(
       id: 'exercise-rkc-plank',
       name: 'RKC Plank',
-      description: 'Maximum-tension variant of the standard plank. Same position, but every muscle — glutes, quads, abs, lats — contracts as hard as possible throughout the hold.',
+      description:
+          'Maximum-tension variant of the standard plank. Same position, but every muscle — glutes, quads, abs, lats — contracts as hard as possible throughout the hold.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Set up in a standard plank, then actively pull elbows toward toes without moving them.',
@@ -1873,7 +1975,8 @@ class SeedData {
     Exercise(
       id: 'exercise-long-lever-plank',
       name: 'Long-Lever Plank',
-      description: 'Plank variant with the elbows placed further forward than the shoulders, increasing the lever arm and anti-extension demand on the core.',
+      description:
+          'Plank variant with the elbows placed further forward than the shoulders, increasing the lever arm and anti-extension demand on the core.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Start in a standard plank, then walk the elbows 4–6 inches forward.',
@@ -1886,7 +1989,8 @@ class SeedData {
     Exercise(
       id: 'exercise-dead-bug-hold',
       name: 'Dead Bug Hold',
-      description: 'Supine anti-extension hold with opposite arm and opposite leg extended, low back pinned to the floor. A more accessible alternative to the hollow body hold.',
+      description:
+          'Supine anti-extension hold with opposite arm and opposite leg extended, low back pinned to the floor. A more accessible alternative to the hollow body hold.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Pin the low back down before extending anything.',
@@ -1899,7 +2003,8 @@ class SeedData {
     Exercise(
       id: 'exercise-copenhagen-plank',
       name: 'Copenhagen Plank',
-      description: 'Side plank variant with the top leg elevated on a bench, targeting the adductors of the top leg alongside the obliques. A groin-resilience staple.',
+      description:
+          'Side plank variant with the top leg elevated on a bench, targeting the adductors of the top leg alongside the obliques. A groin-resilience staple.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Place the inside of the top ankle or knee on the bench; shorter lever (knee) is the regression.',
@@ -1913,7 +2018,8 @@ class SeedData {
     Exercise(
       id: 'exercise-single-leg-glute-bridge-hold',
       name: 'Single-Leg Glute Bridge Hold',
-      description: 'Unilateral version of the glute bridge hold, performed with one leg extended. Exposes side-to-side glute asymmetries.',
+      description:
+          'Unilateral version of the glute bridge hold, performed with one leg extended. Exposes side-to-side glute asymmetries.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Set up in a glute bridge, then extend one leg straight out.',
@@ -1926,7 +2032,8 @@ class SeedData {
     Exercise(
       id: 'exercise-single-leg-calf-raise-hold',
       name: 'Single-Leg Calf Raise Hold',
-      description: 'Unilateral calf raise hold. Doubles the load on the working calf and exposes ankle-stability deficits.',
+      description:
+          'Unilateral calf raise hold. Doubles the load on the working calf and exposes ankle-stability deficits.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Rise to the top of a single-leg calf raise, using fingertips against a wall for balance if needed.',
@@ -1939,7 +2046,8 @@ class SeedData {
     Exercise(
       id: 'exercise-pistol-squat-hold',
       name: 'Pistol Squat Hold',
-      description: 'Advanced unilateral hold at the bottom of a pistol squat — one leg folded deep, the other extended forward. Requires significant ankle mobility and single-leg strength.',
+      description:
+          'Advanced unilateral hold at the bottom of a pistol squat — one leg folded deep, the other extended forward. Requires significant ankle mobility and single-leg strength.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Plant the working foot flat, extend the free leg forward.',
@@ -1952,7 +2060,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cossack-squat-hold',
       name: 'Cossack Squat Hold',
-      description: 'Bottom-position hold of a deep lateral squat — one leg bent underneath, the other extended to the side. Trains adductor length and hip mobility under load.',
+      description:
+          'Bottom-position hold of a deep lateral squat — one leg bent underneath, the other extended to the side. Trains adductor length and hip mobility under load.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Sit the hips down and back over the bent leg.',
@@ -1966,7 +2075,8 @@ class SeedData {
     Exercise(
       id: 'exercise-active-hang',
       name: 'Active Hang',
-      description: 'Hang from a pull-up bar with shoulders actively pulled down and packed — a scapular-retraction hold. The starting position for any pull-up.',
+      description:
+          'Hang from a pull-up bar with shoulders actively pulled down and packed — a scapular-retraction hold. The starting position for any pull-up.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Start from a dead hang, then pull the shoulder blades down and back without bending the elbows.',
@@ -1979,7 +2089,8 @@ class SeedData {
     Exercise(
       id: 'exercise-tuck-front-lever-hold',
       name: 'Tuck Front Lever Hold',
-      description: 'Entry-level front lever progression hung from a bar with knees tucked tight to the chest and the torso pulled horizontal. Trains the lats, core, and scapular depressors.',
+      description:
+          'Entry-level front lever progression hung from a bar with knees tucked tight to the chest and the torso pulled horizontal. Trains the lats, core, and scapular depressors.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'From an active hang, pull the knees to the chest and the hips up until the torso is horizontal.',
@@ -1992,7 +2103,8 @@ class SeedData {
     Exercise(
       id: 'exercise-advanced-tuck-front-lever-hold',
       name: 'Advanced Tuck Front Lever Hold',
-      description: 'Progression between tuck front lever and straddle front lever, with the hips opened so the thighs are roughly parallel to the floor but knees still bent.',
+      description:
+          'Progression between tuck front lever and straddle front lever, with the hips opened so the thighs are roughly parallel to the floor but knees still bent.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Start in a tuck front lever, then open the hips until thighs are parallel to the floor.',
@@ -2005,7 +2117,8 @@ class SeedData {
     Exercise(
       id: 'exercise-tuck-back-lever-hold',
       name: 'Tuck Back Lever Hold',
-      description: 'Entry-level back lever progression with the body inverted and tucked, facing away from the bar. Trains the biceps, anterior delts, and core anti-extension.',
+      description:
+          'Entry-level back lever progression with the body inverted and tucked, facing away from the bar. Trains the biceps, anterior delts, and core anti-extension.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Invert into a tucked inverted hang first, then lower the torso away from the bar until the back is horizontal and facing down.',
@@ -2018,7 +2131,8 @@ class SeedData {
     Exercise(
       id: 'exercise-ring-support-hold',
       name: 'Ring Support Hold',
-      description: 'Straight-arm support hold on gymnastic rings at the top of a ring dip. Trains pressing stability, scapular control, and wrist strength. Highly unstable.',
+      description:
+          'Straight-arm support hold on gymnastic rings at the top of a ring dip. Trains pressing stability, scapular control, and wrist strength. Highly unstable.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Press to full lockout on the rings, arms straight, body vertical.',
@@ -2031,7 +2145,8 @@ class SeedData {
     Exercise(
       id: 'exercise-handstand-hold-wall',
       name: 'Handstand Hold (Wall-Supported)',
-      description: 'Inverted isometric hold against a wall with hands shoulder-width, heels against the wall. Trains shoulder stability, wrist strength, and full-body tension upside down.',
+      description:
+          'Inverted isometric hold against a wall with hands shoulder-width, heels against the wall. Trains shoulder stability, wrist strength, and full-body tension upside down.',
       disciplineId: 'discipline-isometric-holds',
       howToSteps: [
         'Kick up with hands roughly six inches from the wall, heels resting against it.',
@@ -2045,7 +2160,8 @@ class SeedData {
     Exercise(
       id: 'exercise-standing-hamstring-stretch',
       name: 'Standing Hamstring Stretch',
-      description: 'Static stretch for the hamstrings, performed by hinging at the hips and folding forward over straight legs.',
+      description:
+          'Static stretch for the hamstrings, performed by hinging at the hips and folding forward over straight legs.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Hinge from the hips, not the low back.',
@@ -2058,7 +2174,8 @@ class SeedData {
     Exercise(
       id: 'exercise-seated-forward-fold',
       name: 'Seated Forward Fold',
-      description: 'Seated hamstring and low-back stretch with legs extended, reaching toward the toes.',
+      description:
+          'Seated hamstring and low-back stretch with legs extended, reaching toward the toes.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Sit tall first, then hinge forward from the hips.',
@@ -2071,7 +2188,8 @@ class SeedData {
     Exercise(
       id: 'exercise-standing-quad-stretch',
       name: 'Standing Quad Stretch',
-      description: 'Stretch for the front of the thigh, pulling one heel toward the glute while standing on the opposite leg.',
+      description:
+          'Stretch for the front of the thigh, pulling one heel toward the glute while standing on the opposite leg.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Pull the heel toward the glute, knee pointing straight down.',
@@ -2084,7 +2202,8 @@ class SeedData {
     Exercise(
       id: 'exercise-couch-stretch',
       name: 'Couch Stretch',
-      description: 'Deep hip-flexor and quad stretch with the rear foot elevated against a wall or couch and the front leg in a lunge position.',
+      description:
+          'Deep hip-flexor and quad stretch with the rear foot elevated against a wall or couch and the front leg in a lunge position.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Rear shin vertical against the wall, rear knee on a pad.',
@@ -2097,7 +2216,8 @@ class SeedData {
     Exercise(
       id: 'exercise-kneeling-hip-flexor-stretch',
       name: 'Kneeling Hip Flexor Stretch',
-      description: 'Classic hip-flexor stretch in a half-kneeling position, shifting the hips forward over the front foot.',
+      description:
+          'Classic hip-flexor stretch in a half-kneeling position, shifting the hips forward over the front foot.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Half-kneeling, front foot flat, rear knee on a pad.',
@@ -2110,7 +2230,8 @@ class SeedData {
     Exercise(
       id: 'exercise-pigeon-pose',
       name: 'Pigeon Pose',
-      description: 'Deep stretch for the glutes, piriformis, and outer hip, with the front leg folded under the torso and the rear leg extended straight back.',
+      description:
+          'Deep stretch for the glutes, piriformis, and outer hip, with the front leg folded under the torso and the rear leg extended straight back.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Front shin angled across the body, rear leg extended straight back with the top of the foot down.',
@@ -2123,7 +2244,8 @@ class SeedData {
     Exercise(
       id: 'exercise-seated-piriformis-stretch',
       name: 'Seated Piriformis Stretch (Figure-4)',
-      description: 'Seated stretch for the piriformis and deep hip rotators, crossing one ankle over the opposite knee and folding forward.',
+      description:
+          'Seated stretch for the piriformis and deep hip rotators, crossing one ankle over the opposite knee and folding forward.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Cross the ankle over the opposite knee, foot flexed to protect the knee.',
@@ -2136,7 +2258,8 @@ class SeedData {
     Exercise(
       id: 'exercise-doorway-chest-stretch',
       name: 'Doorway Chest Stretch',
-      description: 'Stretch for the pecs and anterior shoulder, with the forearm pressed against a doorframe and the body rotated away.',
+      description:
+          'Stretch for the pecs and anterior shoulder, with the forearm pressed against a doorframe and the body rotated away.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Forearm flat against the doorframe, elbow at roughly shoulder height.',
@@ -2149,7 +2272,8 @@ class SeedData {
     Exercise(
       id: 'exercise-lat-stretch',
       name: 'Lat Stretch (Overhead Reach)',
-      description: 'Stretch for the lats and lateral torso, reaching one arm overhead and bending sideways, often assisted by holding a rack or doorframe.',
+      description:
+          'Stretch for the lats and lateral torso, reaching one arm overhead and bending sideways, often assisted by holding a rack or doorframe.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Grip a rack or doorframe with one hand overhead.',
@@ -2162,7 +2286,8 @@ class SeedData {
     Exercise(
       id: 'exercise-overhead-triceps-stretch',
       name: 'Overhead Triceps Stretch',
-      description: 'Stretch for the triceps and lats, reaching one arm overhead with the elbow bent and the hand reaching down the back.',
+      description:
+          'Stretch for the triceps and lats, reaching one arm overhead with the elbow bent and the hand reaching down the back.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Reach one arm overhead, bend the elbow so the hand drops behind the head.',
@@ -2175,7 +2300,8 @@ class SeedData {
     Exercise(
       id: 'exercise-neck-side-stretch',
       name: 'Neck Side Stretch',
-      description: 'Gentle lateral neck stretch, tilting the head toward one shoulder to stretch the upper trap and levator scapulae.',
+      description:
+          'Gentle lateral neck stretch, tilting the head toward one shoulder to stretch the upper trap and levator scapulae.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Tilt the ear toward the shoulder — don\'t raise the shoulder to meet the ear.',
@@ -2188,7 +2314,8 @@ class SeedData {
     Exercise(
       id: 'exercise-standing-calf-stretch',
       name: 'Standing Calf Stretch',
-      description: 'Stretch for the gastrocnemius, performed with the rear leg straight and heel pressed down, front leg bent forward.',
+      description:
+          'Stretch for the gastrocnemius, performed with the rear leg straight and heel pressed down, front leg bent forward.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Rear leg straight, heel firmly planted.',
@@ -2201,7 +2328,8 @@ class SeedData {
     Exercise(
       id: 'exercise-soleus-stretch',
       name: 'Soleus Stretch (Bent-Knee Calf Stretch)',
-      description: 'Variant of the calf stretch targeting the soleus, performed with the rear knee bent rather than straight.',
+      description:
+          'Variant of the calf stretch targeting the soleus, performed with the rear knee bent rather than straight.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Same setup as a calf stretch, but bend the rear knee.',
@@ -2214,7 +2342,8 @@ class SeedData {
     Exercise(
       id: 'exercise-childs-pose',
       name: 'Child\'s Pose',
-      description: 'Kneeling rest position with hips sitting back onto the heels and arms extended forward. Gentle stretch for the low back, lats, and shoulders.',
+      description:
+          'Kneeling rest position with hips sitting back onto the heels and arms extended forward. Gentle stretch for the low back, lats, and shoulders.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Knees wide, big toes together, hips sinking back to the heels.',
@@ -2228,7 +2357,8 @@ class SeedData {
     Exercise(
       id: 'exercise-90-90-hip-hold',
       name: '90/90 Hip Hold',
-      description: 'Seated hold with both hips at 90 degrees — front leg bent in front, rear leg bent to the side. Stretches internal rotation of the front hip and external rotation of the rear.',
+      description:
+          'Seated hold with both hips at 90 degrees — front leg bent in front, rear leg bent to the side. Stretches internal rotation of the front hip and external rotation of the rear.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Sit with front shin parallel to the body, rear shin parallel to the body on the other side.',
@@ -2241,7 +2371,8 @@ class SeedData {
     Exercise(
       id: 'exercise-frog-stretch',
       name: 'Frog Stretch',
-      description: 'Quadruped stretch with knees wide and feet flared, pressing the hips back toward the heels. Stretches the adductors and inner groin.',
+      description:
+          'Quadruped stretch with knees wide and feet flared, pressing the hips back toward the heels. Stretches the adductors and inner groin.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Knees wide, shins aligned with thighs, feet flared outward.',
@@ -2254,7 +2385,8 @@ class SeedData {
     Exercise(
       id: 'exercise-deep-squat-hold',
       name: 'Deep Squat Hold',
-      description: 'Bottom-position squat hold with feet flat, hips dropped as low as possible, elbows inside the knees pressing them open. Trains ankle, hip, and thoracic mobility simultaneously.',
+      description:
+          'Bottom-position squat hold with feet flat, hips dropped as low as possible, elbows inside the knees pressing them open. Trains ankle, hip, and thoracic mobility simultaneously.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Feet roughly shoulder-width, toes turned slightly out.',
@@ -2267,7 +2399,8 @@ class SeedData {
     Exercise(
       id: 'exercise-thoracic-rotation-hold',
       name: 'Thoracic Rotation Hold',
-      description: 'Quadruped hold rotating one arm up toward the ceiling, threading the thoracic spine. Targets mid-back rotation.',
+      description:
+          'Quadruped hold rotating one arm up toward the ceiling, threading the thoracic spine. Targets mid-back rotation.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Start in quadruped, place one hand behind the head.',
@@ -2280,7 +2413,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cat-cow-hold',
       name: 'Cat-Cow Hold',
-      description: 'Quadruped spinal mobility drill alternating between full flexion (cat) and full extension (cow), holding each end-range briefly. Not a flowing sequence — hold each position for time.',
+      description:
+          'Quadruped spinal mobility drill alternating between full flexion (cat) and full extension (cow), holding each end-range briefly. Not a flowing sequence — hold each position for time.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Quadruped, wrists under shoulders, knees under hips.',
@@ -2293,7 +2427,8 @@ class SeedData {
     Exercise(
       id: 'exercise-worlds-greatest-stretch-hold',
       name: 'World\'s Greatest Stretch Hold',
-      description: 'Multi-joint mobility hold in a deep lunge position with the same-side hand reaching up toward the ceiling, opening the thoracic spine. Held for time rather than flowed through.',
+      description:
+          'Multi-joint mobility hold in a deep lunge position with the same-side hand reaching up toward the ceiling, opening the thoracic spine. Held for time rather than flowed through.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Step one foot forward into a deep lunge, opposite hand planted inside the foot.',
@@ -2306,7 +2441,8 @@ class SeedData {
     Exercise(
       id: 'exercise-seated-butterfly-hold',
       name: 'Seated Butterfly Hold',
-      description: 'Seated adductor and groin stretch with soles of the feet together and knees dropped out to the sides.',
+      description:
+          'Seated adductor and groin stretch with soles of the feet together and knees dropped out to the sides.',
       disciplineId: 'discipline-stretching',
       howToSteps: [
         'Sit tall, soles of the feet together, hands on the ankles.',
@@ -2322,7 +2458,8 @@ class SeedData {
     Exercise(
       id: 'exercise-tennis-match',
       name: 'Tennis Match',
-      description: 'A full singles or doubles match, or an internal practice match. Use periods as sets.',
+      description:
+          'A full singles or doubles match, or an internal practice match. Use periods as sets.',
       disciplineId: 'discipline-tennis',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2331,7 +2468,8 @@ class SeedData {
     Exercise(
       id: 'exercise-tennis-drill',
       name: 'Tennis Drill',
-      description: 'Technique and footwork drill blocks — groundstrokes, volleys, approach shots, or movement patterns fed by a partner, coach, or ball machine.',
+      description:
+          'Technique and footwork drill blocks — groundstrokes, volleys, approach shots, or movement patterns fed by a partner, coach, or ball machine.',
       disciplineId: 'discipline-tennis',
       howToSteps: [
         'Split-step the moment the feeder makes contact.',
@@ -2346,7 +2484,8 @@ class SeedData {
     Exercise(
       id: 'exercise-volleyball-match',
       name: 'Volleyball Match',
-      description: 'A full match or scrimmage, indoor or beach. Use periods as sets.',
+      description:
+          'A full match or scrimmage, indoor or beach. Use periods as sets.',
       disciplineId: 'discipline-volleyball',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2355,7 +2494,8 @@ class SeedData {
     Exercise(
       id: 'exercise-volleyball-drill',
       name: 'Volleyball Drill',
-      description: 'Drill blocks — passing, setting, hitting, blocking, or serve-receive patterns fed by a coach or partner.',
+      description:
+          'Drill blocks — passing, setting, hitting, blocking, or serve-receive patterns fed by a coach or partner.',
       disciplineId: 'discipline-volleyball',
       howToSteps: [
         'Low, balanced platform on every pass — don\'t swing the arms.',
@@ -2370,7 +2510,8 @@ class SeedData {
     Exercise(
       id: 'exercise-badminton-match',
       name: 'Badminton Match',
-      description: 'A full singles or doubles match played to standard game format, or a rally-based practice game.',
+      description:
+          'A full singles or doubles match played to standard game format, or a rally-based practice game.',
       disciplineId: 'discipline-badminton',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2379,7 +2520,8 @@ class SeedData {
     Exercise(
       id: 'exercise-table-tennis-match',
       name: 'Table Tennis Match',
-      description: 'A full match played to standard game format, or a practice game against a partner or robot.',
+      description:
+          'A full match played to standard game format, or a practice game against a partner or robot.',
       disciplineId: 'discipline-table-tennis',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2388,7 +2530,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cricket-match',
       name: 'Cricket Match',
-      description: 'A full match — T20, ODI, multi-day, or club — or a practice match. Use periods as innings or sessions.',
+      description:
+          'A full match — T20, ODI, multi-day, or club — or a practice match. Use periods as innings or sessions.',
       disciplineId: 'discipline-cricket',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2424,7 +2567,8 @@ class SeedData {
     Exercise(
       id: 'exercise-rugby-match',
       name: 'Rugby Match',
-      description: 'A full match — 15s, 10s, or 7s — or a practice match. Use periods as halves.',
+      description:
+          'A full match — 15s, 10s, or 7s — or a practice match. Use periods as halves.',
       disciplineId: 'discipline-rugby',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2433,7 +2577,8 @@ class SeedData {
     Exercise(
       id: 'exercise-lacrosse-game',
       name: 'Lacrosse Game',
-      description: 'A full game or scrimmage — men\'s field, women\'s field, or box. Use periods as quarters.',
+      description:
+          'A full game or scrimmage — men\'s field, women\'s field, or box. Use periods as quarters.',
       disciplineId: 'discipline-lacrosse',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2446,7 +2591,8 @@ class SeedData {
     Exercise(
       id: 'exercise-tennis-serve-practice',
       name: 'Tennis Serve Practice',
-      description: 'Dedicated serving session — baskets of balls from one or both sides, flats, slices, and kicks.',
+      description:
+          'Dedicated serving session — baskets of balls from one or both sides, flats, slices, and kicks.',
       disciplineId: 'discipline-tennis',
       howToSteps: [
         'Same ball toss every time — in front, slightly to the right for a righty.',
@@ -2460,7 +2606,8 @@ class SeedData {
     Exercise(
       id: 'exercise-tennis-return-practice',
       name: 'Tennis Return Practice',
-      description: 'Return-of-serve reps against a live server or ball machine. Focus on read, split, and short swing.',
+      description:
+          'Return-of-serve reps against a live server or ball machine. Focus on read, split, and short swing.',
       disciplineId: 'discipline-tennis',
       howToSteps: [
         'Split-step earlier than you think — before the server makes contact.',
@@ -2475,7 +2622,8 @@ class SeedData {
     Exercise(
       id: 'exercise-badminton-drill',
       name: 'Badminton Drill',
-      description: 'Targeted drill blocks — clears, drops, smashes, net play, or multi-shuttle footwork patterns fed by a partner or coach.',
+      description:
+          'Targeted drill blocks — clears, drops, smashes, net play, or multi-shuttle footwork patterns fed by a partner or coach.',
       disciplineId: 'discipline-badminton',
       howToSteps: [
         'Ready position with racquet up, weight on the balls of the feet.',
@@ -2491,7 +2639,8 @@ class SeedData {
     Exercise(
       id: 'exercise-table-tennis-drill',
       name: 'Table Tennis Drill',
-      description: 'Multi-ball or partner-fed drill blocks — forehand/backhand loops, blocks, pushes, or footwork patterns.',
+      description:
+          'Multi-ball or partner-fed drill blocks — forehand/backhand loops, blocks, pushes, or footwork patterns.',
       disciplineId: 'discipline-table-tennis',
       howToSteps: [
         'Bent knees, weight forward, paddle up at all times.',
@@ -2507,7 +2656,8 @@ class SeedData {
     Exercise(
       id: 'exercise-squash-match',
       name: 'Squash Match',
-      description: 'A full match played to 11 or 15, or a practice game against a regular partner. Use periods as games.',
+      description:
+          'A full match played to 11 or 15, or a practice game against a regular partner. Use periods as games.',
       disciplineId: 'discipline-squash',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2516,7 +2666,8 @@ class SeedData {
     Exercise(
       id: 'exercise-squash-drill',
       name: 'Squash Drill',
-      description: 'Solo or partner drill blocks — length, boasts, volleys, or ghosting patterns.',
+      description:
+          'Solo or partner drill blocks — length, boasts, volleys, or ghosting patterns.',
       disciplineId: 'discipline-squash',
       howToSteps: [
         'Keep the T — every shot should aim to return you there.',
@@ -2532,7 +2683,8 @@ class SeedData {
     Exercise(
       id: 'exercise-padel-match',
       name: 'Padel Match',
-      description: 'A full doubles match, or a practice game with a regular pairing. Use periods as sets.',
+      description:
+          'A full doubles match, or a practice game with a regular pairing. Use periods as sets.',
       disciplineId: 'discipline-padel',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2541,7 +2693,8 @@ class SeedData {
     Exercise(
       id: 'exercise-padel-drill',
       name: 'Padel Drill',
-      description: 'Partner-fed drill blocks — wall plays, volleys at the net, lobs, and bandeja/víbora patterns.',
+      description:
+          'Partner-fed drill blocks — wall plays, volleys at the net, lobs, and bandeja/víbora patterns.',
       disciplineId: 'discipline-padel',
       howToSteps: [
         'Hold the net position — don\'t retreat unless lobbed.',
@@ -2557,7 +2710,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bjj-class',
       name: 'BJJ Class',
-      description: 'A full scheduled class — warm-up, technique instruction, drilling, and rolling. Log as one session; use periods for class segments if desired.',
+      description:
+          'A full scheduled class — warm-up, technique instruction, drilling, and rolling. Log as one session; use periods for class segments if desired.',
       disciplineId: 'discipline-bjj',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2565,7 +2719,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bjj-drilling',
       name: 'BJJ Drilling',
-      description: 'Partner drilling blocks — repping a specific technique, transition, or sequence without resistance.',
+      description:
+          'Partner drilling blocks — repping a specific technique, transition, or sequence without resistance.',
       disciplineId: 'discipline-bjj',
       howToSteps: [
         'Drill the movement, not the outcome — no muscling reps.',
@@ -2579,7 +2734,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bjj-rolling',
       name: 'BJJ Rolling',
-      description: 'Live rolling rounds with rotating partners — open sparring at a negotiated intensity.',
+      description:
+          'Live rolling rounds with rotating partners — open sparring at a negotiated intensity.',
       disciplineId: 'discipline-bjj',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2587,7 +2743,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bjj-positional-sparring',
       name: 'BJJ Positional Sparring',
-      description: 'Rolling rounds starting from a fixed position — guard, side control, mount, back — reset to the starting position on escape or submission.',
+      description:
+          'Rolling rounds starting from a fixed position — guard, side control, mount, back — reset to the starting position on escape or submission.',
       disciplineId: 'discipline-bjj',
       howToSteps: [
         'Pick a position and stick to it for the whole round.',
@@ -2601,7 +2758,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bjj-guard-retention-practice',
       name: 'BJJ Guard Retention Practice',
-      description: 'Partner drill — the bottom player defends the guard against systematic passing attempts, reset when passed.',
+      description:
+          'Partner drill — the bottom player defends the guard against systematic passing attempts, reset when passed.',
       disciplineId: 'discipline-bjj',
       howToSteps: [
         'Hips first, legs second — frame with the hips before the knees.',
@@ -2615,7 +2773,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bjj-guard-passing-practice',
       name: 'BJJ Guard Passing Practice',
-      description: 'Partner drill — the top player works through a passing sequence against a defending guard, reset on pass or sweep.',
+      description:
+          'Partner drill — the top player works through a passing sequence against a defending guard, reset on pass or sweep.',
       disciplineId: 'discipline-bjj',
       howToSteps: [
         'Control grips or frames before moving the hips.',
@@ -2629,7 +2788,8 @@ class SeedData {
     Exercise(
       id: 'exercise-bjj-submission-practice',
       name: 'BJJ Submission Practice',
-      description: 'Targeted drilling of specific submissions from a fixed position — entries, finishes, and common defenses.',
+      description:
+          'Targeted drilling of specific submissions from a fixed position — entries, finishes, and common defenses.',
       disciplineId: 'discipline-bjj',
       howToSteps: [
         'Drill the setup, not just the finish.',
@@ -2644,7 +2804,8 @@ class SeedData {
     Exercise(
       id: 'exercise-muay-thai-class',
       name: 'Muay Thai Class',
-      description: 'A full scheduled class — shadow, pads, bag work, clinch, and optional sparring. Log as one session.',
+      description:
+          'A full scheduled class — shadow, pads, bag work, clinch, and optional sparring. Log as one session.',
       disciplineId: 'discipline-muay-thai',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2652,7 +2813,8 @@ class SeedData {
     Exercise(
       id: 'exercise-muay-thai-pad-work',
       name: 'Muay Thai Pad Work',
-      description: 'Timed rounds on Thai pads with a coach — kicks, knees, elbows, and punch-kick combinations.',
+      description:
+          'Timed rounds on Thai pads with a coach — kicks, knees, elbows, and punch-kick combinations.',
       disciplineId: 'discipline-muay-thai',
       howToSteps: [
         'Turn the hip fully on every kick — the shin follows the hip.',
@@ -2666,7 +2828,8 @@ class SeedData {
     Exercise(
       id: 'exercise-muay-thai-bag-work',
       name: 'Muay Thai Bag Work',
-      description: 'Timed rounds on a banana bag — full toolkit of punches, kicks, knees, and elbows with movement between combinations.',
+      description:
+          'Timed rounds on a banana bag — full toolkit of punches, kicks, knees, and elbows with movement between combinations.',
       disciplineId: 'discipline-muay-thai',
       howToSteps: [
         'Hit hard once, then reset — no spammed kicks.',
@@ -2680,7 +2843,8 @@ class SeedData {
     Exercise(
       id: 'exercise-muay-thai-clinch-practice',
       name: 'Muay Thai Clinch Practice',
-      description: 'Timed rounds of clinch work with a partner — hand fighting, posture control, knees, sweeps, and turns.',
+      description:
+          'Timed rounds of clinch work with a partner — hand fighting, posture control, knees, sweeps, and turns.',
       disciplineId: 'discipline-muay-thai',
       howToSteps: [
         'Fight for the inside position on the head and neck.',
@@ -2694,7 +2858,8 @@ class SeedData {
     Exercise(
       id: 'exercise-muay-thai-sparring',
       name: 'Muay Thai Sparring',
-      description: 'Live rounds with a partner at agreed intensity — technical sparring or harder prep rounds with shin guards and control.',
+      description:
+          'Live rounds with a partner at agreed intensity — technical sparring or harder prep rounds with shin guards and control.',
       disciplineId: 'discipline-muay-thai',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2703,7 +2868,8 @@ class SeedData {
     Exercise(
       id: 'exercise-mma-class',
       name: 'MMA Class',
-      description: 'A full scheduled class — mixed striking, grappling, and transition work. Log as one session.',
+      description:
+          'A full scheduled class — mixed striking, grappling, and transition work. Log as one session.',
       disciplineId: 'discipline-mma',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2711,7 +2877,8 @@ class SeedData {
     Exercise(
       id: 'exercise-mma-pad-work',
       name: 'MMA Pad Work',
-      description: 'Timed rounds on pads with striking plus takedown entries, cage work, or ground transitions mixed in.',
+      description:
+          'Timed rounds on pads with striking plus takedown entries, cage work, or ground transitions mixed in.',
       disciplineId: 'discipline-mma',
       howToSteps: [
         'Treat every strike as a setup for the next phase — takedown, clinch, or exit.',
@@ -2725,7 +2892,8 @@ class SeedData {
     Exercise(
       id: 'exercise-mma-sparring',
       name: 'MMA Sparring',
-      description: 'Live rounds with a partner covering all phases — striking, clinch, takedowns, and ground — at agreed intensity.',
+      description:
+          'Live rounds with a partner covering all phases — striking, clinch, takedowns, and ground — at agreed intensity.',
       disciplineId: 'discipline-mma',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2733,7 +2901,8 @@ class SeedData {
     Exercise(
       id: 'exercise-mma-situational-sparring',
       name: 'MMA Situational Sparring',
-      description: 'Live rounds starting from a fixed situation — back against the cage, bottom guard, in the clinch — reset to the starting position.',
+      description:
+          'Live rounds starting from a fixed situation — back against the cage, bottom guard, in the clinch — reset to the starting position.',
       disciplineId: 'discipline-mma',
       howToSteps: [
         'Pick the situation before the round, don\'t drift between them.',
@@ -2748,7 +2917,8 @@ class SeedData {
     Exercise(
       id: 'exercise-karate-class',
       name: 'Karate Class',
-      description: 'A full scheduled class — kihon, kata, and kumite. Log as one session.',
+      description:
+          'A full scheduled class — kihon, kata, and kumite. Log as one session.',
       disciplineId: 'discipline-karate',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2756,7 +2926,8 @@ class SeedData {
     Exercise(
       id: 'exercise-karate-kumite',
       name: 'Karate Kumite',
-      description: 'Sparring rounds — point sparring, continuous sparring, or controlled full-contact depending on style.',
+      description:
+          'Sparring rounds — point sparring, continuous sparring, or controlled full-contact depending on style.',
       disciplineId: 'discipline-karate',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2764,7 +2935,8 @@ class SeedData {
     Exercise(
       id: 'exercise-karate-kata-practice',
       name: 'Karate Kata Practice',
-      description: 'Solo practice of prescribed forms — timed blocks of kata repetitions at varying intensities.',
+      description:
+          'Solo practice of prescribed forms — timed blocks of kata repetitions at varying intensities.',
       disciplineId: 'discipline-karate',
       howToSteps: [
         'Full kime on every technique — no throwaway reps.',
@@ -2779,7 +2951,8 @@ class SeedData {
     Exercise(
       id: 'exercise-judo-class',
       name: 'Judo Class',
-      description: 'A full scheduled class — ukemi, uchi-komi, drilling, and randori. Log as one session.',
+      description:
+          'A full scheduled class — ukemi, uchi-komi, drilling, and randori. Log as one session.',
       disciplineId: 'discipline-judo',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2787,7 +2960,8 @@ class SeedData {
     Exercise(
       id: 'exercise-judo-randori',
       name: 'Judo Randori',
-      description: 'Live sparring rounds with rotating partners — standing, ground, or combined depending on the session\'s focus.',
+      description:
+          'Live sparring rounds with rotating partners — standing, ground, or combined depending on the session\'s focus.',
       disciplineId: 'discipline-judo',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2795,7 +2969,8 @@ class SeedData {
     Exercise(
       id: 'exercise-judo-uchi-komi',
       name: 'Judo Uchi-Komi',
-      description: 'Repetitive throw entries with a partner — no follow-through, focused on grip, kuzushi, and entry position.',
+      description:
+          'Repetitive throw entries with a partner — no follow-through, focused on grip, kuzushi, and entry position.',
       disciplineId: 'discipline-judo',
       howToSteps: [
         'Break the partner\'s balance before stepping in.',
@@ -2809,7 +2984,8 @@ class SeedData {
     Exercise(
       id: 'exercise-judo-nage-komi',
       name: 'Judo Nage-Komi',
-      description: 'Partner drilling of full throws with follow-through, typically onto a crash mat. Technique reps at varying intensities.',
+      description:
+          'Partner drilling of full throws with follow-through, typically onto a crash mat. Technique reps at varying intensities.',
       disciplineId: 'discipline-judo',
       howToSteps: [
         'Commit fully to the throw — half-throws build bad habits.',
@@ -2824,7 +3000,8 @@ class SeedData {
     Exercise(
       id: 'exercise-soccer-match',
       name: 'Soccer Match',
-      description: 'A full match — competitive, small-sided, or internal — played at standard or reduced duration. Use periods as halves or quarters.',
+      description:
+          'A full match — competitive, small-sided, or internal — played at standard or reduced duration. Use periods as halves or quarters.',
       disciplineId: 'discipline-soccer',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2833,7 +3010,8 @@ class SeedData {
     Exercise(
       id: 'exercise-soccer-training',
       name: 'Soccer Training',
-      description: 'A full team training session — warm-up, technical work, tactical phases, and scrimmages.',
+      description:
+          'A full team training session — warm-up, technical work, tactical phases, and scrimmages.',
       disciplineId: 'discipline-soccer',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2842,7 +3020,8 @@ class SeedData {
     Exercise(
       id: 'exercise-soccer-shooting-practice',
       name: 'Soccer Shooting Practice',
-      description: 'Dedicated finishing drill blocks — shots from distance, inside the box, one-touch finishes, or set-piece rehearsal.',
+      description:
+          'Dedicated finishing drill blocks — shots from distance, inside the box, one-touch finishes, or set-piece rehearsal.',
       disciplineId: 'discipline-soccer',
       howToSteps: [
         'Plant foot next to the ball, not behind it.',
@@ -2856,7 +3035,8 @@ class SeedData {
     Exercise(
       id: 'exercise-soccer-passing-practice',
       name: 'Soccer Passing Practice',
-      description: 'Drill blocks focused on passing patterns — short, long, switches, or combination play under varying pressure.',
+      description:
+          'Drill blocks focused on passing patterns — short, long, switches, or combination play under varying pressure.',
       disciplineId: 'discipline-soccer',
       howToSteps: [
         'Open the body before receiving — don\'t square up to the passer.',
@@ -2871,7 +3051,8 @@ class SeedData {
     Exercise(
       id: 'exercise-basketball-game',
       name: 'Basketball Game',
-      description: 'A full game — full court or half-court, competitive or pickup. Use periods as quarters or halves.',
+      description:
+          'A full game — full court or half-court, competitive or pickup. Use periods as quarters or halves.',
       disciplineId: 'discipline-basketball',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2880,7 +3061,8 @@ class SeedData {
     Exercise(
       id: 'exercise-basketball-practice',
       name: 'Basketball Practice',
-      description: 'A full team or solo practice session — skill work, plays, and scrimmage.',
+      description:
+          'A full team or solo practice session — skill work, plays, and scrimmage.',
       disciplineId: 'discipline-basketball',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2889,7 +3071,8 @@ class SeedData {
     Exercise(
       id: 'exercise-basketball-shooting-practice',
       name: 'Basketball Shooting Practice',
-      description: 'Dedicated shooting session — catch-and-shoot, off-the-dribble, spot-up, or free throw reps.',
+      description:
+          'Dedicated shooting session — catch-and-shoot, off-the-dribble, spot-up, or free throw reps.',
       disciplineId: 'discipline-basketball',
       howToSteps: [
         'Feet set before the catch — jump from a balanced base.',
@@ -2903,7 +3086,8 @@ class SeedData {
     Exercise(
       id: 'exercise-basketball-free-throw-practice',
       name: 'Basketball Free Throw Practice',
-      description: 'Dedicated free throw reps — same routine every shot, tracked as made/missed.',
+      description:
+          'Dedicated free throw reps — same routine every shot, tracked as made/missed.',
       disciplineId: 'discipline-basketball',
       howToSteps: [
         'Use the same pre-shot routine on every attempt.',
@@ -2917,7 +3101,8 @@ class SeedData {
     Exercise(
       id: 'exercise-basketball-ball-handling-practice',
       name: 'Basketball Ball Handling Practice',
-      description: 'Solo dribbling drill blocks — stationary, moving, two-ball, or cone patterns.',
+      description:
+          'Solo dribbling drill blocks — stationary, moving, two-ball, or cone patterns.',
       disciplineId: 'discipline-basketball',
       howToSteps: [
         'Keep the dribble at or below the hip.',
@@ -2932,7 +3117,8 @@ class SeedData {
     Exercise(
       id: 'exercise-rugby-training',
       name: 'Rugby Training',
-      description: 'A full team training session — fitness, skills, phase play, and contact work.',
+      description:
+          'A full team training session — fitness, skills, phase play, and contact work.',
       disciplineId: 'discipline-rugby',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2942,7 +3128,8 @@ class SeedData {
     Exercise(
       id: 'exercise-ice-hockey-practice',
       name: 'Ice Hockey Practice',
-      description: 'A full team practice — skating, passing, shooting, systems, and scrimmage.',
+      description:
+          'A full team practice — skating, passing, shooting, systems, and scrimmage.',
       disciplineId: 'discipline-ice-hockey',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2952,7 +3139,8 @@ class SeedData {
     Exercise(
       id: 'exercise-american-football-practice',
       name: 'American Football Practice',
-      description: 'A full team practice — individual drills, position work, and team periods.',
+      description:
+          'A full team practice — individual drills, position work, and team periods.',
       disciplineId: 'discipline-american-football',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2962,7 +3150,8 @@ class SeedData {
     Exercise(
       id: 'exercise-baseball-practice',
       name: 'Baseball Practice',
-      description: 'A full team practice — batting, fielding, pitching, and situational work.',
+      description:
+          'A full team practice — batting, fielding, pitching, and situational work.',
       disciplineId: 'discipline-baseball',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2972,7 +3161,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cricket-practice',
       name: 'Cricket Practice',
-      description: 'A net or field practice session — batting, bowling, and fielding work.',
+      description:
+          'A net or field practice session — batting, bowling, and fielding work.',
       disciplineId: 'discipline-cricket',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2982,7 +3172,8 @@ class SeedData {
     Exercise(
       id: 'exercise-lacrosse-practice',
       name: 'Lacrosse Practice',
-      description: 'A full team practice — stick work, shooting, defense, and team periods.',
+      description:
+          'A full team practice — stick work, shooting, defense, and team periods.',
       disciplineId: 'discipline-lacrosse',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -2992,7 +3183,8 @@ class SeedData {
     Exercise(
       id: 'exercise-golf-round',
       name: 'Golf Round',
-      description: 'A full round — 9 or 18 holes — stroke play, match play, or casual. Use periods as nines or sets of holes.',
+      description:
+          'A full round — 9 or 18 holes — stroke play, match play, or casual. Use periods as nines or sets of holes.',
       disciplineId: 'discipline-golf',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -3001,7 +3193,8 @@ class SeedData {
     Exercise(
       id: 'exercise-golf-range-practice',
       name: 'Golf Range Practice',
-      description: 'A driving range session — full swings, club-by-club work, or targeted shot shaping.',
+      description:
+          'A driving range session — full swings, club-by-club work, or targeted shot shaping.',
       disciplineId: 'discipline-golf',
       howToSteps: [
         'Go through a full pre-shot routine on every ball, not just the first few.',
@@ -3015,7 +3208,8 @@ class SeedData {
     Exercise(
       id: 'exercise-golf-short-game-practice',
       name: 'Golf Short Game Practice',
-      description: 'Dedicated session around the green — chipping, pitching, and bunker work from varied lies and distances.',
+      description:
+          'Dedicated session around the green — chipping, pitching, and bunker work from varied lies and distances.',
       disciplineId: 'discipline-golf',
       howToSteps: [
         'Land the ball on a chosen spot, not at the flag.',
@@ -3029,7 +3223,8 @@ class SeedData {
     Exercise(
       id: 'exercise-golf-putting-practice',
       name: 'Golf Putting Practice',
-      description: 'Dedicated putting session — distance control, lag putting, short putts, or breaking putts.',
+      description:
+          'Dedicated putting session — distance control, lag putting, short putts, or breaking putts.',
       disciplineId: 'discipline-golf',
       howToSteps: [
         'Read the putt, pick a line, commit — no second-guessing over the ball.',
@@ -3044,7 +3239,8 @@ class SeedData {
     Exercise(
       id: 'exercise-climbing-session',
       name: 'Climbing Session',
-      description: 'An open-ended climbing session — gym or outdoor, bouldering or roped. Use periods as problem/route attempts if tracking.',
+      description:
+          'An open-ended climbing session — gym or outdoor, bouldering or roped. Use periods as problem/route attempts if tracking.',
       disciplineId: 'discipline-climbing',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
@@ -3053,7 +3249,8 @@ class SeedData {
     Exercise(
       id: 'exercise-climbing-projecting',
       name: 'Climbing Projecting',
-      description: 'Working a specific problem or route at or near the limit — attempts interspersed with rest.',
+      description:
+          'Working a specific problem or route at or near the limit — attempts interspersed with rest.',
       disciplineId: 'discipline-climbing',
       howToSteps: [
         'Rest fully between attempts — 3–5 minutes minimum on hard projects.',
@@ -3067,7 +3264,8 @@ class SeedData {
     Exercise(
       id: 'exercise-climbing-volume',
       name: 'Climbing Volume',
-      description: 'High-quantity climbing at sub-maximal grades — mileage for technique, capacity, and movement literacy.',
+      description:
+          'High-quantity climbing at sub-maximal grades — mileage for technique, capacity, and movement literacy.',
       disciplineId: 'discipline-climbing',
       howToSteps: [
         'Stay 2–3 grades below limit — this isn\'t projecting.',
@@ -3081,7 +3279,8 @@ class SeedData {
     Exercise(
       id: 'exercise-climbing-hangboard-session',
       name: 'Climbing Hangboard Session',
-      description: 'Structured hangboard protocol — max hangs, repeaters, or specific grip work.',
+      description:
+          'Structured hangboard protocol — max hangs, repeaters, or specific grip work.',
       disciplineId: 'discipline-climbing',
       howToSteps: [
         'Warm up fully before touching the board — no cold max hangs.',
@@ -3099,7 +3298,8 @@ class SeedData {
     Exercise(
       id: 'exercise-sprint-intervals',
       name: 'Sprint Intervals',
-      description: 'Short, all-out efforts of 10–30 seconds with long recovery between. Develops raw top-end speed and anaerobic power.',
+      description:
+          'Short, all-out efforts of 10–30 seconds with long recovery between. Develops raw top-end speed and anaerobic power.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Every rep is maximum effort — if rep 4 is as fast as rep 1, recovery is long enough.',
@@ -3113,7 +3313,8 @@ class SeedData {
     Exercise(
       id: 'exercise-strides',
       name: 'Strides',
-      description: 'Short accelerations of 80–100 meters at roughly 5K race pace, performed after easy runs. Maintains neuromuscular sharpness without adding training stress.',
+      description:
+          'Short accelerations of 80–100 meters at roughly 5K race pace, performed after easy runs. Maintains neuromuscular sharpness without adding training stress.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Build pace smoothly over the first 20 meters, hold it, then decelerate.',
@@ -3127,7 +3328,8 @@ class SeedData {
     Exercise(
       id: 'exercise-trail-run',
       name: 'Trail Run',
-      description: 'An easy-to-moderate effort run on dirt, gravel, or technical singletrack. Lower impact than road running, with added demand on ankle stability and footing awareness.',
+      description:
+          'An easy-to-moderate effort run on dirt, gravel, or technical singletrack. Lower impact than road running, with added demand on ankle stability and footing awareness.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Pace by effort, not by watch — hills and technical sections will mess with your numbers.',
@@ -3140,7 +3342,8 @@ class SeedData {
     Exercise(
       id: 'exercise-treadmill-run',
       name: 'Treadmill Run',
-      description: 'Any run performed on a treadmill. Useful when weather or time doesn\'t cooperate, and lets you control pace and incline precisely.',
+      description:
+          'Any run performed on a treadmill. Useful when weather or time doesn\'t cooperate, and lets you control pace and incline precisely.',
       disciplineId: 'discipline-running',
       howToSteps: [
         'Set a 1% incline to approximate outdoor effort.',
@@ -3154,7 +3357,8 @@ class SeedData {
     Exercise(
       id: 'exercise-zone-2-ride',
       name: 'Zone 2 Ride',
-      description: 'A long, easy-to-moderate ride at aerobic endurance pace. The cycling equivalent of the easy run — the foundation of cycling fitness.',
+      description:
+          'A long, easy-to-moderate ride at aerobic endurance pace. The cycling equivalent of the easy run — the foundation of cycling fitness.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Ride at a conversational pace — you should be able to speak in full sentences.',
@@ -3168,7 +3372,8 @@ class SeedData {
     Exercise(
       id: 'exercise-tempo-ride',
       name: 'Tempo Ride',
-      description: 'A sustained ride at moderately hard intensity, above endurance but below threshold. Builds aerobic capacity and muscular endurance.',
+      description:
+          'A sustained ride at moderately hard intensity, above endurance but below threshold. Builds aerobic capacity and muscular endurance.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Effort is 7 out of 10 — comfortably uncomfortable.',
@@ -3182,7 +3387,8 @@ class SeedData {
     Exercise(
       id: 'exercise-sweet-spot-intervals',
       name: 'Sweet Spot Intervals',
-      description: 'Intervals at 88–94% of FTP — the maximum intensity you can sustain for long durations. High training stimulus with manageable recovery cost.',
+      description:
+          'Intervals at 88–94% of FTP — the maximum intensity you can sustain for long durations. High training stimulus with manageable recovery cost.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Work intervals are typically 10–20 minutes long.',
@@ -3196,7 +3402,8 @@ class SeedData {
     Exercise(
       id: 'exercise-threshold-intervals',
       name: 'Threshold Intervals',
-      description: 'Intervals held at or near FTP — the hardest intensity sustainable for about an hour. Raises your ceiling for sustained effort.',
+      description:
+          'Intervals held at or near FTP — the hardest intensity sustainable for about an hour. Raises your ceiling for sustained effort.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Work intervals are typically 8–20 minutes at 95–105% of FTP.',
@@ -3210,7 +3417,8 @@ class SeedData {
     Exercise(
       id: 'exercise-vo2-max-intervals',
       name: 'VO2 Max Intervals',
-      description: 'Short, very hard efforts above threshold — 3 to 5 minutes of suffering per rep. Develops maximum aerobic capacity and raises ceiling for hard efforts.',
+      description:
+          'Short, very hard efforts above threshold — 3 to 5 minutes of suffering per rep. Develops maximum aerobic capacity and raises ceiling for hard efforts.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Work intervals are typically 3–5 minutes at 110–120% FTP.',
@@ -3224,7 +3432,8 @@ class SeedData {
     Exercise(
       id: 'exercise-cycling-sprint-intervals',
       name: 'Cycling Sprint Intervals',
-      description: 'All-out sprints of 10–30 seconds with long recovery. Builds peak power and anaerobic capacity.',
+      description:
+          'All-out sprints of 10–30 seconds with long recovery. Builds peak power and anaerobic capacity.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Each sprint is maximum effort — 100% gas.',
@@ -3238,7 +3447,8 @@ class SeedData {
     Exercise(
       id: 'exercise-long-ride',
       name: 'Long Ride',
-      description: 'The cyclist\'s long run — an extended ride at mostly easy intensity, occasionally spicier. Builds aerobic durability and tests fueling and pacing.',
+      description:
+          'The cyclist\'s long run — an extended ride at mostly easy intensity, occasionally spicier. Builds aerobic durability and tests fueling and pacing.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Keep the bulk of the ride in Zone 2.',
@@ -3252,7 +3462,8 @@ class SeedData {
     Exercise(
       id: 'exercise-recovery-ride',
       name: 'Recovery Ride',
-      description: 'A very easy spin after a hard session or race. Promotes blood flow and active recovery without adding training stress.',
+      description:
+          'A very easy spin after a hard session or race. Promotes blood flow and active recovery without adding training stress.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Effort is 3 out of 10 or lower.',
@@ -3266,7 +3477,8 @@ class SeedData {
     Exercise(
       id: 'exercise-stationary-bike',
       name: 'Stationary Bike',
-      description: 'Any indoor cycling effort on a stationary, spin, or smart bike. Zero traffic, zero weather, full pace control.',
+      description:
+          'Any indoor cycling effort on a stationary, spin, or smart bike. Zero traffic, zero weather, full pace control.',
       disciplineId: 'discipline-cycling',
       howToSteps: [
         'Set up position first — saddle height, reach, handlebar — before starting.',
@@ -3280,7 +3492,8 @@ class SeedData {
     Exercise(
       id: 'exercise-steady-state-row',
       name: 'Steady State Row',
-      description: 'A sustained, moderate-intensity erg session at aerobic pace. The foundation of rowing training and an efficient full-body aerobic workout.',
+      description:
+          'A sustained, moderate-intensity erg session at aerobic pace. The foundation of rowing training and an efficient full-body aerobic workout.',
       disciplineId: 'discipline-rowing',
       howToSteps: [
         'Target a stroke rate of 20–24 strokes per minute.',
@@ -3294,7 +3507,8 @@ class SeedData {
     Exercise(
       id: 'exercise-rowing-intervals',
       name: 'Rowing Intervals',
-      description: 'Repeated hard erg efforts with rest between. Builds power and anaerobic capacity for rowing and general conditioning.',
+      description:
+          'Repeated hard erg efforts with rest between. Builds power and anaerobic capacity for rowing and general conditioning.',
       disciplineId: 'discipline-rowing',
       howToSteps: [
         'Common intervals: 500m, 750m, 1000m repeats.',
@@ -3308,7 +3522,8 @@ class SeedData {
     Exercise(
       id: 'exercise-2k-row-test',
       name: '2K Test',
-      description: 'The rowing benchmark — an all-out 2000-meter effort. The gold-standard test of rowing fitness and a brutal measure of anaerobic capacity.',
+      description:
+          'The rowing benchmark — an all-out 2000-meter effort. The gold-standard test of rowing fitness and a brutal measure of anaerobic capacity.',
       disciplineId: 'discipline-rowing',
       howToSteps: [
         'Warm up thoroughly — 15–20 minutes including pace work.',
@@ -3322,7 +3537,8 @@ class SeedData {
     Exercise(
       id: 'exercise-long-row',
       name: 'Long Row',
-      description: 'An extended low-intensity erg session, typically 60–90 minutes. Builds aerobic base with minimal impact.',
+      description:
+          'An extended low-intensity erg session, typically 60–90 minutes. Builds aerobic base with minimal impact.',
       disciplineId: 'discipline-rowing',
       howToSteps: [
         'Stroke rate stays low: 18–22.',
@@ -3335,7 +3551,8 @@ class SeedData {
     Exercise(
       id: 'exercise-power-strokes',
       name: 'Power Strokes',
-      description: 'Short bursts of maximum-power rowing within a longer steady piece. Trains peak force production without full interval structure.',
+      description:
+          'Short bursts of maximum-power rowing within a longer steady piece. Trains peak force production without full interval structure.',
       disciplineId: 'discipline-rowing',
       howToSteps: [
         'Typical structure: 10 hard strokes every minute during a 10–20 minute piece.',
@@ -3349,7 +3566,8 @@ class SeedData {
     Exercise(
       id: 'exercise-easy-swim',
       name: 'Easy Swim',
-      description: 'A low-intensity continuous swim focused on technique and aerobic base. The swimming equivalent of an easy run.',
+      description:
+          'A low-intensity continuous swim focused on technique and aerobic base. The swimming equivalent of an easy run.',
       disciplineId: 'discipline-swimming',
       howToSteps: [
         'Focus on feel and stroke mechanics, not pace.',
@@ -3362,7 +3580,8 @@ class SeedData {
     Exercise(
       id: 'exercise-swim-intervals',
       name: 'Swim Intervals',
-      description: 'Repeated pool lengths or sets at hard pace with structured rest. The bread and butter of swim training.',
+      description:
+          'Repeated pool lengths or sets at hard pace with structured rest. The bread and butter of swim training.',
       disciplineId: 'discipline-swimming',
       howToSteps: [
         'Common sets: 10 x 100m on a fixed send-off time.',
@@ -3376,7 +3595,8 @@ class SeedData {
     Exercise(
       id: 'exercise-swim-sprints',
       name: 'Swim Sprints',
-      description: 'All-out short efforts, typically 25m to 100m, with long recovery. Builds raw speed and anaerobic capacity.',
+      description:
+          'All-out short efforts, typically 25m to 100m, with long recovery. Builds raw speed and anaerobic capacity.',
       disciplineId: 'discipline-swimming',
       howToSteps: [
         'Each sprint is maximum effort from push-off.',
@@ -3389,7 +3609,8 @@ class SeedData {
     Exercise(
       id: 'exercise-long-swim',
       name: 'Long Swim',
-      description: 'An extended continuous swim, typically 1500m or longer. Builds aerobic capacity and mental toughness in the water.',
+      description:
+          'An extended continuous swim, typically 1500m or longer. Builds aerobic capacity and mental toughness in the water.',
       disciplineId: 'discipline-swimming',
       howToSteps: [
         'Pace easier than you think — the back half is the test.',
@@ -3402,7 +3623,8 @@ class SeedData {
     Exercise(
       id: 'exercise-swim-drills',
       name: 'Drill Set',
-      description: 'A technique-focused set using single-arm, catch-up, fist drill, or kickboard work. Improves stroke mechanics without high aerobic demand.',
+      description:
+          'A technique-focused set using single-arm, catch-up, fist drill, or kickboard work. Improves stroke mechanics without high aerobic demand.',
       disciplineId: 'discipline-swimming',
       howToSteps: [
         'Slow down and focus — drill work is about quality, not effort.',
@@ -3415,7 +3637,8 @@ class SeedData {
     Exercise(
       id: 'exercise-swim-kick-set',
       name: 'Swim Kick Set',
-      description: 'Kickboard-based swimming focused entirely on leg work. Builds leg endurance and kick power without upper-body recovery issues.',
+      description:
+          'Kickboard-based swimming focused entirely on leg work. Builds leg endurance and kick power without upper-body recovery issues.',
       disciplineId: 'discipline-swimming',
       howToSteps: [
         'Kick from the hips, not the knees.',
@@ -3429,7 +3652,8 @@ class SeedData {
     Exercise(
       id: 'exercise-brisk-walk',
       name: 'Brisk Walk',
-      description: 'A fast-paced walk that elevates heart rate without the impact of running. An underrated foundation for any fitness program.',
+      description:
+          'A fast-paced walk that elevates heart rate without the impact of running. An underrated foundation for any fitness program.',
       disciplineId: 'discipline-walking',
       howToSteps: [
         'Pace is one where holding a conversation is possible but not effortless.',
@@ -3442,7 +3666,8 @@ class SeedData {
     Exercise(
       id: 'exercise-incline-walk',
       name: 'Incline Walk',
-      description: 'A sustained walk on a treadmill incline or uphill outdoors. Builds aerobic fitness and leg strength with minimal impact — great cross-training for runners.',
+      description:
+          'A sustained walk on a treadmill incline or uphill outdoors. Builds aerobic fitness and leg strength with minimal impact — great cross-training for runners.',
       disciplineId: 'discipline-walking',
       howToSteps: [
         'Incline is 8–15% on a treadmill, or a meaningful uphill gradient outdoors.',
@@ -3456,7 +3681,8 @@ class SeedData {
     Exercise(
       id: 'exercise-rucking',
       name: 'Rucking',
-      description: 'Walking with a weighted pack on the back. A low-impact strength-and-cardio combination used by military, hikers, and anyone who wants to build work capacity without running.',
+      description:
+          'Walking with a weighted pack on the back. A low-impact strength-and-cardio combination used by military, hikers, and anyone who wants to build work capacity without running.',
       disciplineId: 'discipline-walking',
       howToSteps: [
         'Start with 10–15% of your bodyweight in the pack.',
@@ -3470,7 +3696,8 @@ class SeedData {
     Exercise(
       id: 'exercise-hike',
       name: 'Hike',
-      description: 'An extended outdoor walk over trails, often with elevation gain. Mix of aerobic work, leg strength, and time in nature.',
+      description:
+          'An extended outdoor walk over trails, often with elevation gain. Mix of aerobic work, leg strength, and time in nature.',
       disciplineId: 'discipline-walking',
       howToSteps: [
         'Pace by terrain, not by time — hills dictate the effort.',
@@ -3484,7 +3711,8 @@ class SeedData {
     Exercise(
       id: 'exercise-elliptical-steady',
       name: 'Elliptical Steady',
-      description: 'A sustained effort on an elliptical machine at moderate intensity. Low-impact alternative to running for aerobic work or injury recovery.',
+      description:
+          'A sustained effort on an elliptical machine at moderate intensity. Low-impact alternative to running for aerobic work or injury recovery.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Target Zone 2 — conversational pace.',
@@ -3497,7 +3725,8 @@ class SeedData {
     Exercise(
       id: 'exercise-elliptical-intervals',
       name: 'Elliptical Intervals',
-      description: 'Hard efforts on the elliptical alternated with easy recovery. Low-impact interval training that spares the joints.',
+      description:
+          'Hard efforts on the elliptical alternated with easy recovery. Low-impact interval training that spares the joints.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Work intervals of 1–3 minutes at hard effort.',
@@ -3510,7 +3739,8 @@ class SeedData {
     Exercise(
       id: 'exercise-stair-climber',
       name: 'Stair Climber',
-      description: 'Sustained effort on a stair climbing machine. Brutal on the legs, great for glutes and lungs, low impact.',
+      description:
+          'Sustained effort on a stair climbing machine. Brutal on the legs, great for glutes and lungs, low impact.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Don\'t hold the rails — lean in and let your legs do the work.',
@@ -3524,7 +3754,8 @@ class SeedData {
     Exercise(
       id: 'exercise-stair-intervals',
       name: 'Stair Intervals',
-      description: 'Hard efforts on a stair climber alternated with recovery. Builds leg-specific aerobic capacity and work tolerance.',
+      description:
+          'Hard efforts on a stair climber alternated with recovery. Builds leg-specific aerobic capacity and work tolerance.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Work intervals of 1–3 minutes at a high step rate.',
@@ -3537,7 +3768,8 @@ class SeedData {
     Exercise(
       id: 'exercise-ski-erg',
       name: 'Ski Erg',
-      description: 'A standing upper-body-dominant machine mimicking cross-country ski poling. Full-body aerobic work with heavy emphasis on back, core, and shoulders.',
+      description:
+          'A standing upper-body-dominant machine mimicking cross-country ski poling. Full-body aerobic work with heavy emphasis on back, core, and shoulders.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Drive through the hips and core, not just the arms.',
@@ -3550,7 +3782,8 @@ class SeedData {
     Exercise(
       id: 'exercise-assault-bike',
       name: 'Assault Bike',
-      description: 'A fan bike with moving handles that becomes harder the harder you work. A staple of CrossFit and conditioning work — punishing and efficient.',
+      description:
+          'A fan bike with moving handles that becomes harder the harder you work. A staple of CrossFit and conditioning work — punishing and efficient.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Resistance scales with effort — there\'s no easy gear.',
@@ -3563,7 +3796,8 @@ class SeedData {
     Exercise(
       id: 'exercise-assault-bike-sprints',
       name: 'Assault Bike Sprints',
-      description: 'All-out short efforts on the fan bike, typically 10–30 seconds, with long recovery. Peak power and conditioning in a low-impact format.',
+      description:
+          'All-out short efforts on the fan bike, typically 10–30 seconds, with long recovery. Peak power and conditioning in a low-impact format.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Every sprint is maximum effort.',
@@ -3576,7 +3810,8 @@ class SeedData {
     Exercise(
       id: 'exercise-jump-rope-steady',
       name: 'Jump Rope Steady',
-      description: 'Sustained skipping at a steady pace. Deceptively hard aerobic work that doubles as coordination and foot-speed training.',
+      description:
+          'Sustained skipping at a steady pace. Deceptively hard aerobic work that doubles as coordination and foot-speed training.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Stay on the balls of the feet, barely leaving the ground.',
@@ -3589,7 +3824,8 @@ class SeedData {
     Exercise(
       id: 'exercise-jump-rope-intervals',
       name: 'Jump Rope Intervals',
-      description: 'Hard skipping efforts alternated with rest. Used by boxers and athletes for conditioning and footwork.',
+      description:
+          'Hard skipping efforts alternated with rest. Used by boxers and athletes for conditioning and footwork.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Work intervals at high pace — double-unders if you have them.',
@@ -3602,7 +3838,8 @@ class SeedData {
     Exercise(
       id: 'exercise-rowing-sprints',
       name: 'Rowing Erg Sprints',
-      description: 'All-out short erg efforts, typically 100m to 500m. Builds peak power and anaerobic capacity.',
+      description:
+          'All-out short erg efforts, typically 100m to 500m. Builds peak power and anaerobic capacity.',
       disciplineId: 'discipline-machine-cardio',
       howToSteps: [
         'Drive hard with the legs — rowing power comes from below the waist.',
@@ -3926,31 +4163,31 @@ class SeedData {
     MetricApplicability(metricId: 'metric-weight', effortKind: 'set'),
     MetricApplicability(metricId: 'metric-rpe', effortKind: 'set'),
     MetricApplicability(metricId: 'metric-rest', effortKind: 'set'),
-    
+
     // Timed Activity (timed)
     MetricApplicability(metricId: 'metric-duration', effortKind: 'timed'),
     MetricApplicability(metricId: 'metric-distance', effortKind: 'timed'),
     MetricApplicability(metricId: 'metric-heart-rate', effortKind: 'timed'),
     MetricApplicability(metricId: 'metric-rpe', effortKind: 'timed'),
     MetricApplicability(metricId: 'metric-extra-weight', effortKind: 'timed'),
-    
+
     // Distance Intervals (interval)
     MetricApplicability(metricId: 'metric-distance', effortKind: 'interval'),
     MetricApplicability(metricId: 'metric-duration', effortKind: 'interval'),
     MetricApplicability(metricId: 'metric-pace', effortKind: 'interval'),
     MetricApplicability(metricId: 'metric-rest', effortKind: 'interval'),
     MetricApplicability(metricId: 'metric-heart-rate', effortKind: 'interval'),
-    
+
     // Round-Based (round)
     MetricApplicability(metricId: 'metric-rounds', effortKind: 'round'),
     MetricApplicability(metricId: 'metric-round-duration', effortKind: 'round'),
     MetricApplicability(metricId: 'metric-rpe', effortKind: 'round'),
-    
+
     // AMRAP / For Time (amrap)
     MetricApplicability(metricId: 'metric-score', effortKind: 'amrap'),
     MetricApplicability(metricId: 'metric-duration', effortKind: 'amrap'),
     MetricApplicability(metricId: 'metric-rpe', effortKind: 'amrap'),
-    
+
     // Drill / Skill (drill)
     MetricApplicability(metricId: 'metric-duration', effortKind: 'drill'),
     MetricApplicability(metricId: 'metric-reps', effortKind: 'drill'),
@@ -3961,33 +4198,86 @@ class SeedData {
   /// Maps exercise IDs to muscle group IDs
   static final Map<String, List<String>> exerciseMuscleGroupRelationships = {
     // Resistance / Lifting exercises
-    'exercise-barbell-squat': ['muscle-quads', 'muscle-glutes', 'muscle-hamstrings'],
+    'exercise-barbell-squat': [
+      'muscle-quads',
+      'muscle-glutes',
+      'muscle-hamstrings',
+    ],
     'exercise-front-squat': ['muscle-quads', 'muscle-glutes'],
     'exercise-goblet-squat': ['muscle-quads', 'muscle-glutes'],
     'exercise-dumbbell-split-squat': ['muscle-quads', 'muscle-glutes'],
     'exercise-bulgarian-split-squat': ['muscle-quads', 'muscle-glutes'],
     'exercise-hack-squat': ['muscle-quads', 'muscle-glutes'],
-    'exercise-leg-press': ['muscle-quads', 'muscle-glutes', 'muscle-hamstrings'],
+    'exercise-leg-press': [
+      'muscle-quads',
+      'muscle-glutes',
+      'muscle-hamstrings',
+    ],
     'exercise-pistol-squat': ['muscle-quads', 'muscle-glutes'],
-    'exercise-bench-press': ['muscle-chest', 'muscle-triceps', 'muscle-shoulders'],
-    'exercise-incline-bench-press': ['muscle-chest', 'muscle-shoulders', 'muscle-triceps'],
+    'exercise-bench-press': [
+      'muscle-chest',
+      'muscle-triceps',
+      'muscle-shoulders',
+    ],
+    'exercise-incline-bench-press': [
+      'muscle-chest',
+      'muscle-shoulders',
+      'muscle-triceps',
+    ],
     'exercise-decline-bench-press': ['muscle-chest', 'muscle-triceps'],
-    'exercise-dumbbell-bench-press': ['muscle-chest', 'muscle-triceps', 'muscle-shoulders'],
-    'exercise-incline-dumbbell-bench-press': ['muscle-chest', 'muscle-shoulders', 'muscle-triceps'],
+    'exercise-dumbbell-bench-press': [
+      'muscle-chest',
+      'muscle-triceps',
+      'muscle-shoulders',
+    ],
+    'exercise-incline-dumbbell-bench-press': [
+      'muscle-chest',
+      'muscle-shoulders',
+      'muscle-triceps',
+    ],
     'exercise-push-up': ['muscle-chest', 'muscle-triceps', 'muscle-shoulders'],
     'exercise-dip': ['muscle-chest', 'muscle-triceps'],
-    'exercise-machine-chest-press': ['muscle-chest', 'muscle-triceps', 'muscle-shoulders'],
+    'exercise-machine-chest-press': [
+      'muscle-chest',
+      'muscle-triceps',
+      'muscle-shoulders',
+    ],
     'exercise-deadlift': ['muscle-back', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-sumo-deadlift': ['muscle-back', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-romanian-deadlift-barbell': ['muscle-hamstrings', 'muscle-glutes'],
-    'exercise-romanian-deadlift-dumbbell': ['muscle-hamstrings', 'muscle-glutes'],
-    'exercise-good-morning': ['muscle-hamstrings', 'muscle-glutes', 'muscle-back'],
+    'exercise-sumo-deadlift': [
+      'muscle-back',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-romanian-deadlift-barbell': [
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-romanian-deadlift-dumbbell': [
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-good-morning': [
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-back',
+    ],
     'exercise-barbell-hip-thrust': ['muscle-glutes', 'muscle-hamstrings'],
-    'exercise-kettlebell-swing': ['muscle-glutes', 'muscle-hamstrings', 'muscle-back'],
-    'exercise-back-extension': ['muscle-glutes', 'muscle-hamstrings', 'muscle-back'],
+    'exercise-kettlebell-swing': [
+      'muscle-glutes',
+      'muscle-hamstrings',
+      'muscle-back',
+    ],
+    'exercise-back-extension': [
+      'muscle-glutes',
+      'muscle-hamstrings',
+      'muscle-back',
+    ],
     'exercise-overhead-press': ['muscle-shoulders', 'muscle-triceps'],
     'exercise-dumbbell-shoulder-press': ['muscle-shoulders', 'muscle-triceps'],
-    'exercise-seated-dumbbell-shoulder-press': ['muscle-shoulders', 'muscle-triceps'],
+    'exercise-seated-dumbbell-shoulder-press': [
+      'muscle-shoulders',
+      'muscle-triceps',
+    ],
     'exercise-landmine-press': ['muscle-shoulders', 'muscle-triceps'],
     'exercise-arnold-press': ['muscle-shoulders', 'muscle-triceps'],
     'exercise-pullup': ['muscle-back', 'muscle-biceps'],
@@ -4038,9 +4328,17 @@ class SeedData {
     'exercise-hollow-body-hold': ['muscle-core'],
     'exercise-glute-bridge-hold': ['muscle-glutes', 'muscle-core'],
     'exercise-l-sit-hold': ['muscle-core'],
-    'exercise-isometric-pushup-hold': ['muscle-chest', 'muscle-triceps', 'muscle-shoulders'],
+    'exercise-isometric-pushup-hold': [
+      'muscle-chest',
+      'muscle-triceps',
+      'muscle-shoulders',
+    ],
     'exercise-calf-raise-hold': ['muscle-hamstrings'],
-    'exercise-split-squat-hold': ['muscle-quads', 'muscle-glutes', 'muscle-hamstrings'],
+    'exercise-split-squat-hold': [
+      'muscle-quads',
+      'muscle-glutes',
+      'muscle-hamstrings',
+    ],
     // New Isometric Holds — Core
     'exercise-rkc-plank': ['muscle-core', 'muscle-glutes'],
     'exercise-long-lever-plank': ['muscle-core'],
@@ -4055,8 +4353,16 @@ class SeedData {
     'exercise-active-hang': ['muscle-back', 'muscle-shoulders'],
     'exercise-tuck-front-lever-hold': ['muscle-back', 'muscle-core'],
     'exercise-advanced-tuck-front-lever-hold': ['muscle-back', 'muscle-core'],
-    'exercise-tuck-back-lever-hold': ['muscle-chest', 'muscle-shoulders', 'muscle-core'],
-    'exercise-ring-support-hold': ['muscle-chest', 'muscle-shoulders', 'muscle-triceps'],
+    'exercise-tuck-back-lever-hold': [
+      'muscle-chest',
+      'muscle-shoulders',
+      'muscle-core',
+    ],
+    'exercise-ring-support-hold': [
+      'muscle-chest',
+      'muscle-shoulders',
+      'muscle-triceps',
+    ],
     'exercise-handstand-hold-wall': ['muscle-shoulders', 'muscle-core'],
     // Static Stretches
     'exercise-standing-hamstring-stretch': ['muscle-hamstrings'],
@@ -4079,60 +4385,203 @@ class SeedData {
     'exercise-deep-squat-hold': ['muscle-quads', 'muscle-glutes'],
     'exercise-thoracic-rotation-hold': ['muscle-back'],
     'exercise-cat-cow-hold': ['muscle-back', 'muscle-core'],
-    'exercise-worlds-greatest-stretch-hold': ['muscle-quads', 'muscle-glutes', 'muscle-back'],
+    'exercise-worlds-greatest-stretch-hold': [
+      'muscle-quads',
+      'muscle-glutes',
+      'muscle-back',
+    ],
     'exercise-seated-butterfly-hold': ['muscle-glutes'],
     // Sports exercises - full body engagement
     'exercise-tennis-match': ['muscle-legs', 'muscle-shoulders', 'muscle-core'],
     'exercise-tennis-drill': ['muscle-legs', 'muscle-shoulders', 'muscle-core'],
-    'exercise-volleyball-match': ['muscle-shoulders', 'muscle-arms', 'muscle-core', 'muscle-legs'],
-    'exercise-volleyball-drill': ['muscle-shoulders', 'muscle-arms', 'muscle-core'],
-    'exercise-badminton-match': ['muscle-legs', 'muscle-shoulders', 'muscle-core'],
+    'exercise-volleyball-match': [
+      'muscle-shoulders',
+      'muscle-arms',
+      'muscle-core',
+      'muscle-legs',
+    ],
+    'exercise-volleyball-drill': [
+      'muscle-shoulders',
+      'muscle-arms',
+      'muscle-core',
+    ],
+    'exercise-badminton-match': [
+      'muscle-legs',
+      'muscle-shoulders',
+      'muscle-core',
+    ],
     'exercise-table-tennis-match': ['muscle-core', 'muscle-shoulders'],
-    'exercise-cricket-match': ['muscle-legs', 'muscle-shoulders', 'muscle-core'],
-    'exercise-ice-hockey-match': ['muscle-legs', 'muscle-core', 'muscle-shoulders'],
-    'exercise-baseball-game': ['muscle-shoulders', 'muscle-core', 'muscle-legs'],
-    'exercise-american-football-game': ['muscle-legs', 'muscle-shoulders', 'muscle-core'],
+    'exercise-cricket-match': [
+      'muscle-legs',
+      'muscle-shoulders',
+      'muscle-core',
+    ],
+    'exercise-ice-hockey-match': [
+      'muscle-legs',
+      'muscle-core',
+      'muscle-shoulders',
+    ],
+    'exercise-baseball-game': [
+      'muscle-shoulders',
+      'muscle-core',
+      'muscle-legs',
+    ],
+    'exercise-american-football-game': [
+      'muscle-legs',
+      'muscle-shoulders',
+      'muscle-core',
+    ],
     'exercise-rugby-match': ['muscle-legs', 'muscle-core', 'muscle-shoulders'],
-    'exercise-lacrosse-game': ['muscle-legs', 'muscle-shoulders', 'muscle-core'],
+    'exercise-lacrosse-game': [
+      'muscle-legs',
+      'muscle-shoulders',
+      'muscle-core',
+    ],
     // Cardio library — Phase 4
-    'exercise-sprint-intervals': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
+    'exercise-sprint-intervals': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
     'exercise-strides': ['muscle-quads', 'muscle-hamstrings'],
-    'exercise-trail-run': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
+    'exercise-trail-run': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
     'exercise-treadmill-run': ['muscle-quads', 'muscle-hamstrings'],
-    'exercise-zone-2-ride': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-tempo-ride': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-sweet-spot-intervals': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
+    'exercise-zone-2-ride': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-tempo-ride': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-sweet-spot-intervals': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
     'exercise-threshold-intervals': ['muscle-quads', 'muscle-hamstrings'],
     'exercise-vo2-max-intervals': ['muscle-quads', 'muscle-hamstrings'],
-    'exercise-cycling-sprint-intervals': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-long-ride': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
+    'exercise-cycling-sprint-intervals': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-long-ride': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
     'exercise-recovery-ride': ['muscle-quads', 'muscle-glutes'],
-    'exercise-stationary-bike': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-steady-state-row': ['muscle-back', 'muscle-hamstrings', 'muscle-glutes', 'muscle-core'],
-    'exercise-rowing-intervals': ['muscle-back', 'muscle-hamstrings', 'muscle-glutes', 'muscle-core'],
-    'exercise-2k-row-test': ['muscle-back', 'muscle-hamstrings', 'muscle-glutes', 'muscle-core'],
-    'exercise-long-row': ['muscle-back', 'muscle-hamstrings', 'muscle-glutes', 'muscle-core'],
-    'exercise-power-strokes': ['muscle-back', 'muscle-hamstrings', 'muscle-glutes'],
+    'exercise-stationary-bike': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-steady-state-row': [
+      'muscle-back',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-core',
+    ],
+    'exercise-rowing-intervals': [
+      'muscle-back',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-core',
+    ],
+    'exercise-2k-row-test': [
+      'muscle-back',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-core',
+    ],
+    'exercise-long-row': [
+      'muscle-back',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-core',
+    ],
+    'exercise-power-strokes': [
+      'muscle-back',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
     'exercise-easy-swim': ['muscle-shoulders', 'muscle-back', 'muscle-core'],
-    'exercise-swim-intervals': ['muscle-shoulders', 'muscle-back', 'muscle-core'],
+    'exercise-swim-intervals': [
+      'muscle-shoulders',
+      'muscle-back',
+      'muscle-core',
+    ],
     'exercise-swim-sprints': ['muscle-shoulders', 'muscle-back', 'muscle-core'],
     'exercise-long-swim': ['muscle-shoulders', 'muscle-back', 'muscle-core'],
     'exercise-swim-drills': ['muscle-shoulders', 'muscle-back'],
-    'exercise-swim-kick-set': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-brisk-walk': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-incline-walk': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-rucking': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes', 'muscle-back'],
+    'exercise-swim-kick-set': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-brisk-walk': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-incline-walk': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-rucking': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-back',
+    ],
     'exercise-hike': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-elliptical-steady': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-elliptical-intervals': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-stair-climber': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
-    'exercise-stair-intervals': ['muscle-quads', 'muscle-hamstrings', 'muscle-glutes'],
+    'exercise-elliptical-steady': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-elliptical-intervals': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-stair-climber': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
+    'exercise-stair-intervals': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-glutes',
+    ],
     'exercise-ski-erg': ['muscle-back', 'muscle-shoulders', 'muscle-core'],
-    'exercise-assault-bike': ['muscle-quads', 'muscle-hamstrings', 'muscle-shoulders'],
-    'exercise-assault-bike-sprints': ['muscle-quads', 'muscle-hamstrings', 'muscle-shoulders'],
+    'exercise-assault-bike': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-shoulders',
+    ],
+    'exercise-assault-bike-sprints': [
+      'muscle-quads',
+      'muscle-hamstrings',
+      'muscle-shoulders',
+    ],
     'exercise-jump-rope-steady': ['muscle-quads', 'muscle-hamstrings'],
     'exercise-jump-rope-intervals': ['muscle-quads', 'muscle-hamstrings'],
-    'exercise-rowing-sprints': ['muscle-back', 'muscle-hamstrings', 'muscle-glutes', 'muscle-core'],
+    'exercise-rowing-sprints': [
+      'muscle-back',
+      'muscle-hamstrings',
+      'muscle-glutes',
+      'muscle-core',
+    ],
   };
 
   /// Maps exercise IDs to equipment IDs
@@ -4380,7 +4829,7 @@ class SeedData {
     'exercise-jump-rope-steady': ['time'],
     'exercise-jump-rope-intervals': ['time', 'rounds'],
     'exercise-rowing-sprints': ['time', 'distance'],
-    
+
     // Resistance / Lifting exercises - reps/sets/load primary, also support time for cardio-context
     'exercise-barbell-squat': ['reps', 'sets', 'load', 'time'],
     'exercise-front-squat': ['reps', 'sets', 'load', 'time'],
@@ -4408,17 +4857,29 @@ class SeedData {
     'exercise-machine-chest-press': ['reps', 'sets', 'load', 'time'],
     'exercise-barbell-row': ['reps', 'sets', 'load', 'time'],
     'exercise-pendlay-row': ['reps', 'sets', 'load', 'time'],
-    'exercise-dumbbell-row': ['reps', 'sets', 'load', 'time'],
+    'exercise-dumbbell-row': ['reps', 'sets', 'load', 'bilateral', 'time'],
     'exercise-seated-cable-row': ['reps', 'sets', 'load', 'time'],
     'exercise-chest-supported-row': ['reps', 'sets', 'load', 'time'],
     'exercise-t-bar-row': ['reps', 'sets', 'load', 'time'],
     'exercise-inverted-row': ['reps', 'sets', 'time'],
     'exercise-face-pull': ['reps', 'sets', 'load', 'time'],
     'exercise-overhead-press': ['reps', 'sets', 'load', 'time'],
-    'exercise-dumbbell-shoulder-press': ['reps', 'sets', 'load', 'time'],
-    'exercise-seated-dumbbell-shoulder-press': ['reps', 'sets', 'load', 'time'],
+    'exercise-dumbbell-shoulder-press': [
+      'reps',
+      'sets',
+      'load',
+      'bilateral',
+      'time',
+    ],
+    'exercise-seated-dumbbell-shoulder-press': [
+      'reps',
+      'sets',
+      'load',
+      'bilateral',
+      'time',
+    ],
     'exercise-landmine-press': ['reps', 'sets', 'load', 'time'],
-    'exercise-arnold-press': ['reps', 'sets', 'load', 'time'],
+    'exercise-arnold-press': ['reps', 'sets', 'load', 'bilateral', 'time'],
     'exercise-pullup': ['reps', 'sets', 'load', 'time'],
     'exercise-chin-up': ['reps', 'sets', 'load', 'time'],
     'exercise-lat-pulldown': ['reps', 'sets', 'load', 'time'],
@@ -4426,17 +4887,23 @@ class SeedData {
     'exercise-straight-arm-pulldown': ['reps', 'sets', 'load', 'time'],
     'exercise-walking-lunge': ['reps', 'sets', 'load', 'time'],
     'exercise-reverse-lunge': ['reps', 'sets', 'load', 'time'],
-    'exercise-step-up': ['reps', 'sets', 'load', 'time'],
-    'exercise-single-leg-rdl': ['reps', 'sets', 'load', 'time'],
-    'exercise-lateral-raise': ['reps', 'sets', 'load', 'time'],
-    'exercise-cable-lateral-raise': ['reps', 'sets', 'load', 'time'],
-    'exercise-rear-delt-fly': ['reps', 'sets', 'load', 'time'],
-    'exercise-front-raise': ['reps', 'sets', 'load', 'time'],
+    'exercise-step-up': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-single-leg-rdl': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-lateral-raise': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-cable-lateral-raise': [
+      'reps',
+      'sets',
+      'load',
+      'bilateral',
+      'time',
+    ],
+    'exercise-rear-delt-fly': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-front-raise': ['reps', 'sets', 'load', 'bilateral', 'time'],
     'exercise-upright-row': ['reps', 'sets', 'load', 'time'],
     'exercise-barbell-curl': ['reps', 'sets', 'load', 'time'],
-    'exercise-dumbbell-curl': ['reps', 'sets', 'load', 'time'],
-    'exercise-hammer-curl': ['reps', 'sets', 'load', 'time'],
-    'exercise-preacher-curl': ['reps', 'sets', 'load', 'time'],
+    'exercise-dumbbell-curl': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-hammer-curl': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-preacher-curl': ['reps', 'sets', 'load', 'bilateral', 'time'],
     'exercise-triceps-pressdown': ['reps', 'sets', 'load', 'time'],
     'exercise-overhead-triceps-extension': ['reps', 'sets', 'load', 'time'],
     'exercise-skullcrusher': ['reps', 'sets', 'load', 'time'],
@@ -4451,7 +4918,7 @@ class SeedData {
     'exercise-hanging-leg-raise': ['reps', 'sets', 'time'],
     'exercise-cable-crunch': ['reps', 'sets', 'load', 'time'],
     'exercise-ab-wheel-rollout': ['reps', 'sets', 'time'],
-    
+
     // Boxing exercises - time and rounds based
     'exercise-heavy-bag-rounds': ['time', 'rounds'],
     'exercise-shadowboxing': ['time', 'rounds'],
@@ -4463,7 +4930,7 @@ class SeedData {
     'exercise-footwork-drills': ['time', 'rounds'],
     'exercise-conditioning-rounds': ['time', 'rounds'],
     'exercise-technical-rounds': ['time', 'rounds'],
-    
+
     // Calisthenics/Isometric - hold time primary, also support regular time and sets for dynamic variations
     'exercise-plank-hold': ['hold', 'time', 'sets'],
     'exercise-side-plank': ['hold', 'time', 'sets'],
@@ -4515,7 +4982,7 @@ class SeedData {
     'exercise-cat-cow-hold': ['hold', 'time', 'sets'],
     'exercise-worlds-greatest-stretch-hold': ['hold', 'time', 'sets'],
     'exercise-seated-butterfly-hold': ['hold', 'time', 'sets'],
-    
+
     // Sports exercises - time and rounds based
     'exercise-tennis-match': ['time', 'rounds'],
     'exercise-tennis-drill': ['time', 'rounds'],
@@ -4763,7 +5230,7 @@ class SeedData {
       id: 'seed-session-standard',
       ownerUserId: 'local-user',
       startedAtMs: 1744012800000, // 2025-04-07 08:00 UTC
-      endedAtMs: 1744016400000,   // 2025-04-07 09:00 UTC
+      endedAtMs: 1744016400000, // 2025-04-07 09:00 UTC
       title: 'Strength Day',
       modality: 'resistance_lifting',
       intent: 'open',
@@ -4867,8 +5334,5 @@ class MetricApplicability {
   final String metricId;
   final String effortKind;
 
-  const MetricApplicability({
-    required this.metricId,
-    required this.effortKind,
-  });
+  const MetricApplicability({required this.metricId, required this.effortKind});
 }

@@ -108,6 +108,8 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
         final hasImage = exercise.imageAssetPath != null;
         final hasSteps =
             exercise.howToSteps != null && exercise.howToSteps!.isNotEmpty;
+        final isBilateral =
+            exercise.capabilities.contains(ExerciseCapability.bilateral);
 
         return Container(
           decoration: BoxDecoration(
@@ -181,6 +183,31 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
                   ),
                 ),
 
+                // Bilateral logging note
+                if (isBilateral) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                    child: Text(
+                      'LOGGING NOTE',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.45),
+                        letterSpacing: 2.0,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                    child: Text(
+                      'This exercise is performed one side at a time. '
+                      'Log both sides as a single combined set. '
+                      'Example: 15 lb × 10 reps on each arm = log as 30 lb × 10 reps.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+
                 // How-to section
                 if (hasSteps) ...[
                   Padding(
@@ -225,7 +252,7 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
                 ],
 
                 // Empty state
-                if (!hasImage && !hasSteps)
+                if (!hasImage && !hasSteps && !isBilateral)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 40),
                     child: Center(

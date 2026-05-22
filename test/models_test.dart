@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:test/test.dart';
 import 'package:omnitrain/data/models/models.dart';
+import 'package:omnitrain/core/constants/capability.dart';
 
 void main() {
   // ── SportCategory ─────────────────────────────────────────────────────────
@@ -117,6 +118,25 @@ void main() {
       };
       final obj = Exercise.fromMap(map);
       expect(obj.capabilities, isEmpty);
+    });
+
+    test('Exercise constructed with bilateral capability exposes it', () {
+      final exercise = Exercise(
+        id: 'ex-bilateral',
+        name: 'Dumbbell Curl',
+        createdAtMs: 0,
+        updatedAtMs: 0,
+        capabilities: const [
+          ExerciseCapability.bilateral,
+          ExerciseCapability.reps,
+          ExerciseCapability.load,
+        ],
+      );
+      expect(
+        exercise.capabilities.contains(ExerciseCapability.bilateral),
+        isTrue,
+      );
+      expect(exercise.capabilities, containsAll(['bilateral', 'reps', 'load']));
     });
   });
 
