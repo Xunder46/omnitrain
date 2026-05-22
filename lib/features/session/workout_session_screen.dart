@@ -909,6 +909,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     String metricKey,
     dynamic value,
   ) async {
+    // Weight values come from InlineMetricEditor in the user's preferred display
+    // unit. Convert to canonical kg before any persistence path (edit-mode buffer
+    // or live repository write) so that SessionSummaryBuilder can treat all stored
+    // weight observations as kg without a second conversion.
+    if ((metricKey == 'weight' || metricKey == 'extra-weight') &&
+        value is double) {
+      value = UnitFormatter.toCanonicalWeight(value, widget.settingsState);
+    }
+
     if (widget.editMode) {
       // Edit mode: buffer changes locally without persisting to repository.
       // Changes are saved only when the user clicks "Save".

@@ -3919,6 +3919,169 @@ void main() {
 
   group('WorkoutSessionScreen – weight adjustment toggle', () {
     testWidgets(
+      'set weight editor displays canonical kg value converted to lbs',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        await repo.setPreferenceString('preferred_weight_unit', 'lbs');
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await workoutState.markExerciseInfoHintSeen();
+        await workoutState.markExerciseNotesHintSeen();
+        await workoutState.createNewSession(modality: 'resistance_lifting');
+
+        final exercises = await repo.getExercises();
+        final loadedExercise = exercises.firstWhere(
+          (e) =>
+              e.capabilities.contains('sets') &&
+              e.capabilities.contains('load') &&
+              e.capabilities.contains('reps'),
+          orElse: () => exercises.first,
+        );
+        final effortId = await workoutState.addExerciseToSession(
+          loadedExercise,
+          effortKindOverride: 'set',
+        );
+
+        // Canonical storage is kg; 45.3592 kg should render as 100.0 lbs.
+        await workoutState.updateEntryValue(effortId, 0, 'weight', 45.3592);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(loadedExercise.name).first);
+        await tester.pumpAndSettle();
+
+        expect(find.text('100.0'), findsOneWidget);
+        expect(find.text('LBS'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'timed extra-weight displays canonical kg value converted to lbs',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        await repo.setPreferenceString('preferred_weight_unit', 'lbs');
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await workoutState.markExerciseInfoHintSeen();
+        await workoutState.markExerciseNotesHintSeen();
+        await workoutState.createNewSession(modality: 'cardio_endurance');
+
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('time'),
+          orElse: () => exercises.first,
+        );
+        final effortId = await workoutState.addExerciseToSession(
+          timedExercise,
+          effortKindOverride: 'timed',
+        );
+
+        // Canonical storage is kg; 22.6796 kg should render as +50.0 lbs.
+        await workoutState.updateEntryValue(effortId, 0, 'extra-weight', 22.6796);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(timedExercise.name).first);
+        await tester.pumpAndSettle();
+
+        final linkFinder = find.widgetWithText(
+          OutlinedButton,
+          'Weight adjustment',
+        );
+        await tester.ensureVisible(linkFinder);
+        await tester.tap(linkFinder);
+        await tester.pumpAndSettle();
+
+        expect(find.text('+50.0'), findsOneWidget);
+        expect(find.text('LBS'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'drill extra-weight displays canonical kg value converted to lbs',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 1200));
+        final repo = await _freshRepo();
+        await repo.setPreferenceString('preferred_weight_unit', 'lbs');
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await workoutState.markExerciseInfoHintSeen();
+        await workoutState.markExerciseNotesHintSeen();
+        await workoutState.createNewSession(modality: 'isometric_stretching');
+
+        final exercises = await repo.getExercises();
+        final drillExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('hold'),
+          orElse: () => exercises.first,
+        );
+        final effortId = await workoutState.addExerciseToSession(
+          drillExercise,
+          effortKindOverride: 'drill',
+        );
+
+        // Canonical storage is kg; 22.6796 kg should render as +50.0 lbs.
+        await workoutState.updateEntryValue(effortId, 0, 'extra-weight', 22.6796);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: SessionSummaryService(repo),
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(drillExercise.name).first);
+        await tester.pumpAndSettle();
+
+        final linkFinder = find.widgetWithText(
+          OutlinedButton,
+          'Weight adjustment',
+        );
+        await tester.ensureVisible(linkFinder);
+        await tester.tap(linkFinder);
+        await tester.pumpAndSettle();
+
+        expect(find.text('+50.0'), findsOneWidget);
+        expect(find.text('LBS'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'timed exercise reveals extra weight only after tapping the link',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(800, 1200));

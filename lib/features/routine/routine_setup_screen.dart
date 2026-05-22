@@ -41,6 +41,16 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   String get _preferredWeightUnitLabel => widget.settingsState != null
       ? UnitFormatter.weightLabelUpper(widget.settingsState!)
       : UnitFormatter.weightLabelUpperForUnit('kg');
+
+  /// Convert a raw display-unit value to canonical kg for storage.
+  double _toCanonicalWeight(double displayValue) => widget.settingsState != null
+      ? UnitFormatter.toCanonicalWeight(displayValue, widget.settingsState!)
+      : displayValue;
+
+  /// Convert a canonical kg value to the user's preferred display unit.
+  double _fromCanonicalWeight(double kg) => widget.settingsState != null
+      ? UnitFormatter.convertWeight(kg, widget.settingsState!)
+      : kg;
   Map<String, Exercise> _exerciseCache = {};
   bool _showListView = true;
   int _currentExerciseIndex = 0;
@@ -1263,7 +1273,10 @@ extension on _RoutineSetupScreenState {
     switch (effort.effortKind) {
       case 'set':
         final reps = _getTargetInt(targets, MetricIds.reps, setIndex) ?? 10;
-        final weight = _getTargetDouble(targets, MetricIds.weight, setIndex);
+        // Target stored in canonical kg; convert to display unit for editor.
+        final weight = _fromCanonicalWeight(
+          _getTargetDouble(targets, MetricIds.weight, setIndex),
+        );
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1289,7 +1302,8 @@ extension on _RoutineSetupScreenState {
                 MetricIds.weight,
                 MetricIds.unitKg,
                 setIndex: setIndex,
-                targetMin: value as double,
+                // Convert display-unit value to canonical kg before persisting.
+                targetMin: _toCanonicalWeight(value as double),
               ),
             ),
           ],
@@ -1300,8 +1314,11 @@ extension on _RoutineSetupScreenState {
         final hasTimedExtraWeightTarget = targets.any(
           (t) => t.metricId == MetricIds.extraWeight,
         );
+        // Target stored in canonical kg; convert to display unit for editor.
         final timedExtraWeight = hasTimedExtraWeightTarget
-            ? _getTargetDouble(targets, MetricIds.extraWeight, setIndex)
+            ? _fromCanonicalWeight(
+                _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
+              )
             : null;
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -1328,7 +1345,8 @@ extension on _RoutineSetupScreenState {
                   MetricIds.extraWeight,
                   MetricIds.unitKg,
                   setIndex: setIndex,
-                  targetMin: value as double,
+                  // Convert display-unit value to canonical kg before persisting.
+                  targetMin: _toCanonicalWeight(value as double),
                 ),
               ),
           ],
@@ -1374,10 +1392,9 @@ extension on _RoutineSetupScreenState {
       case 'drill':
         final duration =
             _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
-        final extraWeight = _getTargetDouble(
-          targets,
-          MetricIds.extraWeight,
-          setIndex,
+        // Target stored in canonical kg; convert to display unit for editor.
+        final extraWeight = _fromCanonicalWeight(
+          _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
         );
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -1403,7 +1420,8 @@ extension on _RoutineSetupScreenState {
                 MetricIds.extraWeight,
                 MetricIds.unitKg,
                 setIndex: setIndex,
-                targetMin: value as double,
+                // Convert display-unit value to canonical kg before persisting.
+                targetMin: _toCanonicalWeight(value as double),
               ),
             ),
           ],

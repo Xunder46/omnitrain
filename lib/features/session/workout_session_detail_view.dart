@@ -147,12 +147,19 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     switch (effortKind) {
       case 'set':
         final reps = entryData['reps'] as int? ?? 0;
-        final weight = entryData['weight'] as double? ?? 0.0;
+        // Stored in canonical kg; convert to the user's preferred display unit.
+        final weight = UnitFormatter.convertWeight(
+          entryData['weight'] as double? ?? 0.0,
+          widget.settingsState,
+        );
         final exerciseId = exercise['exerciseId'] as String?;
         final exerciseObj = widget.workoutState.getExercise(exerciseId);
         final hasLoad = exerciseObj?.capabilities.contains('load') ?? false;
-        final extraWeight =
-            (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0;
+        // Stored in canonical kg; convert to the user's preferred display unit.
+        final extraWeight = UnitFormatter.convertWeight(
+          (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
+          widget.settingsState,
+        );
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -254,8 +261,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   theme: theme,
                   effortId: effortId,
                   entryIndex: entryIndex,
-                  currentValue:
-                      (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
+                  currentValue: UnitFormatter.convertWeight(
+                    (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
+                    widget.settingsState,
+                  ),
                   onValueChanged: (value) => _updateMetricValue(
                     effortId,
                     entryIndex,
@@ -327,8 +336,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 theme: theme,
                 effortId: effortId,
                 entryIndex: entryIndex,
-                currentValue:
-                    (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
+                currentValue: UnitFormatter.convertWeight(
+                  (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
+                  widget.settingsState,
+                ),
                 onValueChanged: (value) => _updateMetricValue(
                   effortId,
                   entryIndex,
@@ -527,7 +538,11 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         final drillEntryState = drillInstance?.state ?? TimedState.notStarted;
         final isDrillFinished = drillEntryState == TimedState.finished;
         final isDrillStarted = drillEntryState != TimedState.notStarted;
-        final drillExtraWeight = entryData['extra-weight'] as double? ?? 0.0;
+        // Stored in canonical kg; convert to the user's preferred display unit.
+        final drillExtraWeight = UnitFormatter.convertWeight(
+          entryData['extra-weight'] as double? ?? 0.0,
+          widget.settingsState,
+        );
 
         final int drillDisplayValue;
         final String drillUnitLabel;

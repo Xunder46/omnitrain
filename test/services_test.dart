@@ -173,6 +173,18 @@ void main() {
 
   group('SessionSummaryService', () {
     // ── compareToPreviousSession ──────────────────────────────────────────
+    //
+    // NOTE — scope of these tests:
+    //   • `weight:` values passed to `_seedCompletedSetSession` are canonical
+    //     kg values (i.e. the post-fix storage format; 1 kg = 1 kg).
+    //   • `currentVolume` is passed as a pre-computed double that simulates
+    //     what `SessionSummaryBuilder` would produce for the active session.
+    //     These tests do NOT exercise the display→kg write-path conversion;
+    //     that is covered by `test/data_tracking_fixes_test.dart`
+    //     (Volume calculation group).
+    //   • `previousVolume` IS computed from stored observations via
+    //     `_computeSessionVolume` → `_computeVolumeFromObservations`, so the
+    //     observation-based aggregation path is exercised here.
     group('compareToPreviousSession', () {
       test('returns null delta when no previous session exists', () async {
         final repo = await _freshRepo();
@@ -595,6 +607,9 @@ void main() {
           final repo = await _freshRepo();
           final service = SessionSummaryService(repo);
 
+          // NOTE: totalVolume is pre-computed and passed in here — this test
+          // validates grouping/metric logic, not the write-path kg canonicalization.
+          // Round-trip canonicalization is covered in data_tracking_fixes_test.dart.
           final summary = SessionSummary(
             sessionId: 's1',
             title: 'test',
@@ -766,6 +781,9 @@ void main() {
           weight: 50.0,
         );
 
+        // NOTE: totalVolume is a pre-computed input here — this tests comparison
+        // logic only (hasPrevious=false because there is no prior session).
+        // Write-path kg canonicalization is covered in data_tracking_fixes_test.dart.
         final summary = SessionSummary(
           sessionId: 'current',
           title: 'Workout',
@@ -813,6 +831,9 @@ void main() {
           weight: 50.0,
         );
 
+        // NOTE: totalVolume (500.0 kg) is pre-computed. This tests the delta
+        // calculation logic. Both current and previous volumes are canonical kg;
+        // the actual write-path canonicalization is tested in data_tracking_fixes_test.dart.
         final summary = SessionSummary(
           sessionId: 'current',
           title: 'Workout',
@@ -847,6 +868,7 @@ void main() {
           weight: 50.0,
         );
 
+        // NOTE: totalVolume is pre-computed — this tests group filtering logic only.
         final summary = SessionSummary(
           sessionId: 'current',
           title: 'Workout',
