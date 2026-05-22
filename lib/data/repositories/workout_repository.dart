@@ -253,7 +253,7 @@ abstract class WorkoutRepository {
   ///
   /// **Parameters**:
   /// - `modality`: The session's modality (e.g., 'cardio_endurance') or null for Free Training
-  /// - `searchText`: Optional search filter (matches exercise name/description, case-insensitive)
+  /// - `searchText`: Optional exercise-name search filter (case-insensitive, typo-tolerant)
   /// - `disciplineId`: Optional discipline filter
   /// - `muscleGroupIds`: Optional muscle group filter (exercise must have at least one)
   ///

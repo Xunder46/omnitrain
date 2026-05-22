@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../../mock/seed_data.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import 'workout_repository.dart';
 
@@ -197,17 +198,6 @@ class MockWorkoutRepository implements WorkoutRepository {
   }) async {
     var results = _exercises.values.where((e) => !e.isArchived);
 
-    // Filter by search text (case-insensitive, matches name or description)
-    if (searchText != null && searchText.isNotEmpty) {
-      final lowerSearch = searchText.toLowerCase();
-      results = results.where((e) {
-        final nameMatch = e.name.toLowerCase().contains(lowerSearch);
-        final descMatch =
-            e.description?.toLowerCase().contains(lowerSearch) ?? false;
-        return nameMatch || descMatch;
-      });
-    }
-
     // Filter by discipline
     if (disciplineId != null && disciplineId.isNotEmpty) {
       results = results.where((e) => e.disciplineId == disciplineId);
@@ -219,6 +209,10 @@ class MockWorkoutRepository implements WorkoutRepository {
         final exerciseMuscles = _exerciseMuscleGroups[e.id] ?? [];
         return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
       });
+    }
+
+    if (searchText != null && searchText.isNotEmpty) {
+      return FuzzySearch.filterAndRank(searchText, results.toList());
     }
 
     return results.toList();
@@ -778,17 +772,6 @@ class MockWorkoutRepository implements WorkoutRepository {
     // Start with all non-archived exercises
     var results = _exercises.values.where((e) => !e.isArchived);
 
-    // Apply search text filter (case-insensitive, matches name or description)
-    if (searchText != null && searchText.isNotEmpty) {
-      final lowerSearch = searchText.toLowerCase();
-      results = results.where((e) {
-        final nameMatch = e.name.toLowerCase().contains(lowerSearch);
-        final descMatch =
-            e.description?.toLowerCase().contains(lowerSearch) ?? false;
-        return nameMatch || descMatch;
-      });
-    }
-
     // Filter by discipline
     if (disciplineId != null && disciplineId.isNotEmpty) {
       results = results.where((e) => e.disciplineId == disciplineId);
@@ -802,11 +785,24 @@ class MockWorkoutRepository implements WorkoutRepository {
       });
     }
 
+    final hasSearchText = searchText != null && searchText.isNotEmpty;
+    Map<String, int> fuzzyScores = const {};
+    if (hasSearchText) {
+      final matched = FuzzySearch.filterAndRank(searchText, results.toList());
+      fuzzyScores = {
+        for (final exercise in matched)
+          exercise.id: FuzzySearch.score(searchText, exercise.name),
+      };
+      results = matched;
+    }
+
     final allExercises = results.toList();
 
     // If no modality, return alphabetically sorted (Free Training mode)
     if (modality == null) {
-      allExercises.sort((a, b) => a.name.compareTo(b.name));
+      if (!hasSearchText) {
+        allExercises.sort((a, b) => a.name.compareTo(b.name));
+      }
       return allExercises.map((e) {
         final caps = _exerciseCapabilities[e.id] ?? [];
         return e.copyWith(capabilities: caps);
@@ -817,7 +813,9 @@ class MockWorkoutRepository implements WorkoutRepository {
     final modalityConfig = ModalityConfig.forModality(modality);
     if (modalityConfig == null) {
       // Fallback if config not found (shouldn't happen for valid modalities)
-      allExercises.sort((a, b) => a.name.compareTo(b.name));
+      if (!hasSearchText) {
+        allExercises.sort((a, b) => a.name.compareTo(b.name));
+      }
       return allExercises.map((e) {
         final caps = _exerciseCapabilities[e.id] ?? [];
         return e.copyWith(capabilities: caps);
@@ -847,8 +845,15 @@ class MockWorkoutRepository implements WorkoutRepository {
       scoredExercises.add((exerciseWithCaps, score));
     }
 
-    // Sort by score descending, then alphabetically for ties
+    // Sort by fuzzy score first when searching, then modality relevance.
     scoredExercises.sort((a, b) {
+      if (hasSearchText) {
+        final fuzzyCompare = (fuzzyScores[a.$1.id] ?? (1 << 30)).compareTo(
+          fuzzyScores[b.$1.id] ?? (1 << 30),
+        );
+        if (fuzzyCompare != 0) return fuzzyCompare;
+      }
+
       final scoreCompare = b.$2.compareTo(a.$2); // Descending score
       if (scoreCompare != 0) return scoreCompare;
       return a.$1.name.compareTo(b.$1.name); // Alphabetical for ties
@@ -1323,7 +1328,6 @@ class MockWorkoutRepository implements WorkoutRepository {
         );
         _timedInstances.putIfAbsent(newEffortId, () => []).add(newTimed);
       }
-
     }
 
     return newBlock.id;

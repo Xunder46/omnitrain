@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../../mock/seed_data.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import 'workout_repository.dart';
 
@@ -462,16 +463,6 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .map((raw) => Exercise.fromMap(_asStringMap(raw)))
         .where((e) => !e.isArchived);
 
-    if (searchText != null && searchText.isNotEmpty) {
-      final lowerSearch = searchText.toLowerCase();
-      results = results.where((e) {
-        final nameMatch = e.name.toLowerCase().contains(lowerSearch);
-        final descMatch =
-            e.description?.toLowerCase().contains(lowerSearch) ?? false;
-        return nameMatch || descMatch;
-      });
-    }
-
     if (disciplineId != null && disciplineId.isNotEmpty) {
       results = results.where((e) => e.disciplineId == disciplineId);
     }
@@ -483,6 +474,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
         );
         return exerciseMuscles.any((id) => muscleGroupIds.contains(id));
       });
+    }
+
+    if (searchText != null && searchText.isNotEmpty) {
+      return FuzzySearch.filterAndRank(searchText, results.toList());
     }
 
     return results.toList();
@@ -1212,16 +1207,6 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .map((raw) => Exercise.fromMap(_asStringMap(raw)))
         .where((e) => !e.isArchived);
 
-    if (searchText != null && searchText.isNotEmpty) {
-      final lowerSearch = searchText.toLowerCase();
-      results = results.where((e) {
-        final nameMatch = e.name.toLowerCase().contains(lowerSearch);
-        final descMatch =
-            e.description?.toLowerCase().contains(lowerSearch) ?? false;
-        return nameMatch || descMatch;
-      });
-    }
-
     if (disciplineId != null && disciplineId.isNotEmpty) {
       results = results.where((e) => e.disciplineId == disciplineId);
     }
@@ -1235,10 +1220,23 @@ class HiveWorkoutRepository implements WorkoutRepository {
       });
     }
 
+    final hasSearchText = searchText != null && searchText.isNotEmpty;
+    Map<String, int> fuzzyScores = const {};
+    if (hasSearchText) {
+      final matched = FuzzySearch.filterAndRank(searchText, results.toList());
+      fuzzyScores = {
+        for (final exercise in matched)
+          exercise.id: FuzzySearch.score(searchText, exercise.name),
+      };
+      results = matched;
+    }
+
     final allExercises = results.toList();
 
     if (modality == null) {
-      allExercises.sort((a, b) => a.name.compareTo(b.name));
+      if (!hasSearchText) {
+        allExercises.sort((a, b) => a.name.compareTo(b.name));
+      }
       return allExercises
           .map((e) => e.copyWith(capabilities: _getCapabilities(e.id)))
           .toList();
@@ -1246,7 +1244,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
     final modalityConfig = ModalityConfig.forModality(modality);
     if (modalityConfig == null) {
-      allExercises.sort((a, b) => a.name.compareTo(b.name));
+      if (!hasSearchText) {
+        allExercises.sort((a, b) => a.name.compareTo(b.name));
+      }
       return allExercises
           .map((e) => e.copyWith(capabilities: _getCapabilities(e.id)))
           .toList();
@@ -1276,6 +1276,13 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
 
     scoredExercises.sort((a, b) {
+      if (hasSearchText) {
+        final fuzzyCompare = (fuzzyScores[a.$1.id] ?? (1 << 30)).compareTo(
+          fuzzyScores[b.$1.id] ?? (1 << 30),
+        );
+        if (fuzzyCompare != 0) return fuzzyCompare;
+      }
+
       final scoreCompare = b.$2.compareTo(a.$2);
       if (scoreCompare != 0) return scoreCompare;
       return a.$1.name.compareTo(b.$1.name);
