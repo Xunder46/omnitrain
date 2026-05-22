@@ -8,8 +8,8 @@ import '../../widgets/layout/omni_gradient_background.dart';
 /// eliminating the bleed-through bug that occurs when every Scaffold is
 /// transparent and `opaque == false`.
 ///
-/// Uses [CupertinoPageTransitionsBuilder] on iOS (slide + edge-swipe-back)
-/// and [FadeUpwardsPageTransitionsBuilder] on Android.
+/// Uses [CupertinoPageTransitionsBuilder] on all platforms (slide + edge-swipe-back
+/// on iOS/macOS) for a consistent, smooth transition everywhere.
 ///
 /// See docs/navigation_contract.md for the rule: raw MaterialPageRoute /
 /// PageRouteBuilder outside this module is a code-review blocker.
@@ -50,13 +50,7 @@ class OmniRoute<T> extends PageRoute<T> {
   @override
   Widget buildTransitions(BuildContext context, Animation<double> animation,
       Animation<double> secondaryAnimation, Widget child) {
-    final platform = Theme.of(context).platform;
-    if (platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
-      const builder = CupertinoPageTransitionsBuilder();
-      return builder.buildTransitions<T>(
-          this, context, animation, secondaryAnimation, child);
-    }
-    const builder = FadeUpwardsPageTransitionsBuilder();
+    const builder = CupertinoPageTransitionsBuilder();
     return builder.buildTransitions<T>(
         this, context, animation, secondaryAnimation, child);
   }

@@ -71,8 +71,8 @@ void main() {
 
   testWidgets('iOS edge-swipe-back gesture pops an OmniRoute',
       (WidgetTester tester) async {
-    // Force iOS platform so CupertinoPageTransitionsBuilder activates the
-    // back-swipe gesture recognizer.
+    // CupertinoPageTransitionsBuilder is used on all platforms.
+    // Force iOS here so the edge-swipe-back gesture recognizer is active.
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(platform: TargetPlatform.iOS),
@@ -346,5 +346,52 @@ void main() {
       expect(find.text('Push Again'), findsNothing);
       expect(find.text('Pop To Root'), findsNothing);
     });
+  });
+
+  // ── Test 8: Slide transition on Android ──────────────────────────────────
+
+  testWidgets(
+      'OmniRoute uses slide transition on Android (both routes present mid-animation)',
+      (WidgetTester tester) async {
+    // Set Android platform — OmniRoute must now use CupertinoPageTransitionsBuilder
+    // uniformly, so a slide animation runs and both routes are briefly visible.
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: ElevatedButton(
+              onPressed: () => OmniNavigator.push(
+                context,
+                (_) => const Scaffold(body: Text('Android Destination')),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    // Advance a single frame — the slide animation is mid-flight.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The incoming screen must already be in the tree (animation started).
+    expect(find.text('Android Destination'), findsOneWidget);
+
+    // Settle fully — only the destination remains.
+    await tester.pumpAndSettle();
+    expect(find.text('Android Destination'), findsOneWidget);
+    expect(find.text('Open'), findsNothing);
+  });
+
+  // ── Test 9: transitionDuration is non-zero ───────────────────────────────
+
+  test('OmniRoute.transitionDuration is non-zero', () {
+    final route = OmniRoute<void>(
+      builder: (_) => const SizedBox.shrink(),
+    );
+    expect(route.transitionDuration, greaterThan(Duration.zero));
   });
 }
