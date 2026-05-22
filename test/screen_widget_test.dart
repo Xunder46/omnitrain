@@ -2420,6 +2420,79 @@ void main() {
         expect(standardCards, isNotEmpty);
       },
     );
+
+    testWidgets(
+      'rolling completed session shows start time only — no duration suffix',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final today = DateTime.now();
+
+        // Rolling session starts at 8:00 AM, stays open 8 h of wall-clock.
+        final rollingStart =
+            DateTime(today.year, today.month, today.day, 8, 0)
+                .millisecondsSinceEpoch;
+        await repo.createSession(
+          TrainingSession(
+            id: 'session-rolling',
+            ownerUserId: 'u-1',
+            startedAtMs: rollingStart,
+            endedAtMs: rollingStart + 28800000, // 8 h wall-clock
+            isRolling: true,
+            title: 'Rolling Day',
+            createdAtMs: rollingStart,
+            updatedAtMs: rollingStart,
+          ),
+        );
+
+        // Non-rolling session starts at 10:30 AM, lasts 1 h.
+        final nonRollingStart =
+            DateTime(today.year, today.month, today.day, 10, 30)
+                .millisecondsSinceEpoch;
+        await repo.createSession(
+          TrainingSession(
+            id: 'session-normal',
+            ownerUserId: 'u-1',
+            startedAtMs: nonRollingStart,
+            endedAtMs: nonRollingStart + 3600000, // 1 h
+            isRolling: false,
+            title: 'Normal Lift',
+            createdAtMs: nonRollingStart,
+            updatedAtMs: nonRollingStart,
+          ),
+        );
+
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DaySessionListScreen(
+              date: DateTime(today.year, today.month, today.day),
+              calendarState: calendarState,
+              routineState: RoutineState(repo),
+              workoutState: WorkoutState(repo),
+              routineSessionService: RoutineSessionService(repo),
+              sessionSummaryService: SessionSummaryService(repo),
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Rolling session: only start time, no duration suffix.
+        expect(find.text('8:00 AM'), findsOneWidget);
+        expect(
+          find.textContaining('8:00 AM ·'),
+          findsNothing,
+          reason: 'Rolling session must not show a duration suffix',
+        );
+
+        // Non-rolling session: start time + duration suffix.
+        expect(find.text('10:30 AM · 1h 0m'), findsOneWidget);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

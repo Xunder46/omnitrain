@@ -399,7 +399,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('CalendarState', () {
-    test('totalTrainingMs sums durations of all completed sessions this month', () async {
+    test('totalTrainingMs sums durations of non-rolling completed sessions this month', () async {
       final repo = await _freshRepo();
       final now = DateTime.now();
 
@@ -416,10 +416,117 @@ void main() {
         durationMs: 1800000, // 30 min
       );
 
+      // Rolling session — wall-clock is 8 h but must NOT be counted.
+      final rollingStart = DateTime(now.year, now.month, 5).millisecondsSinceEpoch;
+      await repo.createSession(TrainingSession(
+        id: 's-rolling',
+        ownerUserId: 'u-1',
+        startedAtMs: rollingStart,
+        endedAtMs: rollingStart + 28800000, // 8 hours
+        isRolling: true,
+        createdAtMs: rollingStart,
+        updatedAtMs: rollingStart,
+      ));
+
       final state = CalendarState(repo);
       await state.init();
 
-      expect(state.totalTrainingMs, 5400000); // 1h30m
+      expect(state.totalTrainingMs, 5400000); // 1h30m — rolling excluded
+    });
+
+    test('totalTrainingMs — mixed month: only non-rolling duration counts', () async {
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      // 1 non-rolling session: 1 hour
+      await _seedCompletedSession(
+        repo,
+        id: 's-nonrolling',
+        day: DateTime(now.year, now.month, 10),
+        durationMs: 3600000,
+      );
+
+      // 1 rolling session: 8 hours wall-clock
+      final rollingStart = DateTime(now.year, now.month, 11).millisecondsSinceEpoch;
+      await repo.createSession(TrainingSession(
+        id: 's-rolling',
+        ownerUserId: 'u-1',
+        startedAtMs: rollingStart,
+        endedAtMs: rollingStart + 28800000,
+        isRolling: true,
+        createdAtMs: rollingStart,
+        updatedAtMs: rollingStart,
+      ));
+
+      final state = CalendarState(repo);
+      await state.init();
+
+      expect(state.totalTrainingMs, 3600000); // 1 h only
+    });
+
+    test('totalTrainingMs — all-rolling month equals zero', () async {
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      final s1Start = DateTime(now.year, now.month, 6).millisecondsSinceEpoch;
+      final s2Start = DateTime(now.year, now.month, 7).millisecondsSinceEpoch;
+
+      await repo.createSession(TrainingSession(
+        id: 'r1',
+        ownerUserId: 'u-1',
+        startedAtMs: s1Start,
+        endedAtMs: s1Start + 36000000, // 10 h
+        isRolling: true,
+        createdAtMs: s1Start,
+        updatedAtMs: s1Start,
+      ));
+      await repo.createSession(TrainingSession(
+        id: 'r2',
+        ownerUserId: 'u-1',
+        startedAtMs: s2Start,
+        endedAtMs: s2Start + 43200000, // 12 h
+        isRolling: true,
+        createdAtMs: s2Start,
+        updatedAtMs: s2Start,
+      ));
+
+      final state = CalendarState(repo);
+      await state.init();
+
+      expect(state.totalTrainingMs, 0);
+    });
+
+    test('completedSessionCount includes rolling sessions even when duration is excluded', () async {
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      // 1 non-rolling: 1 h
+      await _seedCompletedSession(
+        repo,
+        id: 's-nonrolling',
+        day: DateTime(now.year, now.month, 12),
+        durationMs: 3600000,
+      );
+
+      // 1 rolling: 8 h wall-clock
+      final rollingStart = DateTime(now.year, now.month, 13).millisecondsSinceEpoch;
+      await repo.createSession(TrainingSession(
+        id: 's-rolling',
+        ownerUserId: 'u-1',
+        startedAtMs: rollingStart,
+        endedAtMs: rollingStart + 28800000,
+        isRolling: true,
+        createdAtMs: rollingStart,
+        updatedAtMs: rollingStart,
+      ));
+
+      final state = CalendarState(repo);
+      await state.init();
+
+      // Both sessions count as completed for the session count …
+      expect(state.completedSessionCount, 2);
+      // … but only the non-rolling one contributes to training time.
+      expect(state.totalTrainingMs, 3600000);
     });
 
     test('modalityBreakdown groups completed sessions by modality key', () async {

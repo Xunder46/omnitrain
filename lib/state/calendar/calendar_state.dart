@@ -272,13 +272,16 @@ class CalendarState extends ChangeNotifier {
   }
 
   /// Total training time (ms) for completed sessions in the loaded month.
+  /// Rolling sessions are excluded to stay aligned with session-summary and
+  /// stats-screen logic — rolling sessions intentionally have no duration concept.
   int get totalTrainingMs {
     int total = 0;
     for (final entries in _entriesByDay.values) {
       for (final e in entries) {
         if (e.isCompleted &&
             e.session != null &&
-            e.session!.endedAtMs != null) {
+            e.session!.endedAtMs != null &&
+            !e.session!.isRolling) {
           total += e.session!.endedAtMs! - e.session!.startedAtMs;
         }
       }

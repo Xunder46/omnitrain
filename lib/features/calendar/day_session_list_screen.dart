@@ -636,6 +636,9 @@ class _SessionRow extends StatelessWidget {
       return timeStr;
     }
 
+    // Rolling sessions have no meaningful duration; show start time only.
+    if (session.isRolling) return timeStr;
+
     final durationMs = session.endedAtMs! - session.startedAtMs;
     final totalMinutes = (durationMs / 60000).round();
     final hours = totalMinutes ~/ 60;
