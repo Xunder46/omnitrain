@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/app.dart';
+import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/constants/modality.dart';
@@ -1520,10 +1521,16 @@ void main() {
     Future<void> pumpStatsScreen(
       WidgetTester tester,
       MockWorkoutRepository repo,
+      {
+      Future<void> Function(SettingsState settingsState)? configureSettings,
+    }
     ) async {
       final workoutState = WorkoutState(repo);
       final settingsState = SettingsState(repo);
       await settingsState.initialize();
+      if (configureSettings != null) {
+        await configureSettings(settingsState);
+      }
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1536,15 +1543,117 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    int totalSessionsShownInChart(WidgetTester tester) {
-      final chart = tester.widget<BarChart>(find.byType(BarChart));
-      return chart.data.barGroups.fold<int>(0, (sum, group) {
-        return sum +
-            group.barRods.fold<int>(
-              0,
-              (rodSum, rod) => rodSum + rod.toY.round(),
-            );
-      });
+    Future<void> seedTimedEffort(
+      MockWorkoutRepository repo, {
+      required String sessionId,
+      required String exerciseId,
+      required int durationSecs,
+      double? distanceM,
+    }) async {
+      final segmentId = 'seg-$sessionId-$exerciseId';
+      final effortId = 'eff-$sessionId-$exerciseId';
+
+      await repo.createSegment(
+        SessionSegment(
+          id: segmentId,
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createEffort(
+        SegmentEffort(
+          id: effortId,
+          segmentId: segmentId,
+          orderIndex: 0,
+          effortKind: 'timed',
+          exerciseId: exerciseId,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createTimedInstance(
+        TimedInstance(
+          id: 'ti-$effortId',
+          effortId: effortId,
+          entryIndex: 0,
+          actualDurationSecs: durationSecs,
+          state: TimedState.finished,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      if (distanceM != null && distanceM > 0) {
+        await repo.createObservation(
+          EffortObservation(
+            id: 'obs-$effortId-distance',
+            effortId: effortId,
+            metricId: MetricIds.distance,
+            unitId: MetricIds.unitMeters,
+            valueReal: distanceM,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+      }
+    }
+
+    Future<void> seedSetEffort(
+      MockWorkoutRepository repo, {
+      required String sessionId,
+      required String exerciseId,
+      required double weightKg,
+      required int reps,
+    }) async {
+      final segmentId = 'seg-$sessionId-$exerciseId';
+      final effortId = 'eff-$sessionId-$exerciseId';
+
+      await repo.createSegment(
+        SessionSegment(
+          id: segmentId,
+          sessionId: sessionId,
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createEffort(
+        SegmentEffort(
+          id: effortId,
+          segmentId: segmentId,
+          orderIndex: 0,
+          effortKind: 'set',
+          exerciseId: exerciseId,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createObservation(
+        EffortObservation(
+          id: 'obs-$effortId-weight',
+          effortId: effortId,
+          metricId: MetricIds.weight,
+          unitId: MetricIds.unitKg,
+          valueReal: weightKg,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createObservation(
+        EffortObservation(
+          id: 'obs-$effortId-reps',
+          effortId: effortId,
+          metricId: MetricIds.reps,
+          unitId: MetricIds.unitReps,
+          valueInt: reps,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
     }
 
     testWidgets('shows Stats AppBar title', (WidgetTester tester) async {
@@ -1570,8 +1679,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('ALL TIME'), findsNothing);
-      expect(find.text('ACTIVITY'), findsNothing);
-      expect(find.byType(BarChart), findsNothing);
+      expect(find.text('STRENGTH'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -1619,38 +1727,6 @@ void main() {
         find.descendant(of: aggregateCard, matching: find.text('2h 15m')),
         findsOneWidget,
       );
-      expect(find.byType(BarChart), findsOneWidget);
-    });
-
-    testWidgets('30-day activity excludes sessions outside the window', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(400, 900));
-      final repo = await _freshRepo();
-      final now = DateTime.now();
-
-      await seedCompletedSession(
-        repo,
-        id: 'old-session',
-        start: now.subtract(const Duration(days: 60, hours: 1)),
-        duration: const Duration(hours: 1),
-      );
-      await seedCompletedSession(
-        repo,
-        id: 'recent-session',
-        start: now.subtract(const Duration(days: 5, minutes: 20)),
-        duration: const Duration(minutes: 20),
-      );
-
-      await pumpStatsScreen(tester, repo);
-
-      final aggregateCard = find.byType(OmniSurface).first;
-      expect(
-        find.descendant(of: aggregateCard, matching: find.text('2')),
-        findsOneWidget,
-      );
-      expect(find.byType(BarChart), findsOneWidget);
-      expect(totalSessionsShownInChart(tester), 1);
     });
 
     testWidgets('rolling sessions are excluded from duration aggregates', (
@@ -1689,6 +1765,163 @@ void main() {
       expect(
         find.descendant(of: aggregateCard, matching: find.text('2h 45m')),
         findsNothing,
+      );
+    });
+
+    testWidgets('cardio single-day pace respects miles preference', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-run',
+          name: 'Run',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await seedCompletedSession(
+        repo,
+        id: 'cardio-1',
+        start: now.subtract(const Duration(days: 1)),
+        duration: const Duration(minutes: 30),
+      );
+      await seedTimedEffort(
+        repo,
+        sessionId: 'cardio-1',
+        exerciseId: 'ex-run',
+        durationSecs: 1800,
+        distanceM: 5000,
+      );
+
+      await pumpStatsScreen(
+        tester,
+        repo,
+        configureSettings: (settingsState) async {
+          await settingsState.setPreferredDistanceUnit('mi');
+        },
+      );
+
+      expect(find.textContaining('Pace: 579 s/mi'), findsOneWidget);
+      // Single-point cardio card also shows the deliberate hint.
+      expect(
+        find.textContaining('1 session — log more to see a trend'),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('cardio multi-day pace chart overlays distance trend', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-row',
+          name: 'Row',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await seedCompletedSession(
+        repo,
+        id: 'cardio-row-1',
+        start: now.subtract(const Duration(days: 2)),
+        duration: const Duration(minutes: 20),
+      );
+      await seedTimedEffort(
+        repo,
+        sessionId: 'cardio-row-1',
+        exerciseId: 'ex-row',
+        durationSecs: 1200,
+        distanceM: 4000,
+      );
+
+      await seedCompletedSession(
+        repo,
+        id: 'cardio-row-2',
+        start: now.subtract(const Duration(days: 1)),
+        duration: const Duration(minutes: 18),
+      );
+      await seedTimedEffort(
+        repo,
+        sessionId: 'cardio-row-2',
+        exerciseId: 'ex-row',
+        durationSecs: 1080,
+        distanceM: 4200,
+      );
+
+      await pumpStatsScreen(tester, repo);
+
+      expect(find.text('Distance (km)'), findsOneWidget);
+
+      final insetWrapper = find.byWidgetPredicate(
+        (widget) =>
+            widget is Padding &&
+            widget.padding == const EdgeInsets.only(right: 8),
+      );
+      expect(
+        find.ancestor(of: find.byType(LineChart).first, matching: insetWrapper),
+        findsOneWidget,
+      );
+
+      final cardioChart = tester.widget<LineChart>(find.byType(LineChart).first);
+      expect(cardioChart.data.lineBarsData.length, 2);
+    });
+
+    testWidgets('strength e1RM and PRs displayed in lbs when unit is lbs', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 900));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-squat',
+          name: 'Squat',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      // Single training day → single-point fallback shows inline text
+      await seedCompletedSession(
+        repo,
+        id: 'lift-1',
+        start: now.subtract(const Duration(days: 1)),
+        duration: const Duration(minutes: 45),
+      );
+      // 100 kg × 1 rep → e1RM ≈ 103.33 kg ≈ 227.8 lbs
+      await seedSetEffort(
+        repo,
+        sessionId: 'lift-1',
+        exerciseId: 'ex-squat',
+        weightKg: 100.0,
+        reps: 1,
+      );
+
+      await pumpStatsScreen(
+        tester,
+        repo,
+        configureSettings: (settingsState) async {
+          await settingsState.setPreferredWeightUnit('lbs');
+        },
+      );
+
+      // Unit label must say 'lbs', not 'kg'
+      expect(find.textContaining('lbs'), findsWidgets);
+      expect(find.textContaining('Estimated 1RM:'), findsOneWidget);
+      expect(find.textContaining(' kg'), findsNothing);
+      // Single-point card must show the deliberate "log more" hint.
+      expect(
+        find.textContaining('1 session — log more to see a trend'),
+        findsWidgets,
       );
     });
   });

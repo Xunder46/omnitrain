@@ -1,12 +1,12 @@
-import 'dart:math';
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/constants/modality.dart';
-import '../../core/constants/modality_colors.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/models/stats_progress.dart';
+import '../../core/services/stats_progress_service.dart';
+import '../../core/utils/chart_axis_helper.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/unit_formatter.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -27,20 +27,19 @@ class StatsScreen extends StatefulWidget {
 }
 
 class _StatsScreenState extends State<StatsScreen> {
+  static const double _kTrendChartHeight = 120;
+  static const double _kYAxisReservedSize = 78;
+  static const double _kTopAxisHeadroom = 12;
+  static const double _kBottomAxisReservedSize = 20;
+  static const double _kChartLeftShift = 16;
+  static const double _kChartRightInset = 8;
+
   bool _isLoading = true;
   int _totalSessions = 0;
   int _totalDurationMs = 0;
   int _streakDays = 0;
 
-  // Index 0 = 29 days ago, index 29 = today.
-  final List<int> _dayCounts = List.filled(30, 0);
-
-  // modality key → 30-element list of average rest seconds (null = no data that day).
-  Map<String?, List<double?>> _restAvgsByModality = {};
-
-  // Anchored at load time so the chart label never drifts after midnight rebuilds.
-  DateTime? _thirtyDaysAgo;
-  DateTime? _today;
+  StatsProgressData? _progressData;
 
   @override
   void initState() {
@@ -50,20 +49,7 @@ class _StatsScreenState extends State<StatsScreen> {
 
   Future<void> _loadData() async {
     try {
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final thirtyDaysAgo = today.subtract(const Duration(days: 29));
-      final fromMs = thirtyDaysAgo.millisecondsSinceEpoch;
-      final toMs = OmniDateUtils.endOfDayMs(now);
-
-      // Load all sessions (for aggregate stats) and 30-day window (for chart) in parallel.
-      final results = await Future.wait([
-        widget.workoutState.getAllSessions(),
-        widget.workoutState.getSessionsByDateRange(fromMs, toMs),
-      ]);
-
-      final allSessions = results[0];
-      final recentSessions = results[1];
+      final allSessions = await widget.workoutState.getAllSessions();
 
       // Compute all-time aggregates from completed sessions only.
       // Rolling sessions still count as completed sessions, but they do not
@@ -78,57 +64,15 @@ class _StatsScreenState extends State<StatsScreen> {
         }
       }
 
-      // Build per-day counts for the 30-day chart window.
-      final counts = List.filled(30, 0);
-      for (final s in recentSessions) {
-        if (s.endedAtMs == null) continue;
-        final sessionDateTime = DateTime.fromMillisecondsSinceEpoch(
-          s.startedAtMs,
-        );
-        final sessionDay = DateTime(
-          sessionDateTime.year,
-          sessionDateTime.month,
-          sessionDateTime.day,
-        );
-        final dayIndex = sessionDay.difference(thirtyDaysAgo).inDays;
-        if (dayIndex >= 0 && dayIndex < 30) {
-          counts[dayIndex]++;
-        }
-      }
-
       // Reuse CalendarState streak logic — do not re-implement the calculation.
       final calendarState = CalendarState(widget.workoutState.repository);
       await calendarState.init();
       final streak = calendarState.streakDays;
 
-      // Fetch closed rests in the 30-day window, grouped by modality.
-      final restsByModality = await widget.workoutState.repository
-          .getEntryRestsByModalityInDateRange(fromMs, toMs);
-
-      final restAvgs = <String?, List<double?>>{};
-      for (final entry in restsByModality.entries) {
-        final modality = entry.key;
-        final rests = entry.value;
-
-        final sumSecs = List<double>.filled(30, 0);
-        final countPerDay = List<int>.filled(30, 0);
-
-        for (final rest in rests) {
-          final restDt = DateTime.fromMillisecondsSinceEpoch(rest.restStartMs);
-          final restDay = DateTime(restDt.year, restDt.month, restDt.day);
-          final dayIndex = restDay.difference(thirtyDaysAgo).inDays;
-          if (dayIndex < 0 || dayIndex >= 30) continue;
-          final durationSecs = (rest.restEndMs! - rest.restStartMs) / 1000.0;
-          sumSecs[dayIndex] += durationSecs;
-          countPerDay[dayIndex]++;
-        }
-
-        final avgs = <double?>[];
-        for (var i = 0; i < 30; i++) {
-          avgs.add(countPerDay[i] > 0 ? sumSecs[i] / countPerDay[i] : null);
-        }
-        restAvgs[modality] = avgs;
-      }
+      // Compute progress data (e1RM trends, volume trends, cardio trends, PRs).
+      final progressData = await StatsProgressService(
+        widget.workoutState.repository,
+      ).computeProgressData();
 
       if (!mounted) return;
 
@@ -136,13 +80,7 @@ class _StatsScreenState extends State<StatsScreen> {
         _totalSessions = totalCount;
         _totalDurationMs = totalMs;
         _streakDays = streak;
-        for (var i = 0; i < 30; i++) {
-          _dayCounts[i] = counts[i];
-        }
-        _restAvgsByModality = restAvgs;
-        // Anchor the date range so chart labels never drift after midnight rebuilds.
-        _thirtyDaysAgo = thirtyDaysAgo;
-        _today = today;
+        _progressData = progressData;
         _isLoading = false;
       });
     } catch (_) {
@@ -177,19 +115,17 @@ class _StatsScreenState extends State<StatsScreen> {
                     children: _totalSessions == 0
                         ? [_buildEmptyState(context, themeColors)]
                         : [
-                            _buildSectionLabel(context, 'ALL TIME', themeColors),
+                            _buildSectionLabel(
+                              context,
+                              'ALL TIME',
+                              themeColors,
+                            ),
                             const SizedBox(height: 8),
                             _buildAggregateCard(context, themeColors),
                             const SizedBox(height: 24),
-                            _buildSectionLabel(context, 'ACTIVITY', themeColors),
-                            const SizedBox(height: 8),
-                            _buildActivityCard(context, themeColors),
-                            if (_restAvgsByModality.isNotEmpty) ...[
-                              const SizedBox(height: 24),
-                              _buildSectionLabel(context, 'REST TIME', themeColors),
-                              const SizedBox(height: 8),
-                              _buildRestTimeCard(context, themeColors),
-                            ],
+                            ..._buildStrengthSection(context, themeColors),
+                            const SizedBox(height: 24),
+                            ..._buildCardioSection(context, themeColors),
                           ],
                   ),
           ),
@@ -197,6 +133,8 @@ class _StatsScreenState extends State<StatsScreen> {
       },
     );
   }
+
+  // ── Section label ─────────────────────────────────────────────────────────
 
   Widget _buildSectionLabel(
     BuildContext context,
@@ -261,207 +199,64 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _buildActivityCard(BuildContext context, OmniThemeColors themeColors) {
-    final theme = Theme.of(context);
-    // Use anchored dates from _loadData — never recompute from DateTime.now() here,
-    // otherwise a midnight rebuild (e.g. theme change) would shift the label
-    // while _dayCounts still represents the original window.
-    final thirtyDaysAgo = _thirtyDaysAgo!;
-    final today = _today!;
+  // ── Strength section ──────────────────────────────────────────────────────
 
-    final maxCount = _dayCounts.reduce(max);
-    final double maxY = max(1.0, maxCount.toDouble());
-    final double yInterval = max(1.0, (maxY / 4).ceilToDouble());
-
-    return OmniSurface(
-      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Sessions per Day',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: OmniTheme.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Flexible(
-                child: Text(
-                  '${OmniDateUtils.shortMonthName(thirtyDaysAgo.month)} ${thirtyDaysAgo.day}'
-                  ' – '
-                  '${OmniDateUtils.shortMonthName(today.month)} ${today.day}',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: themeColors.textMuted,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // Reserve ~28 px for the y-axis labels; distribute the rest
-              // across 30 bars, using 65 % of each slot as bar width.
-              final slotWidth = (constraints.maxWidth - 28) / 30;
-              final barWidth = (slotWidth * 0.65).clamp(3.0, 16.0);
-
-              return SizedBox(
-                height: 160,
-                child: BarChart(
-                  BarChartData(
-                    alignment: BarChartAlignment.spaceAround,
-                    maxY: maxY + yInterval * 0.3,
-                    minY: 0,
-                    barTouchData: BarTouchData(handleBuiltInTouches: false),
-                    titlesData: FlTitlesData(
-                      topTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      rightTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 28,
-                          interval: yInterval,
-                          getTitlesWidget: (value, meta) {
-                            if (value != value.floorToDouble()) {
-                              return const SizedBox.shrink();
-                            }
-                            final intVal = value.toInt();
-                            if (intVal < 0) return const SizedBox.shrink();
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 4),
-                              child: Text(
-                                intVal.toString(),
-                                style: TextStyle(
-                                  // [E] Chart axis — dense instrumentation label,
-                                  // getTitlesWidget callback has no BuildContext
-                                  fontSize: 10,
-                                  color: themeColors.textMuted,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 24,
-                          getTitlesWidget: (value, meta) {
-                            final idx = value.toInt();
-                            const labelIndices = {0, 7, 14, 21, 28};
-                            if (!labelIndices.contains(idx)) {
-                              return const SizedBox.shrink();
-                            }
-                            final date = thirtyDaysAgo.add(Duration(days: idx));
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                '${OmniDateUtils.shortMonthName(date.month)} ${date.day}',
-                                style: TextStyle(
-                                  // [E] Chart axis — dense instrumentation label,
-                                  // getTitlesWidget callback has no BuildContext
-                                  fontSize: 9,
-                                  color: themeColors.textMuted,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    gridData: FlGridData(
-                      show: true,
-                      drawVerticalLine: false,
-                      horizontalInterval: yInterval,
-                      getDrawingHorizontalLine: (_) =>
-                          FlLine(color: themeColors.divider, strokeWidth: 1),
-                    ),
-                    borderData: FlBorderData(show: false),
-                    barGroups: List.generate(30, (i) {
-                      return BarChartGroupData(
-                        x: i,
-                        barRods: [
-                          BarChartRodData(
-                            toY: _dayCounts[i].toDouble(),
-                            color: themeColors.primary,
-                            width: barWidth,
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(3),
-                            ),
-                          ),
-                        ],
-                      );
-                    }),
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRestTimeCard(BuildContext context, OmniThemeColors themeColors) {
-    final theme = Theme.of(context);
-    final thirtyDaysAgo = _thirtyDaysAgo!;
-    final today = _today!;
-
-    // Stable display order for modalities.
-    const displayOrder = <String?>[
-      'cardio_endurance',
-      'resistance_lifting',
-      'sports',
-      'isometric_stretching',
-      null, // Free Training
+  List<Widget> _buildStrengthSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final widgets = <Widget>[
+      _buildSectionLabel(context, 'STRENGTH', themeColors),
+      const SizedBox(height: 8),
     ];
 
-    final visibleModalities = displayOrder
-        .where((m) => _restAvgsByModality.containsKey(m))
-        .toList();
-
-    // Build LineChartBarData for each visible modality.
-    final lineBars = <LineChartBarData>[];
-    double maxY = 10.0;
-
-    for (final modality in visibleModalities) {
-      final avgs = _restAvgsByModality[modality]!;
-      final spots = <FlSpot>[];
-      for (var i = 0; i < 30; i++) {
-        if (avgs[i] != null) {
-          spots.add(FlSpot(i.toDouble(), avgs[i]!));
-          if (avgs[i]! > maxY) maxY = avgs[i]!;
-        }
-      }
-      if (spots.isEmpty) continue;
-      lineBars.add(
-        LineChartBarData(
-          spots: spots,
-          color: ModalityColors.forModality(modality),
-          isCurved: true,
-          curveSmoothness: 0.3,
-          barWidth: 2,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(show: false),
+    final data = _progressData;
+    if (data == null || data.topLifts.isEmpty) {
+      widgets.add(
+        _buildSectionEmptyState(
+          context,
+          themeColors,
+          'No strength history yet. Log your first sets to see trends here.',
         ),
       );
+      return widgets;
     }
 
-    if (lineBars.isEmpty) return const SizedBox.shrink();
+    for (final lift in data.topLifts) {
+      widgets.add(_buildLiftCard(context, themeColors, lift));
+      widgets.add(const SizedBox(height: 12));
+    }
 
-    // Y axis interval: aim for ~4 ticks, rounded to nearest 10.
-    final rawInterval = (maxY / 4).ceilToDouble();
-    final yInterval = max(10.0, (rawInterval / 10).ceil() * 10.0);
+    if (data.recentPRs.isNotEmpty) {
+      widgets.add(_buildPRList(context, themeColors, data.recentPRs));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildLiftCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    LiftProgress lift,
+  ) {
+    final theme = Theme.of(context);
+    final weightLabel = UnitFormatter.weightLabel(widget.settingsState);
+    final e1RmDisplay = lift.e1RmTrend
+        .map(
+          (p) => TrendPoint(
+            date: p.date,
+            value: UnitFormatter.convertWeight(p.value, widget.settingsState),
+          ),
+        )
+        .toList();
+    final volumeDisplay = lift.volumeTrend
+        .map(
+          (p) => TrendPoint(
+            date: p.date,
+            value: UnitFormatter.convertWeight(p.value, widget.settingsState),
+          ),
+        )
+        .toList();
 
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
@@ -469,147 +264,845 @@ class _StatsScreenState extends State<StatsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '30-Day Rest Time',
+            lift.exerciseName,
             style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (e1RmDisplay.length >= 2) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Estimated 1RM',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildTrendChart(themeColors, e1RmDisplay, label: weightLabel),
+          ] else if (e1RmDisplay.length == 1) ...[
+            const SizedBox(height: 8),
+            _buildSinglePointCard(
+              theme: theme,
+              themeColors: themeColors,
+              label: 'Estimated 1RM:',
+              value:
+                  '${e1RmDisplay.first.value.toStringAsFixed(1)} $weightLabel',
+              date: e1RmDisplay.first.date,
+            ),
+          ],
+          if (volumeDisplay.length >= 2) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Volume',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildTrendChart(themeColors, volumeDisplay, label: weightLabel),
+          ] else if (volumeDisplay.length == 1) ...[
+            const SizedBox(height: 8),
+            _buildSinglePointCard(
+              theme: theme,
+              themeColors: themeColors,
+              label: 'Volume:',
+              value:
+                  '${volumeDisplay.first.value.toStringAsFixed(0)} $weightLabel',
+              date: volumeDisplay.first.date,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTrendChart(
+    OmniThemeColors themeColors,
+    List<TrendPoint> points, {
+    required String label,
+  }) {
+    final values = points.map((p) => p.value).toList();
+    final bounds = ChartAxisHelper.computeBounds(values);
+    final yInterval = ChartAxisHelper.readableIntervalForHeight(
+      bounds,
+      _kTrendChartHeight,
+    );
+
+    final spots = List.generate(
+      points.length,
+      (i) => FlSpot(i.toDouble(), points[i].value),
+    );
+
+    return _buildInsetChart(
+      LineChart(
+        LineChartData(
+          minX: 0,
+          maxX: (points.length - 1).toDouble(),
+          minY: bounds.min,
+          maxY: bounds.max,
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipItems: (spots) => spots
+                  .map(
+                    (s) => LineTooltipItem(
+                      '${s.y.toStringAsFixed(1)} $label',
+                      TextStyle(
+                        fontSize: 11,
+                        color: OmniTheme.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: false,
+                reservedSize: _kTopAxisHeadroom,
+              ),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: _kYAxisReservedSize,
+                interval: yInterval,
+                getTitlesWidget: (value, meta) => SideTitleWidget(
+                  meta: meta,
+                  space: 4,
+                  child: Text(
+                    ChartAxisHelper.formatYAxisValue(value, label),
+                    style: TextStyle(fontSize: 9, color: themeColors.textMuted),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                  ),
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: _kBottomAxisReservedSize,
+                interval: 1,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.round();
+                  if (idx < 0 || idx >= points.length) {
+                    return const SizedBox.shrink();
+                  }
+                  if (!ChartAxisHelper.shouldShowDateLabel(
+                    idx,
+                    points.length,
+                  )) {
+                    return const SizedBox.shrink();
+                  }
+                  return SideTitleWidget(
+                    meta: meta,
+                    space: 4,
+                    child: Text(
+                      ChartAxisHelper.formatDateLabel(points[idx].date),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: themeColors.textMuted,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) =>
+                FlLine(color: themeColors.divider, strokeWidth: 1),
+          ),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              color: themeColors.primary,
+              isCurved: true,
+              curveSmoothness: 0.3,
+              barWidth: 2,
+              isStrokeCapRound: true,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                  radius: 3,
+                  color: themeColors.primary,
+                  strokeWidth: 1.5,
+                  strokeColor: themeColors.surface,
+                ),
+              ),
+              belowBarData: BarAreaData(
+                show: true,
+                color: themeColors.primary.withAlpha(25),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPRList(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    List<StatsPR> prs,
+  ) {
+    final theme = Theme.of(context);
+    final weightLabel = UnitFormatter.weightLabel(widget.settingsState);
+
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Recent PRs',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...prs.map((pr) {
+            final dateStr =
+                '${OmniDateUtils.shortMonthName(pr.date.month)} ${pr.date.day},'
+                ' ${pr.date.year}';
+            final displayE1Rm = UnitFormatter.convertWeight(
+              pr.e1Rm,
+              widget.settingsState,
+            );
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.emoji_events_outlined,
+                    size: 16,
+                    color: themeColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      pr.exerciseName,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: OmniTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${displayE1Rm.toStringAsFixed(1)} $weightLabel',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: themeColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    dateStr,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: themeColors.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  // ── Cardio section ────────────────────────────────────────────────────────
+
+  List<Widget> _buildCardioSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final widgets = <Widget>[
+      _buildSectionLabel(context, 'CARDIO', themeColors),
+      const SizedBox(height: 8),
+    ];
+
+    final data = _progressData;
+    if (data == null || data.topCardio.isEmpty) {
+      widgets.add(
+        _buildSectionEmptyState(
+          context,
+          themeColors,
+          'No cardio history yet. Log timed efforts to see trends here.',
+        ),
+      );
+      return widgets;
+    }
+
+    for (final cardio in data.topCardio) {
+      widgets.add(_buildCardioCard(context, themeColors, cardio));
+      widgets.add(const SizedBox(height: 12));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildCardioCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    CardioProgress cardio,
+  ) {
+    final theme = Theme.of(context);
+    final hasPace = cardio.trend.any((p) => p.paceSecPerKm != null);
+    final hasDistance = cardio.trend.any(
+      (p) => p.distanceM != null && p.distanceM! > 0,
+    );
+    final distUnit = UnitFormatter.distanceLabel(widget.settingsState);
+
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            cardio.exerciseName,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (hasPace && cardio.trend.length >= 2) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Pace (s/$distUnit)',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildCardioPaceChart(themeColors, cardio.trend, distUnit),
+            if (hasDistance) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                children: [
+                  _buildLegendItem(
+                    theme,
+                    themeColors.secondary,
+                    'Pace (s/$distUnit)',
+                    themeColors,
+                  ),
+                  _buildLegendItem(
+                    theme,
+                    themeColors.primary,
+                    'Distance ($distUnit)',
+                    themeColors,
+                  ),
+                ],
+              ),
+            ],
+          ] else if (cardio.trend.length >= 2) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Duration (min)',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildCardioDurationChart(themeColors, cardio.trend),
+          ] else if (cardio.trend.length == 1) ...[
+            const SizedBox(height: 8),
+            _buildSingleCardioPointCard(
+              theme: theme,
+              themeColors: themeColors,
+              point: cardio.trend.first,
+              distUnit: distUnit,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardioPaceChart(
+    OmniThemeColors themeColors,
+    List<CardioTrendPoint> points,
+    String distUnit,
+  ) {
+    final pacePoints = <FlSpot>[];
+    final paceValues = <double>[];
+    final distanceByIndex = <int, double>{};
+    for (var i = 0; i < points.length; i++) {
+      final pace = points[i].paceSecPerKm;
+      if (pace != null) {
+        final displayPace = _paceForDisplay(pace, distUnit);
+        pacePoints.add(FlSpot(i.toDouble(), displayPace));
+        paceValues.add(displayPace);
+      }
+
+      final distanceM = points[i].distanceM;
+      if (distanceM != null && distanceM > 0) {
+        distanceByIndex[i] = _distanceForDisplay(distanceM, distUnit);
+      }
+    }
+
+    if (pacePoints.isEmpty) return const SizedBox.shrink();
+
+    final bounds = ChartAxisHelper.computeBounds(paceValues);
+    final yInterval = ChartAxisHelper.readableIntervalForHeight(
+      bounds,
+      _kTrendChartHeight,
+    );
+    final unitLabel = 's/$distUnit';
+
+    final distanceValues = distanceByIndex.values.toList();
+    final distanceScale = distanceValues.isEmpty
+        ? null
+        : _LinearScale.fromSourceAndTarget(
+            sourceMin: distanceValues.reduce((a, b) => a < b ? a : b),
+            sourceMax: distanceValues.reduce((a, b) => a > b ? a : b),
+            targetMin: bounds.min,
+            targetMax: bounds.max,
+          );
+
+    final distancePoints = <FlSpot>[];
+    if (distanceScale != null) {
+      for (final entry in distanceByIndex.entries) {
+        distancePoints.add(
+          FlSpot(entry.key.toDouble(), distanceScale.toTarget(entry.value)),
+        );
+      }
+    }
+
+    return _buildInsetChart(
+      LineChart(
+        LineChartData(
+          minX: 0,
+          maxX: (points.length - 1).toDouble(),
+          minY: bounds.min,
+          maxY: bounds.max,
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipItems: (spots) => spots.map((s) {
+                final tooltipStyle = TextStyle(
+                  fontSize: 11,
+                  color: OmniTheme.textPrimary,
+                  fontWeight: FontWeight.w600,
+                );
+
+                if (s.barIndex == 1 && distanceScale != null) {
+                  final displayDistance = distanceScale.toSource(s.y);
+                  return LineTooltipItem(
+                    '${displayDistance.toStringAsFixed(2)} $distUnit',
+                    tooltipStyle,
+                  );
+                }
+
+                return LineTooltipItem(
+                  '${s.y.toStringAsFixed(0)} $unitLabel',
+                  tooltipStyle,
+                );
+              }).toList(),
+            ),
+          ),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: false,
+                reservedSize: _kTopAxisHeadroom,
+              ),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: _kYAxisReservedSize,
+                interval: yInterval,
+                getTitlesWidget: (value, meta) => SideTitleWidget(
+                  meta: meta,
+                  space: 4,
+                  child: Text(
+                    ChartAxisHelper.formatYAxisValue(value, unitLabel),
+                    style: TextStyle(fontSize: 9, color: themeColors.textMuted),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                  ),
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: _kBottomAxisReservedSize,
+                interval: 1,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.round();
+                  if (idx < 0 || idx >= points.length) {
+                    return const SizedBox.shrink();
+                  }
+                  if (!ChartAxisHelper.shouldShowDateLabel(
+                    idx,
+                    points.length,
+                  )) {
+                    return const SizedBox.shrink();
+                  }
+                  return SideTitleWidget(
+                    meta: meta,
+                    space: 4,
+                    child: Text(
+                      ChartAxisHelper.formatDateLabel(points[idx].date),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: themeColors.textMuted,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) =>
+                FlLine(color: themeColors.divider, strokeWidth: 1),
+          ),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: pacePoints,
+              color: themeColors.secondary,
+              isCurved: true,
+              curveSmoothness: 0.3,
+              barWidth: 2,
+              isStrokeCapRound: true,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                  radius: 3,
+                  color: themeColors.secondary,
+                  strokeWidth: 1.5,
+                  strokeColor: themeColors.surface,
+                ),
+              ),
+              belowBarData: BarAreaData(
+                show: true,
+                color: themeColors.secondary.withAlpha(25),
+              ),
+            ),
+            if (distancePoints.isNotEmpty)
+              LineChartBarData(
+                spots: distancePoints,
+                color: themeColors.primary,
+                isCurved: true,
+                curveSmoothness: 0.3,
+                barWidth: 2,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                    radius: 3,
+                    color: themeColors.primary,
+                    strokeWidth: 1.5,
+                    strokeColor: themeColors.surface,
+                  ),
+                ),
+                belowBarData: BarAreaData(show: false),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLegendItem(
+    ThemeData theme,
+    Color color,
+    String label,
+    OmniThemeColors themeColors,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: themeColors.textMuted,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCardioDurationChart(
+    OmniThemeColors themeColors,
+    List<CardioTrendPoint> points,
+  ) {
+    final durationValues = points.map((p) => p.durationSecs / 60.0).toList();
+    final spots = List.generate(
+      points.length,
+      (i) => FlSpot(i.toDouble(), durationValues[i]),
+    );
+
+    final bounds = ChartAxisHelper.computeBounds(durationValues);
+    final yInterval = ChartAxisHelper.readableIntervalForHeight(
+      bounds,
+      _kTrendChartHeight,
+    );
+
+    return _buildInsetChart(
+      LineChart(
+        LineChartData(
+          minX: 0,
+          maxX: (points.length - 1).toDouble(),
+          minY: bounds.min,
+          maxY: bounds.max,
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipItems: (spots) => spots
+                  .map(
+                    (s) => LineTooltipItem(
+                      '${s.y.toStringAsFixed(0)} min',
+                      TextStyle(
+                        fontSize: 11,
+                        color: OmniTheme.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: false,
+                reservedSize: _kTopAxisHeadroom,
+              ),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: _kYAxisReservedSize,
+                interval: yInterval,
+                getTitlesWidget: (value, meta) => SideTitleWidget(
+                  meta: meta,
+                  space: 4,
+                  child: Text(
+                    ChartAxisHelper.formatYAxisValue(value, 'min'),
+                    style: TextStyle(fontSize: 9, color: themeColors.textMuted),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                  ),
+                ),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: _kBottomAxisReservedSize,
+                interval: 1,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.round();
+                  if (idx < 0 || idx >= points.length) {
+                    return const SizedBox.shrink();
+                  }
+                  if (!ChartAxisHelper.shouldShowDateLabel(
+                    idx,
+                    points.length,
+                  )) {
+                    return const SizedBox.shrink();
+                  }
+                  return SideTitleWidget(
+                    meta: meta,
+                    space: 4,
+                    child: Text(
+                      ChartAxisHelper.formatDateLabel(points[idx].date),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: themeColors.textMuted,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) =>
+                FlLine(color: themeColors.divider, strokeWidth: 1),
+          ),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              color: themeColors.secondary,
+              isCurved: true,
+              curveSmoothness: 0.3,
+              barWidth: 2,
+              isStrokeCapRound: true,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                  radius: 3,
+                  color: themeColors.secondary,
+                  strokeWidth: 1.5,
+                  strokeColor: themeColors.surface,
+                ),
+              ),
+              belowBarData: BarAreaData(
+                show: true,
+                color: themeColors.secondary.withAlpha(25),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInsetChart(Widget chart) {
+    return Transform.translate(
+      offset: const Offset(-_kChartLeftShift, 0),
+      child: Padding(
+        padding: const EdgeInsets.only(right: _kChartRightInset),
+        child: SizedBox(height: _kTrendChartHeight, child: chart),
+      ),
+    );
+  }
+
+  /// Deliberate single-point card for a lift metric (e1RM or volume).
+  Widget _buildSinglePointCard({
+    required ThemeData theme,
+    required OmniThemeColors themeColors,
+    required String label,
+    required String value,
+    required DateTime date,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: themeColors.divider.withAlpha(30),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label $value',
+            style: theme.textTheme.bodySmall?.copyWith(
               color: OmniTheme.textPrimary,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 2),
           Text(
-            '${OmniDateUtils.shortMonthName(thirtyDaysAgo.month)} ${thirtyDaysAgo.day}'
-            ' – '
-            '${OmniDateUtils.shortMonthName(today.month)} ${today.day}',
+            '1 session — log more to see a trend',
             style: theme.textTheme.labelSmall?.copyWith(
               color: themeColors.textMuted,
             ),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 160,
-            child: LineChart(
-              LineChartData(
-                minX: 0,
-                maxX: 29,
-                minY: 0,
-                maxY: maxY + yInterval * 0.3,
-                lineTouchData: const LineTouchData(enabled: false),
-                titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 36,
-                      interval: yInterval,
-                      getTitlesWidget: (value, meta) {
-                        if (value != value.floorToDouble()) {
-                          return const SizedBox.shrink();
-                        }
-                        final intVal = value.toInt();
-                        if (intVal < 0) return const SizedBox.shrink();
-                        final mins = intVal ~/ 60;
-                        final secs = intVal % 60;
-                        final label =
-                            '$mins:${secs.toString().padLeft(2, '0')}';
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 4),
-                          child: Text(
-                            label,
-                            style: TextStyle(
-                              // [E] Chart axis — dense instrumentation label,
-                              // getTitlesWidget callback has no BuildContext
-                              fontSize: 10,
-                              color: themeColors.textMuted,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 24,
-                      getTitlesWidget: (value, meta) {
-                        final idx = value.toInt();
-                        // Three labels: start (0), middle (15), end (29).
-                        if (idx != 0 && idx != 15 && idx != 29) {
-                          return const SizedBox.shrink();
-                        }
-                        final date = thirtyDaysAgo.add(Duration(days: idx));
-                        final label =
-                            '${OmniDateUtils.shortMonthName(date.month)} ${date.day}';
-                        final align = idx == 0
-                            ? TextAlign.left
-                            : idx == 29
-                            ? TextAlign.right
-                            : TextAlign.center;
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            label,
-                            textAlign: align,
-                            style: TextStyle(
-                              // [E] Chart axis — dense instrumentation label,
-                              // getTitlesWidget callback has no BuildContext
-                              fontSize: 9,
-                              color: themeColors.textMuted,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: yInterval,
-                  getDrawingHorizontalLine: (_) =>
-                      FlLine(color: themeColors.divider, strokeWidth: 1),
-                ),
-                borderData: FlBorderData(show: false),
-                lineBarsData: lineBars,
-              ),
+        ],
+      ),
+    );
+  }
+
+  /// Deliberate single-point card for a cardio metric.
+  Widget _buildSingleCardioPointCard({
+    required ThemeData theme,
+    required OmniThemeColors themeColors,
+    required CardioTrendPoint point,
+    required String distUnit,
+  }) {
+    final mins = point.durationSecs ~/ 60;
+    final secs = point.durationSecs % 60;
+    final durStr = '$mins:${secs.toString().padLeft(2, '0')}';
+
+    final parts = <String>['Duration: $durStr'];
+    if (point.distanceM != null) {
+      final km = point.distanceM! / 1000.0;
+      final isKm = distUnit == 'km';
+      final val = isKm ? km : km * 0.621371;
+      parts.add('Distance: ${val.toStringAsFixed(2)} $distUnit');
+    }
+    if (point.paceSecPerKm != null) {
+      final displayPace = _paceForDisplay(point.paceSecPerKm!, distUnit);
+      parts.add('Pace: ${displayPace.toStringAsFixed(0)} s/$distUnit');
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: themeColors.divider.withAlpha(30),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            parts.join(' · '),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: OmniTheme.textPrimary,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 16,
-            runSpacing: 6,
-            children: visibleModalities.map((modality) {
-              final color = ModalityColors.forModality(modality);
-              final label = modality == null
-                  ? 'Free Training'
-                  : Modality.getDisplayName(modality);
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 12,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: themeColors.textMuted,
-                    ),
-                  ),
-                ],
-              );
-            }).toList(),
+          const SizedBox(height: 2),
+          Text(
+            '1 session — log more to see a trend',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: themeColors.textMuted,
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Shared helpers ────────────────────────────────────────────────────────
+
+  Widget _buildSectionEmptyState(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    String message,
+  ) {
+    return OmniSurface(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        child: Center(
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: themeColors.textMuted),
+          ),
+        ),
       ),
     );
   }
@@ -625,7 +1118,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Icon(
             Icons.bar_chart_outlined,
             size: 48,
-            color: themeColors.textMuted.withOpacity(0.5),
+            color: themeColors.textMuted.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
@@ -650,6 +1143,65 @@ class _StatsScreenState extends State<StatsScreen> {
 
   /// Formats a duration in milliseconds as "Xh Ym" for all-time totals.
   String _formatDuration(int ms) => OmniDateUtils.formatDurationHoursMins(ms);
+
+  double _paceForDisplay(double paceSecPerKm, String distUnit) {
+    if (distUnit == 'mi') {
+      // Convert sec/km to sec/mi for display when miles are preferred.
+      return paceSecPerKm * 1.609344;
+    }
+    return paceSecPerKm;
+  }
+
+  double _distanceForDisplay(double distanceM, String distUnit) {
+    final km = distanceM / 1000.0;
+    return distUnit == 'mi' ? km * 0.621371 : km;
+  }
+}
+
+class _LinearScale {
+  final double sourceMin;
+  final double sourceMax;
+  final double targetMin;
+  final double targetMax;
+
+  const _LinearScale({
+    required this.sourceMin,
+    required this.sourceMax,
+    required this.targetMin,
+    required this.targetMax,
+  });
+
+  factory _LinearScale.fromSourceAndTarget({
+    required double sourceMin,
+    required double sourceMax,
+    required double targetMin,
+    required double targetMax,
+  }) {
+    return _LinearScale(
+      sourceMin: sourceMin,
+      sourceMax: sourceMax,
+      targetMin: targetMin,
+      targetMax: targetMax,
+    );
+  }
+
+  double toTarget(double sourceValue) {
+    final sourceRange = sourceMax - sourceMin;
+    if (sourceRange == 0) {
+      return targetMin + (targetMax - targetMin) / 2.0;
+    }
+    final t = (sourceValue - sourceMin) / sourceRange;
+    return targetMin + t * (targetMax - targetMin);
+  }
+
+  double toSource(double targetValue) {
+    final targetRange = targetMax - targetMin;
+    if (targetRange == 0) {
+      return sourceMin;
+    }
+    final t = (targetValue - targetMin) / targetRange;
+    return sourceMin + t * (sourceMax - sourceMin);
+  }
 }
 
 class _StatsPill extends StatelessWidget {
