@@ -5,15 +5,15 @@ model: Auto (copilot)
 handoffs:
   - label: Hand off to DBA
     agent: dba
-    prompt: Proceed with Phase 1 (Data Layer). See the plan above for details. IMPORTANT! Implement for BOTH environments: HiveWorkoutRepository (web-compatible, in-memory) and future SqliteWorkoutRepository (production, persistent)
+    prompt: Proceed with Phase 1 (Data Layer). See the plan above for details. IMPORTANT! Implement for BOTH environments: HiveWorkoutRepository (web-compatible, in-memory) and future SqliteWorkoutRepository (production, persistent). Carry forward docs/global_conventions.md so canonical storage, timestamps, and other shared rules stay intact.
     send: false
   - label: Hand off to Developer
     agent: developer
-    prompt: Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
+    prompt: Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access. docs/global_conventions.md applies to the entire implementation.
     send: false
   - label: Hand off to Code Reviewer
     agent: code-reviewer
-    prompt: Review the completed work for quality, DRY compliance, and architecture adherence.
+    prompt: Review the completed work against the plan, tests, doc updates, and every applicable rule in docs/global_conventions.md before approval.
     send: false
 ---
 

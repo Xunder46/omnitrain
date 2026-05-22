@@ -1,0 +1,22 @@
+# Global Conventions
+
+Read this file at the start of every task. It is the single source of truth for cross-cutting rules that apply across features. Keep this page short; follow the linked code and docs for implementation details.
+
+## Rules
+
+| Area | Rule | Where to look |
+|------|------|---------------|
+| Units + canonical storage | Any user-visible value with a unit must respect the saved preference and go through the shared formatting/conversion utilities. Never hardcode a unit label, duplicate conversion math, or persist a display-unit value. Store canonical values in the app's base units; convert only at input boundaries and display boundaries. | `lib/core/utils/unit_formatter.dart`, `docs/theme_and_settings.md`, `docs/stats_screen.md` |
+| Theme tokens only | Colors, accents, surfaces, borders, and other visual styling must come from `OmniTheme` tokens or `ThemeData.colorScheme` derived from the active theme. Never hardcode colors or bypass the selected theme. | `docs/design_system.md`, `docs/theme_and_settings.md`, `lib/app.dart`, `lib/core/constants/omni_theme.dart` |
+| Effort-kind drives analytics | Progress and history logic must derive from the effort actually logged (`SegmentEffort.effortKind` and recorded metrics), not from session labels or modality names. A set logged in Free Training still counts as strength; a timed effort in a lifting session still counts as cardio. | `docs/stats_screen.md` ("Effort-Type Keying"), `docs/modality_tracking.md`, `lib/core/services/stats_progress_service.dart` |
+| Timestamps are source data | For log flows without explicit date entry, timestamp at save time. For timed, round, and rest flows, derive elapsed and completion state from persisted wall-clock timestamps rather than local counters so backgrounding and reloads stay correct. | `docs/profile_and_measurements.md`, `docs/state_management.md`, `docs/modality_tracking.md`, `docs/rest_tracking.md`, `lib/data/models/models.dart` |
+| Reuse the canonical owner | When a shared utility, state object, or service already owns a cross-cutting concern, use it instead of rebuilding the logic locally. Preference-backed formatting goes through `SettingsState` + `UnitFormatter`; analytics classification goes through the existing progress services; theme selection goes through `SettingsState` + `OmniTheme`. | `docs/state_management.md`, `docs/theme_and_settings.md`, `docs/stats_screen.md`, `lib/core/utils/unit_formatter.dart`, `lib/core/services/stats_progress_service.dart` |
+| Instrument panel, not influencer | Favor fast logging, clear status, restrained motion, and low-friction instrumentation over decorative chrome, coaching theater, or social/influencer patterns. Use defaults and inference where the existing product docs do. | `docs/app_philosophy.md`, `docs/design_system.md` |
+
+## Usage
+
+- Developer: satisfy every applicable rule in implementation and tests.
+- Code Reviewer: verify every rule explicitly as `PASS`, `N/A`, or `FAIL` before approval.
+- Handoffs: point back here; do not restate the rules elsewhere.
+
+**Last Updated**: May 22, 2026

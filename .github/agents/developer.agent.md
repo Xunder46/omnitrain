@@ -5,7 +5,7 @@ model: Auto (copilot)
 handoffs:
   - label: Hand off to Code Reviewer
     agent: code-reviewer
-    prompt: Review the feature implementation for quality and compliance.
+    prompt: Review the feature implementation against the plan, scenario coverage, doc updates, and every applicable rule in docs/global_conventions.md before approval.
     send: false
 ---
 
@@ -319,6 +319,14 @@ Before implementing or modifying features, consult the relevant documentation in
 - **`docs/db_integration.md`** — Database setup, schema, migrations
 - **`docs/design_system.md`** — Color tokens, typography, spacing, animation rules, component patterns, **button specification**
 
+## Global Conventions (MANDATORY EVERY TASK)
+
+`docs/global_conventions.md` is a standing checklist, not optional background reading.
+
+- [ ] Read `docs/global_conventions.md` before implementation and note which rules apply to this task
+- [ ] Use the shared utility, state owner, or service linked from that doc instead of recreating unit, theme, analytics, or timestamp logic locally
+- [ ] Before handoff, confirm every applicable rule is satisfied and explicitly mark any non-applicable rule as `N/A` in the handoff summary
+
 ## Button Rules (MANDATORY)
 
 Every button in a new or modified screen MUST follow the Button spec in `docs/design_system.md`.
@@ -361,6 +369,7 @@ When you receive a handoff from @conductor:
 
 ### Step 1: Analyze Plan
 - [ ] Read the plan from @conductor
+- [ ] Read `docs/global_conventions.md` and note which rules apply
 - [ ] Identify which state classes need changes
 - [ ] Identify which screens need creation/updates
 - [ ] Check if new widgets are needed
@@ -708,6 +717,10 @@ Then hand off to @code-reviewer with a summary:
 - docs/state_management.md: [updated: what changed] OR [no update required]
 - docs/widget_catalog.md: [updated: what changed] OR [no update required]
 
+### Global Conventions
+- docs/global_conventions.md: [all applicable rules addressed]
+- Explicit N/As: [list] OR [none]
+
 ### Files Changed
 - test/[files].dart
 - lib/state/[feature]/[state].dart
@@ -733,6 +746,7 @@ Then hand off to @code-reviewer with a summary:
 - All Phase 0 tests must be green before handing off to the Code Reviewer
 - If blocked, mark phase as **Blocked**, add `## Feedback`, notify user to re-run Coordinator
 - Update docs before handing off — state explicitly if no update was needed
+- Treat `docs/global_conventions.md` as a standing checklist on every task
 - Use repository interface, never concrete class
 - Inject state into widgets
 - Keep business logic in state classes

@@ -5,15 +5,15 @@ model: Auto (copilot)
 handoffs:
   - label: Hand off to DBA for fixes
     agent: dba
-    prompt: Please address database issues as outlined above.
+    prompt: Please address the data-layer issues outlined above, preserve dual-environment repository safety, and re-check every applicable rule in docs/global_conventions.md before handing back.
     send: false
   - label: Hand off to Developer for fixes
     agent: developer
-    prompt: Please address issues as outlined above.
+    prompt: Please address the implementation, test, and doc issues outlined above, and re-check every applicable rule in docs/global_conventions.md before handing back.
     send: false
   - label: Approve and close
     agent: conductor
-    prompt: Code review complete. All standards met. Ready for deployment.
+    prompt: Code review complete. Acceptance criteria, tests, doc updates, and all applicable rules in docs/global_conventions.md are verified. Ready for deployment.
     send: false
 ---
 
@@ -39,9 +39,10 @@ The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single s
 3. Check clean code principles
 4. Verify architecture rules are followed
 5. **Assess unit test coverage** for all changed code
-6. **Plan refactoring** if issues found
-7. Hand off to DBA/Developer for fixes if needed
-8. Approve if all standards are met
+6. **Verify every applicable rule in `docs/global_conventions.md` before approval**
+7. **Plan refactoring** if issues found
+8. Hand off to DBA/Developer for fixes if needed
+9. Approve if all standards are met
 
 ## Feature Documentation
 
@@ -60,6 +61,14 @@ Before reviewing, consult the relevant documentation in `docs/` for context. See
 - **`docs/data_models.md`** — All domain models
 - **`docs/constants_reference.md`** — Constants and configuration
 - **`docs/widget_catalog.md`** — Reusable widget components
+
+## Global Conventions (CRITICAL)
+
+`docs/global_conventions.md` is a standing review checklist.
+
+- [ ] Read `docs/global_conventions.md` before code quality review
+- [ ] For each rule listed there, record `PASS`, `N/A`, or `FAIL` with evidence from changed files, tests, or docs
+- [ ] Do not approve until every applicable rule is `PASS` and every non-applicable rule is explicitly marked `N/A`
 
 ## Review Checklist
 
@@ -101,6 +110,15 @@ Read the handoff summary. Confirm the Doc Updates section is present and complet
 - [ ] `docs/db_integration.md` — status explicitly stated (DBA)
 
 For each doc listed as updated, read it and verify it reflects actual post-implementation state. Flag missing or stale doc updates as **WARNING**.
+
+### Step 5d — Global Conventions Verification
+
+Use `docs/global_conventions.md` as the source of truth.
+
+- [ ] Check every rule in that doc against the changed code and tests
+- [ ] Mark each rule `PASS`, `N/A`, or `FAIL` in the review output
+- [ ] Flag any applicable rule violation as **CRITICAL**
+- [ ] Do not approve if any rule was skipped or left implicit
 
 ### Architecture Compliance
 
@@ -365,7 +383,7 @@ Also read corresponding test files:
 ```
 
 ### Step 1b: Acceptance Criteria + Scenario Register + Doc Hygiene
-Run Steps 5a, 5b, and 5c from the checklist above. A feature that does the wrong thing with clean code is still wrong — run these checks before code quality review.
+Run Steps 5a, 5b, 5c, and 5d from the checklist above. A feature that does the wrong thing with clean code is still wrong — run these checks before code quality review.
 
 ### Step 2: Check Architecture
 - Verify models are pure Dart
@@ -398,6 +416,8 @@ Run Steps 5a, 5b, and 5c from the checklist above. A feature that does the wrong
 - Provide clear examples
 
 ## Output Formats
+
+Every review response must include a `Global Conventions` subsection that lists each rule from `docs/global_conventions.md` as `PASS`, `N/A`, or `FAIL` with a short evidence note.
 
 ### If Critical Issues Found
 ```markdown
@@ -651,6 +671,7 @@ Files to update using the constant:
 - Scenario register entries have no passing tests
 - Unreferenced top-level class discovered adjacent to changes
 - Doc Updates section missing or stale in handoff summary
+- Any applicable rule in `docs/global_conventions.md` is violated or was not explicitly checked
 
 ### Approve if:
 - All acceptance criteria met (from prompt file or plan file or both)
@@ -662,11 +683,13 @@ Files to update using the constant:
 - All new behaviour is covered by tests (happy path at minimum)
 - No stale tests referencing removed/renamed code
 - Doc Updates section present in handoff summary and all updated docs reflect current code
+- All applicable rules in `docs/global_conventions.md` are explicitly verified as `PASS` or `N/A`
 
 ## Remember
 
 - Always read `.github/agents/plans/[feature]-plan.md` first to understand original intent
 - Run acceptance criteria and scenario register checks BEFORE code quality review — behavioral correctness comes first
+- Explicitly verify every rule in `docs/global_conventions.md` before approval; skipped rules are not acceptable
 - If the implementation doesn't match the plan, add `## Feedback` to the plan file and instruct user to re-run the Coordinator
 - You review and plan, you don't edit source code (only the plan file)
 - Be specific in refactoring recommendations

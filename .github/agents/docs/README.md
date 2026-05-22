@@ -19,6 +19,11 @@ This documentation describes the architecture, features, and conventions of Omni
 
 ## Documentation Map
 
+### Shared Conventions
+| Document | Description |
+|----------|-------------|
+| [Global Conventions](global_conventions.md) | Cross-cutting rules that apply to every task: units and canonical storage, theme tokens, effort-kind analytics, timestamps, and product guardrails |
+
 ### Product & Philosophy
 | Document | Description |
 |----------|-------------|
@@ -170,4 +175,4 @@ Profile measurement rules implemented in code:
 
 ---
 
-**Last Updated**: May 17, 2026
+**Last Updated**: May 22, 2026

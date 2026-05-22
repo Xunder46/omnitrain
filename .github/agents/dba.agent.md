@@ -5,11 +5,11 @@ model: Auto (copilot)
 handoffs:
   - label: Hand off to Code Reviewer
     agent: code-reviewer
-    prompt: Review the data layer changes for quality and compliance.
+    prompt: Review the data-layer changes against the plan, the dual-environment repository contract, doc updates, and every applicable rule in docs/global_conventions.md.
     send: false
   - label: Hand off to Developer
     agent: developer
-    prompt: Please proceed with Logic/UI Phase. IMPORTANT: Code must work on web (MockWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
+    prompt: Please proceed with Logic/UI Phase. IMPORTANT: Code must work on web (MockWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access. Carry forward docs/global_conventions.md and use the shared cross-cutting owners it points to.
     send: false
 ---
 
