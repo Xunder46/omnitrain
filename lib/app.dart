@@ -11,6 +11,7 @@ import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
 import 'core/utils/timer_alert_service.dart';
+import 'core/utils/rest_notification_service.dart';
 
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -29,8 +30,9 @@ class MyApp extends StatelessWidget {
   final ProfileState profileState;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const MyApp({
+  MyApp({
     super.key,
     required this.repository,
     required this.showOnboarding,
@@ -44,7 +46,9 @@ class MyApp extends StatelessWidget {
     required this.profileState,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +91,8 @@ class MyApp extends StatelessWidget {
                 behavior: HitTestBehavior.translucent,
                 onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
                 child: OmniGradientBackground(
-                    child: child ?? const SizedBox.shrink()),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             );
           },
@@ -106,6 +111,7 @@ class MyApp extends StatelessWidget {
                   profileState: profileState,
                   settingsState: settingsState,
                   timerAlertService: timerAlertService,
+                  restNotificationService: restNotificationService,
                 )
               : HomeScreen(
                   workoutState: workoutState,
@@ -118,6 +124,7 @@ class MyApp extends StatelessWidget {
                   profileState: profileState,
                   settingsState: settingsState,
                   timerAlertService: timerAlertService,
+                  restNotificationService: restNotificationService,
                 ),
         );
       },

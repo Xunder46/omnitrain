@@ -12,6 +12,8 @@ class SettingsState extends ChangeNotifier {
   static const String _effortTimerSoundKey = 'effort_timer_sound';
   static const String _restPingIntervalKey = 'rest_ping_interval';
   static const String _restPingSoundKey = 'rest_ping_sound';
+  static const String _notificationPermissionAskedKey =
+      'notification_permission_asked';
 
   static const List<String> validSoundIds = [
     'boxing_bell',
@@ -51,6 +53,7 @@ class SettingsState extends ChangeNotifier {
   String _effortTimerSound = 'boxing_bell';
   int _restPingInterval = 0;
   String _restPingSound = 'soft_chime';
+  bool _notificationPermissionAsked = false;
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
@@ -60,6 +63,7 @@ class SettingsState extends ChangeNotifier {
   String get effortTimerSound => _effortTimerSound;
   int get restPingInterval => _restPingInterval;
   String get restPingSound => _restPingSound;
+  bool get notificationPermissionAsked => _notificationPermissionAsked;
 
   Future<void> initialize() async {
     await _loadFromPrefs();
@@ -139,6 +143,15 @@ class SettingsState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setNotificationPermissionAsked() async {
+    _notificationPermissionAsked = true;
+    await _repository.setPreferenceString(
+      _notificationPermissionAskedKey,
+      'true',
+    );
+    notifyListeners();
+  }
+
   Future<void> _loadFromPrefs() async {
     final savedTheme = await _repository.getPreferenceString(_themeKey);
     if (savedTheme != null) {
@@ -211,6 +224,12 @@ class SettingsState extends ChangeNotifier {
         savedRestSound != null && validSoundIds.contains(savedRestSound)
         ? savedRestSound
         : 'soft_chime';
+
+    final savedPermissionAsked = await _repository.getPreferenceString(
+      _notificationPermissionAskedKey,
+      defaultValue: 'false',
+    );
+    _notificationPermissionAsked = savedPermissionAsked == 'true';
 
     notifyListeners();
   }

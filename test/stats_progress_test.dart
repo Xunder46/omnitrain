@@ -2,7 +2,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
-import 'package:omnitrain/core/models/stats_progress.dart';
 import 'package:omnitrain/core/services/stats_progress_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';

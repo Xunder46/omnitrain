@@ -467,6 +467,32 @@ void main() {
     },
   );
 
+  test('SettingsState defaults notificationPermissionAsked to false', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final state = SettingsState(repository);
+    await state.initialize();
+
+    expect(state.notificationPermissionAsked, isFalse);
+  });
+
+  test(
+    'SettingsState persists and reloads notificationPermissionAsked',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      final state = SettingsState(repository);
+      await state.initialize();
+
+      await state.setNotificationPermissionAsked();
+      expect(state.notificationPermissionAsked, isTrue);
+
+      final reloaded = SettingsState(repository);
+      await reloaded.initialize();
+      expect(reloaded.notificationPermissionAsked, isTrue);
+    },
+  );
+
   test('setters call notifyListeners', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();

@@ -21,6 +21,7 @@ import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -33,8 +34,9 @@ class HomeScreen extends StatefulWidget {
   final ProfileState profileState;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const HomeScreen({
+  HomeScreen({
     super.key,
     required this.workoutState,
     required this.homeState,
@@ -46,7 +48,9 @@ class HomeScreen extends StatefulWidget {
     required this.profileState,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -164,111 +168,111 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         elevation: 0,
       ),
       body: Stack(
-          children: [
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16.0, 15.0, 16.0, 0.0),
-                child: Column(
-                  children: [
-                    Text(
-                      'TRAIN',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 2.0,
-                        color: OmniTheme.textPrimary,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withOpacity(0.5),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
+        children: [
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 15.0, 16.0, 0.0),
+              child: Column(
+                children: [
+                  Text(
+                    'TRAIN',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2.0,
+                      color: OmniTheme.textPrimary,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withOpacity(0.5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 30),
-                    // Grid view with training modalities
-                    Expanded(
-                      child: ListenableBuilder(
-                        listenable: widget.workoutState,
-                        builder: (context, child) {
-                          const standardGridSpacing = 16.0;
-                          const utilitySectionGap = standardGridSpacing * 1.7;
+                  ),
+                  const SizedBox(height: 30),
+                  // Grid view with training modalities
+                  Expanded(
+                    child: ListenableBuilder(
+                      listenable: widget.workoutState,
+                      builder: (context, child) {
+                        const standardGridSpacing = 16.0;
+                        const utilitySectionGap = standardGridSpacing * 1.7;
 
-                          final session = widget.workoutState.currentSession;
-                          final isRoutineSession = session?.intent == 'routine';
-                          final hasActiveSession =
-                              widget.workoutState.hasActiveSession;
+                        final session = widget.workoutState.currentSession;
+                        final isRoutineSession = session?.intent == 'routine';
+                        final hasActiveSession =
+                            widget.workoutState.hasActiveSession;
 
-                          final tiles = HomeTiles.all
-                              .map((tile) {
-                                final isActive =
-                                    hasActiveSession &&
-                                    (tile.key == 'my_routines'
-                                        ? isRoutineSession
-                                        : tile.modality == null
-                                        ? session?.modality == null &&
-                                              !isRoutineSession
-                                        : session?.modality == tile.modality);
+                        final tiles = HomeTiles.all
+                            .map((tile) {
+                              final isActive =
+                                  hasActiveSession &&
+                                  (tile.key == 'my_routines'
+                                      ? isRoutineSession
+                                      : tile.modality == null
+                                      ? session?.modality == null &&
+                                            !isRoutineSession
+                                      : session?.modality == tile.modality);
 
-                                return EnergyTile(
-                                  title: tile.label,
-                                  icon: tile.iconData,
-                                  iconWidget: tile.iconWidget,
-                                  gradientColors: tile.gradientColors,
-                                  accentColor: tile.accentColor,
-                                  isActive: isActive,
-                                  onTap: () =>
-                                      _handleTileTap(context, tile, isActive),
-                                );
-                              })
-                              .toList(growable: false);
+                              return EnergyTile(
+                                title: tile.label,
+                                icon: tile.iconData,
+                                iconWidget: tile.iconWidget,
+                                gradientColors: tile.gradientColors,
+                                accentColor: tile.accentColor,
+                                isActive: isActive,
+                                onTap: () =>
+                                    _handleTileTap(context, tile, isActive),
+                              );
+                            })
+                            .toList(growable: false);
 
-                          return CustomScrollView(
-                            slivers: [
-                              SliverGrid(
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      mainAxisSpacing: standardGridSpacing,
-                                      crossAxisSpacing: standardGridSpacing,
-                                      childAspectRatio: 1.0,
-                                    ),
-                                delegate: SliverChildBuilderDelegate((
-                                  context,
-                                  index,
-                                ) {
-                                  return tiles[index];
-                                }, childCount: 4),
-                              ),
-                              const SliverToBoxAdapter(
-                                child: SizedBox(height: utilitySectionGap),
-                              ),
-                              SliverGrid(
-                                gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
-                                      crossAxisSpacing: standardGridSpacing,
-                                      childAspectRatio: 1.0,
-                                    ),
-                                delegate: SliverChildBuilderDelegate((
-                                  context,
-                                  index,
-                                ) {
-                                  return tiles[index + 4];
-                                }, childCount: 2),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
+                        return CustomScrollView(
+                          slivers: [
+                            SliverGrid(
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    mainAxisSpacing: standardGridSpacing,
+                                    crossAxisSpacing: standardGridSpacing,
+                                    childAspectRatio: 1.0,
+                                  ),
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                return tiles[index];
+                              }, childCount: 4),
+                            ),
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: utilitySectionGap),
+                            ),
+                            SliverGrid(
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    crossAxisSpacing: standardGridSpacing,
+                                    childAspectRatio: 1.0,
+                                  ),
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                return tiles[index + 4];
+                              }, childCount: 2),
+                            ),
+                          ],
+                        );
+                      },
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            _buildMaintenanceSheet(context),
-          ],
-        ),
+          ),
+          _buildMaintenanceSheet(context),
+        ],
+      ),
     );
   }
 
@@ -283,12 +287,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Special case: My Routines tile
     if (tile.key == 'my_routines') {
       if (isActive) {
-        OmniNavigator.push(context, (_) => WorkoutSessionScreen(
-              workoutState: widget.workoutState,
-              routineState: widget.routineState,
-              sessionSummaryService: widget.sessionSummaryService,
-              settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService));
+        OmniNavigator.push(
+          context,
+          (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
+            restNotificationService: widget.restNotificationService,
+          ),
+        );
       } else {
         // Guard: any active session (rolling or otherwise) conflicts with
         // starting a routine, which would create a new competing session.
@@ -334,13 +343,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           widget.workoutState.clearSession();
         }
         if (context.mounted) {
-          OmniNavigator.push(context, (_) => MyRoutinesScreen(
-                routineState: widget.routineState,
-                workoutState: widget.workoutState,
-                routineSessionService: widget.routineSessionService,
-                sessionSummaryService: widget.sessionSummaryService,
-                settingsState: widget.settingsState,
-                timerAlertService: widget.timerAlertService));
+          OmniNavigator.push(
+            context,
+            (_) => MyRoutinesScreen(
+              routineState: widget.routineState,
+              workoutState: widget.workoutState,
+              routineSessionService: widget.routineSessionService,
+              sessionSummaryService: widget.sessionSummaryService,
+              settingsState: widget.settingsState,
+              timerAlertService: widget.timerAlertService,
+              restNotificationService: widget.restNotificationService,
+            ),
+          );
         }
       }
       return;
@@ -349,13 +363,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // All other tiles are modality-based workout tiles (including Free Training).
     // If tapping the currently active tile, navigate directly to the session.
     if (isActive) {
-      OmniNavigator.push(context, (_) => WorkoutSessionScreen(
-            workoutState: widget.workoutState,
-            routineState: widget.routineState,
-            sessionSummaryService: widget.sessionSummaryService,
-            settingsState: widget.settingsState,
-            preferredModality: tile.modality,
-            timerAlertService: widget.timerAlertService));
+      OmniNavigator.push(
+        context,
+        (_) => WorkoutSessionScreen(
+          workoutState: widget.workoutState,
+          routineState: widget.routineState,
+          sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
+          preferredModality: tile.modality,
+          timerAlertService: widget.timerAlertService,
+          restNotificationService: widget.restNotificationService,
+        ),
+      );
       return;
     }
 
@@ -364,13 +383,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (widget.workoutState.isRollingSession) {
         // Rolling session: navigate directly — no dialog, no new session.
         // Pass the tapped tile's modality so ExercisePickerDialog pre-filters.
-        OmniNavigator.push(context, (_) => WorkoutSessionScreen(
-              workoutState: widget.workoutState,
-              routineState: widget.routineState,
-              sessionSummaryService: widget.sessionSummaryService,
-              settingsState: widget.settingsState,
-              preferredModality: tile.modality,
-              timerAlertService: widget.timerAlertService));
+        OmniNavigator.push(
+          context,
+          (_) => WorkoutSessionScreen(
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
+            preferredModality: tile.modality,
+            timerAlertService: widget.timerAlertService,
+            restNotificationService: widget.restNotificationService,
+          ),
+        );
         return;
       }
 
@@ -429,13 +453,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     await widget.workoutState.createNewSession(modality: tile.modality);
 
     if (context.mounted) {
-      OmniNavigator.push(context, (_) => WorkoutSessionScreen(
-            workoutState: widget.workoutState,
-            routineState: widget.routineState,
-            sessionSummaryService: widget.sessionSummaryService,
-            settingsState: widget.settingsState,
-            preferredModality: tile.modality,
-            timerAlertService: widget.timerAlertService));
+      OmniNavigator.push(
+        context,
+        (_) => WorkoutSessionScreen(
+          workoutState: widget.workoutState,
+          routineState: widget.routineState,
+          sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
+          preferredModality: tile.modality,
+          timerAlertService: widget.timerAlertService,
+          restNotificationService: widget.restNotificationService,
+        ),
+      );
     }
   }
 
@@ -556,12 +585,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     widget.workoutState.clearSession();
     await widget.workoutState.createNewSession(isRolling: isRolling);
     if (context.mounted) {
-      OmniNavigator.push(context, (_) => WorkoutSessionScreen(
-            workoutState: widget.workoutState,
-            routineState: widget.routineState,
-            sessionSummaryService: widget.sessionSummaryService,
-            settingsState: widget.settingsState,
-            timerAlertService: widget.timerAlertService));
+      OmniNavigator.push(
+        context,
+        (_) => WorkoutSessionScreen(
+          workoutState: widget.workoutState,
+          routineState: widget.routineState,
+          sessionSummaryService: widget.sessionSummaryService,
+          settingsState: widget.settingsState,
+          timerAlertService: widget.timerAlertService,
+          restNotificationService: widget.restNotificationService,
+        ),
+      );
     }
   }
 
@@ -639,12 +673,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 children: [
                                   Text(
                                     'HUB',
-                                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                                      color: OmniTheme.textSecondary
-                                          .withOpacity(0.7),
-                                      letterSpacing: 3.0,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelMedium
+                                        ?.copyWith(
+                                          color: OmniTheme.textSecondary
+                                              .withOpacity(0.7),
+                                          letterSpacing: 3.0,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -714,36 +751,54 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _MaintenanceItem(
         title: 'Calendar',
         icon: Icons.calendar_today,
-        onTap: () => OmniNavigator.push(context, (_) => CalendarScreen(
-              calendarState: widget.calendarState,
-              periodState: widget.periodState,
-              workoutState: widget.workoutState,
-              routineState: widget.routineState,
-              routineSessionService: widget.routineSessionService,
-              sessionSummaryService: widget.sessionSummaryService,
-              settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService)),
+        onTap: () => OmniNavigator.push(
+          context,
+          (_) => CalendarScreen(
+            calendarState: widget.calendarState,
+            periodState: widget.periodState,
+            workoutState: widget.workoutState,
+            routineState: widget.routineState,
+            routineSessionService: widget.routineSessionService,
+            sessionSummaryService: widget.sessionSummaryService,
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
+            restNotificationService: widget.restNotificationService,
+          ),
+        ),
       ),
       _MaintenanceItem(
         title: 'Stats',
         icon: Icons.query_stats,
-        onTap: () => OmniNavigator.push(context, (_) => StatsScreen(
-              workoutState: widget.workoutState,
-              settingsState: widget.settingsState)),
+        onTap: () => OmniNavigator.push(
+          context,
+          (_) => StatsScreen(
+            workoutState: widget.workoutState,
+            settingsState: widget.settingsState,
+          ),
+        ),
       ),
       _MaintenanceItem(
         title: 'Profile',
         icon: Icons.person_outline,
-        onTap: () => OmniNavigator.push(context, (_) => ProfileScreen(
-              profileState: widget.profileState,
-              settingsState: widget.settingsState)),
+        onTap: () => OmniNavigator.push(
+          context,
+          (_) => ProfileScreen(
+            profileState: widget.profileState,
+            settingsState: widget.settingsState,
+          ),
+        ),
       ),
       _MaintenanceItem(
         title: 'Settings',
         icon: Icons.tune,
-        onTap: () => OmniNavigator.push(context, (_) => SettingsScreen(
-              settingsState: widget.settingsState,
-              timerAlertService: widget.timerAlertService)),
+        onTap: () => OmniNavigator.push(
+          context,
+          (_) => SettingsScreen(
+            settingsState: widget.settingsState,
+            timerAlertService: widget.timerAlertService,
+            restNotificationService: widget.restNotificationService,
+          ),
+        ),
       ),
     ];
 

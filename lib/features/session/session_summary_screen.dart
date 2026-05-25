@@ -20,6 +20,7 @@ import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 import '../../core/navigation/navigation.dart';
@@ -31,8 +32,9 @@ class SessionSummaryScreen extends StatefulWidget {
   final Future<void> Function(String sessionId)? onSessionSaved;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const SessionSummaryScreen({
+  SessionSummaryScreen({
     super.key,
     required this.workoutState,
     required this.routineState,
@@ -40,7 +42,9 @@ class SessionSummaryScreen extends StatefulWidget {
     this.onSessionSaved,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<SessionSummaryScreen> createState() => _SessionSummaryScreenState();
@@ -306,6 +310,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         sessionSummaryService: widget.sessionSummaryService,
         settingsState: widget.settingsState,
         timerAlertService: widget.timerAlertService,
+        restNotificationService: widget.restNotificationService,
         editMode: true,
       ),
     );
@@ -327,6 +332,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         sessionSummaryService: widget.sessionSummaryService,
         settingsState: widget.settingsState,
         timerAlertService: widget.timerAlertService,
+        restNotificationService: widget.restNotificationService,
       ),
     );
   }

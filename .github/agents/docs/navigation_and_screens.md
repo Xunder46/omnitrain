@@ -42,7 +42,7 @@ OmniTrain uses **imperative navigation** via `OmniNavigator` (wrapping Flutter's
 main()
   → _createRepository() → HiveWorkoutRepository
   → repository.initialize()
-  → Creates: WorkoutState, HomeState, RoutineState, CalendarState, PeriodState, ProfileState, SettingsState, RoutineSessionService, SessionSummaryService
+  → Creates: WorkoutState, HomeState, RoutineState, CalendarState, PeriodState, ProfileState, SettingsState, TimerAlertService, RestNotificationService, RoutineSessionService, SessionSummaryService
   → runApp(MyApp(...))   // All dependencies injected via constructor
 ```
 
@@ -125,7 +125,7 @@ HomeScreen
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |
 | `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create/edit custom exercises with modality-aware capability/discipline filtering; accepts optional `contextModality` for session-prefill |
 | `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
-| `SettingsScreen` | `lib/features/settings/settings_screen.dart` | Calendar start-of-week, weight/distance units, timer alert preferences, feeling survey toggle, appearance theme selector, and a low-emphasis version footer |
+| `SettingsScreen` | `lib/features/settings/settings_screen.dart` | Calendar start-of-week, weight/distance units, timer alert preferences, notification-permission row for rest and effort alerts, feeling survey toggle, appearance theme selector, and a low-emphasis version footer |
 | `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: all-time sessions, total training time, current streak, Strength e1RM/volume trends, Cardio pace/duration trends, and recent PRs |
 | `OnboardingScreen` | `lib/features/onboarding/onboarding_screen.dart` | First-launch 3-page swipeable intro. Page 1: app pitch. Page 2: modality tiles with accent colors and one-liners. Page 3: calendar features + Get Started button. Completion sets `onboarding_complete` preference key via `repository.setPreferenceBool` and calls `pushReplacement` to `HomeScreen`. |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
@@ -148,10 +148,12 @@ main.dart
   → PeriodState(repository)
   → ProfileState(repository)
   → SettingsState(repository)     ← persisted app theme + weight/distance unit preferences via repository preferences
+  → TimerAlertService()
+  → RestNotificationService()
   → RoutineSessionService(repository)
   → SessionSummaryService(repository)
-  → MyApp(workoutState, homeState, routineState, routineSessionService, sessionSummaryService, calendarState, periodState, profileState, settingsState)
-    → HomeScreen(workoutState, homeState, routineState, routineSessionService, sessionSummaryService, calendarState, periodState, profileState, settingsState)
+  → MyApp(workoutState, homeState, routineState, routineSessionService, sessionSummaryService, calendarState, periodState, profileState, settingsState, timerAlertService, restNotificationService)
+    → HomeScreen(workoutState, homeState, routineState, routineSessionService, sessionSummaryService, calendarState, periodState, profileState, settingsState, timerAlertService, restNotificationService)
       → (passes relevant subset to child screens)
 ```
 

@@ -163,7 +163,7 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
     final exercise = _exercises[_currentExerciseIndex];
     final entries = exercise['entries'] as List<Map<String, dynamic>>;
     int? nextExerciseIndex;
-    setState(() {
+    _updateUi(() {
       if (_currentSet < entries.length) {
         _currentSet++;
       } else if (_currentExerciseIndex < _exercises.length - 1) {
@@ -211,7 +211,7 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
       initialSecs: _pendingDurationSecs ?? 0,
     );
     if (result != null && result > 0 && mounted) {
-      setState(() {
+      _updateUi(() {
         _pendingDurationSecs = result;
         _reformatElapsed(result);
       });

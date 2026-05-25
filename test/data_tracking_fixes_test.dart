@@ -28,23 +28,6 @@ Future<SettingsState> _settingsWithUnit(
   return s;
 }
 
-/// Logs a single set of [reps] × [weightKg] for the first exercise in [state].
-/// Simulates what the screen does after the Phase-1 fix: weight is already in
-/// canonical kg when it reaches the state layer.
-Future<String> _logOneSet(
-  WorkoutState state, {
-  required int reps,
-  required double weightKg,
-}) async {
-  final repo = state.repository;
-  final exercises = await repo.getExercises();
-  final effortId =
-      await state.addExerciseToSession(exercises.first, chosenMetric: 'reps');
-  await state.updateEntryValue(effortId, 0, 'reps', reps);
-  await state.updateEntryValue(effortId, 0, 'weight', weightKg);
-  return effortId;
-}
-
 /// Seeds a completed session with one set-based effort directly into the repo.
 /// All weights are assumed to be in canonical kg (post-fix format).
 Future<TrainingSession> _buildCompletedSession(

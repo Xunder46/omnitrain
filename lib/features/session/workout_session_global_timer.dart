@@ -16,7 +16,7 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
 
     // Hold at 00:00 until the first exercise is added.
     if (_exercises.isEmpty) {
-      if (mounted) setState(() => _elapsedFormatted = '00:00');
+      _updateUi(() => _elapsedFormatted = '00:00');
       return;
     }
 
@@ -25,11 +25,9 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
     final elapsedSeconds = (elapsedMs / 1000).toInt();
     final mm = (elapsedSeconds ~/ 60).remainder(60).toString().padLeft(2, '0');
     final ss = (elapsedSeconds % 60).toString().padLeft(2, '0');
-    if (mounted) {
-      setState(() {
-        _elapsedFormatted = '$mm:$ss';
-      });
-    }
+    _updateUi(() {
+      _elapsedFormatted = '$mm:$ss';
+    });
     _checkRestPings();
   }
 

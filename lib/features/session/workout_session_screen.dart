@@ -1,12 +1,13 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/workout_constants.dart';
 import '../../core/constants/capability.dart';
 import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../core/utils/rest_ping_utils.dart';
 import '../../state/workout/workout_state.dart';
@@ -40,11 +41,7 @@ Future<T?> _pushSessionReplacement<T, TO>(
   WidgetBuilder builder, {
   TO? result,
 }) {
-  return OmniNavigator.pushReplacement<T, TO>(
-    context,
-    builder,
-    result: result,
-  );
+  return OmniNavigator.pushReplacement<T, TO>(context, builder, result: result);
 }
 
 /// Actions surfaced by the "Unsaved changes" dialog shown when the user
@@ -59,6 +56,7 @@ class WorkoutSessionScreen extends StatefulWidget {
   final String? initialFocusId;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
   /// When true the screen shows a frozen review/edit view of a completed session:
   /// no timers run, no set logging, values remain editable for correction.
@@ -71,7 +69,7 @@ class WorkoutSessionScreen extends StatefulWidget {
   /// null modality field.  Has no effect when the session already has a modality.
   final String? preferredModality;
 
-  const WorkoutSessionScreen({
+  WorkoutSessionScreen({
     super.key,
     required this.workoutState,
     required this.routineState,
@@ -80,16 +78,18 @@ class WorkoutSessionScreen extends StatefulWidget {
     this.initialFocusId,
     required this.settingsState,
     required this.timerAlertService,
+    RestNotificationService? restNotificationService,
     this.editMode = false,
     this.preferredModality,
-  });
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<WorkoutSessionScreen> createState() => _WorkoutSessionScreenState();
 }
 
 class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
-    with WorkoutSessionTimerMixin {
+    with WorkoutSessionTimerMixin, WidgetsBindingObserver {
   // Constants
 
   @override
@@ -169,10 +169,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   bool _exerciseHintsLoaded = false;
   // The currently-visible coach mark overlay entry; at most one at a time.
   OverlayEntry? _coachMarkEntry;
+  bool _isAppForeground = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    widget.settingsState.addListener(_onSettingsChanged);
     if (!widget.editMode) {
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
       _tick();
@@ -180,6 +183,62 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       _computeStaticElapsed();
     }
     _loadExercises();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (widget.editMode) return;
+
+    if (state == AppLifecycleState.resumed) {
+      _isAppForeground = true;
+      unawaited(widget.restNotificationService.cancelRestNotifications());
+      _resyncEffortExpiryForLifecycle(appInForeground: true);
+      return;
+    }
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _isAppForeground = false;
+      _scheduleActiveRestNotifications();
+      _resyncEffortExpiryForLifecycle(appInForeground: false);
+    }
+  }
+
+  void _onSettingsChanged() {
+    if (widget.editMode) return;
+    _scheduleActiveRestNotifications();
+  }
+
+  void _scheduleActiveRestNotifications() {
+    final restKey = _getMostRecentOpenRestKey();
+    if (restKey == null) {
+      unawaited(widget.restNotificationService.cancelRestNotifications());
+      return;
+    }
+
+    EntryRest? openRest;
+    final rests = widget.workoutState.getEntryRests(restKey.effortId);
+    for (final rest in rests) {
+      if (rest.entryIndex == restKey.entryIndex && rest.restEndMs == null) {
+        openRest = rest;
+        break;
+      }
+    }
+
+    if (openRest == null) {
+      unawaited(widget.restNotificationService.cancelRestNotifications());
+      return;
+    }
+
+    unawaited(
+      widget.restNotificationService.scheduleRestPings(
+        restStartMs: openRest.restStartMs,
+        intervalSecs: widget.settingsState.restPingInterval,
+        soundId: widget.settingsState.restPingSound,
+        playSound: !_isAppForeground,
+      ),
+    );
   }
 
   int _compareExercises(Map<String, dynamic> a, Map<String, dynamic> b) {
@@ -518,6 +577,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       }
       if (openRestEntryIndex != null) {
         await widget.workoutState.recordRestEnd(effortId, openRestEntryIndex);
+        unawaited(widget.restNotificationService.cancelRestNotifications());
         _lastRestPingFiredAt.remove(effortId);
       }
     }
@@ -526,6 +586,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     // Safe no-op if already finished via timer expiry.
     if ((effortKind == 'timed' || effortKind == 'drill') &&
         !isSkippedTimedEntry) {
+      unawaited(widget.restNotificationService.cancelEffortTimerNotification());
       unawaited(
         widget.workoutState.finishTimedEntry(effortId, _currentSet - 1),
       );
@@ -538,6 +599,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       final round = roundInstance;
       if (round != null && round.state != RoundState.finished) {
         // End early if not already finished
+        await widget.restNotificationService.cancelEffortTimerNotification();
         await widget.workoutState.endRoundEarly(effortId, _currentSet - 1);
       }
     }
@@ -576,6 +638,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           widget.workoutState.recordRestStart(effortId, nextEntryIndex),
         );
       }
+      unawaited(
+        widget.restNotificationService.scheduleRestPings(
+          restStartMs: DateTime.now().millisecondsSinceEpoch,
+          intervalSecs: widget.settingsState.restPingInterval,
+          soundId: widget.settingsState.restPingSound,
+          playSound: !_isAppForeground,
+        ),
+      );
     }
 
     // Advance to next set or next exercise
@@ -1282,11 +1352,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.settingsState.removeListener(_onSettingsChanged);
     _ticker?.cancel();
     // Cancel all effort timers
     for (final timer in _effortTimers.values) {
       timer?.cancel();
     }
+    unawaited(widget.restNotificationService.cancelRestNotifications());
+    unawaited(widget.restNotificationService.cancelEffortTimerNotification());
     _lastRestPingFiredAt.clear();
     // Remove any visible coach mark overlay before the widget tree tears down.
     _coachMarkEntry?.remove();

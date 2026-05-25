@@ -4,6 +4,7 @@ import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 
+import 'helpers/fake_rest_notification_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 void main() {
@@ -26,6 +27,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
           ),
         ),
       );
@@ -44,6 +46,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
           ),
         ),
       );
@@ -62,6 +65,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
           ),
         ),
       );
@@ -88,29 +92,31 @@ void main() {
       expect(find.text('Soft Chime'), findsOneWidget);
     });
 
-    testWidgets('PREFERENCES appears before SOUNDS & ALERTS before APPEARANCE', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(800, 3000));
-      final settings = await makeSettings();
+    testWidgets(
+      'PREFERENCES appears before SOUNDS & ALERTS before APPEARANCE',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 3000));
+        final settings = await makeSettings();
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: SettingsScreen(
-            settingsState: settings,
-            timerAlertService: FakeTimerAlertService(),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              settingsState: settings,
+              timerAlertService: FakeTimerAlertService(),
+              restNotificationService: FakeRestNotificationService(),
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final prefPos = tester.getTopLeft(find.text('PREFERENCES')).dy;
-      final soundPos = tester.getTopLeft(find.text('SOUNDS & ALERTS')).dy;
-      final appPos = tester.getTopLeft(find.text('APPEARANCE')).dy;
+        final prefPos = tester.getTopLeft(find.text('PREFERENCES')).dy;
+        final soundPos = tester.getTopLeft(find.text('SOUNDS & ALERTS')).dy;
+        final appPos = tester.getTopLeft(find.text('APPEARANCE')).dy;
 
-      expect(prefPos, lessThan(soundPos));
-      expect(soundPos, lessThan(appPos));
-    });
+        expect(prefPos, lessThan(soundPos));
+        expect(soundPos, lessThan(appPos));
+      },
+    );
 
     testWidgets('tapping Effort Timer Sound row opens bottom sheet', (
       WidgetTester tester,
@@ -122,6 +128,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
           ),
         ),
       );
@@ -143,6 +150,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
           ),
         ),
       );
@@ -167,6 +175,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
           ),
         ),
       );
@@ -180,5 +189,111 @@ void main() {
 
       expect(settings.restPingInterval, 60);
     });
+
+    testWidgets('shows notification permission row with Not yet asked state', (
+      WidgetTester tester,
+    ) async {
+      final settings = await makeSettings();
+      final restService = FakeRestNotificationService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: restService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Notification Permission'), findsOneWidget);
+      expect(find.text('Not yet asked'), findsOneWidget);
+      expect(
+        find.text(
+          'Required for rest and effort timer alerts while phone is locked or app is backgrounded',
+        ),
+        findsOneWidget,
+      );
+      expect(restService.hasPermissionCallCount, 0);
+    });
+
+    testWidgets('shows disabled state when permission was asked and denied', (
+      WidgetTester tester,
+    ) async {
+      final settings = await makeSettings();
+      await settings.setNotificationPermissionAsked();
+      final restService = FakeRestNotificationService()
+        ..permissionGranted = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: restService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Disabled - tap to open Settings'), findsOneWidget);
+      expect(restService.hasPermissionCallCount, greaterThan(0));
+    });
+
+    testWidgets(
+      'tapping notification row requests permission the first time',
+      (WidgetTester tester) async {
+        final settings = await makeSettings();
+        final restService = FakeRestNotificationService()
+          ..permissionGranted = true;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              settingsState: settings,
+              timerAlertService: FakeTimerAlertService(),
+              restNotificationService: restService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Notification Permission'));
+        await tester.pumpAndSettle();
+
+        expect(restService.requestPermissionCallCount, 1);
+        expect(settings.notificationPermissionAsked, isTrue);
+        expect(find.text('Enabled'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping notification row when denied refreshes disabled status',
+      (WidgetTester tester) async {
+        final settings = await makeSettings();
+        await settings.setNotificationPermissionAsked();
+        final restService = FakeRestNotificationService()
+          ..permissionGranted = false;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              settingsState: settings,
+              timerAlertService: FakeTimerAlertService(),
+              restNotificationService: restService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final initialHasPermissionCalls = restService.hasPermissionCallCount;
+        await tester.tap(find.text('Notification Permission'));
+        await tester.pumpAndSettle();
+
+        expect(restService.hasPermissionCallCount, initialHasPermissionCalls);
+        expect(find.text('Disabled - tap to open Settings'), findsOneWidget);
+      },
+    );
   });
 }

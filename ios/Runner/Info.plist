@@ -56,5 +56,7 @@
 	<string>Omnitrain may save profile photo edits to your photo library when supported.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is not used by this app.</string>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>Rest timer pings notify you when it's time to start your next set.</string>
 </dict>
 </plist>

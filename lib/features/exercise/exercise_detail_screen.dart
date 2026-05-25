@@ -3,6 +3,7 @@ import '../../state/workout/workout_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import '../../state/settings/settings_state.dart';
 import '../session/workout_session_screen.dart';
 
@@ -15,8 +16,9 @@ class ExerciseDetailScreen extends StatelessWidget {
   final String effortId;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const ExerciseDetailScreen({
+  ExerciseDetailScreen({
     super.key,
     required this.workoutState,
     required this.routineState,
@@ -24,7 +26,9 @@ class ExerciseDetailScreen extends StatelessWidget {
     required this.effortId,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +39,7 @@ class ExerciseDetailScreen extends StatelessWidget {
       initialFocusId: effortId,
       settingsState: settingsState,
       timerAlertService: timerAlertService,
+      restNotificationService: restNotificationService,
     );
   }
 }

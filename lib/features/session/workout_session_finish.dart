@@ -16,7 +16,7 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              setState(() {
+              _updateUi(() {
                 _showListView = true;
               });
             },
@@ -143,7 +143,7 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
   Future<void> _finishSession() async {
     if (!mounted || _isFinishingSession) return;
 
-    setState(() => _isFinishingSession = true);
+    _updateUi(() => _isFinishingSession = true);
 
     // Deterministic finish order:
     // 1) freeze all local UI timers
@@ -152,6 +152,8 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
     // 4) replace route with summary so Back cannot resume an active session screen
     try {
       _freezeAllLocalTimers();
+      await widget.restNotificationService.cancelRestNotifications();
+      await widget.restNotificationService.cancelEffortTimerNotification();
       await _persistActiveEffortTimers();
       await widget.workoutState.endSession();
 
@@ -166,6 +168,7 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
           onSessionSaved: widget.onSessionSaved,
           settingsState: widget.settingsState,
           timerAlertService: widget.timerAlertService,
+          restNotificationService: widget.restNotificationService,
         ),
       );
     } catch (e) {
@@ -175,7 +178,7 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
       ).showSnackBar(SnackBar(content: Text('Failed to finish workout: $e')));
     } finally {
       if (mounted) {
-        setState(() => _isFinishingSession = false);
+        _updateUi(() => _isFinishingSession = false);
       }
     }
   }

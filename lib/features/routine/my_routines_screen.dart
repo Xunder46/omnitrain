@@ -7,6 +7,7 @@ import '../../state/routine/routine_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import 'routine_setup_screen.dart';
 import '../session/workout_session_screen.dart';
 
@@ -19,8 +20,9 @@ class MyRoutinesScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const MyRoutinesScreen({
+  MyRoutinesScreen({
     super.key,
     required this.routineState,
     this.workoutState,
@@ -28,7 +30,9 @@ class MyRoutinesScreen extends StatefulWidget {
     required this.sessionSummaryService,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<MyRoutinesScreen> createState() => _MyRoutinesScreenState();
@@ -294,6 +298,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
           sessionSummaryService: widget.sessionSummaryService,
           settingsState: widget.settingsState,
           timerAlertService: widget.timerAlertService,
+          restNotificationService: widget.restNotificationService,
         ),
       );
     } catch (e) {

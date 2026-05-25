@@ -7,6 +7,7 @@ OmniTrain's Settings screen is fully implemented. It owns persisted preferences 
 - calendar display (`Start of Week`)
 - measurement units (`Weight`, `Distance`)
 - timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`)
+- notification permission copy that covers both rest reminders and effort-expiry alerts
 - workout follow-up (`Feeling Survey`)
 - appearance (`AppTheme` selection)
 

@@ -12,6 +12,7 @@ import '../../state/period/period_state.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import '../../data/models/models.dart';
 import '../session/session_summary_screen.dart';
 import 'day_session_list_screen.dart';
@@ -26,8 +27,9 @@ class CalendarScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const CalendarScreen({
+  CalendarScreen({
     super.key,
     required this.calendarState,
     required this.periodState,
@@ -37,7 +39,9 @@ class CalendarScreen extends StatefulWidget {
     required this.sessionSummaryService,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -201,6 +205,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             sessionSummaryService: widget.sessionSummaryService,
             settingsState: widget.settingsState,
             timerAlertService: widget.timerAlertService,
+            restNotificationService: widget.restNotificationService,
           ),
         );
       }
@@ -219,6 +224,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         sessionSummaryService: widget.sessionSummaryService,
         settingsState: widget.settingsState,
         timerAlertService: widget.timerAlertService,
+        restNotificationService: widget.restNotificationService,
       ),
     );
     // Refresh calendar after returning from day list (user may have added/deleted).
@@ -556,9 +562,9 @@ class _MonthlyStatsStrip extends StatelessWidget {
             orElse: () => HomeTiles.all.first,
           )
           .label;
-      final chipStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: OmniTheme.textSecondary,
-      );
+      final chipStyle = Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: OmniTheme.textSecondary);
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -102,7 +102,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       children: [
         const SizedBox(height: 50),
         OutlinedButton.icon(
-          onPressed: () => setState(() {
+          onPressed: () => _updateUi(() {
             _weightAdjustExpanded[key] = !isExpanded;
           }),
           icon: Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
@@ -1122,20 +1122,4 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
-  Widget _buildIconButton(
-    IconData icon,
-    ThemeData theme,
-    VoidCallback onPressed, {
-    String? tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: IconButton(
-        onPressed: onPressed,
-        icon: Icon(icon),
-        color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
-        iconSize: 28,
-      ),
-    );
-  }
 }

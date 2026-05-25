@@ -8,6 +8,7 @@ import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'helpers/fake_rest_notification_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 void main() {
@@ -41,6 +42,7 @@ void main() {
     WidgetTester tester,
   ) async {
     final deps = await setupStates(modality: 'cardio_endurance');
+    final restService = FakeRestNotificationService();
 
     final exercises = await deps.repository.getExercises();
     final timedExercise = exercises.firstWhere(
@@ -60,6 +62,7 @@ void main() {
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
           settingsState: SettingsState(deps.repository),
+          restNotificationService: restService,
         ),
       ),
     );
@@ -80,6 +83,7 @@ void main() {
     final timedEntries = deps.workoutState.getTimedInstancesForEffort(effortId);
     expect(timedEntries, isNotEmpty);
     expect(timedEntries.first.state, TimedState.finished);
+    expect(restService.cancelCallCount, greaterThan(0));
   });
 
   testWidgets('empty free-training session exits immediately without dialog', (

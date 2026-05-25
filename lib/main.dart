@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'app.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
@@ -12,6 +13,10 @@ import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
 import 'core/utils/timer_alert_service.dart';
+import 'core/utils/rest_notification_service.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 /// Create the appropriate repository based on platform
 ///
@@ -26,16 +31,32 @@ Future<WorkoutRepository> _createRepository() async {
   return HiveWorkoutRepository();
 }
 
+Future<void> _initializeLocalTimezone() async {
+  tzdata.initializeTimeZones();
+  if (kIsWeb) {
+    return;
+  }
+
+  try {
+    final timezoneName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timezoneName));
+  } catch (_) {
+    // Keep tz.local as the default fallback when platform timezone lookup fails.
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await _initializeLocalTimezone();
   try {
     // Initialize repository (injectable, can be swapped per environment)
     final repository = await _createRepository();
     await repository.initialize();
 
     // Check first-launch onboarding flag
-    final onboardingComplete =
-        await repository.getPreferenceBool('onboarding_complete');
+    final onboardingComplete = await repository.getPreferenceBool(
+      'onboarding_complete',
+    );
     final showOnboarding = !onboardingComplete;
 
     // Create state with repository
@@ -50,6 +71,8 @@ void main() async {
     await settingsState.initialize();
     final timerAlertService = TimerAlertService();
     await timerAlertService.initialize();
+    final restNotificationService = RestNotificationService();
+    await restNotificationService.initialize();
 
     // Create service with repository
     final routineSessionService = RoutineSessionService(repository);
@@ -69,6 +92,7 @@ void main() async {
         profileState: profileState,
         settingsState: settingsState,
         timerAlertService: timerAlertService,
+        restNotificationService: restNotificationService,
       ),
     );
   } catch (e) {

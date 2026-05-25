@@ -8,6 +8,7 @@ import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import '../../data/models/models.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
@@ -19,15 +20,18 @@ class SessionOverviewScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const SessionOverviewScreen({
+  SessionOverviewScreen({
     super.key,
     required this.workoutState,
     required this.routineState,
     required this.sessionSummaryService,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<SessionOverviewScreen> createState() => _SessionOverviewScreenState();
@@ -102,6 +106,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
               settingsState: widget.settingsState,
               initialFocusId: effortId,
               timerAlertService: widget.timerAlertService,
+              restNotificationService: widget.restNotificationService,
             ),
           );
         }
@@ -335,8 +340,9 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                   sessionSummaryService:
                                       widget.sessionSummaryService,
                                   settingsState: widget.settingsState,
-                                  timerAlertService:
-                                      widget.timerAlertService,
+                                  timerAlertService: widget.timerAlertService,
+                                  restNotificationService:
+                                      widget.restNotificationService,
                                 ),
                               );
                               await _initializeSession();

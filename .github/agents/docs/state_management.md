@@ -391,6 +391,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `_effortTimerSound` | `String` | `'boxing_bell'` |
 | `_restPingInterval` | `int` | `0` |
 | `_restPingSound` | `String` | `'soft_chime'` |
+| `_notificationPermissionAsked` | `bool` | `false` |
 
 | Method | Purpose |
 |--------|--------|
@@ -402,6 +403,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `effortTimerSound` | Getter — selected alert sound for timer completion |
 | `restPingInterval` | Getter — periodic rest reminder interval in seconds |
 | `restPingSound` | Getter — selected rest-ping sound |
+| `notificationPermissionAsked` | Getter — whether notification permission has been contextually requested yet |
 | `setAppTheme(AppTheme)` | Persists theme by enum name and notifies listeners for immediate UI updates |
 | `setPreferredWeightUnit(String)` | Normalizes/persists the display weight unit and notifies listeners |
 | `setPreferredDistanceUnit(String)` | Normalizes/persists the display distance unit and notifies listeners |
@@ -410,6 +412,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `setEffortTimerSound(String)` | Persists the selected effort-timer alert sound |
 | `setRestPingInterval(int)` | Persists the periodic rest reminder interval |
 | `setRestPingSound(String)` | Persists the selected rest-ping sound |
+| `setNotificationPermissionAsked()` | Persists that notification permission has already been requested in-context |
 | `_loadFromPrefs()` | Private — restores theme and unit preferences from repository-backed preference keys on init |
 
 ---
@@ -514,6 +517,26 @@ Key behavior:
 - `fireRestPingAlert(soundId)` plays the selected rest-ping sound and adds light haptic feedback on native platforms
 - `playPreview(soundId)` is used by the Settings sound picker to audition a sound immediately
 - web does not attempt playback; it exits safely with debug logging instead
+
+### `RestNotificationService`
+
+**File**: `lib/core/utils/rest_notification_service.dart`
+
+Platform notification scheduler for both rest pings and one-shot effort-timer expiry alerts.
+
+Key behavior:
+
+- `initialize()` configures local notifications plugin initialization and Android sound channels
+- `scheduleRestPings(restStartMs, intervalSecs, soundId)` schedules future interval notifications (IDs `100-149`) via timezone-aware `zonedSchedule`
+- `scheduleEffortTimerExpiry(fireAtMs, soundId)` schedules a single effort-expiry notification (ID `200`) used by round/timed/drill timer expiry
+- scheduling uses `tz.local`, with local timezone set during app bootstrap in `main.dart` before app start
+- `cancelRestNotifications()` cancels the reserved ID range and is used on rest-end / finish / dispose paths
+- `cancelEffortTimerNotification()` cancels the reserved effort-expiry ID and is used on pause/manual-advance/finish/dispose paths
+- foreground session scheduling uses silent notifications (`playSound: false`) and lifecycle backgrounding re-schedules audible notifications to avoid duplicate in-app + OS audio while still alerting when backgrounded/locked
+- `requestPermission()` and `hasPermission()` support the Settings permission row flow
+- Settings reads permission status only after `notificationPermissionAsked == true`, so the first-time row remains `Not yet asked` until contextual request
+- `noop()` provides a safe no-op fallback for tests and non-wired construction paths
+- web is fully no-op (all methods return early)
 
 ---
 

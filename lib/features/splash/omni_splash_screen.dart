@@ -11,6 +11,7 @@ import '../../state/period/period_state.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import '../../widgets/logo/animated_zen_halo.dart';
 import '../home/home_screen.dart';
 
@@ -28,9 +29,10 @@ class OmniSplashScreen extends StatefulWidget {
   final ProfileState profileState;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
   final Duration duration;
 
-  const OmniSplashScreen({
+  OmniSplashScreen({
     super.key,
     required this.workoutState,
     required this.homeState,
@@ -42,8 +44,10 @@ class OmniSplashScreen extends StatefulWidget {
     required this.profileState,
     required this.settingsState,
     required this.timerAlertService,
+    RestNotificationService? restNotificationService,
     this.duration = OmniTheme.splashDuration,
-  });
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<OmniSplashScreen> createState() => _OmniSplashScreenState();
@@ -87,6 +91,7 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
             profileState: widget.profileState,
             settingsState: widget.settingsState,
             timerAlertService: widget.timerAlertService,
+            restNotificationService: widget.restNotificationService,
           ),
         );
       }

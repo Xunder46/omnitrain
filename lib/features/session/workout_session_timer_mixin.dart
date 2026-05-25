@@ -49,6 +49,14 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
   /// Used to prevent starting a second concurrent timer.
   final Set<String> _inProgressKeys = {};
 
+  bool get _isAppInForeground {
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state == null) return true;
+    return state != AppLifecycleState.inactive &&
+        state != AppLifecycleState.paused &&
+        state != AppLifecycleState.detached;
+  }
+
   /// Returns the first in-progress timer key that is NOT [currentKey],
   /// or null if no other timer is in-progress.
   String? _getAnotherInProgressKey(String currentKey) {
@@ -93,8 +101,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
                 _inProgressKeys.add(timerKey);
               }
             case TimedState.paused:
-              _effortElapsed[timerKey] =
-                  (instance.elapsedMs / 1000).round();
+              _effortElapsed[timerKey] = (instance.elapsedMs / 1000).round();
               _effortRunning[timerKey] = false;
               _inProgressKeys.add(timerKey);
             case TimedState.finished:
@@ -148,10 +155,90 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     final timerKey = '$effortId-$entryIndex';
     _effortTimers[timerKey]?.cancel();
     _effortRunning[timerKey] = false;
+    _cancelEffortExpiryNotification();
     _effortElapsed[timerKey] = 0;
     _effortTargetDuration.remove(timerKey);
     _effortAlerted[timerKey] = false;
     _inProgressKeys.remove(timerKey);
+  }
+
+  void _scheduleEffortExpiryNotification(
+    String effortId,
+    int entryIndex,
+    String effortKind, {
+    bool playSound = true,
+  }
+  ) {
+    final targetSeconds = _getEffortTargetDuration(
+      effortId,
+      entryIndex,
+      effortKind,
+    );
+    if (targetSeconds <= 0) {
+      _cancelEffortExpiryNotification();
+      return;
+    }
+
+    final timerKey = '$effortId-$entryIndex';
+    final elapsedSeconds = _effortElapsed[timerKey] ?? 0;
+    final remainingSeconds = targetSeconds - elapsedSeconds;
+    if (remainingSeconds <= 0) {
+      _cancelEffortExpiryNotification();
+      return;
+    }
+
+    final fireAtMs =
+        DateTime.now().millisecondsSinceEpoch + (remainingSeconds * 1000);
+    unawaited(
+      widget.restNotificationService.scheduleEffortTimerExpiry(
+        fireAtMs: fireAtMs,
+        soundId: widget.settingsState.effortTimerSound,
+        playSound: playSound,
+      ),
+    );
+  }
+
+  void _cancelEffortExpiryNotification() {
+    unawaited(widget.restNotificationService.cancelEffortTimerNotification());
+  }
+
+  void _resyncEffortExpiryForLifecycle({required bool appInForeground}) {
+    if (appInForeground) {
+      _cancelEffortExpiryNotification();
+      return;
+    }
+
+    String? activeTimerKey;
+    for (final entry in _effortRunning.entries) {
+      if (entry.value == true) {
+        activeTimerKey = entry.key;
+        break;
+      }
+    }
+    if (activeTimerKey == null) {
+      _cancelEffortExpiryNotification();
+      return;
+    }
+
+    final sep = activeTimerKey.lastIndexOf('-');
+    if (sep <= 0 || sep == activeTimerKey.length - 1) {
+      _cancelEffortExpiryNotification();
+      return;
+    }
+    final effortId = activeTimerKey.substring(0, sep);
+    final entryIndex = int.tryParse(activeTimerKey.substring(sep + 1));
+    if (entryIndex == null) {
+      _cancelEffortExpiryNotification();
+      return;
+    }
+
+    final effortKind = _getEffortKind(effortId);
+    _scheduleEffortExpiryNotification(
+      effortId,
+      entryIndex,
+      effortKind,
+      playSound: true,
+    );
   }
 
   int _getEffortTargetDuration(
@@ -203,22 +290,27 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
 
     _effortAlerted[timerKey] = true;
     _effortElapsed[timerKey] = targetSeconds;
+    _cancelEffortExpiryNotification();
 
     if (mounted) setState(() {});
 
     if (effortKind == 'round') {
       _effortTimers[timerKey]?.cancel();
       _effortRunning[timerKey] = false;
-      unawaited(widget.timerAlertService.fireEffortTimerAlert(
-        widget.settingsState.effortTimerSound,
-      ));
+      unawaited(
+        widget.timerAlertService.fireEffortTimerAlert(
+          widget.settingsState.effortTimerSound,
+        ),
+      );
       unawaited(widget.workoutState.completeRound(effortId, entryIndex));
     } else {
       _effortTimers[timerKey]?.cancel();
       _effortRunning[timerKey] = false;
-      unawaited(widget.timerAlertService.fireEffortTimerAlert(
-        widget.settingsState.effortTimerSound,
-      ));
+      unawaited(
+        widget.timerAlertService.fireEffortTimerAlert(
+          widget.settingsState.effortTimerSound,
+        ),
+      );
       unawaited(widget.workoutState.finishTimedEntry(effortId, entryIndex));
     }
   }
@@ -233,7 +325,13 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     if (effortKind == 'round') {
       final round = _getRoundInstance(effortId, entryIndex);
       if (round == null) return;
-      if (_pendingRoundTransitions.contains(timerKey)) return;
+      if (_pendingRoundTransitions.contains(timerKey) &&
+          round.state != RoundState.paused) {
+        return;
+      }
+      if (round.state == RoundState.paused) {
+        _pendingRoundTransitions.remove(timerKey);
+      }
 
       switch (round.state) {
         case RoundState.finished:
@@ -243,6 +341,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           _pendingRoundTransitions.add(timerKey);
           _effortTimers[timerKey]?.cancel();
           _effortRunning[timerKey] = false;
+          _cancelEffortExpiryNotification();
           if (mounted) setState(() {});
           widget.workoutState
               .pauseRound(effortId, entryIndex)
@@ -254,6 +353,12 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           _effortTimers[timerKey] = Timer.periodic(
             _kTimerUpdateInterval,
             (_) => _onEffortTick(effortId, entryIndex),
+          );
+          _scheduleEffortExpiryNotification(
+            effortId,
+            entryIndex,
+            effortKind,
+            playSound: !_isAppInForeground,
           );
           if (mounted) setState(() {});
           widget.workoutState
@@ -282,8 +387,15 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             _kTimerUpdateInterval,
             (_) => _onEffortTick(effortId, entryIndex),
           );
+          _scheduleEffortExpiryNotification(
+            effortId,
+            entryIndex,
+            effortKind,
+            playSound: !_isAppInForeground,
+          );
           if (mounted) setState(() {});
           unawaited(widget.workoutState.closeAllOpenRests(effortId));
+          unawaited(widget.restNotificationService.cancelRestNotifications());
           _lastRestPingFiredAt.remove(effortId);
           widget.workoutState
               .startRound(effortId, entryIndex)
@@ -292,9 +404,15 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
       return;
     }
 
-    if (_pendingTimedTransitions.contains(timerKey)) return;
     final instance = _getTimedInstance(effortId, entryIndex);
     if (instance == null) return;
+    if (_pendingTimedTransitions.contains(timerKey) &&
+        instance.state != TimedState.paused) {
+      return;
+    }
+    if (instance.state == TimedState.paused) {
+      _pendingTimedTransitions.remove(timerKey);
+    }
 
     switch (instance.state) {
       case TimedState.finished:
@@ -304,6 +422,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
         _pendingTimedTransitions.add(timerKey);
         _effortTimers[timerKey]?.cancel();
         _effortRunning[timerKey] = false;
+        _cancelEffortExpiryNotification();
         if (mounted) setState(() {});
         widget.workoutState
             .pauseTimedEntry(effortId, entryIndex)
@@ -315,6 +434,12 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
         _effortTimers[timerKey] = Timer.periodic(
           _kTimerUpdateInterval,
           (_) => _onEffortTick(effortId, entryIndex),
+        );
+        _scheduleEffortExpiryNotification(
+          effortId,
+          entryIndex,
+          effortKind,
+          playSound: !_isAppInForeground,
         );
         if (mounted) setState(() {});
         widget.workoutState
@@ -343,15 +468,22 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           _kTimerUpdateInterval,
           (_) => _onEffortTick(effortId, entryIndex),
         );
+        _scheduleEffortExpiryNotification(
+          effortId,
+          entryIndex,
+          effortKind,
+          playSound: !_isAppInForeground,
+        );
         if (mounted) setState(() {});
         unawaited(widget.workoutState.closeAllOpenRests(effortId));
+        unawaited(widget.restNotificationService.cancelRestNotifications());
         _lastRestPingFiredAt.remove(effortId);
         widget.workoutState.startTimedEntry(effortId, entryIndex).whenComplete(
           () {
             _pendingTimedTransitions.remove(timerKey);
             if (!mounted) return;
             setState(() {
-              _effortTargetDuration[timerKey] = 0;
+              _effortTargetDuration.remove(timerKey);
             });
           },
         );
@@ -408,6 +540,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     final timerKey = '$effortId-$entryIndex';
     _effortRunning[timerKey] = false;
     _effortTimers[timerKey]?.cancel();
+    _cancelEffortExpiryNotification();
 
     final effortKind = effortKindOverride ?? _getEffortKind(effortId);
     if (effortKind == 'round') {

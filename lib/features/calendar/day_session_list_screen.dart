@@ -10,6 +10,7 @@ import '../../state/workout/workout_state.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import '../../data/models/models.dart';
 import '../../core/constants/modality.dart';
 import '../../state/settings/settings_state.dart';
@@ -31,8 +32,9 @@ class DaySessionListScreen extends StatefulWidget {
   final SessionSummaryService sessionSummaryService;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const DaySessionListScreen({
+  DaySessionListScreen({
     super.key,
     required this.date,
     required this.calendarState,
@@ -42,7 +44,9 @@ class DaySessionListScreen extends StatefulWidget {
     required this.sessionSummaryService,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<DaySessionListScreen> createState() => _DaySessionListScreenState();
@@ -187,6 +191,7 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
           sessionSummaryService: widget.sessionSummaryService,
           settingsState: widget.settingsState,
           timerAlertService: widget.timerAlertService,
+          restNotificationService: widget.restNotificationService,
         ),
       );
     }
@@ -290,6 +295,7 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
             },
             settingsState: widget.settingsState,
             timerAlertService: widget.timerAlertService,
+            restNotificationService: widget.restNotificationService,
           ),
         );
       }
@@ -544,9 +550,9 @@ class _SessionRow extends StatelessWidget {
               children: [
                 Text(
                   subtitle,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: stateColor,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelMedium?.copyWith(color: stateColor),
                 ),
                 if (entry.isCompleted && entry.session != null)
                   Text(

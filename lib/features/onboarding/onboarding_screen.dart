@@ -15,6 +15,7 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 import '../home/home_screen.dart';
 
 /// First-launch onboarding flow — three swipeable pages.
@@ -32,8 +33,9 @@ class OnboardingScreen extends StatefulWidget {
   final ProfileState profileState;
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const OnboardingScreen({
+  OnboardingScreen({
     super.key,
     required this.repository,
     required this.workoutState,
@@ -46,7 +48,9 @@ class OnboardingScreen extends StatefulWidget {
     required this.profileState,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -85,6 +89,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         profileState: widget.profileState,
         settingsState: widget.settingsState,
         timerAlertService: widget.timerAlertService,
+        restNotificationService: widget.restNotificationService,
       ),
     );
   }
@@ -199,7 +204,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   // ── Page 2: How You Train ────────────────────────────────────────────────────
-  Widget _buildHowYouTrainPage(BuildContext context, OmniThemeColors themeColors) {
+  Widget _buildHowYouTrainPage(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
     const modalities = [
       _ModalityData(
         name: 'Cardio / Endurance',
@@ -246,9 +254,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 8),
             Text(
               'OmniTrain adapts its interface to the way you actually train.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: themeColors.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: themeColors.textMuted),
             ),
             const SizedBox(height: 20),
             Expanded(
@@ -288,9 +296,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 8),
             Text(
               'Your training calendar keeps everything in one place.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: themeColors.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: themeColors.textMuted),
             ),
             const SizedBox(height: 28),
             _PlanFeatureBullet(
@@ -458,11 +466,12 @@ class _ModalityTile extends StatelessWidget {
                               maxLines: 2,
                               softWrap: true,
                               overflow: TextOverflow.visible,
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: OmniTheme.textPrimary,
-                                letterSpacing: OmniTheme.titleLetterSpacing,
-                              ),
+                              style: Theme.of(context).textTheme.bodyLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: OmniTheme.textPrimary,
+                                    letterSpacing: OmniTheme.titleLetterSpacing,
+                                  ),
                             ),
                           ),
                         ],
@@ -472,9 +481,8 @@ class _ModalityTile extends StatelessWidget {
                         padding: const EdgeInsets.only(left: 18),
                         child: Text(
                           data.description,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: themeColors.textMuted,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: themeColors.textMuted),
                         ),
                       ),
                     ],

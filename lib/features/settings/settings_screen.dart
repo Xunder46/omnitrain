@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:app_settings/app_settings.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
@@ -6,16 +8,20 @@ import '../../core/utils/unit_formatter.dart';
 import '../../state/settings/settings_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
+import '../../core/utils/rest_notification_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
-  const SettingsScreen({
+  SettingsScreen({
     super.key,
     required this.settingsState,
     required this.timerAlertService,
-  });
+    RestNotificationService? restNotificationService,
+  }) : restNotificationService =
+           restNotificationService ?? RestNotificationService.noop();
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +56,7 @@ class SettingsScreen extends StatelessWidget {
                 _SoundsAlertsSection(
                   settingsState: settingsState,
                   timerAlertService: timerAlertService,
+                  restNotificationService: restNotificationService,
                 ),
                 const SizedBox(height: 24),
                 const _SectionHeader(title: 'WORKOUT'),
@@ -167,18 +174,134 @@ class SettingsScreen extends StatelessWidget {
 
 // ── SOUNDS & ALERTS ───────────────────────────────────────────────────────
 
-class _SoundsAlertsSection extends StatelessWidget {
+class _SoundsAlertsSection extends StatefulWidget {
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
+  final RestNotificationService restNotificationService;
 
   const _SoundsAlertsSection({
     required this.settingsState,
     required this.timerAlertService,
+    required this.restNotificationService,
   });
+
+  @override
+  State<_SoundsAlertsSection> createState() => _SoundsAlertsSectionState();
+}
+
+class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
+  bool _notificationsEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshNotificationStatus();
+  }
+
+  Future<void> _refreshNotificationStatus() async {
+    if (kIsWeb) return;
+
+    if (!widget.settingsState.notificationPermissionAsked) {
+      if (!mounted) return;
+      setState(() => _notificationsEnabled = false);
+      return;
+    }
+
+    final enabled = await widget.restNotificationService.hasPermission();
+    if (!mounted) return;
+    setState(() => _notificationsEnabled = enabled);
+  }
+
+  Future<void> _handleNotificationRowTap(BuildContext context) async {
+    if (kIsWeb) return;
+
+    if (!widget.settingsState.notificationPermissionAsked) {
+      final granted = await widget.restNotificationService.requestPermission();
+      await widget.settingsState.setNotificationPermissionAsked();
+      if (!mounted) return;
+      setState(() => _notificationsEnabled = granted);
+      return;
+    }
+
+    if (!_notificationsEnabled) {
+      await AppSettings.openAppSettings();
+      await _refreshNotificationStatus();
+    }
+  }
+
+  Future<void> _handleIntervalSelected(BuildContext context, int value) async {
+    await widget.settingsState.setRestPingInterval(value);
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    if (kIsWeb ||
+        value <= 0 ||
+        widget.settingsState.notificationPermissionAsked) {
+      return;
+    }
+
+    final shouldRequest = await showDialog<bool>(
+      context: this.context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enable Rest Notifications?'),
+        content: const Text(
+          'Notifications keep your rest pings working when your phone is locked. '
+          'You can change this any time in Settings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldRequest == true) {
+      final granted = await widget.restNotificationService.requestPermission();
+      await widget.settingsState.setNotificationPermissionAsked();
+      if (!mounted) return;
+      setState(() => _notificationsEnabled = granted);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final permissionAsked = widget.settingsState.notificationPermissionAsked;
+    final notificationStatus = !permissionAsked
+        ? 'Not yet asked'
+        : (_notificationsEnabled
+              ? 'Enabled'
+              : 'Disabled - tap to open Settings');
+    final statusColor = !permissionAsked
+        ? OmniTheme.textSecondary
+        : (_notificationsEnabled
+          ? theme.colorScheme.primary
+          : theme.colorScheme.error);
+
     return OmniSurface(
       padding: EdgeInsets.zero,
       child: Column(
@@ -188,8 +311,10 @@ class _SoundsAlertsSection extends StatelessWidget {
             label: 'Effort Timer Sound',
             subtitle: 'Plays when a set or round timer expires',
             trailing: Text(
-              SettingsState.soundDisplayNames[settingsState.effortTimerSound] ??
-                  settingsState.effortTimerSound,
+              SettingsState.soundDisplayNames[widget
+                      .settingsState
+                      .effortTimerSound] ??
+                  widget.settingsState.effortTimerSound,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: OmniTheme.textSecondary,
               ),
@@ -197,8 +322,8 @@ class _SoundsAlertsSection extends StatelessWidget {
             onTap: () => _showSoundPicker(
               context,
               title: 'Effort Timer Sound',
-              currentId: settingsState.effortTimerSound,
-              onSelected: settingsState.setEffortTimerSound,
+              currentId: widget.settingsState.effortTimerSound,
+              onSelected: widget.settingsState.setEffortTimerSound,
             ),
           ),
           _SurfaceDivider(theme: theme),
@@ -206,7 +331,7 @@ class _SoundsAlertsSection extends StatelessWidget {
             label: 'Rest Ping',
             subtitle: 'Periodic reminder during rest',
             trailing: Text(
-              _intervalLabel(settingsState.restPingInterval),
+              _intervalLabel(widget.settingsState.restPingInterval),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: OmniTheme.textSecondary,
               ),
@@ -218,8 +343,10 @@ class _SoundsAlertsSection extends StatelessWidget {
             label: 'Rest Ping Sound',
             subtitle: 'Sound used for the rest interval ping',
             trailing: Text(
-              SettingsState.soundDisplayNames[settingsState.restPingSound] ??
-                  settingsState.restPingSound,
+              SettingsState.soundDisplayNames[widget
+                      .settingsState
+                      .restPingSound] ??
+                  widget.settingsState.restPingSound,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: OmniTheme.textSecondary,
               ),
@@ -227,10 +354,26 @@ class _SoundsAlertsSection extends StatelessWidget {
             onTap: () => _showSoundPicker(
               context,
               title: 'Rest Ping Sound',
-              currentId: settingsState.restPingSound,
-              onSelected: settingsState.setRestPingSound,
+              currentId: widget.settingsState.restPingSound,
+              onSelected: widget.settingsState.setRestPingSound,
             ),
           ),
+          if (!kIsWeb) ...[
+            _SurfaceDivider(theme: theme),
+            _SettingsRow(
+              label: 'Notification Permission',
+              subtitle:
+                  'Required for rest and effort timer alerts while phone is locked or app is backgrounded',
+              trailing: Text(
+                notificationStatus,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: statusColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              onTap: () => _handleNotificationRowTap(context),
+            ),
+          ],
         ],
       ),
     );
@@ -256,10 +399,8 @@ class _SoundsAlertsSection extends StatelessWidget {
       builder: (ctx) => _SoundPickerSheet(
         title: title,
         currentId: currentId,
-        timerAlertService: timerAlertService,
-        onSelected: (id) {
-          onSelected(id);
-        },
+        timerAlertService: widget.timerAlertService,
+        onSelected: onSelected,
       ),
     );
   }
@@ -270,11 +411,8 @@ class _SoundsAlertsSection extends StatelessWidget {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => _IntervalPickerSheet(
-        currentValue: settingsState.restPingInterval,
-        onSelected: (value) {
-          settingsState.setRestPingInterval(value);
-          Navigator.pop(ctx);
-        },
+        currentValue: widget.settingsState.restPingInterval,
+        onSelected: (value) => _handleIntervalSelected(ctx, value),
       ),
     );
   }
