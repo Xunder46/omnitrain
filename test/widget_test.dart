@@ -573,4 +573,95 @@ void main() {
       );
     },
   );
+
+  // S-PING-001: Regression for _checkRestPings using _currentSet-1 as the
+  // entryIndex for every exercise in the loop.
+  //
+  // Bug: when the user logs set 1 of exercise1 (rest recorded at entryIndex=1)
+  // and navigates to exercise2, _currentSet resets to 1.  _checkRestPings
+  // then checked hasRestRecord(effortId1, 0) — which is false — so the ping
+  // never fired even though the rest was ticking normally.
+  //
+  // Fix: _checkRestPings now iterates getEntryRests(effortId) directly and
+  // uses rest.entryIndex, so the correct rest is found regardless of which
+  // exercise is on screen.
+  testWidgets(
+    'S-PING-001: rest ping fires for exercise1 rest while viewing exercise2',
+    (WidgetTester tester) async {
+      final deps = await _setupSession();
+
+      // Two reps-capable exercises — need at least two in seed data.
+      final allExercises = await deps.repository.getExercises();
+      final repsExercises =
+          allExercises.where((e) => e.capabilities.contains('reps')).take(2).toList();
+      expect(
+        repsExercises.length,
+        greaterThanOrEqualTo(2),
+        reason: 'seed data must have at least 2 reps-capable exercises',
+      );
+
+      // Exercise1: single entry (Log Set will auto-advance to exercise2).
+      final effortId1 = await deps.workoutState.addExerciseToSession(
+        repsExercises[0],
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.updateEntryValue(effortId1, 0, 'reps', 10);
+
+      // Exercise2: single entry.
+      final effortId2 = await deps.workoutState.addExerciseToSession(
+        repsExercises[1],
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.updateEntryValue(effortId2, 0, 'reps', 8);
+
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+      );
+
+      // Open detail view for exercise1.
+      await tester.tap(find.text(repsExercises[0].name));
+      await tester.pumpAndSettle();
+
+      // Log Set: creates rest record at entryIndex=1 for exercise1,
+      // then auto-advances the screen to exercise2 set1.
+      await tester.tap(find.text('Log Set'));
+      await tester.pumpAndSettle();
+
+      // Now viewing exercise2: _currentSet=1, so _currentSet-1=0.
+      //
+      // Old _checkRestPings checked hasRestRecord(effortId1, 0) → false.
+      // Fixed _checkRestPings iterates open rests → finds entryIndex=1 → correct.
+      expect(
+        deps.workoutState.hasRestRecord(effortId1, 0),
+        isFalse,
+        reason:
+            'entryIndex=0 has no rest — old code checked this index and missed the ping',
+      );
+      expect(
+        deps.workoutState.hasRestRecord(effortId1, 1),
+        isTrue,
+        reason:
+            'entryIndex=1 has the open rest — fixed code iterates rests and finds it',
+      );
+
+      // The open rest must still be running (restEndMs == null).
+      final openRests = deps.workoutState
+          .getEntryRests(effortId1)
+          .where((r) => r.restEndMs == null)
+          .toList();
+      expect(
+        openRests,
+        hasLength(1),
+        reason: 'exactly one open rest for exercise1 after logging its only set',
+      );
+      expect(
+        openRests.first.entryIndex,
+        1,
+        reason: 'open rest is at entryIndex=1 — the index the fixed code will pass to shouldFireRestPing',
+      );
+    },
+  );
 }

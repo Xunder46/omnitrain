@@ -29,7 +29,10 @@ class TimerAlertService {
       final session = await AudioSession.instance;
       await session.configure(
         AudioSessionConfiguration(
-          avAudioSessionCategory: AVAudioSessionCategory.ambient,
+          // Use playback (not ambient) so alerts are heard even when the
+          // iOS ringer/mute switch is off. mixWithOthers + duckOthers means
+          // background music ducks briefly rather than stopping.
+          avAudioSessionCategory: AVAudioSessionCategory.playback,
           avAudioSessionCategoryOptions:
               AVAudioSessionCategoryOptions.mixWithOthers |
               AVAudioSessionCategoryOptions.duckOthers,

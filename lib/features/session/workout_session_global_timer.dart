@@ -38,20 +38,26 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
 
     for (final exercise in _exercises) {
       final effortId = exercise['id'] as String;
-      final entryIndex = _currentSet - 1;
-      if (!widget.workoutState.hasRestRecord(effortId, entryIndex)) continue;
-      final elapsed = widget.workoutState.getRestElapsedSeconds(
-        effortId,
-        entryIndex,
-      );
-      final lastPinged = _lastRestPingFiredAt[effortId] ?? 0;
-      if (shouldFireRestPing(
-        elapsed: elapsed,
-        interval: pingInterval,
-        lastPinged: lastPinged,
-      )) {
-        _lastRestPingFiredAt[effortId] = elapsed;
-        unawaited(widget.timerAlertService.fireRestPingAlert(pingSound));
+      // Iterate open rest records directly rather than guessing the entry
+      // index from _currentSet. When the user navigates to a different
+      // exercise, _currentSet resets to 1 and _currentSet-1 no longer
+      // corresponds to the rest that was opened for the previous exercise.
+      final rests = widget.workoutState.getEntryRests(effortId);
+      for (final rest in rests) {
+        if (rest.restEndMs != null) continue; // closed rest — skip
+        final elapsed = widget.workoutState.getRestElapsedSeconds(
+          effortId,
+          rest.entryIndex,
+        );
+        final lastPinged = _lastRestPingFiredAt[effortId] ?? 0;
+        if (shouldFireRestPing(
+          elapsed: elapsed,
+          interval: pingInterval,
+          lastPinged: lastPinged,
+        )) {
+          _lastRestPingFiredAt[effortId] = elapsed;
+          unawaited(widget.timerAlertService.fireRestPingAlert(pingSound));
+        }
       }
     }
   }
