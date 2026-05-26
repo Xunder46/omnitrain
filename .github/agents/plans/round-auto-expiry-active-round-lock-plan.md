@@ -69,6 +69,29 @@ When a round timer is logged via Log Set, the next round can be started normally
 4. [x] Add S-BUG-004 regression test: rest record exists immediately after auto-expiry, not after Log Round tap
 5. [x] Run all tests in `round_auto_expiry_test.dart` — 5/5 pass
 
+## Iteration 3
+### DB Changes
+- None
+
+### Backend Changes
+- None
+
+### Frontend Changes
+- `WorkoutSessionTimerMixin`: add `Future<void> _logSet();` to abstract dependencies
+- `_handleEffortTimerExpired` (round branch): call `unawaited(_logSet())` when `entryIndex == _currentSet - 1` to auto-advance to the next set after auto-expiry
+- `_handleEffortTimerExpired` (timed/drill branch): same auto-advance guard — `_logSet()` runs full log flow (starts rest timer, advances) since the logKey is not pre-added to `_loggedSetKeys` for timed/drill
+- Guard condition `entryIndex == _currentSet - 1` prevents `_drainStaleInProgressKeys` from accidentally advancing the wrong set when a user navigates forward before the tick fires
+
+### Implementation Steps
+1. [x] Add `Future<void> _logSet();` to mixin abstract dependencies
+2. [x] Add guarded `unawaited(_logSet())` to round branch of `_handleEffortTimerExpired`
+3. [x] Add guarded `unawaited(_logSet())` to timed/drill branch of `_handleEffortTimerExpired`
+4. [x] Update S-BUG-001 test: remove forward arrow tap (auto-advance makes it redundant)
+5. [x] Update S-BUG-001b test: clarify that drain guard skips auto-advance for stale keys
+6. [x] Update S-BUG-004 test: assert "Start" visible immediately after auto-expiry
+7. [x] Run `round_auto_expiry_test.dart` (5/5 pass)
+8. [x] Run broader suite: `screen_widget_test.dart`, `session_finish_timers_test.dart`, `interaction_flow_test.dart`, `session_detail_set_count_test.dart` (236 pass, 0 fail)
+
 ## Progress
 - [x] Implement round auto-expiry active-state cleanup parity
 - [x] Verify next round startability without auto-start
@@ -76,6 +99,8 @@ When a round timer is logged via Log Set, the next round can be started normally
 - [x] Confirm count-up timed efforts unchanged
 - [x] Rest timer starts on auto-expiry (Iteration 2)
 - [x] No duplicate rest record on forward navigation after auto-expiry (Iteration 2)
+- [x] Auto-advance to next set on round/timed/drill auto-expiry (Iteration 3)
+- [x] Manual Log Set/Round already auto-advances (confirmed unchanged)
 - [ ] Validate on physical iOS device
 - [ ] Validate on physical Android device (or document unavailability)
 
