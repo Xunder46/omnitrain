@@ -498,7 +498,8 @@ Groups flat observation lists by effort kind into structured per-set maps. Used 
 **Key behaviors**:
 - `_restoreTimerStateFromPersisted`: populates `_inProgressKeys` for any persisted `active`/`paused` state on session restore.
 - `_toggleEffortTimer` (for `notStarted → active` transition): checks `_getAnotherInProgressKey`; if blocked, shows SnackBar `"Another set is still in progress. Pause or finish it before starting a new timer."` and returns early.
-- `_resetTimerState`: removes key from `_inProgressKeys` (called after set is logged/finished).
+- `_resetTimerState`: removes key from `_inProgressKeys` (called after manual set log/finish flows).
+- `_handleEffortTimerExpired` (round flow): removes the current round key from `_inProgressKeys` before calling `completeRound`, so the next round is immediately startable after auto-expiry.
 
 **Auto-pause hooks** (in `workout_session_screen.dart`):
 - `_jumpToSet()` — checks if current set's timer is running (`_effortRunning[timerKey] == true`) and calls `_pauseEffortTimer` before navigating to a different set.

@@ -109,6 +109,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Track which set keys have been logged this session (effortId-entryIndex).
   // Prevents the rest timer from restarting when navigating back/forward
   // through already-logged sets.
+  @override
   final Set<String> _loggedSetKeys = {};
 
   @override

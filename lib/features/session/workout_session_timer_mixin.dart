@@ -15,6 +15,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
   int get _currentSet;
   Timer? get _ticker;
   Map<String, int> get _lastRestPingFiredAt;
+  Set<String> get _loggedSetKeys;
 
   String _getEffortKind(String effortId);
   Map<String, dynamic>? _getEntryData(String effortId, int entryIndex);
@@ -64,6 +65,63 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
       if (key != currentKey) return key;
     }
     return null;
+  }
+
+  /// Eagerly clears stale entries from [_inProgressKeys] for efforts whose
+  /// timer has already expired by wall-clock time but whose periodic tick has
+  /// not yet fired (user navigated faster than the tick interval), and for
+  /// efforts already persisted as finished.
+  ///
+  /// Must be called inside `_toggleEffortTimer` before the in-progress-lock
+  /// check so that a stale key never blocks the next entry from starting.
+  void _drainStaleInProgressKeys() {
+    // Snapshot the set: _handleEffortTimerExpired modifies _inProgressKeys.
+    for (final key in List.of(_inProgressKeys)) {
+      final sep = key.lastIndexOf('-');
+      if (sep <= 0 || sep >= key.length - 1) continue;
+      final effortId = key.substring(0, sep);
+      final entryIndex = int.tryParse(key.substring(sep + 1));
+      if (entryIndex == null) continue;
+      final effortKind = _getEffortKind(effortId);
+      if (effortKind == 'round') {
+        final round = _getRoundInstance(effortId, entryIndex);
+        if (round == null) continue;
+        if (round.state == RoundState.finished) {
+          _inProgressKeys.remove(key);
+        } else if (round.plannedDurationSecs > 0 &&
+            (round.elapsedMs / 1000).round() >= round.plannedDurationSecs) {
+          // Wall-clock expired before the next tick. Fire the expiry handler
+          // now; _effortAlerted guards against double-execution.
+          _handleEffortTimerExpired(
+            effortId,
+            entryIndex,
+            effortKind,
+            round.plannedDurationSecs,
+          );
+        }
+      } else if (effortKind == 'timed' || effortKind == 'drill') {
+        final instance = _getTimedInstance(effortId, entryIndex);
+        if (instance == null) continue;
+        if (instance.state == TimedState.finished) {
+          _inProgressKeys.remove(key);
+        } else {
+          final targetSecs = _getEffortTargetDuration(
+            effortId,
+            entryIndex,
+            effortKind,
+          );
+          if (targetSecs > 0 &&
+              (instance.elapsedMs / 1000).round() >= targetSecs) {
+            _handleEffortTimerExpired(
+              effortId,
+              entryIndex,
+              effortKind,
+              targetSecs,
+            );
+          }
+        }
+      }
+    }
   }
 
   // ── Timer restore from persisted state ───────────────────────────────────
@@ -297,15 +355,42 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     if (effortKind == 'round') {
       _effortTimers[timerKey]?.cancel();
       _effortRunning[timerKey] = false;
+      // Clear the in-progress lock so the next round can be started.
+      // Without this, _isSetLogged returns true once completeRound resolves,
+      // the UI shows "LOGGED" (skipping the Log Round button), and the user
+      // navigates forward via the arrow — never calling _logSet/_resetTimerState.
+      // The stale key then blocks _toggleEffortTimer for the next round entry.
+      _inProgressKeys.remove(timerKey);
       unawaited(
         widget.timerAlertService.fireEffortTimerAlert(
           widget.settingsState.effortTimerSound,
         ),
       );
       unawaited(widget.workoutState.completeRound(effortId, entryIndex));
+      // Start the rest timer immediately on auto-expiry — parity with the
+      // manual Log Round path in _logSet(). Mark the key as logged so that
+      // when the user taps "Log Round" (or the arrow), _logSet() takes the
+      // early-return path and does not create a second rest record.
+      _loggedSetKeys.add(timerKey);
+      unawaited(
+        widget.workoutState.recordRestStart(effortId, entryIndex + 1),
+      );
+      unawaited(
+        widget.restNotificationService.scheduleRestPings(
+          restStartMs: DateTime.now().millisecondsSinceEpoch,
+          intervalSecs: widget.settingsState.restPingInterval,
+          soundId: widget.settingsState.restPingSound,
+          playSound: !_isAppInForeground,
+        ),
+      );
     } else {
       _effortTimers[timerKey]?.cancel();
       _effortRunning[timerKey] = false;
+      // Clear the in-progress lock for timed/drill auto-expiry (parity with
+      // the round path above). Without this, navigating forward via the arrow
+      // after a timed entry auto-completes leaves a stale key that blocks
+      // starting the next interval.
+      _inProgressKeys.remove(timerKey);
       unawaited(
         widget.timerAlertService.fireEffortTimerAlert(
           widget.settingsState.effortTimerSound,
@@ -365,6 +450,10 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
               .resumeRound(effortId, entryIndex)
               .whenComplete(() => _pendingRoundTransitions.remove(timerKey));
         case RoundState.notStarted:
+          // Drain any stale keys for efforts that have wall-clock expired but
+          // whose periodic tick hasn't fired yet (user navigated faster than
+          // the tick interval). Must run before the in-progress-lock check.
+          _drainStaleInProgressKeys();
           // In-progress lock: block if another set's timer is already running.
           final otherKey = _getAnotherInProgressKey(timerKey);
           if (otherKey != null) {
@@ -446,6 +535,9 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             .resumeTimedEntry(effortId, entryIndex)
             .whenComplete(() => _pendingTimedTransitions.remove(timerKey));
       case TimedState.notStarted:
+        // Drain stale keys before the in-progress-lock check (same reason as
+        // the round notStarted branch above).
+        _drainStaleInProgressKeys();
         // In-progress lock: block if another set's timer is already running.
         final otherKey = _getAnotherInProgressKey(timerKey);
         if (otherKey != null) {
