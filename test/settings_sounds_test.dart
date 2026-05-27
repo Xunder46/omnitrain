@@ -190,6 +190,42 @@ void main() {
       expect(settings.restPingInterval, 60);
     });
 
+    testWidgets(
+      'S-019: first interval activation dialog covers both rest and effort alerts',
+      (WidgetTester tester) async {
+        final settings = await makeSettings();
+        // notificationPermissionAsked is false by default
+        expect(settings.notificationPermissionAsked, isFalse);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              settingsState: settings,
+              timerAlertService: FakeTimerAlertService(),
+              restNotificationService: FakeRestNotificationService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Rest Ping'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('1 min'));
+        await tester.pumpAndSettle();
+
+        // Dialog should appear covering both rest pings and effort timer alerts
+        expect(find.text('Enable Timer Notifications?'), findsOneWidget);
+        expect(
+          find.text(
+            'Notifications keep rest pings and effort timer alerts working when '
+            'your phone is locked. You can change this any time in Settings.',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
     testWidgets('shows notification permission row with Not yet asked state', (
       WidgetTester tester,
     ) async {

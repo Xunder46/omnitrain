@@ -1758,6 +1758,42 @@ void main() {
           hasLength(WorkoutConstants.maxEntriesPerEffort),
         );
       });
+
+      test(
+        'S-003: addEntry for timed carries extra-weight forward from previousValues',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'cardio_endurance');
+
+          final exercises = await repo.getExercises();
+          final timedExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('time'),
+            orElse: () => exercises.first,
+          );
+          // entry 0 — created with default extra-weight (0.0)
+          final effortId = await state.addExerciseToSession(timedExercise);
+
+          // Simulate user setting 15.0 kg on the first interval.
+          await state.updateEntryValue(effortId, 0, 'extra-weight', 15.0);
+
+          // Verify the updated value is visible.
+          final entriesAfterUpdate =
+              state.getExercisesWithEntries().first['entries']
+                  as List<Map<String, dynamic>>;
+          expect(entriesAfterUpdate[0]['extra-weight'], 15.0);
+
+          // entry 1 — created carrying forward 15.0 kg.
+          await state.addEntry(effortId, previousValues: {'extra-weight': 15.0});
+
+          final entries =
+              state.getExercisesWithEntries().first['entries']
+                  as List<Map<String, dynamic>>;
+          expect(entries, hasLength(2));
+          expect(entries[1]['extra-weight'], 15.0,
+              reason: 'S-003: second entry must inherit extra-weight from previousValues');
+        },
+      );
     });
 
     group('set extra-weight support', () {

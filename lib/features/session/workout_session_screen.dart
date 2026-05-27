@@ -109,7 +109,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Track which set keys have been logged this session (effortId-entryIndex).
   // Prevents the rest timer from restarting when navigating back/forward
   // through already-logged sets.
-  @override
   final Set<String> _loggedSetKeys = {};
 
   @override
@@ -817,6 +816,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
+    final effortKind = exercise['effortKind'] as String? ?? 'set';
     final entries =
         exercise['entries'] as List<Map<String, dynamic>>? ?? const [];
 
@@ -826,7 +826,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     try {
       // Mark structural change so the discard-confirmation fires on Back.
       if (widget.editMode) _hasStructuralChanges = true;
-      await widget.workoutState.addEntry(effortId);
+
+      // For timed efforts, carry the last entry's extra-weight forward so the
+      // new interval is pre-filled with the same load (S-003).
+      Map<String, dynamic>? previousValues;
+      if (effortKind == 'timed' && entries.isNotEmpty) {
+        final lastWeight = entries.last['extra-weight'] as double?;
+        if (lastWeight != null) {
+          previousValues = {'extra-weight': lastWeight};
+        }
+      }
+
+      await widget.workoutState.addEntry(effortId, previousValues: previousValues);
       await _loadExercises();
     } finally {
       _isStructuralOp = false;

@@ -1309,47 +1309,26 @@ extension on _RoutineSetupScreenState {
           ],
         );
       case 'timed':
-        final duration =
-            _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
         final hasTimedExtraWeightTarget = targets.any(
           (t) => t.metricId == MetricIds.extraWeight,
         );
+        if (!hasTimedExtraWeightTarget) return const SizedBox.shrink();
         // Target stored in canonical kg; convert to display unit for editor.
-        final timedExtraWeight = hasTimedExtraWeightTarget
-            ? _fromCanonicalWeight(
-                _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
-              )
-            : null;
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            InlineMetricEditor(
-              metricType: 'duration',
-              currentValue: duration,
-              unitLabel: 'TIME',
-              onValueChanged: (value) => widget.routineState.setTargetValue(
-                effort.id,
-                MetricIds.duration,
-                MetricIds.unitSeconds,
-                setIndex: setIndex,
-                targetInt: value as int,
-              ),
-            ),
-            if (timedExtraWeight != null)
-              InlineMetricEditor(
-                metricType: 'extra-weight',
-                currentValue: timedExtraWeight,
-                unitLabel: 'EXTRA $_preferredWeightUnitLabel',
-                onValueChanged: (value) => widget.routineState.setTargetValue(
-                  effort.id,
-                  MetricIds.extraWeight,
-                  MetricIds.unitKg,
-                  setIndex: setIndex,
-                  // Convert display-unit value to canonical kg before persisting.
-                  targetMin: _toCanonicalWeight(value as double),
-                ),
-              ),
-          ],
+        final timedExtraWeight = _fromCanonicalWeight(
+          _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
+        );
+        return InlineMetricEditor(
+          metricType: 'extra-weight',
+          currentValue: timedExtraWeight,
+          unitLabel: 'EXTRA $_preferredWeightUnitLabel',
+          onValueChanged: (value) => widget.routineState.setTargetValue(
+            effort.id,
+            MetricIds.extraWeight,
+            MetricIds.unitKg,
+            setIndex: setIndex,
+            // Convert display-unit value to canonical kg before persisting.
+            targetMin: _toCanonicalWeight(value as double),
+          ),
         );
       case 'round':
         final roundDuration =
@@ -1390,41 +1369,22 @@ extension on _RoutineSetupScreenState {
           ],
         );
       case 'drill':
-        final duration =
-            _getTargetInt(targets, MetricIds.duration, setIndex) ?? 0;
         // Target stored in canonical kg; convert to display unit for editor.
         final extraWeight = _fromCanonicalWeight(
           _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
         );
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            InlineMetricEditor(
-              metricType: 'duration',
-              currentValue: duration,
-              unitLabel: 'HOLD TIME',
-              onValueChanged: (value) => widget.routineState.setTargetValue(
-                effort.id,
-                MetricIds.duration,
-                MetricIds.unitSeconds,
-                setIndex: setIndex,
-                targetInt: value as int,
-              ),
-            ),
-            InlineMetricEditor(
-              metricType: 'extra-weight',
-              currentValue: extraWeight,
-              unitLabel: 'EXTRA $_preferredWeightUnitLabel',
-              onValueChanged: (value) => widget.routineState.setTargetValue(
-                effort.id,
-                MetricIds.extraWeight,
-                MetricIds.unitKg,
-                setIndex: setIndex,
-                // Convert display-unit value to canonical kg before persisting.
-                targetMin: _toCanonicalWeight(value as double),
-              ),
-            ),
-          ],
+        return InlineMetricEditor(
+          metricType: 'extra-weight',
+          currentValue: extraWeight,
+          unitLabel: 'EXTRA $_preferredWeightUnitLabel',
+          onValueChanged: (value) => widget.routineState.setTargetValue(
+            effort.id,
+            MetricIds.extraWeight,
+            MetricIds.unitKg,
+            setIndex: setIndex,
+            // Convert display-unit value to canonical kg before persisting.
+            targetMin: _toCanonicalWeight(value as double),
+          ),
         );
       default:
         return Text('—', style: theme.textTheme.displayLarge);

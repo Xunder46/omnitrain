@@ -194,7 +194,7 @@ class WorkoutState extends ChangeNotifier {
   Future<void> addEntry(String effortId) {
     // Creates observations based on effort kind:
     // - 'set'   → reps + weight observations
-    // - 'timed' → duration + distance observations
+    // - 'timed' → duration + distance + extra-weight observations (3 companions)
     // - 'round' → RoundInstance record (NOT observations — see "Round-Based Tracking" section)
     // - 'drill' → duration + extra weight observations
   }

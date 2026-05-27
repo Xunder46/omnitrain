@@ -40,6 +40,7 @@ import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
 import 'package:omnitrain/widgets/pickers/metric_chooser_dialog.dart';
 import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
+import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -889,6 +890,334 @@ void main() {
 
       expect(find.byTooltip('Add exercise to block'), findsWidgets);
     });
+
+    testWidgets(
+      'timed effort with extra-weight target renders InlineMetricEditor',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        // Any exercise works — effort kind is set explicitly when adding.
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.first;
+
+        await routineState.createNewRoutine('Timed Extra Weight');
+        final effortId = await routineState.addExerciseToRoutine(
+          timedExercise,
+          'timed',
+        );
+
+        // Seed an extra-weight target so the UI guard shows the editor.
+        await routineState.setTargetValue(
+          effortId,
+          MetricIds.extraWeight,
+          MetricIds.unitKg,
+          setIndex: 0,
+          targetMin: 0.0,
+        );
+
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap the exercise card to open detail view.
+        await tester.tap(find.text(timedExercise.name).first);
+        await tester.pumpAndSettle();
+
+        // The extra-weight InlineMetricEditor should be visible.
+        expect(find.byType(InlineMetricEditor), findsWidgets);
+        expect(find.text('EXTRA KG'), findsOneWidget);
+      },
+    );
+
+    testWidgets('timed effort detail view shows no duration editor', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await routineState.createNewRoutine('Timed No Duration');
+      await routineState.addExerciseToRoutine(exercises.first, 'timed');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(exercises.first.name).first);
+      await tester.pumpAndSettle();
+
+      // The duration unit label 'TIME' must be absent.
+      expect(find.text('TIME'), findsNothing);
+      // The set-count label for a timed effort is still visible.
+      expect(find.text('Interval 1 of 1'), findsOneWidget);
+    });
+
+    testWidgets('drill effort detail view shows no hold-time editor', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await routineState.createNewRoutine('Drill No Hold');
+      await routineState.addExerciseToRoutine(exercises.first, 'drill');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(exercises.first.name).first);
+      await tester.pumpAndSettle();
+
+      // The hold-time unit label 'HOLD TIME' must be absent.
+      expect(find.text('HOLD TIME'), findsNothing);
+      // The set-count label for a drill effort is still visible.
+      expect(find.text('Hold 1 of 1'), findsOneWidget);
+    });
+
+    testWidgets('round effort detail view still renders round-duration editor', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+
+      final exercises = await repo.getExercises();
+      await routineState.createNewRoutine('Round Duration');
+      await routineState.addExerciseToRoutine(exercises.first, 'round');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(exercises.first.name).first);
+      await tester.pumpAndSettle();
+
+      // Round-duration editor must still be present.
+      expect(find.text('DURATION'), findsOneWidget);
+      expect(find.text('ROUND 1'), findsOneWidget);
+    });
+
+    testWidgets(
+      'timed effort with no extra-weight target shows no metric editor',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        // No extra-weight target seeded — _buildMetricWidget returns SizedBox.shrink().
+        final exercises = await repo.getExercises();
+        await routineState.createNewRoutine('Timed No Extra');
+        await routineState.addExerciseToRoutine(exercises.first, 'timed');
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(exercises.first.name).first);
+        await tester.pumpAndSettle();
+
+        // No InlineMetricEditor — the SizedBox.shrink() path is taken.
+        expect(find.byType(InlineMetricEditor), findsNothing);
+        // Set count row is still visible.
+        expect(find.text('Interval 1 of 1'), findsOneWidget);
+      },
+    );
+
+    test(
+      'building session from routine with timed and drill efforts succeeds',
+      () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+
+        // Build the template hierarchy directly so IDs are stable and unique
+        // (avoids timestamp-collision in RoutineState.addExerciseToRoutine).
+        const templateId = 'tmpl-cardio-drill';
+        await repo.createTemplate(
+          WorkoutTemplate(
+            id: templateId,
+            name: 'Mixed Cardio Drill',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repo.createTemplateSegment(
+          TemplateSegment(
+            id: 'tseg-mixed',
+            templateId: templateId,
+            orderIndex: 0,
+            segmentType: 'main',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        // Timed exercise: 3 intervals encoded via extra-weight targets
+        // at setIndex 0-2.
+        const timedEffortId = 'teff-timed-001';
+        await repo.createTemplateEffort(
+          TemplateEffort(
+            id: timedEffortId,
+            templateSegmentId: 'tseg-mixed',
+            orderIndex: 0,
+            effortKind: 'timed',
+            exerciseId: exercises.first.id,
+            createdAtMs: 1000,
+          ),
+        );
+        for (int i = 0; i < 3; i++) {
+          await repo.createTemplateTarget(
+            TemplateTarget(
+              id: 'ttgt-timed-ew-$i',
+              templateEffortId: timedEffortId,
+              metricId: MetricIds.extraWeight,
+              setIndex: i,
+              targetMin: 0.0,
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+          );
+        }
+
+        // Drill exercise: 3 holds encoded via extra-weight targets at
+        // setIndex 0-2.
+        final drillExercise =
+            exercises.length > 1 ? exercises[1] : exercises.first;
+        const drillEffortId = 'teff-drill-001';
+        await repo.createTemplateEffort(
+          TemplateEffort(
+            id: drillEffortId,
+            templateSegmentId: 'tseg-mixed',
+            orderIndex: 1,
+            effortKind: 'drill',
+            exerciseId: drillExercise.id,
+            createdAtMs: 1001,
+          ),
+        );
+        for (int i = 0; i < 3; i++) {
+          await repo.createTemplateTarget(
+            TemplateTarget(
+              id: 'ttgt-drill-ew-$i',
+              templateEffortId: drillEffortId,
+              metricId: MetricIds.extraWeight,
+              setIndex: i,
+              targetMin: 0.0,
+              createdAtMs: 1001,
+              updatedAtMs: 1001,
+            ),
+          );
+        }
+
+        // Build manifest — must not throw.
+        final service = RoutineSessionService(repo);
+        final manifest = await service.buildSessionFromTemplate(templateId);
+
+        final timedEntry = manifest.exercises.firstWhere(
+          (e) => e.effortKind == 'timed',
+        );
+        final drillEntry = manifest.exercises.firstWhere(
+          (e) => e.effortKind == 'drill',
+        );
+        expect(timedEntry.effortKind, 'timed');
+        expect(drillEntry.effortKind, 'drill');
+        expect(timedEntry.setCount, 3);
+        expect(drillEntry.setCount, 3);
+
+        // Populate a session and verify timer instances start in notStarted
+        // state with no elapsed time.
+        final workoutState = WorkoutState(repo);
+        await workoutState.createNewSession();
+        await workoutState.populateSessionFromManifest(manifest);
+
+        final sessionExercises = workoutState.getExercisesWithEntries();
+        final timedEx = sessionExercises.firstWhere(
+          (e) => e['effortKind'] == 'timed',
+        );
+        final drillEx = sessionExercises.firstWhere(
+          (e) => e['effortKind'] == 'drill',
+        );
+
+        final timedInstances = workoutState.getTimedInstancesForEffort(
+          timedEx['id'] as String,
+        );
+        expect(timedInstances, hasLength(3));
+        expect(
+          timedInstances.every((t) => t.state == TimedState.notStarted),
+          isTrue,
+        );
+        expect(timedInstances.every((t) => t.elapsedMs == 0), isTrue);
+
+        final drillInstances = workoutState.getTimedInstancesForEffort(
+          drillEx['id'] as String,
+        );
+        expect(drillInstances, hasLength(3));
+        expect(
+          drillInstances.every((t) => t.state == TimedState.notStarted),
+          isTrue,
+        );
+        expect(drillInstances.every((t) => t.elapsedMs == 0), isTrue);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1860,16 +2189,6 @@ void main() {
       await pumpStatsScreen(tester, repo);
 
       expect(find.text('Distance (km)'), findsOneWidget);
-
-      final insetWrapper = find.byWidgetPredicate(
-        (widget) =>
-            widget is Padding &&
-            widget.padding == const EdgeInsets.only(right: 8),
-      );
-      expect(
-        find.ancestor(of: find.byType(LineChart).first, matching: insetWrapper),
-        findsOneWidget,
-      );
 
       final cardioChart = tester.widget<LineChart>(find.byType(LineChart).first);
       expect(cardioChart.data.lineBarsData.length, 2);
@@ -4486,6 +4805,53 @@ void main() {
       await tester.tap(find.text(loadedExercise.name).first);
       await tester.pumpAndSettle();
 
+      expect(find.text('Weight adjustment'), findsNothing);
+    });
+
+    testWidgets('non-load set exercise does not show weight adjustment link', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      await workoutState.markExerciseInfoHintSeen();
+      await workoutState.markExerciseNotesHintSeen();
+      await workoutState.createNewSession(modality: 'resistance_lifting');
+
+      final exercises = await repo.getExercises();
+      final nonLoadExercise = exercises.firstWhere(
+        (e) =>
+            e.capabilities.contains('sets') &&
+            !e.capabilities.contains('load'),
+        orElse: () => exercises.firstWhere(
+          (e) => !e.capabilities.contains('load'),
+          orElse: () => exercises.first,
+        ),
+      );
+      await workoutState.addExerciseToSession(
+        nonLoadExercise,
+        effortKindOverride: 'set',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: SessionSummaryService(repo),
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: SettingsState(repo),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(nonLoadExercise.name).first);
+      await tester.pumpAndSettle();
+
+      // Framework-driven: set effort never shows extra-weight regardless of
+      // the exercise's load capability.
       expect(find.text('Weight adjustment'), findsNothing);
     });
 

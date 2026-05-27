@@ -438,6 +438,94 @@ void main() {
     expect(restService.effortSchedules.first.soundId, 'digital_buzzer');
   });
 
+  testWidgets('round timer pause cancels and resume reschedules effort expiry', (
+    WidgetTester tester,
+  ) async {
+    final deps = await _setupSession(modality: 'sports');
+    final restService = FakeRestNotificationService();
+
+    final roundExercise = (await deps.repository.getExercises()).firstWhere(
+      (e) => e.capabilities.contains('rounds'),
+      orElse: () => (throw StateError('No rounds exercise in seeded data')),
+    );
+    await deps.workoutState.addExerciseToSession(
+      roundExercise,
+      effortKindOverride: 'round',
+    );
+
+    await _pumpSession(
+      tester,
+      workoutState: deps.workoutState,
+      routineState: deps.routineState,
+      sessionSummaryService: deps.sessionSummaryService,
+      restNotificationService: restService,
+    );
+
+    await tester.tap(find.text(roundExercise.name));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+    await tester.pump();
+
+    expect(restService.effortSchedules.length, 1);
+    final initialFireAtMs = restService.effortSchedules.first.fireAtMs;
+
+    await tester.pump(const Duration(seconds: 2));
+
+    final cancelsBeforePause = restService.effortCancelCallCount;
+    await tester.tap(find.text('RUNNING').first);
+    await tester.pump();
+    expect(restService.effortCancelCallCount, greaterThan(cancelsBeforePause));
+
+    await tester.pump(const Duration(seconds: 1));
+
+    await tester.tap(find.text('PAUSED').first);
+    await tester.pump();
+
+    expect(restService.effortSchedules.length, 2);
+    expect(
+      restService.effortSchedules.last.fireAtMs,
+      greaterThan(initialFireAtMs),
+    );
+  });
+
+  testWidgets('round manual advance cancels pending effort expiry notification', (
+    WidgetTester tester,
+  ) async {
+    final deps = await _setupSession(modality: 'sports');
+    final restService = FakeRestNotificationService();
+
+    final roundExercise = (await deps.repository.getExercises()).firstWhere(
+      (e) => e.capabilities.contains('rounds'),
+      orElse: () => (throw StateError('No rounds exercise in seeded data')),
+    );
+    final effortId = await deps.workoutState.addExerciseToSession(
+      roundExercise,
+      effortKindOverride: 'round',
+    );
+    await deps.workoutState.updateEntryValue(effortId, 0, 'rounds', 3);
+
+    await _pumpSession(
+      tester,
+      workoutState: deps.workoutState,
+      routineState: deps.routineState,
+      sessionSummaryService: deps.sessionSummaryService,
+      restNotificationService: restService,
+    );
+
+    await tester.tap(find.text(roundExercise.name));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+    await tester.pump();
+    final cancelsBeforeLog = restService.effortCancelCallCount;
+
+    await tester.tap(find.text('Log Period'));
+    await tester.pumpAndSettle();
+
+    expect(restService.effortCancelCallCount, greaterThan(cancelsBeforeLog));
+  });
+
   testWidgets('foreground timed expiry fires in-app once and cancels effort notification', (
     WidgetTester tester,
   ) async {

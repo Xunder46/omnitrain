@@ -243,10 +243,10 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
     final shouldRequest = await showDialog<bool>(
       context: this.context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Enable Rest Notifications?'),
+        title: const Text('Enable Timer Notifications?'),
         content: const Text(
-          'Notifications keep your rest pings working when your phone is locked. '
-          'You can change this any time in Settings.',
+          'Notifications keep rest pings and effort timer alerts working when '
+          'your phone is locked. You can change this any time in Settings.',
         ),
         actions: [
           TextButton(

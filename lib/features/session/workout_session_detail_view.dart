@@ -152,14 +152,6 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           entryData['weight'] as double? ?? 0.0,
           widget.settingsState,
         );
-        final exerciseId = exercise['exerciseId'] as String?;
-        final exerciseObj = widget.workoutState.getExercise(exerciseId);
-        final hasLoad = exerciseObj?.capabilities.contains('load') ?? false;
-        // Stored in canonical kg; convert to the user's preferred display unit.
-        final extraWeight = UnitFormatter.convertWeight(
-          (entryData['extra-weight'] as num?)?.toDouble() ?? 0.0,
-          widget.settingsState,
-        );
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -179,19 +171,6 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'weight', value),
             ),
-            if (!hasLoad)
-              _buildWeightAdjustmentSection(
-                theme: theme,
-                effortId: effortId,
-                entryIndex: entryIndex,
-                currentValue: extraWeight,
-                onValueChanged: (value) => _updateMetricValue(
-                  effortId,
-                  entryIndex,
-                  'extra-weight',
-                  value,
-                ),
-              ),
           ],
         );
 

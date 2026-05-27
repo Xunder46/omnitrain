@@ -15,13 +15,11 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
   int get _currentSet;
   Timer? get _ticker;
   Map<String, int> get _lastRestPingFiredAt;
-  Set<String> get _loggedSetKeys;
 
   String _getEffortKind(String effortId);
   Map<String, dynamic>? _getEntryData(String effortId, int entryIndex);
   TimedInstance? _getTimedInstance(String effortId, int entryIndex);
   RoundInstance? _getRoundInstance(String effortId, int entryIndex);
-  Future<void> _logSet();
 
   // ── Per-effort timer UI state ─────────────────────────────────────────────
 
@@ -368,29 +366,6 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
         ),
       );
       unawaited(widget.workoutState.completeRound(effortId, entryIndex));
-      // Start the rest timer immediately on auto-expiry — parity with the
-      // manual Log Round path in _logSet(). Mark the key as logged so that
-      // when the user taps "Log Round" (or the arrow), _logSet() takes the
-      // early-return path and does not create a second rest record.
-      _loggedSetKeys.add(timerKey);
-      unawaited(
-        widget.workoutState.recordRestStart(effortId, entryIndex + 1),
-      );
-      unawaited(
-        widget.restNotificationService.scheduleRestPings(
-          restStartMs: DateTime.now().millisecondsSinceEpoch,
-          intervalSecs: widget.settingsState.restPingInterval,
-          soundId: widget.settingsState.restPingSound,
-          playSound: !_isAppInForeground,
-        ),
-      );
-      // Auto-advance to the next set — same as tapping the Log Round button.
-      // Only advance when the expired entry is the one currently on screen;
-      // if _drainStaleInProgressKeys fires this handler for a stale key while
-      // the user is already viewing a different set, skip the advance.
-      if (entryIndex == _currentSet - 1) {
-        unawaited(_logSet());
-      }
     } else {
       _effortTimers[timerKey]?.cancel();
       _effortRunning[timerKey] = false;
@@ -405,11 +380,6 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
         ),
       );
       unawaited(widget.workoutState.finishTimedEntry(effortId, entryIndex));
-      // Auto-advance to the next set — same as tapping the Log button.
-      // Only advance when the expired entry is the one currently on screen.
-      if (entryIndex == _currentSet - 1) {
-        unawaited(_logSet());
-      }
     }
   }
 

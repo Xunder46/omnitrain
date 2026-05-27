@@ -120,10 +120,16 @@ void main() {
 
         // Advance the fake clock by 1 s to fire the Timer.periodic callback.
         await tester.pump(const Duration(seconds: 1));
-        // Allow completeRound(), _logSet() auto-advance, and setState calls to settle.
+        // Allow completeRound() and any setState calls to settle.
         await tester.pumpAndSettle();
 
-        // Round 0 auto-completed and the screen auto-advanced to round 1.
+        // Round 0 is now auto-completed ("LOGGED" center label).
+        // Tap the forward arrow to navigate to round 1.
+        final forwardArrow = find.byIcon(Icons.arrow_forward);
+        expect(forwardArrow, findsOneWidget);
+        await tester.tap(forwardArrow);
+        await tester.pumpAndSettle();
+
         // Round 1 is notStarted — "Start" should be the center control.
         expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
 
@@ -184,9 +190,7 @@ void main() {
           await Future.delayed(const Duration(seconds: 3));
         });
 
-        // Navigate to round 1 manually (tick has not fired, so auto-advance
-        // has not happened yet — the drain path in _toggleEffortTimer will
-        // handle the stale key when Start is tapped).
+        // Navigate to round 1 WITHOUT pumping a tick first.
         final forwardArrow = find.byIcon(Icons.arrow_forward);
         expect(forwardArrow, findsOneWidget);
         await tester.tap(forwardArrow);
@@ -195,8 +199,7 @@ void main() {
         expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
 
         // Tap Start — _drainStaleInProgressKeys fires _handleEffortTimerExpired
-        // eagerly. Because entryIndex (0) != _currentSet-1 (1), the auto-advance
-        // guard skips _logSet(); only the stale-key cleanup runs. Round 1 starts.
+        // eagerly and clears the stale key before the lock check.
         await tester.tap(find.widgetWithText(FilledButton, 'Start'));
         await tester.pumpAndSettle();
 
@@ -306,106 +309,6 @@ void main() {
         expect(
           find.widgetWithText(FilledButton, 'Log Interval'),
           findsOneWidget,
-        );
-      },
-    );
-
-    // S-BUG-004: Rest timer must start at the moment of round auto-expiry,
-    // not deferred until the user manually taps "Log Round".
-    //
-    // Bug: _handleEffortTimerExpired did not call recordRestStart(), so the
-    // rest timer never started on auto-expiry. The manual Log Round path
-    // already called recordRestStart() correctly.
-    //
-    // Fix: _handleEffortTimerExpired now calls recordRestStart(effortId,
-    // entryIndex + 1) and scheduleRestPings immediately on round expiry.
-    // It also adds the logKey to _loggedSetKeys so the subsequent "Log Round"
-    // tap hits the early-return path in _logSet() and does not restart rest.
-    testWidgets(
-      'S-BUG-004: rest timer starts immediately when round auto-expires (not on Log Round tap)',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await _buildDeps(modality: 'resistance_lifting');
-
-        final helperRepo = await _freshRepo();
-        final exercises = await helperRepo.getExercises();
-        final roundExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('rounds'),
-        );
-
-        final effortId = await deps.workoutState.addExerciseToSession(
-          roundExercise,
-          effortKindOverride: 'round',
-        );
-        await deps.workoutState.addEntry(effortId);
-        await deps.workoutState.updateRoundPlannedDuration(effortId, 0, 2);
-        await deps.workoutState.updateRoundPlannedDuration(effortId, 1, 2);
-
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _openDetailView(tester, roundExercise.name);
-
-        // No rest record yet before any round is started.
-        expect(
-          deps.workoutState.hasRestRecord(effortId, 1),
-          isFalse,
-          reason: 'no rest record should exist before any round is logged',
-        );
-
-        // Start round 0.
-        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
-        await tester.pumpAndSettle();
-
-        // Wait for the timer to wall-clock expire.
-        await tester.runAsync(() async {
-          await Future.delayed(const Duration(seconds: 3));
-        });
-
-        // Pump the fake clock to trigger _handleEffortTimerExpired, which now
-        // also auto-advances to round 1 via _logSet().
-        await tester.pump(const Duration(seconds: 1));
-        await tester.pumpAndSettle();
-
-        // Rest record must exist immediately after auto-expiry — before any
-        // user interaction. entryIndex 1 = rest before round 1.
-        expect(
-          deps.workoutState.hasRestRecord(effortId, 1),
-          isTrue,
-          reason:
-              'rest record must be created by auto-expiry, not deferred to Log Round tap',
-        );
-
-        // The open rest should have no end yet (user is still resting).
-        final rests = deps.workoutState.getEntryRests(effortId);
-        final openRest =
-            rests.where((r) => r.entryIndex == 1 && r.restEndMs == null);
-        expect(
-          openRest,
-          isNotEmpty,
-          reason: 'rest record must be open (restEndMs == null) while resting',
-        );
-
-        // Screen auto-advanced to round 1 — no forward arrow tap required.
-        // Tapping forward now would navigate to round 2, which doesn't exist.
-        expect(
-          find.widgetWithText(FilledButton, 'Start'),
-          findsOneWidget,
-          reason: 'auto-advance must show round 1 Start button without forward arrow tap',
-        );
-
-        // Now tap the forward arrow to advance past round 1 (which has not
-        // been started) — should not create a second rest record.
-        final forwardArrow = find.byIcon(Icons.arrow_forward);
-        expect(forwardArrow, findsOneWidget);
-        final restsBefore = deps.workoutState.getEntryRests(effortId).length;
-        await tester.tap(forwardArrow);
-        await tester.pumpAndSettle();
-
-        // No additional rest record should have been created by navigating
-        // forward — the rest was already started at auto-expiry.
-        expect(
-          deps.workoutState.getEntryRests(effortId).length,
-          equals(restsBefore),
-          reason: 'navigating forward after auto-expiry must not create a second rest record',
         );
       },
     );

@@ -85,7 +85,7 @@ The `effortKind` field on each `SegmentEffort` drives UI rendering. Determined b
 | Effort Kind | Primary Metrics | Controls | Progress Label | Example Modalities |
 |-------------|----------------|----------|----------------|-------------------|
 | **set** | Reps, Weight | Scrollers | "Set X of Y" | Resistance Lifting |
-| **timed** | Duration, Distance | Timer + Scroller | "Interval X of Y" | Cardio Endurance, Sports (free time) |
+| **timed** | Duration, Distance, Extra Weight (optional) | Timer + Scroller | "Interval X of Y" | Cardio Endurance, Sports (free time) |
 | **round** | Rounds, Round Duration | Timer + Round Count | "Round X of Y" or "Period X of Y" | Martial Arts, Sports (segmented) |
 | **drill** | Hold Duration, Extra Weight | Timer + Extra Weight Scroller | "Hold X of Y" | Isometric/Stretching |
 
@@ -110,12 +110,17 @@ Column(
   children: [
     InlineMetricEditor(metricType: 'duration', onTap: _toggleEffortTimer, ...),
     Status Text (RUNNING/STOPPED),
+    // Extra-weight editor shown only when entry has an extra-weight observation
+    // (new entries always do; pre-feature legacy entries do not — UI guard):
+    if (entryData['extra-weight'] != null)
+      OutlinedButton('Weight adjustment', ...), // collapsed by default, tap to expand
   ]
 )
 ```
 **User Flow**: 
 - Option A: Tap the duration display to start or pause timing → tap "Log Interval" when done
 - Option B: Scroll to a preset duration → tap "Log Interval" without starting the timer
+- Option C (loaded cardio): Tap "Weight adjustment" to expand extra-weight scroller → adjust load → tap "Log Interval"
 
 #### `effortKind == 'round'` (Martial Arts/Sports)
 ```dart
