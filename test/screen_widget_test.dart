@@ -35,6 +35,7 @@ import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
@@ -103,6 +104,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('PREFERENCES'), findsOneWidget);
       expect(find.text('TRAINING'), findsNothing);
       expect(find.text('MEASUREMENTS'), findsNothing);
@@ -189,6 +191,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('Training Periods'), findsOneWidget);
       expect(find.text('No training periods yet.'), findsOneWidget);
     });
@@ -252,6 +255,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('Create Period'), findsOneWidget);
     });
 
@@ -390,6 +394,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('Calendar'), findsOneWidget);
       expect(find.byIcon(Icons.chevron_left), findsOneWidget);
       expect(find.byIcon(Icons.chevron_right), findsOneWidget);
@@ -478,6 +483,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('My Routines'), findsOneWidget);
       expect(find.text('No Routines Yet'), findsOneWidget);
     });
@@ -558,6 +564,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // Header
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       // Header title
       expect(find.text('Exercises'), findsOneWidget);
       // Back arrow
@@ -1250,6 +1258,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('Workout Session'), findsOneWidget);
       expect(find.text('No exercises yet'), findsOneWidget);
     });
@@ -1993,6 +2002,7 @@ void main() {
 
       await pumpStatsScreen(tester, repo);
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('Stats'), findsOneWidget);
     });
 
@@ -2262,6 +2272,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('New Exercise'), findsOneWidget);
     });
 
@@ -2332,6 +2343,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('Profile'), findsOneWidget);
     });
 
@@ -2395,6 +2407,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(find.text('No sessions on this day.'), findsOneWidget);
     });
 
@@ -3162,6 +3175,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('How did it feel?'), findsNothing);
+      expect(find.byType(OmniBackHeader), findsOneWidget);
       expect(workoutState.currentSession!.sessionFeeling, 3);
     });
 

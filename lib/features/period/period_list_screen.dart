@@ -6,6 +6,7 @@ import '../../state/period/period_state.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import 'create_period_screen.dart';
+import '../../widgets/layout/omni_back_header.dart';
 import '../../core/navigation/navigation.dart';
 
 class PeriodListScreen extends StatefulWidget {
@@ -31,11 +32,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
     return Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text('Training Periods'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: const OmniBackHeader(title: 'Training Periods'),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: widget.periodState,

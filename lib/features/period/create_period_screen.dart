@@ -5,6 +5,7 @@ import '../../state/period/period_state.dart';
 import '../../core/constants/modality.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
+import '../../widgets/layout/omni_back_header.dart';
 
 class CreatePeriodScreen extends StatefulWidget {
   final PeriodState periodState;
@@ -82,12 +83,8 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
     return Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: Text(
-          widget.existingPeriod == null ? 'Create Period' : 'Edit Period',
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+      appBar: OmniBackHeader(
+        title: widget.existingPeriod == null ? 'Create Period' : 'Edit Period',
       ),
       bottomNavigationBar: OmniBottomCTA(
         label: 'Save',

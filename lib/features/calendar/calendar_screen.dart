@@ -4,6 +4,7 @@ import '../../core/navigation/navigation.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/modality_color_utils.dart';
 import '../../core/constants/home_tiles.dart';
+import '../../widgets/layout/omni_back_header.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
@@ -87,10 +88,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text('Calendar'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+      appBar: OmniBackHeader(
+        title: 'Calendar',
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),

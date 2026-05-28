@@ -13,6 +13,7 @@ import '../../data/models/models.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import 'workout_session_screen.dart';
+import '../../widgets/layout/omni_back_header.dart';
 
 class SessionOverviewScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -142,21 +143,10 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
 
     return Scaffold(
       backgroundColor: themeColors.backgroundTop,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Workout Session'),
-            Text(
-              modalityName,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: themeColors.backgroundTop,
-        elevation: 0,
+      extendBodyBehindAppBar: true,
+      appBar: OmniBackHeader(
+        title: 'Workout Session',
+        subtitle: modalityName,
       ),
       body: SafeArea(
         child: Padding(

@@ -16,6 +16,7 @@ import '../../core/constants/modality.dart';
 import '../../state/settings/settings_state.dart';
 import '../session/workout_session_screen.dart';
 import '../session/session_summary_screen.dart';
+import '../../widgets/layout/omni_back_header.dart';
 
 /// Shows all sessions (planned + completed TrainingSessions) for a single day.
 ///
@@ -78,11 +79,7 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
     return Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: Text(title),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: OmniBackHeader(title: title),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: widget.calendarState,

@@ -7,6 +7,7 @@ import '../../core/constants/omni_theme.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/settings/settings_state.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/layout/omni_back_header.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 
@@ -31,12 +32,7 @@ class SettingsScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('Settings'),
-      ),
+      appBar: const OmniBackHeader(title: 'Settings'),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: settingsState,

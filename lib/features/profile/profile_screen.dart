@@ -9,6 +9,7 @@ import '../../data/models/models.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
 import 'widgets/profile_avatar_image_stub.dart'
@@ -50,11 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.transparent,
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text('Profile'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      appBar: const OmniBackHeader(title: 'Profile'),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: widget.profileState,

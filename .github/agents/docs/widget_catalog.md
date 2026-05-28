@@ -46,6 +46,31 @@ Full-screen cosmic gradient backdrop used on every screen.
 2. Optional radial white highlight (10% opacity)
 3. Optional film-grain noise overlay (`NoiseOverlayPainter`) — controlled by `OmniTheme.enableBackgroundNoise`
 
+### `OmniBackHeader`
+
+**File**: `lib/widgets/layout/omni_back_header.dart`
+
+Standardized back-and-title header used by all secondary screens. Implements `PreferredSizeWidget` so it slots directly into `Scaffold.appBar`.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `title` | `String` | required | Primary header text |
+| `subtitle` | `String?` | `null` | Optional second line below the title in `bodySmall` + `OmniTheme.textSecondary` |
+| `onBack` | `VoidCallback?` | `null` | Called on back arrow tap; defaults to `Navigator.of(context).pop()` |
+| `actions` | `List<Widget>?` | `null` | Trailing widgets forwarded to `AppBar.actions` |
+
+**Behavior**:
+- `preferredSize` is always `Size.fromHeight(kToolbarHeight)` (56 px)
+- `backgroundColor` and `surfaceTintColor` are `Colors.transparent`, `elevation: 0` — gradient background shows through
+- Back arrow color: `OmniTheme.textPrimary` (never inherits from theme's `foregroundColor`)
+- `titleTextStyle`: `titleLarge` + `FontWeight.w600` + `OmniTheme.titleLetterSpacing` (0.4) + `OmniTheme.textPrimary`
+- Screens must set `extendBodyBehindAppBar: true` on their `Scaffold` for the gradient to render behind the transparent header
+
+**Usage notes**:
+- Calendar uses `actions: [FilledButton('+')]` for the Periods shortcut
+- `SessionSummaryScreen` uses `actions: [PopupMenuButton]` for the Edit/Save/Discard overflow
+- `SessionOverviewScreen` and `RoutineSetupScreen` use `subtitle` for contextual secondary text
+
 ### `OmniSurface`
 
 **File**: `lib/widgets/layout/omni_surface.dart`

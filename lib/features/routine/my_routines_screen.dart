@@ -9,6 +9,7 @@ import '../../state/workout/workout_state.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import 'routine_setup_screen.dart';
+import '../../widgets/layout/omni_back_header.dart';
 import '../session/workout_session_screen.dart';
 
 /// Screen displaying list of saved workout routines
@@ -51,15 +52,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       backgroundColor: Colors.transparent,
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text('My Routines'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
+      appBar: const OmniBackHeader(title: 'My Routines'),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _createNewRoutine(context),
         backgroundColor: Theme.of(context).colorScheme.primary,

@@ -13,6 +13,7 @@ import '../../state/workout/workout_state.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
+import '../../widgets/layout/omni_back_header.dart';
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -135,74 +136,24 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     );
   }
 
-  Widget _buildHeader(ThemeData theme) {
-    final efforts = widget.routineState.currentEfforts;
-    final exerciseName = _showListView || efforts.isEmpty
-        ? 'Exercises'
-        : (_exerciseCache[efforts[_currentExerciseIndex].exerciseId]?.name ??
-              'Unknown Exercise');
-    final subtitle = _showListView
-        ? '${efforts.length} exercise${efforts.length != 1 ? 's' : ''}'
-        : 'Exercise ${_currentExerciseIndex + 1} / ${efforts.length}';
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Row(
-        children: [
-          IconButton(
-            icon: Icon(
-              Icons.arrow_back,
-              color: theme.colorScheme.onSurface,
-            ),
-            onPressed: () {
-              if (!_showListView) {
-                setState(() => _showListView = true);
-              } else {
-                _discardAndPop();
-              }
-            },
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  exerciseName,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color:
-                        theme.textTheme.bodyMedium?.color ??
-                        theme.colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildListView(ThemeData theme) {
     final segments = widget.routineState.currentSegments;
+    final efforts = widget.routineState.currentEfforts;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
+      extendBodyBehindAppBar: true,
+      appBar: OmniBackHeader(
+        title: 'Exercises',
+        subtitle: '${efforts.length} exercise${efforts.length != 1 ? 's' : ''}',
+        onBack: () => _discardAndPop(),
+      ),
       body: Stack(
         children: [
           SafeArea(
             child: Column(
               children: [
-                _buildHeader(theme),
                 const SizedBox(height: 8),
                 _buildRoutineNameField(theme),
                 const SizedBox(height: 12),
@@ -604,10 +555,17 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       _currentSet = setCount;
     }
     final canAddSet = setCount < WorkoutConstants.maxEntriesPerEffort;
+    final exerciseName = exercise?.name ?? 'Unknown Exercise';
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
+      extendBodyBehindAppBar: true,
+      appBar: OmniBackHeader(
+        title: exerciseName,
+        subtitle: 'Exercise ${_currentExerciseIndex + 1} / ${efforts.length}',
+        onBack: () => setState(() => _showListView = true),
+      ),
       body: GestureDetector(
         onHorizontalDragEnd: (details) {
           if (details.primaryVelocity == null) return;
@@ -630,7 +588,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             children: [
               Column(
                 children: [
-                  _buildHeader(theme),
                   Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.symmetric(

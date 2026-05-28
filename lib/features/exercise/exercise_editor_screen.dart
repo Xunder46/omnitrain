@@ -4,6 +4,7 @@ import '../../core/utils/exercise_helpers.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
+import '../../widgets/layout/omni_back_header.dart';
 
 class ExerciseEditorScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -253,12 +254,8 @@ class _ExerciseEditorScreenState extends State<ExerciseEditorScreen> {
     );
     final visibleLegacyCaps = _legacyCapabilityIds.toList()..sort();
 
-    final appBar = AppBar(
-      title: Text(_isEditMode ? 'Edit Exercise' : 'New Exercise'),
-      backgroundColor: Colors.transparent,
-      foregroundColor: theme.colorScheme.onSurface,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
+    final appBar = OmniBackHeader(
+      title: _isEditMode ? 'Edit Exercise' : 'New Exercise',
     );
 
     if (_isLoading) {

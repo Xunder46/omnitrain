@@ -11,6 +11,7 @@ import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_surface.dart';
+import '../../widgets/layout/omni_back_header.dart';
 
 class StatsScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -102,11 +103,7 @@ class _StatsScreenState extends State<StatsScreen> {
           backgroundColor: Colors.transparent,
           extendBody: true,
           extendBodyBehindAppBar: true,
-          appBar: AppBar(
-            title: const Text('Stats'),
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-          ),
+          appBar: const OmniBackHeader(title: 'Stats'),
           body: SafeArea(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
