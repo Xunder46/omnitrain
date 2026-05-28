@@ -120,6 +120,23 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     setState(callback);
   }
 
+  void _beginSetTransition(int direction) {
+    _setTransitionResetTimer?.cancel();
+    _setTransitionDirection = direction;
+    _setTransitionResetTimer = Timer(OmniTheme.animationDuration, () {
+      if (!mounted) return;
+      setState(() {
+        _setTransitionDirection = null;
+      });
+    });
+  }
+
+  void _clearSetTransition() {
+    _setTransitionResetTimer?.cancel();
+    _setTransitionResetTimer = null;
+    _setTransitionDirection = null;
+  }
+
   // Tracks the elapsed-seconds value at which the last rest ping fired per
   // effort. Entry is removed when rest ends (so next rest starts fresh).
   @override
@@ -141,6 +158,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // (add/remove exercise, add/remove set) that bypass the edit buffer.
   // Null when not in edit mode or after a successful Save.
   SessionEditSnapshot? _editSnapshot;
+
+  // Horizontal set-navigation transition state used by the detail view.
+  int? _setTransitionDirection;
+  Timer? _setTransitionResetTimer;
 
   // True when any structural change (add/remove exercise, add/remove set)
   // was made during this edit session. Combined with _editBuffer to decide
@@ -431,7 +452,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     await widget.workoutState.loadExerciseNote(exerciseId);
   }
 
-  Future<void> _focusExerciseDetail(int index, {int setNumber = 1}) async {
+  Future<void> _focusExerciseDetail(
+    int index, {
+    int setNumber = 1,
+    bool preserveSetTransition = false,
+  }) async {
     if (!mounted || index < 0 || index >= _exercises.length) return;
     final requestId = ++_focusRequestId;
 
@@ -446,6 +471,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final maxSet = entries.isNotEmpty ? entries.length : 1;
     final safeSetNumber = setNumber.clamp(1, maxSet).toInt();
 
+    if (!preserveSetTransition) {
+      _clearSetTransition();
+    }
     setState(() {
       _currentExerciseIndex = index;
       _currentSet = safeSetNumber;
@@ -716,6 +744,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
     // Simply move back to previous set without clearing values
     int? previousExerciseIndex;
+    _beginSetTransition(-1);
     setState(() {
       if (_currentSet > 1) {
         _currentSet--;
@@ -732,41 +761,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     if (previousExerciseIndex != null) {
       unawaited(_loadExerciseNoteForIndex(previousExerciseIndex!));
     }
-  }
-
-  void _skipSet() {
-    if (_exercises.isEmpty) return;
-
-    final exercise = _exercises[_currentExerciseIndex];
-    final effortId = exercise['id'] as String;
-    final entries = exercise['entries'] as List<Map<String, dynamic>>;
-    final effortKind = exercise['effortKind'] as String? ?? 'set';
-
-    // Stop timer if running
-    if (effortKind == 'timed' ||
-        effortKind == 'drill' ||
-        effortKind == 'round') {
-      final timerKey = '$effortId-${_currentSet - 1}';
-      if (_effortRunning[timerKey] == true) {
-        _pauseEffortTimer(effortId, _currentSet - 1);
-      }
-    }
-
-    // Mark this set as skipped (don't log or fill the dot)
-    _skippedSets.putIfAbsent(effortId, () => {}).add(_currentSet - 1);
-
-    // Reset timer display state for the skipped entry
-    final skippedKey = '$effortId-${_currentSet - 1}';
-    _effortElapsed[skippedKey] = 0;
-    _effortTargetDuration.remove(skippedKey);
-    _effortAlerted[skippedKey] = false;
-
-    // Just advance to next set, don't auto-finish
-    setState(() {
-      if (_currentSet < entries.length) {
-        _currentSet++;
-      }
-    });
   }
 
   /// Pre-fill the next set entry with values from the previous set
@@ -861,7 +855,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         }
       }
 
-      await widget.workoutState.addEntry(effortId, previousValues: previousValues);
+      await widget.workoutState.addEntry(
+        effortId,
+        previousValues: previousValues,
+      );
       await _loadExercises();
     } finally {
       _isStructuralOp = false;
@@ -1095,6 +1092,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         }
       }
     }
+    _beginSetTransition(setNumber > _currentSet ? 1 : -1);
     setState(() {
       _currentSet = setNumber;
     });
@@ -1107,7 +1105,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     _resetEffortAlertState(effortId, _currentSet - 1);
   }
 
-  void _switchExercise(int delta) {
+  void _switchExercise(int delta, {bool preserveSetTransition = false}) {
     final newIndex = _currentExerciseIndex + delta;
     if (newIndex < 0 || newIndex >= _exercises.length) return;
     // Auto-pause timer if in progress before switching exercise.
@@ -1124,7 +1122,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         }
       }
     }
-    unawaited(_focusExerciseDetail(newIndex));
+    unawaited(
+      _focusExerciseDetail(
+        newIndex,
+        preserveSetTransition: preserveSetTransition,
+      ),
+    );
   }
 
   /// Check if the exercise picker should auto-open on first session load.
@@ -1390,6 +1393,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.settingsState.removeListener(_onSettingsChanged);
+    _setTransitionResetTimer?.cancel();
     _ticker?.cancel();
     // Cancel all effort timers
     for (final timer in _effortTimers.values) {

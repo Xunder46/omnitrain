@@ -162,6 +162,7 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
     if (_exercises.isEmpty) return;
     final exercise = _exercises[_currentExerciseIndex];
     final entries = exercise['entries'] as List<Map<String, dynamic>>;
+    _beginSetTransition(1);
     int? nextExerciseIndex;
     _updateUi(() {
       if (_currentSet < entries.length) {

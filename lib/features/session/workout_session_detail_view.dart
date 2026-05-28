@@ -260,7 +260,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           children: [
             GestureDetector(
               key: const Key('timer-gesture-detector'),
-              onTap: isTimedFinished ? null : () => _toggleEffortTimer(effortId),
+              onTap: isTimedFinished
+                  ? null
+                  : () => _toggleEffortTimer(effortId),
               behavior: HitTestBehavior.opaque,
               child: Column(
                 children: [
@@ -288,8 +290,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                 ),
                         ),
                         const SizedBox(width: 6),
-                      ]
-                      else const SizedBox(height: 30), // keep space even when finished
+                      ] else
+                        const SizedBox(
+                          height: 30,
+                        ), // keep space even when finished
                       Text(
                         isTimedFinished
                             ? ''
@@ -298,10 +302,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                   : (isTimedStarted ? 'PAUSED' : 'STOPPED')),
                         style: theme.textTheme.labelMedium?.copyWith(
                           color: timedIsRunning
-                                  ? theme.colorScheme.primary.withOpacity(0.8)
-                                  : theme.colorScheme.onSurface.withAlpha(
-                                      (0.5 * 255).round(),
-                                    ),
+                              ? theme.colorScheme.primary.withOpacity(0.8)
+                              : theme.colorScheme.onSurface.withAlpha(
+                                  (0.5 * 255).round(),
+                                ),
                           letterSpacing: 1,
                         ),
                       ),
@@ -483,8 +487,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                 ),
                         ),
                         const SizedBox(width: 6),
-                      ]
-                      else
+                      ] else
                         const SizedBox(height: 30),
                       Text(
                         isFinished
@@ -595,7 +598,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           mainAxisSize: MainAxisSize.min,
           children: [
             GestureDetector(
-              onTap: isDrillFinished ? null : () => _toggleEffortTimer(effortId),
+              onTap: isDrillFinished
+                  ? null
+                  : () => _toggleEffortTimer(effortId),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -623,8 +628,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                 ),
                         ),
                         const SizedBox(width: 6),
-                      ]
-                      else const SizedBox(height: 30), // keep space even when finished
+                      ] else
+                        const SizedBox(
+                          height: 30,
+                        ), // keep space even when finished
                       Text(
                         isDrillFinished
                             ? ''
@@ -633,10 +640,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                   : (isDrillStarted ? 'PAUSED' : 'STOPPED')),
                         style: theme.textTheme.labelMedium?.copyWith(
                           color: drillIsRunning
-                                  ? theme.colorScheme.primary.withOpacity(0.8)
-                                  : theme.colorScheme.onSurface.withAlpha(
-                                      (0.5 * 255).round(),
-                                    ),
+                              ? theme.colorScheme.primary.withOpacity(0.8)
+                              : theme.colorScheme.onSurface.withAlpha(
+                                  (0.5 * 255).round(),
+                                ),
                           letterSpacing: 1,
                         ),
                       ),
@@ -705,13 +712,17 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 onTap: _deleteCurrentSet,
                 customBorder: const CircleBorder(),
                 child: Container(
-                  constraints: const BoxConstraints(minWidth: 50, minHeight: 50),
+                  constraints: const BoxConstraints(
+                    minWidth: 50,
+                    minHeight: 50,
+                  ),
                   alignment: Alignment.center,
                   child: Icon(
                     Icons.remove,
                     size: 24,
-                    color: theme.colorScheme.onSurface
-                        .withAlpha((0.35 * 255).round()),
+                    color: theme.colorScheme.onSurface.withAlpha(
+                      (0.35 * 255).round(),
+                    ),
                   ),
                 ),
               ),
@@ -725,7 +736,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
                   letterSpacing: compactLetterSpacing,
-                  color: theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+                  color: theme.colorScheme.onSurface.withAlpha(
+                    (0.6 * 255).round(),
+                  ),
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -740,7 +753,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 onTap: canAddEntry ? _addSet : null,
                 customBorder: const CircleBorder(),
                 child: Container(
-                  constraints: const BoxConstraints(minWidth: 50, minHeight: 50),
+                  constraints: const BoxConstraints(
+                    minWidth: 50,
+                    minHeight: 50,
+                  ),
                   alignment: Alignment.center,
                   child: Icon(
                     Icons.add,
@@ -765,10 +781,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     String effortKind,
     ThemeData theme,
   ) {
-    if (_currentSet <= 1) return const SizedBox(height: 16,);
+    if (_currentSet <= 1) return const SizedBox(height: 16);
 
     final entries = exercise['entries'] as List<Map<String, dynamic>>;
-    if (_currentSet - 2 >= entries.length) return const SizedBox(height: 16,);
+    if (_currentSet - 2 >= entries.length) return const SizedBox(height: 16);
 
     final previousEntryIndex = _currentSet - 2;
     final previousEntry = entries[previousEntryIndex];
@@ -803,8 +819,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         final prevTimedRemSecs = prevTimedSecs % 60;
         statsText =
             'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${UnitFormatter.formatDistanceValue(prevDistance, widget.settingsState)} ${UnitFormatter.distanceLabel(widget.settingsState)}';
-        final prevTimedExtraWeight =
-            previousEntry['extra-weight'] as double?;
+        final prevTimedExtraWeight = previousEntry['extra-weight'] as double?;
         if (prevTimedExtraWeight != null && prevTimedExtraWeight != 0.0) {
           statsText +=
               ' + ${UnitFormatter.formatWeightValue(prevTimedExtraWeight, widget.settingsState)} ${UnitFormatter.weightLabel(widget.settingsState)}';
@@ -851,11 +866,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
-  Widget _buildSetIndicator(
-    int totalSets,
-    String effortKind,
-    ThemeData theme,
-  ) {
+  Widget _buildSetIndicator(int totalSets, String effortKind, ThemeData theme) {
     final effortId = _exercises[_currentExerciseIndex]['id'] as String;
 
     return Column(
@@ -974,7 +985,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
   ) {
     if (effortKind == 'timed' || effortKind == 'drill') {
       final instance = _getTimedInstance(effortId, entryIndex);
-      return (instance?.state ?? TimedState.notStarted) == TimedState.notStarted;
+      return (instance?.state ?? TimedState.notStarted) ==
+          TimedState.notStarted;
     }
     if (effortKind == 'round') {
       final round = _getRoundInstance(effortId, entryIndex);
@@ -1005,13 +1017,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       child: FilledButton(
         style: ButtonStyle(
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
-          minimumSize: WidgetStateProperty.all(
-            const Size(double.infinity, 64),
-          ),
+          minimumSize: WidgetStateProperty.all(const Size(double.infinity, 64)),
         ),
         onPressed: () => _toggleEffortTimer(effortId),
         child: const Text('Start'),
@@ -1027,7 +1035,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     if (_currentSet < entries.length) {
       _jumpToSet(_currentSet + 1);
     } else if (_currentExerciseIndex < _exercises.length - 1) {
-      _switchExercise(1);
+      _beginSetTransition(1);
+      _switchExercise(1, preserveSetTransition: true);
     }
   }
 
@@ -1052,13 +1061,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       child: FilledButton(
         style: ButtonStyle(
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
-          minimumSize: WidgetStateProperty.all(
-            const Size(double.infinity, 64),
-          ),
+          minimumSize: WidgetStateProperty.all(const Size(double.infinity, 64)),
         ),
         onPressed: _logSet,
         child: Text(label),
@@ -1092,7 +1097,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 size: 24,
                 color: isEnabled
                     ? theme.colorScheme.onSurface.withAlpha((0.5 * 255).round())
-                    : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+                    : theme.colorScheme.onSurface.withAlpha(
+                        (0.2 * 255).round(),
+                      ),
               ),
             ),
           ),
@@ -1100,5 +1107,4 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       ),
     );
   }
-
 }
