@@ -605,8 +605,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
                       _buildHeaderCard(theme),
-                      const SizedBox(height: 16),
-                      _buildStatsCard(theme),
+                      if (!widget.workoutState.isRollingSession) ...[
+                        const SizedBox(height: 16),
+                        _buildStatsCard(theme),
+                      ],
                       ..._buildGroupCards(theme),
                       _buildNoteCard(theme),
                       const SizedBox(height: 16),

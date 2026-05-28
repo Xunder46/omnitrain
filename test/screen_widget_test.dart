@@ -3390,7 +3390,7 @@ void main() {
       expect(find.text('Sports'), findsNothing);
     });
 
-    testWidgets('rolling session uses same top stats layout as non-rolling', (
+    testWidgets('rolling session does not show Duration or Rest Time stats', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -3415,8 +3415,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('DURATION'), findsOneWidget);
-      expect(find.text('REST TIME'), findsOneWidget);
+      expect(find.text('DURATION'), findsNothing);
+      expect(find.text('REST TIME'), findsNothing);
       expect(find.text('EXERCISES'), findsNothing);
     });
 
@@ -3447,6 +3447,73 @@ void main() {
 
       expect(find.text('DURATION'), findsOneWidget);
     });
+
+    testWidgets('standard session still shows Duration and Rest Time stats', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(isRolling: false);
+      final exercises = await repo.getExercises();
+      await workoutState.addExerciseToSession(exercises.first);
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+            settingsState: SettingsState(repo),
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('DURATION'), findsOneWidget);
+      expect(find.text('REST TIME'), findsOneWidget);
+    });
+
+    testWidgets(
+      'rolling session still shows group card, note, and calendar sections',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        await workoutState.createNewSession(isRolling: true);
+        final session = workoutState.currentSession!;
+        await workoutState.updateSessionFeeling(session.id, 3);
+        final exercises = await repo.getExercises();
+        await workoutState.addExerciseToSession(
+          exercises.first,
+          chosenMetric: 'reps',
+        );
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SessionSummaryScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+              settingsState: SettingsState(repo),
+              timerAlertService: FakeTimerAlertService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('DURATION'), findsNothing);
+        expect(find.text('REST TIME'), findsNothing);
+        expect(find.text('Strength'), findsOneWidget);
+        expect(find.text('Session note'), findsOneWidget);
+        expect(find.text('Open Calendar'), findsOneWidget);
+      },
+    );
 
     testWidgets(
       'rolling summary does not render block headers or exercise rows',

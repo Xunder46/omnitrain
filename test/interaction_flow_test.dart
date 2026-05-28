@@ -43,7 +43,7 @@ void main() {
       HomeScreen screen,
       WorkoutState workoutState,
       String sessionId,
-    })> _buildHomeWithLoadedSession(MockWorkoutRepository repo) async {
+    })> buildHomeWithLoadedSession(MockWorkoutRepository repo) async {
       final seedState = WorkoutState(repo);
       await seedState.createNewSession(modality: 'resistance_lifting');
       final exercises = await repo.getExercises();
@@ -87,7 +87,7 @@ void main() {
       );
     }
 
-    Future<HomeScreen> _buildHomeWithoutSession(MockWorkoutRepository repo) async {
+    Future<HomeScreen> buildHomeWithoutSession(MockWorkoutRepository repo) async {
       final workoutState = WorkoutState(repo);
       final homeState = HomeState(repo);
       await homeState.init();
@@ -120,7 +120,7 @@ void main() {
       'cold-start loaded session shows active tile without launch modal and tap resumes',
       (WidgetTester tester) async {
         final repo = await _freshRepo();
-        final setup = await _buildHomeWithLoadedSession(repo);
+        final setup = await buildHomeWithLoadedSession(repo);
 
         await tester.pumpWidget(MaterialApp(home: setup.screen));
         await tester.pumpAndSettle();
@@ -156,7 +156,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final screen = await _buildHomeWithoutSession(repo);
+      final screen = await buildHomeWithoutSession(repo);
 
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pumpAndSettle();

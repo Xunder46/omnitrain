@@ -1178,7 +1178,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('WorkoutState.checkForInProgressSession', () {
-    TrainingSession _makeSession(String id, int startedAtMs, {int? endedAtMs}) {
+    TrainingSession makeSession(String id, int startedAtMs, {int? endedAtMs}) {
       final now = DateTime.now().millisecondsSinceEpoch;
       return TrainingSession(
         id: id,
@@ -1203,8 +1203,8 @@ void main() {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
       final now = DateTime.now().millisecondsSinceEpoch;
-      await repo.createSession(_makeSession('s-1', now - 10000, endedAtMs: now - 5000));
-      await repo.createSession(_makeSession('s-2', now - 20000, endedAtMs: now - 15000));
+      await repo.createSession(makeSession('s-1', now - 10000, endedAtMs: now - 5000));
+      await repo.createSession(makeSession('s-2', now - 20000, endedAtMs: now - 15000));
 
       final result = await state.checkForInProgressSession();
 
@@ -1215,7 +1215,7 @@ void main() {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
       final now = DateTime.now().millisecondsSinceEpoch;
-      await repo.createSession(_makeSession('s-open', now - 5000));
+      await repo.createSession(makeSession('s-open', now - 5000));
 
       final result = await state.checkForInProgressSession();
 
@@ -1228,10 +1228,10 @@ void main() {
       final state = WorkoutState(repo);
       final now = DateTime.now().millisecondsSinceEpoch;
       // Newer session
-      await repo.createSession(_makeSession('s-new', now - 1000));
+      await repo.createSession(makeSession('s-new', now - 1000));
       // Older dangling sessions
-      await repo.createSession(_makeSession('s-old-1', now - 10000));
-      await repo.createSession(_makeSession('s-old-2', now - 20000));
+      await repo.createSession(makeSession('s-old-1', now - 10000));
+      await repo.createSession(makeSession('s-old-2', now - 20000));
 
       final result = await state.checkForInProgressSession();
 

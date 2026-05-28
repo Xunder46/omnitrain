@@ -260,7 +260,7 @@ void main() {
   // SessionSummaryScreen helpers
   // ---------------------------------------------------------------------------
 
-  Future<void> _pumpSessionSummaryScreenWithoutFeelingModal(
+  Future<void> pumpSessionSummaryScreenWithoutFeelingModal(
     WidgetTester tester, {
     required MockWorkoutRepository repo,
     required WorkoutState workoutState,
@@ -294,7 +294,7 @@ void main() {
         final workoutState = WorkoutState(repo);
         await workoutState.createNewSession();
 
-        await _pumpSessionSummaryScreenWithoutFeelingModal(
+        await pumpSessionSummaryScreenWithoutFeelingModal(
           tester,
           repo: repo,
           workoutState: workoutState,
@@ -319,7 +319,7 @@ void main() {
         final workoutState = WorkoutState(repo);
         await workoutState.createNewSession();
 
-        await _pumpSessionSummaryScreenWithoutFeelingModal(
+        await pumpSessionSummaryScreenWithoutFeelingModal(
           tester,
           repo: repo,
           workoutState: workoutState,

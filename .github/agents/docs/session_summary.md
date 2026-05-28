@@ -7,7 +7,7 @@ The Session Summary screen appears after workout completion and focuses on sessi
 Current hierarchy:
 
 1. Header
-2. Top Stats (Duration, Rest Time)
+2. Top Stats (Duration, Rest Time) for standard sessions only
 3. Context-aware modality group cards (Strength, Cardio, Sports, Isometric)
 4. Session note
 5. Calendar card
@@ -21,7 +21,7 @@ The screen keeps existing summary navigation actions (edit, save as routine, dis
 WorkoutSessionScreen -> Finish Workout
   -> SessionSummaryScreen
     -> [if sessionFeeling is null] mandatory 1-5 feeling sheet
-    -> review top stats and modality cards
+    -> review top stats when present and modality cards
     -> optionally edit session note (debounced autosave)
     -> optionally open calendar
     -> optionally use overflow menu (Edit Session, Save as Routine, Discard)
@@ -36,7 +36,7 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 | Section | Content |
 |---------|---------|
 | Header | Session title, formatted start date and time, modality badge |
-| Top Stats | Exactly two metrics: Duration and Rest Time |
+| Top Stats | Standard sessions only: Duration and Rest Time |
 | Group Cards | One card per group that has data in this session |
 | Session Note | Inline TextField with debounce save |
 | Calendar | Month grid and Open Calendar navigation button |
@@ -50,7 +50,8 @@ What is not rendered in the active layout:
 Notes:
 
 - Group cards are conditional by data presence; empty groups are hidden.
-- The same summary structure is used for rolling and non-rolling sessions.
+- Rolling sessions omit the top-stats section entirely because they have no
+  session clock.
 
 ---
 
@@ -87,10 +88,12 @@ Behavior details:
 
 ## Rest Time and Duration
 
-Top stats are always rendered and always contain exactly:
+Top stats are rendered only for standard sessions and contain exactly:
 
 - Duration
 - Rest Time
+
+Rolling sessions do not render the top-stats card or its surrounding spacing.
 
 Rest Time is aggregated from EntryRest records by:
 

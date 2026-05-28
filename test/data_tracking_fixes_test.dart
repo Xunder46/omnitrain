@@ -445,7 +445,7 @@ void main() {
     /// Build a routine with one set-based exercise whose weight target is
     /// [weightKg] (canonical kg) and whose reps target is [reps].
     /// Returns the template ID after saving.
-    Future<String> _buildSavedRoutine(
+    Future<String> buildSavedRoutine(
       MockWorkoutRepository repo, {
       required double weightKg,
       required int reps,
@@ -498,7 +498,7 @@ void main() {
 
         // 35 lbs → canonical kg (what the fixed screen now stores).
         final canonicalKg = 35.0 / kgToLbs;
-        final templateId = await _buildSavedRoutine(
+        final templateId = await buildSavedRoutine(
           repo,
           weightKg: canonicalKg,
           reps: 10,
@@ -535,7 +535,7 @@ void main() {
         final repo = await _freshRepo();
         final kgSettings = await _settingsWithUnit(repo, 'kg');
 
-        final templateId = await _buildSavedRoutine(
+        final templateId = await buildSavedRoutine(
           repo,
           weightKg: 100.0, // canonical kg, no conversion needed
           reps: 10,
@@ -571,7 +571,7 @@ void main() {
         // The pre-fix bug: 35.0 was stored directly (as raw lbs value).
         // With the fix, 35.0 lbs → ~15.88 kg is what gets stored.
         final canonicalKg = 35.0 / kgToLbs;
-        final templateId = await _buildSavedRoutine(
+        final templateId = await buildSavedRoutine(
           repo,
           weightKg: canonicalKg,
           reps: 10,
