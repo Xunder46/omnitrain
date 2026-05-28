@@ -330,9 +330,9 @@ Dual-view screen for building/editing a routine.
 - Shows: exercise name, tracking label chip, metric editors, previous-set stats, set progress, and navigation controls
 - **Metric editors**: Same `InlineMetricEditor` widget used in live sessions
   - `set` → Reps + Weight scrollers
-  - `timed` → Duration scroller
+  - `timed` → Extra Weight scroller only when the effort carries an extra-weight target; no duration editor is shown in routine setup
   - `round` → Round counter + Duration scroller
-  - `drill` → Hold Time + Extra Weight scrollers
+  - `drill` → Extra Weight scroller only; no hold-time editor is shown in routine setup
 - Weight labels respect the active `SettingsState` unit preference when available
 - **Set navigation**: Previous Set / Next Set arrows, set dots indicator
 - **Set management**: inline controls now flank the centered progress label
@@ -350,15 +350,15 @@ This detail view was intentionally brought into closer parity with the live `Wor
 #### Smart Defaults for Targets
 When adding a set, targets auto-fill from the previous set:
 - `set`: Copy reps + weight from previous set
-- `timed`: Copy duration
+- `timed`: Carry forward extra weight when present; the routine builder does not expose a duration target
 - `round`: Copy round duration
-- `drill`: Copy hold time + extra weight
+- `drill`: Copy extra weight; the routine builder does not expose a hold-time target
 
 When adding a new exercise, default targets depend on effort kind:
 - `set`: 10 reps, 0 weight
-- `timed`: 0 seconds
+- `timed`: no visible metric editor unless an extra-weight target is present
 - `round`: 180 seconds (3 min), 1 round
-- `drill`: 0 seconds, 0.0 extra weight
+- `drill`: 0.0 extra weight
 
 ### Exercise Addition Flow (Routine Context)
 

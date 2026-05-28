@@ -1009,6 +1009,8 @@ void main() {
 
       // The hold-time unit label 'HOLD TIME' must be absent.
       expect(find.text('HOLD TIME'), findsNothing);
+      // Drill efforts still expose the extra-weight editor.
+      expect(find.text('EXTRA KG'), findsOneWidget);
       // The set-count label for a drill effort is still visible.
       expect(find.text('Hold 1 of 1'), findsOneWidget);
     });
