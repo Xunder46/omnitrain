@@ -131,7 +131,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             color: OmniTheme.textSecondary,
           ),
         ),
-        onTap: idx == -1 ? null : () => unawaited(_focusExerciseDetail(idx)),
+        onTap: idx == -1
+            ? null
+            : () => unawaited(
+                _focusExerciseDetail(
+                  idx,
+                  setNumber: _initialSetForExerciseIndex(idx),
+                ),
+              ),
       ),
     );
   }

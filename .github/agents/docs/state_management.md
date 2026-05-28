@@ -415,32 +415,6 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `setNotificationPermissionAsked()` | Persists that notification permission has already been requested in-context |
 | `_loadFromPrefs()` | Private — restores theme and unit preferences from repository-backed preference keys on init |
 
----
-
-### `AppState`
-
-**File**: `lib/state/app_state.dart`
-**Depends on**: nothing
-
-Singleton shell class for app-wide initialization. Not a `ChangeNotifier`. Currently minimal:
-
-```dart
-class AppState {
-  static final AppState _instance = AppState._internal();
-  factory AppState() => _instance;
-
-  bool _isInitialized = false;
-  bool get isInitialized => _isInitialized;
-
-  Future<void> initialize() async { ... }
-  void reset() { ... }
-}
-```
-
-Not used by any screen in the current codebase.
-
----
-
 ## Service Classes
 
 Services contain business logic that doesn't belong in state classes. They depend only on `WorkoutRepository` — no state classes, no UI.
@@ -557,8 +531,6 @@ WorkoutRepository (interface)
 
 WorkoutRepository
   └─ SettingsState    ← preference persistence (theme, units, alerts, calendar, workout toggles)
-
-AppState (standalone, singleton, minimal)
 ```
 
 All injectable state/service objects are created in `main.dart` and passed to `MyApp` via constructor.
@@ -576,5 +548,5 @@ All injectable state/service objects are created in `main.dart` and passed to `M
 
 ---
 
-**Document Version**: 1.2
-**Last Updated**: March 22, 2026
+**Document Version**: 1.3
+**Last Updated**: May 27, 2026

@@ -161,7 +161,7 @@ main.dart
 - State classes depend only on `WorkoutRepository` interface (never concrete implementations)
 - Services depend only on `WorkoutRepository` interface
 - Screens receive state/service objects via constructor parameters
-- No global singletons except `AppState` (currently minimal, not used in practice)
+- No global state singletons are used in the active screen graph
 
 ---
 

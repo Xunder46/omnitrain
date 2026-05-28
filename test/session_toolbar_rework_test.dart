@@ -50,7 +50,11 @@ Future<_Deps> _buildDeps({String? modality}) async {
   );
 }
 
-Widget _buildSessionScreen(_Deps deps, {bool editMode = false}) {
+Widget _buildSessionScreen(
+  _Deps deps, {
+  bool editMode = false,
+  String? initialFocusId,
+}) {
   return MaterialApp(
     home: WorkoutSessionScreen(
       workoutState: deps.workoutState,
@@ -59,6 +63,7 @@ Widget _buildSessionScreen(_Deps deps, {bool editMode = false}) {
       timerAlertService: FakeTimerAlertService(),
       settingsState: deps.settingsState,
       editMode: editMode,
+      initialFocusId: initialFocusId,
     ),
   );
 }
@@ -73,6 +78,214 @@ Future<void> _openDetailView(WidgetTester tester, String exerciseName) async {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 void main() {
+  group('Initial Landing — First Unlogged Set', () {
+    testWidgets('set effort with 2/4 logged opens on set 3 from list tap', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
+
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+
+      await deps.workoutState.recordRestStart(effortId, 1);
+      await deps.workoutState.recordRestStart(effortId, 2);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Barbell Back Squat');
+
+      expect(find.text('Set 3 of 4'), findsOneWidget);
+    });
+
+    testWidgets('set effort with none logged opens on set 1', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
+
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Barbell Back Squat');
+
+      expect(find.text('Set 1 of 3'), findsOneWidget);
+    });
+
+    testWidgets('set effort with all logged opens on last set', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
+
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+
+      await deps.workoutState.recordRestStart(effortId, 1);
+      await deps.workoutState.recordRestStart(effortId, 2);
+      await deps.workoutState.recordRestStart(effortId, 3);
+      await deps.workoutState.recordRestStart(effortId, 4);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Barbell Back Squat');
+
+      expect(find.text('Set 4 of 4'), findsOneWidget);
+    });
+
+    testWidgets('single-set effort opens on set 1 when logged or unlogged', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+
+      final depsUnlogged = await _buildDeps(modality: 'resistance_lifting');
+      final repoUnlogged = await _freshRepo();
+      final exerciseUnlogged = await _getExerciseById(
+        repoUnlogged,
+        'exercise-barbell-squat',
+      );
+      await depsUnlogged.workoutState.addExerciseToSession(
+        exerciseUnlogged,
+        chosenMetric: 'reps',
+      );
+
+      await tester.pumpWidget(_buildSessionScreen(depsUnlogged));
+      await _openDetailView(tester, 'Barbell Back Squat');
+      expect(find.text('Set 1 of 1'), findsOneWidget);
+
+      final depsLogged = await _buildDeps(modality: 'resistance_lifting');
+      final repoLogged = await _freshRepo();
+      final exerciseLogged = await _getExerciseById(
+        repoLogged,
+        'exercise-barbell-squat',
+      );
+      final effortId = await depsLogged.workoutState.addExerciseToSession(
+        exerciseLogged,
+        chosenMetric: 'reps',
+      );
+      await depsLogged.workoutState.recordRestStart(effortId, 1);
+
+      await tester.pumpWidget(_buildSessionScreen(depsLogged));
+      await _openDetailView(tester, 'Barbell Back Squat');
+      expect(find.text('Set 1 of 1'), findsOneWidget);
+    });
+
+    testWidgets('list tap and initialFocusId land on same first-unlogged set', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
+
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.recordRestStart(effortId, 1);
+      await deps.workoutState.recordRestStart(effortId, 2);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Barbell Back Squat');
+      expect(find.text('Set 3 of 4'), findsOneWidget);
+
+      await tester.pumpWidget(
+        _buildSessionScreen(deps, initialFocusId: effortId),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Set 3 of 4'), findsOneWidget);
+    });
+
+    testWidgets('timed effort uses timed logged state to land on interval 2', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-easy-run');
+
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        effortKindOverride: 'timed',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+
+      await deps.workoutState.startTimedEntry(effortId, 0);
+      await deps.workoutState.finishTimedEntry(effortId, 0);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Easy Run');
+      expect(find.text('Interval 2 of 3'), findsOneWidget);
+    });
+
+    testWidgets('round effort uses round logged state to land on round 3', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-heavy-bag-rounds');
+
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        effortKindOverride: 'round',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+
+      await deps.workoutState.startRound(effortId, 0);
+      await deps.workoutState.completeRound(effortId, 0);
+      await deps.workoutState.startRound(effortId, 1);
+      await deps.workoutState.completeRound(effortId, 1);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Heavy Bag Rounds');
+      expect(find.text('Round 3 of 3'), findsOneWidget);
+    });
+
+    testWidgets('drill effort uses timed logged state to land on hold 2', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'isometric_stretching');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-plank-hold');
+
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        effortKindOverride: 'drill',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
+
+      await deps.workoutState.startTimedEntry(effortId, 0);
+      await deps.workoutState.finishTimedEntry(effortId, 0);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Plank Hold');
+      expect(find.text('Hold 2 of 3'), findsOneWidget);
+    });
+  });
+
   group('Toolbar Rework — Log Button Labels (Phase C)', () {
     // S-001: Resistance set → shows "Log Set"
     testWidgets('S-001: incomplete resistance set shows FilledButton "Log Set"', (

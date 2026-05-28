@@ -359,12 +359,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         if (initialId != null && initialId.isNotEmpty) {
           final idx = _exercises.indexWhere((e) => e['id'] == initialId);
           if (idx != -1) {
-            final exercise = _exercises[idx];
-            final entries =
-                exercise['entries'] as List<Map<String, dynamic>>? ?? [];
-            // Restore to the current/last entry position
             initialDetailIndex = idx;
-            initialDetailSet = entries.isNotEmpty ? entries.length : 1;
+            initialDetailSet = _initialSetForExerciseIndex(idx);
           }
         }
 
@@ -445,9 +441,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
     if (!mounted || requestId != _focusRequestId) return;
 
+    final entries =
+        _exercises[index]['entries'] as List<Map<String, dynamic>>? ?? [];
+    final maxSet = entries.isNotEmpty ? entries.length : 1;
+    final safeSetNumber = setNumber.clamp(1, maxSet).toInt();
+
     setState(() {
       _currentExerciseIndex = index;
-      _currentSet = setNumber;
+      _currentSet = safeSetNumber;
       _showListView = false;
     });
 
@@ -507,6 +508,29 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       return round?.state == RoundState.finished;
     }
     return false;
+  }
+
+  int _initialSetForExerciseIndex(int exerciseIndex) {
+    if (exerciseIndex < 0 || exerciseIndex >= _exercises.length) {
+      return 1;
+    }
+
+    final exercise = _exercises[exerciseIndex];
+    final effortId = exercise['id'] as String?;
+    final effortKind = exercise['effortKind'] as String? ?? 'set';
+    final entries = exercise['entries'] as List<Map<String, dynamic>>? ?? [];
+
+    if (effortId == null || effortId.isEmpty || entries.isEmpty) {
+      return 1;
+    }
+
+    for (int i = 0; i < entries.length; i++) {
+      if (!_isSetLogged(effortId, i, effortKind)) {
+        return i + 1;
+      }
+    }
+
+    return entries.length;
   }
 
   Future<void> _logSet() async {
