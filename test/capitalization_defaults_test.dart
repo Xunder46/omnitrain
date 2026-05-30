@@ -13,7 +13,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/inputs/numeric_field_with_done_bar.dart';
-import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
+import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
@@ -189,25 +189,12 @@ void main() {
         final repo = await _freshRepo();
         final workoutState = WorkoutState(repo);
 
-        // Show the exercise picker dialog directly
+        // Show the exercise picker screen directly
         await tester.pumpWidget(
           MaterialApp(
-            home: Scaffold(
-              body: Builder(
-                builder: (context) => ElevatedButton(
-                  onPressed: () => showDialog<String>(
-                    context: context,
-                    builder: (_) => ExercisePickerDialog(
-                      workoutState: workoutState,
-                    ),
-                  ),
-                  child: const Text('Open'),
-                ),
-              ),
-            ),
+            home: ExercisePickerScreen(workoutState: workoutState),
           ),
         );
-        await tester.tap(find.text('Open'));
         await tester.pumpAndSettle();
 
         final tf = tester.widget<TextField>(

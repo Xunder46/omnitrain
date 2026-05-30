@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
+import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -106,8 +107,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    if (find.byIcon(Icons.close).evaluate().isNotEmpty) {
-      await tester.tap(find.byIcon(Icons.close).first);
+    if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
+      await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
     }
 

@@ -382,7 +382,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (widget.workoutState.hasActiveSession) {
       if (widget.workoutState.isRollingSession) {
         // Rolling session: navigate directly — no dialog, no new session.
-        // Pass the tapped tile's modality so ExercisePickerDialog pre-filters.
+        // Pass the tapped tile's modality so ExercisePickerScreen pre-filters.
         OmniNavigator.push(
           context,
           (_) => WorkoutSessionScreen(

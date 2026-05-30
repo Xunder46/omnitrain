@@ -17,7 +17,7 @@ import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
-import '../../widgets/pickers/exercise_picker_dialog.dart';
+import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
 import '../../core/utils/timer_alert_service.dart';
@@ -358,10 +358,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           builder: (context, setSheetState) {
             Future<void> addExercise() async {
               final modality = session.modality;
-              final selectedExercise = await showDialog<Exercise>(
-                context: context,
-                barrierColor: Colors.black.withOpacity(0.78),
-                builder: (context) => ExercisePickerDialog(
+              final selectedExercise = await OmniNavigator.push<Exercise>(
+                context,
+                (_) => ExercisePickerScreen(
                   workoutState: widget.workoutState,
                   sessionModality: modality,
                 ),

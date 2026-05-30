@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
+import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
@@ -111,8 +112,8 @@ void main() {
 
     // Empty session auto-opens the exercise picker; close it so we can test
     // the manual add-button flow below.
-    if (find.byIcon(Icons.close).evaluate().isNotEmpty) {
-      await tester.tap(find.byIcon(Icons.close).first);
+    if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
+      await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
     }
 

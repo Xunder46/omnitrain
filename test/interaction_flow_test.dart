@@ -25,7 +25,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/cards/energy_tile.dart';
-import 'package:omnitrain/widgets/pickers/exercise_picker_dialog.dart';
+import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
@@ -459,6 +459,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // Dismiss the auto-opened picker so WorkoutSessionScreen is foregrounded
+      if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
+        await tester.tap(find.byIcon(Icons.arrow_back));
+        await tester.pumpAndSettle();
+      }
 
       expect(find.widgetWithText(FilledButton, 'Add Exercise'), findsOneWidget);
       expect(find.widgetWithText(OutlinedButton, 'Add Block'), findsOneWidget);
@@ -757,10 +762,10 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ExercisePickerDialog – interactions
+  // ExercisePickerScreen – interactions
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('ExercisePickerDialog interactions', () {
+  group('ExercisePickerScreen interactions', () {
     testWidgets('tapping an exercise navigates back with exercise result', (
       WidgetTester tester,
     ) async {
@@ -779,9 +784,7 @@ void main() {
                 tappedExercise = await Navigator.push<Exercise>(
                   ctx,
                   MaterialPageRoute(
-                    builder: (_) => Scaffold(
-                      body: ExercisePickerDialog(workoutState: workoutState),
-                    ),
+                    builder: (_) => ExercisePickerScreen(workoutState: workoutState),
                   ),
                 );
               },
@@ -814,9 +817,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ExercisePickerDialog(workoutState: workoutState),
-          ),
+          home: ExercisePickerScreen(workoutState: workoutState),
         ),
       );
       await tester.pumpAndSettle();
@@ -904,6 +905,38 @@ void main() {
       );
       expect(startBtn.onPressed, isNull);
     });
+
+    testWidgets(
+      'tapping Add Exercise opens ExercisePickerScreen',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await workoutState.createNewSession();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SessionOverviewScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Add Exercise'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExercisePickerScreen), findsOneWidget);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

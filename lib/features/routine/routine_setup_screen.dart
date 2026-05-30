@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../widgets/pickers/exercise_picker_dialog.dart';
+import '../exercise/exercise_picker_screen.dart';
+import '../../core/navigation/navigation.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
@@ -684,10 +685,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     if (widget.workoutState == null) return;
 
     // Step 1: Pick exercise
-    final exercise = await showDialog<Exercise>(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.78),
-      builder: (_) => ExercisePickerDialog(workoutState: widget.workoutState!),
+    final exercise = await OmniNavigator.push<Exercise>(
+      context,
+      (_) => ExercisePickerScreen(workoutState: widget.workoutState!),
     );
 
     if (exercise == null) return;

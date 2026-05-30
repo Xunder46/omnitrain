@@ -3,7 +3,7 @@ import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
-import '../../widgets/pickers/exercise_picker_dialog.dart';
+import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
@@ -64,10 +64,9 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
   Future<void> _addExercise() async {
     final modality = widget.workoutState.currentSession?.modality;
 
-    final selectedExercise = await showDialog<Exercise>(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.78),
-      builder: (context) => ExercisePickerDialog(
+    final selectedExercise = await OmniNavigator.push<Exercise>(
+      context,
+      (_) => ExercisePickerScreen(
         workoutState: widget.workoutState,
         sessionModality: modality,
       ),

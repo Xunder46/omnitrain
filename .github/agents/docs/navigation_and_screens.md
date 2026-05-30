@@ -69,7 +69,7 @@ HomeScreen
   │
   ├── Modality Tile (1 of 5) ──→ SessionOverviewScreen (creates session)
   │                                  │
-  │                                  ├── Add Exercise → ExercisePickerDialog
+  │                                  ├── Add Exercise → ExercisePickerScreen (page push)
   │                                  │                    └── [ModalityPickerDialog] (if null modality: pick modality or General)
   │                                  │                         └── [MetricChooserDialog] (if General picked)
   │                                  │                         └── → WorkoutSessionScreen (auto-navigate, focused on new exercise)
@@ -86,7 +86,7 @@ HomeScreen
   │                                                        │                       ├── Discard → popUntil(isFirst)
   │                                                        │                       └── Done → popUntil(isFirst)
   │                                                        │
-  │                                                        └── Add Exercise → ExercisePickerDialog
+  │                                                        └── Add Exercise → ExercisePickerScreen (page push)
   │                                                              └── [ModalityPickerDialog] (if null modality: pick modality or General)
   │                                                                    └── [MetricChooserDialog] (if General picked)
   │                                                              └── [ExerciseEditorScreen] (create custom)
@@ -124,6 +124,7 @@ HomeScreen
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |
 | `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create/edit custom exercises with modality-aware capability/discipline filtering; accepts optional `contextModality` for session-prefill |
+| `ExercisePickerScreen` | `lib/features/exercise/exercise_picker_screen.dart` | Full-screen exercise search and selection with modality ranking, discipline/muscle filters, and inline "New Exercise" creation; opened via `OmniNavigator.push<Exercise>`; returns selected `Exercise` on pop |
 | `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
 | `SettingsScreen` | `lib/features/settings/settings_screen.dart` | Calendar start-of-week, weight/distance units, timer alert preferences, notification-permission row for rest and effort alerts, feeling survey toggle, appearance theme selector, and a low-emphasis version footer |
 | `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: all-time sessions, total training time, current streak, Strength e1RM/volume trends, Cardio pace/duration trends, and recent PRs |
@@ -169,7 +170,6 @@ main.dart
 
 | Dialog | File | Purpose |
 |--------|------|---------|
-| `ExercisePickerDialog` | `lib/widgets/pickers/exercise_picker_dialog.dart` | Search and select exercises (modality-ranked) |
 | `MetricChooserDialog` | `lib/widgets/pickers/metric_chooser_dialog.dart` | Choose tracking method for an exercise (Free Training / General fallback) |
 | `ModalityPickerDialog` | `lib/widgets/pickers/modality_picker_dialog.dart` | Pick a modality for an exercise added to a null-modality session; returns `(bool, String?)` record or `null` (cancelled) |
 
