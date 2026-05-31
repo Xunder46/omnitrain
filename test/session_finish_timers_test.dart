@@ -281,4 +281,57 @@ void main() {
     expect(find.text('Open Calendar'), findsOneWidget);
   });
 
+  test('finishing session closes the active open rest record', () async {
+    final deps = await setupStates();
+    final exercises = await deps.repository.getExercises();
+    final exercise = exercises.firstWhere(
+      (e) => e.capabilities.contains('set'),
+      orElse: () => exercises.first,
+    );
+
+    final effortId = await deps.workoutState.addExerciseToSession(exercise);
+
+    // Simulate a rest that started (as the timer mixin does after a set).
+    await deps.workoutState.recordRestStart(effortId, 0);
+
+    // End the session — persistOpenRests should close the open rest.
+    await deps.workoutState.endSession();
+
+    final rests = await deps.repository.getEntryRests(effortId);
+    expect(rests, isNotEmpty);
+    // The open rest must now be closed (restEndMs is non-null).
+    expect(rests.first.restEndMs, isNotNull);
+    // It must be closed at or before the session's endedAtMs.
+    final endedAtMs = deps.workoutState.currentSession?.endedAtMs;
+    expect(endedAtMs, isNotNull);
+    expect(rests.first.restEndMs, lessThanOrEqualTo(endedAtMs!));
+  });
+
+  test('rest time shown on summary is non-zero after a single set with rest',
+      () async {
+    final deps = await setupStates();
+    final exercises = await deps.repository.getExercises();
+    final exercise = exercises.firstWhere(
+      (e) => e.capabilities.contains('set'),
+      orElse: () => exercises.first,
+    );
+
+    final effortId = await deps.workoutState.addExerciseToSession(exercise);
+
+    // Simulate a rest that started at least 1 ms ago.
+    await deps.workoutState.recordRestStart(effortId, 0);
+
+    await deps.workoutState.endSession();
+
+    final restMs = await deps.sessionSummaryService.computeSessionRestTimeMs(
+      deps.workoutState.currentSession!.id,
+    );
+
+    // Rest time should be at least 1 ms (a non-zero rest was recorded).
+    expect(restMs, greaterThan(0));
+    // And must not exceed the session duration.
+    final session = deps.workoutState.currentSession!;
+    final duration = session.endedAtMs! - session.startedAtMs;
+    expect(restMs, lessThanOrEqualTo(duration));
+  });
 }

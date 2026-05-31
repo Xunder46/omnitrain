@@ -12,9 +12,16 @@ class SessionSummaryService {
   SessionSummaryService(this._repository);
 
   Future<int> computeSessionRestTimeMs(String sessionId) async {
-    int totalMs = 0;
-    final segments = await _repository.getSessionSegments(sessionId);
+    // Step 1 — fetch session window for clipping
+    final session = await _repository.getSession(sessionId);
+    if (session == null) return 0;
+    final windowStart = session.startedAtMs;
+    final windowEnd =
+        session.endedAtMs ?? DateTime.now().millisecondsSinceEpoch;
 
+    // Step 2 — collect closed intervals from all efforts, clipped to session window
+    final intervals = <(int, int)>[];
+    final segments = await _repository.getSessionSegments(sessionId);
     for (final segment in segments) {
       final efforts = await _repository.getSegmentEfforts(segment.id);
       for (final effort in efforts) {
@@ -22,14 +29,30 @@ class SessionSummaryService {
         for (final rest in rests) {
           final endMs = rest.restEndMs;
           if (endMs == null) continue;
-          final duration = endMs - rest.restStartMs;
-          if (duration > 0) {
-            totalMs += duration;
-          }
+          final start = rest.restStartMs.clamp(windowStart, windowEnd);
+          final end = endMs.clamp(windowStart, windowEnd);
+          if (end > start) intervals.add((start, end));
         }
       }
     }
 
+    if (intervals.isEmpty) return 0;
+
+    // Step 3 — merge overlapping intervals, then sum
+    intervals.sort((a, b) => a.$1.compareTo(b.$1));
+    var mergedStart = intervals.first.$1;
+    var mergedEnd = intervals.first.$2;
+    var totalMs = 0;
+    for (final iv in intervals.skip(1)) {
+      if (iv.$1 <= mergedEnd) {
+        if (iv.$2 > mergedEnd) mergedEnd = iv.$2;
+      } else {
+        totalMs += mergedEnd - mergedStart;
+        mergedStart = iv.$1;
+        mergedEnd = iv.$2;
+      }
+    }
+    totalMs += mergedEnd - mergedStart;
     return totalMs;
   }
 

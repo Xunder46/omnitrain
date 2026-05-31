@@ -114,6 +114,7 @@ Populated during `loadSessionData()` and `loadHistoricalSession()` alongside obs
 | `getEntryRests` | `(String effortId) → List<EntryRest>` | Returns unmodifiable list of rest records for an effort |
 | `recordRestStart` | `(String effortId, int entryIndex) → Future<void>` | Creates rest record with current epoch time as `restStartMs`; called after a set is logged |
 | `recordRestEnd` | `(String effortId, int entryIndex) → Future<void>` | Updates `restEndMs` on the open rest record; called when the athlete starts the next set/round |
+| `persistOpenRests` | `(int closeAtMs) → Future<void>` | Closes all still-open rest records at session end using a shared wall-clock timestamp |
 | `getRestElapsedSeconds` | `(String effortId, int entryIndex) → int` | Returns live elapsed seconds for display (uses wall-clock `now` when `restEndMs` is null) |
 | `hasRestRecord` | `(String effortId, int entryIndex) → bool` | Returns true if a rest record exists for this entry; drives overlay visibility |
 
@@ -129,6 +130,9 @@ Next set _logSet() called
 
 Effort timer started (timed / drill / round)
   → recordRestEnd(effortId, entryIndex)         // closes rest on timer start
+
+Session ends via endSession()
+  → persistOpenRests(endedAtMs)                 // closes any still-open rest at session end
 ```
 
 For the **first set** of an exercise (`entryIndex == 0`), no rest record is created — the overlay correctly stays hidden because `hasRestRecord(effortId, 0)` returns `false`.

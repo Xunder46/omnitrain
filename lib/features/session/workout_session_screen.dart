@@ -11,7 +11,7 @@ import '../../core/utils/rest_notification_service.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../core/utils/rest_ping_utils.dart';
 import '../../state/workout/workout_state.dart';
-import '../exercise/exercise_picker_screen.dart';
+import '../../widgets/pickers/exercise_picker_dialog.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
@@ -64,7 +64,7 @@ class WorkoutSessionScreen extends StatefulWidget {
 
   /// Optional modality hint injected from the home screen when navigating into
   /// a rolling session via a modality tile.  Passed straight through to
-  /// [ExercisePickerScreen] as [sessionModality] so the picker pre-filters
+  /// [ExercisePickerDialog] as [sessionModality] so the picker pre-filters
   /// exercises by the chosen modality even though the session itself has a
   /// null modality field.  Has no effect when the session already has a modality.
   final String? preferredModality;
@@ -1164,9 +1164,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final sessionModality = widget.workoutState.currentSession?.modality;
     final modality = sessionModality ?? widget.preferredModality;
 
-    final selectedExercise = await OmniNavigator.push<Exercise>(
-      context,
-      (_) => ExercisePickerScreen(
+    final selectedExercise = await showDialog<Exercise>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.78),
+      builder: (context) => ExercisePickerDialog(
         workoutState: widget.workoutState,
         sessionModality: modality,
       ),

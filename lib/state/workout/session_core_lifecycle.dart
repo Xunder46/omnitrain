@@ -12,6 +12,7 @@ extension SessionCoreLifecycleMethods on SessionCore {
       await _timerManager.persistActiveTimedEntries();
 
       final now = DateTime.now().millisecondsSinceEpoch;
+      await _timerManager.persistOpenRests(now);
       final updatedSession = TrainingSession(
         id: _currentSession!.id,
         ownerUserId: _currentSession!.ownerUserId,

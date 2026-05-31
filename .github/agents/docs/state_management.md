@@ -215,6 +215,7 @@ Handles all round, timed-entry, and rest state machines (Cluster B of the origin
 |--------|-----------|--------|
 | `recordRestStart` | `(effortId, entryIndex) → Future<void>` | Creates an `EntryRest` record with `restStartMs = now`; called after a set/round is logged |
 | `recordRestEnd` | `(effortId, entryIndex) → Future<void>` | Sets `restEndMs = now` on the open rest record; called when the athlete starts the next entry |
+| `persistOpenRests` | `(closeAtMs) → Future<void>` | Closes every open `EntryRest` across all efforts at `closeAtMs`; called by `endSession()` |
 | `getRestElapsedSeconds` | `(effortId, entryIndex) → int` | Returns live elapsed seconds for the rest overlay display |
 | `hasRestRecord` | `(effortId, entryIndex) → bool` | Returns `true` if a rest record exists for this entry; drives overlay visibility |
 | `getEntryRests` | `(effortId) → List<EntryRest>` | Returns unmodifiable list of rest records for an effort |

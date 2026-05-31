@@ -646,6 +646,30 @@ class TimerManager {
     return list.any((r) => r.entryIndex == entryIndex);
   }
 
+  /// Closes every open [EntryRest] across **all** efforts at [closeAtMs].
+  /// Called from [endSession] so the last rest window is captured
+  /// rather than discarded.
+  Future<void> persistOpenRests(int closeAtMs) async {
+    for (final effortId in List<String>.from(_entryRests.keys)) {
+      final list = _entryRests[effortId];
+      if (list == null) continue;
+      for (var i = 0; i < list.length; i++) {
+        final rest = list[i];
+        if (rest.restEndMs != null) continue;
+        final closed = rest.copyWith(
+          restEndMs: closeAtMs,
+          updatedAtMs: closeAtMs,
+        );
+        try {
+          await _repository.updateEntryRest(closed);
+        } catch (_) {
+          // best-effort; do not block session end
+        }
+        list[i] = closed;
+      }
+    }
+  }
+
   /// Closes every open [EntryRest] record for [effortId], regardless of
   /// entryIndex. Called when an interval timer starts so that a rest window
   /// opened for a previously-skipped interval does not keep ticking.

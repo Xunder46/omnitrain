@@ -527,13 +527,15 @@ void main() {
           final exId = exercises.first.id;
           final service = SessionSummaryService(repo);
 
+          // Session window must encompass all rest intervals so clipping
+          // does not affect the 70 000 ms expected sum.
           final session = TrainingSession(
             id: 'session-rest',
             ownerUserId: 'u-1',
             startedAtMs: 1000,
-            endedAtMs: 4000,
+            endedAtMs: 200000,
             createdAtMs: 1000,
-            updatedAtMs: 4000,
+            updatedAtMs: 200000,
           );
           await repo.createSession(session);
 
@@ -598,6 +600,188 @@ void main() {
 
           final totalMs = await service.computeSessionRestTimeMs(session.id);
           expect(totalMs, 70000);
+        },
+      );
+
+      test(
+        'computeSessionRestTimeMs merges overlapping rests across two efforts',
+        () async {
+          // Exercise A rest: T=60 000 → T=120 000 (60 s)
+          // Exercise B rest: T=80 000 → T=140 000 (60 s)
+          // Merged:          T=60 000 → T=140 000 (80 s)
+          final repo = await _freshRepo();
+          final exercises = await repo.getExercises();
+          final exId = exercises.first.id;
+          final service = SessionSummaryService(repo);
+
+          const sessionStart = 0;
+          const sessionEnd = 200000;
+          const sessionId = 'session-overlap';
+
+          final session = TrainingSession(
+            id: sessionId,
+            ownerUserId: 'u-1',
+            startedAtMs: sessionStart,
+            endedAtMs: sessionEnd,
+            createdAtMs: sessionStart,
+            updatedAtMs: sessionEnd,
+          );
+          await repo.createSession(session);
+
+          final segId = 'seg-overlap';
+          await repo.createSegment(
+            SessionSegment(
+              id: segId,
+              sessionId: sessionId,
+              orderIndex: 0,
+              segmentType: 'main',
+              createdAtMs: sessionStart,
+              updatedAtMs: sessionStart,
+            ),
+          );
+
+          final effortIdA = 'eff-overlap-a';
+          await repo.createEffort(
+            SegmentEffort(
+              id: effortIdA,
+              segmentId: segId,
+              orderIndex: 0,
+              effortKind: 'set',
+              exerciseId: exId,
+              createdAtMs: sessionStart,
+              updatedAtMs: sessionStart,
+            ),
+          );
+
+          final effortIdB = 'eff-overlap-b';
+          await repo.createEffort(
+            SegmentEffort(
+              id: effortIdB,
+              segmentId: segId,
+              orderIndex: 1,
+              effortKind: 'set',
+              exerciseId: exId,
+              createdAtMs: sessionStart,
+              updatedAtMs: sessionStart,
+            ),
+          );
+
+          await repo.createEntryRest(
+            EntryRest(
+              id: 'rest-a',
+              effortId: effortIdA,
+              entryIndex: 0,
+              restStartMs: 60000,
+              restEndMs: 120000,
+              createdAtMs: 60000,
+              updatedAtMs: 120000,
+            ),
+          );
+          await repo.createEntryRest(
+            EntryRest(
+              id: 'rest-b',
+              effortId: effortIdB,
+              entryIndex: 0,
+              restStartMs: 80000,
+              restEndMs: 140000,
+              createdAtMs: 80000,
+              updatedAtMs: 140000,
+            ),
+          );
+
+          final totalMs = await service.computeSessionRestTimeMs(sessionId);
+          // Merged window: 60 000 → 140 000 = 80 000 ms (not 120 000 ms)
+          expect(totalMs, 80000);
+          expect(totalMs, lessThanOrEqualTo(sessionEnd - sessionStart));
+        },
+      );
+
+      test(
+        'computeSessionRestTimeMs clips rest intervals to session window',
+        () async {
+          // Rest extends 5 s before session start and 5 s beyond session end.
+          // Only the portion inside the window should be counted.
+          final repo = await _freshRepo();
+          final exercises = await repo.getExercises();
+          final exId = exercises.first.id;
+          final service = SessionSummaryService(repo);
+
+          const sessionStart = 10000;
+          const sessionEnd = 50000;
+          const sessionId = 'session-clip';
+
+          final session = TrainingSession(
+            id: sessionId,
+            ownerUserId: 'u-1',
+            startedAtMs: sessionStart,
+            endedAtMs: sessionEnd,
+            createdAtMs: sessionStart,
+            updatedAtMs: sessionEnd,
+          );
+          await repo.createSession(session);
+
+          final segId = 'seg-clip';
+          await repo.createSegment(
+            SessionSegment(
+              id: segId,
+              sessionId: sessionId,
+              orderIndex: 0,
+              segmentType: 'main',
+              createdAtMs: sessionStart,
+              updatedAtMs: sessionStart,
+            ),
+          );
+
+          final effortId = 'eff-clip';
+          await repo.createEffort(
+            SegmentEffort(
+              id: effortId,
+              segmentId: segId,
+              orderIndex: 0,
+              effortKind: 'set',
+              exerciseId: exId,
+              createdAtMs: sessionStart,
+              updatedAtMs: sessionStart,
+            ),
+          );
+
+          // Rest starts before session and ends after session.
+          await repo.createEntryRest(
+            EntryRest(
+              id: 'rest-wide',
+              effortId: effortId,
+              entryIndex: 0,
+              restStartMs: sessionStart - 5000,  // 5 s before session
+              restEndMs: sessionEnd + 5000,       // 5 s after session
+              createdAtMs: sessionStart,
+              updatedAtMs: sessionEnd,
+            ),
+          );
+
+          final totalMs = await service.computeSessionRestTimeMs(sessionId);
+          // Clipped to [sessionStart, sessionEnd] = 40 000 ms
+          expect(totalMs, sessionEnd - sessionStart);
+        },
+      );
+
+      test(
+        'computeSessionRestTimeMs returns 0 for session with no rest records',
+        () async {
+          final repo = await _freshRepo();
+          final service = SessionSummaryService(repo);
+
+          final session = TrainingSession(
+            id: 'session-no-rests',
+            ownerUserId: 'u-1',
+            startedAtMs: 0,
+            endedAtMs: 60000,
+            createdAtMs: 0,
+            updatedAtMs: 60000,
+          );
+          await repo.createSession(session);
+
+          final totalMs = await service.computeSessionRestTimeMs(session.id);
+          expect(totalMs, 0);
         },
       );
 

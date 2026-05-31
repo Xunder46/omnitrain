@@ -97,9 +97,12 @@ Rolling sessions do not render the top-stats card or its surrounding spacing.
 
 Rest Time is aggregated from EntryRest records by:
 
-- collecting rests for all efforts in the current session
-- including only closed rests where restEndMs is non-null
-- summing positive durations only
+- collecting closed rest intervals across all efforts in the session
+- clipping each interval to the session wall-clock window (`startedAtMs` to
+  `endedAtMs`)
+- merging overlapping or adjacent intervals so concurrent rests are not
+  double-counted
+- summing merged positive durations
 
 Formatting:
 
