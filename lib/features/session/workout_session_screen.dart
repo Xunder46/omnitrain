@@ -34,6 +34,7 @@ part 'workout_session_global_timer.dart';
 // Library-level constants used across part files.
 const double _kSessionScrollBottomExtra = 24.0;
 const double _kBottomControlsClearance = 140.0 + _kSessionScrollBottomExtra;
+const double _kBackFromDetailBottomPeekFraction = 0.05;
 const Duration _kTimerUpdateInterval = Duration(seconds: 1);
 
 Future<T?> _pushSessionReplacement<T, TO>(
@@ -1472,11 +1473,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       if (!mounted) return;
       if (_listScrollController.hasClients &&
           _listScrollController.position.maxScrollExtent > 0) {
-        _listScrollController.animateTo(
-          _listScrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        final position = _listScrollController.position;
+        final max = position.maxScrollExtent;
+        final target = (max -
+                (position.viewportDimension *
+                    _kBackFromDetailBottomPeekFraction))
+            .clamp(0.0, max);
+        _listScrollController.jumpTo(target);
+
+        // Re-apply on the next frame in case late layout changes alter extent.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_listScrollController.hasClients) return;
+          final settled = _listScrollController.position;
+          final settledMax = settled.maxScrollExtent;
+          final settledTarget = (settledMax -
+                  (settled.viewportDimension *
+                      _kBackFromDetailBottomPeekFraction))
+              .clamp(0.0, settledMax);
+          _listScrollController.jumpTo(settledTarget);
+        });
       }
     });
   }

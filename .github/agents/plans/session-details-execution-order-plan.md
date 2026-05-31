@@ -168,3 +168,44 @@ Two bugs found after Iteration 1 landed:
 Implementation done. Add-block and clone-to-end ordering are now deterministic across session and routine flows, with targeted regression suites green.
 
 ## Feedback
+
+## Iteration 3
+### Analysis
+Returning from exercise details to the session list used `_scrollListToBottom()` with `animateTo(..., duration: 300ms)`, which created a visible scroll animation when restoring focus near the end of the list.
+
+### Phase 2: Logic/UI (@developer)
+1. [x] In `lib/features/session/workout_session_screen.dart` `_scrollListToBottom()`, replace animated bottom scroll with immediate jump (`jumpTo`) so back navigation restores the final position without visible motion.
+
+### Acceptance Criteria
+- [x] Back navigation from exercise details restores the session list at the end immediately.
+- [x] No visible scroll animation is shown during that restore.
+
+### Files Affected (Iteration 3)
+- lib/features/session/workout_session_screen.dart
+
+## Progress (Iteration 3)
+- [x] Logic/UI fix: instant bottom restore on return from detail view
+
+### Iteration 3 Complete ✓
+Implementation done. Back navigation now restores bottom position without visible scroll animation.
+
+## Iteration 4
+### Analysis
+Even with instant `jumpTo(maxScrollExtent)`, returning from detail could still show a subtle final notch as layout settled. UX target is to land near the bottom with controls in the lower half, not pinned to the absolute end.
+
+### Phase 2: Logic/UI (@developer)
+1. [x] In `lib/features/session/workout_session_screen.dart`, calibrate `_scrollListToBottom()` to jump to a near-bottom anchor (`maxScrollExtent - viewport * 0.05`) instead of absolute max.
+2. [x] Add one follow-up post-frame settle jump using the same anchor formula so late extent changes do not produce visible secondary motion.
+
+### Acceptance Criteria
+- [x] Returning from detail lands with bottom actions in the lower half of the viewport.
+- [x] No visible notch/secondary scroll appears during restore.
+
+### Files Affected (Iteration 4)
+- lib/features/session/workout_session_screen.dart
+
+## Progress (Iteration 4)
+- [x] Logic/UI tune: near-bottom anchored restore with post-layout settle
+
+### Iteration 4 Complete ✓
+Implementation done. Detail-to-list return now restores to a stable near-bottom anchor without visible notch scrolling.
