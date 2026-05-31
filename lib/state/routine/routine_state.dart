@@ -505,11 +505,10 @@ class RoutineState extends ChangeNotifier {
     _clearError();
 
     try {
-      final effortId = 'teff-${DateTime.now().millisecondsSinceEpoch}';
-      final now = DateTime.now().millisecondsSinceEpoch;
-
       final resolvedSegmentId = segmentId ?? _currentSegments.first.id;
       final segmentEfforts = _segmentEfforts[resolvedSegmentId] ?? [];
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final effortId = 'teff-$now-${segmentEfforts.length}';
       final effort = TemplateEffort(
         id: effortId,
         templateSegmentId: resolvedSegmentId,

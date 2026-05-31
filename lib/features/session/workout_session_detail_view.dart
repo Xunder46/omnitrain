@@ -705,9 +705,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         return Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Minus — remove-set (secondary, lower prominence)
+            // Minus / trash — remove-set or remove-exercise (secondary, lower prominence)
             Tooltip(
-              message: 'Remove set',
+              message: totalEntries == 1 ? 'Remove exercise' : 'Remove set',
               child: InkWell(
                 onTap: _deleteCurrentSet,
                 customBorder: const CircleBorder(),
@@ -718,7 +718,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   ),
                   alignment: Alignment.center,
                   child: Icon(
-                    Icons.remove,
+                    totalEntries == 1 ? Icons.delete_outline : Icons.remove,
                     size: 24,
                     color: theme.colorScheme.onSurface.withAlpha(
                       (0.35 * 255).round(),

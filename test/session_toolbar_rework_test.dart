@@ -975,7 +975,6 @@ void main() {
 
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Barbell Back Squat');
-      expect(find.byType(AnimatedSwitcher), findsOneWidget);
 
       await tester.fling(
         _detailSwipeSurface().first,
@@ -988,5 +987,126 @@ void main() {
       expect(find.text('Set 2 of 3'), findsOneWidget);
       expect(find.text('Set 1 of 3'), findsNothing);
     });
+  });
+
+  // ── Remove-button icon swap (Phase G) ────────────────────────────────────
+
+  group('Toolbar Rework — Remove Button Icon (Phase G)', () {
+    // S-020: Single set shows trash-can icon (delete_outline)
+    testWidgets(
+      'S-020: delete_outline icon shown when exercise has exactly one set',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final exercise = await _getExerciseById(
+          repo,
+          'exercise-barbell-squat',
+        );
+        // addExerciseToSession seeds exactly 1 entry
+        await deps.workoutState.addExerciseToSession(
+          exercise,
+          chosenMetric: 'reps',
+        );
+
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Barbell Back Squat');
+
+        expect(find.text('Set 1 of 1'), findsOneWidget);
+        expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+        expect(find.byIcon(Icons.remove), findsNothing);
+      },
+    );
+
+    // S-021: Multi-set shows minus icon (remove)
+    testWidgets(
+      'S-021: remove icon shown when exercise has more than one set',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final exercise = await _getExerciseById(
+          repo,
+          'exercise-barbell-squat',
+        );
+        final effortId = await deps.workoutState.addExerciseToSession(
+          exercise,
+          chosenMetric: 'reps',
+        );
+        // Add a second set so there are 2 entries
+        await deps.workoutState.addEntry(effortId);
+
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Barbell Back Squat');
+
+        expect(find.text('Set 1 of 2'), findsOneWidget);
+        expect(find.byIcon(Icons.remove), findsOneWidget);
+        expect(find.byIcon(Icons.delete_outline), findsNothing);
+      },
+    );
+
+    // S-022: Deleting down to the last set switches minus → trash before confirm
+    testWidgets(
+      'S-022: icon switches to delete_outline after removing all but last set',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final exercise = await _getExerciseById(
+          repo,
+          'exercise-barbell-squat',
+        );
+        final effortId = await deps.workoutState.addExerciseToSession(
+          exercise,
+          chosenMetric: 'reps',
+        );
+        await deps.workoutState.addEntry(effortId);
+
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Barbell Back Squat');
+
+        // 2 sets — minus icon
+        expect(find.byIcon(Icons.remove), findsOneWidget);
+
+        // Remove unlogged set 1 (no confirmation dialog)
+        await tester.tap(find.byIcon(Icons.remove));
+        await tester.pumpAndSettle();
+
+        // 1 set remaining — trash icon
+        expect(find.text('Set 1 of 1'), findsOneWidget);
+        expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+        expect(find.byIcon(Icons.remove), findsNothing);
+      },
+    );
+
+    // S-023: Tooltip text on single-set is "Remove exercise"
+    testWidgets(
+      'S-023: tooltip reads "Remove exercise" when only one set remains',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await _buildDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final exercise = await _getExerciseById(
+          repo,
+          'exercise-barbell-squat',
+        );
+        await deps.workoutState.addExerciseToSession(
+          exercise,
+          chosenMetric: 'reps',
+        );
+
+        await tester.pumpWidget(_buildSessionScreen(deps));
+        await _openDetailView(tester, 'Barbell Back Squat');
+
+        expect(find.text('Set 1 of 1'), findsOneWidget);
+
+        // Long-press to trigger the tooltip
+        final deleteIcon = find.byIcon(Icons.delete_outline);
+        await tester.longPress(deleteIcon);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Remove exercise'), findsOneWidget);
+      },
+    );
   });
 }

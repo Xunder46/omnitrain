@@ -533,7 +533,7 @@ theme.colorScheme.primaryContainer
 
 ### Set Skip vs Delete
 - **Skip Set**: Advance without logging via forward navigation (set dot remains hollow)
-- **Remove Entry**: Minus button deletes the current entry (set dot removed)
+- **Remove Entry**: When the exercise has **more than one set**, the minus (`Icons.remove`) icon deletes the current entry (set dot removed). When **only one set remains**, the minus icon is replaced by a trash-can (`Icons.delete_outline`) at the same colour and size — signalling that confirming will remove the entire exercise from the session. Tooltip text also switches from "Remove set" to "Remove exercise".
 - Use case: Skip = "I'm moving on without logging this effort", Remove = "This entry should not exist"
 
 ### Modality Change Warning
