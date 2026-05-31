@@ -68,6 +68,14 @@ Active session persistence API:
 
 Any repository implementation must satisfy this full contract and remain compile-safe.
 
+Deterministic active-session ordering contract:
+
+- Top-level sequence is persisted explicitly (not inferred from timestamps).
+- `SessionBlock.topLevelOrderIndex` and `SegmentEffort.topLevelOrderIndex` are the canonical keys for mixed block + standalone ordering.
+- `SegmentEffort.blockOrderIndex` is the canonical key for effort order inside a block.
+- `assignEffortToBlock()` appends to block tail by `blockOrderIndex` without mutating unrelated top-level items.
+- `cloneSessionBlock()` appends the cloned block to the end of top-level order and preserves source intra-block effort order exactly.
+
 ---
 
 ## Hive Runtime Persistence
@@ -89,6 +97,12 @@ Session persistence behavior:
 - `getInProgressSessions()` scans `sessions` box values.
 - Parse failures for malformed rows are caught and skipped; valid rows still return.
 - Returned list is sorted desc by `startedAtMs`.
+
+Ordering persistence behavior:
+
+- `createSessionBlock()` assigns `topLevelOrderIndex` when missing.
+- `createEffort()` assigns canonical order metadata for standalone vs block effort placement.
+- `getSessionBlocks()` and `getSegmentEfforts()` return deterministic order based on canonical order columns with stable tie-breakers.
 
 ### Hive Migration Keys
 
@@ -126,14 +140,29 @@ And exercise modality persistence for custom exercise parity:
 - `unit-pct`
 - canonical `metric-*` rows aligned with constant IDs
 
+Active-session ordering parity columns for future `SqliteWorkoutRepository`:
+
+- `app_session_block.top_level_order_index`
+- `app_segment_effort.top_level_order_index`
+- `app_segment_effort.block_order_index`
+
+Recommended SQL ordering for retrieval parity:
+
+- Blocks: `ORDER BY top_level_order_index, order_index, created_at_ms, id`
+- Efforts: `ORDER BY top_level_order_index, block_order_index, order_index, created_at_ms, id`
+
 ---
 
 ## SQLite Datasource Versioning
 
-- `DatabaseProvider.open(..., version: 3)` is now the default.
+- `DatabaseProvider.open(..., version: 7)` is now the default.
 - `migrations.dart` contains incremental SQL migrations for:
   - v2: `modality`, `intent` fields on `app_training_session`
   - v3: `session_feeling`, `quality_rating`, `rpe_rating`, `rest_duration_ms`
+  - v4: `app_entry_rest` table
+  - v5: exercise content and `app_exercise_note`
+  - v6: rolling sessions, `app_session_block`, and `block_id`
+  - v7: canonical ordering fields (`top_level_order_index`, `block_order_index`) and indexes for deterministic active-session ordering
 
 ---
 
@@ -194,5 +223,5 @@ The same seam applies in `TimerManager` (for round/timed instance writes) and `E
 
 ---
 
-**Document Version**: 1.4
-**Last Updated**: May 13, 2026
+**Document Version**: 1.5
+**Last Updated**: May 31, 2026

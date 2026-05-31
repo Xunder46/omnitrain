@@ -164,6 +164,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   SessionEditSnapshot? _editSnapshot;
 
   // Horizontal set-navigation transition state used by the detail view.
+  // ignore: unused_field
   int? _setTransitionDirection;
   Timer? _setTransitionResetTimer;
 
@@ -266,56 +267,107 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     );
   }
 
-  int _compareExercises(Map<String, dynamic> a, Map<String, dynamic> b) {
-    final aCreatedAt = a['createdAtMs'] as int? ?? 0;
-    final bCreatedAt = b['createdAtMs'] as int? ?? 0;
-    final createdCompare = aCreatedAt.compareTo(bCreatedAt);
-    if (createdCompare != 0) return createdCompare;
+  int _exerciseTopLevelOrder(Map<String, dynamic> exercise) {
+    return (exercise['topLevelOrderIndex'] as int?) ??
+        (exercise['executionOrder'] as int? ?? 0);
+  }
 
-    final aExecutionOrder = a['executionOrder'] as int? ?? 0;
-    final bExecutionOrder = b['executionOrder'] as int? ?? 0;
-    final executionCompare = aExecutionOrder.compareTo(bExecutionOrder);
-    if (executionCompare != 0) return executionCompare;
+  int _exerciseBlockOrder(Map<String, dynamic> exercise) {
+    return (exercise['blockOrderIndex'] as int?) ??
+        (exercise['executionOrder'] as int? ?? 0);
+  }
+
+  int _blockTopLevelOrder(SessionBlock block) {
+    return block.topLevelOrderIndex ?? block.orderIndex;
+  }
+
+  int _compareExercisesByTopLevelOrder(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    final topCompare = _exerciseTopLevelOrder(a).compareTo(
+      _exerciseTopLevelOrder(b),
+    );
+    if (topCompare != 0) return topCompare;
 
     final aId = a['id'] as String? ?? '';
     final bId = b['id'] as String? ?? '';
     return aId.compareTo(bId);
   }
 
-  List<Map<String, dynamic>> _buildNonRollingDisplayOrderedExercises(
-    List<Map<String, dynamic>> source,
+  int _compareExercisesByBlockOrder(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
   ) {
+    final blockCompare = _exerciseBlockOrder(a).compareTo(_exerciseBlockOrder(b));
+    if (blockCompare != 0) return blockCompare;
+
+    final topCompare = _exerciseTopLevelOrder(a).compareTo(
+      _exerciseTopLevelOrder(b),
+    );
+    if (topCompare != 0) return topCompare;
+
+    final aId = a['id'] as String? ?? '';
+    final bId = b['id'] as String? ?? '';
+    return aId.compareTo(bId);
+  }
+
+  List<Map<String, dynamic>> _sortExercisesForBlock(
+    List<Map<String, dynamic>> exercises,
+  ) {
+    final sorted = List<Map<String, dynamic>>.from(exercises);
+    sorted.sort(_compareExercisesByBlockOrder);
+    return sorted;
+  }
+
+  List<({SessionBlock? block, Map<String, dynamic>? exercise})>
+  _buildNonRollingTopLevelItems(List<Map<String, dynamic>> source) {
     final blocks = widget.workoutState.getSessionBlocks();
-    if (blocks.isEmpty) {
-      final sorted = List<Map<String, dynamic>>.from(source);
-      sorted.sort(_compareExercises);
-      return sorted;
-    }
+    final standaloneExercises = source.where((e) => e['blockId'] == null).toList()
+      ..sort(_compareExercisesByTopLevelOrder);
 
-    final standaloneExercises =
-        source.where((e) => e['blockId'] == null).toList()
-          ..sort(_compareExercises);
-
-    final List<({SessionBlock? block, Map<String, dynamic>? exercise})> items =
-        [];
-    for (final b in blocks) {
-      items.add((block: b, exercise: null));
+    final items = <({SessionBlock? block, Map<String, dynamic>? exercise})>[];
+    for (final block in blocks) {
+      items.add((block: block, exercise: null));
     }
-    for (final ex in standaloneExercises) {
-      items.add((block: null, exercise: ex));
+    for (final exercise in standaloneExercises) {
+      items.add((block: null, exercise: exercise));
     }
 
     items.sort((a, b) {
       if (a.exercise != null && b.exercise != null) {
-        return _compareExercises(a.exercise!, b.exercise!);
+        return _compareExercisesByTopLevelOrder(a.exercise!, b.exercise!);
       }
 
-      final aMs =
-          a.block?.createdAtMs ?? (a.exercise?['createdAtMs'] as int? ?? 0);
-      final bMs =
-          b.block?.createdAtMs ?? (b.exercise?['createdAtMs'] as int? ?? 0);
-      return aMs.compareTo(bMs);
+      final aTopLevel =
+          a.block != null
+          ? _blockTopLevelOrder(a.block!)
+          : _exerciseTopLevelOrder(a.exercise!);
+      final bTopLevel =
+          b.block != null
+          ? _blockTopLevelOrder(b.block!)
+          : _exerciseTopLevelOrder(b.exercise!);
+
+      final compareTop = aTopLevel.compareTo(bTopLevel);
+      if (compareTop != 0) return compareTop;
+
+      // Legacy rows can collide on top-level order. Prefer standalone efforts
+      // so list/detail ordering stays deterministic without timestamp fallback.
+      if (a.exercise != null && b.block != null) return -1;
+      if (a.block != null && b.exercise != null) return 1;
+
+      final aId = a.block?.id ?? (a.exercise?['id'] as String? ?? '');
+      final bId = b.block?.id ?? (b.exercise?['id'] as String? ?? '');
+      return aId.compareTo(bId);
     });
+
+    return items;
+  }
+
+  List<Map<String, dynamic>> _buildNonRollingDisplayOrderedExercises(
+    List<Map<String, dynamic>> source,
+  ) {
+    final items = _buildNonRollingTopLevelItems(source);
 
     final ordered = <Map<String, dynamic>>[];
     for (final item in items) {
@@ -325,9 +377,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       }
 
       final blockId = item.block!.id;
-      final blockExercises =
-          source.where((e) => e['blockId'] == blockId).toList()
-            ..sort(_compareExercises);
+      final blockExercises = _sortExercisesForBlock(
+        source.where((e) => e['blockId'] == blockId).toList(),
+      );
       ordered.addAll(blockExercises);
     }
 

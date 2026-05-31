@@ -56,6 +56,7 @@ class SessionBlockManager {
     try {
       final now = DateTime.now();
       final nowMs = now.millisecondsSinceEpoch;
+        final nowUs = now.microsecondsSinceEpoch;
       final blockName =
           name ??
           () {
@@ -72,7 +73,7 @@ class SessionBlockManager {
       );
 
       final block = SessionBlock(
-        id: 'block-$nowMs',
+        id: 'block-$nowUs-${maxOrder + 1}',
         sessionId: currentSessionId,
         name: blockName,
         orderIndex: maxOrder + 1,
@@ -81,7 +82,9 @@ class SessionBlockManager {
       );
 
       final blockId = await _repository.createSessionBlock(block);
-      _sessionBlocks.putIfAbsent(currentSessionId, () => []).add(block);
+      _sessionBlocks[currentSessionId] = await _repository.getSessionBlocks(
+        currentSessionId,
+      );
       _notify();
       return blockId;
     } catch (e) {

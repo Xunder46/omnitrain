@@ -411,14 +411,69 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<List<SegmentEffort>> getSegmentEfforts(String segmentId) async {
-    return _efforts.values.where((e) => e.segmentId == segmentId).toList()
-      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    final efforts = _efforts.values.where((e) => e.segmentId == segmentId).toList();
+    efforts.sort((a, b) {
+      final topCompare = _effectiveEffortTopLevelOrder(
+        a,
+      ).compareTo(_effectiveEffortTopLevelOrder(b));
+      if (topCompare != 0) return topCompare;
+
+      if (a.blockId != null && b.blockId != null && a.blockId == b.blockId) {
+        final blockCompare = _effectiveEffortBlockOrder(
+          a,
+        ).compareTo(_effectiveEffortBlockOrder(b));
+        if (blockCompare != 0) return blockCompare;
+      }
+
+      final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
+      if (legacyCompare != 0) return legacyCompare;
+
+      final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+      if (createdCompare != 0) return createdCompare;
+
+      return a.id.compareTo(b.id);
+    });
+    return efforts;
   }
 
   @override
   Future<String> createEffort(SegmentEffort effort) async {
-    _efforts[effort.id] = effort;
-    return effort.id;
+    final sessionId = _getSessionIdForSegment(effort.segmentId);
+
+    int? topLevelOrderIndex = effort.topLevelOrderIndex;
+    int? blockOrderIndex = effort.blockOrderIndex;
+
+    if (effort.blockId == null) {
+      if (sessionId != null) {
+        topLevelOrderIndex ??= _nextTopLevelOrderForSession(sessionId);
+      }
+      blockOrderIndex = null;
+    } else {
+      topLevelOrderIndex ??= _blockTopLevelOrderOrFallback(
+        effort.blockId!,
+        effort.segmentId,
+      );
+      blockOrderIndex ??= _nextBlockOrderIndex(effort.blockId!);
+    }
+
+    final normalized = SegmentEffort(
+      id: effort.id,
+      segmentId: effort.segmentId,
+      orderIndex: effort.blockId == null
+          ? (topLevelOrderIndex ?? effort.orderIndex)
+          : (blockOrderIndex ?? effort.orderIndex),
+      topLevelOrderIndex: topLevelOrderIndex,
+      blockOrderIndex: blockOrderIndex,
+      effortKind: effort.effortKind,
+      exerciseId: effort.exerciseId,
+      note: effort.note,
+      blockId: effort.blockId,
+      createdAtMs: effort.createdAtMs,
+      updatedAtMs: effort.updatedAtMs,
+    );
+
+    _efforts[normalized.id] = normalized;
+    return normalized.id;
   }
 
   // ===== OBSERVATIONS =====
@@ -1166,14 +1221,38 @@ class MockWorkoutRepository implements WorkoutRepository {
     final blocks = _sessionBlocks.values
         .where((b) => b.sessionId == sessionId)
         .toList();
-    blocks.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    blocks.sort((a, b) {
+      final topCompare = _effectiveBlockTopLevelOrder(
+        a,
+      ).compareTo(_effectiveBlockTopLevelOrder(b));
+      if (topCompare != 0) return topCompare;
+
+      final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
+      if (legacyCompare != 0) return legacyCompare;
+
+      final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+      if (createdCompare != 0) return createdCompare;
+
+      return a.id.compareTo(b.id);
+    });
     return blocks;
   }
 
   @override
   Future<String> createSessionBlock(SessionBlock block) async {
-    _sessionBlocks[block.id] = block;
-    return block.id;
+    final normalized = SessionBlock(
+      id: block.id,
+      sessionId: block.sessionId,
+      name: block.name,
+      orderIndex: block.orderIndex,
+      topLevelOrderIndex:
+          block.topLevelOrderIndex ??
+          _nextTopLevelOrderForSession(block.sessionId),
+      createdAtMs: block.createdAtMs,
+      updatedAtMs: block.updatedAtMs,
+    );
+    _sessionBlocks[normalized.id] = normalized;
+    return normalized.id;
   }
 
   @override
@@ -1218,6 +1297,7 @@ class MockWorkoutRepository implements WorkoutRepository {
         sessionId: existing.sessionId,
         name: existing.name,
         orderIndex: i,
+        topLevelOrderIndex: i,
         createdAtMs: existing.createdAtMs,
         updatedAtMs: now,
       );
@@ -1241,6 +1321,7 @@ class MockWorkoutRepository implements WorkoutRepository {
       sessionId: original.sessionId,
       name: name,
       orderIndex: maxOrder + 1,
+      topLevelOrderIndex: _nextTopLevelOrderForSession(original.sessionId),
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
     );
@@ -1249,15 +1330,32 @@ class MockWorkoutRepository implements WorkoutRepository {
     // Deep-clone all efforts linked to the original block
     final linkedEfforts = _efforts.values
         .where((e) => e.blockId == blockId)
-        .toList();
+        .toList()
+      ..sort((a, b) {
+        final blockCompare = _effectiveEffortBlockOrder(
+          a,
+        ).compareTo(_effectiveEffortBlockOrder(b));
+        if (blockCompare != 0) return blockCompare;
 
-    for (final effort in linkedEfforts) {
+        final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
+        if (legacyCompare != 0) return legacyCompare;
+
+        final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+        if (createdCompare != 0) return createdCompare;
+
+        return a.id.compareTo(b.id);
+      });
+
+    for (var i = 0; i < linkedEfforts.length; i++) {
+      final effort = linkedEfforts[i];
       final newEffortId = _mockUuid.v4();
 
       _efforts[newEffortId] = SegmentEffort(
         id: newEffortId,
         segmentId: effort.segmentId,
-        orderIndex: effort.orderIndex,
+        orderIndex: i,
+        topLevelOrderIndex: newBlock.topLevelOrderIndex ?? newBlock.orderIndex,
+        blockOrderIndex: i,
         effortKind: effort.effortKind,
         exerciseId: effort.exerciseId,
         note: effort.note,
@@ -1345,10 +1443,35 @@ class MockWorkoutRepository implements WorkoutRepository {
   Future<void> assignEffortToBlock(String effortId, String? blockId) async {
     final existing = _efforts[effortId];
     if (existing == null) return;
+
+    int topLevelOrderIndex;
+    int? blockOrderIndex;
+    int orderIndex;
+
+    if (blockId == null) {
+      final sessionId = _getSessionIdForSegment(existing.segmentId);
+      topLevelOrderIndex =
+          existing.topLevelOrderIndex ??
+          (sessionId == null
+              ? existing.orderIndex
+              : _nextTopLevelOrderForSession(sessionId));
+      blockOrderIndex = null;
+      orderIndex = topLevelOrderIndex;
+    } else {
+      topLevelOrderIndex = _blockTopLevelOrderOrFallback(
+        blockId,
+        existing.segmentId,
+      );
+      blockOrderIndex = _nextBlockOrderIndex(blockId);
+      orderIndex = blockOrderIndex;
+    }
+
     _efforts[effortId] = SegmentEffort(
       id: existing.id,
       segmentId: existing.segmentId,
-      orderIndex: existing.orderIndex,
+      orderIndex: orderIndex,
+      topLevelOrderIndex: topLevelOrderIndex,
+      blockOrderIndex: blockOrderIndex,
       effortKind: existing.effortKind,
       exerciseId: existing.exerciseId,
       note: existing.note,
@@ -1356,5 +1479,64 @@ class MockWorkoutRepository implements WorkoutRepository {
       createdAtMs: existing.createdAtMs,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     );
+  }
+
+  int _effectiveBlockTopLevelOrder(SessionBlock block) =>
+      block.topLevelOrderIndex ?? block.orderIndex;
+
+  int _effectiveEffortTopLevelOrder(SegmentEffort effort) =>
+      effort.topLevelOrderIndex ?? effort.orderIndex;
+
+  int _effectiveEffortBlockOrder(SegmentEffort effort) =>
+      effort.blockOrderIndex ?? effort.orderIndex;
+
+  String? _getSessionIdForSegment(String segmentId) =>
+      _segments[segmentId]?.sessionId;
+
+  int _nextTopLevelOrderForSession(String sessionId) {
+    var maxOrder = -1;
+
+    for (final block in _sessionBlocks.values) {
+      if (block.sessionId != sessionId) continue;
+      final order = _effectiveBlockTopLevelOrder(block);
+      if (order > maxOrder) maxOrder = order;
+    }
+
+    final segmentIds = _segments.values
+        .where((segment) => segment.sessionId == sessionId)
+        .map((segment) => segment.id)
+        .toSet();
+
+    for (final effort in _efforts.values) {
+      if (!segmentIds.contains(effort.segmentId)) continue;
+      if (effort.blockId != null) continue;
+      final order = _effectiveEffortTopLevelOrder(effort);
+      if (order > maxOrder) maxOrder = order;
+    }
+
+    return maxOrder + 1;
+  }
+
+  int _nextBlockOrderIndex(String blockId) {
+    var maxOrder = -1;
+
+    for (final effort in _efforts.values) {
+      if (effort.blockId != blockId) continue;
+      final order = _effectiveEffortBlockOrder(effort);
+      if (order > maxOrder) maxOrder = order;
+    }
+
+    return maxOrder + 1;
+  }
+
+  int _blockTopLevelOrderOrFallback(String blockId, String segmentId) {
+    final block = _sessionBlocks[blockId];
+    if (block != null) {
+      return _effectiveBlockTopLevelOrder(block);
+    }
+
+    final sessionId = _getSessionIdForSegment(segmentId);
+    if (sessionId == null) return 0;
+    return _nextTopLevelOrderForSession(sessionId);
   }
 }

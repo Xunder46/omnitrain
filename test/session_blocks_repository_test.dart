@@ -271,6 +271,13 @@ void main() {
       expect(clonedBlock.name, isNot(contains('(2)')));
       expect(clonedBlock.name, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
       expect(clonedBlock.id, isNot('block-clone-source'));
+      final maxTopLevelOrder = blocks
+          .map((block) => block.topLevelOrderIndex ?? block.orderIndex)
+          .reduce((a, b) => a > b ? a : b);
+      expect(
+        clonedBlock.topLevelOrderIndex ?? clonedBlock.orderIndex,
+        maxTopLevelOrder,
+      );
 
       final efforts = await repository.getSegmentEfforts('segment-clone');
       expect(efforts, hasLength(2));
@@ -313,6 +320,353 @@ void main() {
 
       final clonedRests = await repository.getEntryRests(clonedEffort.id);
       expect(clonedRests, isEmpty);
+    });
+
+    test('cloneSessionBlock preserves exact internal exercise order', () async {
+      await repository.createSession(
+        TrainingSession(
+          id: 'session-order-clone',
+          ownerUserId: 'local-user',
+          startedAtMs: 1000,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSegment(
+        SessionSegment(
+          id: 'segment-order-clone',
+          sessionId: 'session-order-clone',
+          orderIndex: 0,
+          segmentType: 'mixed',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-source-order',
+          sessionId: 'session-order-clone',
+          name: 'Source',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final exercises = await repository.getExercises();
+      final sourceExerciseIds = [exercises[0].id, exercises[1].id, exercises[2].id];
+
+      for (var i = 0; i < sourceExerciseIds.length; i++) {
+        await repository.createEffort(
+          SegmentEffort(
+            id: 'src-eff-$i',
+            segmentId: 'segment-order-clone',
+            orderIndex: i,
+            topLevelOrderIndex: 0,
+            blockOrderIndex: i,
+            effortKind: 'set',
+            exerciseId: sourceExerciseIds[i],
+            blockId: 'block-source-order',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+      }
+
+      final cloneId = await repository.cloneSessionBlock('block-source-order');
+
+      final efforts = await repository.getSegmentEfforts('segment-order-clone');
+      final clonedExerciseIds = efforts
+          .where((effort) => effort.blockId == cloneId)
+          .map((effort) => effort.exerciseId)
+          .toList();
+
+      expect(clonedExerciseIds, sourceExerciseIds);
+    });
+
+    test('repeated block clones keep identical internal ordering', () async {
+      await repository.createSession(
+        TrainingSession(
+          id: 'session-repeat-clone',
+          ownerUserId: 'local-user',
+          startedAtMs: 1000,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSegment(
+        SessionSegment(
+          id: 'segment-repeat-clone',
+          sessionId: 'session-repeat-clone',
+          orderIndex: 0,
+          segmentType: 'mixed',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-repeat-source',
+          sessionId: 'session-repeat-clone',
+          name: 'Source',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final exercises = await repository.getExercises();
+      final sourceExerciseIds = [exercises[0].id, exercises[2].id, exercises[1].id];
+
+      for (var i = 0; i < sourceExerciseIds.length; i++) {
+        await repository.createEffort(
+          SegmentEffort(
+            id: 'repeat-src-eff-$i',
+            segmentId: 'segment-repeat-clone',
+            orderIndex: i,
+            topLevelOrderIndex: 0,
+            blockOrderIndex: i,
+            effortKind: 'set',
+            exerciseId: sourceExerciseIds[i],
+            blockId: 'block-repeat-source',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+      }
+
+      final cloneA = await repository.cloneSessionBlock('block-repeat-source');
+      final cloneB = await repository.cloneSessionBlock('block-repeat-source');
+
+      final efforts = await repository.getSegmentEfforts('segment-repeat-clone');
+      final cloneAExerciseIds = efforts
+          .where((effort) => effort.blockId == cloneA)
+          .map((effort) => effort.exerciseId)
+          .toList();
+      final cloneBExerciseIds = efforts
+          .where((effort) => effort.blockId == cloneB)
+          .map((effort) => effort.exerciseId)
+          .toList();
+
+      expect(cloneAExerciseIds, sourceExerciseIds);
+      expect(cloneBExerciseIds, sourceExerciseIds);
+    });
+
+    test('adding into earlier block appends locally without moving top-level order', () async {
+      await repository.createSession(
+        TrainingSession(
+          id: 'session-append-order',
+          ownerUserId: 'local-user',
+          startedAtMs: 1000,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSegment(
+        SessionSegment(
+          id: 'segment-append-order',
+          sessionId: 'session-append-order',
+          orderIndex: 0,
+          segmentType: 'mixed',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-a',
+          sessionId: 'session-append-order',
+          name: 'A',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final exercises = await repository.getExercises();
+
+      await repository.createEffort(
+        SegmentEffort(
+          id: 'eff-a1',
+          segmentId: 'segment-append-order',
+          orderIndex: 0,
+          topLevelOrderIndex: 0,
+          blockOrderIndex: 0,
+          effortKind: 'set',
+          exerciseId: exercises[0].id,
+          blockId: 'block-a',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createEffort(
+        SegmentEffort(
+          id: 'eff-x',
+          segmentId: 'segment-append-order',
+          orderIndex: 1,
+          topLevelOrderIndex: 1,
+          effortKind: 'set',
+          exerciseId: exercises[1].id,
+          blockId: null,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createSessionBlock(
+        SessionBlock(
+          id: 'block-b',
+          sessionId: 'session-append-order',
+          name: 'B',
+          orderIndex: 2,
+          topLevelOrderIndex: 2,
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createEffort(
+        SegmentEffort(
+          id: 'eff-b1',
+          segmentId: 'segment-append-order',
+          orderIndex: 0,
+          topLevelOrderIndex: 2,
+          blockOrderIndex: 0,
+          effortKind: 'set',
+          exerciseId: exercises[2].id,
+          blockId: 'block-b',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      await repository.createEffort(
+        SegmentEffort(
+          id: 'eff-a2',
+          segmentId: 'segment-append-order',
+          orderIndex: 99,
+          effortKind: 'set',
+          exerciseId: exercises[3].id,
+          blockId: 'block-a',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final blocks = await repository.getSessionBlocks('session-append-order');
+      expect(blocks.map((block) => block.id).toList(), ['block-a', 'block-b']);
+
+      final efforts = await repository.getSegmentEfforts('segment-append-order');
+      expect(
+        efforts.map((effort) => effort.id).toList(),
+        ['eff-a1', 'eff-a2', 'eff-x', 'eff-b1'],
+      );
+    });
+
+    test('identical builds produce identical canonical order without timestamp dependence', () async {
+      Future<List<String>> buildSession(String sessionId, String segmentId) async {
+        await repository.createSession(
+          TrainingSession(
+            id: sessionId,
+            ownerUserId: 'local-user',
+            startedAtMs: 1000,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        await repository.createSegment(
+          SessionSegment(
+            id: segmentId,
+            sessionId: sessionId,
+            orderIndex: 0,
+            segmentType: 'mixed',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        final exercises = await repository.getExercises();
+
+        await repository.createSessionBlock(
+          SessionBlock(
+            id: 'block-$sessionId-a',
+            sessionId: sessionId,
+            name: 'A',
+            orderIndex: 0,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repository.createEffort(
+          SegmentEffort(
+            id: 'eff-$sessionId-a1',
+            segmentId: segmentId,
+            orderIndex: 0,
+            effortKind: 'set',
+            exerciseId: exercises[0].id,
+            blockId: 'block-$sessionId-a',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repository.createEffort(
+          SegmentEffort(
+            id: 'eff-$sessionId-x',
+            segmentId: segmentId,
+            orderIndex: 0,
+            effortKind: 'set',
+            exerciseId: exercises[1].id,
+            blockId: null,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repository.createSessionBlock(
+          SessionBlock(
+            id: 'block-$sessionId-b',
+            sessionId: sessionId,
+            name: 'B',
+            orderIndex: 0,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repository.createEffort(
+          SegmentEffort(
+            id: 'eff-$sessionId-b1',
+            segmentId: segmentId,
+            orderIndex: 0,
+            effortKind: 'set',
+            exerciseId: exercises[2].id,
+            blockId: 'block-$sessionId-b',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        final efforts = await repository.getSegmentEfforts(segmentId);
+        return efforts
+            .map(
+              (effort) => '${effort.exerciseId}:${effort.topLevelOrderIndex}:${effort.blockOrderIndex}',
+            )
+            .toList();
+      }
+
+      final firstBuild = await buildSession('session-det-1', 'segment-det-1');
+      final secondBuild = await buildSession('session-det-2', 'segment-det-2');
+
+      expect(firstBuild, secondBuild);
     });
 
     test('cloneSessionBlock in modality session uses current-time title', () async {

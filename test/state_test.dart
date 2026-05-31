@@ -291,7 +291,7 @@ void main() {
         expect(state.currentSegments[2].name, 'Main Block (3)');
       });
 
-      test('cloneSegment inserts clone immediately after source', () async {
+      test('cloneSegment appends clone to end', () async {
         final repo = await _freshRepo();
         final state = RoutineState(repo);
         state.setAutosaveEnabled(false);
@@ -304,8 +304,8 @@ void main() {
         await state.cloneSegment(segId);
 
         expect(state.currentSegments[0].name, 'Main Block');
-        expect(state.currentSegments[1].name, 'Main Block (2)');
-        expect(state.currentSegments[2].name, 'Block B');
+        expect(state.currentSegments[1].name, 'Block B');
+        expect(state.currentSegments[2].name, 'Main Block (2)');
       });
 
       test('cloneSegment re-indexes all segment orderIndex values', () async {
@@ -2145,6 +2145,34 @@ void main() {
       expect(blocks[2].orderIndex, 2);
     });
 
+    test(
+      'addSessionBlock places new block after all standalone exercises',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(exercises.first);
+        final segmentId = state.segments.first.id;
+        final standalone = state
+            .getEffortsForSegment(segmentId)
+            .firstWhere((effort) => effort.id == effortId);
+
+        final blockId = await state.addSessionBlock();
+        final addedBlock = state
+            .getSessionBlocks()
+            .firstWhere((block) => block.id == blockId);
+
+        final standaloneTopLevel =
+            standalone.topLevelOrderIndex ?? standalone.orderIndex;
+        final blockTopLevel =
+            addedBlock.topLevelOrderIndex ?? addedBlock.orderIndex;
+
+        expect(blockTopLevel, greaterThan(standaloneTopLevel));
+      },
+    );
+
     test('updateSessionBlock persists changes to cache', () async {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
@@ -2688,6 +2716,91 @@ void main() {
       final e2 = result.firstWhere((e) => e['id'] == effortId2);
       expect(e1['blockId'], blockId1);
       expect(e2['blockId'], blockId2);
+    });
+
+    test('mixed top-level ordering persists after reload', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(isRolling: false);
+
+      final exercises = await repo.getExercises();
+
+      final blockAId = await state.addSessionBlock(name: 'Block A');
+      final a1 = await state.addExerciseToSession(exercises[0]);
+      await state.assignEffortToBlock(a1, blockAId);
+      final a2 = await state.addExerciseToSession(exercises[1]);
+      await state.assignEffortToBlock(a2, blockAId);
+
+      final x = await state.addExerciseToSession(exercises[2]);
+
+      await Future.delayed(Duration(milliseconds: 5));
+      final blockBId = await state.addSessionBlock(name: 'Block B');
+      final b1 = await state.addExerciseToSession(exercises[3]);
+      await state.assignEffortToBlock(b1, blockBId);
+
+      List<String> ids() => state
+          .getExercisesWithEntries()
+          .map((e) => e['id'] as String)
+          .toList();
+
+      expect(ids(), [a1, a2, x, b1]);
+
+      await state.loadSessionData();
+      expect(ids(), [a1, a2, x, b1]);
+    });
+
+    test('full flow order remains identical before and after reload', () async {
+      final repo = await _freshRepo();
+      final state = WorkoutState(repo);
+      await state.createNewSession(isRolling: false);
+
+      final exercises = await repo.getExercises();
+
+      final blockAId = await state.addSessionBlock(name: 'Block A');
+      final a1 = await state.addExerciseToSession(exercises[0]);
+      await state.assignEffortToBlock(a1, blockAId);
+      final a2 = await state.addExerciseToSession(exercises[1]);
+      await state.assignEffortToBlock(a2, blockAId);
+
+      final x = await state.addExerciseToSession(exercises[2]);
+
+      await Future.delayed(Duration(milliseconds: 5));
+      final blockBId = await state.addSessionBlock(name: 'Block B');
+      final b1 = await state.addExerciseToSession(exercises[3]);
+      await state.assignEffortToBlock(b1, blockBId);
+
+      final clonedAId = await state.cloneSessionBlock(blockAId);
+
+      final a3 = await state.addExerciseToSession(exercises[4]);
+      await state.assignEffortToBlock(a3, blockAId);
+
+      List<String> ids() => state
+          .getExercisesWithEntries()
+          .map((e) => e['id'] as String)
+          .toList();
+
+      await state.loadSessionData();
+      final beforeReload = ids();
+
+      await state.loadSessionData();
+      final afterReload = ids();
+
+      expect(afterReload, beforeReload);
+
+      final result = state.getExercisesWithEntries();
+      final blockAIds = result
+          .where((e) => e['blockId'] == blockAId)
+          .map((e) => e['id'] as String)
+          .toList();
+      final blockACloneIds = result
+          .where((e) => e['blockId'] == clonedAId)
+          .map((e) => e['id'] as String)
+          .toList();
+
+      expect(blockAIds, [a1, a2, a3]);
+      expect(blockACloneIds, hasLength(2));
+      expect(result.any((e) => e['id'] == x), isTrue);
+      expect(result.any((e) => e['id'] == b1), isTrue);
     });
   });
 

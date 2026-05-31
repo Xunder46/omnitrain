@@ -323,6 +323,8 @@ class SessionSummaryBuilder {
           'name': exerciseName,
           'effortKind': effort.effortKind,
           'executionOrder': effort.orderIndex,
+          'topLevelOrderIndex': effort.topLevelOrderIndex ?? effort.orderIndex,
+          'blockOrderIndex': effort.blockOrderIndex,
           'entries': entries,
           'segmentId': segment.id,
           'segmentName': segment.name ?? 'Block ${segment.orderIndex + 1}',

@@ -96,4 +96,54 @@ Future<void> applyMigrations(Database db, int oldVersion, int newVersion) async 
       'ALTER TABLE app_segment_effort ADD COLUMN block_id TEXT REFERENCES app_session_block(id) ON DELETE SET NULL',
     );
   }
+
+  if (oldVersion < 7) {
+    if (!await _hasColumn(db, 'app_session_block', 'top_level_order_index')) {
+      await db.execute(
+        'ALTER TABLE app_session_block ADD COLUMN top_level_order_index INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'UPDATE app_session_block SET top_level_order_index = order_index WHERE top_level_order_index = 0',
+      );
+    }
+
+    if (!await _hasColumn(db, 'app_segment_effort', 'top_level_order_index')) {
+      await db.execute(
+        'ALTER TABLE app_segment_effort ADD COLUMN top_level_order_index INTEGER NOT NULL DEFAULT 0',
+      );
+      await db.execute(
+        'UPDATE app_segment_effort SET top_level_order_index = order_index WHERE top_level_order_index = 0',
+      );
+    }
+
+    if (!await _hasColumn(db, 'app_segment_effort', 'block_order_index')) {
+      await db.execute(
+        'ALTER TABLE app_segment_effort ADD COLUMN block_order_index INTEGER',
+      );
+      await db.execute('''
+        UPDATE app_segment_effort
+        SET block_order_index = order_index
+        WHERE block_id IS NOT NULL AND block_order_index IS NULL
+      ''');
+    }
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS IX_session_block_top_level ON app_session_block(session_id, top_level_order_index)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS IX_effort_segment_top_level ON app_segment_effort(segment_id, top_level_order_index)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS IX_effort_block_order ON app_segment_effort(block_id, block_order_index)',
+    );
+  }
+}
+
+Future<bool> _hasColumn(Database db, String table, String column) async {
+  final rows = await db.rawQuery('PRAGMA table_info($table)');
+  for (final row in rows) {
+    final name = row['name'] as String?;
+    if (name == column) return true;
+  }
+  return false;
 }

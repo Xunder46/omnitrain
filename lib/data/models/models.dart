@@ -267,6 +267,7 @@ class SessionBlock {
   final String sessionId;
   final String name;
   final int orderIndex;
+  final int? topLevelOrderIndex;
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -275,6 +276,7 @@ class SessionBlock {
     required this.sessionId,
     required this.name,
     required this.orderIndex,
+    this.topLevelOrderIndex,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
@@ -284,6 +286,8 @@ class SessionBlock {
     sessionId: m['session_id'] as String,
     name: m['name'] as String,
     orderIndex: m['order_index'] as int,
+    topLevelOrderIndex:
+        (m['top_level_order_index'] as int?) ?? (m['order_index'] as int),
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
   );
@@ -293,6 +297,7 @@ class SessionBlock {
     'session_id': sessionId,
     'name': name,
     'order_index': orderIndex,
+    'top_level_order_index': topLevelOrderIndex ?? orderIndex,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
   };
@@ -411,6 +416,8 @@ class SegmentEffort {
   final String id;
   final String segmentId;
   final int orderIndex;
+  final int? topLevelOrderIndex;
+  final int? blockOrderIndex;
   final String effortKind;
   final String? exerciseId;
   final String? note;
@@ -422,6 +429,8 @@ class SegmentEffort {
     required this.id,
     required this.segmentId,
     required this.orderIndex,
+    this.topLevelOrderIndex,
+    this.blockOrderIndex,
     required this.effortKind,
     this.exerciseId,
     this.note,
@@ -434,6 +443,11 @@ class SegmentEffort {
     id: m['id'] as String,
     segmentId: m['segment_id'] as String,
     orderIndex: m['order_index'] as int,
+    topLevelOrderIndex:
+      (m['top_level_order_index'] as int?) ?? (m['order_index'] as int),
+    blockOrderIndex:
+      (m['block_order_index'] as int?) ??
+      ((m['block_id'] as String?) != null ? m['order_index'] as int : null),
     effortKind: m['effort_kind'] as String,
     exerciseId: m['exercise_id'] as String?,
     note: m['note'] as String?,
@@ -446,6 +460,8 @@ class SegmentEffort {
     'id': id,
     'segment_id': segmentId,
     'order_index': orderIndex,
+    'top_level_order_index': topLevelOrderIndex ?? orderIndex,
+    'block_order_index': blockOrderIndex,
     'effort_kind': effortKind,
     'exercise_id': exerciseId,
     'note': note,

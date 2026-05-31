@@ -17,7 +17,7 @@ class DatabaseProvider {
     String? schemaSql,
     String? seedSql,
     bool inMemory = false,
-    int version = 6,
+    int version = 7,
   }) async {
     if (_db != null && _db!.isOpen) return _db!;
 

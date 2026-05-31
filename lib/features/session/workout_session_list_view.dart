@@ -146,9 +146,9 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
   // ── Block card ────────────────────────────────────────────────────────────
 
   Widget _buildSessionBlockCard(SessionBlock block, ThemeData theme) {
-    final blockExercises = _exercises
-        .where((e) => e['blockId'] == block.id)
-        .toList();
+    final blockExercises = _sortExercisesForBlock(
+      _exercises.where((e) => e['blockId'] == block.id).toList(),
+    );
     final tileColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
     final segmentId = widget.workoutState.segments.isNotEmpty
         ? widget.workoutState.segments.first.id
@@ -398,9 +398,6 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   Widget _buildStandardSessionListView(ThemeData theme) {
     final blocks = widget.workoutState.getSessionBlocks();
-    final standaloneExercises = _exercises
-        .where((e) => e['blockId'] == null)
-        .toList();
     final segmentId = widget.workoutState.segments.isNotEmpty
         ? widget.workoutState.segments.first.id
         : null;
@@ -455,37 +452,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
       );
     }
 
-    final List<({SessionBlock? block, Map<String, dynamic>? exercise})> items =
-        [];
-    for (final b in blocks) {
-      items.add((block: b, exercise: null));
-    }
-    for (final ex in standaloneExercises) {
-      items.add((block: null, exercise: ex));
-    }
-    items.sort((a, b) {
-      if (a.exercise != null && b.exercise != null) {
-        final aCreatedAt = a.exercise!['createdAtMs'] as int? ?? 0;
-        final bCreatedAt = b.exercise!['createdAtMs'] as int? ?? 0;
-        final createdCompare = aCreatedAt.compareTo(bCreatedAt);
-        if (createdCompare != 0) return createdCompare;
-
-        final aOrder = a.exercise!['executionOrder'] as int? ?? 0;
-        final bOrder = b.exercise!['executionOrder'] as int? ?? 0;
-        final executionCompare = aOrder.compareTo(bOrder);
-        if (executionCompare != 0) return executionCompare;
-
-        final aId = a.exercise!['id'] as String? ?? '';
-        final bId = b.exercise!['id'] as String? ?? '';
-        return aId.compareTo(bId);
-      }
-
-      final aMs =
-          a.block?.createdAtMs ?? (a.exercise?['createdAtMs'] as int? ?? 0);
-      final bMs =
-          b.block?.createdAtMs ?? (b.exercise?['createdAtMs'] as int? ?? 0);
-      return aMs.compareTo(bMs);
-    });
+    final items = _buildNonRollingTopLevelItems(_exercises);
 
     return Scaffold(
       backgroundColor: Colors.transparent,

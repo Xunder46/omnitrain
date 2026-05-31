@@ -89,10 +89,12 @@ lib/
 │   └── workout/          # (empty — reserved)
 ├── mock/                 # SeedData for development
 ├── state/
-│   ├── app_state.dart    # App-wide singleton (minimal)
 │   ├── home/             # HomeState (maintenance hint)
+│   ├── calendar/         # CalendarState (month/day session management)
+│   ├── period/           # PeriodState (training period lifecycle + overlap guards)
 │   ├── profile/          # ProfileState (profile + measurement flows)
 │   ├── routine/          # RoutineState (template CRUD)
+│   ├── settings/         # SettingsState (theme, unit, and preference state)
 │   └── workout/          # WorkoutState (session lifecycle)
 ├── widgets/
 │   ├── buttons/          # (empty — reserved)

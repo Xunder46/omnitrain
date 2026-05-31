@@ -52,6 +52,18 @@ Active session persistence semantics:
 | `segmentType` | `String` | Block type (e.g., `mixed`) |
 | `orderIndex` | `int` | Display ordering |
 
+### SessionBlock
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | UUID |
+| `sessionId` | `String` | Parent session |
+| `name` | `String` | User-facing block label |
+| `orderIndex` | `int` | Legacy block ordering field (kept for compatibility) |
+| `topLevelOrderIndex` | `int?` | Canonical top-level active-session order (shared with standalone efforts) |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last update timestamp |
+
 ### SegmentEffort
 
 | Field | Type | Description |
@@ -62,7 +74,14 @@ Active session persistence semantics:
 | `effortKind` | `String` | `set`, `timed`, `round`, or `drill` |
 | `modality` | `String?` | Optional modality context |
 | `orderIndex` | `int` | Display ordering |
+| `topLevelOrderIndex` | `int?` | Canonical top-level order for standalone efforts; aligns block members to their block's top-level slot |
+| `blockOrderIndex` | `int?` | Canonical local order inside a block; null for standalone efforts |
 | `note` | `String?` | Per-exercise note |
+
+Ordering contract:
+- Top-level active-session order is persisted via `SessionBlock.topLevelOrderIndex` and `SegmentEffort.topLevelOrderIndex`.
+- Intra-block order is persisted via `SegmentEffort.blockOrderIndex`.
+- `createdAtMs` is a tie-breaker only, never the primary ordering source.
 
 ### EffortObservation
 

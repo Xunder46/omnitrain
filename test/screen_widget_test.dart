@@ -3619,7 +3619,28 @@ void main() {
       final repo = await _freshRepo();
       final workoutState = await workoutStateWithActiveSession(repo);
       final session = workoutState.currentSession!;
-      await workoutState.updateSessionFeeling(session.id, 3);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updatedSession = TrainingSession(
+        id: session.id,
+        ownerUserId: session.ownerUserId,
+        routineTemplateId: session.routineTemplateId,
+        startedAtMs: now - 180000,
+        endedAtMs: now,
+        title: session.title,
+        note: session.note,
+        locationText: session.locationText,
+        modality: session.modality,
+        intent: session.intent,
+        perceivedSessionRpe: session.perceivedSessionRpe,
+        sessionFeeling: session.sessionFeeling,
+        qualityRating: session.qualityRating,
+        isRolling: session.isRolling,
+        createdAtMs: session.createdAtMs,
+        updatedAtMs: now,
+      );
+      await repo.updateSession(updatedSession);
+      await workoutState.loadHistoricalSession(updatedSession.id);
+      await workoutState.updateSessionFeeling(updatedSession.id, 3);
 
       final exercises = await repo.getExercises();
       final effortId = await workoutState.addExerciseToSession(
@@ -3627,7 +3648,6 @@ void main() {
         chosenMetric: 'reps',
       );
 
-      final now = DateTime.now().millisecondsSinceEpoch;
       await repo.createEntryRest(
         EntryRest(
           id: 'rest-closed',
@@ -5650,6 +5670,7 @@ void main() {
             sessionId: sessionId,
             name: '11:58 PM',
             orderIndex: 0,
+            topLevelOrderIndex: 1,
             createdAtMs: 1000,
             updatedAtMs: 1000,
           ),
@@ -5660,6 +5681,7 @@ void main() {
             sessionId: sessionId,
             name: '11:59 PM',
             orderIndex: 1,
+            topLevelOrderIndex: 2,
             createdAtMs: 2000,
             updatedAtMs: 2000,
           ),
@@ -5670,6 +5692,7 @@ void main() {
             id: 'eff-standalone',
             segmentId: segmentId,
             orderIndex: 0,
+            topLevelOrderIndex: 0,
             effortKind: 'timed',
             exerciseId: standaloneEx.id,
             blockId: null,
@@ -5684,6 +5707,8 @@ void main() {
             id: 'eff-block-a-first',
             segmentId: segmentId,
             orderIndex: 1,
+            topLevelOrderIndex: 1,
+            blockOrderIndex: 0,
             effortKind: 'timed',
             exerciseId: blockAFirstEx.id,
             blockId: 'block-a',
@@ -5698,6 +5723,8 @@ void main() {
             id: 'eff-block-b',
             segmentId: segmentId,
             orderIndex: 2,
+            topLevelOrderIndex: 2,
+            blockOrderIndex: 0,
             effortKind: 'timed',
             exerciseId: blockBLaterEx.id,
             blockId: 'block-b',
@@ -5712,6 +5739,8 @@ void main() {
             id: 'eff-block-a-late',
             segmentId: segmentId,
             orderIndex: 3,
+            topLevelOrderIndex: 1,
+            blockOrderIndex: 1,
             effortKind: 'timed',
             exerciseId: blockALateEx.id,
             blockId: 'block-a',

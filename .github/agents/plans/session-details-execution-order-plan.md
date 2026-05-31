@@ -1,91 +1,170 @@
 # Feature: Session Details Exercise Execution Order Fix
 
 ## Overview
-WorkoutSessionScreen currently renders non-rolling session exercises in an order that can diverge from performed order. Non-rolling session details must render exercises chronologically by execution order, with createdAtMs as deterministic tie-breaker.
+Active-session ordering is currently inferred from timestamps and legacy effort order indices, which is unstable for mixed standalone + block sessions and for cloned blocks. Ordering must be explicit and persisted so users always see the exact sequence they built, both in list view and exercise-detail traversal, including after reload.
 
 ## Requirements
-- Non-rolling WorkoutSessionScreen renders exercises in ascending execution order.
-- If execution order is equal, createdAtMs ascending breaks ties.
-- No modality group headers are rendered on non-rolling WorkoutSessionScreen.
-- Rolling session rendering remains unchanged.
-- SessionSummaryScreen rendering remains unchanged.
+- Top-level active-session order must be preserved by explicit recorded position, not inferred from timestamps.
+- Top-level items include both blocks and standalone exercises, and must appear exactly in user add order.
+- Each block must preserve its own explicit internal exercise order.
+- Adding an exercise to an existing block appends to that block only and does not perturb any other top-level item.
+- Cloning a block appends the cloned block at the end of top-level order and preserves internal exercise order exactly.
+- Ordering must persist across reload/reopen and be deterministic even when createdAt collisions occur.
+- No drag-and-drop reorder UI is introduced.
+- Rolling-session behavior is out of scope for changes, but must be validated as non-regressed.
+
+## Acceptance Criteria
+- [x] Building sequence block A(1,2,3), standalone X, block B(4,5) renders and reloads as A -> X -> B.
+- [x] Block A internal order remains 1 -> 2 -> 3 before and after cloning A.
+- [x] Each cloned block of A preserves 1 -> 2 -> 3 exactly across repeated clones.
+- [x] Cloned block appears as the final top-level item.
+- [x] Adding an exercise into earlier block A appends to end of A and does not move X or B.
+- [x] Reopen/reload preserves identical two-level order with zero drift.
+- [x] Order is independent from system-clock timing and deterministic across repeated identical builds.
+- [x] Rolling session list/group behavior remains unchanged.
 
 ## Scenarios
-### S-001: Non-rolling mixed exercise ordering
-- Trigger: Open non-rolling WorkoutSessionScreen with mixed effort kinds.
-- Precondition: Session has at least three exercises with differing execution order metadata.
-- Flow: Load screen list view and inspect visual exercise tile order.
-- Expected outcome: Tiles are rendered in ascending execution order regardless of effort kind/modality.
-- Edge case of: none
+### S-101: Mixed top-level ordering persistence
+- Trigger: Build active session as A(1,2,3), X, B(4,5).
+- Expected outcome: Top-level order remains A -> X -> B before and after reload.
 
-### S-002: Tie-break when execution order duplicates
-- Trigger: Open non-rolling WorkoutSessionScreen where two exercises share the same execution order.
-- Precondition: Session has duplicate execution-order values and distinct createdAtMs values.
-- Flow: Load list and compare relative order of duplicate-execution items.
-- Expected outcome: Duplicate-execution items are ordered by createdAtMs ascending.
-- Edge case of: S-001
+### S-102: Clone preserves intra-block order
+- Trigger: Clone block A once.
+- Expected outcome: Clone internal order exactly matches source (1,2,3).
 
-### S-003: Non-rolling list has no modality headers
-- Trigger: Open non-rolling WorkoutSessionScreen with mixed effort kinds.
-- Precondition: Session contains set, timed, and round efforts.
-- Flow: Inspect list view labels.
-- Expected outcome: Strength/Cardio/Sports/Intervals group headers do not appear.
-- Edge case of: S-001
+### S-103: Repeated clone determinism
+- Trigger: Clone the same source block multiple times in succession.
+- Expected outcome: Every clone has identical internal order.
 
-### S-004: Rolling list unchanged
-- Trigger: Open rolling WorkoutSessionScreen.
-- Precondition: Existing rolling behavior and tests.
-- Flow: Render block list UI.
-- Expected outcome: Existing rolling block rendering remains unchanged.
-- Edge case of: none
+### S-104: Append into earlier block
+- Trigger: Add new exercise into non-last block A after other items exist.
+- Expected outcome: New exercise is last in A; no movement of other blocks/standalone items.
 
-### S-005: Session summary unchanged
-- Trigger: Open SessionSummaryScreen for non-rolling/rolling sessions.
-- Precondition: Existing summary behavior and tests.
-- Flow: Render summary list/group cards.
-- Expected outcome: Existing summary grouping remains unchanged.
-- Edge case of: none
+### S-105: Reload invariance
+- Trigger: Complete flow add blocks -> clone -> add new exercises -> reload.
+- Expected outcome: Two-level order is identical before vs after reload.
 
-## Red Test Run (Phase 0)
-- Added test: `non-rolling session displays exercises by execution order with createdAt tie-break`
-- Added test: `non-rolling session does not render modality group headers`
-- Run: `test/screen_widget_test.dart` (targeted)
-- Result: 1 passed, 1 failed
-- Failing expectation confirms current ordering bug in non-rolling WorkoutSessionScreen.
+### S-106: Timestamp-collision independence
+- Trigger: Create multiple items in one operation/tight time window.
+- Expected outcome: Stable deterministic order not dependent on createdAt.
+
+## Iteration 1
+### Analysis
+Current implementation uses order inference instead of persisted ordering:
+- Non-rolling list and detail sequence rely on comparator paths based on createdAt/executionOrder in workout session screen state.
+- Block rendering collects block members by filter without applying a persisted block-local order.
+- Repository clone methods copy original effort.orderIndex values into cloned efforts, which can collide globally and do not define block-local append sequence.
+- Mixed top-level ordering is synthesized from block.createdAtMs and effort.createdAtMs, which is not a durable explicit ordering contract.
+
+### Questions (Resolved)
+1. Scope: both standard and block/superset active-session flows are affected.
+2. Ordering source of truth: explicit persisted add-order at top-level and block-local levels.
+3. Deliverable: diagnosis plus implementation handoff plan.
+
+### Phase 1: Data Layer (@dba)
+1. [x] Define explicit persisted ordering fields for active-session top-level items (blocks + standalone efforts) and block-internal effort order.
+2. [x] Add/update schema contract and model mapping so order is not inferred from timestamps.
+3. [x] Update repository interface for creating block/effort records with explicit order assignment and retrieval guarantees.
+4. [x] Implement deterministic order writes/reads in HiveWorkoutRepository.
+5. [x] Implement deterministic order writes/reads in MockWorkoutRepository.
+6. [x] Update cloneSessionBlock to preserve source intra-block sequence exactly and assign deterministic top-level append order for the clone.
+7. [x] Validate no order mutation of unrelated items when appending to earlier blocks.
+
+### Phase 2: Logic/UI (@developer)
+1. [x] Refactor active-session list ordering to consume persisted top-level order only.
+2. [x] Refactor block card member rendering to consume persisted block-local order only.
+3. [x] Refactor detail traversal sequence to mirror visible list order derived from persisted ordering.
+4. [x] Remove timestamp-based comparator dependence for active-session ordering decisions.
+5. [x] Ensure add-to-block appends only inside target block and preserves all external positions.
+6. [x] Validate rolling-session rendering path for non-regression.
+
+### Phase 3: Tests (@developer)
+1. [x] Add test: clone preserves exact intra-block member order.
+2. [x] Add test: repeated clones keep stable identical member order.
+3. [x] Add test: add-to-earlier-block appends locally without disturbing top-level order.
+4. [x] Add test: mixed top-level block/standalone order persists after reload.
+5. [x] Add test: deterministic ordering independent of createdAt collisions.
+6. [x] Update existing clone/order tests that currently validate deep-copy without asserting order.
+7. [x] Run targeted suites for session screen and repository order behavior.
+
+### Files Affected (Expected)
+- lib/data/repositories/workout_repository.dart
+- lib/data/repositories/hive_workout_repository.dart
+- lib/data/repositories/mock_workout_repository.dart
+- lib/state/workout/session_core_entry.dart
+- lib/state/workout/session_block_manager.dart
+- lib/state/workout/session_summary_builder.dart
+- lib/features/session/workout_session_screen.dart
+- lib/features/session/workout_session_list_view.dart
+- test/session_blocks_repository_test.dart
+- test/screen_widget_test.dart
 
 ## Progress
-- [x] Phase 0.1 Codebase analysis complete
-- [x] Phase 0.3 Scenario register written
-- [x] Phase 0.4 Tests added and red run recorded
-- [x] Implement non-rolling ordering fix in WorkoutSessionScreen path
-- [x] Verify targeted tests green
-- [x] Run broader regression tests for unchanged rolling/summary paths
-- [x] Update doc hygiene files (or record no-update required)
-
-## Doc Hygiene
-- .github/agents/docs/navigation_and_screens.md: no update required (no new screen/route/dependency changes)
-- .github/agents/docs/state_management.md: no update required (no new state class/method contracts)
-- .github/agents/docs/widget_catalog.md: no update required (no reusable widget API changes)
-
-## Follow-up Fix
-- Reported issue: cloned superset blocks still progressed as grouped all-first-exercise then all-second-exercise in detail mode.
-- Cause: non-rolling detail progression used `_exercises` ordering that could still group by local order index collisions after cloning.
-- Resolution: non-rolling `_exercises` are now sorted by `createdAtMs` (chronological insertion), with deterministic tie-breakers (`executionOrder`, then `id`).
-- Validation: targeted widget tests updated for clone-like order-index collisions and now pass.
+- [x] Phase 1 data-contract and repository order persistence design
+- [x] Phase 1 repository implementations updated (Hive + Mock)
+- [x] Phase 2 active-session ordering path refactor complete
+- [x] Phase 3 ordering regression test suite added and green
+- [x] Rolling-session non-regression validation complete
 
 ## Phase Status
-- Phase 0: Complete
+- Phase 1: Complete
 - Phase 2: Complete
+- Phase 3: Complete
+
+### Phase 1 Complete ✓
+Data layer implemented. Models, repository interface, and Hive implementation ready. Developer can proceed with Logic/UI Phase.
 
 ### Phase 2 Complete ✓
-Implementation done. All Phase 0 tests green. Ready for Code Reviewer.
+Logic/UI ordering now consumes persisted canonical order fields end-to-end. Remaining failing widget assertions are legacy-order-contract tests to be updated in Phase 3.
+
+### Phase 3 Complete ✓
+Ordering regression coverage added and focused session-order validations are green. Ready for Code Reviewer.
+
+## Doc Hygiene
+- .github/agents/docs/navigation_and_screens.md: no update required (no route/screen constructor changes in this iteration)
+- .github/agents/docs/state_management.md: no update required (no new state owner/service contract)
+- .github/agents/docs/widget_catalog.md: no update required (no reusable widget API changes)
+- .github/agents/docs/data_models.md: updated (documented `SessionBlock.topLevelOrderIndex`, `SegmentEffort.topLevelOrderIndex`, and `SegmentEffort.blockOrderIndex` plus ordering contract)
+- .github/agents/docs/db_integration.md: updated (documented deterministic ordering contract, Hive behavior, and SQLite v7 migration/versioning notes)
+
+## Iteration 2
+### Analysis
+Two bugs found after Iteration 1 landed:
+
+**Bug 1 — Active session "Add Block": new block can appear before standalone exercises.**
+`session_block_manager.addSessionBlock()` stores the new block in memory with `topLevelOrderIndex = null`. The repository normalizes it correctly via `_nextTopLevelOrderForSession`, but that value is never written back to the in-memory entry. `_blockTopLevelOrder` falls back to `block.orderIndex` (computed from blocks only), which can be ≤ a standalone exercise's `topLevelOrderIndex`, causing the new block to sort before some standalone exercises. `cloneSessionBlock` already does the right thing by reloading from the repository — `addSessionBlock` must do the same.
+
+**Bug 2 — Routine "Clone Block": clone inserts immediately after the source, not at the end.**
+`routine_state.cloneSegment()` calls `newSegments.insert(sourceIndex + 1, clonedSegment)`. Should append to end regardless of source position.
+
+### Phase 1: State fix — Active session (@developer)
+1. [x] In `lib/state/workout/session_block_manager.dart` `addSessionBlock()`: replace `_sessionBlocks.putIfAbsent(currentSessionId, () => []).add(block)` with `_sessionBlocks[currentSessionId] = await _repository.getSessionBlocks(currentSessionId)` (same reload pattern as `cloneSessionBlock`).
+
+### Phase 2: State fix — Routine (@developer)
+2. [x] In `lib/state/routine/routine_state.dart` `cloneSegment()`: change `newSegments.insert(sourceIndex + 1, clonedSegment)` to `newSegments.add(clonedSegment)`. Re-indexing loop below is unchanged.
+
+### Phase 3: Tests (@developer)
+3. [x] `test/state_test.dart`: Update `'cloneSegment inserts clone immediately after source'` to assert clone goes to end — expected order after cloning first block when Block B exists: `[Main Block, Block B, Main Block (2)]`.
+4. [x] `test/state_test.dart`: Add `'addSessionBlock places new block after all standalone exercises'` — add standalone exercise, call `addSessionBlock`, verify new block's effective `topLevelOrderIndex` is greater than the standalone exercise's.
+
+### Acceptance Criteria
+- [x] "Add Block" in a session with standalone exercises always appends after all existing items.
+- [x] Cloning a block in any position in a session appends the clone to the end.
+- [x] Cloning a block in any position in a routine appends the clone to the end.
+- [x] Updated and new tests in `test/state_test.dart` are green.
+- [x] All existing ordering regression tests remain green.
+
+### Files Affected (Iteration 2)
+- lib/state/workout/session_block_manager.dart
+- lib/state/routine/routine_state.dart
+- test/state_test.dart
+
+## Progress (Iteration 2)
+- [x] Bug 1 fix: `session_block_manager.addSessionBlock` reload after create
+- [x] Bug 2 fix: `routine_state.cloneSegment` append to end
+- [x] Tests: updated `cloneSegment` test + new `addSessionBlock` ordering test
+
+### Iteration 2 Complete ✓
+Implementation done. Add-block and clone-to-end ordering are now deterministic across session and routine flows, with targeted regression suites green.
 
 ## Feedback
-- Non-rolling ordering implementation currently sorts by `createdAtMs` first and only then `executionOrder`, but the stated requirement/Scenario S-001 expects ascending `executionOrder` with `createdAtMs` only as tie-breaker.
-- Update sort comparator in `WorkoutSessionScreen` non-rolling paths to apply `executionOrder` primary ordering and `createdAtMs` tie-break, then re-validate affected widget tests.
-- Re-run and record targeted test evidence for S-001 and S-002 after comparator correction.
-
-- Resolved: non-rolling comparators now sort by `executionOrder` first, then `createdAtMs`, then id; targeted widget tests re-run and passing.
-
-- User-direction update (April 14, 2026): non-rolling ordering was reverted to chronology-first (`createdAtMs`, then `executionOrder`, then id) to preserve performed insertion flow in session detail/list paths.
-- User-direction update (April 14, 2026, latest): non-rolling detail traversal must follow the exact visible list order; with blocks present, traversal is anchored by block placement in list view and exercises stay grouped under their block.

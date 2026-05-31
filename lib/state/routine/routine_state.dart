@@ -387,7 +387,7 @@ class RoutineState extends ChangeNotifier {
     }
   }
 
-  /// Clone a segment (block) by inserting a copy immediately after it with
+  /// Clone a segment (block) by appending a copy to the end with
   /// all efforts and targets deep-cloned under new IDs.
   Future<void> cloneSegment(String segmentId) async {
     _clearError();
@@ -415,9 +415,9 @@ class RoutineState extends ChangeNotifier {
         updatedAtMs: now,
       );
 
-      // Insert cloned segment immediately after the source, then re-index all.
+      // Append cloned segment to the end, then re-index all.
       final newSegments = [..._currentSegments];
-      newSegments.insert(sourceIndex + 1, clonedSegment);
+      newSegments.add(clonedSegment);
       for (int i = 0; i < newSegments.length; i++) {
         newSegments[i] = newSegments[i].copyWith(orderIndex: i);
       }

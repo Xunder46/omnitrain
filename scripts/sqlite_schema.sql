@@ -986,13 +986,29 @@ CREATE INDEX IF NOT EXISTS IX_training_period_range
 -- Groups efforts within a session into named ordered blocks (e.g. "Warm-Up", "Main Work").
 -- Deleting a block nulls block_id on linked efforts — does NOT delete the efforts themselves.
 --
+-- SESSION ORDERING (May 2026):
+-- - top_level_order_index is the canonical active-session ordering key shared by
+--   blocks and standalone efforts.
+-- - block_order_index is the canonical ordering key for efforts inside a block.
+-- - created_at_ms is never used as the primary ordering source.
+--
 -- SqliteWorkoutRepository implementation notes:
 --   getSessionBlocks(sessionId):
---     SELECT * FROM app_session_block WHERE session_id = ? ORDER BY order_index ASC;
+--     SELECT * FROM app_session_block WHERE session_id = ?
+--     ORDER BY top_level_order_index ASC, order_index ASC, created_at_ms ASC, id ASC;
+--   getSegmentEfforts(segmentId):
+--     SELECT * FROM app_segment_effort WHERE segment_id = ?
+--     ORDER BY top_level_order_index ASC,
+--              CASE WHEN block_id IS NULL THEN -1 ELSE block_order_index END ASC,
+--              order_index ASC,
+--              created_at_ms ASC,
+--              id ASC;
 --   createSessionBlock(block):
 --     INSERT INTO app_session_block VALUES (...);
 --   updateSessionBlock(block):
---     UPDATE app_session_block SET name=?, order_index=?, updated_at_ms=? WHERE id=?;
+--     UPDATE app_session_block
+--     SET name=?, order_index=?, top_level_order_index=?, updated_at_ms=?
+--     WHERE id=?;
 --   deleteSessionBlock(blockId):
 --     DELETE FROM app_session_block WHERE id=?;
 --     UPDATE app_segment_effort SET block_id=NULL WHERE block_id=?;
@@ -1010,14 +1026,25 @@ CREATE TABLE IF NOT EXISTS app_session_block (
   session_id     TEXT    NOT NULL,
   name           TEXT    NOT NULL,
   order_index    INTEGER NOT NULL DEFAULT 0,
+  top_level_order_index INTEGER NOT NULL DEFAULT 0,
   created_at_ms  INTEGER NOT NULL,
   updated_at_ms  INTEGER NOT NULL,
   FOREIGN KEY(session_id) REFERENCES app_training_session(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS IX_session_block_session
   ON app_session_block(session_id, order_index);
+CREATE INDEX IF NOT EXISTS IX_session_block_top_level
+  ON app_session_block(session_id, top_level_order_index);
 
 ALTER TABLE app_segment_effort
   ADD COLUMN block_id TEXT REFERENCES app_session_block(id) ON DELETE SET NULL;
+ALTER TABLE app_segment_effort
+  ADD COLUMN top_level_order_index INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE app_segment_effort
+  ADD COLUMN block_order_index INTEGER;
+CREATE INDEX IF NOT EXISTS IX_effort_segment_top_level
+  ON app_segment_effort(segment_id, top_level_order_index);
+CREATE INDEX IF NOT EXISTS IX_effort_block_order
+  ON app_segment_effort(block_id, block_order_index);
 
 COMMIT;

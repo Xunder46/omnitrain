@@ -46,7 +46,19 @@ abstract class WorkoutRepository {
   Future<String> createSegment(SessionSegment segment);
 
   // Efforts
+  /// Returns efforts in deterministic active-session display order.
+  ///
+  /// Ordering contract:
+  /// - top-level order for standalone efforts
+  /// - block-local order for efforts inside the same block
+  /// - stable tie-breakers for legacy rows
   Future<List<SegmentEffort>> getSegmentEfforts(String segmentId);
+
+  /// Persist a new effort.
+  ///
+  /// Implementations must assign deterministic ordering metadata for:
+  /// - top-level session order (standalone efforts)
+  /// - block-local order (efforts assigned to blocks)
   Future<String> createEffort(SegmentEffort effort);
 
   // Observations
@@ -327,28 +339,37 @@ abstract class WorkoutRepository {
 
   // ─── Session Blocks ───────────────────────────────────────────────────────
 
-  /// Get all blocks for a session, ordered by orderIndex ascending.
+  /// Get all blocks for a session in deterministic top-level session order.
   Future<List<SessionBlock>> getSessionBlocks(String sessionId);
 
-  /// Persist a new session block; returns its ID.
+  /// Persist a new session block.
+  ///
+  /// Implementations must assign deterministic top-level order metadata so
+  /// mixed block + standalone sessions reload in identical sequence.
   Future<String> createSessionBlock(SessionBlock block);
 
   /// Update an existing session block.
   Future<void> updateSessionBlock(SessionBlock block);
 
   /// Delete a session block by ID.
-  /// Nulls out blockId on any linked SegmentEffort — does NOT delete the efforts.
+  /// Cascade-deletes linked efforts and their sub-records.
   Future<void> deleteSessionBlock(String blockId);
 
   /// Reorder blocks within a session by providing the desired ID order.
   Future<void> reorderSessionBlocks(String sessionId, List<String> orderedIds);
 
   /// Deep-clone a block and all its linked efforts/observations/rounds/rests.
-  /// Returns the new block's ID.
+  ///
+  /// Ordering contract:
+  /// - cloned block is appended to end of top-level session order
+  /// - cloned efforts preserve source block-local order exactly
   Future<String> cloneSessionBlock(String blockId);
 
   /// Assign or unassign an effort to a block.
   /// Pass [blockId] as null to unassign (effort becomes unblocked).
+  ///
+  /// Implementations must update ordering metadata so assigning to a block
+  /// appends at block tail without perturbing unrelated top-level items.
   Future<void> assignEffortToBlock(String effortId, String? blockId);
 
   // ─── Preferences ─────────────────────────────────────────────────────────

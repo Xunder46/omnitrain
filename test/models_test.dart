@@ -222,6 +222,7 @@ void main() {
         'session_id': 'session-1',
         'name': 'Warm-Up',
         'order_index': 2,
+        'top_level_order_index': 5,
         'created_at_ms': 100,
         'updated_at_ms': 200,
       };
@@ -233,8 +234,24 @@ void main() {
       expect(result['session_id'], 'session-1');
       expect(result['name'], 'Warm-Up');
       expect(result['order_index'], 2);
+      expect(obj.topLevelOrderIndex, 5);
+      expect(result['top_level_order_index'], 5);
       expect(result['created_at_ms'], 100);
       expect(result['updated_at_ms'], 200);
+    });
+
+    test('fromMap backfills topLevelOrderIndex from orderIndex', () {
+      final obj = SessionBlock.fromMap({
+        'id': 'block-2',
+        'session_id': 'session-1',
+        'name': 'Main',
+        'order_index': 7,
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      });
+
+      expect(obj.topLevelOrderIndex, 7);
+      expect(obj.toMap()['top_level_order_index'], 7);
     });
   });
 
@@ -246,6 +263,8 @@ void main() {
         'id': 'effort-1',
         'segment_id': 'segment-1',
         'order_index': 0,
+        'top_level_order_index': 3,
+        'block_order_index': 1,
         'effort_kind': 'set',
         'exercise_id': 'exercise-1',
         'note': 'note',
@@ -258,7 +277,11 @@ void main() {
       final result = obj.toMap();
 
       expect(obj.blockId, 'block-1');
+      expect(obj.topLevelOrderIndex, 3);
+      expect(obj.blockOrderIndex, 1);
       expect(result['block_id'], 'block-1');
+      expect(result['top_level_order_index'], 3);
+      expect(result['block_order_index'], 1);
     });
 
     test('fromMap handles null blockId', () {
@@ -272,7 +295,26 @@ void main() {
       });
 
       expect(obj.blockId, isNull);
+      expect(obj.topLevelOrderIndex, 1);
+      expect(obj.blockOrderIndex, isNull);
       expect(obj.toMap()['block_id'], isNull);
+      expect(obj.toMap()['top_level_order_index'], 1);
+      expect(obj.toMap()['block_order_index'], isNull);
+    });
+
+    test('fromMap backfills blockOrderIndex for legacy blocked effort', () {
+      final obj = SegmentEffort.fromMap({
+        'id': 'effort-3',
+        'segment_id': 'segment-1',
+        'order_index': 4,
+        'effort_kind': 'set',
+        'block_id': 'block-legacy',
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      });
+
+      expect(obj.topLevelOrderIndex, 4);
+      expect(obj.blockOrderIndex, 4);
     });
   });
 
