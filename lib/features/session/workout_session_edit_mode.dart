@@ -39,7 +39,7 @@ Future<int?> _showDurationEntryDialog(
             Text(
               subtitle,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: OmniTheme.textSecondary,
+                color: OmniTheme.colors.textSecondary,
               ),
             ),
             const SizedBox(height: 20),

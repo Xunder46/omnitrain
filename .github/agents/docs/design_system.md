@@ -41,12 +41,12 @@ The aesthetic is **spacecraft interior** — not cosmic/outer-space, but the con
 
 | Theme | Enum | Primary | Character |
 |-------|------|---------|-----------|
-| Abyssal Neon | `abyssalNeon` | `#00B4B8` Neon cyan | Deep cosmic, high-contrast blue-teal |
-| Forge & Ember | `forgeEmber` | `#FF6B35` Ember orange | Hot molten steel, industrial warm |
-| Obsidian Volt | `obsidianVolt` | `#D4A017` Amber volt | Dark electric, controlled amber |
-| Void Pulse | `voidPulse` | `#8B5CF6` Deep violet | Cosmic meditative, purple-galaxy |
-| Crimson Dojo | `crimsonDojo` | `#E53935` Crimson red | Martial aggression, deep red |
-| Malachite Core | `malachiteCore` | `#1A9A4A` Deep emerald | Industrial, geological, mineral-veined rock face |
+| Abyssal Neon | `abyssalNeon` | `#2DE2E6` Neon cyan | Deep cosmic, high-contrast blue-teal |
+| Forge & Ember | `forgeEmber` | `#FF7B45` Ember orange | Hot molten steel, industrial warm |
+| Obsidian Volt | `obsidianVolt` | `#E8B420` Amber volt | Dark electric, controlled amber |
+| Void Pulse | `voidPulse` | `#A478FF` Deep violet | Cosmic meditative, purple-galaxy |
+| Crimson Dojo | `crimsonDojo` | `#FF4C47` Crimson red | Martial aggression, deep red |
+| Malachite Core | `malachiteCore` | `#24B85A` Deep emerald | Industrial, geological, mineral-veined rock face |
 
 ---
 
@@ -78,9 +78,9 @@ Character: deep emerald, geological, industrial — a mineral-veined rock face u
 | Background Bottom | `#060C08` | Near-black gradient end, slightly warmer |
 | Surface | `#122214` | Warm dark green-black card surface |
 | Surface Border | `#FFFFFF` @ 5% | Subtle boundary (matches Forge & Ember weight) |
-| Primary (Deep Emerald) | `#1A9A4A` | Heavy, saturated emerald — CTAs, active states |
+| Primary (Deep Emerald) | `#24B85A` | Bright emerald accent — CTAs, active states |
 | Secondary (Forest Emerald) | `#128A40` | Supporting accent, clears 3:1 on surface |
-| Text Muted | `#AACFAA` | Green-tinted bone (lifted from `#8BBF8A`) — clears 6:1 comfortable margin on surface |
+| Text Muted | `#7FAA7F` | Darker metadata green for stronger emphasis-tier separation |
 | Divider | `#172A18` | Warm dark green separator |
 
 ### Color Usage Rules
@@ -91,6 +91,30 @@ Character: deep emerald, geological, industrial — a mineral-veined rock face u
 5. **Gradient colors** on tiles are functional — they differentiate workout categories
 6. **Glow effects** are reserved for active/selected states and brand elements
 7. **Modality accent colors** must come from `lib/core/constants/modality_colors.dart` (single source of truth) and must not be hardcoded in screens/components
+
+### Emphasis Tiers
+
+OmniTrain’s shared text hierarchy is expressed through `OmniTheme.colors`:
+
+| Token | Role |
+|-------|------|
+| `textDominant` | Hero headings, primary back arrows, selected/active emphasis |
+| `textSecondary` | Supporting text, secondary icons, subdued labels |
+| `textMuted` | Tertiary metadata, chrome, status labels |
+| `textDisabled` | Disabled controls and unavailable states |
+
+`primary` remains the primary-action accent used for CTAs and active indicators.
+
+### Phase 1B Tier Values
+
+| Theme | `textDominant` | `textSecondary` | `textMuted` | `textDisabled` | `primary` |
+|-------|----------------|-----------------|-------------|----------------|-----------|
+| Abyssal Neon | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#7A8899` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#2DE2E6` |
+| Forge & Ember | `#FFF5EA` @ 94% (`0xF0FFF5EA`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#8A5C4E` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#FF7B45` |
+| Obsidian Volt | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#6E6240` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#E8B420` |
+| Void Pulse | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#6B5B8A` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#A478FF` |
+| Crimson Dojo | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#A07060` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#FF4C47` |
+| Malachite Core | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#7FAA7F` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#24B85A` |
 
 ---
 

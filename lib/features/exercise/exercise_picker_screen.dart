@@ -262,7 +262,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                       initialValue: _selectedDisciplineId,
                       isExpanded: true,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.textSecondary,
+                        color: OmniTheme.colors.textSecondary,
                       ),
                       decoration: InputDecoration(
                         enabledBorder: OutlineInputBorder(
@@ -296,7 +296,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                           child: Text(
                             'All',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.textSecondary,
+                              color: OmniTheme.colors.textSecondary,
                             ),
                           ),
                         ),
@@ -307,7 +307,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                               d.name,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: OmniTheme.textSecondary,
+                                color: OmniTheme.colors.textSecondary,
                               ),
                             ),
                           ),
@@ -325,7 +325,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                       initialValue: _selectedMuscleGroupId,
                       isExpanded: true,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.textSecondary,
+                        color: OmniTheme.colors.textSecondary,
                       ),
                       decoration: InputDecoration(
                         enabledBorder: OutlineInputBorder(
@@ -359,7 +359,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                           child: Text(
                             'All',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.textSecondary,
+                              color: OmniTheme.colors.textSecondary,
                             ),
                           ),
                         ),
@@ -370,7 +370,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                               mg.name,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: OmniTheme.textSecondary,
+                                color: OmniTheme.colors.textSecondary,
                               ),
                             ),
                           ),
@@ -394,7 +394,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
                   child: TextButton.icon(
                     onPressed: _clearFilters,
                     style: TextButton.styleFrom(
-                      foregroundColor: OmniTheme.textSecondary,
+                      foregroundColor: OmniTheme.colors.textSecondary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(
                           OmniTheme.buttonUtilityRadius,
@@ -522,7 +522,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
         title,
         style: theme.textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.w600,
-          color: OmniTheme.textSecondary,
+          color: OmniTheme.colors.textSecondary,
         ),
       ),
     );
@@ -553,7 +553,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
         exercise.name,
         style: theme.textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.w600,
-          color: OmniTheme.textPrimary,
+          color: OmniTheme.colors.textDominant,
         ),
       ),
       subtitle: Column(
@@ -565,7 +565,7 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
             Text(
               exercise.description!,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: OmniTheme.textSecondary,
+                color: OmniTheme.colors.textSecondary,
               ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,

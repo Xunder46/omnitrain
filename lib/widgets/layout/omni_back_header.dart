@@ -5,7 +5,7 @@ import '../../core/constants/omni_theme.dart';
 ///
 /// Implements [PreferredSizeWidget] so it can be used directly as
 /// [Scaffold.appBar]. Always renders [Icons.arrow_back] in an [IconButton]
-/// using [OmniTheme.textPrimary] for consistent icon color across all screens.
+/// using [OmniTheme.colors.textDominant] for consistent icon color across all screens.
 ///
 /// Title is rendered with [TextTheme.titleLarge] plus [FontWeight.w600] and
 /// [OmniTheme.titleLetterSpacing] (0.4) so all screen headers share the same
@@ -45,7 +45,7 @@ class OmniBackHeader extends StatelessWidget implements PreferredSizeWidget {
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
-        color: OmniTheme.textPrimary,
+        color: OmniTheme.colors.textDominant,
         onPressed: onBack ?? () => Navigator.of(context).pop(),
       ),
       title: subtitle == null
@@ -57,7 +57,7 @@ class OmniBackHeader extends StatelessWidget implements PreferredSizeWidget {
                 Text(
                   subtitle!,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: OmniTheme.textSecondary,
+                    color: OmniTheme.colors.textSecondary,
                   ),
                 ),
               ],
@@ -65,7 +65,7 @@ class OmniBackHeader extends StatelessWidget implements PreferredSizeWidget {
       titleTextStyle: theme.textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.w600,
         letterSpacing: OmniTheme.titleLetterSpacing,
-        color: OmniTheme.textPrimary,
+        color: OmniTheme.colors.textDominant,
       ),
       actions: actions,
     );

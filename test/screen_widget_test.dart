@@ -4148,7 +4148,7 @@ void main() {
         expect(find.text('Recommended'), findsOneWidget);
 
         final recommendedText = tester.widget<Text>(find.text('Recommended'));
-        expect(recommendedText.style?.color, OmniTheme.textSecondary);
+        expect(recommendedText.style?.color, OmniTheme.colors.textSecondary);
 
         final firstChip = tester.widget<Chip>(find.byType(Chip).first);
         expect(firstChip.backgroundColor, Colors.transparent);

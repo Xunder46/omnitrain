@@ -47,8 +47,8 @@ class _MeasurementHistoryChartSheetState
     final theme = Theme.of(context);
 
     return Container(
-      decoration: const BoxDecoration(
-        color: OmniTheme.surfaceColor,
+      decoration: BoxDecoration(
+        color: OmniTheme.colors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
@@ -108,7 +108,7 @@ class _MeasurementHistoryChartSheetState
       child: Text(
         widget.definition.label.toUpperCase(),
         style: theme.textTheme.labelLarge?.copyWith(
-          color: OmniTheme.textPrimary,
+          color: OmniTheme.colors.textDominant,
           letterSpacing: 2.0,
           fontWeight: FontWeight.w700,
         ),
@@ -123,7 +123,7 @@ class _MeasurementHistoryChartSheetState
         child: Text(
           'No entries yet',
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: OmniTheme.textSecondary.withOpacity(0.7),
+            color: OmniTheme.colors.textSecondary.withOpacity(0.7),
           ),
         ),
       ),
@@ -171,13 +171,13 @@ class _MeasurementHistoryChartSheetState
               Text(
                 _formatDate(selectedDate),
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: OmniTheme.textSecondary.withOpacity(0.70),
+                  color: OmniTheme.colors.textSecondary.withOpacity(0.70),
                 ),
               ),
               Text(
                 '·',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: OmniTheme.textSecondary.withOpacity(0.55),
+                  color: OmniTheme.colors.textSecondary.withOpacity(0.55),
                 ),
               ),
               Text(
@@ -221,7 +221,7 @@ class _MeasurementHistoryChartSheetState
         'Tap a point to view \u00b7 Long-press to delete',
         textAlign: TextAlign.center,
         style: theme.textTheme.bodySmall?.copyWith(
-          color: OmniTheme.textSecondary.withOpacity(0.55),
+          color: OmniTheme.colors.textSecondary.withOpacity(0.55),
         ),
       ),
     );
@@ -454,7 +454,7 @@ class _MeasurementHistoryChartSheetState
                   child: Text(
                     _formatDate(date),
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: OmniTheme.textSecondary.withOpacity(0.60),
+                      color: OmniTheme.colors.textSecondary.withOpacity(0.60),
                       // [E] Chart axis — dense instrumentation label; getTitlesWidget has no BuildContext
                       fontSize: 10,
                     ),

@@ -321,6 +321,9 @@ void main() {
     // Simulate a rest that started at least 1 ms ago.
     await deps.workoutState.recordRestStart(effortId, 0);
 
+    // Ensure endSession closes the open rest at a later timestamp.
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+
     await deps.workoutState.endSession();
 
     final restMs = await deps.sessionSummaryService.computeSessionRestTimeMs(

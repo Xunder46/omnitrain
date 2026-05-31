@@ -8,7 +8,10 @@ typedef OmniThemeColors = ({
   Color surface,
   Color primary,
   Color secondary,
+  Color textDominant,
+  Color textSecondary,
   Color textMuted,
+  Color textDisabled,
   Color divider,
   Color surfaceBorder,
 });
@@ -25,9 +28,12 @@ class OmniTheme {
           backgroundTop: Color(0xFF0F1F33),
           backgroundBottom: Color(0xFF060B14),
           surface: Color(0xFF0E223A),
-          primary: Color(0xFF00B4B8),
+          primary: Color(0xFF2DE2E6),
           secondary: Color(0xFF1B9AAA),
-          textMuted: Color(0xFF9BA4B5),
+          textDominant: Color(0xF2FFFFFF),
+          textSecondary: Color(0x99FFFFFF),
+          textMuted: Color(0xFF7A8899),
+          textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF1F2937),
           surfaceBorder: Color(0x0FFFFFFF),
         );
@@ -36,9 +42,12 @@ class OmniTheme {
           backgroundTop: Color(0xFF1C1008),
           backgroundBottom: Color(0xFF0A0603),
           surface: Color(0xFF211407),
-          primary: Color(0xFFFF6B35),
+          primary: Color(0xFFFF7B45),
           secondary: Color(0xFFCC4A1A),
-          textMuted: Color(0xFFA07060),
+          textDominant: Color(0xF0FFF5EA),
+          textSecondary: Color(0x99FFFFFF),
+          textMuted: Color(0xFF8A5C4E),
+          textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF2A1C10),
           surfaceBorder: Color(0x0DFFFFFF),
         );
@@ -47,9 +56,12 @@ class OmniTheme {
           backgroundTop: Color(0xFF111111),
           backgroundBottom: Color(0xFF050505),
           surface: Color(0xFF161616),
-          primary: Color(0xFFD4A017),
+          primary: Color(0xFFE8B420),
           secondary: Color(0xFF9C7400),
-          textMuted: Color(0xFF8A7A52),
+          textDominant: Color(0xF2FFFFFF),
+          textSecondary: Color(0x99FFFFFF),
+          textMuted: Color(0xFF6E6240),
+          textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF1F1F1F),
           surfaceBorder: Color(0x12FFFFFF),
         );
@@ -58,9 +70,12 @@ class OmniTheme {
           backgroundTop: Color(0xFF120F24),
           backgroundBottom: Color(0xFF0A071A),
           surface: Color(0xFF110D20),
-          primary: Color(0xFF8B5CF6),
+          primary: Color(0xFFA478FF),
           secondary: Color(0xFF6D3FD4),
+          textDominant: Color(0xF2FFFFFF),
+          textSecondary: Color(0x99FFFFFF),
           textMuted: Color(0xFF6B5B8A),
+          textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF1A1230),
           surfaceBorder: Color(0x0FFFFFFF),
         );
@@ -69,9 +84,12 @@ class OmniTheme {
           backgroundTop: Color(0xFF1A0806),
           backgroundBottom: Color(0xFF080302),
           surface: Color(0xFF3A1A16),
-          primary: Color(0xFFE53935),
+          primary: Color(0xFFFF4C47),
           secondary: Color(0xFFD32F2F),
-          textMuted: Color(0xFFC4907A),
+          textDominant: Color(0xF2FFFFFF),
+          textSecondary: Color(0x99FFFFFF),
+          textMuted: Color(0xFFA07060),
+          textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF2A0F0C),
           surfaceBorder: Color(0x0DFFFFFF),
         );
@@ -80,14 +98,20 @@ class OmniTheme {
           backgroundTop: Color(0xFF0D1F10),
           backgroundBottom: Color(0xFF060C08),
           surface: Color(0xFF122214),
-          primary: Color(0xFF1A9A4A),
+          primary: Color(0xFF24B85A),
           secondary: Color(0xFF128A40),
-          textMuted: Color(0xFFAACFAA),
+          textDominant: Color(0xF2FFFFFF),
+          textSecondary: Color(0x99FFFFFF),
+          textMuted: Color(0xFF7FAA7F),
+          textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF172A18),
           surfaceBorder: Color(0x0DFFFFFF),
         );
     }
   }
+
+  /// Shorthand for the current theme colors.
+  static OmniThemeColors get colors => colorsForTheme(activeTheme);
 
   static String displayNameForTheme(AppTheme theme) {
     switch (theme) {
@@ -105,37 +129,6 @@ class OmniTheme {
         return 'Malachite Core';
     }
   }
-
-  // ═══════════════════════════════════════════════════════════
-  // BACKGROUND GRADIENTS
-  // ═══════════════════════════════════════════════════════════
-
-  /// Deep cosmic background gradient (top to bottom)
-  static const backgroundGradientTop = Color(0xFF0F1F33);
-  static const backgroundGradientBottom = Color(0xFF060B14);
-
-  // ═══════════════════════════════════════════════════════════
-  // SURFACE COLORS
-  // ═══════════════════════════════════════════════════════════
-
-  /// Dark navy surface for cards and panels
-  static const surfaceColor = Color(0xFF0E223A);
-
-  /// Subtle inner stroke color for surfaces
-  static const surfaceBorderColor = Color(0x0FFFFFFF); // White 6%
-
-  // ═══════════════════════════════════════════════════════════
-  // TEXT COLORS
-  // ═══════════════════════════════════════════════════════════
-
-  /// Primary text color
-  static const textPrimary = Color(0xE6FFFFFF); // White 90%
-
-  /// Secondary text color
-  static const textSecondary = Color(0xB3FFFFFF); // White 70%
-
-  /// Muted text color for supporting labels and instrumentation copy
-  static const textMuted = Color(0xFF9BA4B5);
 
   // ═══════════════════════════════════════════════════════════
   // SHADOWS

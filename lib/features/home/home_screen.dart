@@ -179,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       letterSpacing: 2.0,
-                      color: OmniTheme.textPrimary,
+                      color: OmniTheme.colors.textDominant,
                       shadows: [
                         Shadow(
                           color: Colors.black.withOpacity(0.5),
@@ -518,7 +518,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         width: 32,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: OmniTheme.textSecondary.withOpacity(0.3),
+                              color: OmniTheme.colors.textSecondary.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -528,7 +528,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     'Free Training',
                     style: Theme.of(innerCtx).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: OmniTheme.textPrimary,
+                        color: OmniTheme.colors.textDominant,
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -677,7 +677,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                         .textTheme
                                         .labelMedium
                                         ?.copyWith(
-                                          color: OmniTheme.textSecondary
+                                          color: OmniTheme.colors.textSecondary
                                               .withOpacity(0.7),
                                           letterSpacing: 3.0,
                                           fontWeight: FontWeight.w600,

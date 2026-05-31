@@ -417,7 +417,7 @@ class _EmptyState extends StatelessWidget {
       child: Text(
         isPast ? 'No sessions on this day.' : 'No sessions planned yet.',
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-          color: OmniTheme.textSecondary.withOpacity(0.6),
+          color: OmniTheme.colors.textSecondary.withOpacity(0.6),
         ),
       ),
     );
@@ -436,7 +436,7 @@ class _SectionHeader extends StatelessWidget {
         title,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           fontWeight: FontWeight.w700,
-          color: OmniTheme.textSecondary,
+          color: OmniTheme.colors.textSecondary,
           letterSpacing: 0.5,
         ),
       ),
@@ -537,7 +537,7 @@ class _SessionRow extends StatelessWidget {
             title: Text(
               label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: OmniTheme.textPrimary,
+                color: OmniTheme.colors.textDominant,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -567,7 +567,7 @@ class _SessionRow extends StatelessWidget {
                       if (onEdit != null)
                         IconButton(
                           icon: const Icon(Icons.edit_outlined, size: 18),
-                          color: OmniTheme.textSecondary,
+                          color: OmniTheme.colors.textSecondary,
                           onPressed: onEdit,
                         ),
                       if (onDelete != null)

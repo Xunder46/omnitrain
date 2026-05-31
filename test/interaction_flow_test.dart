@@ -1573,10 +1573,14 @@ void main() {
         await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
         await tester.pumpAndSettle();
 
-        // After postFrameCallback and animation settle, the scroll offset
-        // should be at the maximum extent (bottom of list)
+        // After postFrameCallback and settle, the list should land at the
+        // bottom-peek target used by WorkoutSessionScreen.
+        final position = controller.position;
+        final expectedTarget =
+            (position.maxScrollExtent - (position.viewportDimension * 0.05))
+                .clamp(0.0, position.maxScrollExtent);
         expect(controller.offset, greaterThan(0.0));
-        expect(controller.offset, closeTo(controller.position.maxScrollExtent, 1.0));
+        expect(controller.offset, closeTo(expectedTarget, 1.0));
       },
     );
 

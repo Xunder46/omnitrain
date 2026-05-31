@@ -81,14 +81,14 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: OmniTheme.textPrimary.withOpacity(0.3),
+                          color: OmniTheme.colors.textDominant.withOpacity(0.3),
                           width: 2,
                         ),
                       ),
                       child: Icon(
                         Icons.folder_open,
                         size: 60,
-                        color: OmniTheme.textPrimary.withOpacity(0.6),
+                        color: OmniTheme.colors.textDominant.withOpacity(0.6),
                       ),
                     ),
                     SizedBox(height: 32),
@@ -96,7 +96,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                       'No Routines Yet',
                       style: theme.textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: OmniTheme.textPrimary,
+                        color: OmniTheme.colors.textDominant,
                       ),
                     ),
                     SizedBox(height: 16),
@@ -106,7 +106,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                         'Create your first routine to get started',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.titleSmall?.copyWith(
-                          color: OmniTheme.textPrimary.withOpacity(0.7),
+                          color: OmniTheme.colors.textDominant.withOpacity(0.7),
                         ),
                       ),
                     ),

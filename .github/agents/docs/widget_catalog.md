@@ -55,15 +55,15 @@ Standardized back-and-title header used by all secondary screens. Implements `Pr
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `title` | `String` | required | Primary header text |
-| `subtitle` | `String?` | `null` | Optional second line below the title in `bodySmall` + `OmniTheme.textSecondary` |
+| `subtitle` | `String?` | `null` | Optional second line below the title in `bodySmall` + `OmniTheme.colors.textSecondary` |
 | `onBack` | `VoidCallback?` | `null` | Called on back arrow tap; defaults to `Navigator.of(context).pop()` |
 | `actions` | `List<Widget>?` | `null` | Trailing widgets forwarded to `AppBar.actions` |
 
 **Behavior**:
 - `preferredSize` is always `Size.fromHeight(kToolbarHeight)` (56 px)
 - `backgroundColor` and `surfaceTintColor` are `Colors.transparent`, `elevation: 0` — gradient background shows through
-- Back arrow color: `OmniTheme.textPrimary` (never inherits from theme's `foregroundColor`)
-- `titleTextStyle`: `titleLarge` + `FontWeight.w600` + `OmniTheme.titleLetterSpacing` (0.4) + `OmniTheme.textPrimary`
+- Back arrow color: `OmniTheme.colors.textDominant` (never inherits from theme's `foregroundColor`)
+- `titleTextStyle`: `titleLarge` + `FontWeight.w600` + `OmniTheme.titleLetterSpacing` (0.4) + `OmniTheme.colors.textDominant`
 - Screens must set `extendBodyBehindAppBar: true` on their `Scaffold` for the gradient to render behind the transparent header
 
 **Usage notes**:
@@ -83,7 +83,7 @@ Base container for all cards and panels. Dark navy with border + shadow.
 | `padding` | `EdgeInsets?` | `null` | Optional inner padding |
 | `showShadow` | `bool` | `true` | Deep shadow toggle |
 
-Uses `OmniTheme.surfaceColor`, `surfaceBorderRadius`, `surfaceBorderColor`, `surfaceBorderWidth`, `deepShadow`.
+Uses `OmniTheme.colors.surface`, `surfaceBorderRadius`, `OmniTheme.colors.surfaceBorder`, `surfaceBorderWidth`, `deepShadow`.
 
 ### `OmniBottomCTA`
 

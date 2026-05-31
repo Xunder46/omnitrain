@@ -50,7 +50,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
                     Text(
                       'No training periods yet.',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: OmniTheme.textSecondary.withOpacity(0.6),
+                        color: OmniTheme.colors.textSecondary.withOpacity(0.6),
                       ),
                     ),
                   ],

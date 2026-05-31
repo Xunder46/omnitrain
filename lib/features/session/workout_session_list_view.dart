@@ -21,7 +21,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               Text(
                 'Session Time',
                 style: theme.textTheme.titleSmall?.copyWith(
-                  color: OmniTheme.textSecondary,
+                  color: OmniTheme.colors.textSecondary,
                 ),
               ),
               if (widget.editMode) ...[
@@ -33,14 +33,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
           const SizedBox(height: 4),
           Row(
             children: [
-              const Icon(Icons.timer, size: 16, color: OmniTheme.textSecondary),
+              Icon(Icons.timer, size: 16, color: OmniTheme.colors.textSecondary),
               const SizedBox(width: 8),
               Text(
                 _elapsedFormatted,
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: widget.editMode
                       ? theme.colorScheme.primary
-                      : OmniTheme.textPrimary,
+                      : OmniTheme.colors.textDominant,
                 ),
               ),
             ],
@@ -122,13 +122,13 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         title: Text(
           exercise['name'] as String,
           style: theme.textTheme.titleMedium?.copyWith(
-            color: OmniTheme.textPrimary,
+            color: OmniTheme.colors.textDominant,
           ),
         ),
         subtitle: Text(
           subtitle,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: OmniTheme.textSecondary,
+            color: OmniTheme.colors.textSecondary,
           ),
         ),
         onTap: idx == -1
@@ -170,7 +170,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                   child: Text(
                     block.name,
                     style: theme.textTheme.titleMedium?.copyWith(
-                      color: OmniTheme.textPrimary,
+                      color: OmniTheme.colors.textDominant,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -244,7 +244,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 child: Text(
                   'No exercises in this block yet.',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: OmniTheme.textSecondary,
+                    color: OmniTheme.colors.textSecondary,
                   ),
                 ),
               )
@@ -602,7 +602,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     _errorMessage,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.textSecondary,
+                      color: OmniTheme.colors.textSecondary,
                     ),
                   ),
                 ),
@@ -643,7 +643,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Text(
                   'No exercises yet',
                   style: theme.textTheme.headlineMedium?.copyWith(
-                    color: OmniTheme.textPrimary,
+                    color: OmniTheme.colors.textDominant,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -799,7 +799,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back, color: OmniTheme.textPrimary),
+            icon: Icon(Icons.arrow_back, color: OmniTheme.colors.textDominant),
             onPressed: () {
               // Detail view → back to list view
               // List view   → exit (with unsaved-changes check in edit mode)
@@ -829,7 +829,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                             : ''),
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: OmniTheme.textPrimary,
+                    color: OmniTheme.colors.textDominant,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -844,7 +844,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: widget.editMode
                         ? Theme.of(context).colorScheme.primary
-                        : OmniTheme.textSecondary,
+                        : OmniTheme.colors.textSecondary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -855,7 +855,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     child: Text(
                       currentSegmentName!,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.textSecondary,
+                        color: OmniTheme.colors.textSecondary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

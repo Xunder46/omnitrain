@@ -159,7 +159,7 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
               Text(
                 'Focus Modalities (optional)',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: OmniTheme.textSecondary,
+                  color: OmniTheme.colors.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -176,7 +176,7 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                     selectedColor: color.withOpacity(0.25),
                     checkmarkColor: color,
                     labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: selected ? color : OmniTheme.textSecondary,
+                      color: selected ? color : OmniTheme.colors.textSecondary,
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                     ),
                     onSelected: (val) {
@@ -197,7 +197,7 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
               Text(
                 'Calendar Color',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: OmniTheme.textSecondary,
+                  color: OmniTheme.colors.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -219,7 +219,7 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                         color: color,
                         shape: BoxShape.circle,
                         border: isSelected
-                            ? Border.all(color: OmniTheme.textPrimary, width: 3)
+                            ? Border.all(color: OmniTheme.colors.textDominant, width: 3)
                             : null,
                       ),
                       child: isSelected
@@ -392,8 +392,8 @@ class _DateField extends StatelessWidget {
           text,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: value != null
-                ? OmniTheme.textPrimary
-                : OmniTheme.textSecondary.withOpacity(0.5),
+                ? OmniTheme.colors.textDominant
+                : OmniTheme.colors.textSecondary.withOpacity(0.5),
           ),
         ),
       ),

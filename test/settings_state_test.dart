@@ -216,14 +216,11 @@ void main() {
     expect(colors.surface, const Color(0xFF3A1A16));
   });
 
-  test(
-    'Crimson Dojo textMuted is warm parchment with 4.5:1+ contrast against surface',
-    () {
-      final colors = OmniTheme.colorsForTheme(AppTheme.crimsonDojo);
+  test('Crimson Dojo textMuted is darker warm metadata tone', () {
+    final colors = OmniTheme.colorsForTheme(AppTheme.crimsonDojo);
 
-      expect(colors.textMuted, const Color(0xFFC4907A));
-    },
-  );
+    expect(colors.textMuted, const Color(0xFFA07060));
+  });
 
   test(
     'Crimson Dojo secondary is bright blood red (3:1+ contrast against surface)',
@@ -236,9 +233,9 @@ void main() {
 
   // ─── Malachite Core ────────────────────────────────────────────────────────
 
-  test('Malachite Core colorsForTheme returns deep emerald primary', () {
+  test('Malachite Core colorsForTheme returns brighter emerald primary', () {
     final colors = OmniTheme.colorsForTheme(AppTheme.malachiteCore);
-    expect(colors.primary, const Color(0xFF1A9A4A));
+    expect(colors.primary, const Color(0xFF24B85A));
   });
 
   test('Malachite Core display name is verbatim', () {
@@ -265,12 +262,10 @@ void main() {
     expect(reloaded.appTheme, AppTheme.malachiteCore);
   });
 
-  // textMuted was lifted from #8BBF8A to #AACFAA (same H120° hue, +10% lightness)
-  // to improve perceived readability on Hub maintenance tiles at device brightness.
-  // Threshold raised to 6.0:1 to lock in the comfortable-margin intent.
-  test('Malachite Core textMuted is lifted green-bone (#AACFAA)', () {
+  // Phase 1B emphasis-tier retune darkens muted text to strengthen hierarchy.
+  test('Malachite Core textMuted is darker metadata green (#7FAA7F)', () {
     final colors = OmniTheme.colorsForTheme(AppTheme.malachiteCore);
-    expect(colors.textMuted, const Color(0xFFAACFAA));
+    expect(colors.textMuted, const Color(0xFF7FAA7F));
   });
 
   test(

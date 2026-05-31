@@ -39,14 +39,14 @@ class MaintenancePlaceholderScreen extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: OmniTheme.textPrimary.withOpacity(0.3),
+                      color: OmniTheme.colors.textDominant.withOpacity(0.3),
                       width: 2,
                     ),
                   ),
                   child: Icon(
                     Icons.layers_outlined,
                     size: 56,
-                    color: OmniTheme.textPrimary.withOpacity(0.6),
+                    color: OmniTheme.colors.textDominant.withOpacity(0.6),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -55,7 +55,7 @@ class MaintenancePlaceholderScreen extends StatelessWidget {
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
-                    color: OmniTheme.textPrimary,
+                    color: OmniTheme.colors.textDominant,
                     shadows: [
                       Shadow(
                         color: Colors.black.withOpacity(0.5),
@@ -70,7 +70,7 @@ class MaintenancePlaceholderScreen extends StatelessWidget {
                   description,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: OmniTheme.textPrimary.withOpacity(0.7),
+                    color: OmniTheme.colors.textDominant.withOpacity(0.7),
                     height: 1.5,
                   ),
                 ),

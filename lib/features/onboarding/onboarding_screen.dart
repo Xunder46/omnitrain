@@ -469,7 +469,7 @@ class _ModalityTile extends StatelessWidget {
                               style: Theme.of(context).textTheme.bodyLarge
                                   ?.copyWith(
                                     fontWeight: FontWeight.w600,
-                                    color: OmniTheme.textPrimary,
+                                    color: OmniTheme.colors.textDominant,
                                     letterSpacing: OmniTheme.titleLetterSpacing,
                                   ),
                             ),
@@ -525,7 +525,7 @@ class _PlanFeatureBullet extends StatelessWidget {
             child: Text(
               text,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: OmniTheme.textPrimary,
+                color: OmniTheme.colors.textDominant,
                 letterSpacing: OmniTheme.titleLetterSpacing,
               ),
             ),

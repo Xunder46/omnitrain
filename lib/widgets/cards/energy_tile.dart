@@ -60,7 +60,7 @@ class _EnergyTileState extends State<EnergyTile> {
         end: Alignment.bottomRight,
       ),
       border: Border.all(
-        color: OmniTheme.surfaceBorderColor,
+        color: OmniTheme.colors.surfaceBorder,
         width: OmniTheme.surfaceBorderWidth,
       ),
       // Keep active tile shadow behavior unchanged.
@@ -127,7 +127,7 @@ class _EnergyTileState extends State<EnergyTile> {
             widget.iconWidget ?? Icon(
               widget.icon!,
               size: 70,
-              color: OmniTheme.textPrimary,
+              color: OmniTheme.colors.textDominant,
             ),
             if (shouldShowText) const SizedBox(height: 10),
             // Title text
@@ -139,7 +139,7 @@ class _EnergyTileState extends State<EnergyTile> {
                   maxLines: 2,
                   overflow: TextOverflow.clip,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: OmniTheme.textPrimary,
+                    color: OmniTheme.colors.textDominant,
                     fontWeight: FontWeight.w500,
                     letterSpacing: OmniTheme.titleLetterSpacing,
                     height: 1,

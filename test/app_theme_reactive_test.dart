@@ -15,10 +15,10 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 void main() {
-  test('Abyssal Neon uses deeper teal primary with white CTA text', () {
+  test('Abyssal Neon uses neon cyan primary with white CTA text', () {
     final colors = OmniTheme.colorsForTheme(AppTheme.abyssalNeon);
 
-    expect(colors.primary, const Color(0xFF00B4B8));
+    expect(colors.primary, const Color(0xFF2DE2E6));
 
     final theme = buildTheme(
       theme: AppTheme.abyssalNeon,

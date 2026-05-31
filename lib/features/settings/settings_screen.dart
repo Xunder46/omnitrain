@@ -131,7 +131,7 @@ class SettingsScreen extends StatelessWidget {
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: isSelected
                                       ? theme.colorScheme.onSurface
-                                      : OmniTheme.textSecondary,
+                                    : OmniTheme.colors.textSecondary,
                                   fontWeight: isSelected
                                       ? FontWeight.w600
                                       : FontWeight.w500,
@@ -152,7 +152,7 @@ class SettingsScreen extends StatelessWidget {
                       'Version 1.0.0',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.labelMedium?.copyWith(
-                        color: OmniTheme.textMuted,
+                        color: OmniTheme.colors.textMuted,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -293,7 +293,7 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
               ? 'Enabled'
               : 'Disabled - tap to open Settings');
     final statusColor = !permissionAsked
-        ? OmniTheme.textSecondary
+        ? OmniTheme.colors.textSecondary
         : (_notificationsEnabled
           ? theme.colorScheme.primary
           : theme.colorScheme.error);
@@ -312,7 +312,7 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
                       .effortTimerSound] ??
                   widget.settingsState.effortTimerSound,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: OmniTheme.textSecondary,
+                color: OmniTheme.colors.textSecondary,
               ),
             ),
             onTap: () => _showSoundPicker(
@@ -329,7 +329,7 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
             trailing: Text(
               _intervalLabel(widget.settingsState.restPingInterval),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: OmniTheme.textSecondary,
+                color: OmniTheme.colors.textSecondary,
               ),
             ),
             onTap: () => _showIntervalPicker(context),
@@ -344,7 +344,7 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
                       .restPingSound] ??
                   widget.settingsState.restPingSound,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: OmniTheme.textSecondary,
+                color: OmniTheme.colors.textSecondary,
               ),
             ),
             onTap: () => _showSoundPicker(
@@ -512,7 +512,7 @@ class _SoundOptionTile extends StatelessWidget {
       title: Text(
         displayName,
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: isSelected ? theme.colorScheme.primary : OmniTheme.textPrimary,
+          color: isSelected ? theme.colorScheme.primary : OmniTheme.colors.textDominant,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
@@ -572,7 +572,7 @@ class _IntervalPickerSheet extends StatelessWidget {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: opt.value == currentValue
                         ? theme.colorScheme.primary
-                        : OmniTheme.textPrimary,
+                      : OmniTheme.colors.textDominant,
                     fontWeight: opt.value == currentValue
                         ? FontWeight.w600
                         : FontWeight.w400,
@@ -681,7 +681,7 @@ class _MeasurementsSection extends StatelessWidget {
                   Text(
                     'PREVIEW',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: OmniTheme.textMuted,
+                      color: OmniTheme.colors.textMuted,
                       letterSpacing: 2.0,
                       fontWeight: FontWeight.w600,
                     ),
@@ -762,7 +762,7 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: theme.textTheme.labelSmall?.copyWith(
-          color: OmniTheme.textMuted,
+          color: OmniTheme.colors.textMuted,
           letterSpacing: 2.0,
           fontWeight: FontWeight.w600,
         ),
@@ -801,7 +801,7 @@ class _SettingsRow extends StatelessWidget {
                   Text(
                     label,
                     style: theme.textTheme.bodyLarge?.copyWith(
-                      color: OmniTheme.textPrimary,
+                      color: OmniTheme.colors.textDominant,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -810,7 +810,7 @@ class _SettingsRow extends StatelessWidget {
                     Text(
                       subtitle!,
                       style: theme.textTheme.labelMedium?.copyWith(
-                        color: OmniTheme.textMuted,
+                        color: OmniTheme.colors.textMuted,
                       ),
                     ),
                   ],
@@ -898,7 +898,7 @@ class _SegmentedToggle extends StatelessWidget {
                   style: theme.textTheme.bodySmall?.copyWith(
                     letterSpacing: 1.0,
                     fontWeight: FontWeight.w600,
-                    color: isActive ? Colors.black : OmniTheme.textSecondary,
+                    color: isActive ? Colors.black : OmniTheme.colors.textSecondary,
                   ),
                 ),
               ),
@@ -936,7 +936,7 @@ class _PreviewValue extends StatelessWidget {
             value,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: OmniTheme.textPrimary,
+              color: OmniTheme.colors.textDominant,
               fontWeight: FontWeight.w500,
             ),
           ),

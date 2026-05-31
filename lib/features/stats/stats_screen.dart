@@ -263,7 +263,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             lift.exerciseName,
             style: theme.textTheme.titleSmall?.copyWith(
-              color: OmniTheme.textPrimary,
+              color: OmniTheme.colors.textDominant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -346,7 +346,7 @@ class _StatsScreenState extends State<StatsScreen> {
                       '${s.y.toStringAsFixed(1)} $label',
                       TextStyle(
                         fontSize: 11,
-                        color: OmniTheme.textPrimary,
+                        color: OmniTheme.colors.textDominant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -464,7 +464,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             'Recent PRs',
             style: theme.textTheme.titleSmall?.copyWith(
-              color: OmniTheme.textPrimary,
+              color: OmniTheme.colors.textDominant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -491,7 +491,7 @@ class _StatsScreenState extends State<StatsScreen> {
                     child: Text(
                       pr.exerciseName,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: OmniTheme.textPrimary,
+                        color: OmniTheme.colors.textDominant,
                       ),
                     ),
                   ),
@@ -570,7 +570,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             cardio.exerciseName,
             style: theme.textTheme.titleSmall?.copyWith(
-              color: OmniTheme.textPrimary,
+              color: OmniTheme.colors.textDominant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -691,7 +691,7 @@ class _StatsScreenState extends State<StatsScreen> {
               getTooltipItems: (spots) => spots.map((s) {
                 final tooltipStyle = TextStyle(
                   fontSize: 11,
-                  color: OmniTheme.textPrimary,
+                  color: OmniTheme.colors.textDominant,
                   fontWeight: FontWeight.w600,
                 );
 
@@ -882,7 +882,7 @@ class _StatsScreenState extends State<StatsScreen> {
                       '${s.y.toStringAsFixed(0)} min',
                       TextStyle(
                         fontSize: 11,
-                        color: OmniTheme.textPrimary,
+                        color: OmniTheme.colors.textDominant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1014,7 +1014,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             '$label $value',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: OmniTheme.textPrimary,
+              color: OmniTheme.colors.textDominant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1065,7 +1065,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             parts.join(' · '),
             style: theme.textTheme.bodySmall?.copyWith(
-              color: OmniTheme.textPrimary,
+              color: OmniTheme.colors.textDominant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1121,7 +1121,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             'No sessions yet',
             style: theme.textTheme.titleMedium?.copyWith(
-              color: OmniTheme.textPrimary,
+              color: OmniTheme.colors.textDominant,
             ),
           ),
           const SizedBox(height: 8),

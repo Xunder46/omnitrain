@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
-import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/calendar/calendar_screen.dart';
 import 'package:omnitrain/features/calendar/day_session_list_screen.dart';
@@ -187,11 +186,11 @@ void main() {
       final style = appBar.titleTextStyle!;
       expect(style.fontWeight, FontWeight.w600);
       expect(style.letterSpacing, OmniTheme.titleLetterSpacing);
-      expect(style.color, OmniTheme.textPrimary);
+      expect(style.color, OmniTheme.colors.textDominant);
       expect(textWidget, isNotNull);
     });
 
-    testWidgets('back arrow icon color is OmniTheme.textPrimary', (
+    testWidgets('back arrow icon color is OmniTheme.colors.textDominant', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -209,7 +208,7 @@ void main() {
           matching: find.byType(IconButton),
         ),
       );
-      expect(iconButton.color, OmniTheme.textPrimary);
+      expect(iconButton.color, OmniTheme.colors.textDominant);
     });
 
     testWidgets('actions are forwarded to AppBar', (WidgetTester tester) async {

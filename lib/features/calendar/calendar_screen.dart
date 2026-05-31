@@ -256,7 +256,7 @@ class _MonthHeader extends StatelessWidget {
         children: [
           IconButton(
             icon: const Icon(Icons.chevron_left),
-            color: OmniTheme.textPrimary,
+            color: OmniTheme.colors.textDominant,
             onPressed: onPrevious,
           ),
           Expanded(
@@ -268,7 +268,7 @@ class _MonthHeader extends StatelessWidget {
           ),
           IconButton(
             icon: const Icon(Icons.chevron_right),
-            color: OmniTheme.textPrimary,
+            color: OmniTheme.colors.textDominant,
             onPressed: onNext,
           ),
         ],
@@ -295,7 +295,7 @@ class _WeekDayRow extends StatelessWidget {
                     l,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: OmniTheme.textSecondary.withOpacity(0.7),
+                      color: OmniTheme.colors.textSecondary.withOpacity(0.7),
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -431,7 +431,7 @@ class _DayCell extends StatelessWidget {
                 fontWeight: isToday ? FontWeight.w700 : FontWeight.w400,
                 color: isToday
                     ? Theme.of(context).colorScheme.primary
-                    : OmniTheme.textPrimary.withOpacity(0.85),
+                    : OmniTheme.colors.textDominant.withOpacity(0.85),
               ),
             ),
             const SizedBox(height: 3),
@@ -481,7 +481,7 @@ class _SessionIndicators extends StatelessWidget {
                   child: Text(
                     '+$overflow',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: OmniTheme.textSecondary.withOpacity(0.75),
+                      color: OmniTheme.colors.textSecondary.withOpacity(0.75),
                       fontWeight: FontWeight.w600,
                       height: 1.0,
                     ),
@@ -563,7 +563,7 @@ class _MonthlyStatsStrip extends StatelessWidget {
           .label;
       final chipStyle = Theme.of(
         context,
-      ).textTheme.bodySmall?.copyWith(color: OmniTheme.textSecondary);
+      ).textTheme.bodySmall?.copyWith(color: OmniTheme.colors.textSecondary);
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -589,7 +589,7 @@ class _MonthlyStatsStrip extends StatelessWidget {
         Divider(
           height: 1,
           thickness: 0.5,
-          color: OmniTheme.textSecondary.withOpacity(0.15),
+          color: OmniTheme.colors.textSecondary.withOpacity(0.15),
         ),
         const SizedBox(height: 14),
         Column(
@@ -648,7 +648,7 @@ class _CompactStat extends StatelessWidget {
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             fontWeight: FontWeight.w600,
             letterSpacing: 1.2,
-            color: OmniTheme.textSecondary.withOpacity(0.55),
+            color: OmniTheme.colors.textSecondary.withOpacity(0.55),
           ),
         ),
         const SizedBox(height: 7),
@@ -656,7 +656,7 @@ class _CompactStat extends StatelessWidget {
           value,
           style: Theme.of(context).textTheme.displayMedium?.copyWith(
             letterSpacing: -0.5,
-            color: OmniTheme.textPrimary,
+            color: OmniTheme.colors.textDominant,
           ),
         ),
       ],

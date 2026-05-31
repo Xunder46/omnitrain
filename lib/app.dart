@@ -65,8 +65,8 @@ class MyApp extends StatelessWidget {
           background: tokens.backgroundBottom,
           surface: tokens.surface,
           secondary: tokens.secondary,
-          textPrimary: const Color(0xFFE6EDF3),
-          textSecondary: tokens.textMuted,
+          textPrimary: tokens.textDominant,
+          textSecondary: tokens.textSecondary,
           divider: tokens.divider,
         );
 

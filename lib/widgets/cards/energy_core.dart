@@ -43,7 +43,7 @@ class EnergyCore extends StatelessWidget {
       child: iconWidget ?? Icon(
         icon!,
         size: size * 0.4, // Icon is 40% of core size
-        color: OmniTheme.textPrimary,
+        color: OmniTheme.colors.textDominant,
       ),
     );
   }

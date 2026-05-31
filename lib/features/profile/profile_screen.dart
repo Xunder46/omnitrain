@@ -111,7 +111,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     shape: BoxShape.circle,
                     color: theme.colorScheme.surface.withOpacity(0.4),
                     border: Border.all(
-                      color: OmniTheme.surfaceBorderColor,
+                      color: OmniTheme.colors.surfaceBorder,
                       width: OmniTheme.surfaceBorderWidth,
                     ),
                   ),
@@ -151,8 +151,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           style: theme.textTheme.headlineSmall?.copyWith(
                             color:
                                 profile?.displayName?.trim().isNotEmpty == true
-                                ? OmniTheme.textPrimary
-                                : OmniTheme.textSecondary.withOpacity(0.7),
+                                ? OmniTheme.colors.textDominant
+                                : OmniTheme.colors.textSecondary.withOpacity(0.7),
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.4,
                           ),
@@ -163,7 +163,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Text(
                             'Tap to edit',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.textSecondary.withOpacity(0.7),
+                              color: OmniTheme.colors.textSecondary.withOpacity(0.7),
                               letterSpacing: 2.0,
                               fontWeight: FontWeight.w600,
                             ),
@@ -201,7 +201,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Text(
               title,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: OmniTheme.textSecondary.withOpacity(0.7),
+                color: OmniTheme.colors.textSecondary.withOpacity(0.7),
                 letterSpacing: 2.0,
                 fontWeight: FontWeight.w600,
               ),
@@ -450,7 +450,7 @@ class _MeasurementRow extends StatelessWidget {
                     child: Text(
                       definition.label,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: OmniTheme.textSecondary.withOpacity(0.9),
+                        color: OmniTheme.colors.textSecondary.withOpacity(0.9),
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.4,
                       ),
@@ -463,8 +463,8 @@ class _MeasurementRow extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: theme.textTheme.titleLarge?.copyWith(
                         color: latestEntry != null
-                            ? OmniTheme.textPrimary
-                            : OmniTheme.textSecondary.withOpacity(0.65),
+                            ? OmniTheme.colors.textDominant
+                            : OmniTheme.colors.textSecondary.withOpacity(0.65),
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.2,
                       ),
@@ -567,7 +567,7 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
                 Text(
                   'Log ${widget.definition.label}',
                   style: theme.textTheme.headlineSmall?.copyWith(
-                    color: OmniTheme.textPrimary,
+                    color: OmniTheme.colors.textDominant,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -730,7 +730,7 @@ class _SheetOption extends StatelessWidget {
                     Text(
                       label,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: OmniTheme.textPrimary,
+                        color: OmniTheme.colors.textDominant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
