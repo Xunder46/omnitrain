@@ -1434,4 +1434,368 @@ void main() {
       expect(label, '%');
     });
   });
+
+  // ── Scroll-to-bottom on back from exercise detail ─────────────────────────
+
+  group('Scroll to bottom when navigating back from exercise detail', () {
+    Future<({
+      WorkoutState workoutState,
+      RoutineState routineState,
+      SessionSummaryService sessionSummaryService,
+      SettingsState settingsState,
+    })> _buildScrollTestDeps({String? modality}) async {
+      final repo = await _freshRepo();
+      await repo.setPreferenceBool('hint_seen_exercise_info', true);
+      await repo.setPreferenceBool('hint_seen_exercise_notes', true);
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final settingsState = SettingsState(repo);
+      await settingsState.initialize();
+      await workoutState.createNewSession(modality: modality);
+      return (
+        workoutState: workoutState,
+        routineState: routineState,
+        sessionSummaryService: sessionSummaryService,
+        settingsState: settingsState,
+      );
+    }
+
+    Widget _buildScreen({
+      required WorkoutState workoutState,
+      required RoutineState routineState,
+      required SessionSummaryService sessionSummaryService,
+      required SettingsState settingsState,
+    }) {
+      return MaterialApp(
+        home: WorkoutSessionScreen(
+          workoutState: workoutState,
+          routineState: routineState,
+          sessionSummaryService: sessionSummaryService,
+          settingsState: settingsState,
+          timerAlertService: FakeTimerAlertService(),
+        ),
+      );
+    }
+
+    testWidgets(
+      'back button from exercise detail returns to list view',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final deps =
+            await _buildScrollTestDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final exercise = exercises.firstWhere(
+          (e) => e.id == 'exercise-barbell-squat',
+        );
+        await deps.workoutState.addExerciseToSession(
+          exercise,
+          chosenMetric: 'reps',
+        );
+
+        await tester.pumpWidget(
+          _buildScreen(
+            workoutState: deps.workoutState,
+            routineState: deps.routineState,
+            sessionSummaryService: deps.sessionSummaryService,
+            settingsState: deps.settingsState,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Verify list view is shown
+        expect(find.text('Exercises'), findsOneWidget);
+
+        // Navigate to detail view by tapping the exercise tile
+        await tester.tap(find.text('Barbell Back Squat'));
+        await tester.pumpAndSettle();
+
+        // Detail view is now shown (header title changes to exercise name)
+        expect(find.text('Exercises'), findsNothing);
+
+        // Tap the back arrow (IconButton in header) to return to list view
+        await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
+        await tester.pumpAndSettle();
+
+        // Should be back on list view
+        expect(find.text('Exercises'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'scroll position moves to bottom after returning from exercise detail',
+      (WidgetTester tester) async {
+        // Small surface to guarantee the list overflows with multiple exercises
+        await tester.binding.setSurfaceSize(const Size(400, 500));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final deps =
+            await _buildScrollTestDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final exercise = exercises.firstWhere(
+          (e) => e.id == 'exercise-barbell-squat',
+        );
+
+        // Add multiple exercises so the list definitely overflows the viewport
+        for (int i = 0; i < 6; i++) {
+          await deps.workoutState.addExerciseToSession(
+            exercise,
+            chosenMetric: 'reps',
+          );
+        }
+
+        await tester.pumpWidget(
+          _buildScreen(
+            workoutState: deps.workoutState,
+            routineState: deps.routineState,
+            sessionSummaryService: deps.sessionSummaryService,
+            settingsState: deps.settingsState,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Find the ListView and record its initial scroll offset (should be 0)
+        final listViewFinder = find.byType(ListView);
+        expect(listViewFinder, findsOneWidget);
+        final listView = tester.widget<ListView>(listViewFinder);
+        final controller = listView.controller!;
+        expect(controller.offset, equals(0.0));
+
+        // Navigate to detail view
+        await tester.tap(find.text('Barbell Back Squat').first);
+        await tester.pumpAndSettle();
+
+        // Navigate back to list view
+        await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
+        await tester.pumpAndSettle();
+
+        // After postFrameCallback and animation settle, the scroll offset
+        // should be at the maximum extent (bottom of list)
+        expect(controller.offset, greaterThan(0.0));
+        expect(controller.offset, closeTo(controller.position.maxScrollExtent, 1.0));
+      },
+    );
+
+    testWidgets(
+      'system back gesture in edit mode returns to list view and scrolls to bottom',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 500));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final deps =
+            await _buildScrollTestDeps(modality: 'resistance_lifting');
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final exercise = exercises.firstWhere(
+          (e) => e.id == 'exercise-barbell-squat',
+        );
+
+        for (int i = 0; i < 6; i++) {
+          await deps.workoutState.addExerciseToSession(
+            exercise,
+            chosenMetric: 'reps',
+          );
+        }
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: deps.workoutState,
+              routineState: deps.routineState,
+              sessionSummaryService: deps.sessionSummaryService,
+              settingsState: deps.settingsState,
+              timerAlertService: FakeTimerAlertService(),
+              editMode: true,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final listViewFinder = find.byType(ListView);
+        expect(listViewFinder, findsOneWidget);
+        final listView = tester.widget<ListView>(listViewFinder);
+        final controller = listView.controller!;
+        expect(controller.offset, equals(0.0));
+
+        // Navigate to detail view
+        await tester.tap(find.text('Barbell Back Squat').first);
+        await tester.pumpAndSettle();
+
+        // Simulate system back gesture (triggers PopScope)
+        final NavigatorState navigator = tester.state(find.byType(Navigator));
+        navigator.maybePop();
+        await tester.pumpAndSettle();
+
+        // Should be back on list view with scroll at bottom
+        expect(find.text('Exercises'), findsOneWidget);
+        expect(controller.offset, greaterThan(0.0));
+      },
+    );
+  });
+
+  // ── Scroll-to-bottom on back from exercise detail (routine builder) ────────
+
+  group('Scroll to bottom when navigating back from routine exercise detail', () {
+    Future<({
+      RoutineState routineState,
+      WorkoutState workoutState,
+    })> _buildRoutineScrollDeps() async {
+      final repo = await _freshRepo();
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
+      final workoutState = WorkoutState(repo);
+      await routineState.createNewRoutine('Test Routine');
+      return (routineState: routineState, workoutState: workoutState);
+    }
+
+    testWidgets(
+      'back button from exercise detail returns to routine list view',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final deps = await _buildRoutineScrollDeps();
+        await deps.workoutState.loadAllExercises();
+        final allExercises = deps.workoutState.allExercises;
+        await deps.routineState.addExerciseToRoutine(
+          allExercises.first,
+          'set',
+        );
+        await deps.routineState.saveRoutine();
+        final templateId = deps.routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: deps.routineState,
+              workoutState: deps.workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // List view is shown
+        expect(find.text('Exercises'), findsOneWidget);
+
+        // Tap exercise to navigate to detail view
+        await tester.tap(find.text(allExercises.first.name).first);
+        await tester.pumpAndSettle();
+
+        // Detail view shown — 'Exercises' title replaced by exercise name
+        expect(find.text('Exercises'), findsNothing);
+
+        // Tap back arrow (OmniBackHeader) to return to list view
+        await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Exercises'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'scroll position moves to bottom after returning from routine exercise detail',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 500));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final deps = await _buildRoutineScrollDeps();
+        await deps.workoutState.loadAllExercises();
+        final allExercises = deps.workoutState.allExercises;
+
+        // Add enough exercises to overflow the viewport
+        for (int i = 0; i < 6; i++) {
+          await deps.routineState.addExerciseToRoutine(
+            allExercises[i % allExercises.length],
+            'set',
+          );
+        }
+        await deps.routineState.saveRoutine();
+        final templateId = deps.routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: deps.routineState,
+              workoutState: deps.workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final listViewFinder = find.byType(ListView);
+        expect(listViewFinder, findsOneWidget);
+        final controller = tester.widget<ListView>(listViewFinder).controller!;
+        expect(controller.offset, equals(0.0));
+
+        // Navigate to detail view
+        await tester.tap(find.text(allExercises.first.name).first);
+        await tester.pumpAndSettle();
+
+        // Navigate back via OmniBackHeader back button
+        await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
+        await tester.pumpAndSettle();
+
+        // The list should be scrolled to or past the bottom.
+        // (Layout may reflow after the scroll animation fires, causing
+        // maxScrollExtent to shrink; ≥ is the correct invariant here.)
+        expect(controller.offset, greaterThan(0.0));
+        expect(controller.offset, greaterThanOrEqualTo(controller.position.maxScrollExtent));
+      },
+    );
+
+    testWidgets(
+      'system back gesture returns to routine list view and scrolls to bottom',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 500));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final deps = await _buildRoutineScrollDeps();
+        await deps.workoutState.loadAllExercises();
+        final allExercises = deps.workoutState.allExercises;
+
+        for (int i = 0; i < 6; i++) {
+          await deps.routineState.addExerciseToRoutine(
+            allExercises[i % allExercises.length],
+            'set',
+          );
+        }
+        await deps.routineState.saveRoutine();
+        final templateId = deps.routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: deps.routineState,
+              workoutState: deps.workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final listViewFinder = find.byType(ListView);
+        expect(listViewFinder, findsOneWidget);
+        final controller = tester.widget<ListView>(listViewFinder).controller!;
+        expect(controller.offset, equals(0.0));
+
+        // Navigate to detail view
+        await tester.tap(find.text(allExercises.first.name).first);
+        await tester.pumpAndSettle();
+
+        // Simulate system back gesture (WillPopScope)
+        final NavigatorState navigator = tester.state(find.byType(Navigator));
+        navigator.maybePop();
+        await tester.pumpAndSettle();
+
+        expect(find.text('Exercises'), findsOneWidget);
+        expect(controller.offset, greaterThan(0.0));
+      },
+    );
+  });
 }

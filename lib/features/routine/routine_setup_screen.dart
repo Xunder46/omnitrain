@@ -59,6 +59,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   int _currentSet = 1;
   String? _selectedFocusModality;
 
+  // Scroll controller for the exercise list view. Scrolled to the bottom
+  // when returning from exercise detail so the user lands near 'Add Exercise'.
+  final ScrollController _listScrollController = ScrollController();
+
   static const List<String> _segmentTypes = [
     'warmup',
     'main',
@@ -81,6 +85,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     widget.routineState.setAutosaveEnabled(true);
     _nameController.dispose();
     _descriptionController.dispose();
+    _listScrollController.dispose();
     super.dispose();
   }
 
@@ -164,6 +169,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                 const SizedBox(height: 12),
                 Expanded(
                   child: ListView(
+                    controller: _listScrollController,
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
                     children: [
                       for (final entry in segments.asMap().entries)
@@ -565,7 +571,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       appBar: OmniBackHeader(
         title: exerciseName,
         subtitle: 'Exercise ${_currentExerciseIndex + 1} / ${efforts.length}',
-        onBack: () => setState(() => _showListView = true),
+        onBack: () {
+          setState(() => _showListView = true);
+          _scrollListToBottom();
+        },
       ),
       body: GestureDetector(
         onHorizontalDragEnd: (details) {
@@ -1009,6 +1018,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   Future<bool> _handleWillPop() async {
     if (!_showListView) {
       setState(() => _showListView = true);
+      _scrollListToBottom();
       return false;
     }
 
@@ -1024,6 +1034,21 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   void _updateUi(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
+  }
+
+  /// Scrolls the exercise list to the bottom after the current frame renders.
+  /// Called when navigating back from a detail view to the list view so the
+  /// user lands near the 'Add Exercise' button at the bottom.
+  void _scrollListToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_listScrollController.hasClients &&
+          _listScrollController.position.maxScrollExtent > 0) {
+        _listScrollController.jumpTo(
+          _listScrollController.position.maxScrollExtent,
+        );
+      }
+    });
   }
 }
 

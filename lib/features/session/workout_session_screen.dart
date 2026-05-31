@@ -11,7 +11,7 @@ import '../../core/utils/rest_notification_service.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../core/utils/rest_ping_utils.dart';
 import '../../state/workout/workout_state.dart';
-import '../../widgets/pickers/exercise_picker_dialog.dart';
+import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
@@ -64,7 +64,7 @@ class WorkoutSessionScreen extends StatefulWidget {
 
   /// Optional modality hint injected from the home screen when navigating into
   /// a rolling session via a modality tile.  Passed straight through to
-  /// [ExercisePickerDialog] as [sessionModality] so the picker pre-filters
+  /// [ExercisePickerScreen] as [sessionModality] so the picker pre-filters
   /// exercises by the chosen modality even though the session itself has a
   /// null modality field.  Has no effect when the session already has a modality.
   final String? preferredModality;
@@ -102,6 +102,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       true; // Toggle between list view and detail view - default to list
   bool _hasError = false;
   String _errorMessage = '';
+
+  // Scroll controller for the exercise list view. Scrolled to the bottom
+  // when returning from exercise detail so the user lands near 'Add Exercise'.
+  final ScrollController _listScrollController = ScrollController();
 
   // Track skipped sets per effort (UI-only state)
   final Map<String, Set<int>> _skippedSets = {};
@@ -1164,10 +1168,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final sessionModality = widget.workoutState.currentSession?.modality;
     final modality = sessionModality ?? widget.preferredModality;
 
-    final selectedExercise = await showDialog<Exercise>(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.78),
-      builder: (context) => ExercisePickerDialog(
+    final selectedExercise = await OmniNavigator.push<Exercise>(
+      context,
+      (_) => ExercisePickerScreen(
         workoutState: widget.workoutState,
         sessionModality: modality,
       ),
@@ -1405,7 +1408,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     // Remove any visible coach mark overlay before the widget tree tears down.
     _coachMarkEntry?.remove();
     _coachMarkEntry = null;
+    _listScrollController.dispose();
     super.dispose();
+  }
+
+  /// Scrolls the exercise list to the bottom after the current frame renders.
+  /// Called when navigating back from a detail view to the list view so the
+  /// user lands near the 'Add Exercise' button at the bottom.
+  void _scrollListToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_listScrollController.hasClients &&
+          _listScrollController.position.maxScrollExtent > 0) {
+        _listScrollController.animateTo(
+          _listScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
@@ -1434,6 +1455,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         if (didPop) return;
         if (!_showListView) {
           setState(() => _showListView = true);
+          _scrollListToBottom();
         } else {
           _handleEditModeBack();
         }

@@ -347,6 +347,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                           ),
                         )
                       : ListView(
+                          controller: _listScrollController,
                           padding: const EdgeInsets.fromLTRB(
                             0,
                             0,
@@ -502,6 +503,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 ),
                 Expanded(
                   child: ListView(
+                    controller: _listScrollController,
                     padding: const EdgeInsets.fromLTRB(
                       0,
                       8,
@@ -740,91 +742,57 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                   const SizedBox(height: 0),
 
                   Expanded(
-                    child: AnimatedSwitcher(
-                      duration: _setTransitionDirection == null
-                          ? Duration.zero
-                          : OmniTheme.animationDuration,
-                      switchInCurve: OmniTheme.animationCurve,
-                      switchOutCurve: OmniTheme.animationCurve,
-                      transitionBuilder: (child, animation) {
-                        final direction = _setTransitionDirection ?? 1;
-                        final isOutgoing =
-                            animation.status == AnimationStatus.reverse ||
-                            animation.status == AnimationStatus.dismissed;
-                        final incomingOffset = Offset(
-                          direction > 0 ? 1 : -1,
-                          0,
-                        );
-                        final outgoingOffset = Offset(
-                          direction > 0 ? -1 : 1,
-                          0,
-                        );
-                        final tween = Tween<Offset>(
-                          begin: isOutgoing ? outgoingOffset : incomingOffset,
-                          end: Offset.zero,
-                        );
-                        return ClipRect(
-                          child: SlideTransition(
-                            position: tween.animate(animation),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: KeyedSubtree(
-                        key: ValueKey(_currentSet),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: SingleChildScrollView(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 16,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _buildMetricWidget(
+                                    exercise,
+                                    currentEntry,
+                                    effortKind,
+                                    theme,
                                   ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      _buildMetricWidget(
-                                        exercise,
-                                        currentEntry,
-                                        effortKind,
-                                        theme,
-                                      ),
-                                      const SizedBox(height: 10),
-                                      _buildSetProgress(
-                                        entries.length,
-                                        effortKind,
-                                        theme,
-                                      ),
-                                      const SizedBox(height: 16),
-                                      _buildPreviousSetStats(
-                                        exercise,
-                                        effortKind,
-                                        theme,
-                                      ),
-                                      const SizedBox(height: 16),
-                                      _buildSetIndicator(
-                                        entries.length,
-                                        effortKind,
-                                        theme,
-                                      ),
-                                      SizedBox(
-                                        height: 24 + _kSessionScrollBottomExtra,
-                                      ),
-                                    ],
+                                  const SizedBox(height: 10),
+                                  _buildSetProgress(
+                                    entries.length,
+                                    effortKind,
+                                    theme,
                                   ),
-                                ),
+                                  const SizedBox(height: 16),
+                                  _buildPreviousSetStats(
+                                    exercise,
+                                    effortKind,
+                                    theme,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildSetIndicator(
+                                    entries.length,
+                                    effortKind,
+                                    theme,
+                                  ),
+                                  SizedBox(
+                                    height: 24 + _kSessionScrollBottomExtra,
+                                  ),
+                                ],
                               ),
                             ),
-
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                              child: _buildSetControls(theme),
-                            ),
-
-                            const SizedBox(height: 32),
-                          ],
+                          ),
                         ),
-                      ),
+
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                          child: _buildSetControls(theme),
+                        ),
+
+                        const SizedBox(height: 32),
+                      ],
                     ),
                   ),
                 ],
@@ -872,6 +840,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 _updateUi(() {
                   _showListView = true;
                 });
+                _scrollListToBottom();
               } else if (widget.editMode) {
                 _handleEditModeBack();
               } else {
