@@ -76,9 +76,7 @@ extension SessionCoreEntryMethods on SessionCore {
       final existingObservations =
           _observations[effortId] ?? <EffortObservation>[];
       final entryIndex = effort.effortKind == 'set'
-          ? existingObservations
-                .where((o) => o.metricId == MetricIds.reps)
-                .length
+          ? _nextSetEntryIndex(existingObservations)
           : existingObservations.length ~/ 2;
 
       final existingEntryCount = effort.effortKind == 'round'
@@ -359,6 +357,23 @@ extension SessionCoreEntryMethods on SessionCore {
     } catch (e) {
       _setError('Failed to mark set as skipped: $e');
     }
+  }
+
+  /// Returns the next available index for a new 'set' entry by finding the
+  /// maximum index already encoded in the observation IDs and adding 1.
+  /// This is necessary because deleting a middle set leaves a gap in the
+  /// index sequence — using count-of-reps-obs instead would produce a
+  /// duplicate index, silently overwriting the last set rather than adding
+  /// a new one.
+  int _nextSetEntryIndex(List<EffortObservation> observations) {
+    final pattern = RegExp(r'obs-.+-(\d+)-[^-]+$');
+    var maxIndex = -1;
+    for (final obs in observations) {
+      final match = pattern.firstMatch(obs.id);
+      final idx = int.tryParse(match?.group(1) ?? '');
+      if (idx != null && idx > maxIndex) maxIndex = idx;
+    }
+    return maxIndex + 1;
   }
 
   Future<void> deleteEntry(String effortId, int entryIndex) async {

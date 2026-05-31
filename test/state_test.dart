@@ -1865,6 +1865,56 @@ void main() {
         final entries = exerciseEntry['entries'] as List<dynamic>;
         expect(entries.length, WorkoutConstants.maxEntriesPerEffort);
       });
+
+      test(
+        'addEntry after deleting a middle set adds a new entry (not duplicate)',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'resistance_lifting');
+
+          final exercises = await repo.getExercises();
+          final setExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('sets'),
+            orElse: () => exercises.first,
+          );
+
+          final effortId = await state.addExerciseToSession(
+            setExercise,
+            effortKindOverride: 'set',
+          );
+
+          // Add to max (12 sets: 1 from addExerciseToSession + 11 more).
+          for (int i = 0; i < WorkoutConstants.maxEntriesPerEffort - 1; i++) {
+            await state.addEntry(effortId);
+          }
+
+          var entries = (state.getExercisesWithEntries().firstWhere(
+            (e) => e['id'] == effortId,
+          )['entries'] as List<dynamic>);
+          expect(entries.length, WorkoutConstants.maxEntriesPerEffort);
+
+          // Delete a middle set (index 5).
+          await state.deleteEntry(effortId, 5);
+
+          entries = (state.getExercisesWithEntries().firstWhere(
+            (e) => e['id'] == effortId,
+          )['entries'] as List<dynamic>);
+          expect(entries.length, WorkoutConstants.maxEntriesPerEffort - 1);
+
+          // Adding a set should now succeed and bring the count back to 12.
+          await state.addEntry(effortId);
+
+          entries = (state.getExercisesWithEntries().firstWhere(
+            (e) => e['id'] == effortId,
+          )['entries'] as List<dynamic>);
+          expect(
+            entries.length,
+            WorkoutConstants.maxEntriesPerEffort,
+            reason: 'Should be able to add a set after deleting a middle set',
+          );
+        },
+      );
     });
 
     group('rest lifecycle', () {
