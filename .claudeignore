@@ -1,0 +1,71 @@
+# Dependency and tool caches
+.dart_tool/
+.pub-cache/
+.pub/
+
+# Build outputs
+build/
+coverage/
+
+# Flutter generated dependency metadata
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE/editor noise
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# VCS metadata
+.git/
+
+# Platform build artifacts
+android/.gradle/
+android/app/build/
+android/build/
+ios/build/
+ios/Pods/
+ios/Flutter/.last_build_id
+ios/Flutter/Flutter-Debug.xcconfig
+ios/Flutter/Flutter-Release.xcconfig
+ios/Flutter/Flutter-Profile.xcconfig
+ios/Runner.xcworkspace/
+macos/build/
+macos/Pods/
+macos/Flutter/Flutter-Debug.xcconfig
+macos/Flutter/Flutter-Release.xcconfig
+macos/Flutter/Flutter-Profile.xcconfig
+macos/Runner.xcworkspace/
+linux/build/
+windows/build/
+
+# Generated API docs and misc generated assets
+**/doc/api/
+
+# Local machine and temporary files
+.DS_Store
+*.log
+*.swp
+*.tmp
+
+# Environment and secret-bearing files
+.env
+.env.*
+*.env
+*.local
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.jks
+**/*.keystore
+android/key.properties
+android/local.properties
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+
+# Agent/local tooling artifacts not needed for coding context
+docs/copilot-agents/
+.claude/settings.local.json
