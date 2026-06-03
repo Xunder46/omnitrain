@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/omni_theme.dart';
+
+enum MetricEmphasisTier { dominant, secondary, muted }
 
 /// Scrollable metric editor for quick value adjustment via vertical drag.
 /// Supports reps, weight, duration, rpe, and extra-weight.
@@ -29,6 +32,12 @@ class InlineMetricEditor extends StatefulWidget {
   /// short press-lifts (tap) from drags (movement).
   final VoidCallback? onTap;
 
+  /// Optional emphasis tier for the main value rendering.
+  ///
+  /// When omitted, rendering stays backward-compatible with the previous
+  /// displayLarge-based styling.
+  final MetricEmphasisTier? emphasisTier;
+
   /// Called when value changes, passes new value
   final Function(dynamic) onValueChanged;
 
@@ -41,6 +50,7 @@ class InlineMetricEditor extends StatefulWidget {
     this.unitLabelColor,
     this.showUnitInline = false,
     this.onTap,
+    this.emphasisTier,
     required this.onValueChanged,
   });
 
@@ -119,13 +129,43 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     final theme = Theme.of(context);
     final displayText = _formatValue();
 
-    final valueStyle = theme.textTheme.displayLarge?.copyWith(
-      fontWeight: FontWeight.w300,
-      letterSpacing: -2,
-      color: widget.isReadOnly
-          ? theme.colorScheme.onSurface.withAlpha((0.45 * 255).round())
-          : null,
-    );
+    final baseLarge = theme.textTheme.displayLarge;
+    final baseMedium = theme.textTheme.displayMedium ?? baseLarge;
+
+    TextStyle? valueStyle;
+    switch (widget.emphasisTier) {
+      case MetricEmphasisTier.dominant:
+        valueStyle = baseLarge?.copyWith(
+          fontWeight: FontWeight.w300,
+          letterSpacing: -2,
+          color: OmniTheme.colors.textDominant,
+        );
+      case MetricEmphasisTier.secondary:
+        valueStyle = baseMedium?.copyWith(
+          fontWeight: FontWeight.w300,
+          letterSpacing: -1,
+          color: OmniTheme.colors.textSecondary,
+        );
+      case MetricEmphasisTier.muted:
+        valueStyle = baseMedium?.copyWith(
+          fontWeight: FontWeight.w300,
+          letterSpacing: -1,
+          color: OmniTheme.colors.textMuted,
+        );
+      case null:
+        valueStyle = baseLarge?.copyWith(
+          fontWeight: FontWeight.w300,
+          letterSpacing: -2,
+          color: null,
+        );
+    }
+
+    if (widget.isReadOnly && widget.emphasisTier == null) {
+      valueStyle = valueStyle?.copyWith(
+        color: theme.colorScheme.onSurface.withAlpha((0.45 * 255).round()),
+      );
+    }
+
     final unitStyle = theme.textTheme.labelMedium?.copyWith(
       letterSpacing: 1,
       color:

@@ -1087,8 +1087,8 @@ void main() {
         await tester.tap(find.text(exercises.first.name).first);
         await tester.pumpAndSettle();
 
-        // No InlineMetricEditor — the SizedBox.shrink() path is taken.
-        expect(find.byType(InlineMetricEditor), findsNothing);
+        expect(find.byType(InlineMetricEditor), findsOneWidget);
+        expect(find.text('EXTRA KG'), findsOneWidget);
         // Set count row is still visible.
         expect(find.text('Interval 1 of 1'), findsOneWidget);
       },
@@ -4695,14 +4695,6 @@ void main() {
         await tester.tap(find.text(timedExercise.name).first);
         await tester.pumpAndSettle();
 
-        final linkFinder = find.widgetWithText(
-          OutlinedButton,
-          'Weight adjustment',
-        );
-        await tester.ensureVisible(linkFinder);
-        await tester.tap(linkFinder);
-        await tester.pumpAndSettle();
-
         expect(find.text('+50.0'), findsOneWidget);
         expect(find.text('LBS'), findsOneWidget);
       },
@@ -4749,14 +4741,6 @@ void main() {
         await tester.pumpAndSettle();
 
         await tester.tap(find.text(drillExercise.name).first);
-        await tester.pumpAndSettle();
-
-        final linkFinder = find.widgetWithText(
-          OutlinedButton,
-          'Weight adjustment',
-        );
-        await tester.ensureVisible(linkFinder);
-        await tester.tap(linkFinder);
         await tester.pumpAndSettle();
 
         expect(find.text('+50.0'), findsOneWidget);
@@ -4913,60 +4897,6 @@ void main() {
       expect(find.text('Weight adjustment'), findsNothing);
     });
 
-    testWidgets('previous set banner respects lbs preference', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(800, 1200));
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final routineState = RoutineState(repo);
-      final settingsState = SettingsState(repo);
-      await settingsState.initialize();
-      await settingsState.setPreferredWeightUnit('lbs');
-      await workoutState.markExerciseInfoHintSeen();
-      await workoutState.markExerciseNotesHintSeen();
-      await workoutState.createNewSession(modality: 'resistance_lifting');
-
-      final exercises = await repo.getExercises();
-      final loadedExercise = exercises.firstWhere(
-        (e) =>
-            e.capabilities.contains('sets') &&
-            e.capabilities.contains('load') &&
-            e.capabilities.contains('reps'),
-        orElse: () => exercises.first,
-      );
-      final effortId = await workoutState.addExerciseToSession(
-        loadedExercise,
-        effortKindOverride: 'set',
-      );
-      await workoutState.addEntry(effortId);
-      await workoutState.updateEntryValue(effortId, 0, 'reps', 8);
-      await workoutState.updateEntryValue(effortId, 0, 'weight', 100.0);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: WorkoutSessionScreen(
-            workoutState: workoutState,
-            routineState: routineState,
-            sessionSummaryService: SessionSummaryService(repo),
-            timerAlertService: FakeTimerAlertService(),
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text(loadedExercise.name).first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Log Set'));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.textContaining('Previous: 8 reps @ 220.5 lbs'),
-        findsOneWidget,
-      );
-    });
-
     testWidgets(
       'weight adjustment renders as OutlinedButton with expand icon, not plain TextButton',
       (WidgetTester tester) async {
@@ -5026,8 +4956,14 @@ void main() {
           find.widgetWithText(TextButton, 'Weight adjustment'),
           findsNothing,
         );
-        expect(resolvedForeground, theme.colorScheme.primary);
-        expect(resolvedSide?.color, theme.colorScheme.primary);
+        expect(
+          resolvedForeground,
+          theme.colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+        );
+        expect(
+          resolvedSide?.color,
+          theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+        );
 
         // Must show expand icon when collapsed
         expect(

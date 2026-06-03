@@ -733,12 +733,6 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                                     theme,
                                   ),
                                   const SizedBox(height: 16),
-                                  _buildPreviousSetStats(
-                                    exercise,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  const SizedBox(height: 16),
                                   _buildSetIndicator(
                                     entries.length,
                                     effortKind,

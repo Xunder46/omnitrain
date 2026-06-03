@@ -731,13 +731,13 @@ class RoutineState extends ChangeNotifier {
     try {
       final targets = getEffortTargets(templateEffortId);
       final currentSetCount = targets.isEmpty
-          ? 0
+          ? 1
           : (_getMaxSetIndex(targets) + 1);
       if (currentSetCount >= WorkoutConstants.maxEntriesPerEffort) {
         return;
       }
 
-      final lastSetIndex = _getMaxSetIndex(targets);
+      final lastSetIndex = currentSetCount - 1;
       final newSetIndex = currentSetCount;
 
       final previousTargets = lastSetIndex >= 0

@@ -1443,7 +1443,7 @@ void main() {
       RoutineState routineState,
       SessionSummaryService sessionSummaryService,
       SettingsState settingsState,
-    })> _buildScrollTestDeps({String? modality}) async {
+    })> buildScrollTestDeps({String? modality}) async {
       final repo = await _freshRepo();
       await repo.setPreferenceBool('hint_seen_exercise_info', true);
       await repo.setPreferenceBool('hint_seen_exercise_notes', true);
@@ -1461,7 +1461,7 @@ void main() {
       );
     }
 
-    Widget _buildScreen({
+    Widget buildScreen({
       required WorkoutState workoutState,
       required RoutineState routineState,
       required SessionSummaryService sessionSummaryService,
@@ -1485,7 +1485,7 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
         final deps =
-            await _buildScrollTestDeps(modality: 'resistance_lifting');
+            await buildScrollTestDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
         final exercises = await repo.getExercises();
         final exercise = exercises.firstWhere(
@@ -1497,7 +1497,7 @@ void main() {
         );
 
         await tester.pumpWidget(
-          _buildScreen(
+          buildScreen(
             workoutState: deps.workoutState,
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
@@ -1533,7 +1533,7 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
         final deps =
-            await _buildScrollTestDeps(modality: 'resistance_lifting');
+            await buildScrollTestDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
         final exercises = await repo.getExercises();
         final exercise = exercises.firstWhere(
@@ -1549,7 +1549,7 @@ void main() {
         }
 
         await tester.pumpWidget(
-          _buildScreen(
+          buildScreen(
             workoutState: deps.workoutState,
             routineState: deps.routineState,
             sessionSummaryService: deps.sessionSummaryService,
@@ -1591,7 +1591,7 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
         final deps =
-            await _buildScrollTestDeps(modality: 'resistance_lifting');
+            await buildScrollTestDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
         final exercises = await repo.getExercises();
         final exercise = exercises.firstWhere(
@@ -1647,7 +1647,7 @@ void main() {
     Future<({
       RoutineState routineState,
       WorkoutState workoutState,
-    })> _buildRoutineScrollDeps() async {
+    })> buildRoutineScrollDeps() async {
       final repo = await _freshRepo();
       final routineState = RoutineState(repo);
       routineState.setAutosaveEnabled(false);
@@ -1662,7 +1662,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps = await _buildRoutineScrollDeps();
+        final deps = await buildRoutineScrollDeps();
         await deps.workoutState.loadAllExercises();
         final allExercises = deps.workoutState.allExercises;
         await deps.routineState.addExerciseToRoutine(
@@ -1707,7 +1707,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 500));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps = await _buildRoutineScrollDeps();
+        final deps = await buildRoutineScrollDeps();
         await deps.workoutState.loadAllExercises();
         final allExercises = deps.workoutState.allExercises;
 
@@ -1759,7 +1759,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(600, 500));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps = await _buildRoutineScrollDeps();
+        final deps = await buildRoutineScrollDeps();
         await deps.workoutState.loadAllExercises();
         final allExercises = deps.workoutState.allExercises;
 

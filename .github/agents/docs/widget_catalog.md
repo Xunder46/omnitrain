@@ -256,6 +256,7 @@ Touch-optimized scrollable value input for workout environments. Swipe up/down t
 | `metricType` | `String` | `reps`, `weight`, `duration`, `rpe`, `extra-weight` |
 | `currentValue` | `dynamic` | Value to display |
 | `unitLabel` | `String` | Label below value (e.g., "REPS", "LBS") |
+| `emphasisTier` | `MetricEmphasisTier?` | Optional value emphasis: `dominant`, `secondary`, `muted`; default keeps legacy displayLarge styling |
 | `onValueChanged` | `Function(dynamic)` | Immediate callback on value change |
 
 **Sensitivity**:
@@ -267,9 +268,9 @@ Touch-optimized scrollable value input for workout environments. Swipe up/down t
 | `rpe` | ±1 | 1–10 |
 | `extra-weight` | ±2.5 | -100.0–200.0 |
 
-**Visual**: 72pt value, 12pt unit label, drag-responsive (updates during drag).
+**Visual**: 72pt value by default, 12pt unit label, drag-responsive (updates during drag). Resistance screens may pass `emphasisTier` so reps render dominant and weight renders secondary. When `isReadOnly` and `emphasisTier` are both set, the emphasis tier wins and the value is not dimmed.
 
-**Session context (timer tap-to-toggle)**: In `WorkoutSessionScreen` detail view, the `InlineMetricEditor` for timer-based efforts (`timed`, `round`, `drill`) is wrapped in a `GestureDetector` with `onTap: _toggleEffortTimer`. A subtle play/pause icon overlay (20pt, 55% opacity) is positioned below the value, visible only when the timer is not finished. The GestureDetector uses `HitTestBehavior.opaque` to consume taps. On `timed` and `drill`, the Weight Adjustment control is placed outside the GestureDetector so it remains tappable.
+**Session context (timer tap-to-toggle)**: In `WorkoutSessionScreen` detail view, the `InlineMetricEditor` for timer-based efforts (`timed`, `round`, `drill`) is wrapped in a `GestureDetector` with `onTap: _toggleEffortTimer`. Timed and drill timers now render at the dominant tier even while read-only; their play/pause affordance and STOPPED/RUNNING/PAUSED label sit on a muted status line below the value. On `timed` and `drill`, the Weight Adjustment control is placed outside the GestureDetector so it remains tappable, uses neutral chip styling when collapsed, and expands into a secondary-tier extra-weight editor.
 
 ---
 

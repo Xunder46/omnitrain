@@ -53,6 +53,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   double _fromCanonicalWeight(double kg) => widget.settingsState != null
       ? UnitFormatter.convertWeight(kg, widget.settingsState!)
       : kg;
+
   Map<String, Exercise> _exerciseCache = {};
   bool _showListView = true;
   int _currentExerciseIndex = 0;
@@ -623,24 +624,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              _getTrackingLabel(effort.effortKind),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
                           const SizedBox(height: 24),
                           Center(
                             child: _buildMetricWidget(effort, targets, theme),
@@ -651,14 +634,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                               setCount,
                               effort,
                               canAddSet,
-                              theme,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Center(
-                            child: _buildPreviousSetStats(
-                              effort,
-                              targets,
                               theme,
                             ),
                           ),
@@ -1267,6 +1242,7 @@ extension on _RoutineSetupScreenState {
               metricType: 'reps',
               currentValue: reps,
               unitLabel: 'REPS',
+              emphasisTier: MetricEmphasisTier.dominant,
               onValueChanged: (value) => widget.routineState.setTargetValue(
                 effort.id,
                 MetricIds.reps,
@@ -1279,6 +1255,7 @@ extension on _RoutineSetupScreenState {
               metricType: 'weight',
               currentValue: weight,
               unitLabel: _preferredWeightUnitLabel,
+              emphasisTier: MetricEmphasisTier.secondary,
               onValueChanged: (value) => widget.routineState.setTargetValue(
                 effort.id,
                 MetricIds.weight,
@@ -1291,10 +1268,6 @@ extension on _RoutineSetupScreenState {
           ],
         );
       case 'timed':
-        final hasTimedExtraWeightTarget = targets.any(
-          (t) => t.metricId == MetricIds.extraWeight,
-        );
-        if (!hasTimedExtraWeightTarget) return const SizedBox.shrink();
         // Target stored in canonical kg; convert to display unit for editor.
         final timedExtraWeight = _fromCanonicalWeight(
           _getTargetDouble(targets, MetricIds.extraWeight, setIndex),
@@ -1303,6 +1276,7 @@ extension on _RoutineSetupScreenState {
           metricType: 'extra-weight',
           currentValue: timedExtraWeight,
           unitLabel: 'EXTRA $_preferredWeightUnitLabel',
+          emphasisTier: MetricEmphasisTier.secondary,
           onValueChanged: (value) => widget.routineState.setTargetValue(
             effort.id,
             MetricIds.extraWeight,
@@ -1315,15 +1289,22 @@ extension on _RoutineSetupScreenState {
       case 'round':
         final roundDuration =
             _getTargetInt(targets, MetricIds.roundDuration, setIndex) ?? 180;
+        final effectiveModality =
+          effort.modality ??
+          _exerciseCache[effort.exerciseId]?.modality ??
+          widget.routineState.currentTemplate?.focusModality;
+        final isSportsModality = effectiveModality == 'sports';
+        final roundLabel = isSportsModality ? 'PERIOD' : 'ROUND';
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'ROUND $_currentSet',
+              '$roundLabel $_currentSet',
               style: theme.textTheme.displayLarge?.copyWith(
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
                 fontSize: theme.textTheme.displayMedium?.fontSize,
+                color: OmniTheme.colors.textDominant,
               ),
             ),
             const SizedBox(height: 12),
@@ -1331,6 +1312,7 @@ extension on _RoutineSetupScreenState {
               metricType: 'duration',
               currentValue: roundDuration,
               unitLabel: 'DURATION',
+              emphasisTier: MetricEmphasisTier.dominant,
               onValueChanged: (value) async {
                 await widget.routineState.setTargetValue(
                   effort.id,
@@ -1359,6 +1341,7 @@ extension on _RoutineSetupScreenState {
           metricType: 'extra-weight',
           currentValue: extraWeight,
           unitLabel: 'EXTRA $_preferredWeightUnitLabel',
+          emphasisTier: MetricEmphasisTier.secondary,
           onValueChanged: (value) => widget.routineState.setTargetValue(
             effort.id,
             MetricIds.extraWeight,
@@ -1388,7 +1371,12 @@ extension on _RoutineSetupScreenState {
         label = 'Interval $_currentSet of $totalEntries';
         break;
       case 'round':
-        label = 'Round $_currentSet of $totalEntries';
+        final effectiveModality =
+          effort.modality ??
+          _exerciseCache[effort.exerciseId]?.modality ??
+          widget.routineState.currentTemplate?.focusModality;
+        final setLabel = effectiveModality == 'sports' ? 'Period' : 'Round';
+        label = '$setLabel $_currentSet of $totalEntries';
         break;
       case 'drill':
         label = 'Hold $_currentSet of $totalEntries';
@@ -1439,8 +1427,7 @@ extension on _RoutineSetupScreenState {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
                   letterSpacing: compactLetterSpacing,
-                  color: theme.colorScheme.onSurface
-                      .withAlpha((0.6 * 255).round()),
+                  color: OmniTheme.colors.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -1462,7 +1449,8 @@ extension on _RoutineSetupScreenState {
                     Icons.add,
                     size: 24,
                     color: canAddSet
-                        ? theme.colorScheme.primary
+                        ? theme.colorScheme.onSurface
+                            .withAlpha((0.35 * 255).round())
                         : theme.colorScheme.onSurface
                             .withAlpha((0.2 * 255).round()),
                   ),
@@ -1475,103 +1463,50 @@ extension on _RoutineSetupScreenState {
     );
   }
 
-  Widget _buildPreviousSetStats(
-    TemplateEffort effort,
-    List<TemplateTarget> targets,
-    ThemeData theme,
-  ) {
-    if (_currentSet <= 1) {
-      return const SizedBox.shrink();
-    }
-
-    final previousIndex = _currentSet - 2;
-    String statsText = '';
-
-    switch (effort.effortKind) {
-      case 'set':
-        final reps = _getTargetInt(targets, MetricIds.reps, previousIndex) ?? 0;
-        final weight = _getTargetDouble(
-          targets,
-          MetricIds.weight,
-          previousIndex,
-        );
-        statsText = widget.settingsState != null
-            ? 'Previous: $reps reps @ ${UnitFormatter.formatWeightValue(weight, widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
-            : 'Previous: $reps reps @ ${weight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
-        break;
-      case 'timed':
-        final duration =
-            _getTargetInt(targets, MetricIds.duration, previousIndex) ?? 0;
-        final mins = duration ~/ 60;
-        final secs = duration % 60;
-        statsText =
-            'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-        final timedPrevEw =
-            targets.any((t) => t.metricId == MetricIds.extraWeight)
-            ? _getTargetDouble(targets, MetricIds.extraWeight, previousIndex)
-            : null;
-        if (timedPrevEw != null && timedPrevEw != 0.0) {
-          statsText += widget.settingsState != null
-              ? ' + ${UnitFormatter.formatWeightValue(timedPrevEw, widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
-              : ' + ${timedPrevEw.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
-        }
-        break;
-      case 'round':
-        final roundDuration =
-            _getTargetInt(targets, MetricIds.roundDuration, previousIndex) ?? 0;
-        final mins = roundDuration ~/ 60;
-        final secs = roundDuration % 60;
-        statsText =
-            'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} per round';
-        break;
-      case 'drill':
-        final duration =
-            _getTargetInt(targets, MetricIds.duration, previousIndex) ?? 0;
-        final extraWeight = _getTargetDouble(
-          targets,
-          MetricIds.extraWeight,
-          previousIndex,
-        );
-        final mins = duration ~/ 60;
-        final secs = duration % 60;
-        final ewSign = extraWeight > 0 ? '+' : '';
-        statsText = widget.settingsState != null
-            ? 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ $ewSign${UnitFormatter.formatWeightValue(extraWeight.abs(), widget.settingsState!)} ${UnitFormatter.weightLabel(widget.settingsState!)}'
-            : 'Previous: ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')} hold @ $ewSign${extraWeight.toStringAsFixed(1)} ${UnitFormatter.weightLabelForUnit('kg')}';
-        break;
-      default:
-        return const SizedBox.shrink();
-    }
-
-    return Text(
-      statsText,
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
-        fontStyle: FontStyle.italic,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
-
   Widget _buildSetIndicator(int totalEntries, ThemeData theme) {
     if (totalEntries <= 1) {
       return const SizedBox.shrink();
     }
 
-    return Wrap(
-      spacing: 8,
+    final efforts = widget.routineState.currentEfforts;
+    final currentEffort =
+        (_currentExerciseIndex >= 0 && _currentExerciseIndex < efforts.length)
+        ? efforts[_currentExerciseIndex]
+        : null;
+    final currentEffortModality =
+        currentEffort == null
+        ? null
+        : (currentEffort.modality ??
+              _exerciseCache[currentEffort.exerciseId]?.modality ??
+              widget.routineState.currentTemplate?.focusModality);
+    final accentCurrentDot =
+        currentEffort?.effortKind == 'round' && currentEffortModality == 'sports';
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(totalEntries, (index) {
-        final isActive = index == _currentSet - 1;
-        return GestureDetector(
-          onTap: () => _jumpToSet(index + 1),
-          child: Container(
-            width: isActive ? 14 : 10,
-            height: isActive ? 14 : 10,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isActive
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+        final dotSize = index == _currentSet - 1 ? 14.0 : 10.0;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: GestureDetector(
+            onTap: () => _jumpToSet(index + 1),
+            child: SizedBox(
+              width: 14,
+              height: 14,
+              child: Center(
+                child: Container(
+                  width: dotSize,
+                  height: dotSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accentCurrentDot && index == _currentSet - 1
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withAlpha(
+                            (0.2 * 255).round(),
+                          ),
+                  ),
+                ),
+              ),
             ),
           ),
         );

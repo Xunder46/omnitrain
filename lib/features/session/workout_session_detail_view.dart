@@ -95,7 +95,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     required ValueChanged<double> onValueChanged,
   }) {
     final key = '$effortId-$entryIndex';
-    final isExpanded = _weightAdjustExpanded[key] ?? false;
+    final isExpanded = _weightAdjustExpanded[key] ?? (currentValue > 0);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -108,8 +108,12 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           icon: Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
           label: const Text('Weight adjustment'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: theme.colorScheme.primary,
-            side: BorderSide(color: theme.colorScheme.primary),
+            foregroundColor: theme.colorScheme.onSurface.withAlpha(
+              (0.6 * 255).round(),
+            ),
+            side: BorderSide(
+              color: theme.colorScheme.onSurface.withAlpha((0.2 * 255).round()),
+            ),
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -126,6 +130,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             currentValue: currentValue,
             unitLabel: _preferredWeightUnitLabel,
             showUnitInline: true,
+            emphasisTier: MetricEmphasisTier.secondary,
             onValueChanged: (value) =>
                 onValueChanged((value as num).toDouble()),
           ),
@@ -161,6 +166,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
               metricType: 'reps',
               currentValue: reps,
               unitLabel: 'REPS',
+              emphasisTier: MetricEmphasisTier.dominant,
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'reps', value),
             ),
@@ -168,6 +174,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
               metricType: 'weight',
               currentValue: weight,
               unitLabel: _preferredWeightUnitLabel,
+              emphasisTier: MetricEmphasisTier.secondary,
               onValueChanged: (value) =>
                   _updateMetricValue(effortId, entryIndex, 'weight', value),
             ),
@@ -272,6 +279,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     unitLabel: timedUnitLabel,
                     unitLabelColor: timedUnitLabelColor,
                     isReadOnly: true,
+                    emphasisTier: MetricEmphasisTier.dominant,
                     onValueChanged: (_) {},
                   ),
                   Row(
@@ -283,11 +291,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                               ? Icons.pause_circle_outline
                               : Icons.play_circle_outline,
                           size: 30,
-                          color: timedIsRunning
-                              ? theme.colorScheme.primary.withOpacity(0.6)
-                              : theme.colorScheme.onSurface.withAlpha(
-                                  (0.35 * 255).round(),
-                                ),
+                          color: OmniTheme.colors.textMuted,
                         ),
                         const SizedBox(width: 6),
                       ] else
@@ -301,11 +305,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                   ? 'RUNNING'
                                   : (isTimedStarted ? 'PAUSED' : 'STOPPED')),
                         style: theme.textTheme.labelMedium?.copyWith(
-                          color: timedIsRunning
-                              ? theme.colorScheme.primary.withOpacity(0.8)
-                              : theme.colorScheme.onSurface.withAlpha(
-                                  (0.5 * 255).round(),
-                                ),
+                          color: OmniTheme.colors.textMuted,
                           letterSpacing: 1,
                         ),
                       ),
@@ -338,6 +338,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         final roundDuration =
             entryData['round-duration'] as int? ??
             WorkoutConstants.defaultRoundDurationSecs;
+        final modality = widget.workoutState.currentSession?.modality;
+        final roundLabel = modality == 'sports' ? 'PERIOD' : 'ROUND';
         final timerKey = '$effortId-$entryIndex';
         final elapsed = _effortElapsed[timerKey] ?? 0;
         final targetSeconds = _getEffortTargetDuration(
@@ -392,11 +394,12 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
             children: [
               SizedBox(height: 24 + _kSessionScrollBottomExtra),
               Text(
-                'ROUND $rounds',
+                '$roundLabel $rounds',
                 style: theme.textTheme.displayLarge?.copyWith(
                   fontWeight: FontWeight.w300,
                   letterSpacing: -2,
                   fontSize: theme.textTheme.displayMedium?.fontSize,
+                  color: OmniTheme.colors.textDominant,
                 ),
               ),
               const SizedBox(height: 15),
@@ -404,6 +407,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 metricType: 'duration',
                 currentValue: editRoundDuration,
                 unitLabel: 'DURATION',
+                emphasisTier: MetricEmphasisTier.dominant,
                 onTap: () async {
                   final result = await _showDurationEntryDialog(
                     context,
@@ -437,11 +441,12 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           children: [
             SizedBox(height: 24 + _kSessionScrollBottomExtra),
             Text(
-              'ROUND $rounds',
+              '$roundLabel $rounds',
               style: theme.textTheme.displayLarge?.copyWith(
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
                 fontSize: theme.textTheme.displayMedium?.fontSize,
+                color: OmniTheme.colors.textDominant,
               ),
             ),
             const SizedBox(height: 15),
@@ -458,11 +463,8 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     unitLabel: _effortRunning[timerKey] ?? false
                         ? 'RUNNING'
                         : stoppedUnitLabel,
-                    unitLabelColor: _effortRunning[timerKey] ?? false
-                        ? theme.colorScheme.primary.withOpacity(0.8)
-                        : (isFinished
-                              ? theme.colorScheme.primary
-                              : (isExpired ? theme.colorScheme.error : null)),
+                    emphasisTier: MetricEmphasisTier.dominant,
+                    unitLabelColor: isExpired ? theme.colorScheme.error : null,
                     onValueChanged: (value) => _updateMetricValue(
                       effortId,
                       entryIndex,
@@ -480,11 +482,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                               ? Icons.pause_circle_outline
                               : Icons.play_circle_outline,
                           size: 30,
-                          color: (_effortRunning[timerKey] ?? false)
-                              ? theme.colorScheme.primary.withOpacity(0.6)
-                              : theme.colorScheme.onSurface.withAlpha(
-                                  (0.35 * 255).round(),
-                                ),
+                          color: OmniTheme.colors.textMuted,
                         ),
                         const SizedBox(width: 6),
                       ] else
@@ -496,11 +494,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                   ? 'RUNNING'
                                   : (isMidRound ? 'PAUSED' : 'STOPPED')),
                         style: theme.textTheme.labelMedium?.copyWith(
-                          color: (_effortRunning[timerKey] ?? false)
-                              ? theme.colorScheme.primary.withOpacity(0.8)
-                              : theme.colorScheme.onSurface.withAlpha(
-                                  (0.5 * 255).round(),
-                                ),
+                          color: OmniTheme.colors.textMuted,
                           letterSpacing: 1,
                         ),
                       ),
@@ -610,6 +604,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     unitLabel: drillUnitLabel,
                     unitLabelColor: drillUnitLabelColor,
                     isReadOnly: true,
+                    emphasisTier: MetricEmphasisTier.dominant,
                     onValueChanged: (_) {},
                   ),
                   Row(
@@ -621,11 +616,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                               ? Icons.pause_circle_outline
                               : Icons.play_circle_outline,
                           size: 30,
-                          color: drillIsRunning
-                              ? theme.colorScheme.primary.withOpacity(0.6)
-                              : theme.colorScheme.onSurface.withAlpha(
-                                  (0.35 * 255).round(),
-                                ),
+                          color: OmniTheme.colors.textMuted,
                         ),
                         const SizedBox(width: 6),
                       ] else
@@ -639,11 +630,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                                   ? 'RUNNING'
                                   : (isDrillStarted ? 'PAUSED' : 'STOPPED')),
                         style: theme.textTheme.labelMedium?.copyWith(
-                          color: drillIsRunning
-                              ? theme.colorScheme.primary.withOpacity(0.8)
-                              : theme.colorScheme.onSurface.withAlpha(
-                                  (0.5 * 255).round(),
-                                ),
+                          color: OmniTheme.colors.textMuted,
                           letterSpacing: 1,
                         ),
                       ),
@@ -736,9 +723,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
                   letterSpacing: compactLetterSpacing,
-                  color: theme.colorScheme.onSurface.withAlpha(
-                    (0.6 * 255).round(),
-                  ),
+                  color: OmniTheme.colors.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -762,7 +747,9 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     Icons.add,
                     size: 24,
                     color: canAddEntry
-                        ? theme.colorScheme.primary
+                        ? theme.colorScheme.onSurface.withAlpha(
+                            (0.35 * 255).round(),
+                          )
                         : theme.colorScheme.onSurface.withAlpha(
                             (0.2 * 255).round(),
                           ),
@@ -776,96 +763,6 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
-  Widget _buildPreviousSetStats(
-    Map<String, dynamic> exercise,
-    String effortKind,
-    ThemeData theme,
-  ) {
-    if (_currentSet <= 1) return const SizedBox(height: 16);
-
-    final entries = exercise['entries'] as List<Map<String, dynamic>>;
-    if (_currentSet - 2 >= entries.length) return const SizedBox(height: 16);
-
-    final previousEntryIndex = _currentSet - 2;
-    final previousEntry = entries[previousEntryIndex];
-    final isPreviousLogged = _isSetLogged(
-      exercise['id'] as String,
-      previousEntryIndex,
-      effortKind,
-    );
-    String statsText = '';
-
-    switch (effortKind) {
-      case 'set':
-        final prevReps = previousEntry['reps'] as int? ?? 0;
-        final prevWeight = previousEntry['weight'] as double? ?? 0.0;
-        if (!isPreviousLogged) {
-          statsText = '';
-          break;
-        }
-        statsText =
-            'Previous: $prevReps reps @ ${UnitFormatter.formatWeightValue(prevWeight, widget.settingsState)} ${UnitFormatter.weightLabel(widget.settingsState)}';
-      case 'timed':
-        final prevTimedSecs =
-            previousEntry['elapsedSecs'] as int? ??
-            previousEntry['duration'] as int? ??
-            0;
-        final prevDistance = previousEntry['distance'] as double? ?? 0.0;
-        if (!isPreviousLogged) {
-          statsText = '';
-          break;
-        }
-        final prevTimedMins = prevTimedSecs ~/ 60;
-        final prevTimedRemSecs = prevTimedSecs % 60;
-        statsText =
-            'Previous: ${prevTimedMins.toString().padLeft(2, '0')}:${prevTimedRemSecs.toString().padLeft(2, '0')} @ ${UnitFormatter.formatDistanceValue(prevDistance, widget.settingsState)} ${UnitFormatter.distanceLabel(widget.settingsState)}';
-        final prevTimedExtraWeight = previousEntry['extra-weight'] as double?;
-        if (prevTimedExtraWeight != null && prevTimedExtraWeight != 0.0) {
-          statsText +=
-              ' + ${UnitFormatter.formatWeightValue(prevTimedExtraWeight, widget.settingsState)} ${UnitFormatter.weightLabel(widget.settingsState)}';
-        }
-      case 'round':
-        final prevRounds = previousEntry['rounds'] as int? ?? 1;
-        final prevRoundDur =
-            previousEntry['round-duration'] as int? ??
-            WorkoutConstants.defaultRoundDurationSecs;
-        if (!isPreviousLogged) {
-          statsText = '';
-          break;
-        }
-        final mins = prevRoundDur ~/ 60;
-        final secs = prevRoundDur % 60;
-        statsText =
-            'Previous: $prevRounds rounds @ ${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-      case 'drill':
-        final prevDrillSecs =
-            previousEntry['elapsedSecs'] as int? ??
-            previousEntry['duration'] as int? ??
-            0;
-        final prevExtraWeight = previousEntry['extra-weight'] as double? ?? 0.0;
-        if (!isPreviousLogged) {
-          statsText = '';
-          break;
-        }
-        final prevDrillMins = prevDrillSecs ~/ 60;
-        final prevDrillRemSecs = prevDrillSecs % 60;
-        final ewSign = prevExtraWeight > 0 ? '+' : '';
-        statsText =
-            'Previous: ${prevDrillMins.toString().padLeft(2, '0')}:${prevDrillRemSecs.toString().padLeft(2, '0')} hold @ $ewSign${UnitFormatter.formatWeightValue(prevExtraWeight.abs(), widget.settingsState)} ${UnitFormatter.weightLabel(widget.settingsState)}';
-      default:
-        return const SizedBox.shrink();
-    }
-
-    return Text(
-      statsText,
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
-        fontStyle: FontStyle.italic,
-      ),
-      textAlign: TextAlign.center,
-    );
-  }
-
   Widget _buildSetIndicator(int totalSets, String effortKind, ThemeData theme) {
     final effortId = _exercises[_currentExerciseIndex]['id'] as String;
 
@@ -876,7 +773,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(totalSets, (index) {
             final isCurrent = index == _currentSet - 1;
-            final isActuallyLogged = _isSetLogged(effortId, index, effortKind);
+            final isLogged = _isSetLogged(effortId, index, effortKind);
             final isSkipped =
                 _skippedSets[_exercises[_currentExerciseIndex]['id']]?.contains(
                   index,
@@ -891,15 +788,19 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 height: isCurrent ? 14 : 10,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isActuallyLogged && !isSkipped
-                      ? theme.colorScheme.primary.withOpacity(0.8)
-                      : isCurrent && !isActuallyLogged
-                      ? theme.colorScheme.primary.withAlpha(
-                          (0.35 * 255).round(),
-                        )
-                      : theme.colorScheme.onSurface.withAlpha(
-                          (0.2 * 255).round(),
-                        ),
+                  color: effortKind == 'round'
+                      ? (isCurrent
+                            ? theme.colorScheme.primary
+                            : (isLogged
+                                  ? OmniTheme.colors.textMuted
+                                  : theme.colorScheme.onSurface.withAlpha(
+                                      (0.2 * 255).round(),
+                                    )))
+                      : ((isLogged || isSkipped)
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface.withAlpha(
+                                (0.2 * 255).round(),
+                              )),
                 ),
               ),
             );
@@ -1017,9 +918,13 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       child: FilledButton(
         style: ButtonStyle(
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+            ),
           ),
-          minimumSize: WidgetStateProperty.all(const Size(double.infinity, 64)),
+          minimumSize: WidgetStateProperty.all(
+            const Size(double.infinity, OmniTheme.buttonPrimaryHeight),
+          ),
         ),
         onPressed: () => _toggleEffortTimer(effortId),
         child: const Text('Start'),
@@ -1061,9 +966,13 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
       child: FilledButton(
         style: ButtonStyle(
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
+            ),
           ),
-          minimumSize: WidgetStateProperty.all(const Size(double.infinity, 64)),
+          minimumSize: WidgetStateProperty.all(
+            const Size(double.infinity, OmniTheme.buttonPrimaryHeight),
+          ),
         ),
         onPressed: _logSet,
         child: Text(label),

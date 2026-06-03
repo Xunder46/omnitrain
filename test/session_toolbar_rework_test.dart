@@ -723,34 +723,6 @@ void main() {
     });
   });
 
-  group('Toolbar Rework — Previous Set Graceful Empty State (Phase F)', () {
-    // S-019: Unlogged previous set shows "—" not zeros
-    testWidgets(
-      'S-019: previous set stats show "—" when previous set is unlogged',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await _buildDeps(modality: 'resistance_lifting');
-        final repo = await _freshRepo();
-        final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
-        final effortId = await deps.workoutState.addExerciseToSession(
-          exercise,
-          chosenMetric: 'reps',
-        );
-        await deps.workoutState.addEntry(effortId);
-
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _openDetailView(tester, 'Barbell Back Squat');
-
-        // Navigate to set 2 without logging set 1
-        await tester.tap(find.byIcon(Icons.arrow_forward));
-        await tester.pumpAndSettle();
-
-        // Previous set 1 was never logged → no previous banner shown
-        expect(find.textContaining('Previous:'), findsNothing);
-      },
-    );
-  });
-
   group('Toolbar Rework — Auto-Pause on Navigation (Phase B)', () {
     // S-013: Navigating away from timed set auto-pauses timer
     testWidgets('S-013: jumping to another set auto-pauses the running timer', (
