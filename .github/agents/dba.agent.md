@@ -358,6 +358,10 @@ final id = 'exercise-${DateTime.now().millisecondsSinceEpoch}';
 
 Monitor context usage as you work. If approaching the context limit, prefer to stop cleanly at the end of a logical step rather than mid-implementation. Update the plan file with progress, mark phase status, and instruct the user to resume in a new chat with the plan file attached.
 
+## Output Discipline (cost)
+
+Prefer surgical, targeted edits in data-layer files over full-file rewrites — change only the lines that need changing in models, repository interfaces/implementations, seed data, and schema assets. Do not echo large unchanged code blocks. Keep completion summaries to the structured handoff format only.
+
 ## Phase Complete Template
 
 When all tasks are done:

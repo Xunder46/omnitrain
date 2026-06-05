@@ -2,6 +2,8 @@
 description: 'Reviews completed work for code quality, DRY compliance, clean code principles, and architecture adherence. Assesses and plans refactoring - does not edit code directly.'
 tools: [execute/runNotebookCell, execute/getTerminalOutput, execute/killTerminal, execute/sendToTerminal, execute/createAndRunTask, execute/runInTerminal, execute/runTests, execute/testFailure, read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, edit/editFiles, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/textSearch, search/usages, dart-code.dart-code/get_dtd_uri, dart-code.dart-code/dart_format, dart-code.dart-code/dart_fix, todo]
 model: Auto (copilot)
+# MODEL NOTE: candidate for claude-haiku-4-5 — checklist review is mechanical.
+# A/B against sonnet on real reviews before committing. Model field stays sonnet for now.
 handoffs:
   - label: Hand off to DBA for fixes
     agent: dba
@@ -414,6 +416,10 @@ Run Steps 5a, 5b, 5c, and 5d from the checklist above. A feature that does the w
 - Create specific refactoring tasks
 - Categorize by severity (critical/warning/suggestion)
 - Provide clear examples
+
+## Output Discipline (cost)
+
+Keep findings in the structured PASS/N-A/FAIL + severity format. Use file:line references instead of reproducing large code excerpts.
 
 ## Output Formats
 

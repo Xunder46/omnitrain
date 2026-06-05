@@ -89,62 +89,26 @@ await db.query('app_exercise'); // NO!
 
 ---
 
-## Phase 0: TDD Scenario Discovery (MANDATORY)
+## Phase 0: Scenario Verification + Tests (MANDATORY)
 
-**Phase 0 always runs after the DBA has completed the data layer.** Tests are written against actual models and repository interfaces — not before they exist.
+The scenario register is produced by the Conductor during planning and lives in the plan's `## Scenarios` section. You do NOT run an interactive scenario Q&A with the user.
 
-This phase fires unconditionally regardless of whether the handoff came from the Conductor, the Prompt Engineer, or directly from the user. Implementation does not begin until Phase 0 is complete.
+### Step 0.1 — Verify the Register
 
-### Step 0.1 — Codebase Analysis
+Read `## Scenarios`. Confirm it is complete enough to test against. If it is missing or materially incomplete, do NOT ask the user and do NOT guess: mark the phase Blocked, add a `## Feedback` note naming exactly what's missing, and notify the user to re-run the Conductor.
 
-Before asking any questions, analyze the codebase to build an initial scenario map. Read the plan file, the DBA's completed work, affected screens and state classes, and identify:
+### Step 0.2 — Write Tests
 
-- All entry points into the feature
-- All data dependencies (what the DBA just created)
-- All navigation paths in and out of new or modified screens
-- Obvious empty states, loading states, and error states
-- Existing tests that touch adjacent code
-
-Do not ask questions already answerable from the codebase or the plan file.
-
-### Step 0.2 — Recursive Q&A Loop
-
-Present the draft scenario list to the user and ask targeted questions about gaps, ambiguities, and edge cases. Cover all applicable categories:
-
-- **Happy path completeness** — primary flow and variants (first use vs. returning user)
-- **Reversibility** — can the user undo or go back at each step?
-- **Interruptions** — app backgrounded mid-flow, conflicting active session
-- **Empty and zero states** — what does the screen show with no data?
-- **Validation and rejection** — invalid inputs, error feedback, recovery path
-- **Concurrent or conflicting state** — conflicts with rolling session, active workout
-- **Destructive actions** — deletes, overwrites, confirmation requirements
-- **Navigation edge cases** — back stack behavior, unexpected back navigation
-- **Permissions and prerequisites** — what must exist before this feature works?
-- **First-use vs repeat-use** — onboarding states, different behavior on first run
-- **Data boundary cases** — zero items, one item, many items, practical limits
-
-**Recursion rule**: After each answer batch, re-evaluate the scenario list. Add follow-up batches if any answer raises new questions. Stop only when:
-- Every scenario has a defined expected outcome
-- Every error state has a defined recovery path
-- No open question remains that would require a test assumption
-- The user has confirmed the scenario list is complete
-
-There is no fixed round limit. The loop stops when the scenario list is complete — not after a fixed number of rounds.
-
-### Step 0.3 — Scenario Register
-
-Write confirmed scenarios to `## Scenarios` in the plan file. Each entry must follow this format:
+The scenario register entries must follow this format:
 
 ```
 ### S-001: [Short scenario name]
-- Trigger: [What action or state initiates this]
-- Precondition: [What must be true before this can occur]
-- Flow: [Step-by-step description]
-- Expected outcome: [Exactly what the user sees or what state is persisted]
+- Trigger: [What initiates this]
+- Precondition: [What must be true first]
+- Flow: [Step-by-step]
+- Expected outcome: [Exactly what the user sees or what state persists]
 - Edge case of: [Parent scenario ID or "none"]
 ```
-
-### Step 0.4 — Write Tests
 
 Write all tests before writing any implementation code. Tests are written against the scenario register — not against an anticipated implementation.
 
@@ -735,13 +699,18 @@ Then hand off to @code-reviewer with a summary:
 - [x] No regressions in existing tests
 ```
 
+## Output Discipline (cost)
+
+Prefer surgical, targeted edits over full-file rewrites — change only the lines that need changing, never regenerate whole files. Do not echo large unchanged code blocks. Keep completion summaries to the structured handoff format only.
+
 ## Remember
 
 - Always read `.github/agents/plans/[feature]-plan.md` first to understand full feature context
 - Always update the `## Progress` checklist in the plan file after completing work
-- If blocked, add `## Feedback` to the plan file and notify the user to re-run the Coordinator
-- Phase 0 is non-negotiable — no implementation without a confirmed scenario register and red tests
-- The Q&A loop is recursive — stop only when the scenario list is complete and confirmed
+- If blocked, add `## Feedback` to the plan file and notify the user to re-run the Conductor
+- Phase 0 is non-negotiable — no implementation without a complete Conductor-authored scenario register and red tests
+- Scenario register comes from the plan file (`## Scenarios`) and is authored by the Conductor
+- Do not run scenario Q&A with the user in this agent
 - New tests must fail before implementation — a test that passes before implementation is broken
 - All Phase 0 tests must be green before handing off to the Code Reviewer
 - If blocked, mark phase as **Blocked**, add `## Feedback`, notify user to re-run Coordinator
