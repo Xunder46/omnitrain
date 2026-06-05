@@ -171,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         children: [
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16.0, 15.0, 16.0, 0.0),
+              padding: const EdgeInsets.fromLTRB(16.0, 5.0, 16.0, 0.0),
               child: Column(
                 children: [
                   Text(

@@ -1,11 +1,27 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import 'metric_crown_widget.dart';
+
+export 'metric_crown_widget.dart' show MetricStepCalc, MetricCrownWidget, showMetricEditPopup;
 
 enum MetricEmphasisTier { dominant, secondary, muted }
 
-/// Scrollable metric editor for quick value adjustment via vertical drag.
-/// Supports reps, weight, duration, rpe, and extra-weight.
-/// Changes persist immediately via callback.
+/// Metric editor with tap-to-edit popup as the sole value-change mechanism.
+///
+/// The crown scrub control (`MetricCrownWidget`) is present in the codebase but
+/// not rendered.  It can be re-enabled here without rebuilding it.
+///
+/// **Interaction model:**
+/// - Number tap:
+///   - When [onTap] is provided (e.g. timer-toggle or duration-entry dialog in
+///     edit mode): tapping the number calls [onTap].
+///   - When [onTap] is null and the editor is not read-only: tapping the number
+///     opens [showMetricEditPopup] for exact numeric entry.
+///   - When [isReadOnly] is true: no tap or drag affordances are shown.
+///
+/// The outer [GestureDetector] retains [onTap] for backward-compatible
+/// callers that attach timer-toggle handlers.  Crown is not rendered for
+/// read-only editors.
 class InlineMetricEditor extends StatefulWidget {
   /// The metric type: 'reps', 'weight', 'duration', 'rpe', 'extra-weight'
   final String metricType;
@@ -16,9 +32,9 @@ class InlineMetricEditor extends StatefulWidget {
   /// Unit label to display (e.g., 'lbs', 'seconds')
   final String unitLabel;
 
-  /// Whether user interaction (drag) is disabled.
-  /// When true the widget renders as read-only: drags are ignored and the
-  /// value text is dimmed to signal that editing is not available.
+  /// Whether user interaction (drag and tap-to-edit) is disabled.
+  /// When true the widget renders as read-only: drags are ignored, no crown
+  /// is shown, and tapping the value does nothing.
   final bool isReadOnly;
 
   /// Optional override color for the unit label.
@@ -27,9 +43,15 @@ class InlineMetricEditor extends StatefulWidget {
   /// When true, the unit is shown inline beside the value instead of below it.
   final bool showUnitInline;
 
-  /// Optional tap handler.  Coexists with the vertical-drag handler on the
-  /// underlying [GestureDetector]; Flutter's gesture arena disambiguates
-  /// short press-lifts (tap) from drags (movement).
+  /// Optional tap handler.
+  ///
+  /// When provided, tapping the number value delegates to this callback
+  /// instead of opening the generic [showMetricEditPopup].  This is used for
+  /// timer-toggle (live timed/round/drill) and duration-entry dialogs (edit
+  /// mode).
+  ///
+  /// The outer [GestureDetector] fires this callback; the inner number-tap
+  /// gesture also delegates here when [onTap] is not null.
   final VoidCallback? onTap;
 
   /// Optional emphasis tier for the main value rendering.
@@ -59,8 +81,6 @@ class InlineMetricEditor extends StatefulWidget {
 }
 
 class _InlineMetricEditorState extends State<InlineMetricEditor> {
-  double _accumulatedDelta = 0.0;
-
   String _formatValue() {
     if (widget.currentValue == null) return '0';
 
@@ -85,42 +105,20 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     }
   }
 
-  dynamic _calculateNewValue(double deltaY) {
-    // Negative deltaY = swipe up = increase
-    // Positive deltaY = swipe down = decrease
-    final change = -deltaY;
-
-    switch (widget.metricType) {
-      case 'reps':
-        final current = (widget.currentValue as int?) ?? 0;
-        final newValue = (current + (change / 10).round()).clamp(0, 999);
-        return newValue;
-      case 'weight':
-        final current = (widget.currentValue as double?) ?? 0.0;
-        final increment = 0.5; // 0.5 kg/lbs per swipe step
-        final steps = (change / 10).truncate();
-        final newValue = (current + steps * increment).clamp(0.0, 999.0);
-        return double.parse(newValue.toStringAsFixed(1));
-      case 'duration':
-        final current = (widget.currentValue as int?) ?? 0;
-        final increment = 5; // 5 seconds per swipe unit
-        final newValue = (current + (change / 10).round() * increment).clamp(
-          0,
-          3600,
-        );
-        return newValue;
-      case 'rpe':
-        final current = (widget.currentValue as int?) ?? 5;
-        final newValue = (current + (change / 20).round()).clamp(1, 10);
-        return newValue;
-      case 'extra-weight':
-        final current = (widget.currentValue as double?) ?? 0.0;
-        final increment = 0.5; // 0.5 kg/lbs per swipe step
-        final steps = (change / 10).truncate();
-        final newValue = (current + steps * increment).clamp(-100.0, 200.0);
-        return double.parse(newValue.toStringAsFixed(1));
-      default:
-        return widget.currentValue;
+  void _onNumberTap() {
+    if (widget.isReadOnly) return;
+    if (widget.onTap != null) {
+      // Delegate to caller-supplied handler (e.g. timer toggle, duration dialog).
+      widget.onTap!();
+    } else {
+      // Generic tap-to-edit popup.
+      showMetricEditPopup(
+        context,
+        metricType: widget.metricType,
+        currentValue: widget.currentValue,
+        unitLabel: widget.unitLabel,
+        onValueChanged: widget.onValueChanged,
+      );
     }
   }
 
@@ -173,64 +171,78 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
           theme.colorScheme.onSurface.withAlpha((0.5 * 255).round()),
     );
 
+    // ── Value + unit column ───────────────────────────────────────────────────
+    //
+    // Wrapped in its own GestureDetector so the tap target is the number/unit
+    // area only.  The outer GestureDetector retains [onTap] for callers that
+    // use it as a timer-toggle (live timed/round/drill wrapped in a parent
+    // GestureDetector).
+
+    Widget valueAndUnit;
+    if (widget.showUnitInline && widget.unitLabel.isNotEmpty) {
+      valueAndUnit = Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            displayText,
+            textAlign: TextAlign.center,
+            style: valueStyle,
+          ),
+          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              widget.unitLabel.toUpperCase(),
+              style: unitStyle,
+            ),
+          ),
+        ],
+      );
+    } else {
+      valueAndUnit = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(displayText, textAlign: TextAlign.center, style: valueStyle),
+          if (widget.unitLabel.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(widget.unitLabel.toUpperCase(), style: unitStyle),
+          ],
+        ],
+      );
+    }
+
+    // Wrap with tap-to-edit gesture (only when not read-only).
+    final tappableValue = widget.isReadOnly
+        ? valueAndUnit
+        : GestureDetector(
+            onTap: _onNumberTap,
+            behavior: HitTestBehavior.opaque,
+            child: valueAndUnit,
+          );
+
+    // ── Row: [value+unit] ────────────────────────────────────────────────────
+    //
+    // Crown is dormant (not rendered). MetricCrownWidget and its scrub logic
+    // remain in the codebase at lib/widgets/session/metric_crown_widget.dart
+    // and can be re-enabled here without rebuilding it.
+
+    final contentRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        tappableValue,
+      ],
+    );
+
+    // ── Outer GestureDetector (retains onTap for timer-toggle callers) ────────
+
     return GestureDetector(
       onTap: widget.onTap,
-      onVerticalDragUpdate: widget.isReadOnly
-          ? null
-          : (details) {
-              setState(() {
-                _accumulatedDelta += details.delta.dy;
-
-                // Update value every 10 pixels of drag
-                if (_accumulatedDelta.abs() >= 10) {
-                  final newValue = _calculateNewValue(_accumulatedDelta);
-                  if (newValue != widget.currentValue) {
-                    widget.onValueChanged(newValue);
-                  }
-                  _accumulatedDelta = 0;
-                }
-              });
-            },
-      onVerticalDragEnd: widget.isReadOnly
-          ? null
-          : (_) {
-              setState(() {
-                _accumulatedDelta = 0;
-              });
-            },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.showUnitInline && widget.unitLabel.isNotEmpty)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    displayText,
-                    textAlign: TextAlign.center,
-                    style: valueStyle,
-                  ),
-                  const SizedBox(width: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      widget.unitLabel.toUpperCase(),
-                      style: unitStyle,
-                    ),
-                  ),
-                ],
-              )
-            else
-              Text(displayText, textAlign: TextAlign.center, style: valueStyle),
-            if (!widget.showUnitInline && widget.unitLabel.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text(widget.unitLabel.toUpperCase(), style: unitStyle),
-            ],
-          ],
-        ),
+        child: contentRow,
       ),
     );
   }

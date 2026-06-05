@@ -15,6 +15,7 @@ import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/session/duration_entry_dialog.dart';
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -1313,22 +1314,30 @@ extension on _RoutineSetupScreenState {
               currentValue: roundDuration,
               unitLabel: 'DURATION',
               emphasisTier: MetricEmphasisTier.dominant,
-              onValueChanged: (value) async {
-                await widget.routineState.setTargetValue(
-                  effort.id,
-                  MetricIds.roundDuration,
-                  MetricIds.unitSeconds,
-                  setIndex: setIndex,
-                  targetInt: value as int,
+              onTap: () async {
+                final result = await showDurationEntryDialog(
+                  context,
+                  title: 'Edit Round Duration',
+                  initialSecs: roundDuration,
                 );
-                await widget.routineState.setTargetValue(
-                  effort.id,
-                  MetricIds.rounds,
-                  MetricIds.unitRounds,
-                  setIndex: setIndex,
-                  targetInt: 1,
-                );
+                if (result != null && mounted) {
+                  await widget.routineState.setTargetValue(
+                    effort.id,
+                    MetricIds.roundDuration,
+                    MetricIds.unitSeconds,
+                    setIndex: setIndex,
+                    targetInt: result,
+                  );
+                  await widget.routineState.setTargetValue(
+                    effort.id,
+                    MetricIds.rounds,
+                    MetricIds.unitRounds,
+                    setIndex: setIndex,
+                    targetInt: 1,
+                  );
+                }
               },
+              onValueChanged: (_) {},
             ),
           ],
         );

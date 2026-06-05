@@ -249,7 +249,7 @@ The following files are **stub redirects** to `DominantMetricWidget`, kept for i
 
 **File**: `lib/widgets/session/inline_metric_editor.dart`
 
-Touch-optimized scrollable value input for workout environments. Swipe up/down to adjust values without a keyboard.
+Touch-optimized value input for workout environments. Tap the number to open a numeric-entry modal (the crown scrub control is present in the codebase but not rendered — see `MetricCrownWidget`).
 
 | Prop | Type | Description |
 |------|------|-------------|
@@ -257,20 +257,109 @@ Touch-optimized scrollable value input for workout environments. Swipe up/down t
 | `currentValue` | `dynamic` | Value to display |
 | `unitLabel` | `String` | Label below value (e.g., "REPS", "LBS") |
 | `emphasisTier` | `MetricEmphasisTier?` | Optional value emphasis: `dominant`, `secondary`, `muted`; default keeps legacy displayLarge styling |
+| `isReadOnly` | `bool` | When true: disables tap-to-edit popup. Used for live timer displays. |
+| `onTap` | `VoidCallback?` | When provided, tapping the number calls this instead of opening the generic popup (e.g. timer toggle, duration dialog). |
 | `onValueChanged` | `Function(dynamic)` | Immediate callback on value change |
 
-**Sensitivity**:
+**Interaction model**:
+- Number tap is the sole value-change mechanism.
+  - `onTap` provided → delegates to `onTap`.
+  - `onTap` null and `!isReadOnly` → opens `showMetricEditPopup`.
+  - `isReadOnly: true` → no interactive affordance.
+- The crown scrub control (`MetricCrownWidget`) is dormant — it remains in the codebase at `lib/widgets/session/metric_crown_widget.dart` and can be re-enabled in the row without rebuilding the widget.
+
+**Visual**: Value size and styling unchanged. The crown is not rendered. When `isReadOnly` and `emphasisTier` are both set, the emphasis tier wins and the value is not dimmed.
+
+**Session context (live timed/round/drill)**: In `WorkoutSessionScreen` detail view, the `InlineMetricEditor` for live timer-based efforts (`timed`, `round`, `drill`) uses `onTap` wired to `showDurationEntryDialog` so tapping the time value opens the h/m/s editor. When the effort is finished (`isTimedFinished`, `isFinished`, `isDrillFinished`), `isReadOnly: true` is set so the value cannot be edited from live mode (use edit mode for corrections). Play/pause control is a separate Start button — not a tap on the value display. Timed and drill timers render at the dominant tier; the play/pause status label sits on a line below the value.
+
+---
+
+### `MetricCrownWidget`
+
+**File**: `lib/widgets/session/metric_crown_widget.dart`
+
+**Status: dormant.** The widget is fully implemented and constructible but is not rendered by `InlineMetricEditor` in the default interaction path. It can be re-enabled by adding it to the `InlineMetricEditor` row without any other changes.
+
+A rotatable thumb-wheel (crown) control painted as a thick vertical wheel edge-on.
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `metricType` | `String` | Metric type (forwarded to `MetricStepCalc`) |
+| `currentValue` | `dynamic` | Current metric value; read on each drag tick |
+| `onValueChanged` | `Function(dynamic)` | Fires on each 10px drag step |
+
+**Behavior**: drag fires `onValueChanged` via `MetricStepCalc.apply`. Crown rotates `2π / 120px` radians per pixel. Rotation accumulates for the widget's lifetime but stops immediately on drag release (no momentum). No `AnimationController` or `Timer`.
+
+**Style**: `44×60` touch target; `CustomPaint` centred inside; all colours from `OmniTheme.colors.textMuted`/`textSecondary` with opacity overlays.
+
+**Drag step sensitivity** (from `MetricStepCalc.apply`):
 | Metric | Increment per 10px | Range |
 |--------|-------------------|-------|
 | `reps` | ±1 | 0–999 |
-| `weight` | ±2.5 | 0.0–999.0 |
+| `weight` | ±0.5 | 0.0–999.0 |
 | `duration` | ±5 sec | 0–3600 |
 | `rpe` | ±1 | 1–10 |
-| `extra-weight` | ±2.5 | -100.0–200.0 |
+| `extra-weight` | ±0.5 | -100.0–200.0 |
 
-**Visual**: 72pt value by default, 12pt unit label, drag-responsive (updates during drag). Resistance screens may pass `emphasisTier` so reps render dominant and weight renders secondary. When `isReadOnly` and `emphasisTier` are both set, the emphasis tier wins and the value is not dimmed.
+---
 
-**Session context (timer tap-to-toggle)**: In `WorkoutSessionScreen` detail view, the `InlineMetricEditor` for timer-based efforts (`timed`, `round`, `drill`) is wrapped in a `GestureDetector` with `onTap: _toggleEffortTimer`. Timed and drill timers now render at the dominant tier even while read-only; their play/pause affordance and STOPPED/RUNNING/PAUSED label sit on a muted status line below the value. On `timed` and `drill`, the Weight Adjustment control is placed outside the GestureDetector so it remains tappable, uses neutral chip styling when collapsed, and expands into a secondary-tier extra-weight editor.
+### `showMetricEditPopup`
+
+**File**: `lib/widgets/session/metric_crown_widget.dart` (top-level function)
+
+Opens an `AlertDialog` for exact numeric entry of a metric value.
+
+```dart
+Future<void> showMetricEditPopup(
+  BuildContext context, {
+  required String metricType,
+  required dynamic currentValue,
+  required String unitLabel,
+  required Function(dynamic) onValueChanged,
+})
+```
+
+- Pre-fills field with formatted current value; selects all text on open.
+- Confirm ("Ok"): parses + clamps → `onValueChanged` → closes.
+- Barrier tap (outside dialog): closes without calling `onValueChanged`. There is NO Cancel button.
+- Empty or unparseable text → treated as dismiss (no value change).
+- Keyboard: `signed: true` for `weight`/`extra-weight`; `signed: false` for all other metric types (e.g., `reps`).
+- Ok button has explicit `shape: RoundedRectangleBorder(borderRadius: OmniTheme.buttonUtilityRadius)`.
+
+---
+
+### `showDurationEntryDialog`
+
+**File**: `lib/widgets/session/duration_entry_dialog.dart` (top-level function)
+
+Shared h/m/s duration-entry dialog. Used by `WorkoutSessionScreen` (both live and edit modes) and `RoutineSetupScreen` (round effort duration targets).
+
+```dart
+Future<int?> showDurationEntryDialog(
+  BuildContext context, {
+  String title = 'Edit Duration',
+  String subtitle = '',
+  required int initialSecs,
+})
+```
+
+- Returns confirmed duration in whole seconds (`h*3600 + m*60 + s`), or `null` if dismissed.
+- Three `TextField` instances for hours, minutes, seconds. Pre-filled from `initialSecs`.
+- Single "Ok" `FilledButton`. No Cancel button. Barrier tap dismisses without applying.
+- `TextEditingController`s are deferred-disposed (300 ms after dialog close) to avoid use-after-dispose errors.
+
+**Usage**: Wire to `onTap` on `InlineMetricEditor` when `metricType == 'duration'`.
+
+---
+
+### `MetricStepCalc`
+
+**File**: `lib/widgets/session/metric_crown_widget.dart` (static class)
+
+Shared utility for value-adjustment math and popup parsing. Used by both `MetricCrownWidget` and `showMetricEditPopup`.
+
+- `MetricStepCalc.apply(metricType, currentValue, deltaY)` — drag step math (identical to previous `InlineMetricEditor._calculateNewValue`).
+- `MetricStepCalc.parseAndClamp(metricType, text)` — parse popup input, clamp to metric range, return typed result (`int` for reps, `double` for others). Returns `null` if unparseable.
 
 ---
 

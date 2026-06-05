@@ -209,7 +209,8 @@ void main() {
       await tester.tap(find.text('Session Time'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Cancel'));
+      // Dismiss without confirming by tapping outside (barrier dismiss).
+      await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
 
       // Dialog dismissed, no change.
@@ -239,7 +240,7 @@ void main() {
       final mField = find.widgetWithText(TextField, '00').first;
       await tester.tap(mField);
       await tester.enterText(mField, '30');
-      await tester.tap(find.text('Apply'));
+      await tester.tap(find.text('Ok'));
       await tester.pumpAndSettle();
 
       // We should be in list view. Tap back to trigger unsaved-changes dialog.
@@ -269,7 +270,7 @@ void main() {
 
       final hField = find.widgetWithText(TextField, '0');
       await tester.enterText(hField.first, '2');
-      await tester.tap(find.text('Apply'));
+      await tester.tap(find.text('Ok'));
       await tester.pumpAndSettle();
 
       // Navigate back to trigger the unsaved-changes dialog.
@@ -305,7 +306,7 @@ void main() {
       final hField = find.widgetWithText(TextField, '0');
       await tester.enterText(hField.first, '1');
       // Leave min/sec as 00.
-      await tester.tap(find.text('Apply'));
+      await tester.tap(find.text('Ok'));
       await tester.pumpAndSettle();
 
       // Tap "Save Changes" in the bottom bar.

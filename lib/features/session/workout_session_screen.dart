@@ -17,6 +17,7 @@ import '../../core/constants/modality_config.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
+import '../../widgets/session/duration_entry_dialog.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';

@@ -27,6 +27,7 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
+import 'package:omnitrain/widgets/session/metric_crown_widget.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -171,7 +172,9 @@ void main() {
   });
 
   group('InlineMetricEditor interactions', () {
-    testWidgets('weight drag increments by 0.5', (WidgetTester tester) async {
+    // Crown is dormant in InlineMetricEditor — value changes via tap-to-edit modal.
+
+    testWidgets('weight tap-to-edit: entering 10.5 confirms to onValueChanged(10.5)', (WidgetTester tester) async {
       double? updatedValue;
 
       await tester.pumpWidget(
@@ -187,13 +190,18 @@ void main() {
         ),
       );
 
-      await tester.drag(find.byType(InlineMetricEditor), const Offset(0, -10));
-      await tester.pump();
+      // Tap the value text to open the modal.
+      await tester.tap(find.text('10.0'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '10.5');
+      await tester.tap(find.text('Ok'));
+      await tester.pumpAndSettle();
 
       expect(updatedValue, 10.5);
     });
 
-    testWidgets('extra-weight drag increments by 0.5', (
+    testWidgets('extra-weight tap-to-edit: entering 0.5 confirms to onValueChanged(0.5)', (
       WidgetTester tester,
     ) async {
       double? updatedValue;
@@ -211,13 +219,22 @@ void main() {
         ),
       );
 
-      await tester.drag(find.byType(InlineMetricEditor), const Offset(0, -10));
-      await tester.pump();
+      // The extra-weight display shows "0.0" for 0.0 (no sign when not positive).
+      await tester.tap(find.text('0.0'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '0.5');
+      await tester.tap(find.text('Ok'));
+      await tester.pumpAndSettle();
 
       expect(updatedValue, 0.5);
     });
 
-    testWidgets('fast weight drag still snaps to 0.5 increments', (
+    // The following tests drive MetricCrownWidget directly (dormant in
+    // InlineMetricEditor but still constructible) to verify that the crown's
+    // step-math is intact and has not been deleted.
+
+    testWidgets('fast weight drag on dormant crown widget still snaps to 0.5 increments', (
       WidgetTester tester,
     ) async {
       double? updatedValue;
@@ -225,20 +242,23 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: InlineMetricEditor(
+            body: MetricCrownWidget(
               metricType: 'weight',
               currentValue: 10.0,
-              unitLabel: 'kg',
               onValueChanged: (value) => updatedValue = value as double,
             ),
           ),
         ),
       );
 
-      final detector = tester.widget<GestureDetector>(
-        find.byType(GestureDetector),
+      // Drive the crown's drag handler directly (same step-math as before).
+      final crownGd = tester.widget<GestureDetector>(
+        find.descendant(
+          of: find.byType(MetricCrownWidget),
+          matching: find.byType(GestureDetector),
+        ),
       );
-      detector.onVerticalDragUpdate!(
+      crownGd.onVerticalDragUpdate!(
         DragUpdateDetails(
           delta: const Offset(0, -13),
           globalPosition: Offset.zero,
@@ -249,7 +269,7 @@ void main() {
       expect(updatedValue, 10.5);
     });
 
-    testWidgets('fast extra-weight drag still snaps to 0.5 increments', (
+    testWidgets('fast extra-weight drag on dormant crown widget still snaps to 0.5 increments', (
       WidgetTester tester,
     ) async {
       double? updatedValue;
@@ -257,20 +277,23 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: InlineMetricEditor(
+            body: MetricCrownWidget(
               metricType: 'extra-weight',
               currentValue: 0.0,
-              unitLabel: 'lbs',
               onValueChanged: (value) => updatedValue = value as double,
             ),
           ),
         ),
       );
 
-      final detector = tester.widget<GestureDetector>(
-        find.byType(GestureDetector),
+      // Drive the crown's drag handler directly.
+      final crownGd = tester.widget<GestureDetector>(
+        find.descendant(
+          of: find.byType(MetricCrownWidget),
+          matching: find.byType(GestureDetector),
+        ),
       );
-      detector.onVerticalDragUpdate!(
+      crownGd.onVerticalDragUpdate!(
         DragUpdateDetails(
           delta: const Offset(0, -13),
           globalPosition: Offset.zero,

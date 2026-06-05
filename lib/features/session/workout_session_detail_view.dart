@@ -219,7 +219,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 currentValue: editDuration,
                 unitLabel: 'ELAPSED',
                 onTap: () async {
-                  final result = await _showDurationEntryDialog(
+                  final result = await showDurationEntryDialog(
                     context,
                     title: 'Edit Interval Duration',
                     initialSecs: editDuration,
@@ -265,54 +265,48 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            GestureDetector(
-              key: const Key('timer-gesture-detector'),
-              onTap: isTimedFinished
-                  ? null
-                  : () => _toggleEffortTimer(effortId),
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                children: [
-                  InlineMetricEditor(
-                    metricType: 'duration',
-                    currentValue: timedDisplayValue,
-                    unitLabel: timedUnitLabel,
-                    unitLabelColor: timedUnitLabelColor,
-                    isReadOnly: true,
-                    emphasisTier: MetricEmphasisTier.dominant,
-                    onValueChanged: (_) {},
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (!isTimedFinished) ...[
-                        Icon(
-                          timedIsRunning
-                              ? Icons.pause_circle_outline
-                              : Icons.play_circle_outline,
-                          size: 30,
-                          color: OmniTheme.colors.textMuted,
-                        ),
-                        const SizedBox(width: 6),
-                      ] else
-                        const SizedBox(
-                          height: 30,
-                        ), // keep space even when finished
-                      Text(
-                        isTimedFinished
-                            ? ''
-                            : (timedIsRunning
-                                  ? 'RUNNING'
-                                  : (isTimedStarted ? 'PAUSED' : 'STOPPED')),
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: OmniTheme.colors.textMuted,
-                          letterSpacing: 1,
-                        ),
+            Column(
+              children: [
+                InlineMetricEditor(
+                  metricType: 'duration',
+                  currentValue: timedDisplayValue,
+                  unitLabel: timedUnitLabel,
+                  unitLabelColor: timedUnitLabelColor,
+                  emphasisTier: MetricEmphasisTier.dominant,
+                  isReadOnly: true,
+                  onTap: null,
+                  onValueChanged: (_) {},
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (!isTimedFinished) ...[
+                      Icon(
+                        timedIsRunning
+                            ? Icons.pause_circle_outline
+                            : Icons.play_circle_outline,
+                        size: 30,
+                        color: OmniTheme.colors.textMuted,
                       ),
-                    ],
-                  ),
-                ],
-              ),
+                      const SizedBox(width: 6),
+                    ] else
+                      const SizedBox(
+                        height: 30,
+                      ), // keep space even when finished
+                    Text(
+                      isTimedFinished
+                          ? ''
+                          : (timedIsRunning
+                                ? 'RUNNING'
+                                : (isTimedStarted ? 'PAUSED' : 'STOPPED')),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: OmniTheme.colors.textMuted,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
             if (entryData['extra-weight'] != null)
               _buildWeightAdjustmentSection(
@@ -409,7 +403,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 unitLabel: 'DURATION',
                 emphasisTier: MetricEmphasisTier.dominant,
                 onTap: () async {
-                  final result = await _showDurationEntryDialog(
+                  final result = await showDurationEntryDialog(
                     context,
                     title: 'Edit Round Duration',
                     initialSecs: editRoundDuration,
@@ -450,58 +444,70 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
               ),
             ),
             const SizedBox(height: 15),
-            GestureDetector(
-              onTap: isFinished ? null : () => _toggleEffortTimer(effortId),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  InlineMetricEditor(
-                    metricType: 'duration',
-                    currentValue: _effortRunning[timerKey] ?? false
-                        ? remaining
-                        : stoppedDisplayValue,
-                    unitLabel: _effortRunning[timerKey] ?? false
-                        ? 'RUNNING'
-                        : stoppedUnitLabel,
-                    emphasisTier: MetricEmphasisTier.dominant,
-                    unitLabelColor: isExpired ? theme.colorScheme.error : null,
-                    onValueChanged: (value) => _updateMetricValue(
-                      effortId,
-                      entryIndex,
-                      'round-duration',
-                      value,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (!isFinished) ...[
-                        Icon(
-                          (_effortRunning[timerKey] ?? false)
-                              ? Icons.pause_circle_outline
-                              : Icons.play_circle_outline,
-                          size: 30,
-                          color: OmniTheme.colors.textMuted,
-                        ),
-                        const SizedBox(width: 6),
-                      ] else
-                        const SizedBox(height: 30),
-                      Text(
-                        isFinished
-                            ? ''
-                            : ((_effortRunning[timerKey] ?? false)
-                                  ? 'RUNNING'
-                                  : (isMidRound ? 'PAUSED' : 'STOPPED')),
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: OmniTheme.colors.textMuted,
-                          letterSpacing: 1,
-                        ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InlineMetricEditor(
+                  metricType: 'duration',
+                  currentValue: _effortRunning[timerKey] ?? false
+                      ? remaining
+                      : stoppedDisplayValue,
+                  unitLabel: _effortRunning[timerKey] ?? false
+                      ? 'RUNNING'
+                      : stoppedUnitLabel,
+                  emphasisTier: MetricEmphasisTier.dominant,
+                  unitLabelColor: isExpired ? theme.colorScheme.error : null,
+                  isReadOnly: isFinished,
+                  onTap: isFinished
+                      ? null
+                      : () async {
+                          final result = await showDurationEntryDialog(
+                            context,
+                            title: 'Edit Round Duration',
+                            initialSecs: stoppedDisplayValue,
+                          );
+                          if (result != null && mounted) {
+                            unawaited(
+                              _updateMetricValue(
+                                effortId,
+                                entryIndex,
+                                'round-duration',
+                                result,
+                              ),
+                            );
+                          }
+                        },
+                  onValueChanged: (_) {},
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (!isFinished) ...[
+                      Icon(
+                        (_effortRunning[timerKey] ?? false)
+                            ? Icons.pause_circle_outline
+                            : Icons.play_circle_outline,
+                        size: 30,
+                        color: OmniTheme.colors.textMuted,
                       ),
-                    ],
-                  ),
-                ],
-              ),
+                      const SizedBox(width: 6),
+                    ] else
+                      const SizedBox(height: 30),
+                    Text(
+                      isFinished
+                          ? ''
+                          : ((_effortRunning[timerKey] ?? false)
+                                ? 'RUNNING'
+                                : (isMidRound ? 'PAUSED' : 'STOPPED')),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: OmniTheme.colors.textMuted,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         );
@@ -549,7 +555,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 currentValue: editDrillDuration,
                 unitLabel: 'ELAPSED',
                 onTap: () async {
-                  final result = await _showDurationEntryDialog(
+                  final result = await showDurationEntryDialog(
                     context,
                     title: 'Edit Hold Duration',
                     initialSecs: editDrillDuration,
@@ -591,53 +597,49 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            GestureDetector(
-              onTap: isDrillFinished
-                  ? null
-                  : () => _toggleEffortTimer(effortId),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  InlineMetricEditor(
-                    metricType: 'duration',
-                    currentValue: drillDisplayValue,
-                    unitLabel: drillUnitLabel,
-                    unitLabelColor: drillUnitLabelColor,
-                    isReadOnly: true,
-                    emphasisTier: MetricEmphasisTier.dominant,
-                    onValueChanged: (_) {},
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (!isDrillFinished) ...[
-                        Icon(
-                          drillIsRunning
-                              ? Icons.pause_circle_outline
-                              : Icons.play_circle_outline,
-                          size: 30,
-                          color: OmniTheme.colors.textMuted,
-                        ),
-                        const SizedBox(width: 6),
-                      ] else
-                        const SizedBox(
-                          height: 30,
-                        ), // keep space even when finished
-                      Text(
-                        isDrillFinished
-                            ? ''
-                            : (drillIsRunning
-                                  ? 'RUNNING'
-                                  : (isDrillStarted ? 'PAUSED' : 'STOPPED')),
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: OmniTheme.colors.textMuted,
-                          letterSpacing: 1,
-                        ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InlineMetricEditor(
+                  metricType: 'duration',
+                  currentValue: drillDisplayValue,
+                  unitLabel: drillUnitLabel,
+                  unitLabelColor: drillUnitLabelColor,
+                  emphasisTier: MetricEmphasisTier.dominant,
+                  isReadOnly: true,
+                  onTap: null,
+                  onValueChanged: (_) {},
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (!isDrillFinished) ...[
+                      Icon(
+                        drillIsRunning
+                            ? Icons.pause_circle_outline
+                            : Icons.play_circle_outline,
+                        size: 30,
+                        color: OmniTheme.colors.textMuted,
                       ),
-                    ],
-                  ),
-                ],
-              ),
+                      const SizedBox(width: 6),
+                    ] else
+                      const SizedBox(
+                        height: 30,
+                      ), // keep space even when finished
+                    Text(
+                      isDrillFinished
+                          ? ''
+                          : (drillIsRunning
+                                ? 'RUNNING'
+                                : (isDrillStarted ? 'PAUSED' : 'STOPPED')),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: OmniTheme.colors.textMuted,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
             _buildWeightAdjustmentSection(
               theme: theme,
@@ -903,7 +905,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
         child: Text(
           'LOGGED',
           style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.primary.withOpacity(0.9),
+            color: theme.colorScheme.primary.withValues(alpha: 0.9),
             letterSpacing: 1.2,
             fontWeight: FontWeight.w600,
           ),

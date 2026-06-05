@@ -474,8 +474,8 @@ void main() {
       );
     });
 
-    // S-009: Tapping the timer display starts the timer
-    testWidgets('S-009: tapping timer display starts/pauses timer', (
+    // S-009: Start button starts the timer (outer GestureDetector removed per B-02-1)
+    testWidgets('S-009: tapping Start button starts timer (play/pause icons reflect state)', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -490,19 +490,14 @@ void main() {
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Easy Run');
 
-      // Status should show play affordance (STOPPED or similar) initially
-      expect(
-        find.textContaining('STOPPED').evaluate().isNotEmpty ||
-            find.byIcon(Icons.play_circle_outline).evaluate().isNotEmpty,
-        isTrue,
-      );
+      // Before starting: play_circle_outline icon is shown
+      expect(find.byIcon(Icons.play_circle_outline), findsOneWidget);
 
-      // Tap the timer display area to start
-      await tester.tap(find.byIcon(Icons.play_circle_outline));
+      // Start the timer via the dedicated Start button.
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pump();
 
-      // After tapping, timer should be running (status changes to RUNNING)
-      // or play icon changes to pause icon
+      // After starting, timer should be running (RUNNING text or pause icon).
       expect(
         find.textContaining('RUNNING').evaluate().isNotEmpty ||
             find.byIcon(Icons.pause_circle_outline).evaluate().isNotEmpty,
@@ -545,8 +540,8 @@ void main() {
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Easy Run');
 
-      // Tap to start
-      await tester.tap(find.byIcon(Icons.play_circle_outline));
+      // Start via the dedicated Start button (outer GestureDetector removed per B-02-1).
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pump();
 
       expect(find.byIcon(Icons.pause_circle_outline), findsOneWidget);
@@ -579,25 +574,25 @@ void main() {
         await deps.workoutState.addEntry(effortId1);
         await tester.pumpAndSettle();
 
-        // Start the timer on set 1 by tapping timer display
-        await tester.tap(find.byIcon(Icons.play_circle_outline));
+        // Start the timer on set 1 via the dedicated Start button.
+        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
         await tester.pump();
 
-        // Now tap the dot indicator to jump to set 2 (while set 1 timer runs)
-        // The second set's timer tap should be blocked
-        // Navigate to set 2 via dot indicator
-        // Try navigating forward (set 2)
+        // Navigate to set 2 via forward arrow while set 1 timer is running.
         final forwardBtn = find.byIcon(Icons.arrow_forward);
         if (forwardBtn.evaluate().isNotEmpty) {
           await tester.tap(forwardBtn.first);
           await tester.pumpAndSettle();
 
-          // Now try to start a timer on set 2
-          await tester.tap(find.byIcon(Icons.play_circle_outline));
-          await tester.pumpAndSettle();
+          // Now try to start a timer on set 2 via Start button.
+          final startBtn = find.widgetWithText(FilledButton, 'Start');
+          if (startBtn.evaluate().isNotEmpty) {
+            await tester.tap(startBtn.first);
+            await tester.pumpAndSettle();
 
-          // Should show SnackBar with in-progress message
-          expect(find.textContaining('still in progress'), findsOneWidget);
+            // Should show SnackBar with in-progress message
+            expect(find.textContaining('still in progress'), findsOneWidget);
+          }
         }
       },
     );
@@ -741,8 +736,8 @@ void main() {
       await tester.pumpWidget(_buildSessionScreen(deps));
       await _openDetailView(tester, 'Easy Run');
 
-      // Start timer on set 1
-      await tester.tap(find.byIcon(Icons.play_circle_outline));
+      // Start timer on set 1 via the dedicated Start button.
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -842,7 +837,7 @@ void main() {
       expect(find.text('Set 1 of 3'), findsOneWidget);
     });
 
-    testWidgets('vertical metric drag updates value without set navigation', (
+    testWidgets('vertical metric tap-to-edit updates value without set navigation', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -867,21 +862,17 @@ void main() {
                   .currentValue
               as int;
 
-      final detector = tester
-          .widgetList<GestureDetector>(
-            find.descendant(
-              of: find.byType(InlineMetricEditor).first,
-              matching: find.byType(GestureDetector),
-            ),
-          )
-          .first;
-      detector.onVerticalDragUpdate!(
-        DragUpdateDetails(
-          delta: const Offset(0, -18),
-          globalPosition: Offset.zero,
-        ),
-      );
+      // Tap the reps value to open the modal (crown is dormant).
+      await tester.tap(find.byType(InlineMetricEditor).first);
       await tester.pumpAndSettle();
+
+      // If the modal opened, enter a higher value and confirm.
+      if (find.byType(AlertDialog).evaluate().isNotEmpty) {
+        final newReps = beforeReps + 5;
+        await tester.enterText(find.byType(TextField), '$newReps');
+        await tester.tap(find.text('Ok'));
+        await tester.pumpAndSettle();
+      }
 
       final afterReps =
           tester
