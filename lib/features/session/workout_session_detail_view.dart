@@ -27,13 +27,13 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 key: const Key('exercise-info-button'),
                 icon: Icon(
                   Icons.info_outline,
-                  size: 20,
+                  size: 30,
                   color: theme.colorScheme.onSurface.withOpacity(0.45),
                 ),
                 onPressed: exercise == null
                     ? null
                     : () => _showExerciseInfoSheet(context, exercise),
-                padding: EdgeInsets.zero,
+                padding: EdgeInsets.fromLTRB(0, 0, 5, 0),
                 constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
               ),
             ),
@@ -46,13 +46,13 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     key: const Key('exercise-note-button'),
                     icon: Icon(
                       Icons.edit_note,
-                      size: 20,
+                      size: 30,
                       color: theme.colorScheme.onSurface.withOpacity(0.45),
                     ),
                     onPressed: exercise == null
                         ? null
                         : () => _showExerciseNoteSheet(context, exercise),
-                    padding: EdgeInsets.zero,
+                    padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
                     constraints: const BoxConstraints(
                       minWidth: 44,
                       minHeight: 44,
