@@ -6,52 +6,6 @@ part of 'workout_session_screen.dart';
 /// the same library, all private fields and methods of the state class are
 /// directly accessible without any forwarding or getters.
 extension _SessionFinishExt on _WorkoutSessionScreenState {
-  void _showFinishDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Workout Complete'),
-        content: const Text('All exercises completed! Finish this workout?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _updateUi(() {
-                _showListView = true;
-              });
-            },
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Continue'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _finishSession();
-            },
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Finish'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _showFinishSessionDialog() async {
     final hasExercises = widget.workoutState
         .getExercisesWithEntries()

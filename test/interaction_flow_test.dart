@@ -464,6 +464,298 @@ void main() {
       expect(find.text('Finish Workout'), findsWidgets);
     });
 
+    testWidgets(
+      'logging final set does not show finish prompt and keeps session active',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await setupSession();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: deps.workoutState,
+              routineState: deps.routineState,
+              sessionSummaryService: deps.sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: deps.settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(deps.firstExercise.name));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Workout Complete'), findsNothing);
+        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(find.byType(SessionSummaryScreen), findsNothing);
+        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+
+        final segmentId = deps.workoutState.segments.first.id;
+        final effortId = deps.workoutState.getEffortsForSegment(segmentId).first.id;
+        final rests = deps.workoutState.getEntryRests(effortId);
+
+        expect(rests.any((r) => r.entryIndex == 1), isTrue);
+        expect(deps.workoutState.currentSession?.endedAtMs, isNull);
+      },
+    );
+
+    testWidgets(
+      'logging final interval does not show finish prompt',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+
+        final repo = await _freshRepo();
+        await repo.setPreferenceBool('hint_seen_exercise_info', true);
+        await repo.setPreferenceBool('hint_seen_exercise_notes', true);
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await workoutState.createNewSession(modality: 'cardio_endurance');
+
+        final exercises = await repo.getExercises();
+        final timedExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('time'),
+        );
+        await workoutState.addExerciseToSession(
+          timedExercise,
+          effortKindOverride: 'timed',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(timedExercise.name));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Interval'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Workout Complete'), findsNothing);
+        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(find.byType(SessionSummaryScreen), findsNothing);
+        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+        expect(workoutState.currentSession?.endedAtMs, isNull);
+      },
+    );
+
+    testWidgets(
+      're-visiting already-logged final set does not show finish prompt',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await setupSession();
+
+        final segmentId = deps.workoutState.segments.first.id;
+        final effortId = deps.workoutState.getEffortsForSegment(segmentId).first.id;
+        await deps.workoutState.recordRestStart(effortId, 1);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: deps.workoutState,
+              routineState: deps.routineState,
+              sessionSummaryService: deps.sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: deps.settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(deps.firstExercise.name));
+        await tester.pumpAndSettle();
+
+        expect(find.text('LOGGED'), findsOneWidget);
+
+        await tester.tap(find.byIcon(Icons.arrow_forward).first);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Workout Complete'), findsNothing);
+        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(find.byType(SessionSummaryScreen), findsNothing);
+        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+        expect(deps.workoutState.currentSession?.endedAtMs, isNull);
+      },
+    );
+
+    testWidgets(
+      'editing last set in edit mode does not show finish prompt',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final deps = await setupSession();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: deps.workoutState,
+              routineState: deps.routineState,
+              sessionSummaryService: deps.sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: deps.settingsState,
+              editMode: true,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(deps.firstExercise.name));
+        await tester.pumpAndSettle();
+
+        final repsEditor = find.byType(InlineMetricEditor).first;
+        await tester.tap(
+          find.descendant(
+            of: repsEditor,
+            matching: find.byType(GestureDetector),
+          ).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Edit Reps'), findsOneWidget);
+        await tester.enterText(find.byType(TextField), '7');
+        await tester.tap(find.widgetWithText(FilledButton, 'Ok'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.arrow_forward).first);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Workout Complete'), findsNothing);
+        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(find.byType(SessionSummaryScreen), findsNothing);
+        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+        expect(deps.workoutState.currentSession?.endedAtMs, isNull);
+      },
+    );
+
+    testWidgets(
+      'logging final round in sports modality does not show finish prompt',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+
+        final repo = await _freshRepo();
+        await repo.setPreferenceBool('hint_seen_exercise_info', true);
+        await repo.setPreferenceBool('hint_seen_exercise_notes', true);
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await workoutState.createNewSession(modality: 'sports');
+
+        final exercises = await repo.getExercises();
+        final roundExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('rounds'),
+          orElse: () => exercises.first,
+        );
+        await workoutState.addExerciseToSession(
+          roundExercise,
+          effortKindOverride: 'round',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(roundExercise.name));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Period'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Workout Complete'), findsNothing);
+        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(find.byType(SessionSummaryScreen), findsNothing);
+        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+        expect(workoutState.currentSession?.endedAtMs, isNull);
+      },
+    );
+
+    testWidgets(
+      'routine-started drill session logging final hold does not show finish prompt',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+
+        final repo = await _freshRepo();
+        await repo.setPreferenceBool('hint_seen_exercise_info', true);
+        await repo.setPreferenceBool('hint_seen_exercise_notes', true);
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        final settingsState = SettingsState(repo);
+        await settingsState.initialize();
+        await workoutState.createNewSession(
+          modality: 'isometric_stretching',
+          routineTemplateId: 'template-test-1',
+        );
+
+        final exercises = await repo.getExercises();
+        final drillExercise = exercises.firstWhere(
+          (e) => e.capabilities.contains('hold'),
+          orElse: () => exercises.firstWhere(
+            (e) => e.capabilities.contains('time'),
+          ),
+        );
+        await workoutState.addExerciseToSession(
+          drillExercise,
+          effortKindOverride: 'drill',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text(drillExercise.name));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.tap(find.widgetWithText(FilledButton, 'Log Hold'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Workout Complete'), findsNothing);
+        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(find.byType(SessionSummaryScreen), findsNothing);
+        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+        expect(workoutState.currentSession?.endedAtMs, isNull);
+        expect(workoutState.currentSession?.routineTemplateId, 'template-test-1');
+      },
+    );
+
     testWidgets('shows centered add actions when session is empty', (
       WidgetTester tester,
     ) async {

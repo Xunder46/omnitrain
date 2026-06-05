@@ -14,7 +14,6 @@ import '../../state/workout/workout_state.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
-import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
@@ -639,9 +638,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           if (_currentExerciseIndex < _exercises.length - 1) {
             _currentExerciseIndex++;
             _currentSet = 1;
-          } else {
-            // All exercises complete - show finish option
-            _showFinishDialog();
           }
         }
       });
@@ -769,9 +765,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           _currentExerciseIndex++;
           _currentSet = 1;
           nextExerciseIndex = _currentExerciseIndex;
-        } else {
-          // All exercises complete - show finish option
-          _showFinishDialog();
         }
       }
     });
