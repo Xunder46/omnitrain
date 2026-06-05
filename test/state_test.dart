@@ -528,6 +528,49 @@ void main() {
       expect(efforts.first.restType, 'fixed');
     });
 
+    test(
+      'rest configuration round-trips through load and save unchanged',
+      () async {
+        final repo = await _freshRepo();
+        final state = RoutineState(repo);
+        state.setAutosaveEnabled(false);
+
+        final exercises = await repo.getExercises();
+        await state.createNewRoutine('Rest Round Trip');
+        final effortId = await state.addExerciseToRoutine(
+          exercises.first,
+          'set',
+        );
+
+        await state.updateEffortRest(
+          effortId,
+          restSeconds: 90,
+          restType: 'after_exercise',
+        );
+        await state.saveRoutine();
+
+        final templateId = state.currentTemplate!.id;
+        state.clearCurrentRoutine();
+
+        await state.loadRoutineForEditing(templateId);
+        expect(state.currentEfforts, hasLength(1));
+        expect(state.currentEfforts.first.restSeconds, 90);
+        expect(state.currentEfforts.first.restType, 'after_exercise');
+
+        await state.saveRoutine();
+
+        final segments = await repo.getTemplateSegments(templateId);
+        expect(segments, hasLength(1));
+
+        final persistedEfforts = await repo.getTemplateEfforts(
+          segments.first.id,
+        );
+        expect(persistedEfforts, hasLength(1));
+        expect(persistedEfforts.first.restSeconds, 90);
+        expect(persistedEfforts.first.restType, 'after_exercise');
+      },
+    );
+
     test('saveRoutine persists template to repository', () async {
       final repo = await _freshRepo();
       final state = RoutineState(repo);
@@ -1203,8 +1246,12 @@ void main() {
       final repo = await _freshRepo();
       final state = WorkoutState(repo);
       final now = DateTime.now().millisecondsSinceEpoch;
-      await repo.createSession(makeSession('s-1', now - 10000, endedAtMs: now - 5000));
-      await repo.createSession(makeSession('s-2', now - 20000, endedAtMs: now - 15000));
+      await repo.createSession(
+        makeSession('s-1', now - 10000, endedAtMs: now - 5000),
+      );
+      await repo.createSession(
+        makeSession('s-2', now - 20000, endedAtMs: now - 15000),
+      );
 
       final result = await state.checkForInProgressSession();
 
@@ -1223,27 +1270,30 @@ void main() {
       expect(result!.id, 's-open');
     });
 
-    test('returns most recent and deletes older in-progress sessions', () async {
-      final repo = await _freshRepo();
-      final state = WorkoutState(repo);
-      final now = DateTime.now().millisecondsSinceEpoch;
-      // Newer session
-      await repo.createSession(makeSession('s-new', now - 1000));
-      // Older dangling sessions
-      await repo.createSession(makeSession('s-old-1', now - 10000));
-      await repo.createSession(makeSession('s-old-2', now - 20000));
+    test(
+      'returns most recent and deletes older in-progress sessions',
+      () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        final now = DateTime.now().millisecondsSinceEpoch;
+        // Newer session
+        await repo.createSession(makeSession('s-new', now - 1000));
+        // Older dangling sessions
+        await repo.createSession(makeSession('s-old-1', now - 10000));
+        await repo.createSession(makeSession('s-old-2', now - 20000));
 
-      final result = await state.checkForInProgressSession();
+        final result = await state.checkForInProgressSession();
 
-      expect(result, isNotNull);
-      expect(result!.id, 's-new');
+        expect(result, isNotNull);
+        expect(result!.id, 's-new');
 
-      // Older sessions should have been deleted
-      expect(await repo.getSession('s-old-1'), isNull);
-      expect(await repo.getSession('s-old-2'), isNull);
-      // Most recent kept
-      expect(await repo.getSession('s-new'), isNotNull);
-    });
+        // Older sessions should have been deleted
+        expect(await repo.getSession('s-old-1'), isNull);
+        expect(await repo.getSession('s-old-2'), isNull);
+        // Most recent kept
+        expect(await repo.getSession('s-new'), isNotNull);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1784,14 +1834,21 @@ void main() {
           expect(entriesAfterUpdate[0]['extra-weight'], 15.0);
 
           // entry 1 — created carrying forward 15.0 kg.
-          await state.addEntry(effortId, previousValues: {'extra-weight': 15.0});
+          await state.addEntry(
+            effortId,
+            previousValues: {'extra-weight': 15.0},
+          );
 
           final entries =
               state.getExercisesWithEntries().first['entries']
                   as List<Map<String, dynamic>>;
           expect(entries, hasLength(2));
-          expect(entries[1]['extra-weight'], 15.0,
-              reason: 'S-003: second entry must inherit extra-weight from previousValues');
+          expect(
+            entries[1]['extra-weight'],
+            15.0,
+            reason:
+                'S-003: second entry must inherit extra-weight from previousValues',
+          );
         },
       );
     });
@@ -1889,25 +1946,31 @@ void main() {
             await state.addEntry(effortId);
           }
 
-          var entries = (state.getExercisesWithEntries().firstWhere(
-            (e) => e['id'] == effortId,
-          )['entries'] as List<dynamic>);
+          var entries =
+              (state.getExercisesWithEntries().firstWhere(
+                    (e) => e['id'] == effortId,
+                  )['entries']
+                  as List<dynamic>);
           expect(entries.length, WorkoutConstants.maxEntriesPerEffort);
 
           // Delete a middle set (index 5).
           await state.deleteEntry(effortId, 5);
 
-          entries = (state.getExercisesWithEntries().firstWhere(
-            (e) => e['id'] == effortId,
-          )['entries'] as List<dynamic>);
+          entries =
+              (state.getExercisesWithEntries().firstWhere(
+                    (e) => e['id'] == effortId,
+                  )['entries']
+                  as List<dynamic>);
           expect(entries.length, WorkoutConstants.maxEntriesPerEffort - 1);
 
           // Adding a set should now succeed and bring the count back to 12.
           await state.addEntry(effortId);
 
-          entries = (state.getExercisesWithEntries().firstWhere(
-            (e) => e['id'] == effortId,
-          )['entries'] as List<dynamic>);
+          entries =
+              (state.getExercisesWithEntries().firstWhere(
+                    (e) => e['id'] == effortId,
+                  )['entries']
+                  as List<dynamic>);
           expect(
             entries.length,
             WorkoutConstants.maxEntriesPerEffort,
@@ -2160,9 +2223,9 @@ void main() {
             .firstWhere((effort) => effort.id == effortId);
 
         final blockId = await state.addSessionBlock();
-        final addedBlock = state
-            .getSessionBlocks()
-            .firstWhere((block) => block.id == blockId);
+        final addedBlock = state.getSessionBlocks().firstWhere(
+          (block) => block.id == blockId,
+        );
 
         final standaloneTopLevel =
             standalone.topLevelOrderIndex ?? standalone.orderIndex;

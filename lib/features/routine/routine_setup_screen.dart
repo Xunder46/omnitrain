@@ -13,7 +13,6 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
-import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
 
@@ -125,7 +124,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: theme.colorScheme.surface.withOpacity(0.0),
         extendBody: true,
         body: SafeArea(child: Center(child: CircularProgressIndicator())),
       );
@@ -149,7 +148,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     final efforts = widget.routineState.currentEfforts;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: theme.colorScheme.surface.withOpacity(0.0),
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: OmniBackHeader(
@@ -199,16 +198,22 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
         onChanged: (value) => widget.routineState.updateRoutineName(value),
         decoration: InputDecoration(
           labelText: 'Routine Name',
-          labelStyle: const TextStyle(color: Colors.grey),
+          labelStyle: TextStyle(
+            color: theme.colorScheme.onSurface.withOpacity(0.65),
+          ),
           filled: true,
           fillColor: theme.colorScheme.surface.withOpacity(0.7),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey[700]!),
+            borderSide: BorderSide(
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey[700]!),
+            borderSide: BorderSide(
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
@@ -230,16 +235,22 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             widget.routineState.updateRoutineDescription(value),
         decoration: InputDecoration(
           labelText: 'Description (optional)',
-          labelStyle: const TextStyle(color: Colors.grey),
+          labelStyle: TextStyle(
+            color: theme.colorScheme.onSurface.withOpacity(0.65),
+          ),
           filled: true,
           fillColor: theme.colorScheme.surface.withOpacity(0.7),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey[700]!),
+            borderSide: BorderSide(
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey[700]!),
+            borderSide: BorderSide(
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
@@ -260,16 +271,22 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
         initialValue: _selectedFocusModality,
         decoration: InputDecoration(
           labelText: 'Focus Modality',
-          labelStyle: const TextStyle(color: Colors.grey),
+          labelStyle: TextStyle(
+            color: theme.colorScheme.onSurface.withOpacity(0.65),
+          ),
           filled: true,
           fillColor: theme.colorScheme.surface.withOpacity(0.7),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey[700]!),
+            borderSide: BorderSide(
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: Colors.grey[700]!),
+            borderSide: BorderSide(
+              color: theme.colorScheme.onSurface.withOpacity(0.3),
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
@@ -398,7 +415,11 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                       onTap: () => _confirmDeleteSegment(segment),
                       child: Row(
                         children: [
-                          const Icon(Icons.delete, size: 18, color: Colors.red),
+                          Icon(
+                            Icons.delete,
+                            size: 18,
+                            color: theme.colorScheme.error,
+                          ),
                           const SizedBox(width: 8),
                           const Text('Delete Block'),
                         ],
@@ -436,7 +457,9 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                   final effort = efforts[effortIndex];
                   final exercise = _exerciseCache[effort.exerciseId];
                   final restLabel = _formatRestLabel(effort);
-                  final targets = widget.routineState.getEffortTargets(effort.id);
+                  final targets = widget.routineState.getEffortTargets(
+                    effort.id,
+                  );
                   final setCount = _getSetCount(effort, targets);
 
                   return ExerciseCard(
@@ -449,12 +472,10 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
                     onDelete: () => _removeExercise(effort.id),
                     onChangeTracking: () =>
                         _changeTracking(context, effort, exercise),
-                    onEditRest: () => _editRest(effort),
                     onTap: () => _openDetailForEffort(effort.id),
                   );
                 },
               ),
-
           ],
         ),
       ),
@@ -567,7 +588,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     final exerciseName = exercise?.name ?? 'Unknown Exercise';
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: theme.colorScheme.surface.withOpacity(0.0),
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: OmniBackHeader(
@@ -709,37 +730,53 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   void _removeExercise(String templateEffortId) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Color(0xFF2a2a2a),
-        title: Text('Remove Exercise?', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'This exercise will be removed from the routine.',
-          style: TextStyle(color: Colors.grey[300]),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
+      builder: (context) {
+        final theme = Theme.of(context);
+        final utilityButtonShape = RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+        );
+        return AlertDialog(
+          backgroundColor: theme.colorScheme.surface,
+          title: Text(
+            'Remove Exercise?',
+            style: TextStyle(color: theme.colorScheme.onSurface),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              widget.routineState.removeExerciseFromRoutine(templateEffortId);
-              if (!mounted) return;
-              final remaining = widget.routineState.currentEfforts.length;
-              setState(() {
-                if (remaining == 0) {
-                  _showListView = true;
-                  _currentExerciseIndex = 0;
-                } else if (_currentExerciseIndex >= remaining) {
-                  _currentExerciseIndex = remaining - 1;
-                }
-              });
-            },
-            child: Text('Remove', style: TextStyle(color: Colors.red)),
+          content: Text(
+            'This exercise will be removed from the routine.',
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.75),
+            ),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(shape: utilityButtonShape),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                widget.routineState.removeExerciseFromRoutine(templateEffortId);
+                if (!mounted) return;
+                final remaining = widget.routineState.currentEfforts.length;
+                setState(() {
+                  if (remaining == 0) {
+                    _showListView = true;
+                    _currentExerciseIndex = 0;
+                  } else if (_currentExerciseIndex >= remaining) {
+                    _currentExerciseIndex = remaining - 1;
+                  }
+                });
+              },
+              style: TextButton.styleFrom(shape: utilityButtonShape),
+              child: Text(
+                'Remove',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -790,46 +827,53 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Block'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              textCapitalization: TextCapitalization.sentences,
-              controller: nameController,
-              decoration: const InputDecoration(labelText: 'Block Name'),
+      builder: (context) {
+        final utilityButtonShape = RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+        );
+        return AlertDialog(
+          title: const Text('Edit Block'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                textCapitalization: TextCapitalization.sentences,
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Block Name'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: selectedType,
+                items: _segmentTypes
+                    .map(
+                      (type) => DropdownMenuItem(
+                        value: type,
+                        child: Text(_segmentLabel(type)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  selectedType = value;
+                },
+                decoration: const InputDecoration(labelText: 'Block Type'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(shape: utilityButtonShape),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: selectedType,
-              items: _segmentTypes
-                  .map(
-                    (type) => DropdownMenuItem(
-                      value: type,
-                      child: Text(_segmentLabel(type)),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                selectedType = value;
-              },
-              decoration: const InputDecoration(labelText: 'Block Type'),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(shape: utilityButtonShape),
+              child: const Text('Save'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
     if (result == true) {
@@ -846,20 +890,27 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   Future<void> _confirmDeleteSegment(TemplateSegment segment) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Block?'),
-        content: const Text('This block and its exercises will be removed.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      builder: (context) {
+        final utilityButtonShape = RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+        );
+        return AlertDialog(
+          title: const Text('Delete Block?'),
+          content: const Text('This block and its exercises will be removed.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(shape: utilityButtonShape),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(shape: utilityButtonShape),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed == true) {
@@ -910,68 +961,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       return 'Rest $timeLabel after exercise';
     }
     return 'Rest $timeLabel';
-  }
-
-  Future<void> _editRest(TemplateEffort effort) async {
-    final restController = TextEditingController(
-      text: effort.restSeconds?.toString() ?? '',
-    );
-    String restType = effort.restType ?? 'between_sets';
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Rest'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            NumericFieldWithDoneBar(
-              controller: restController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Rest seconds'),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: restType,
-              items: const [
-                DropdownMenuItem(
-                  value: 'between_sets',
-                  child: Text('Between sets'),
-                ),
-                DropdownMenuItem(
-                  value: 'after_exercise',
-                  child: Text('After exercise'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                restType = value;
-              },
-              decoration: const InputDecoration(labelText: 'Rest type'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true) {
-      final parsed = int.tryParse(restController.text.trim());
-      await widget.routineState.updateEffortRest(
-        effort.id,
-        restSeconds: parsed,
-        restType: restType,
-      );
-    }
   }
 
   Future<void> _saveRoutine() async {
@@ -1037,7 +1026,6 @@ class ExerciseCard extends StatelessWidget {
   final int setCount;
   final VoidCallback onDelete;
   final VoidCallback onChangeTracking;
-  final VoidCallback onEditRest;
   final VoidCallback onTap;
 
   const ExerciseCard({
@@ -1049,7 +1037,6 @@ class ExerciseCard extends StatelessWidget {
     required this.setCount,
     required this.onDelete,
     required this.onChangeTracking,
-    required this.onEditRest,
     required this.onTap,
   });
 
@@ -1134,24 +1121,14 @@ class ExerciseCard extends StatelessWidget {
                     ),
                   ),
                   PopupMenuItem(
-                    onTap: onEditRest,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.timer_outlined,
-                          size: 18,
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('Edit Rest'),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
                     onTap: onDelete,
                     child: Row(
                       children: [
-                        const Icon(Icons.delete, size: 18, color: Colors.red),
+                        Icon(
+                          Icons.delete,
+                          size: 18,
+                          color: theme.colorScheme.error,
+                        ),
                         const SizedBox(width: 8),
                         const Text('Remove'),
                       ],
@@ -1291,9 +1268,9 @@ extension on _RoutineSetupScreenState {
         final roundDuration =
             _getTargetInt(targets, MetricIds.roundDuration, setIndex) ?? 180;
         final effectiveModality =
-          effort.modality ??
-          _exerciseCache[effort.exerciseId]?.modality ??
-          widget.routineState.currentTemplate?.focusModality;
+            effort.modality ??
+            _exerciseCache[effort.exerciseId]?.modality ??
+            widget.routineState.currentTemplate?.focusModality;
         final isSportsModality = effectiveModality == 'sports';
         final roundLabel = isSportsModality ? 'PERIOD' : 'ROUND';
         return Column(
@@ -1381,9 +1358,9 @@ extension on _RoutineSetupScreenState {
         break;
       case 'round':
         final effectiveModality =
-          effort.modality ??
-          _exerciseCache[effort.exerciseId]?.modality ??
-          widget.routineState.currentTemplate?.focusModality;
+            effort.modality ??
+            _exerciseCache[effort.exerciseId]?.modality ??
+            widget.routineState.currentTemplate?.focusModality;
         final setLabel = effectiveModality == 'sports' ? 'Period' : 'Round';
         label = '$setLabel $_currentSet of $totalEntries';
         break;
@@ -1412,17 +1389,21 @@ extension on _RoutineSetupScreenState {
                 onTap: canRemove ? () => _deleteLastSet(effort) : null,
                 customBorder: const CircleBorder(),
                 child: Container(
-                  constraints:
-                      const BoxConstraints(minWidth: 50, minHeight: 50),
+                  constraints: const BoxConstraints(
+                    minWidth: 50,
+                    minHeight: 50,
+                  ),
                   alignment: Alignment.center,
                   child: Icon(
                     Icons.remove,
                     size: 24,
                     color: canRemove
-                        ? theme.colorScheme.onSurface
-                            .withAlpha((0.35 * 255).round())
-                        : theme.colorScheme.onSurface
-                            .withAlpha((0.15 * 255).round()),
+                        ? theme.colorScheme.onSurface.withAlpha(
+                            (0.35 * 255).round(),
+                          )
+                        : theme.colorScheme.onSurface.withAlpha(
+                            (0.15 * 255).round(),
+                          ),
                   ),
                 ),
               ),
@@ -1451,17 +1432,21 @@ extension on _RoutineSetupScreenState {
                 onTap: canAddSet ? () => _addSet(effort) : null,
                 customBorder: const CircleBorder(),
                 child: Container(
-                  constraints:
-                      const BoxConstraints(minWidth: 50, minHeight: 50),
+                  constraints: const BoxConstraints(
+                    minWidth: 50,
+                    minHeight: 50,
+                  ),
                   alignment: Alignment.center,
                   child: Icon(
                     Icons.add,
                     size: 24,
                     color: canAddSet
-                        ? theme.colorScheme.onSurface
-                            .withAlpha((0.35 * 255).round())
-                        : theme.colorScheme.onSurface
-                            .withAlpha((0.2 * 255).round()),
+                        ? theme.colorScheme.onSurface.withAlpha(
+                            (0.35 * 255).round(),
+                          )
+                        : theme.colorScheme.onSurface.withAlpha(
+                            (0.2 * 255).round(),
+                          ),
                   ),
                 ),
               ),
@@ -1482,14 +1467,14 @@ extension on _RoutineSetupScreenState {
         (_currentExerciseIndex >= 0 && _currentExerciseIndex < efforts.length)
         ? efforts[_currentExerciseIndex]
         : null;
-    final currentEffortModality =
-        currentEffort == null
+    final currentEffortModality = currentEffort == null
         ? null
         : (currentEffort.modality ??
               _exerciseCache[currentEffort.exerciseId]?.modality ??
               widget.routineState.currentTemplate?.focusModality);
     final accentCurrentDot =
-        currentEffort?.effortKind == 'round' && currentEffortModality == 'sports';
+        currentEffort?.effortKind == 'round' &&
+        currentEffortModality == 'sports';
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,

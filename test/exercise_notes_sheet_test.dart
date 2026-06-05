@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -44,7 +45,7 @@ void main() {
 
     await workoutState.createNewSession(modality: 'resistance_lifting');
     final exercise = (await repository.getExercises()).firstWhere(
-      (e) => e.capabilities.contains('reps'),
+      (e) => e.capabilities.contains(ExerciseCapability.bilateral),
     );
     await workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
 
@@ -146,4 +147,61 @@ void main() {
     expect(find.text(exercise.name), findsWidgets);
     expect(find.byKey(const Key('exercise-note-indicator')), findsOneWidget);
   });
+
+  testWidgets(
+    'Exercise detail header icons share larger size, 44pt hit targets, and remain tappable',
+    (WidgetTester tester) async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      await repository.setPreferenceBool('hint_seen_exercise_info', true);
+      await repository.setPreferenceBool('hint_seen_exercise_notes', true);
+
+      final workoutState = WorkoutState(repository);
+      final routineState = RoutineState(repository);
+      final sessionSummaryService = SessionSummaryService(repository);
+
+      await workoutState.createNewSession(modality: 'resistance_lifting');
+      final exercise = (await repository.getExercises()).firstWhere(
+        (e) => e.capabilities.contains('reps'),
+      );
+      await workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
+
+      await _pumpWorkoutSessionScreen(
+        tester,
+        workoutState: workoutState,
+        routineState: routineState,
+        sessionSummaryService: sessionSummaryService,
+      );
+
+      await tester.tap(find.text(exercise.name));
+      await tester.pumpAndSettle();
+
+      final infoButton = tester.widget<IconButton>(
+        find.byKey(const Key('exercise-info-button')),
+      );
+      final notesButton = tester.widget<IconButton>(
+        find.byKey(const Key('exercise-note-button')),
+      );
+      final infoIcon = infoButton.icon as Icon;
+      final notesIcon = notesButton.icon as Icon;
+
+      expect(infoIcon.size, greaterThan(18));
+      expect(notesIcon.size, infoIcon.size);
+      expect(infoButton.constraints!.minWidth, greaterThanOrEqualTo(44));
+      expect(infoButton.constraints!.minHeight, greaterThanOrEqualTo(44));
+      expect(notesButton.constraints!.minWidth, greaterThanOrEqualTo(44));
+      expect(notesButton.constraints!.minHeight, greaterThanOrEqualTo(44));
+
+      await tester.tap(find.byKey(const Key('exercise-info-button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsOneWidget);
+
+      Navigator.of(tester.element(find.byType(BottomSheet))).pop();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('exercise-note-button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+    },
+  );
 }

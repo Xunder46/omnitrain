@@ -320,7 +320,7 @@ Dual-view screen for building/editing a routine.
 - **Routine name field**: `TextField` at the top
 - **Exercise list**: `ReorderableListView.builder` with drag handles
   - Each `ExerciseCard` shows: drag handle, exercise name, tracking label (e.g., "Track by Reps & Sets")
-  - ⋮ menu: "Change Tracking", "Edit Rest", or "Remove"
+  - ⋮ menu: "Change Tracking" or "Remove"
   - Tap card → opens detail view for that exercise
 - **Add button**: (+) in bottom-right corner
 - **Bottom actions**: Cancel / Save buttons

@@ -762,6 +762,64 @@ void main() {
       expect(find.text('Select Exercise Modality'), findsOneWidget);
     });
 
+    testWidgets(
+      'exercise overflow menu hides Edit Rest and keeps remaining actions tappable',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        final exercises = await repo.getExercises();
+        await routineState.createNewRoutine('Menu Actions');
+        await routineState.addExerciseToRoutine(exercises.first, 'set');
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final exerciseCardFinder = find.byType(ExerciseCard).first;
+        final exerciseCard = tester.widget<ExerciseCard>(exerciseCardFinder);
+        final popupMenuFinder = find.descendant(
+          of: exerciseCardFinder,
+          matching: find.byType(PopupMenuButton),
+        );
+        final popupMenu = tester.widget<PopupMenuButton>(popupMenuFinder);
+        final popupContext = tester.element(popupMenuFinder);
+        final menuItems = popupMenu
+            .itemBuilder(popupContext)
+            .cast<PopupMenuItem>();
+
+        final menuTexts = menuItems
+            .map((item) => (item.child! as Row).children.last as Text)
+            .map((text) => text.data)
+            .toList();
+
+        expect(menuTexts, contains('Change Tracking'));
+        expect(menuTexts, contains('Remove'));
+        expect(menuTexts, isNot(contains('Edit Rest')));
+
+        exerciseCard.onDelete();
+        await tester.pumpAndSettle();
+
+        expect(find.text('Remove Exercise?'), findsOneWidget);
+        expect(
+          find.text('This exercise will be removed from the routine.'),
+          findsOneWidget,
+        );
+      },
+    );
+
     testWidgets('sets can be added in detail view', (
       WidgetTester tester,
     ) async {
@@ -1023,39 +1081,40 @@ void main() {
       expect(find.text('Hold 1 of 1'), findsOneWidget);
     });
 
-    testWidgets('round effort detail view still renders round-duration editor', (
-      WidgetTester tester,
-    ) async {
-      await tester.binding.setSurfaceSize(const Size(600, 1200));
-      final repo = await _freshRepo();
-      final workoutState = WorkoutState(repo);
-      final routineState = RoutineState(repo);
-      routineState.setAutosaveEnabled(false);
+    testWidgets(
+      'round effort detail view still renders round-duration editor',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
 
-      final exercises = await repo.getExercises();
-      await routineState.createNewRoutine('Round Duration');
-      await routineState.addExerciseToRoutine(exercises.first, 'round');
-      await routineState.saveRoutine();
-      final templateId = routineState.currentTemplate!.id;
+        final exercises = await repo.getExercises();
+        await routineState.createNewRoutine('Round Duration');
+        await routineState.addExerciseToRoutine(exercises.first, 'round');
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: RoutineSetupScreen(
-            routineState: routineState,
-            workoutState: workoutState,
-            templateId: templateId,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      await tester.tap(find.text(exercises.first.name).first);
-      await tester.pumpAndSettle();
+        await tester.tap(find.text(exercises.first.name).first);
+        await tester.pumpAndSettle();
 
-      // Round-duration editor must still be present.
-      expect(find.text('DURATION'), findsOneWidget);
-      expect(find.text('ROUND 1'), findsOneWidget);
-    });
+        // Round-duration editor must still be present.
+        expect(find.text('DURATION'), findsOneWidget);
+        expect(find.text('ROUND 1'), findsOneWidget);
+      },
+    );
 
     testWidgets(
       'timed effort with no extra-weight target shows no metric editor',
@@ -1151,8 +1210,9 @@ void main() {
 
         // Drill exercise: 3 holds encoded via extra-weight targets at
         // setIndex 0-2.
-        final drillExercise =
-            exercises.length > 1 ? exercises[1] : exercises.first;
+        final drillExercise = exercises.length > 1
+            ? exercises[1]
+            : exercises.first;
         const drillEffortId = 'teff-drill-001';
         await repo.createTemplateEffort(
           TemplateEffort(
@@ -1860,11 +1920,9 @@ void main() {
 
     Future<void> pumpStatsScreen(
       WidgetTester tester,
-      MockWorkoutRepository repo,
-      {
+      MockWorkoutRepository repo, {
       Future<void> Function(SettingsState settingsState)? configureSettings,
-    }
-    ) async {
+    }) async {
       final workoutState = WorkoutState(repo);
       final settingsState = SettingsState(repo);
       await settingsState.initialize();
@@ -2202,7 +2260,9 @@ void main() {
 
       expect(find.text('Distance (km)'), findsOneWidget);
 
-      final cardioChart = tester.widget<LineChart>(find.byType(LineChart).first);
+      final cardioChart = tester.widget<LineChart>(
+        find.byType(LineChart).first,
+      );
       expect(cardioChart.data.lineBarsData.length, 2);
     });
 
@@ -2996,9 +3056,13 @@ void main() {
         final today = DateTime.now();
 
         // Rolling session starts at 8:00 AM, stays open 8 h of wall-clock.
-        final rollingStart =
-            DateTime(today.year, today.month, today.day, 8, 0)
-                .millisecondsSinceEpoch;
+        final rollingStart = DateTime(
+          today.year,
+          today.month,
+          today.day,
+          8,
+          0,
+        ).millisecondsSinceEpoch;
         await repo.createSession(
           TrainingSession(
             id: 'session-rolling',
@@ -3013,9 +3077,13 @@ void main() {
         );
 
         // Non-rolling session starts at 10:30 AM, lasts 1 h.
-        final nonRollingStart =
-            DateTime(today.year, today.month, today.day, 10, 30)
-                .millisecondsSinceEpoch;
+        final nonRollingStart = DateTime(
+          today.year,
+          today.month,
+          today.day,
+          10,
+          30,
+        ).millisecondsSinceEpoch;
         await repo.createSession(
           TrainingSession(
             id: 'session-normal',
@@ -4073,9 +4141,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExercisePickerScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -4088,9 +4154,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExercisePickerScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -4104,9 +4168,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExercisePickerScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -4119,9 +4181,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExercisePickerScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -4192,9 +4252,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExercisePickerScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -4210,9 +4268,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       // no need to track firstName — just verify "No exercises found" appears
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExercisePickerScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
       );
       await tester.pump(); // single frame — before exercises load
 
@@ -4258,9 +4314,7 @@ void main() {
         final workoutState = WorkoutState(repo);
 
         await tester.pumpWidget(
-          MaterialApp(
-            home: ExercisePickerScreen(workoutState: workoutState),
-          ),
+          MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
         );
         await tester.pumpAndSettle();
 
@@ -4282,9 +4336,7 @@ void main() {
         final workoutState = WorkoutState(repo);
 
         await tester.pumpWidget(
-          MaterialApp(
-            home: ExercisePickerScreen(workoutState: workoutState),
-          ),
+          MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
         );
         await tester.pumpAndSettle();
 
@@ -4322,24 +4374,21 @@ void main() {
       },
     );
 
-    testWidgets(
-      'no ranking sections shown when sessionModality is null',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        final workoutState = WorkoutState(repo);
+    testWidgets('no ranking sections shown when sessionModality is null', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ExercisePickerScreen(workoutState: workoutState),
-          ),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
+      );
+      await tester.pumpAndSettle();
 
-        expect(find.text('Recommended'), findsNothing);
-        expect(find.text('Other'), findsNothing);
-      },
-    );
+      expect(find.text('Recommended'), findsNothing);
+      expect(find.text('Other'), findsNothing);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -4677,7 +4726,12 @@ void main() {
         );
 
         // Canonical storage is kg; 22.6796 kg should render as +50.0 lbs.
-        await workoutState.updateEntryValue(effortId, 0, 'extra-weight', 22.6796);
+        await workoutState.updateEntryValue(
+          effortId,
+          0,
+          'extra-weight',
+          22.6796,
+        );
 
         await tester.pumpWidget(
           MaterialApp(
@@ -4725,7 +4779,12 @@ void main() {
         );
 
         // Canonical storage is kg; 22.6796 kg should render as +50.0 lbs.
-        await workoutState.updateEntryValue(effortId, 0, 'extra-weight', 22.6796);
+        await workoutState.updateEntryValue(
+          effortId,
+          0,
+          'extra-weight',
+          22.6796,
+        );
 
         await tester.pumpWidget(
           MaterialApp(
@@ -4864,8 +4923,7 @@ void main() {
       final exercises = await repo.getExercises();
       final nonLoadExercise = exercises.firstWhere(
         (e) =>
-            e.capabilities.contains('sets') &&
-            !e.capabilities.contains('load'),
+            e.capabilities.contains('sets') && !e.capabilities.contains('load'),
         orElse: () => exercises.firstWhere(
           (e) => !e.capabilities.contains('load'),
           orElse: () => exercises.first,
