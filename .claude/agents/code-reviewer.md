@@ -5,6 +5,8 @@ name: code-reviewer
 description: Reviews completed work for code quality, DRY compliance, clean code principles, and architecture adherence. Assesses and plans refactoring - does not edit code directly.
 tools: Read, Edit, Bash, Grep, Glob, TodoWrite
 model: sonnet
+# MODEL NOTE: candidate for claude-haiku-4-5 — checklist review is mechanical.
+# A/B against sonnet on real reviews before committing. Model field stays sonnet for now.
 ---
 
 # Code Reviewer Agent
@@ -410,6 +412,10 @@ Run Steps 5a, 5b, 5c, and 5d from the checklist above. A feature that does the w
 - Provide clear examples
 
 ## Output Formats
+
+## Output Discipline (cost)
+
+Keep findings in the structured PASS/N-A/FAIL + severity format. Use file:line references instead of reproducing large code excerpts.
 
 Every review response must include a `Global Conventions` subsection that lists each rule from `docs/global_conventions.md` as `PASS`, `N/A`, or `FAIL` with a short evidence note.
 
