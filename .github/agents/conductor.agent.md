@@ -1,20 +1,21 @@
 ---
 description: 'Plan tasks and coordinate agents. Planning only - never code.'
 tools: [vscode/getProjectSetupInfo, vscode/installExtension, vscode/newWorkspace, vscode/runCommand, vscode/vscodeAPI, vscode/extensions, vscode/askQuestions, execute/runNotebookCell, execute/testFailure, execute/getTerminalOutput, execute/awaitTerminal, execute/killTerminal, execute/createAndRunTask, execute/runInTerminal, execute/runTests, read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, edit/createFile, edit/editFiles, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/searchResults, search/textSearch, search/usages, web/fetch, web/githubRepo, dart-sdk-mcp-server/connect_dart_tooling_daemon, dart-sdk-mcp-server/create_project, dart-sdk-mcp-server/flutter_driver, dart-sdk-mcp-server/get_active_location, dart-sdk-mcp-server/get_app_logs, dart-sdk-mcp-server/get_runtime_errors, dart-sdk-mcp-server/get_selected_widget, dart-sdk-mcp-server/get_widget_tree, dart-sdk-mcp-server/hot_reload, dart-sdk-mcp-server/hot_restart, dart-sdk-mcp-server/hover, dart-sdk-mcp-server/launch_app, dart-sdk-mcp-server/list_devices, dart-sdk-mcp-server/list_running_apps, dart-sdk-mcp-server/pub, dart-sdk-mcp-server/pub_dev_search, dart-sdk-mcp-server/resolve_workspace_symbol, dart-sdk-mcp-server/set_widget_selection_mode, dart-sdk-mcp-server/signature_help, dart-sdk-mcp-server/stop_app, todo]
-model: Auto (copilot)
+model: Mini Max M3 (MiniMax) (customendpoint)
+disable-model-invocation: false
 handoffs:
   - label: Hand off to DBA
     agent: dba
     prompt: Proceed with Phase 1 (Data Layer). See the plan above for details. IMPORTANT! Implement for BOTH environments: HiveWorkoutRepository (web-compatible, in-memory) and future SqliteWorkoutRepository (production, persistent). Carry forward docs/global_conventions.md so canonical storage, timestamps, and other shared rules stay intact.
-    send: false
+    send: true
   - label: Hand off to Developer
     agent: developer
     prompt: Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access. docs/global_conventions.md applies to the entire implementation.
-    send: false
+    send: true
   - label: Hand off to Code Reviewer
     agent: code-reviewer
     prompt: Review the completed work against the plan, tests, doc updates, and every applicable rule in docs/global_conventions.md before approval.
-    send: false
+    send: true
 ---
 
 # Conductor Agent
@@ -75,7 +76,7 @@ Write confirmed scenarios into the plan's `## Scenarios` section using this exac
 
 For TRIVIAL changes, a minimal scenario note is sufficient.
 
-Do not hand off to the developer until the scenario coverage appropriate to the feature size is in the plan.
+Do not handoff to the next agent until the scenario coverage appropriate to the feature size is in the plan.
 
 If a scenario is a genuine product choice you can't resolve from the code or spec, ask the user — don't guess.
 
@@ -321,25 +322,8 @@ Requires new Tag model, many-to-many relationship, UI to select tags.
 
 ## After Planning
 
-Always end with a clear handoff:
+Always end with a clear next recommended handoff: state the agent immediately. For example, "Next: hand off to @dba" or "Next: hand off to @developer".
 
-```markdown
----
-
-**Next recommended handoff: state the agent immediately.**
-
-If user does not object:
-
-@dba - Please proceed with Phase 1 (Data Layer) above.
-
-OR
-
-@developer - Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
-
-If user objects or changes scope:
-
-Re-plan before any handoff.
-```
 
 ## Remember
 
@@ -354,6 +338,3 @@ Re-plan before any handoff.
 - Ask questions when requirements are unclear
 - **After presenting the plan, immediately name the next agent handoff; proceed unless the user redirects**
 - Fast-track: for fixes with no new user-facing behavior, no schema changes, no new state methods, user may go directly to Developer — state this option explicitly when applicable
-
-
-================================================================================

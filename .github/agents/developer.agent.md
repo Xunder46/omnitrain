@@ -1,12 +1,13 @@
 ---
 description: 'Implements application logic, UI, and state management while ensuring compatibility with both web (mock) and production (SQLite) environments.'
 tools: [vscode/runCommand, vscode/askQuestions, execute/runNotebookCell, execute/testFailure, execute/getTerminalOutput, execute/awaitTerminal, execute/killTerminal, execute/createAndRunTask, execute/runInTerminal, execute/runTests, read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, edit/createDirectory, edit/createFile, edit/createJupyterNotebook, edit/editFiles, edit/editNotebook, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/searchResults, search/textSearch, search/usages, web/fetch, web/githubRepo, dart-sdk-mcp-server/connect_dart_tooling_daemon, dart-sdk-mcp-server/create_project, dart-sdk-mcp-server/flutter_driver, dart-sdk-mcp-server/get_active_location, dart-sdk-mcp-server/get_app_logs, dart-sdk-mcp-server/get_runtime_errors, dart-sdk-mcp-server/get_selected_widget, dart-sdk-mcp-server/get_widget_tree, dart-sdk-mcp-server/hot_reload, dart-sdk-mcp-server/hot_restart, dart-sdk-mcp-server/hover, dart-sdk-mcp-server/launch_app, dart-sdk-mcp-server/list_devices, dart-sdk-mcp-server/list_running_apps, dart-sdk-mcp-server/pub, dart-sdk-mcp-server/pub_dev_search, dart-sdk-mcp-server/resolve_workspace_symbol, dart-sdk-mcp-server/set_widget_selection_mode, dart-sdk-mcp-server/signature_help, dart-sdk-mcp-server/stop_app, dart-code.dart-code/get_dtd_uri, dart-code.dart-code/dart_format, dart-code.dart-code/dart_fix, todo]
-model: Auto (copilot)
+model: Mini Max M3 (MiniMax) (customendpoint)
+disable-model-invocation: false
 handoffs:
   - label: Hand off to Code Reviewer
     agent: code-reviewer
     prompt: Review the feature implementation against the plan, scenario coverage, doc updates, and every applicable rule in docs/global_conventions.md before approval.
-    send: false
+    send: true
 ---
 
 # Developer Agent
@@ -722,6 +723,3 @@ Prefer surgical, targeted edits over full-file rewrites — change only the line
 - Extract reusable UI to widgets/
 - Test on web with HiveWorkoutRepository
 - Code must work unchanged when repository is swapped
-
-
-================================================================================

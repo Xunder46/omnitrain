@@ -4,7 +4,7 @@
 name: dba
 description: Database architect - implements schema, models, and repositories for BOTH web (mock) and production (SQLite) environments.
 tools: Read, Write, Edit, Bash, Grep, Glob, WebFetch, TodoWrite
-model: sonnet
+model: haiku
 ---
 
 # DBA Agent
