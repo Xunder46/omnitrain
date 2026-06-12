@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
 import '../../mock/seed_data.dart';
+import '../../mock/food_catalog_seed.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
+import '../../core/utils/date_utils.dart';
 import 'workout_repository.dart';
 
 const _mockUuid = Uuid();
@@ -63,6 +66,20 @@ class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, SessionBlock> _sessionBlocks = {};
   final Map<String, bool> _boolPrefs = {};
   final Map<String, String> _stringPrefs = {};
+
+  // Food library: maps for FoodGroup and Food
+  final Map<String, FoodGroup> _foodGroups = {};
+  final Map<String, Food> _foods = {};
+
+  // Food catalog: read-only bundled foods (separate from user library)
+  final Map<String, Food> _catalogFoods = {};
+
+  // Day nutrition log: consumed foods per day (frozen snapshots)
+  final Map<String, ConsumedFood> _consumedFoods = {};
+
+  // Date-keyed nutrition targets: dateMs (as int) -> NutritionTarget
+  // Supports day-based targets with backward walkback and forward propagation
+  final Map<int, NutritionTarget> _nutritionTargetsByDate = {};
 
   bool _initialized = false;
 
@@ -148,6 +165,17 @@ class MockWorkoutRepository implements WorkoutRepository {
 
     // Calendar maps intentionally start empty; users create planned sessions
     // and periods through calendar/period flows.
+
+    // Load the food catalog (read-only bundled foods)
+    for (final catalogFood in FoodCatalogSeed.sampleCatalogFoods) {
+      _catalogFoods[catalogFood.id] = catalogFood;
+    }
+
+    // Load default food group categories (Proteins, Vegetables, …).
+    // Mock starts empty so there are no user-created groups to collide with.
+    for (final group in SeedData.defaultFoodGroups) {
+      _foodGroups[group.id] = group;
+    }
 
     // NOTE: SeedData.sampleTrainingSessions/sampleSessionSegments/sampleSessionBlocks/
     // sampleSegmentEfforts are available as reference data but NOT auto-loaded here.
@@ -411,7 +439,9 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<List<SegmentEffort>> getSegmentEfforts(String segmentId) async {
-    final efforts = _efforts.values.where((e) => e.segmentId == segmentId).toList();
+    final efforts = _efforts.values
+        .where((e) => e.segmentId == segmentId)
+        .toList();
     efforts.sort((a, b) {
       final topCompare = _effectiveEffortTopLevelOrder(
         a,
@@ -1058,6 +1088,274 @@ class MockWorkoutRepository implements WorkoutRepository {
 
   // ===== UTILITY METHODS =====
 
+  // ===== FOOD GROUPS =====
+
+  @override
+  Future<List<FoodGroup>> getFoodGroups({bool includeArchived = false}) async {
+    final groups = _foodGroups.values.toList();
+    if (!includeArchived) {
+      return groups.where((g) => !g.isArchived).toList();
+    }
+    return groups;
+  }
+
+  @override
+  Future<FoodGroup?> getFoodGroupById(String id) async {
+    return _foodGroups[id];
+  }
+
+  @override
+  Future<String> createFoodGroup(FoodGroup group) async {
+    _foodGroups[group.id] = group;
+    return group.id;
+  }
+
+  @override
+  Future<void> updateFoodGroup(FoodGroup group) async {
+    _foodGroups[group.id] = group;
+  }
+
+  @override
+  Future<void> archiveFoodGroup(String id) async {
+    final existing = _foodGroups[id];
+    if (existing == null) return;
+
+    _foodGroups[id] = FoodGroup(
+      id: existing.id,
+      name: existing.name,
+      color: existing.color,
+      isArchived: true,
+      createdAtMs: existing.createdAtMs,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  @override
+  Future<void> reassignFoodsToGroup(
+    List<String> foodIds,
+    String? targetGroupId,
+  ) async {
+    if (foodIds.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final id in foodIds) {
+      final existing = _foods[id];
+      if (existing == null) continue;
+      _foods[id] = existing.copyWith(groupId: targetGroupId, updatedAtMs: now);
+    }
+  }
+
+  // ===== FOODS =====
+
+  @override
+  Future<List<Food>> getFoods({bool includeArchived = false}) async {
+    // Returns only library foods (isCatalog == false)
+    var foods = _foods.values.where((f) => !f.isCatalog).toList();
+    if (!includeArchived) {
+      foods = foods.where((f) => !f.isArchived).toList();
+    }
+    return foods;
+  }
+
+  @override
+  Future<List<Food>> getFoodsByGroup(
+    String groupId, {
+    bool includeArchived = false,
+  }) async {
+    final foods = _foods.values.where((f) => f.groupId == groupId).toList();
+
+    if (!includeArchived) {
+      return foods.where((f) => !f.isArchived).toList();
+    }
+    return foods;
+  }
+
+  @override
+  Future<Food?> getFoodById(String id) async {
+    return _foods[id];
+  }
+
+  @override
+  Future<List<Food>> searchFoods(
+    String query, {
+    bool includeArchived = false,
+  }) async {
+    final lowerQuery = query.toLowerCase();
+    final results = _foods.values.where((f) {
+      if (!includeArchived && f.isArchived) return false;
+      return f.name.toLowerCase().contains(lowerQuery);
+    }).toList();
+
+    return results;
+  }
+
+  @override
+  Future<String> createFood(Food food) async {
+    _foods[food.id] = food;
+    return food.id;
+  }
+
+  @override
+  Future<void> updateFood(Food food) async {
+    _foods[food.id] = food;
+  }
+
+  @override
+  Future<void> archiveFood(String id) async {
+    final existing = _foods[id];
+    if (existing == null) return;
+
+    _foods[id] = existing.copyWith(
+      isArchived: true,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  @override
+  Future<void> removeFood(String id) async {
+    // Only remove from the user-owned library (isCatalog = false).
+    // Catalog foods are read-only and cannot be removed through this method.
+    final existing = _foods[id];
+    if (existing == null) return;
+    if (existing.isCatalog) return;
+
+    // Hard-delete: remove the row entirely.
+    // Past ConsumedFood rows are unaffected because they store a frozen snapshot.
+    _foods.remove(id);
+  }
+
+  // ===== FOOD CATALOG =====
+
+  @override
+  Future<List<Food>> getCatalogFoods({bool includeArchived = false}) async {
+    var foods = _catalogFoods.values.toList();
+    if (!includeArchived) {
+      foods = foods.where((f) => !f.isArchived).toList();
+    }
+    return foods;
+  }
+
+  @override
+  Future<Food?> getCatalogFoodById(String id) async {
+    return _catalogFoods[id];
+  }
+
+  @override
+  Future<String> createCatalogFood(Food food) async {
+    // The new row is marked isCatalog = true; the caller's id is
+    // respected if non-empty, otherwise a fresh id is generated.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final newId = food.id.isEmpty
+        ? 'food-$now-${DateTime.now().microsecond}'
+        : food.id;
+    final newFood = food.copyWith(
+      id: newId,
+      isCatalog: true,
+      createdAtMs: now,
+      updatedAtMs: now,
+    );
+    _catalogFoods[newId] = newFood;
+    return newId;
+  }
+
+  @override
+  Future<void> updateCatalogFood(Food food) async {
+    if (food.isCatalog != true) {
+      throw StateError(
+        'updateCatalogFood: food.isCatalog must be true (got '
+        '${food.isCatalog} for id ${food.id})',
+      );
+    }
+    if (!_catalogFoods.containsKey(food.id)) {
+      throw StateError('Catalog food not found: ${food.id}');
+    }
+    _catalogFoods[food.id] = food.copyWith(updatedAtMs: food.updatedAtMs);
+  }
+
+  @override
+  Future<void> deleteCatalogFood(String id) async {
+    if (!_catalogFoods.containsKey(id)) {
+      throw StateError('Catalog food not found: $id');
+    }
+    _catalogFoods.remove(id);
+  }
+
+  @override
+  Future<String> addCatalogFoodToLibrary(String catalogFoodId) async {
+    final catalogFood = _catalogFoods[catalogFoodId];
+    if (catalogFood == null) {
+      throw Exception('Catalog food not found: $catalogFoodId');
+    }
+
+    // Generate a new ID for the library copy
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final newId = 'food-$now-${DateTime.now().microsecond}';
+
+    // Create a library copy with isCatalog = false
+    // copyWith() carries groupId across by default, so the catalog's
+    // resolved group_id propagates to the library row.
+    final libraryFood = catalogFood.copyWith(
+      id: newId,
+      isCatalog: false,
+      createdAtMs: now,
+      updatedAtMs: now,
+    );
+
+    _foods[newId] = libraryFood;
+    return newId;
+  }
+
+  /// Helper method for testing: seed a catalog food directly.
+  /// This bypasses the normal catalog storage and is only for test setup.
+  @visibleForTesting
+  Future<String> seedCatalogFood(Food food) async {
+    final catalogFood = food.copyWith(isCatalog: true);
+    _catalogFoods[catalogFood.id] = catalogFood;
+    return catalogFood.id;
+  }
+
+  // ===== CONSUMED FOODS (DAY LOG) =====
+
+  @override
+  Future<List<ConsumedFood>> getConsumedFoodsForDate(int dateMs) async {
+    return _consumedFoods.values.where((c) => c.dateMs == dateMs).toList();
+  }
+
+  @override
+  Future<String> createConsumedFood(ConsumedFood entry) async {
+    _consumedFoods[entry.id] = entry;
+    return entry.id;
+  }
+
+  @override
+  Future<void> deleteConsumedFood(String id) async {
+    _consumedFoods.remove(id);
+  }
+
+  @override
+  Future<List<ConsumedFood>> getConsumedFoodsInRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    return _consumedFoods.values
+        .where((c) => c.dateMs >= fromMs && c.dateMs <= toMs)
+        .toList();
+  }
+
+  @override
+  Future<void> updateConsumedFood(ConsumedFood entry) async {
+    if (!_consumedFoods.containsKey(entry.id)) {
+      throw StateError(
+        'updateConsumedFood: no ConsumedFood with id "${entry.id}"',
+      );
+    }
+    _consumedFoods[entry.id] = entry;
+  }
+
+  @override
+  Future<ConsumedFood?> getConsumedFoodById(String id) async {
+    return _consumedFoods[id];
+  }
+
   /// Clears all data (useful for testing)
   void clear() {
     _exercises.clear();
@@ -1086,6 +1384,10 @@ class MockWorkoutRepository implements WorkoutRepository {
     _metricEffortKinds.clear();
     _plannedSessions.clear();
     _periods.clear();
+    _foodGroups.clear();
+    _foods.clear();
+    _catalogFoods.clear();
+    _consumedFoods.clear();
     _initialized = false;
   }
 
@@ -1214,6 +1516,75 @@ class MockWorkoutRepository implements WorkoutRepository {
     _stringPrefs[key] = value;
   }
 
+  // ===== NUTRITION =====
+
+  @override
+  Future<NutritionTarget?> getNutritionTargetForDate(int dateMs) async {
+    // Check if target exists for this exact date
+    if (_nutritionTargetsByDate.containsKey(dateMs)) {
+      return _nutritionTargetsByDate[dateMs];
+    }
+
+    // Walk backward to find the most recent ancestor target
+    int searchDateMs = dateMs - (24 * 60 * 60 * 1000); // Start 1 day before
+    while (searchDateMs > 0) {
+      if (_nutritionTargetsByDate.containsKey(searchDateMs)) {
+        final ancestorTarget = _nutritionTargetsByDate[searchDateMs]!;
+        // Return a copy (rolls over to the requested date)
+        return ancestorTarget.copyWith(dateMs: dateMs);
+      }
+      searchDateMs -= (24 * 60 * 60 * 1000); // Go back another day
+    }
+
+    // No ancestor found
+    return null;
+  }
+
+  @override
+  Future<void> saveNutritionTargetForDate(
+    int dateMs,
+    NutritionTarget target,
+  ) async {
+    // Fetch the old target (if it exists) to compare for forward propagation
+    final oldTarget = _nutritionTargetsByDate[dateMs];
+
+    // Save the new target for this date
+    final targetToSave = target.copyWith(dateMs: dateMs);
+    _nutritionTargetsByDate[dateMs] = targetToSave;
+
+    // Forward propagation: update future dates that had the old values
+    if (oldTarget != null) {
+      final sortedFutureKeys =
+          _nutritionTargetsByDate.keys.where((k) => k > dateMs).toList()
+            ..sort();
+
+      for (final futureKey in sortedFutureKeys) {
+        final futureTarget = _nutritionTargetsByDate[futureKey];
+        if (futureTarget != null) {
+          // Only update if the future target is identical to the old one
+          if (futureTarget.calories == oldTarget.calories &&
+              futureTarget.protein == oldTarget.protein &&
+              futureTarget.carbs == oldTarget.carbs &&
+              futureTarget.fat == oldTarget.fat) {
+            // Update to the new values, preserving the future date
+            final updated = target.copyWith(dateMs: futureKey);
+            _nutritionTargetsByDate[futureKey] = updated;
+          }
+        }
+      }
+    }
+  }
+
+  @override
+  Future<NutritionTarget?> getNutritionTarget() async {
+    return getNutritionTargetForDate(OmniDateUtils.todayMidnightMs());
+  }
+
+  @override
+  Future<void> saveNutritionTarget(NutritionTarget target) async {
+    return saveNutritionTargetForDate(OmniDateUtils.todayMidnightMs(), target);
+  }
+
   // ===== SESSION BLOCKS =====
 
   @override
@@ -1328,23 +1699,22 @@ class MockWorkoutRepository implements WorkoutRepository {
     _sessionBlocks[newBlock.id] = newBlock;
 
     // Deep-clone all efforts linked to the original block
-    final linkedEfforts = _efforts.values
-        .where((e) => e.blockId == blockId)
-        .toList()
-      ..sort((a, b) {
-        final blockCompare = _effectiveEffortBlockOrder(
-          a,
-        ).compareTo(_effectiveEffortBlockOrder(b));
-        if (blockCompare != 0) return blockCompare;
+    final linkedEfforts =
+        _efforts.values.where((e) => e.blockId == blockId).toList()
+          ..sort((a, b) {
+            final blockCompare = _effectiveEffortBlockOrder(
+              a,
+            ).compareTo(_effectiveEffortBlockOrder(b));
+            if (blockCompare != 0) return blockCompare;
 
-        final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
-        if (legacyCompare != 0) return legacyCompare;
+            final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
+            if (legacyCompare != 0) return legacyCompare;
 
-        final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
-        if (createdCompare != 0) return createdCompare;
+            final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+            if (createdCompare != 0) return createdCompare;
 
-        return a.id.compareTo(b.id);
-      });
+            return a.id.compareTo(b.id);
+          });
 
     for (var i = 0; i < linkedEfforts.length; i++) {
       final effort = linkedEfforts[i];

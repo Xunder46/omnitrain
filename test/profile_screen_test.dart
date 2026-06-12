@@ -5,6 +5,7 @@ import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/profile/profile_screen.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'helpers/fake_preferences_service.dart';
 
 void main() {
   testWidgets('all measurement log sheets hide note input and date input', (
@@ -14,7 +15,7 @@ void main() {
     await repository.initialize();
 
     final profileState = ProfileState(repository);
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
 
     await tester.pumpWidget(
@@ -76,7 +77,7 @@ void main() {
     );
 
     final profileState = ProfileState(repository);
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
 
     await tester.pumpWidget(
@@ -113,7 +114,7 @@ void main() {
     );
 
     final profileState = ProfileState(repository);
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
     await settingsState.setPreferredWeightUnit('lbs');
 

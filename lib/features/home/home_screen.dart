@@ -20,8 +20,13 @@ import '../calendar/calendar_screen.dart';
 import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
+import 'widgets/nutrition_strip_bar.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
+import '../../widgets/common/home_logo_button.dart';
+import '../../state/nutrition_state.dart';
+import '../../state/food_library_state.dart';
+import '../nutrition/nutrition_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -35,6 +40,8 @@ class HomeScreen extends StatefulWidget {
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
+  final NutritionState nutritionState;
+  final FoodLibraryState foodLibraryState;
 
   HomeScreen({
     super.key,
@@ -48,6 +55,8 @@ class HomeScreen extends StatefulWidget {
     required this.profileState,
     required this.settingsState,
     required this.timerAlertService,
+    required this.nutritionState,
+    required this.foodLibraryState,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -57,7 +66,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
-  static const double _minSheetExtent = 0.10;
+  static const double _minSheetExtent = 0.0;
   double _maxSheetExtent = 0.9;
 
   late final DraggableScrollableController _sheetController;
@@ -66,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final Animation<double> _hintOffset;
 
   bool _resumeCheckDone = false;
+  late int _lastSeenDate; // Track the last date we checked for rollover
 
   @override
   void initState() {
@@ -75,8 +85,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _resumeCheckDone = true;
     }
 
+    // Initialize last seen date for rollover detection
+    _initializeLastSeenDate();
+
     _sheetController = DraggableScrollableController();
     _sheetExtent = ValueNotifier<double>(_minSheetExtent);
+
+    // Phase 4.1 (D-5 / D-8 / S-054 / S-055): load today's
+    // target + consumed foods on first paint so the home
+    // nutrition strip renders real values without a
+    // navigation.
+    //
+    // Implementation note: the loads run on a `Future.delayed`
+    // (not `addPostFrameCallback`) so the notifyListeners
+    // fired by `loadNutritionTarget` / `loadConsumedToday` happen
+    // on a fresh microtask boundary, not on a post-frame boundary
+    // that can be interleaved with the navigation transition's
+    // own build. This avoids tripping Flutter's
+    // "setState/markNeedsBuild during build" assertion when the
+    // user taps the strip right after the home screen mounts:
+    // the notify is scheduled for a stable frame boundary.
+    //
+    // The future is fire-and-forget; the loads run in the
+    // background and notify listeners when complete.
+    unawaited(_runInitialLoad());
 
     // Silent session restoration logic
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -126,6 +158,75 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  /// Initial-load coroutine. Uses `Future.microtask` (not
+  /// `Future.delayed(Duration.zero, ...)`) so the test framework
+  /// doesn't see a pending `Timer` at dispose time — a
+  /// `Future.delayed` is implemented as a `Timer` under the
+  /// hood, and the test binding's "Timer is still pending"
+  /// assertion fires even for zero-duration timers when the
+  /// widget tree is torn down. `Future.microtask` is not a
+  /// timer.
+  ///
+  /// Deferring the first `load*` to a microtask also avoids
+  /// tripping Flutter's "setState/markNeedsBuild during build"
+  /// assertion when this is called from `initState` in tests
+  /// that pump the home screen without first calling
+  /// `pumpAndSettle` (e.g. the app_theme_reactive_test).
+  Future<void> _runInitialLoad() async {
+    await Future.microtask(() {});
+    if (!mounted) return;
+    await Future.wait([
+      widget.nutritionState.loadNutritionTarget(),
+      widget.nutritionState.loadConsumedToday(),
+    ]);
+    // One rollover check after the initial loads settle
+    // (S-054): covers the edge case where the user opens the
+    // app right at midnight, the loads above grabbed the new
+    // day's target, but yesterday's cached `consumedToday` is
+    // still in memory.
+    if (mounted) _checkAndHandleDateRollover();
+  }
+
+  /// Initialize last seen date for rollover detection
+  void _initializeLastSeenDate() {
+    final now = DateTime.now();
+    _lastSeenDate = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+  }
+
+  /// Check if date has rolled over and trigger nutrition state rollover if needed
+  void _checkAndHandleDateRollover() {
+    final now = DateTime.now();
+    final todayMs = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+
+    if (todayMs != _lastSeenDate) {
+      _lastSeenDate = todayMs;
+      // Date has changed; trigger rollover (S-054). The
+      // rollover clears the in-memory consumed cache and reloads
+      // the target for the new day. We additionally reload
+      // today's consumed foods (which the rollover does not
+      // auto-reload) so the home strip rebuilds into the empty
+      // state immediately rather than staying on yesterday's
+      // values until the next manual load.
+      // Schedule the rollover through `addPostFrameCallback`
+      // (not `Future.microtask`): a microtask runs *between*
+      // frames, but the strip's `ListenableBuilder` will still
+      // try to rebuild in response to the notify, and if a
+      // build is currently in flight we trip Flutter's
+      // "setState during build" assertion. The post-frame
+      // callback runs *after* the current frame, so the notify
+      // schedules a clean rebuild for the next frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(() async {
+          await widget.nutritionState.rolloverToDate(todayMs);
+          if (mounted) {
+            await widget.nutritionState.loadConsumedToday();
+          }
+        }());
+      });
+    }
+  }
+
   void _onSheetExtentChanged() {
     // Stop animation if user pulls the sheet beyond minimum extent
     if (_sheetExtent.value > _minSheetExtent + 0.01) {
@@ -152,123 +253,191 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _openHubSheet() {
+    if (mounted) {
+      _snapSheet(_maxSheetExtent);
+    }
+  }
+
+  /// Open the nutrition screen to view and edit daily targets and
+  /// the Foods I Eat card (D-5: the strip is always tappable →
+  /// NutritionScreen in all states).
+  void _openNutritionScreen() {
+    OmniNavigator.push(
+      context,
+      (_) => NutritionScreen(
+        nutritionState: widget.nutritionState,
+        foodLibraryState: widget.foodLibraryState,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Image.asset(
-          'assets/icon/omnitrain_logo.png',
-          height: 40,
-          width: 40,
-        ),
+        title: HomeLogoButton(onTap: _openHubSheet),
         centerTitle: false,
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
       body: Stack(
         children: [
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16.0, 5.0, 16.0, 0.0),
-              child: Column(
-                children: [
-                  Text(
-                    'TRAIN',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 2.0,
-                      color: OmniTheme.colors.textDominant,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black.withOpacity(0.5),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+          Column(
+            children: [
+              Expanded(
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16.0, 5.0, 16.0, 0.0),
+                    child: Column(
+                      children: [
+                        Text(
+                          'TRAIN',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 2.0,
+                                color: OmniTheme.colors.textDominant,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black.withOpacity(0.5),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                        ),
+                        const SizedBox(height: 20),
+                        // Grid view with training modalities
+                        Expanded(
+                          child: ListenableBuilder(
+                            listenable: widget.workoutState,
+                            builder: (context, child) {
+                              const standardGridSpacing = 16.0;
+                              const utilitySectionGap =
+                                  standardGridSpacing * 1;
+
+                              final session =
+                                  widget.workoutState.currentSession;
+                              final isRoutineSession =
+                                  session?.intent == 'routine';
+                              final hasActiveSession =
+                                  widget.workoutState.hasActiveSession;
+
+                              final tiles = HomeTiles.all
+                                  .map((tile) {
+                                    final isActive =
+                                        hasActiveSession &&
+                                        (tile.key == 'my_routines'
+                                            ? isRoutineSession
+                                            : tile.modality == null
+                                            ? session?.modality == null &&
+                                                  !isRoutineSession
+                                            : session?.modality ==
+                                                  tile.modality);
+
+                                    return EnergyTile(
+                                      title: tile.label,
+                                      icon: tile.iconData,
+                                      iconWidget: tile.iconWidget,
+                                      accentColor: tile.accentColor,
+                                      isSecondary: tile.isSecondary,
+                                      isActive: isActive,
+                                      onTap: () => _handleTileTap(
+                                        context,
+                                        tile,
+                                        isActive,
+                                      ),
+                                    );
+                                  })
+                                  .toList(growable: false);
+
+                              return CustomScrollView(
+                                slivers: [
+                                  SliverGrid(
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 2,
+                                          mainAxisSpacing: standardGridSpacing,
+                                          crossAxisSpacing:
+                                              standardGridSpacing,
+                                          childAspectRatio: 1.0,
+                                        ),
+                                    delegate: SliverChildBuilderDelegate((
+                                      context,
+                                      index,
+                                    ) {
+                                      return tiles[index];
+                                    }, childCount: 4),
+                                  ),
+                                  const SliverToBoxAdapter(
+                                    child: SizedBox(height: utilitySectionGap),
+                                  ),
+                                  SliverGrid(
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 2,
+                                          crossAxisSpacing:
+                                              standardGridSpacing,
+                                          childAspectRatio: 1.0,
+                                        ),
+                                    delegate: SliverChildBuilderDelegate((
+                                      context,
+                                      index,
+                                    ) {
+                                      return tiles[index + 4];
+                                    }, childCount: 2),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 30),
-                  // Grid view with training modalities
-                  Expanded(
-                    child: ListenableBuilder(
-                      listenable: widget.workoutState,
-                      builder: (context, child) {
-                        const standardGridSpacing = 16.0;
-                        const utilitySectionGap = standardGridSpacing * 1.7;
-
-                        final session = widget.workoutState.currentSession;
-                        final isRoutineSession = session?.intent == 'routine';
-                        final hasActiveSession =
-                            widget.workoutState.hasActiveSession;
-
-                        final tiles = HomeTiles.all
-                            .map((tile) {
-                              final isActive =
-                                  hasActiveSession &&
-                                  (tile.key == 'my_routines'
-                                      ? isRoutineSession
-                                      : tile.modality == null
-                                      ? session?.modality == null &&
-                                            !isRoutineSession
-                                      : session?.modality == tile.modality);
-
-                              return EnergyTile(
-                                title: tile.label,
-                                icon: tile.iconData,
-                                iconWidget: tile.iconWidget,
-                                gradientColors: tile.gradientColors,
-                                accentColor: tile.accentColor,
-                                isActive: isActive,
-                                onTap: () =>
-                                    _handleTileTap(context, tile, isActive),
-                              );
-                            })
-                            .toList(growable: false);
-
-                        return CustomScrollView(
-                          slivers: [
-                            SliverGrid(
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    mainAxisSpacing: standardGridSpacing,
-                                    crossAxisSpacing: standardGridSpacing,
-                                    childAspectRatio: 1.0,
-                                  ),
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                index,
-                              ) {
-                                return tiles[index];
-                              }, childCount: 4),
-                            ),
-                            const SliverToBoxAdapter(
-                              child: SizedBox(height: utilitySectionGap),
-                            ),
-                            SliverGrid(
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    crossAxisSpacing: standardGridSpacing,
-                                    childAspectRatio: 1.0,
-                                  ),
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                index,
-                              ) {
-                                return tiles[index + 4];
-                              }, childCount: 2),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              // Phase 4.1 (D-8) home nutrition strip. Top gap =
+              // 2 × standardGridSpacing (D-8 inherits D-5's
+              // spacing rule; the standardGridSpacing is local
+              // to the tile grid above). The strip background
+              // extends to the physical bottom edge of the
+              // screen (S-056); the strip's own decoration is
+              // outside the SafeArea(top: false), and the
+              // content (label / empty message) sits inside.
+              //
+              // The previous `isCurrent` route gate (S-057) is
+              // removed: the data layer's microtask-deferred
+              // notify avoids the build-during-build race that
+              // the gate used to mask, so the strip can keep
+              // rendering current values through a push/pop
+              // transition.
+              SizedBox(height: 16.0 * 2),
+              ListenableBuilder(
+                listenable: widget.nutritionState,
+                builder: (context, _) {
+                  final target = widget.nutritionState.nutritionTarget;
+                  final targetCalories =
+                      (target != null && target.calories > 0)
+                          ? target.calories.round()
+                          : null;
+                  return NutritionStripBar(
+                    consumedCalories:
+                        widget.nutritionState.todayConsumedCalories,
+                    targetCalories: targetCalories,
+                    proteinKcal: widget.nutritionState.todayProteinKcal,
+                    totalCarbsKcal:
+                        widget.nutritionState.todayTotalCarbsKcal,
+                    fatKcal: widget.nutritionState.todayFatKcal,
+                    onTap: _openNutritionScreen,
+                  );
+                },
+              ),
+            ],
           ),
           _buildMaintenanceSheet(context),
         ],
@@ -518,7 +687,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         width: 32,
                         height: 4,
                         decoration: BoxDecoration(
-                              color: OmniTheme.colors.textSecondary.withOpacity(0.3),
+                          color: OmniTheme.colors.textSecondary.withOpacity(
+                            0.3,
+                          ),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -528,7 +699,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     'Free Training',
                     style: Theme.of(innerCtx).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
-                        color: OmniTheme.colors.textDominant,
+                      color: OmniTheme.colors.textDominant,
                     ),
                   ),
                   const SizedBox(height: 20),

@@ -9,6 +9,7 @@ import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ Future<SettingsState> _settingsWithUnit(
   MockWorkoutRepository repo,
   String unit,
 ) async {
-  final s = SettingsState(repo);
+  final s = SettingsState(repo, fakePreferencesService());
   await s.setPreferredWeightUnit(unit);
   return s;
 }

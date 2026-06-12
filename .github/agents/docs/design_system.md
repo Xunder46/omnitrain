@@ -88,7 +88,7 @@ Character: deep emerald, geological, industrial — a mineral-veined rock face u
 2. **Surfaces** float above the background with depth (shadow + border)
 3. **Cyan/teal accents** indicate interactivity or active state — never decorative filler
 4. **White text** with opacity levels creates hierarchy without introducing new hues
-5. **Gradient colors** on tiles are functional — they differentiate workout categories
+5. **Home tiles** use a solid low-opacity accent fill (primary ~18%, secondary ~8%) with a 1px white top rim highlight and 1px black bottom inner shadow on primary tiles; secondary tiles (Free, Routines) have no rim or inner shadow. Tile gradients are intentionally not used — see `EnergyTile` and `HomeTileConfig.isSecondary`.
 6. **Glow effects** are reserved for active/selected states and brand elements
 7. **Modality accent colors** must come from `lib/core/constants/modality_colors.dart` (single source of truth) and must not be hardcoded in screens/components
 
@@ -115,6 +115,30 @@ OmniTrain’s shared text hierarchy is expressed through `OmniTheme.colors`:
 | Void Pulse | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#6B5B8A` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#A478FF` |
 | Crimson Dojo | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#A07060` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#FF4C47` |
 | Malachite Core | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#7FAA7F` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#24B85A` |
+
+### Macro Chart Palette
+
+`OmniTheme.colors.macroChart` is a four-slot palette for the daily
+nutrition macro-distribution donut (`MacroDonutChart`). Slots map 1:1
+to the four sections drawn by the chart. Each theme defines a value
+tuned for contrast on its background:
+
+| Slot | Role | Abyssal Neon | Forge & Ember | Obsidian Volt | Void Pulse | Crimson Dojo | Malachite Core |
+|------|------|--------------|---------------|---------------|------------|--------------|----------------|
+| `protein` | Protein slice | `#EDEDED` | `#EDE3D2` | `#EDEDED` | `#EDEAFA` | `#EDE3DE` | `#EDEDE7` |
+| `netCarbs` | Net Carbs slice (`carbs − fiber`) | `#4F8DF7` | `#5BA8F2` | `#4F8DF7` | `#6E94F2` | `#5BA8F2` | `#4F8DF7` |
+| `fiber` | Fiber slice | `#3FBF67` | `#54C97A` | `#3FBF67` | `#5BC982` | `#54C97A` | `#3FBF67` |
+| `fat` | Fat slice | `#E8B420` | `#F2C84B` | `#E8B420` | `#E8B420` | `#F2C84B` | `#E8B420` |
+
+The palette lives on `OmniTheme` so the "theme tokens only" rule is
+honoured; themes can override slots later without touching the chart.
+
+> **Iteration 2 (`.github/agents/plans/daily-nutrition-macro-chart-plan.md`):**
+> The donut's external labels were removed. The same four palette slots
+> are now applied as the **band's arc colors**; the per-macro label
+> content (name + grams + %) was moved into the calorie ring's center
+> on tap. See `MacroDonutChart` and `MacroFocusContent` in
+> `docs/widget_catalog.md`.
 
 ---
 

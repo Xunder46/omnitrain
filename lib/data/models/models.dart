@@ -1622,3 +1622,494 @@ class ExerciseNote {
 }
 
 const Object _exerciseNoteCopyWithUnset = Object();
+
+class NutritionTarget {
+  final double calories;
+  final double protein;
+  final double carbs;
+  final double fat;
+  final int? dateMs; // Optional date (ms since epoch); null for legacy global targets
+
+  NutritionTarget({
+    this.calories = 0.0,
+    this.protein = 0.0,
+    this.carbs = 0.0,
+    this.fat = 0.0,
+    this.dateMs,
+  });
+
+  /// Check if this target is "unset" (all macros are 0)
+  bool get isUnset =>
+      calories == 0.0 && protein == 0.0 && carbs == 0.0 && fat == 0.0;
+
+  factory NutritionTarget.fromMap(Map<String, dynamic> m) => NutritionTarget(
+        calories: ((m['calories'] as num?) ?? 0.0).toDouble(),
+        protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
+        carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
+        fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
+        dateMs: m['date_ms'] as int?,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'calories': calories,
+        'protein': protein,
+        'carbs': carbs,
+        'fat': fat,
+        'date_ms': dateMs,
+      };
+
+  NutritionTarget copyWith({
+    double? calories,
+    double? protein,
+    double? carbs,
+    double? fat,
+    int? dateMs,
+  }) {
+    return NutritionTarget(
+      calories: calories ?? this.calories,
+      protein: protein ?? this.protein,
+      carbs: carbs ?? this.carbs,
+      fat: fat ?? this.fat,
+      dateMs: dateMs ?? this.dateMs,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FoodGroup — User-created food grouping category (e.g., "Proteins", "Vegetables")
+// ─────────────────────────────────────────────────────────────────────────────
+
+class FoodGroup {
+  final String id;
+  final String name;
+  final String? color;
+  final bool isArchived;
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  const FoodGroup({
+    required this.id,
+    required this.name,
+    this.color,
+    this.isArchived = false,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  factory FoodGroup.fromMap(Map<String, dynamic> m) => FoodGroup(
+    id: m['id'] as String,
+    name: m['name'] as String,
+    color: m['color'] as String?,
+    isArchived: (m['is_archived'] as int?) == 1,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'color': color,
+    'is_archived': isArchived ? 1 : 0,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Food — A food item with macronutrient metadata
+// ─────────────────────────────────────────────────────────────────────────────
+// Food Unit Type — the reference unit system for a food item.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The unit system used for a food's reference amount.
+/// - `count`: discrete items (e.g. "per 1 egg", "per 1 slice")
+/// - `grams`: weight-based (e.g. "per 100 g")
+enum FoodUnitType {
+  count,
+  grams;
+
+  /// Parse from string (storage format: 'count' or 'grams')
+  static FoodUnitType fromString(String? value) {
+    if (value == 'count') return FoodUnitType.count;
+    return FoodUnitType.grams; // default
+  }
+
+  /// Serialize to string for storage
+  String toStorageString() => name;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Calories are computed (not stored): protein * 4 + carbs * 4 + fat * 9
+// All macro values are stored as integers (grams per serving).
+
+class Food {
+  final String id;
+  final String name;
+  final String? groupId;
+
+  /// Unit type: count (discrete items) or grams (weight-based).
+  final FoodUnitType unitType;
+
+  /// Reference amount — the quantity this food's macros are expressed per.
+  /// E.g., 100.0 for "per 100 g", 1.0 for "per 1 egg".
+  final double referenceAmount;
+
+  /// Reference label — the display unit for the reference amount.
+  /// E.g., "g", "egg", "tbsp", "slice".
+  final String referenceLabel;
+
+  /// Whether this is a catalog (bundled) food vs user-owned library food.
+  /// Catalog foods are read-only; library foods are user-editable.
+  final bool isCatalog;
+
+  final int protein;
+  final int carbs;
+  final int? fiber;
+  final int fat;
+  final int? sodium;
+  final bool isArchived;
+  final String? notes;
+
+  /// Native-first local file path for an optional food photo. Same
+  /// contract as [UserProfile.avatarPath]: the path is opaque to the
+  /// repository and only the user (or the OS photo picker) can keep
+  /// the file alive. Web has no persistent file API, so the picker
+  /// is a no-op there and the field stays `null`.
+  final String? imagePath;
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  // ─── Deprecated fields — kept for legacy compatibility ───────────────────────
+  /// @deprecated Use [referenceAmount] instead. Kept for legacy row compatibility.
+  int get servingSize => referenceAmount.round();
+
+  /// @deprecated Use [referenceLabel] instead. Kept for legacy row compatibility.
+  String get servingUnit => referenceLabel;
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const Food({
+    required this.id,
+    required this.name,
+    this.groupId,
+    required this.unitType,
+    required this.referenceAmount,
+    required this.referenceLabel,
+    this.isCatalog = false,
+    required this.protein,
+    required this.carbs,
+    this.fiber,
+    required this.fat,
+    this.sodium,
+    this.isArchived = false,
+    this.notes,
+    this.imagePath,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  /// Helper: true if this is a catalog (bundled) food
+  bool get isCatalogFood => isCatalog;
+
+  /// Helper: true if this is a user-owned library food
+  bool get isLibraryFood => !isCatalog;
+
+  /// Computed calorie value: protein * 4 + carbs * 4 + fat * 9
+  int get calories => protein * 4 + carbs * 4 + fat * 9;
+
+  /// Computed net carbs: carbs - (fiber ?? 0)
+  int get netCarbs => carbs - (fiber ?? 0);
+
+  factory Food.fromMap(Map<String, dynamic> m) {
+    // Handle legacy rows: if new fields are missing, fall back to serving fields
+    final hasNewFields = m['unit_type'] != null || m['reference_amount'] != null;
+
+    return Food(
+      id: m['id'] as String,
+      name: m['name'] as String,
+      groupId: m['group_id'] as String?,
+      unitType: hasNewFields
+          ? FoodUnitType.fromString(m['unit_type'] as String?)
+          : FoodUnitType.grams,
+      referenceAmount: hasNewFields
+          ? ((m['reference_amount'] as num?) ?? 100.0).toDouble()
+          : (m['serving_size'] as num?)?.toDouble() ?? 100.0,
+      referenceLabel: hasNewFields
+          ? (m['reference_label'] as String?) ?? 'g'
+          : (m['serving_unit'] as String?) ?? 'g',
+      isCatalog: hasNewFields ? (m['is_catalog'] as int?) == 1 : false,
+      protein: m['protein'] as int,
+      carbs: m['carbs'] as int,
+      fiber: m['fiber'] as int?,
+      fat: m['fat'] as int,
+      sodium: m['sodium'] as int?,
+      isArchived: (m['is_archived'] as int?) == 1,
+      notes: m['notes'] as String?,
+      imagePath: m['image_path'] as String?,
+      createdAtMs: m['created_at_ms'] as int,
+      updatedAtMs: m['updated_at_ms'] as int,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'group_id': groupId,
+    'unit_type': unitType.toStorageString(),
+    'reference_amount': referenceAmount,
+    'reference_label': referenceLabel,
+    'is_catalog': isCatalog ? 1 : 0,
+    'protein': protein,
+    'carbs': carbs,
+    'fiber': fiber,
+    'fat': fat,
+    'sodium': sodium,
+    'is_archived': isArchived ? 1 : 0,
+    'notes': notes,
+    'image_path': imagePath,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+
+  Food copyWith({
+    String? id,
+    String? name,
+    Object? groupId = _foodCopyWithUnset,
+    FoodUnitType? unitType,
+    double? referenceAmount,
+    String? referenceLabel,
+    bool? isCatalog,
+    int? protein,
+    int? carbs,
+    int? fiber,
+    int? fat,
+    int? sodium,
+    bool? isArchived,
+    String? notes,
+    Object? imagePath = _foodCopyWithUnset,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) {
+    return Food(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      groupId: identical(groupId, _foodCopyWithUnset)
+          ? this.groupId
+          : groupId as String?,
+      unitType: unitType ?? this.unitType,
+      referenceAmount: referenceAmount ?? this.referenceAmount,
+      referenceLabel: referenceLabel ?? this.referenceLabel,
+      isCatalog: isCatalog ?? this.isCatalog,
+      protein: protein ?? this.protein,
+      carbs: carbs ?? this.carbs,
+      fiber: fiber ?? this.fiber,
+      fat: fat ?? this.fat,
+      sodium: sodium ?? this.sodium,
+      isArchived: isArchived ?? this.isArchived,
+      notes: notes ?? this.notes,
+      imagePath: identical(imagePath, _foodCopyWithUnset)
+          ? this.imagePath
+          : imagePath as String?,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+    );
+  }
+}
+
+// Sentinel used by [Food.copyWith] to distinguish "argument omitted"
+// from "argument was explicitly null". `groupId` and `imagePath` are
+// the two nullable fields on `Food` and callers need to be able to
+// clear them.
+const Object _foodCopyWithUnset = Object();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ConsumedFood — A frozen snapshot of a logged food for a specific day.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// This model stores a complete snapshot of a food at the moment it was logged,
+// ensuring historical data remains accurate even if the source food or daily
+// targets are later edited or deleted.
+//
+// All fields prefixed "snapshot" or "target" are frozen at log time:
+// - The food's name, unit type, reference amount/label, and macros
+// - The group (id + name) the food belonged to
+// - The daily nutrition targets that were in effect
+
+class ConsumedFood {
+  final String id;
+  final int loggedAtMs;     // when the user logged this (wall clock)
+  final int dateMs;         // day key (local midnight ms) this counts toward
+
+  // Source reference — nullable if the original food was deleted
+  final String? sourceFoodId;
+
+  // Frozen food snapshot
+  final String name;
+  final FoodUnitType unitType;
+  final double referenceAmount;
+  final String referenceLabel;
+  final int protein;
+  final int carbs;
+  final int? fiber;
+  final int fat;
+  final int? sodium;
+
+  // How much was consumed (in the food's reference unit)
+  final double amountConsumed;
+
+  // Frozen group snapshot (so logs remain readable even if group is renamed/deleted)
+  final String? groupIdSnapshot;
+  final String? groupNameSnapshot;
+
+  // Frozen daily targets (so past days don't change when targets are edited)
+  final double targetCalories;
+  final double targetProtein;
+  final double targetCarbs;
+  final double targetFat;
+
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  const ConsumedFood({
+    required this.id,
+    required this.loggedAtMs,
+    required this.dateMs,
+    this.sourceFoodId,
+    required this.name,
+    required this.unitType,
+    required this.referenceAmount,
+    required this.referenceLabel,
+    required this.protein,
+    required this.carbs,
+    this.fiber,
+    required this.fat,
+    this.sodium,
+    required this.amountConsumed,
+    this.groupIdSnapshot,
+    this.groupNameSnapshot,
+    required this.targetCalories,
+    required this.targetProtein,
+    required this.targetCarbs,
+    required this.targetFat,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  /// Computed calories consumed:
+  /// `(protein * 4 + carbs * 4 + fat * 9) * (amountConsumed / referenceAmount)`.
+  ///
+  /// The macros on the snapshot are stored **per the food's reference**
+  /// (e.g. per 100 g or per 1 egg). The `amountConsumed` is in the
+  /// food's own unit (g for grams-type foods, count for count-type
+  /// foods), so the scaling factor is `amountConsumed / referenceAmount`.
+  ///
+  /// This uses the frozen macro and reference values, not the current
+  /// live food values. Examples:
+  ///   - 150 g of a per-100 g food (31P / 0C / 3F = 151 kcal):
+  ///     151 * (150 / 100) = 151 * 1.5 = 226.
+  ///   - 3 of a per-1-egg food (6P / 1C / 5F = 73 kcal):
+  ///     73 * (3 / 1) = 73 * 3 = 219.
+  int get caloriesConsumed =>
+      ((protein * 4 + carbs * 4 + fat * 9) * (amountConsumed / referenceAmount))
+          .round();
+
+  factory ConsumedFood.fromMap(Map<String, dynamic> m) => ConsumedFood(
+    id: m['id'] as String,
+    loggedAtMs: m['logged_at_ms'] as int,
+    dateMs: m['date_ms'] as int,
+    sourceFoodId: m['source_food_id'] as String?,
+    name: m['name'] as String,
+    unitType: FoodUnitType.fromString(m['unit_type'] as String?),
+    referenceAmount: ((m['reference_amount'] as num?) ?? 100.0).toDouble(),
+    referenceLabel: (m['reference_label'] as String?) ?? 'g',
+    protein: m['protein'] as int,
+    carbs: m['carbs'] as int,
+    fiber: m['fiber'] as int?,
+    fat: m['fat'] as int,
+    sodium: m['sodium'] as int?,
+    amountConsumed: ((m['amount_consumed'] as num?) ?? 1.0).toDouble(),
+    groupIdSnapshot: m['group_id_snapshot'] as String?,
+    groupNameSnapshot: m['group_name_snapshot'] as String?,
+    targetCalories: ((m['target_calories'] as num?) ?? 0.0).toDouble(),
+    targetProtein: ((m['target_protein'] as num?) ?? 0.0).toDouble(),
+    targetCarbs: ((m['target_carbs'] as num?) ?? 0.0).toDouble(),
+    targetFat: ((m['target_fat'] as num?) ?? 0.0).toDouble(),
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'logged_at_ms': loggedAtMs,
+    'date_ms': dateMs,
+    'source_food_id': sourceFoodId,
+    'name': name,
+    'unit_type': unitType.toStorageString(),
+    'reference_amount': referenceAmount,
+    'reference_label': referenceLabel,
+    'protein': protein,
+    'carbs': carbs,
+    'fiber': fiber,
+    'fat': fat,
+    'sodium': sodium,
+    'amount_consumed': amountConsumed,
+    'group_id_snapshot': groupIdSnapshot,
+    'group_name_snapshot': groupNameSnapshot,
+    'target_calories': targetCalories,
+    'target_protein': targetProtein,
+    'target_carbs': targetCarbs,
+    'target_fat': targetFat,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
+
+  ConsumedFood copyWith({
+    String? id,
+    int? loggedAtMs,
+    int? dateMs,
+    String? sourceFoodId,
+    String? name,
+    FoodUnitType? unitType,
+    double? referenceAmount,
+    String? referenceLabel,
+    int? protein,
+    int? carbs,
+    int? fiber,
+    int? fat,
+    int? sodium,
+    double? amountConsumed,
+    String? groupIdSnapshot,
+    String? groupNameSnapshot,
+    double? targetCalories,
+    double? targetProtein,
+    double? targetCarbs,
+    double? targetFat,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) {
+    return ConsumedFood(
+      id: id ?? this.id,
+      loggedAtMs: loggedAtMs ?? this.loggedAtMs,
+      dateMs: dateMs ?? this.dateMs,
+      sourceFoodId: sourceFoodId ?? this.sourceFoodId,
+      name: name ?? this.name,
+      unitType: unitType ?? this.unitType,
+      referenceAmount: referenceAmount ?? this.referenceAmount,
+      referenceLabel: referenceLabel ?? this.referenceLabel,
+      protein: protein ?? this.protein,
+      carbs: carbs ?? this.carbs,
+      fiber: fiber ?? this.fiber,
+      fat: fat ?? this.fat,
+      sodium: sodium ?? this.sodium,
+      amountConsumed: amountConsumed ?? this.amountConsumed,
+      groupIdSnapshot: groupIdSnapshot ?? this.groupIdSnapshot,
+      groupNameSnapshot: groupNameSnapshot ?? this.groupNameSnapshot,
+      targetCalories: targetCalories ?? this.targetCalories,
+      targetProtein: targetProtein ?? this.targetProtein,
+      targetCarbs: targetCarbs ?? this.targetCarbs,
+      targetFat: targetFat ?? this.targetFat,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+    );
+  }
+}

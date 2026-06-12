@@ -4,13 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/profile_measurements.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 Future<SettingsState> _settingsKg() async {
   final repo = MockWorkoutRepository();
   await repo.initialize();
-  final s = SettingsState(repo);
+  final s = SettingsState(repo, fakePreferencesService());
   await s.initialize();
   return s;
 }

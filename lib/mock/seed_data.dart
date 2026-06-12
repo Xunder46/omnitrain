@@ -4032,6 +4032,75 @@ class SeedData {
     ),
   ];
 
+  /// Default food group categories seeded on first install and via
+  /// migration on existing installs.
+  ///
+  /// Names match the 8 `category` values in
+  /// `assets/data/food_catalog.json` so the bundled catalog can be
+  /// cross-referenced with user library groups in future iterations.
+  /// IDs are deterministic so re-seeding is idempotent (skip if
+  /// already present, regardless of display name).
+  ///
+  /// The user can rename, archive, or delete these groups — none of
+  /// the mutator paths check for seed provenance, so user actions
+  /// always take precedence.
+  static final List<FoodGroup> defaultFoodGroups = [
+    FoodGroup(
+      id: 'food-group-proteins',
+      name: 'Proteins',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    FoodGroup(
+      id: 'food-group-dairy',
+      name: 'Dairy',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    FoodGroup(
+      id: 'food-group-grains-starches',
+      name: 'Grains & Starches',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    FoodGroup(
+      id: 'food-group-fruits',
+      name: 'Fruits',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    FoodGroup(
+      id: 'food-group-vegetables',
+      name: 'Vegetables',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    FoodGroup(
+      id: 'food-group-nuts-seeds-fats',
+      name: 'Nuts, Seeds & Fats',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    FoodGroup(
+      id: 'food-group-snacks-prepared',
+      name: 'Snacks & Prepared',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    FoodGroup(
+      id: 'food-group-drinks',
+      name: 'Drinks',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    FoodGroup(
+      id: 'food-group-condiments',
+      name: 'Condiments',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+  ];
+
   static final List<MetricDefinition> defaultMetrics = [
     // Strength metrics
     MetricDefinition(

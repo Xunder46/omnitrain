@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/services/preferences_service.dart';
 import '../../data/repositories/workout_repository.dart';
 
 class SettingsState extends ChangeNotifier {
@@ -14,6 +15,9 @@ class SettingsState extends ChangeNotifier {
   static const String _restPingSoundKey = 'rest_ping_sound';
   static const String _notificationPermissionAskedKey =
       'notification_permission_asked';
+
+  final PreferencesService _preferencesService;
+  int _hubOpenCount = 0;
 
   static const List<String> validSoundIds = [
     'boxing_bell',
@@ -43,7 +47,7 @@ class SettingsState extends ChangeNotifier {
 
   final WorkoutRepository _repository;
 
-  SettingsState(this._repository);
+  SettingsState(this._repository, this._preferencesService);
 
   AppTheme _appTheme = AppTheme.abyssalNeon;
   String _preferredWeightUnit = 'kg';
@@ -54,6 +58,7 @@ class SettingsState extends ChangeNotifier {
   int _restPingInterval = 0;
   String _restPingSound = 'soft_chime';
   bool _notificationPermissionAsked = false;
+  final bool _showHubLabel = false;
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
@@ -64,9 +69,18 @@ class SettingsState extends ChangeNotifier {
   int get restPingInterval => _restPingInterval;
   String get restPingSound => _restPingSound;
   bool get notificationPermissionAsked => _notificationPermissionAsked;
+  bool get showHubLabel => _hubOpenCount < 2;
 
   Future<void> initialize() async {
     await _loadFromPrefs();
+    _hubOpenCount = _preferencesService.getHubOpenCount();
+    notifyListeners();
+  }
+
+  Future<void> incrementHubOpenCount() async {
+    await _preferencesService.incrementHubOpenCount();
+    _hubOpenCount = _preferencesService.getHubOpenCount();
+    notifyListeners();
   }
 
   Future<void> setAppTheme(AppTheme theme) async {

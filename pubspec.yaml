@@ -34,6 +34,7 @@ dependencies:
   path_provider: ^2.1.5 # for DB file path
   hive: ^2.2.3          # web-friendly local persistence
   hive_flutter: ^1.1.0  # Flutter integration for Hive
+  shared_preferences: ^2.2.3 # For simple key-value storage
   fl_chart: 1.2.0      # dynamic charts
   uuid: ^4.0.0              # unique IDs
   path: ^1.8.4              # file paths
@@ -44,6 +45,7 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^4.1.1
   app_settings: ^5.1.1
+  provider: ^6.0.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -77,6 +79,7 @@ flutter:
   assets:
     - scripts/sqlite_schema.sql
     - scripts/sqlite_seed.sql
+    - assets/data/food_catalog.json
     - assets/icon/
     - assets/sounds/
 

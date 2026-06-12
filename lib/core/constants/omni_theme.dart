@@ -2,6 +2,19 @@ import 'package:flutter/material.dart';
 
 enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, voidPulse, crimsonDojo, malachiteCore }
 
+/// Themed palette for the macro-distribution donut chart. Slots map 1:1
+/// to the four sections drawn by `MacroDonutChart`:
+///   - `protein`  — high-contrast near-white
+///   - `netCarbs`  — saturated blue (net = carbs − fiber)
+///   - `fiber`     — saturated green
+///   - `fat`       — saturated amber/yellow
+typedef MacroChartPalette = ({
+  Color protein,
+  Color netCarbs,
+  Color fiber,
+  Color fat,
+});
+
 typedef OmniThemeColors = ({
   Color backgroundTop,
   Color backgroundBottom,
@@ -14,6 +27,7 @@ typedef OmniThemeColors = ({
   Color textDisabled,
   Color divider,
   Color surfaceBorder,
+  MacroChartPalette macroChart,
 });
 
 /// Core theme constants for OMNITRAIN biomechanical training system
@@ -36,6 +50,12 @@ class OmniTheme {
           textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF1F2937),
           surfaceBorder: Color(0x0FFFFFFF),
+          macroChart: (
+            protein: Color(0xFFEDEDED),
+            netCarbs: Color(0xFF4F8DF7),
+            fiber: Color(0xFF3FBF67),
+            fat: Color(0xFFE8B420),
+          ),
         );
       case AppTheme.forgeEmber:
         return (
@@ -50,6 +70,12 @@ class OmniTheme {
           textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF2A1C10),
           surfaceBorder: Color(0x0DFFFFFF),
+          macroChart: (
+            protein: Color(0xFFEDE3D2),
+            netCarbs: Color(0xFF5BA8F2),
+            fiber: Color(0xFF54C97A),
+            fat: Color(0xFFF2C84B),
+          ),
         );
       case AppTheme.obsidianVolt:
         return (
@@ -64,6 +90,12 @@ class OmniTheme {
           textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF1F1F1F),
           surfaceBorder: Color(0x12FFFFFF),
+          macroChart: (
+            protein: Color(0xFFEDEDED),
+            netCarbs: Color(0xFF4F8DF7),
+            fiber: Color(0xFF3FBF67),
+            fat: Color(0xFFE8B420),
+          ),
         );
       case AppTheme.voidPulse:
         return (
@@ -78,6 +110,12 @@ class OmniTheme {
           textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF1A1230),
           surfaceBorder: Color(0x0FFFFFFF),
+          macroChart: (
+            protein: Color(0xFFEDEAFA),
+            netCarbs: Color(0xFF6E94F2),
+            fiber: Color(0xFF5BC982),
+            fat: Color(0xFFE8B420),
+          ),
         );
       case AppTheme.crimsonDojo:
         return (
@@ -92,6 +130,12 @@ class OmniTheme {
           textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF2A0F0C),
           surfaceBorder: Color(0x0DFFFFFF),
+          macroChart: (
+            protein: Color(0xFFEDE3DE),
+            netCarbs: Color(0xFF5BA8F2),
+            fiber: Color(0xFF54C97A),
+            fat: Color(0xFFF2C84B),
+          ),
         );
       case AppTheme.malachiteCore:
         return (
@@ -106,6 +150,12 @@ class OmniTheme {
           textDisabled: Color(0x4DFFFFFF),
           divider: Color(0xFF172A18),
           surfaceBorder: Color(0x0DFFFFFF),
+          macroChart: (
+            protein: Color(0xFFEDEDE7),
+            netCarbs: Color(0xFF4F8DF7),
+            fiber: Color(0xFF3FBF67),
+            fat: Color(0xFFE8B420),
+          ),
         );
     }
   }
@@ -141,6 +191,18 @@ class OmniTheme {
     offset: const Offset(0, 14),
   );
 
+  /// Soft shadow for small, low-elevation surfaces (e.g. the home-screen logo
+  /// tile). Proportionally matches the training tiles' inactive shadow
+  /// (alpha 0.32, blur 26, spread -8, offset 10) scaled for a ~50px surface.
+  /// Uses a neutral black color since small tiles typically lack a per-instance
+  /// accent color.
+  static BoxShadow get softShadow => BoxShadow(
+    color: Colors.black.withValues(alpha: 0.25),
+    blurRadius: 5,
+    spreadRadius: -3,
+    offset: const Offset(-5, 0),
+  );
+
   /// Glow effect for energy cores
   static BoxShadow glowShadow(Color color, {double opacity = 0.35}) =>
       BoxShadow(
@@ -170,7 +232,7 @@ class OmniTheme {
 
   static const Duration animationDuration = Duration(milliseconds: 180);
   static const Curve animationCurve = Curves.easeInOut;
-  static const double pressedScale = 0.96;
+  static const double pressedScale = 0.9;
 
   // ═══════════════════════════════════════════════════════════
   // ZEN HALO LOGO

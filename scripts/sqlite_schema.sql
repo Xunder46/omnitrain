@@ -1047,4 +1047,315 @@ CREATE INDEX IF NOT EXISTS IX_effort_segment_top_level
 CREATE INDEX IF NOT EXISTS IX_effort_block_order
   ON app_segment_effort(block_id, block_order_index);
 
+-- NUTRITION TARGETS (June 2026)
+-- ============================
+-- User-defined daily nutrition goals. A single record per user, identified by
+-- a fixed key 'user-targets'. All fields are nullable to support unset targets.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getNutritionTarget():
+--     SELECT * FROM app_nutrition_target WHERE id = 'user-targets';
+--   saveNutritionTarget(target):
+--     INSERT INTO app_nutrition_target (id, calories, protein, carbs, fat)
+--     VALUES ('user-targets', ?, ?, ?, ?)
+--     ON CONFLICT(id) DO UPDATE SET
+--       calories=excluded.calories,
+--       protein=excluded.protein,
+--       carbs=excluded.carbs,
+--       fat=excluded.fat;
+-- NUTRITION TARGETS (June 2026 - Daily Targets Feature)
+-- ======================================================
+-- Stores daily nutrition targets that roll over day-by-day.
+--
+-- Fields:
+--   id: Unique identifier (UUID)
+--   date_ms: Start-of-day timestamp (ms since epoch, midnight local time), UNIQUE per date
+--   calories, protein, carbs, fat: Target macronutrients (0.0 = unset/"no goal")
+--   created_at_ms, updated_at_ms: Wall-clock timestamps
+--
+-- Backward-walk and forward-propagation logic:
+--   When fetching a target for a date with no explicit entry, the repository
+--   walks backward to find the most recent ancestor target and returns a copy
+--   rolled forward to that date.
+--
+--   When saving a target, future dates that have identical values to the old target
+--   are automatically updated to the new values (forward propagation).
+--   Past targets are never modified.
+--
+-- Migration notes:
+--   For existing installs with legacy single global target (old schema):
+--   - Old record had id='user-targets', no date_ms or timestamps
+--   - Migration converts nullable REAL fields to non-nullable (default 0.0)
+--   - Old record is migrated to today's date in daily table
+--
+CREATE TABLE app_nutrition_target (
+  id TEXT NOT NULL PRIMARY KEY,
+  date_ms INTEGER UNIQUE,
+  calories REAL NOT NULL DEFAULT 0.0,
+  protein REAL NOT NULL DEFAULT 0.0,
+  carbs REAL NOT NULL DEFAULT 0.0,
+  fat REAL NOT NULL DEFAULT 0.0,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS IX_nutrition_target_date ON app_nutrition_target(date_ms DESC);
+
+-- FOOD LIBRARY (June 2026)
+-- ========================
+-- User-created foods and food groups for nutrition logging.
+-- Foods store macronutrient metadata and serving size.
+-- Calories are computed (not stored): protein * 4 + carbs * 4 + fat * 9
+--
+-- Soft-delete via isArchived flag: archived foods do not appear in food pickers
+-- but remain in storage so they can be referenced from historical consumed-food logs.
+-- No hard-delete method is exposed — calorie calculations for past logs depend on
+-- the original food record remaining intact.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getFoodGroups(includeArchived=false):
+--     SELECT * FROM app_food_group WHERE (? OR is_archived = 0) ORDER BY name ASC;
+--   getFoodGroupById(id):
+--     SELECT * FROM app_food_group WHERE id = ?;
+--   createFoodGroup(group):
+--     INSERT INTO app_food_group VALUES (...);
+--   updateFoodGroup(group):
+--     UPDATE app_food_group SET name=?, color=?, updated_at_ms=? WHERE id = ?;
+--   archiveFoodGroup(id):
+--     UPDATE app_food_group SET is_archived = 1, updated_at_ms = ? WHERE id = ?;
+--   reassignFoodsToGroup(foodIds, targetGroupId):
+--     UPDATE app_food SET group_id = ?, updated_at_ms = ?
+--       WHERE id IN (?, ?, ...) AND is_catalog = 0;
+--     -- Used by the Categories tab when deleting a non-empty group.
+--     -- Foods are NEVER deleted by this method; their group_id is just
+--     -- updated. Passing targetGroupId = NULL moves them to "Ungrouped".
+--     -- Catalog foods (is_catalog = 1) are excluded by the WHERE clause.
+--
+--   getFoods(includeArchived=false):
+--     SELECT * FROM app_food WHERE (? OR is_archived = 0) ORDER BY name ASC;
+--   getFoodsByGroup(groupId, includeArchived=false):
+--     SELECT * FROM app_food WHERE group_id = ? AND (? OR is_archived = 0) ORDER BY name ASC;
+--   getFoodById(id):
+--     SELECT * FROM app_food WHERE id = ?;
+--   searchFoods(query, includeArchived=false):
+--     SELECT * FROM app_food WHERE (? OR is_archived = 0)
+--       AND LOWER(name) LIKE LOWER('%' || ? || '%') ORDER BY name ASC;
+--   createFood(food):
+--     INSERT INTO app_food VALUES (...);
+--   updateFood(food):
+--     UPDATE app_food SET name=?, group_id=?, serving_size=?, serving_unit=?,
+--       protein=?, carbs=?, fiber=?, fat=?, sodium=?, is_archived=?, notes=?,
+--       updated_at_ms=? WHERE id = ?;
+--   archiveFood(id):
+--     UPDATE app_food SET is_archived = 1, updated_at_ms = ? WHERE id = ?;
+--
+CREATE TABLE app_food_group (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  color TEXT,
+  is_archived INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_food_group_archived ON app_food_group(is_archived);
+
+-- Food library table: user-owned foods.
+-- is_catalog = 0 for library foods; is_catalog = 1 for catalog-backed foods copied to library.
+-- image_path is an optional native-first local file path for a user-picked food
+-- photo. NULL when no photo is set; the column is omitted by the JSON asset
+-- loader for catalog foods (which never carry user images). Mirrors the
+-- UserProfile.avatarPath contract — web stores NULL even if the OS picker
+-- returns a path, because the path is not replayable across reloads on web.
+--
+-- Category & notes contract (June 2026):
+--   - The catalog's human-readable `category` string ("Proteins", "Dairy", …)
+--     is resolved to a `group_id` FK at load time and is NOT stored in
+--     `notes`. The `group_id` is the single source of truth for the
+--     grouping label.
+--   - `notes` is reserved for free-form user notes ("Info"). It is NULL
+--     on catalog rows and is user-typed on library rows.
+--   - The 9 default `FoodGroup` rows (Proteins, Dairy, …) are seeded by
+--     the `default_food_groups_seeded_v1` migration; their ids are
+--     stable (`food-group-proteins`, etc.) so the FK references stay
+--     intact across re-seeds.
+CREATE TABLE app_food (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  group_id TEXT,
+  unit_type TEXT NOT NULL CHECK (unit_type IN ('count','grams')),
+  reference_amount REAL NOT NULL,
+  reference_label TEXT NOT NULL,
+  is_catalog INTEGER NOT NULL DEFAULT 0,
+  protein INTEGER NOT NULL,
+  carbs INTEGER NOT NULL,
+  fiber INTEGER,
+  fat INTEGER NOT NULL,
+  sodium INTEGER,
+  is_archived INTEGER NOT NULL DEFAULT 0,
+  notes TEXT,
+  image_path TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  FOREIGN KEY(group_id) REFERENCES app_food_group(id)
+);
+CREATE INDEX IF NOT EXISTS IX_food_archived ON app_food(is_archived);
+CREATE INDEX IF NOT EXISTS IX_food_group_id ON app_food(group_id);
+CREATE INDEX IF NOT EXISTS IX_food_catalog ON app_food(is_catalog);
+
+-- FOOD CATALOG (June 2026)
+-- =========================
+-- The **global managed library** of foods that ship with the app.
+-- The catalog is mutable at runtime: users can browse it on the
+-- **Library** tab of `AddFoodScreen`, edit any catalog food, and
+-- create new catalog foods via the **+ New Item** tab. Catalog
+-- foods can be added to the user's personal library (the
+-- `app_food` table with `is_catalog = 0`) for logging via the
+-- **Add** button on the row. The bundled seed in
+-- `assets/data/food_catalog.json` is loaded once on first
+-- install (guarded by `_foodCatalogSeededKey`); user edits to
+-- bundled rows and user-authored rows coexist in this table.
+--
+-- `group_id` is the catalog's category FK — the JSON `category`
+-- string is resolved to the matching `FoodGroup.id` at load time
+-- and is not stored in `notes`. `notes` is reserved for free-form
+-- user info and is NULL on freshly-seeded catalog rows.
+--
+-- image_path is an optional native-first local file path for a
+-- user-picked food photo. NULL when no photo is set. Mirrors the
+-- UserProfile.avatarPath contract — web stores NULL even if the
+-- OS picker returns a path, because the path is not replayable
+-- across reloads on web.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getCatalogFoods(includeArchived=false):
+--     SELECT * FROM app_food_catalog WHERE (? OR is_archived = 0) ORDER BY name ASC;
+--   getCatalogFoodById(id):
+--     SELECT * FROM app_food_catalog WHERE id = ?;
+--   createCatalogFood(food):
+--     INSERT INTO app_food_catalog (id, is_catalog=1, image_path, ...) VALUES (...);
+--   updateCatalogFood(food):
+--     UPDATE app_food_catalog SET name=?, group_id=?, unit_type=?, reference_amount=?,
+--       reference_label=?, protein=?, carbs=?, fiber=?, fat=?, sodium=?, image_path=?,
+--       notes=?, updated_at_ms=? WHERE id = ?;
+--   addCatalogFoodToLibrary(catalogFoodId):
+--     INSERT INTO app_food SELECT * FROM app_food_catalog WHERE id = ?;
+--     UPDATE app_food SET id = ?, is_catalog = 0 WHERE id = ?;
+--     -- copyWith() carries group_id across by default, so the
+--     -- catalog's resolved group_id propagates to the library row.
+--
+CREATE TABLE app_food_catalog (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  group_id TEXT,
+  unit_type TEXT NOT NULL CHECK (unit_type IN ('count','grams')),
+  reference_amount REAL NOT NULL,
+  reference_label TEXT NOT NULL,
+  protein INTEGER NOT NULL,
+  carbs INTEGER NOT NULL,
+  fiber INTEGER,
+  fat INTEGER NOT NULL,
+  sodium INTEGER,
+  is_archived INTEGER NOT NULL DEFAULT 0,
+  notes TEXT,
+  image_path TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_food_catalog_archived ON app_food_catalog(is_archived);
+CREATE INDEX IF NOT EXISTS IX_food_catalog_group_id ON app_food_catalog(group_id);
+
+-- FOOD CATEGORY → GROUP_ID MIGRATION (June 2026)
+-- ==============================================
+-- Pre-existing catalog rows may have been loaded with the human-readable
+-- category string ("Proteins", "Dairy", …) in `notes` and `group_id = NULL`.
+-- The current contract moves that data into `group_id` (the FK) and frees
+-- `notes` for user-typed info.
+--
+-- When the future SqliteWorkoutRepository imports a Hive store (or a legacy
+-- SQL store) that predates this change, run the following one-shot
+-- migration on first open — the equivalent of the Hive
+-- `food_category_groupid_migrated_v1` migration:
+--
+--   -- 1. For every row in app_food_catalog with non-null `notes` and
+--   --    null `group_id`, look up the active FoodGroup whose name
+--   --    (case-insensitive) equals `notes` and stamp its id.
+--   UPDATE app_food_catalog
+--      SET group_id = (
+--            SELECT id FROM app_food_group
+--             WHERE LOWER(name) = LOWER(app_food_catalog.notes)
+--               AND is_archived = 0
+--             LIMIT 1
+--          ),
+--          notes = NULL
+--    WHERE notes IS NOT NULL
+--      AND group_id IS NULL;
+--
+--   -- 2. The same backfill for library rows that originated from the
+--   --    catalog (heuristic: `notes` matches a known default category
+--   --    name). User-typed notes are left untouched.
+--   UPDATE app_food
+--      SET group_id = (
+--            SELECT id FROM app_food_group
+--             WHERE LOWER(name) = LOWER(app_food.notes)
+--               AND is_archived = 0
+--             LIMIT 1
+--          ),
+--          notes = NULL
+--    WHERE notes IS NOT NULL
+--      AND group_id IS NULL
+--      AND LOWER(notes) IN (
+--        'proteins','dairy','grains & starches','fruits','vegetables',
+--        'nuts, seeds & fats','snacks & prepared','drinks','condiments'
+--      );
+--
+-- The lookup is built from the LIVE `app_food_group` table (not the
+-- seed), so user renames are honoured: a user who renamed
+-- "Proteins" → "Legumes" would no longer match catalog rows whose
+-- `notes = 'Proteins'`, and those rows would simply fall through to
+-- `group_id = NULL` (Ungrouped).
+
+-- CONSUMED FOOD LOG (June 2026)
+-- =============================
+-- Frozen snapshot of logged foods per day. Each entry stores a complete snapshot
+-- of the food's name, unit type, reference amount/label, macros, and the daily
+-- targets in effect at log time. This ensures historical accuracy even if the
+-- source food or targets are later edited or deleted.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getConsumedFoodsForDate(dateMs):
+--     SELECT * FROM app_consumed_food WHERE date_ms = ? ORDER BY logged_at_ms ASC;
+--   createConsumedFood(entry):
+--     INSERT INTO app_consumed_food VALUES (...);
+--   deleteConsumedFood(id):
+--     DELETE FROM app_consumed_food WHERE id = ?;
+--   getConsumedFoodsInRange(fromMs, toMs):
+--     SELECT * FROM app_consumed_food WHERE date_ms >= ? AND date_ms <= ? ORDER BY date_ms DESC, logged_at_ms ASC;
+--
+CREATE TABLE app_consumed_food (
+  id TEXT NOT NULL PRIMARY KEY,
+  logged_at_ms INTEGER NOT NULL,
+  date_ms INTEGER NOT NULL,
+  source_food_id TEXT,
+  name TEXT NOT NULL,
+  unit_type TEXT NOT NULL CHECK (unit_type IN ('count','grams')),
+  reference_amount REAL NOT NULL,
+  reference_label TEXT NOT NULL,
+  protein INTEGER NOT NULL,
+  carbs INTEGER NOT NULL,
+  fiber INTEGER,
+  fat INTEGER NOT NULL,
+  sodium INTEGER,
+  amount_consumed REAL NOT NULL,
+  group_id_snapshot TEXT,
+  group_name_snapshot TEXT,
+  target_calories REAL NOT NULL,
+  target_protein REAL NOT NULL,
+  target_carbs REAL NOT NULL,
+  target_fat REAL NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_consumed_food_date ON app_consumed_food(date_ms DESC);
+CREATE INDEX IF NOT EXISTS IX_consumed_food_logged ON app_consumed_food(logged_at_ms DESC);
+
 COMMIT;

@@ -133,20 +133,20 @@
 			children = (
 				9740EEB11CF90186004384FC /* Flutter */,
 				97C146F01CF9000F007C117D /* Runner */,
-				97C146EF1CF9000F007C117D /* Products */,
+				97C146EF1CF9000F007C117D /* Library */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
 				504B0E97093428F9DDB49E04 /* Pods */,
 				4C9B94410B2AE5071495A15B /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
-		97C146EF1CF9000F007C117D /* Products */ = {
+		97C146EF1CF9000F007C117D /* Library */ = {
 			isa = PBXGroup;
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 			);
-			name = Products;
+			name = Library;
 			sourceTree = "<group>";
 		};
 		97C146F01CF9000F007C117D /* Runner */ = {
@@ -237,7 +237,7 @@
 				Base,
 			);
 			mainGroup = 97C146E51CF9000F007C117D;
-			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
+			productRefGroup = 97C146EF1CF9000F007C117D /* Library */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (

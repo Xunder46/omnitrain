@@ -13,6 +13,7 @@ import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'package:omnitrain/widgets/session/metric_crown_widget.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -679,7 +680,7 @@ void main() {
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
         await workoutState.createNewSession(modality: 'resistance_lifting');
@@ -743,7 +744,7 @@ void main() {
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
         await workoutState.createNewSession(
@@ -791,7 +792,7 @@ void main() {
         final repo = await _freshRepo();
         final routineState = RoutineState(repo);
         final workoutState = WorkoutState(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
         routineState.setAutosaveEnabled(false);

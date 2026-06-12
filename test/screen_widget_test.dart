@@ -14,6 +14,9 @@ import 'package:omnitrain/features/calendar/day_session_list_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_detail_screen.dart';
 import 'package:omnitrain/features/exercise/exercise_editor_screen.dart';
 import 'package:omnitrain/features/home/home_screen.dart';
+import 'package:omnitrain/features/nutrition/add_food_screen.dart';
+import 'package:omnitrain/features/nutrition/edit_food_screen.dart';
+import 'package:omnitrain/features/nutrition/widgets/food_form.dart';
 import 'package:omnitrain/features/onboarding/onboarding_screen.dart';
 import 'package:omnitrain/features/period/create_period_screen.dart';
 import 'package:omnitrain/features/period/period_list_screen.dart';
@@ -29,7 +32,9 @@ import 'package:omnitrain/features/splash/omni_splash_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
+import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -43,6 +48,7 @@ import 'package:omnitrain/widgets/pickers/metric_chooser_dialog.dart';
 import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -91,7 +97,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -147,7 +153,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -192,7 +198,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(OmniBackHeader), findsOneWidget);
-      expect(find.text('Training Periods'), findsOneWidget);
+      expect(find.text('Periodization'), findsOneWidget);
       expect(find.text('No training periods yet.'), findsOneWidget);
     });
 
@@ -360,7 +366,7 @@ void main() {
       final routineState = RoutineState(repo);
       final routineSessionService = RoutineSessionService(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       return (
         calendarState: calendarState,
         periodState: periodState,
@@ -476,7 +482,7 @@ void main() {
             routineState: routineState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -500,7 +506,7 @@ void main() {
             routineState: routineState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -526,7 +532,7 @@ void main() {
       final routineState = RoutineState(repo);
       final routineSessionService = RoutineSessionService(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
 
       await tester.pumpWidget(
         MaterialApp(
@@ -612,7 +618,7 @@ void main() {
       final repo = await _freshRepo();
       final routineState = RoutineState(repo);
       final workoutState = WorkoutState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       await settingsState.setPreferredWeightUnit('lbs');
       routineState.setAutosaveEnabled(false);
@@ -1302,7 +1308,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -1328,7 +1334,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -1354,7 +1360,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -1387,7 +1393,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       // Pre-seed a session with an exercise
@@ -1434,7 +1440,7 @@ void main() {
       final periodState = PeriodState(repo);
       final profileState = ProfileState(repo);
       await profileState.loadProfile();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       return HomeScreen(
@@ -1448,6 +1454,8 @@ void main() {
         profileState: profileState,
         settingsState: settingsState,
         timerAlertService: FakeTimerAlertService(),
+        nutritionState: NutritionState(repo),
+        foodLibraryState: FoodLibraryState(repo),
       );
     }
 
@@ -1520,7 +1528,7 @@ void main() {
       final periodState = PeriodState(repo);
       final profileState = ProfileState(repo);
       await profileState.loadProfile();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -1536,6 +1544,8 @@ void main() {
             profileState: profileState,
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            nutritionState: NutritionState(repo),
+            foodLibraryState: FoodLibraryState(repo),
           ),
         ),
       );
@@ -1566,7 +1576,7 @@ void main() {
       final periodState = PeriodState(repo);
       final profileState = ProfileState(repo);
       await profileState.loadProfile();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await workoutState.createNewSession(isRolling: true);
@@ -1586,10 +1596,16 @@ void main() {
             profileState: profileState,
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            nutritionState: NutritionState(repo),
+            foodLibraryState: FoodLibraryState(repo),
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      // Use pump() with an explicit duration rather than pumpAndSettle
+      // because the active tile now has a continuously-repeating pulse
+      // animation (the "Workout in progress" dot), which would otherwise
+      // prevent pumpAndSettle from ever settling.
+      await tester.pump(const Duration(milliseconds: 200));
 
       await tester.tap(find.text('Cardio'));
       // The pushed WorkoutSessionScreen triggers a known transient
@@ -1617,7 +1633,7 @@ void main() {
         final periodState = PeriodState(repo);
         final profileState = ProfileState(repo);
         await profileState.loadProfile();
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
         await workoutState.createNewSession(isRolling: true);
@@ -1637,18 +1653,20 @@ void main() {
               profileState: profileState,
               settingsState: settingsState,
               timerAlertService: FakeTimerAlertService(),
+              nutritionState: NutritionState(repo),
+              foodLibraryState: FoodLibraryState(repo),
             ),
           ),
         );
-        await tester.pumpAndSettle();
+      // See note above re: pulse animation and pumpAndSettle.
+      await tester.pump(const Duration(milliseconds: 200));
 
-        await tester.tap(find.byIcon(Icons.folder_open));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.folder_open));
+      await tester.pump(const Duration(milliseconds: 400));
 
-        expect(find.text('Start New Session?'), findsOneWidget);
-        expect(find.byType(MyRoutinesScreen), findsNothing);
-      },
-    );
+      expect(find.text('Start New Session?'), findsOneWidget);
+      expect(find.byType(MyRoutinesScreen), findsNothing);
+    });
 
     testWidgets('does not show unfinished-session launch modal copy', (
       WidgetTester tester,
@@ -1696,7 +1714,7 @@ void main() {
       final periodState = PeriodState(repo);
       final profileState = ProfileState(repo);
       await profileState.loadProfile();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       return (
@@ -1741,6 +1759,8 @@ void main() {
           profileState: deps.profileState,
           settingsState: deps.settingsState,
           timerAlertService: FakeTimerAlertService(),
+          nutritionState: NutritionState(deps.repo),
+          foodLibraryState: FoodLibraryState(deps.repo),
         ),
       );
     }
@@ -1868,6 +1888,8 @@ void main() {
           profileState: deps.profileState,
           settingsState: deps.settingsState,
           timerAlertService: FakeTimerAlertService(),
+          nutritionState: NutritionState(deps.repo),
+          foodLibraryState: FoodLibraryState(deps.repo),
         ),
       );
       await tester.pumpAndSettle();
@@ -1924,7 +1946,7 @@ void main() {
       Future<void> Function(SettingsState settingsState)? configureSettings,
     }) async {
       final workoutState = WorkoutState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       if (configureSettings != null) {
         await configureSettings(settingsState);
@@ -2389,7 +2411,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       await profileState.loadProfile();
 
@@ -2413,7 +2435,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       await profileState.loadProfile();
 
@@ -2460,7 +2482,7 @@ void main() {
             workoutState: workoutState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -2494,7 +2516,7 @@ void main() {
             workoutState: workoutState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -2528,7 +2550,7 @@ void main() {
             workoutState: workoutState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -2562,7 +2584,7 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -2617,7 +2639,7 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -2682,7 +2704,7 @@ void main() {
                 workoutState: workoutState,
                 routineSessionService: routineSessionService,
                 sessionSummaryService: sessionSummaryService,
-                settingsState: SettingsState(repo),
+                settingsState: SettingsState(repo, fakePreferencesService()),
                 timerAlertService: FakeTimerAlertService(),
               ),
             ),
@@ -2781,7 +2803,7 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -2890,7 +2912,7 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -2948,7 +2970,7 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -3019,7 +3041,7 @@ void main() {
               workoutState: workoutState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -3109,7 +3131,7 @@ void main() {
               workoutState: WorkoutState(repo),
               routineSessionService: RoutineSessionService(repo),
               sessionSummaryService: SessionSummaryService(repo),
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -3157,7 +3179,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3333,7 +3355,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3358,7 +3380,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3389,7 +3411,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3428,7 +3450,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3464,7 +3486,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3492,7 +3514,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3522,7 +3544,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3550,7 +3572,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3584,7 +3606,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -3637,7 +3659,7 @@ void main() {
               workoutState: workoutState,
               routineState: routineState,
               sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
               timerAlertService: FakeTimerAlertService(),
             ),
           ),
@@ -3669,7 +3691,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3737,7 +3759,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3774,7 +3796,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3809,7 +3831,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3838,7 +3860,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3871,7 +3893,7 @@ void main() {
       final periodState = PeriodState(repo);
       final profileState = ProfileState(repo);
       await profileState.loadProfile();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       return OmniSplashScreen(
@@ -3884,6 +3906,8 @@ void main() {
         periodState: periodState,
         profileState: profileState,
         settingsState: settingsState,
+        nutritionState: NutritionState(repo),
+        foodLibraryState: FoodLibraryState(repo),
         timerAlertService: FakeTimerAlertService(),
         // Use a very short duration so no navigation fires during the test
         duration: const Duration(milliseconds: 1),
@@ -3946,7 +3970,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
             effortId: effortId,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -3969,7 +3993,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       await profileState.loadProfile();
       const definition = ProfileMeasurements.bodyweight;
@@ -3996,7 +4020,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       await profileState.loadProfile();
       const definition = ProfileMeasurements.bodyweight;
@@ -4033,7 +4057,7 @@ void main() {
         ),
       );
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       await settingsState.setPreferredWeightUnit('lbs');
       await profileState.loadProfile();
@@ -4072,7 +4096,7 @@ void main() {
         ),
       );
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       await profileState.loadProfile();
       const definition = ProfileMeasurements.bodyweight;
@@ -4104,7 +4128,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 1000));
       final repo = await _freshRepo();
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
       await profileState.loadProfile();
       const definition = ProfileMeasurements.bodyweight;
@@ -4550,7 +4574,7 @@ void main() {
                 routineState: routineState,
                 sessionSummaryService: SessionSummaryService(repo),
                 timerAlertService: FakeTimerAlertService(),
-                settingsState: SettingsState(repo),
+                settingsState: SettingsState(repo, fakePreferencesService()),
               ),
             ),
           );
@@ -4624,7 +4648,7 @@ void main() {
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
               timerAlertService: FakeTimerAlertService(),
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
             ),
           ),
         );
@@ -4658,7 +4682,7 @@ void main() {
         await repo.setPreferenceString('preferred_weight_unit', 'lbs');
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
         await workoutState.markExerciseInfoHintSeen();
         await workoutState.markExerciseNotesHintSeen();
@@ -4709,7 +4733,7 @@ void main() {
         await repo.setPreferenceString('preferred_weight_unit', 'lbs');
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
         await workoutState.markExerciseInfoHintSeen();
         await workoutState.markExerciseNotesHintSeen();
@@ -4762,7 +4786,7 @@ void main() {
         await repo.setPreferenceString('preferred_weight_unit', 'lbs');
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
         await workoutState.markExerciseInfoHintSeen();
         await workoutState.markExerciseNotesHintSeen();
@@ -4815,7 +4839,7 @@ void main() {
         await repo.setPreferenceString('preferred_weight_unit', 'lbs');
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
         await workoutState.markExerciseInfoHintSeen();
         await workoutState.markExerciseNotesHintSeen();
@@ -4897,7 +4921,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -4941,7 +4965,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -4963,7 +4987,7 @@ void main() {
         await repo.setPreferenceString('preferred_weight_unit', 'kg');
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
         await workoutState.markExerciseInfoHintSeen();
         await workoutState.markExerciseNotesHintSeen();
@@ -5066,7 +5090,7 @@ void main() {
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
               timerAlertService: FakeTimerAlertService(),
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
             ),
           ),
         );
@@ -5123,7 +5147,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5154,7 +5178,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5180,7 +5204,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5206,7 +5230,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5237,7 +5261,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5268,7 +5292,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5314,7 +5338,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5352,7 +5376,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5395,7 +5419,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5422,7 +5446,7 @@ void main() {
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
               timerAlertService: FakeTimerAlertService(),
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
             ),
           ),
         );
@@ -5448,7 +5472,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5472,7 +5496,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5498,7 +5522,7 @@ void main() {
                 routineState: routineState,
                 sessionSummaryService: SessionSummaryService(repo),
                 timerAlertService: FakeTimerAlertService(),
-                settingsState: SettingsState(repo),
+                settingsState: SettingsState(repo, fakePreferencesService()),
               ),
             ),
           );
@@ -5581,7 +5605,7 @@ void main() {
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
               timerAlertService: FakeTimerAlertService(),
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
             ),
           ),
         );
@@ -5629,7 +5653,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5753,7 +5777,7 @@ void main() {
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
               timerAlertService: FakeTimerAlertService(),
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
             ),
           ),
         );
@@ -5782,7 +5806,7 @@ void main() {
               routineState: routineState,
               sessionSummaryService: SessionSummaryService(repo),
               timerAlertService: FakeTimerAlertService(),
-              settingsState: SettingsState(repo),
+              settingsState: SettingsState(repo, fakePreferencesService()),
             ),
           ),
         );
@@ -5817,7 +5841,7 @@ void main() {
             routineState: routineState,
             sessionSummaryService: SessionSummaryService(repo),
             timerAlertService: FakeTimerAlertService(),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -5825,5 +5849,231 @@ void main() {
 
       expect(find.text(exercises.first.name), findsOneWidget);
     });
+  });
+
+  // ── Food library — edit + image + fiber (June 2026) ────────────────
+
+  group('Food library — edit + image + fiber (catalog scope)', () {
+    testWidgets(
+      'FoodForm pre-fills the name field when initial Food is non-null (S-003)',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadCatalogFoods();
+
+        const initial = Food(
+          id: 'food-prefill-1',
+          name: 'Pre-filled Chicken',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100,
+          referenceLabel: 'g',
+          protein: 31,
+          carbs: 0,
+          fiber: 0,
+          fat: 4,
+          isCatalog: true,
+          imagePath: '/tmp/missing.jpg', // file is missing; falls back to placeholder
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: FoodForm(
+                initial: initial,
+                foodLibraryState: foodLibraryState,
+                onSave: (_) async => true,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Form's name field is pre-populated (top of form, always
+        // visible without scrolling).
+        expect(find.text('Pre-filled Chicken'), findsOneWidget);
+        // Image tile is rendered.
+        expect(find.byKey(const Key('food_form_image_tile')), findsOneWidget);
+        // Name field is rendered with the initial value.
+        expect(find.byKey(const Key('food_form_name')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'FoodForm renders an empty image tile when initial is null (S-008)',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadCatalogFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: FoodForm(
+                initial: null,
+                foodLibraryState: foodLibraryState,
+                onSave: (_) async => true,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Image tile is rendered (the placeholder is the "no
+        // image" state).
+        expect(find.byKey(const Key('food_form_image_tile')), findsOneWidget);
+        // The "Add photo" text is the visible label of the
+        // placeholder body.
+        expect(find.text('Add photo'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'EditFoodScreen renders FoodForm with Save label and pre-fills name',
+      (WidgetTester tester) async {
+        // Tall surface so the full form (image tile + name field)
+        // is visible without scrolling.
+        await tester.binding.setSurfaceSize(const Size(800, 1800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadCatalogFoods();
+        await foodLibraryState.createCatalogFood(
+          const FoodDraft(
+            name: 'Edit Screen Test',
+            groupId: null,
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            protein: 31,
+            carbs: 0,
+            fiber: 0,
+            fat: 4,
+            sodium: null,
+            notes: null,
+            imagePath: null,
+          ),
+        );
+        await foodLibraryState.loadCatalogFoods();
+        final food = foodLibraryState.catalogFoods
+            .firstWhere((f) => f.name == 'Edit Screen Test');
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: EditFoodScreen(
+              food: food,
+              foodLibraryState: foodLibraryState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // AppBar title.
+        expect(find.text('Edit Food'), findsOneWidget);
+        // Image tile is rendered.
+        expect(find.byKey(const Key('food_form_image_tile')), findsOneWidget);
+        // Name field is pre-populated with the food's name.
+        // (The TextField renders the controller's text — we look
+        // for the field by its key and check the controller text.)
+        final nameField = tester.widget<TextFormField>(
+          find.byKey(const Key('food_form_name')),
+        );
+        expect(nameField.controller?.text, 'Edit Screen Test');
+      },
+    );
+
+    testWidgets(
+      'Catalog row on the Library tab shows a FoodThumbnail slot (S-006)',
+      (WidgetTester tester) async {
+        // Tall surface so the bundled catalog's first few rows
+        // are visible without scrolling.
+        await tester.binding.setSurfaceSize(const Size(800, 1800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        final nutritionState = NutritionState(repo);
+        await foodLibraryState.loadCatalogFoods();
+        // Add a catalog food with an image so the thumbnail is
+        // exercised in the "image present" branch.
+        final foods = foodLibraryState.catalogFoods;
+        final chickenId = foods
+            .firstWhere((f) => f.name == 'Chicken breast, skinless')
+            .id;
+        await foodLibraryState.updateCatalogFood(
+          foods.firstWhere((f) => f.id == chickenId),
+          FoodDraft(
+            name: 'Chicken breast, skinless',
+            groupId: null,
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            protein: 31,
+            carbs: 0,
+            fiber: 0,
+            fat: 4,
+            sodium: null,
+            notes: null,
+            imagePath: '/tmp/native-only.jpg', // file does not exist on the test runner; the row still renders the slot
+          ),
+        );
+        await foodLibraryState.loadCatalogFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AddFoodScreen(
+              foodLibraryState: foodLibraryState,
+              nutritionState: nutritionState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The Library tab is the default. The catalog row's
+        // thumbnail slot is keyed by food id and is always
+        // present (placeholder when no image, image when set).
+        expect(
+          find.byKey(Key('food_catalog_thumb_$chickenId')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'Catalog row on the Library tab opens EditFoodScreen on row tap (S-001)',
+      (WidgetTester tester) async {
+        // Tall surface so the catalog list fits and the
+        // "Chicken breast, skinless" row is visible without
+        // scrolling.
+        await tester.binding.setSurfaceSize(const Size(800, 1800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        final nutritionState = NutritionState(repo);
+        await foodLibraryState.loadCatalogFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AddFoodScreen(
+              foodLibraryState: foodLibraryState,
+              nutritionState: nutritionState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The bundled catalog ships a "Chicken breast, skinless"
+        // row. Tapping its name (not the Add button) opens the
+        // Edit Food screen.
+        await tester.tap(find.text('Chicken breast, skinless'));
+        await tester.pumpAndSettle();
+
+        // EditFoodScreen is on the navigator.
+        expect(find.text('Edit Food'), findsOneWidget);
+      },
+    );
   });
 }

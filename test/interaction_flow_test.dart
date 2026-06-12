@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/profile_measurements.dart';
+import 'package:omnitrain/core/services/preferences_service.dart'
+    show PreferencesService;
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
@@ -18,7 +20,9 @@ import 'package:omnitrain/features/session/session_summary_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
+import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -27,7 +31,6 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
-import 'package:omnitrain/widgets/session/metric_crown_widget.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -37,6 +40,26 @@ Future<MockWorkoutRepository> _freshRepo() async {
   await repo.initialize();
   return repo;
 }
+
+/// In-memory `PreferencesService` for tests that exercise the settings state
+/// without touching `shared_preferences`. The real `SharedPreferences`-backed
+/// service is exercised separately in `settings_sounds_test.dart`.
+class _FakePreferencesService implements PreferencesService {
+  int _hubOpenCount = 0;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  int getHubOpenCount() => _hubOpenCount;
+
+  @override
+  Future<void> incrementHubOpenCount() async {
+    _hubOpenCount += 1;
+  }
+}
+
+_FakePreferencesService _fakePrefs() => _FakePreferencesService();
 
 void main() {
   group('HomeScreen active-session affordance', () {
@@ -65,7 +88,7 @@ void main() {
       final periodState = PeriodState(repo);
       final profileState = ProfileState(repo);
       await profileState.loadProfile();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       final screen = HomeScreen(
@@ -79,6 +102,8 @@ void main() {
         profileState: profileState,
         settingsState: settingsState,
         timerAlertService: FakeTimerAlertService(),
+        nutritionState: NutritionState(repo),
+        foodLibraryState: FoodLibraryState(repo),
       );
 
       return (
@@ -100,7 +125,7 @@ void main() {
       final periodState = PeriodState(repo);
       final profileState = ProfileState(repo);
       await profileState.loadProfile();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       return HomeScreen(
@@ -114,6 +139,8 @@ void main() {
         profileState: profileState,
         settingsState: settingsState,
         timerAlertService: FakeTimerAlertService(),
+        nutritionState: NutritionState(repo),
+        foodLibraryState: FoodLibraryState(repo),
       );
     }
 
@@ -124,7 +151,11 @@ void main() {
         final setup = await buildHomeWithLoadedSession(repo);
 
         await tester.pumpWidget(MaterialApp(home: setup.screen));
-        await tester.pumpAndSettle();
+        // Use pump() with an explicit duration rather than pumpAndSettle
+        // because the active tile now has a continuously-repeating
+        // pulse animation (the "Workout in progress" dot), which would
+        // otherwise prevent pumpAndSettle from ever settling.
+        await tester.pump(const Duration(milliseconds: 200));
 
         expect(find.text('Unfinished Session'), findsNothing);
         expect(find.text('Confirm Discard'), findsNothing);
@@ -139,7 +170,7 @@ void main() {
         await tester.tap(find.text('Resistance'));
         await tester.pump();
         tester.takeException();
-        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 400));
 
         expect(find.byType(WorkoutSessionScreen), findsOneWidget);
         expect(setup.workoutState.currentSession?.id, setup.sessionId);
@@ -327,7 +358,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       await workoutState.createNewSession();
@@ -514,7 +545,7 @@ void main() {
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, _fakePrefs());
         await settingsState.initialize();
         await workoutState.createNewSession(modality: 'cardio_endurance');
 
@@ -653,7 +684,7 @@ void main() {
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, _fakePrefs());
         await settingsState.initialize();
         await workoutState.createNewSession(modality: 'sports');
 
@@ -707,7 +738,7 @@ void main() {
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, _fakePrefs());
         await settingsState.initialize();
         await workoutState.createNewSession(
           modality: 'isometric_stretching',
@@ -815,7 +846,7 @@ void main() {
             routineState: routineState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, _fakePrefs()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -856,7 +887,7 @@ void main() {
             routineState: routineState,
             routineSessionService: routineSessionService,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, _fakePrefs()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -1158,7 +1189,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       await workoutState.createNewSession();
@@ -1195,7 +1226,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       // No exercises added
@@ -1229,7 +1260,7 @@ void main() {
         final workoutState = WorkoutState(repo);
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, _fakePrefs());
         await settingsState.initialize();
         await workoutState.createNewSession();
 
@@ -1268,7 +1299,7 @@ void main() {
         await workoutState.createNewSession();
         final routineState = RoutineState(repo);
         final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, _fakePrefs());
         await settingsState.initialize();
         await settingsState.setShowFeelingSurvey(false);
 
@@ -1305,7 +1336,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, _fakePrefs()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -1343,7 +1374,7 @@ void main() {
             workoutState: workoutState,
             routineState: routineState,
             sessionSummaryService: sessionSummaryService,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, _fakePrefs()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -1370,7 +1401,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -1395,7 +1426,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -1423,7 +1454,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -1456,7 +1487,7 @@ void main() {
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -1535,7 +1566,7 @@ void main() {
         ),
       );
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
       await profileState.loadProfile();
 
@@ -1565,7 +1596,7 @@ void main() {
         ),
       );
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
       await profileState.loadProfile();
 
@@ -1612,7 +1643,7 @@ void main() {
         ),
       );
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
       await profileState.loadProfile();
 
@@ -1649,7 +1680,7 @@ void main() {
         ),
       );
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
       await profileState.loadProfile();
 
@@ -1687,7 +1718,7 @@ void main() {
         ),
       );
       final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
       await profileState.loadProfile();
 
@@ -1765,7 +1796,7 @@ void main() {
       final workoutState = WorkoutState(repo);
       final routineState = RoutineState(repo);
       final sessionSummaryService = SessionSummaryService(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
       await workoutState.createNewSession(modality: modality);
       return (

@@ -428,7 +428,7 @@ HomeScreen → My Routines tile
 7. System determines `effortKind` from override or chosen metric
 8. UI renders appropriate tracking controls
 
-### Create Custom Exercise (Picker)
+### + New Item Exercise (Picker)
 
 1. User taps "New Exercise" in `ExercisePickerDialog`
 2. App opens `ExerciseEditorScreen` (form with name, description, discipline, capabilities, muscle groups)

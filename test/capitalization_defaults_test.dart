@@ -15,6 +15,7 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/inputs/numeric_field_with_done_bar.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -92,7 +93,7 @@ void main() {
       (tester) async {
         final repo = await _freshRepo();
         final profileState = ProfileState(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
         await tester.pumpWidget(
@@ -264,7 +265,7 @@ void main() {
           workoutState: workoutState,
           routineState: routineState,
           sessionSummaryService: sessionSummaryService,
-          settingsState: SettingsState(repo),
+          settingsState: SettingsState(repo, fakePreferencesService()),
           timerAlertService: FakeTimerAlertService(),
         ),
       ),

@@ -1,11 +1,14 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
+import '../datasources/food_catalog_loader.dart';
 import '../../mock/seed_data.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
+import '../../core/utils/date_utils.dart';
 import 'workout_repository.dart';
 
 const _hiveUuid = Uuid();
@@ -29,6 +32,20 @@ class HiveWorkoutRepository implements WorkoutRepository {
       'timed_extra_weight_migrated_v1';
   static const String _exerciseLibraryRefreshMigrationKey =
       'exercise_library_refreshed_v5';
+  static const String _nutritionTargetsDailyMigrationKey =
+      'nutrition_targets_daily_migrated_v1';
+  static const String _foodCatalogSeededKey = 'food_catalog_seeded_v1';
+  static const String _defaultFoodGroupsSeededKey =
+      'default_food_groups_seeded_v1';
+  static const String _foodCategoryGroupIdMigratedKey =
+      'food_category_groupid_migrated_v1';
+
+  /// The Hive meta-box key for the one-shot category→groupId migration.
+  /// Exposed via [visibleForTesting] so migration tests can clear the
+  /// marker to force a re-run.
+  @visibleForTesting
+  static String get foodCategoryGroupIdMigratedKey =>
+      _foodCategoryGroupIdMigratedKey;
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -73,6 +90,22 @@ class HiveWorkoutRepository implements WorkoutRepository {
   // Session blocks box: key = SessionBlock.id, value = SessionBlock.toMap()
   late Box<Map> _sessionBlocksBox;
 
+  late Box<Map> _nutritionTargetsBox;
+
+  // Date-keyed nutrition targets box: key = dateMs (as string), value = NutritionTarget.toMap()
+  // Supports day-based targets with backward walkback and forward propagation
+  late Box<Map> _nutritionTargetsByDateBox;
+
+  // Food library boxes: key = id, value = FoodGroup.toMap() or Food.toMap()
+  late Box<Map> _foodGroupsBox;
+  late Box<Map> _foodsBox;
+
+  // Food catalog box: read-only bundled foods
+  late Box<Map> _foodCatalogBox;
+
+  // Day nutrition log box: consumed foods (frozen snapshots)
+  late Box<Map> _consumedFoodsBox;
+
   late Box<List> _exerciseMuscleGroupsBox;
   late Box<List> _exerciseEquipmentBox;
   late Box<List> _exerciseTagsBox;
@@ -109,6 +142,16 @@ class HiveWorkoutRepository implements WorkoutRepository {
     _templateEffortsBox = await Hive.openBox<Map>('template_efforts');
     _templateTargetsBox = await Hive.openBox<Map>('template_targets');
 
+    _nutritionTargetsBox = await Hive.openBox<Map>('nutrition_targets');
+    _nutritionTargetsByDateBox = await Hive.openBox<Map>(
+      'nutrition_targets_by_date',
+    );
+
+    _foodGroupsBox = await Hive.openBox<Map>('food_groups');
+    _foodsBox = await Hive.openBox<Map>('foods');
+    _foodCatalogBox = await Hive.openBox<Map>('foods_catalog');
+    _consumedFoodsBox = await Hive.openBox<Map>('consumed_foods');
+
     _roundInstancesBox = await Hive.openBox<Map>('round_instances');
 
     _timedInstancesBox = await Hive.openBox<Map>('timed_instances');
@@ -144,8 +187,186 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _migrateExerciseContentFields();
     await _migrateTimedExtraWeight();
     await _migrateExerciseLibraryRefresh();
+    await _migrateDailyNutritionTargets();
+    await _seedFoodCatalog();
+    // Seed default food group categories (Proteins, Vegetables, …).
+    // Idempotent: existing user-created groups with the same name win
+    // over the seed (see _seedDefaultFoodGroups).
+    await _seedDefaultFoodGroups();
+    // Backfill any catalog rows whose category string is still stored in
+    // `notes` instead of the proper `group_id` FK. Runs after the default
+    // groups are seeded so it has lookup data to resolve against.
+    await _migrateFoodCategoryToGroupId();
 
     _initialized = true;
+  }
+
+  /// Seed the food catalog from the bundled asset on first install.
+  /// The catalog is read-only; this method only runs once (guarded by
+  /// [_foodCatalogSeededKey]) and never overwrites existing rows.
+  Future<void> _seedFoodCatalog() async {
+    final seeded = _metaBox.get(_foodCatalogSeededKey) as bool? ?? false;
+    if (seeded) return;
+
+    try {
+      final catalogFoods = await FoodCatalogLoader.loadFromAsset();
+      final entries = <String, Map>{
+        for (final food in catalogFoods) food.id: food.toMap(),
+      };
+      await _foodCatalogBox.putAll(entries);
+      await _metaBox.put(_foodCatalogSeededKey, true);
+    } catch (e) {
+      // Asset load failure is non-fatal: the catalog will simply be empty.
+      // The app remains functional; users can still build their own library.
+    }
+  }
+
+  /// Seed default food group categories (Proteins, Vegetables, …) on first
+  /// install and idempotently backfill them on existing installs.
+  ///
+  /// Idempotency rules:
+  /// - Guarded by [_defaultFoodGroupsSeededKey] so the work runs at most once
+  ///   per install. The marker is set only after all 9 default groups are
+  ///   successfully written.
+  /// - Each default group is inserted by its stable id. If a group with that
+  ///   id already exists (e.g. a future migration added a group of its own),
+  ///   the existing row is preserved untouched.
+  /// - A name-based collision check (case-insensitive) prevents duplicate
+  ///   "Proteins" / "Vegetables" / … groups if the user already created one
+  ///   with that name before the migration ran.
+  Future<void> _seedDefaultFoodGroups() async {
+    final seeded = _metaBox.get(_defaultFoodGroupsSeededKey) as bool? ?? false;
+    if (seeded) return;
+
+    // Snapshot existing names once so we can detect collisions cheaply.
+    final existingNames = <String>{
+      for (final raw in _foodGroupsBox.values)
+        (raw['name'] as String? ?? '').toLowerCase(),
+    };
+
+    for (final group in SeedData.defaultFoodGroups) {
+      // Stable-id match: the row is already populated; never overwrite.
+      if (_foodGroupsBox.containsKey(group.id)) continue;
+
+      // Name match: the user already created a group with the same name.
+      // Skip seeding to avoid a duplicate (the user's row wins).
+      if (existingNames.contains(group.name.toLowerCase())) continue;
+
+      await _foodGroupsBox.put(group.id, group.toMap());
+    }
+
+    await _metaBox.put(_defaultFoodGroupsSeededKey, true);
+  }
+
+  /// One-shot migration: resolve the catalog's `notes` category string
+  /// (legacy storage: "Proteins" / "Dairy" / …) into a proper
+  /// `group_id` FK pointing at the matching default `FoodGroup`.
+  ///
+  /// Why needed:
+  /// - Old installs have catalog rows where `notes` carries the category
+  ///   label and `group_id` is NULL. The new contract is `group_id`
+  ///   as the single source of truth, with `notes` reserved for free-form
+  ///   user notes.
+  /// - This migration backfills `group_id` on existing rows in BOTH
+  ///   `_foodCatalogBox` and `_foodsBox` (the latter covers any catalog
+  ///   food the user has already added to their library on a previous
+  ///   install). It does not touch user-authored library foods.
+  ///
+  /// Matching rule:
+  /// - Build a `category-name (lower-cased) -> FoodGroup.id` lookup from
+  ///   the *active* default food groups present in `_foodGroupsBox`.
+  ///   This way, if the user renamed or deleted a default group, we
+  ///   still match against the user's intent (their renamed group wins).
+  /// - Rows whose `notes` doesn't match any active default are simply
+  ///   left as `group_id = NULL` (treated as Ungrouped).
+  /// - `notes` is cleared to NULL only when we successfully resolved a
+  ///   match; we do not stomp unrelated user notes.
+  ///
+  /// Library-box heuristic:
+  /// - `_foodsBox` only stores rows with `is_catalog = 0`, so the
+  ///   `is_catalog` flag is useless for picking catalog-backed rows.
+  ///   Instead we identify catalog-copied rows by their `notes` value
+  ///   matching one of the 9 default category names exactly (case-
+  ///   insensitive). User-authored library foods would not carry a
+  ///   category name in `notes` by default.
+  ///
+  /// Idempotency:
+  /// - Guarded by [_foodCategoryGroupIdMigratedKey].
+  /// - The marker is set only after a full pass; partial work is
+  ///   safe to retry (writes overwrite).
+  Future<void> _migrateFoodCategoryToGroupId() async {
+    final migrated =
+        _metaBox.get(_foodCategoryGroupIdMigratedKey) as bool? ?? false;
+    if (migrated) return;
+
+    // Build a name -> groupId lookup from the ACTIVE default groups.
+    // Built from _foodGroupsBox (not SeedData) so the migration honours
+    // user renames: a user who renamed "Proteins" → "Legumes" would
+    // no longer match catalog rows carrying notes='Proteins'.
+    final nameToGroupId = <String, String>{
+      for (final raw in _foodGroupsBox.values)
+        if ((raw['is_archived'] as int? ?? 0) == 0)
+          (raw['name'] as String? ?? '').toLowerCase(): raw['id'] as String,
+    };
+
+    Future<void> migrateCatalogBox() async {
+      final keys = _foodCatalogBox.keys.toList(growable: false);
+      for (final key in keys) {
+        final raw = _foodCatalogBox.get(key);
+        if (raw == null) continue;
+
+        final notes = raw['notes'] as String?;
+        final groupId = raw['group_id'] as String?;
+        if (notes == null || notes.isEmpty) continue;
+        if (groupId != null) continue; // already migrated
+
+        final resolved = nameToGroupId[notes.toLowerCase()];
+        if (resolved == null) continue; // no active match; leave as-is
+
+        raw['group_id'] = resolved;
+        raw['notes'] = null;
+        await _foodCatalogBox.put(key, raw);
+      }
+    }
+
+    Future<void> migrateLibraryBox() async {
+      // Only touch library rows whose notes match a known category name.
+      // User-authored foods with arbitrary notes are left alone.
+      final keys = _foodsBox.keys.toList(growable: false);
+      for (final key in keys) {
+        final raw = _foodsBox.get(key);
+        if (raw == null) continue;
+
+        final notes = raw['notes'] as String?;
+        final groupId = raw['group_id'] as String?;
+        if (notes == null || notes.isEmpty) continue;
+        if (groupId != null) continue; // already migrated
+
+        // Heuristic: only consider notes that match a known default
+        // category name. This avoids stomping user-typed notes.
+        if (!nameToGroupId.containsKey(notes.toLowerCase())) continue;
+
+        final resolved = nameToGroupId[notes.toLowerCase()]!;
+        raw['group_id'] = resolved;
+        raw['notes'] = null;
+        await _foodsBox.put(key, raw);
+      }
+    }
+
+    await migrateCatalogBox();
+    await migrateLibraryBox();
+
+    await _metaBox.put(_foodCategoryGroupIdMigratedKey, true);
+  }
+
+  /// Test-only entry point: clears the migration marker and re-runs
+  /// the category→groupId migration. Lets tests verify behaviour
+  /// under user-modified group names that wouldn't normally exist
+  /// after a fresh initialize().
+  @visibleForTesting
+  Future<void> rerunCategoryMigrationForTest() async {
+    await _metaBox.delete(_foodCategoryGroupIdMigratedKey);
+    await _migrateFoodCategoryToGroupId();
   }
 
   Future<void> _seedData() async {
@@ -409,6 +630,36 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _metaBox.put(_exerciseLibraryRefreshMigrationKey, true);
   }
 
+  /// Migrates legacy nullable NutritionTarget to non-nullable defaults (0.0).
+  /// Creates new daily-keyed box for date-based targets on first install.
+  Future<void> _migrateDailyNutritionTargets() async {
+    final migrated =
+        _metaBox.get(_nutritionTargetsDailyMigrationKey) as bool? ?? false;
+    if (migrated) return;
+
+    // If there's a legacy global target, migrate it to today's date
+    final legacyRaw = _nutritionTargetsBox.get('user-targets');
+    if (legacyRaw != null) {
+      try {
+        final legacyMap = _asStringMap(legacyRaw);
+        // Convert nullable fields to non-nullable with 0.0 defaults
+        final migratedMap = {
+          'calories': ((legacyMap['calories'] as num?) ?? 0.0).toDouble(),
+          'protein': ((legacyMap['protein'] as num?) ?? 0.0).toDouble(),
+          'carbs': ((legacyMap['carbs'] as num?) ?? 0.0).toDouble(),
+          'fat': ((legacyMap['fat'] as num?) ?? 0.0).toDouble(),
+          'date_ms': null, // Legacy targets have no date
+        };
+        // Store back with migrated values
+        await _nutritionTargetsBox.put('user-targets', migratedMap);
+      } catch (e) {
+        // If parsing fails, leave it as-is; subsequent loads will handle it
+      }
+    }
+
+    await _metaBox.put(_nutritionTargetsDailyMigrationKey, true);
+  }
+
   Map<String, dynamic> _asStringMap(dynamic raw) {
     return Map<String, dynamic>.from(raw as Map);
   }
@@ -621,6 +872,94 @@ class HiveWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> setPreferenceString(String key, String value) async {
     await _metaBox.put(key, value);
+  }
+
+  // ===== NUTRITION =====
+
+  @override
+  Future<NutritionTarget?> getNutritionTargetForDate(int dateMs) async {
+    final dateKey = dateMs.toString();
+
+    // Check if target exists for this exact date
+    final raw = _nutritionTargetsByDateBox.get(dateKey);
+    if (raw != null) {
+      return NutritionTarget.fromMap(_asStringMap(raw));
+    }
+
+    // Walk backward to find the most recent ancestor target
+    int searchDateMs = dateMs - (24 * 60 * 60 * 1000); // Start 1 day before
+    while (searchDateMs > 0) {
+      final ancestorRaw = _nutritionTargetsByDateBox.get(
+        searchDateMs.toString(),
+      );
+      if (ancestorRaw != null) {
+        // Found an ancestor; return a copy (rolls over to the requested date)
+        final ancestorTarget = NutritionTarget.fromMap(
+          _asStringMap(ancestorRaw),
+        );
+        return ancestorTarget.copyWith(dateMs: dateMs);
+      }
+      searchDateMs -= (24 * 60 * 60 * 1000); // Go back another day
+    }
+
+    // No ancestor found
+    return null;
+  }
+
+  @override
+  Future<void> saveNutritionTargetForDate(
+    int dateMs,
+    NutritionTarget target,
+  ) async {
+    final dateKey = dateMs.toString();
+
+    // Fetch the old target (if it exists) to compare for forward propagation
+    final oldRaw = _nutritionTargetsByDateBox.get(dateKey);
+    final oldTarget = oldRaw != null
+        ? NutritionTarget.fromMap(_asStringMap(oldRaw))
+        : null;
+
+    // Save the new target for this date
+    final targetToSave = target.copyWith(dateMs: dateMs);
+    await _nutritionTargetsByDateBox.put(dateKey, targetToSave.toMap());
+
+    // Forward propagation: update future dates that had the old values
+    if (oldTarget != null) {
+      final allKeys = _nutritionTargetsByDateBox.keys
+          .map((k) => int.tryParse(k.toString()) ?? 0)
+          .toList();
+      final sortedFutureKeys = allKeys.where((k) => k > dateMs).toList()
+        ..sort();
+
+      for (final futureKey in sortedFutureKeys) {
+        final futureRaw = _nutritionTargetsByDateBox.get(futureKey.toString());
+        if (futureRaw != null) {
+          final futureTarget = NutritionTarget.fromMap(_asStringMap(futureRaw));
+          // Only update if the future target is identical to the old one
+          if (futureTarget.calories == oldTarget.calories &&
+              futureTarget.protein == oldTarget.protein &&
+              futureTarget.carbs == oldTarget.carbs &&
+              futureTarget.fat == oldTarget.fat) {
+            // Update to the new values, preserving the future date
+            final updated = target.copyWith(dateMs: futureKey);
+            await _nutritionTargetsByDateBox.put(
+              futureKey.toString(),
+              updated.toMap(),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  @override
+  Future<NutritionTarget?> getNutritionTarget() async {
+    return getNutritionTargetForDate(OmniDateUtils.todayMidnightMs());
+  }
+
+  @override
+  Future<void> saveNutritionTarget(NutritionTarget target) async {
+    return saveNutritionTargetForDate(OmniDateUtils.todayMidnightMs(), target);
   }
 
   @override
@@ -1495,6 +1834,308 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _templateTargetsBox.deleteAll(idsToDelete);
   }
 
+  // ===== FOOD GROUPS =====
+
+  @override
+  Future<List<FoodGroup>> getFoodGroups({bool includeArchived = false}) async {
+    final groups = _foodGroupsBox.values
+        .map((raw) => FoodGroup.fromMap(_asStringMap(raw)))
+        .toList();
+
+    if (!includeArchived) {
+      return groups.where((g) => !g.isArchived).toList();
+    }
+    return groups;
+  }
+
+  @override
+  Future<FoodGroup?> getFoodGroupById(String id) async {
+    final raw = _foodGroupsBox.get(id);
+    if (raw == null) return null;
+    return FoodGroup.fromMap(_asStringMap(raw));
+  }
+
+  @override
+  Future<String> createFoodGroup(FoodGroup group) async {
+    await _foodGroupsBox.put(group.id, group.toMap());
+    return group.id;
+  }
+
+  @override
+  Future<void> updateFoodGroup(FoodGroup group) async {
+    await _foodGroupsBox.put(group.id, group.toMap());
+  }
+
+  @override
+  Future<void> archiveFoodGroup(String id) async {
+    final raw = _foodGroupsBox.get(id);
+    if (raw == null) return;
+
+    final group = FoodGroup.fromMap(_asStringMap(raw));
+    final archived = FoodGroup(
+      id: group.id,
+      name: group.name,
+      color: group.color,
+      isArchived: true,
+      createdAtMs: group.createdAtMs,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    await _foodGroupsBox.put(id, archived.toMap());
+  }
+
+  @override
+  Future<void> reassignFoodsToGroup(
+    List<String> foodIds,
+    String? targetGroupId,
+  ) async {
+    if (foodIds.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final id in foodIds) {
+      final raw = _foodsBox.get(id);
+      if (raw == null) continue;
+      final food = Food.fromMap(_asStringMap(raw));
+      if (food.isCatalog) continue; // safety: catalog foods are read-only
+      final updated = food.copyWith(groupId: targetGroupId, updatedAtMs: now);
+      await _foodsBox.put(id, updated.toMap());
+    }
+  }
+
+  // ===== FOODS =====
+
+  @override
+  Future<List<Food>> getFoods({bool includeArchived = false}) async {
+    // Returns only library foods (isCatalog == false)
+    var foods = _foodsBox.values
+        .map((raw) => Food.fromMap(_asStringMap(raw)))
+        .where((f) => !f.isCatalog)
+        .toList();
+
+    if (!includeArchived) {
+      foods = foods.where((f) => !f.isArchived).toList();
+    }
+    return foods;
+  }
+
+  @override
+  Future<List<Food>> getFoodsByGroup(
+    String groupId, {
+    bool includeArchived = false,
+  }) async {
+    var foods = _foodsBox.values
+        .map((raw) => Food.fromMap(_asStringMap(raw)))
+        .where((f) => !f.isCatalog && f.groupId == groupId)
+        .toList();
+
+    if (!includeArchived) {
+      foods = foods.where((f) => !f.isArchived).toList();
+    }
+    return foods;
+  }
+
+  @override
+  Future<Food?> getFoodById(String id) async {
+    final raw = _foodsBox.get(id);
+    if (raw == null) return null;
+    final food = Food.fromMap(_asStringMap(raw));
+    // Only return library foods
+    if (food.isCatalog) return null;
+    return food;
+  }
+
+  @override
+  Future<List<Food>> searchFoods(
+    String query, {
+    bool includeArchived = false,
+  }) async {
+    final lowerQuery = query.toLowerCase();
+    var foods = _foodsBox.values
+        .map((raw) => Food.fromMap(_asStringMap(raw)))
+        .where((f) {
+          if (f.isCatalog) return false; // Only search library
+          if (!includeArchived && f.isArchived) return false;
+          return f.name.toLowerCase().contains(lowerQuery);
+        })
+        .toList();
+
+    return foods;
+  }
+
+  @override
+  Future<String> createFood(Food food) async {
+    await _foodsBox.put(food.id, food.toMap());
+    return food.id;
+  }
+
+  @override
+  Future<void> updateFood(Food food) async {
+    await _foodsBox.put(food.id, food.toMap());
+  }
+
+  @override
+  Future<void> archiveFood(String id) async {
+    final raw = _foodsBox.get(id);
+    if (raw == null) return;
+
+    final food = Food.fromMap(_asStringMap(raw));
+    final archived = food.copyWith(
+      isArchived: true,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    );
+
+    await _foodsBox.put(id, archived.toMap());
+  }
+
+  @override
+  Future<void> removeFood(String id) async {
+    // Only remove from the user-owned library (isCatalog = false).
+    // Catalog foods are read-only and cannot be removed through this method.
+    final raw = _foodsBox.get(id);
+    if (raw == null) return;
+
+    final food = Food.fromMap(_asStringMap(raw));
+    if (food.isCatalog) return;
+
+    // Hard-delete: remove the row entirely.
+    // Past ConsumedFood rows are unaffected because they store a frozen snapshot.
+    await _foodsBox.delete(id);
+  }
+
+  // ===== FOOD CATALOG =====
+
+  @override
+  Future<List<Food>> getCatalogFoods({bool includeArchived = false}) async {
+    var foods = _foodCatalogBox.values
+        .map((raw) => Food.fromMap(_asStringMap(raw)))
+        .toList();
+
+    if (!includeArchived) {
+      foods = foods.where((f) => !f.isArchived).toList();
+    }
+    return foods;
+  }
+
+  @override
+  Future<Food?> getCatalogFoodById(String id) async {
+    final raw = _foodCatalogBox.get(id);
+    if (raw == null) return null;
+    return Food.fromMap(_asStringMap(raw));
+  }
+
+  @override
+  Future<String> createCatalogFood(Food food) async {
+    // The new row is marked isCatalog = true; the caller's id is
+    // respected if non-empty, otherwise a fresh id is generated.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final newId = food.id.isEmpty
+        ? 'food-$now-${DateTime.now().microsecond}'
+        : food.id;
+    final newFood = food.copyWith(
+      id: newId,
+      isCatalog: true,
+      createdAtMs: now,
+      updatedAtMs: now,
+    );
+    await _foodCatalogBox.put(newId, newFood.toMap());
+    return newId;
+  }
+
+  @override
+  Future<void> updateCatalogFood(Food food) async {
+    if (food.isCatalog != true) {
+      throw StateError(
+        'updateCatalogFood: food.isCatalog must be true (got '
+        '${food.isCatalog} for id ${food.id})',
+      );
+    }
+    if (_foodCatalogBox.get(food.id) == null) {
+      throw StateError('Catalog food not found: ${food.id}');
+    }
+    await _foodCatalogBox.put(food.id, food.toMap());
+  }
+
+  @override
+  Future<void> deleteCatalogFood(String id) async {
+    if (_foodCatalogBox.get(id) == null) {
+      throw StateError('Catalog food not found: $id');
+    }
+    await _foodCatalogBox.delete(id);
+  }
+
+  @override
+  Future<String> addCatalogFoodToLibrary(String catalogFoodId) async {
+    final raw = _foodCatalogBox.get(catalogFoodId);
+    if (raw == null) {
+      throw Exception('Catalog food not found: $catalogFoodId');
+    }
+
+    final catalogFood = Food.fromMap(_asStringMap(raw));
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final newId = 'food-$now-${DateTime.now().microsecond}';
+
+    // Create a library copy with isCatalog = false
+    // copyWith() carries groupId across by default, so the catalog's
+    // resolved group_id propagates to the library row.
+    final libraryFood = catalogFood.copyWith(
+      id: newId,
+      isCatalog: false,
+      createdAtMs: now,
+      updatedAtMs: now,
+    );
+
+    await _foodsBox.put(newId, libraryFood.toMap());
+    return newId;
+  }
+
+  // ===== CONSUMED FOODS (DAY LOG) =====
+
+  @override
+  Future<List<ConsumedFood>> getConsumedFoodsForDate(int dateMs) async {
+    return _consumedFoodsBox.values
+        .map((raw) => ConsumedFood.fromMap(_asStringMap(raw)))
+        .where((c) => c.dateMs == dateMs)
+        .toList();
+  }
+
+  @override
+  Future<String> createConsumedFood(ConsumedFood entry) async {
+    await _consumedFoodsBox.put(entry.id, entry.toMap());
+    return entry.id;
+  }
+
+  @override
+  Future<void> deleteConsumedFood(String id) async {
+    await _consumedFoodsBox.delete(id);
+  }
+
+  @override
+  Future<List<ConsumedFood>> getConsumedFoodsInRange(
+    int fromMs,
+    int toMs,
+  ) async {
+    return _consumedFoodsBox.values
+        .map((raw) => ConsumedFood.fromMap(_asStringMap(raw)))
+        .where((c) => c.dateMs >= fromMs && c.dateMs <= toMs)
+        .toList();
+  }
+
+  @override
+  Future<void> updateConsumedFood(ConsumedFood entry) async {
+    if (!_consumedFoodsBox.containsKey(entry.id)) {
+      throw StateError(
+        'updateConsumedFood: no ConsumedFood with id "${entry.id}"',
+      );
+    }
+    await _consumedFoodsBox.put(entry.id, entry.toMap());
+  }
+
+  @override
+  Future<ConsumedFood?> getConsumedFoodById(String id) async {
+    final raw = _consumedFoodsBox.get(id);
+    if (raw == null) return null;
+    return ConsumedFood.fromMap(_asStringMap(raw));
+  }
+
   // ===== UTILITY METHODS =====
 
   Future<void> clear() async {
@@ -1528,6 +2169,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _plannedSessionsBox.clear();
     await _periodsBox.clear();
     await _sessionBlocksBox.clear();
+    await _foodGroupsBox.clear();
+    await _foodsBox.clear();
+    await _foodCatalogBox.clear();
+    await _consumedFoodsBox.clear();
     await _metaBox.delete(_seedLoadedKey);
     _initialized = false;
   }
@@ -1798,24 +2443,25 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _sessionBlocksBox.put(newBlock.id, newBlock.toMap());
 
     // Deep-clone all efforts linked to the original block
-    final linkedEfforts = _effortsBox.values
-        .map((raw) => SegmentEffort.fromMap(_asStringMap(raw)))
-        .where((effort) => effort.blockId == blockId)
-        .toList()
-      ..sort((a, b) {
-        final blockCompare = _effectiveEffortBlockOrder(
-          a,
-        ).compareTo(_effectiveEffortBlockOrder(b));
-        if (blockCompare != 0) return blockCompare;
+    final linkedEfforts =
+        _effortsBox.values
+            .map((raw) => SegmentEffort.fromMap(_asStringMap(raw)))
+            .where((effort) => effort.blockId == blockId)
+            .toList()
+          ..sort((a, b) {
+            final blockCompare = _effectiveEffortBlockOrder(
+              a,
+            ).compareTo(_effectiveEffortBlockOrder(b));
+            if (blockCompare != 0) return blockCompare;
 
-        final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
-        if (legacyCompare != 0) return legacyCompare;
+            final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
+            if (legacyCompare != 0) return legacyCompare;
 
-        final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
-        if (createdCompare != 0) return createdCompare;
+            final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+            if (createdCompare != 0) return createdCompare;
 
-        return a.id.compareTo(b.id);
-      });
+            return a.id.compareTo(b.id);
+          });
 
     for (var i = 0; i < linkedEfforts.length; i++) {
       final originalEffort = linkedEfforts[i];
@@ -1924,10 +2570,14 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final segmentId = m['segment_id'] as String?;
 
     if (blockId == null) {
-      final sessionId = segmentId == null ? null : _getSessionIdForSegment(segmentId);
+      final sessionId = segmentId == null
+          ? null
+          : _getSessionIdForSegment(segmentId);
       final topLevelOrderIndex =
           (m['top_level_order_index'] as int?) ??
-          (sessionId == null ? (m['order_index'] as int? ?? 0) : _nextTopLevelOrderForSession(sessionId));
+          (sessionId == null
+              ? (m['order_index'] as int? ?? 0)
+              : _nextTopLevelOrderForSession(sessionId));
       m['top_level_order_index'] = topLevelOrderIndex;
       m['block_order_index'] = null;
       m['order_index'] = topLevelOrderIndex;
@@ -2026,12 +2676,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
           }
         } catch (e) {
           // Log and skip malformed records
-          print('Malformed session record skipped: $e');
         }
       }
       inProgressSessions.sort((a, b) => b.startedAtMs.compareTo(a.startedAtMs));
     } catch (e) {
-      print('Error retrieving in-progress sessions: $e');
+      // Error retrieving in-progress sessions
     }
     return inProgressSessions;
   }

@@ -27,6 +27,7 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -257,7 +258,7 @@ void main() {
             routineState: RoutineState(repo),
             routineSessionService: RoutineSessionService(repo),
             sessionSummaryService: SessionSummaryService(repo),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -285,7 +286,7 @@ void main() {
             routineState: RoutineState(repo),
             routineSessionService: RoutineSessionService(repo),
             sessionSummaryService: SessionSummaryService(repo),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -319,7 +320,7 @@ void main() {
             workoutState: WorkoutState(repo),
             routineSessionService: RoutineSessionService(repo),
             sessionSummaryService: SessionSummaryService(repo),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -393,7 +394,7 @@ void main() {
         MaterialApp(
           home: ProfileScreen(
             profileState: profileState,
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
           ),
         ),
       );
@@ -414,7 +415,7 @@ void main() {
             routineState: RoutineState(repo),
             routineSessionService: RoutineSessionService(repo),
             sessionSummaryService: SessionSummaryService(repo),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -509,7 +510,7 @@ void main() {
   group('OmniBackHeader presence – SettingsScreen', () {
     testWidgets('uses OmniBackHeader', (WidgetTester tester) async {
       final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -531,7 +532,7 @@ void main() {
     testWidgets('uses OmniBackHeader', (WidgetTester tester) async {
       await tester.binding.setSurfaceSize(const Size(400, 900));
       final repo = await _freshRepo();
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -555,7 +556,7 @@ void main() {
     ) async {
       final repo = await _freshRepo();
       final workoutState = WorkoutState(repo);
-      final settingsState = SettingsState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
       await tester.pumpWidget(
@@ -590,7 +591,7 @@ void main() {
             workoutState: workoutState,
             routineState: RoutineState(repo),
             sessionSummaryService: SessionSummaryService(repo),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -615,7 +616,7 @@ void main() {
             workoutState: workoutState,
             routineState: RoutineState(repo),
             sessionSummaryService: SessionSummaryService(repo),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),
@@ -647,7 +648,7 @@ void main() {
             workoutState: workoutState,
             routineState: RoutineState(repo),
             sessionSummaryService: SessionSummaryService(repo),
-            settingsState: SettingsState(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
             timerAlertService: FakeTimerAlertService(),
           ),
         ),

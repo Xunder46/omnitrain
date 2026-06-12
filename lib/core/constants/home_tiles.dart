@@ -11,18 +11,25 @@ class HomeTileConfig {
   final String label;
   final IconData? iconData;
   final Widget? iconWidget;
-  final List<Color> gradientColors;
   final Color accentColor;
   final String? modality; // null = special tile (Free Training, My Routines)
+
+  /// Whether this tile belongs to the visually secondary tier.
+  ///
+  /// Secondary tiles render with an 8% own-accent fill, a smaller dimmed
+  /// icon, a lighter Medium label, and no rim highlight / inner shadow.
+  /// They share the same surface radius, padding, and grid placement as
+  /// primary tiles — only the resting decoration differs.
+  final bool isSecondary;
 
   const HomeTileConfig({
     required this.key,
     required this.label,
     this.iconData,
     this.iconWidget,
-    required this.gradientColors,
     required this.accentColor,
     this.modality,
+    this.isSecondary = false,
   });
 }
 
@@ -37,7 +44,6 @@ class HomeTiles {
       key: 'cardio',
       label: 'Cardio',
       iconData: Icons.directions_run,
-      gradientColors: [Color(0xFF1A2F47), Color(0xFF0D2818)],
       accentColor: ModalityColors.cardioEndurance,
       modality: Modality.cardioEndurance,
     ),
@@ -46,7 +52,6 @@ class HomeTiles {
       key: 'resistance',
       label: 'Resistance',
       iconWidget: OverheadPressIcon(size: 70),
-      gradientColors: [Color(0xFF1A2F47), Color(0xFF152F42)],
       accentColor: ModalityColors.resistanceLifting,
       modality: Modality.resistanceLifting,
     ),
@@ -58,7 +63,6 @@ class HomeTiles {
       key: 'sports',
       label: 'Sports',
       iconData: Icons.sports_martial_arts,
-      gradientColors: [Color(0xFF2A1E24), Color(0xFF3A1F2A)],
       accentColor: ModalityColors.sports,
       modality: Modality.sports,
     ),
@@ -67,29 +71,30 @@ class HomeTiles {
       key: 'isometric',
       label: 'Isometric',
       iconData: Icons.accessibility,
-      gradientColors: [Color(0xFF2F2A1E), Color(0xFF3D3424)],
       accentColor: ModalityColors.isometricStretching,
       modality: Modality.isometricStretching,
     ),
 
-    // Row 3
+    // Row 3 — secondary tier (8% own-accent fill, dimmed/smaller icon, lighter
+    // Medium label, no rim, no inner shadow). Free keeps its purple tint at
+    // lower opacity; Routines uses its neutral gray at lower opacity.
     // Free Training — violet (open/flexible, user chooses metrics per exercise)
     HomeTileConfig(
       key: 'free_training',
       label: 'Free',
       iconData: Icons.play_arrow,
-      gradientColors: [Color(0xFF24222A), Color(0xFF2A2433)],
       accentColor: ModalityColors.freeTraining,
       modality: null, // No modality preset
+      isSecondary: true,
     ),
-    // My Routines — neutral grey (placeholder for routine management feature)
+    // My Routines — neutral grey
     HomeTileConfig(
       key: 'my_routines',
       label: 'Routines',
       iconData: Icons.folder_open,
-      gradientColors: [Color(0xFF252525), Color(0xFF1C1C1C)],
       accentColor: Color(0xFF9E9E9E),
       modality: null, // Special tile, not a workout modality
+      isSecondary: true,
     ),
   ];
 }

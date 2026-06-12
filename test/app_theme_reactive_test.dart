@@ -6,12 +6,15 @@ import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
+import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
 
 void main() {
@@ -47,10 +50,12 @@ void main() {
     final calendarState = CalendarState(repository);
     final periodState = PeriodState(repository);
     final profileState = ProfileState(repository);
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
     final routineSessionService = RoutineSessionService(repository);
     final sessionSummaryService = SessionSummaryService(repository);
+    final nutritionState = NutritionState(repository);
+    final foodLibraryState = FoodLibraryState(repository);
 
     await tester.pumpWidget(
       MyApp(
@@ -66,6 +71,8 @@ void main() {
         profileState: profileState,
         settingsState: settingsState,
         timerAlertService: FakeTimerAlertService(),
+        nutritionState: nutritionState,
+        foodLibraryState: foodLibraryState,
       ),
     );
 

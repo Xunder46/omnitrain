@@ -8,6 +8,10 @@ class OmniDateUtils {
   static int startOfDayMs(DateTime date) =>
       DateTime(date.year, date.month, date.day).millisecondsSinceEpoch;
 
+  /// Returns the epoch-ms of the start of today (midnight local time).
+  /// Convenience wrapper over [startOfDayMs] using [DateTime.now].
+  static int todayMidnightMs() => startOfDayMs(DateTime.now());
+
   /// Returns the epoch-ms of the end of the given day (23:59:59.999 local time).
   static int endOfDayMs(DateTime date) =>
       DateTime(date.year, date.month, date.day, 23, 59, 59, 999)

@@ -11,6 +11,7 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'helpers/fake_rest_notification_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 void main() {
   Future<
@@ -62,7 +63,7 @@ void main() {
           routineState: deps.routineState,
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
-          settingsState: SettingsState(deps.repository),
+          settingsState: SettingsState(deps.repository, fakePreferencesService()),
           restNotificationService: restService,
         ),
       ),
@@ -101,7 +102,7 @@ void main() {
           routineState: deps.routineState,
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
-          settingsState: SettingsState(deps.repository),
+          settingsState: SettingsState(deps.repository, fakePreferencesService()),
         ),
       ),
     );
@@ -146,7 +147,7 @@ void main() {
                         routineState: deps.routineState,
                         sessionSummaryService: deps.sessionSummaryService,
                         timerAlertService: FakeTimerAlertService(),
-                        settingsState: SettingsState(deps.repository),
+                        settingsState: SettingsState(deps.repository, fakePreferencesService()),
                       ),
                     ),
                   );
@@ -211,7 +212,7 @@ void main() {
           routineState: deps.routineState,
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
-          settingsState: SettingsState(deps.repository),
+          settingsState: SettingsState(deps.repository, fakePreferencesService()),
         ),
       ),
     );
@@ -250,7 +251,7 @@ void main() {
           routineState: deps.routineState,
           sessionSummaryService: deps.sessionSummaryService,
           timerAlertService: FakeTimerAlertService(),
-          settingsState: SettingsState(deps.repository),
+          settingsState: SettingsState(deps.repository, fakePreferencesService()),
         ),
       ),
     );

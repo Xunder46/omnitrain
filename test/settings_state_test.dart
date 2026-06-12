@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ---------------------------------------------------------------------------
 // WCAG 2.1 contrast helpers used by contrast regression tests.
@@ -35,7 +36,7 @@ void main() {
     final repository = MockWorkoutRepository();
     await repository.initialize();
 
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
 
     expect(settingsState.appTheme, AppTheme.abyssalNeon);
@@ -64,7 +65,7 @@ void main() {
       await repository.initialize();
       await repository.setPreferenceString('app_theme', 'unknown_theme');
 
-      final settingsState = SettingsState(repository);
+      final settingsState = SettingsState(repository, fakePreferencesService());
       await settingsState.initialize();
 
       expect(settingsState.appTheme, AppTheme.abyssalNeon);
@@ -78,7 +79,7 @@ void main() {
       await repository.initialize();
       await repository.setPreferenceString('app_theme', 'circuitGreen');
 
-      final settingsState = SettingsState(repository);
+      final settingsState = SettingsState(repository, fakePreferencesService());
       await settingsState.initialize();
 
       expect(settingsState.appTheme, AppTheme.abyssalNeon);
@@ -94,7 +95,7 @@ void main() {
       // that stored it must degrade gracefully to the default theme.
       await repository.setPreferenceString('app_theme', 'jadeSentinel');
 
-      final settingsState = SettingsState(repository);
+      final settingsState = SettingsState(repository, fakePreferencesService());
       await settingsState.initialize();
 
       expect(settingsState.appTheme, AppTheme.abyssalNeon);
@@ -105,7 +106,7 @@ void main() {
     final repository = MockWorkoutRepository();
     await repository.initialize();
 
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
 
     await settingsState.setAppTheme(AppTheme.forgeEmber);
@@ -114,7 +115,7 @@ void main() {
       AppTheme.forgeEmber.name,
     );
 
-    final reloaded = SettingsState(repository);
+    final reloaded = SettingsState(repository, fakePreferencesService());
     await reloaded.initialize();
 
     expect(reloaded.appTheme, AppTheme.forgeEmber);
@@ -125,7 +126,7 @@ void main() {
     await repository.initialize();
     await repository.setPreferenceString('preferred_weight_unit', 'lbs');
 
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
 
     expect(settingsState.preferredWeightUnit, 'lbs');
@@ -135,7 +136,7 @@ void main() {
     final repository = MockWorkoutRepository();
     await repository.initialize();
 
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
 
     expect(settingsState.preferredDistanceUnit, 'km');
@@ -145,7 +146,7 @@ void main() {
     final repository = MockWorkoutRepository();
     await repository.initialize();
 
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
     await settingsState.setPreferredDistanceUnit('miles');
 
@@ -154,7 +155,7 @@ void main() {
       'miles',
     );
 
-    final reloaded = SettingsState(repository);
+    final reloaded = SettingsState(repository, fakePreferencesService());
     await reloaded.initialize();
 
     expect(reloaded.preferredDistanceUnit, 'miles');
@@ -164,7 +165,7 @@ void main() {
     final repository = MockWorkoutRepository();
     await repository.initialize();
 
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
 
     expect(settingsState.showFeelingSurvey, isTrue);
@@ -176,7 +177,7 @@ void main() {
       final repository = MockWorkoutRepository();
       await repository.initialize();
 
-      final settingsState = SettingsState(repository);
+      final settingsState = SettingsState(repository, fakePreferencesService());
       await settingsState.initialize();
       await settingsState.setShowFeelingSurvey(false);
 
@@ -185,7 +186,7 @@ void main() {
         'false',
       );
 
-      final reloaded = SettingsState(repository);
+      final reloaded = SettingsState(repository, fakePreferencesService());
       await reloaded.initialize();
 
       expect(reloaded.showFeelingSurvey, isFalse);
@@ -197,7 +198,7 @@ void main() {
     await repository.initialize();
     await repository.setPreferenceString('preferred_distance_unit', 'yards');
 
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, fakePreferencesService());
     await settingsState.initialize();
 
     expect(settingsState.preferredDistanceUnit, 'km');
@@ -248,7 +249,7 @@ void main() {
   test('SettingsState persists and reloads malachiteCore theme', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
 
     await state.setAppTheme(AppTheme.malachiteCore);
@@ -257,7 +258,7 @@ void main() {
       AppTheme.malachiteCore.name,
     );
 
-    final reloaded = SettingsState(repository);
+    final reloaded = SettingsState(repository, fakePreferencesService());
     await reloaded.initialize();
     expect(reloaded.appTheme, AppTheme.malachiteCore);
   });
@@ -292,7 +293,7 @@ void main() {
   test('SettingsState defaults effortTimerSound to boxing_bell', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
     expect(state.effortTimerSound, 'boxing_bell');
   });
@@ -300,7 +301,7 @@ void main() {
   test('SettingsState defaults restPingInterval to 0 (Off)', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
     expect(state.restPingInterval, 0);
   });
@@ -308,7 +309,7 @@ void main() {
   test('SettingsState defaults restPingSound to soft_chime', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
     expect(state.restPingSound, 'soft_chime');
   });
@@ -318,12 +319,12 @@ void main() {
   test('SettingsState persists and reloads effortTimerSound', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
     await state.setEffortTimerSound('digital_buzzer');
     expect(state.effortTimerSound, 'digital_buzzer');
 
-    final reloaded = SettingsState(repository);
+    final reloaded = SettingsState(repository, fakePreferencesService());
     await reloaded.initialize();
     expect(reloaded.effortTimerSound, 'digital_buzzer');
   });
@@ -331,12 +332,12 @@ void main() {
   test('SettingsState persists and reloads restPingInterval', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
     await state.setRestPingInterval(60);
     expect(state.restPingInterval, 60);
 
-    final reloaded = SettingsState(repository);
+    final reloaded = SettingsState(repository, fakePreferencesService());
     await reloaded.initialize();
     expect(reloaded.restPingInterval, 60);
   });
@@ -344,12 +345,12 @@ void main() {
   test('SettingsState persists and reloads restPingSound', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
     await state.setRestPingSound('signal_tone');
     expect(state.restPingSound, 'signal_tone');
 
-    final reloaded = SettingsState(repository);
+    final reloaded = SettingsState(repository, fakePreferencesService());
     await reloaded.initialize();
     expect(reloaded.restPingSound, 'signal_tone');
   });
@@ -361,7 +362,7 @@ void main() {
     () async {
       final repository = MockWorkoutRepository();
       await repository.initialize();
-      final state = SettingsState(repository);
+      final state = SettingsState(repository, fakePreferencesService());
       await state.initialize();
       await state.setEffortTimerSound('not_a_real_sound');
       expect(state.effortTimerSound, 'boxing_bell');
@@ -374,7 +375,7 @@ void main() {
       final repository = MockWorkoutRepository();
       await repository.initialize();
       await repository.setPreferenceString('effort_timer_sound', 'garbage');
-      final state = SettingsState(repository);
+      final state = SettingsState(repository, fakePreferencesService());
       await state.initialize();
       expect(state.effortTimerSound, 'boxing_bell');
     },
@@ -383,7 +384,7 @@ void main() {
   test('setRestPingInterval with invalid value falls back to 0', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
     await state.setRestPingInterval(999);
     expect(state.restPingInterval, 0);
@@ -398,7 +399,7 @@ void main() {
         'rest_ping_interval',
         'not_a_number',
       );
-      final state = SettingsState(repository);
+      final state = SettingsState(repository, fakePreferencesService());
       await state.initialize();
       expect(state.restPingInterval, 0);
     },
@@ -407,7 +408,7 @@ void main() {
   test('setRestPingSound with invalid id falls back to soft_chime', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
     await state.setRestPingSound('not_a_real_sound');
     expect(state.restPingSound, 'soft_chime');
@@ -419,7 +420,7 @@ void main() {
       final repository = MockWorkoutRepository();
       await repository.initialize();
       await repository.setPreferenceString('rest_ping_sound', 'garbage');
-      final state = SettingsState(repository);
+      final state = SettingsState(repository, fakePreferencesService());
       await state.initialize();
       expect(state.restPingSound, 'soft_chime');
     },
@@ -465,7 +466,7 @@ void main() {
   test('SettingsState defaults notificationPermissionAsked to false', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
 
     expect(state.notificationPermissionAsked, isFalse);
@@ -476,13 +477,13 @@ void main() {
     () async {
       final repository = MockWorkoutRepository();
       await repository.initialize();
-      final state = SettingsState(repository);
+      final state = SettingsState(repository, fakePreferencesService());
       await state.initialize();
 
       await state.setNotificationPermissionAsked();
       expect(state.notificationPermissionAsked, isTrue);
 
-      final reloaded = SettingsState(repository);
+      final reloaded = SettingsState(repository, fakePreferencesService());
       await reloaded.initialize();
       expect(reloaded.notificationPermissionAsked, isTrue);
     },
@@ -491,7 +492,7 @@ void main() {
   test('setters call notifyListeners', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
-    final state = SettingsState(repository);
+    final state = SettingsState(repository, fakePreferencesService());
     await state.initialize();
 
     var notifyCount = 0;

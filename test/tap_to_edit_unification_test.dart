@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/routine/routine_setup_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -10,9 +9,8 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/session/duration_entry_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
-import 'package:omnitrain/widgets/session/metric_crown_widget.dart';
+import 'helpers/fake_preferences_service.dart';
 
-import 'helpers/fake_timer_alert_service.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,7 +112,7 @@ void main() {
 
         // Verify keyboard type has signed: true for weight.
         final tf = tester.widget<TextField>(find.byType(TextField));
-        final kbType = tf.keyboardType as TextInputType;
+        final kbType = tf.keyboardType;
         expect(kbType.signed, isTrue);
 
         await tester.enterText(find.byType(TextField), '-50.0');
@@ -169,7 +167,7 @@ void main() {
         await tester.pumpAndSettle();
 
         final tf = tester.widget<TextField>(find.byType(TextField));
-        final kbType = tf.keyboardType as TextInputType;
+        final kbType = tf.keyboardType;
         expect(kbType.signed, isTrue);
 
         await tester.tapAt(const Offset(10, 10));
@@ -217,7 +215,7 @@ void main() {
         final repo = await _freshRepo();
         final routineState = RoutineState(repo);
         final workoutState = WorkoutState(repo);
-        final settingsState = SettingsState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
         routineState.setAutosaveEnabled(false);
@@ -451,7 +449,7 @@ void main() {
         await tester.pumpAndSettle();
 
         final tf = tester.widget<TextField>(find.byType(TextField));
-        final kbType = tf.keyboardType as TextInputType;
+        final kbType = tf.keyboardType;
         expect(kbType.signed, isFalse);
 
         await tester.tapAt(const Offset(10, 10));
@@ -473,7 +471,7 @@ void main() {
         await tester.pumpAndSettle();
 
         final tf = tester.widget<TextField>(find.byType(TextField));
-        final kbType = tf.keyboardType as TextInputType;
+        final kbType = tf.keyboardType;
         expect(kbType.signed, isTrue);
 
         await tester.tapAt(const Offset(10, 10));
@@ -495,7 +493,7 @@ void main() {
         await tester.pumpAndSettle();
 
         final tf = tester.widget<TextField>(find.byType(TextField));
-        final kbType = tf.keyboardType as TextInputType;
+        final kbType = tf.keyboardType;
         expect(kbType.signed, isTrue);
 
         await tester.tapAt(const Offset(10, 10));

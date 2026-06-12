@@ -10,6 +10,7 @@ import 'package:omnitrain/core/utils/unit_formatter.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ── Minimal observation stub for ObservationGrouper tests ─────────────────
 // ObservationGrouper accesses .metricId, .valueInt, .valueReal, .valueBool
@@ -57,7 +58,7 @@ void main() {
     setUp(() async {
       repository = MockWorkoutRepository();
       await repository.initialize();
-      settings = SettingsState(repository);
+      settings = SettingsState(repository, fakePreferencesService());
       await settings.initialize();
     });
 

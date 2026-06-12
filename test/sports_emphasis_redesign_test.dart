@@ -14,6 +14,7 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -75,7 +76,7 @@ Future<_SessionDeps> _buildFreeSessionDeps({required AppTheme theme}) async {
   final workoutState = WorkoutState(repo);
   final routineState = RoutineState(repo);
   final sessionSummaryService = SessionSummaryService(repo);
-  final settingsState = SettingsState(repo);
+  final settingsState = SettingsState(repo, fakePreferencesService());
   await settingsState.initialize();
   await settingsState.setAppTheme(theme);
   OmniTheme.activeTheme = theme;
@@ -105,7 +106,7 @@ Future<_SessionDeps> _buildRoutineSessionDeps({required AppTheme theme}) async {
   final workoutState = WorkoutState(repo);
   final routineState = RoutineState(repo);
   final sessionSummaryService = SessionSummaryService(repo);
-  final settingsState = SettingsState(repo);
+  final settingsState = SettingsState(repo, fakePreferencesService());
   await settingsState.initialize();
   await settingsState.setAppTheme(theme);
   OmniTheme.activeTheme = theme;
@@ -145,7 +146,7 @@ Future<_RoutineSetupDeps> _buildRoutineSetupDeps({required AppTheme theme}) asyn
   final repo = await _freshRepo();
   final routineState = RoutineState(repo);
   final workoutState = WorkoutState(repo);
-  final settingsState = SettingsState(repo);
+  final settingsState = SettingsState(repo, fakePreferencesService());
   await settingsState.initialize();
   await settingsState.setAppTheme(theme);
   OmniTheme.activeTheme = theme;

@@ -1,7 +1,7 @@
 # Feature: period-list-ux
 
 ## Overview
-UI polish pass on the Training Periods list screen (`PeriodListScreen`):
+UI polish pass on the Periodization list screen (`PeriodListScreen`):
 1. Remove the **Edit** icon button from each row's trailing area.
 2. Make the entire list item tappable to open the edit screen.
 3. Replace hardcoded `OmniTheme` static color constants with theme-aware values so the row responds to the active app theme.

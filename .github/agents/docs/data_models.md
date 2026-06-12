@@ -364,6 +364,202 @@ See [Session Summary](session_summary.md) for details.
 
 ---
 
+## Nutrition Models
+
+### NutritionTarget
+
+Represents the user's daily nutrition goals. Targets are stored per day and
+roll over from the most recent ancestor day when no explicit entry exists
+for the queried date (see [Daily targets persistence](db_integration.md#nutrition-targets-daily-rollover)).
+
+| Field | Type | Description |
+|---|---|---|
+| `calories` | `double` (default `0.0`) | Daily calorie target. `0` means "no goal". |
+| `protein` | `double` (default `0.0`) | Daily protein target in grams. `0` means "no goal". |
+| `carbs` | `double` (default `0.0`) | Daily carbohydrate target in grams. `0` means "no goal". |
+| `fat` | `double` (default `0.0`) | Daily fat target in grams. `0` means "no goal". |
+| `dateMs` | `int?` | Start-of-day timestamp (ms since epoch, local midnight) that this target set belongs to. `null` for legacy single-row targets. |
+
+Derived:
+
+| Getter | Returns |
+|---|---|
+| `isUnset` | `true` when all four macros are `0.0` — UI uses this to render "no goal" / hide the row. |
+
+Methods: `fromMap(Map)` and `toMap()` (use key `date_ms` for `dateMs`); `copyWith({calories, protein, carbs, fat, dateMs})` returns a new instance with overrides.
+
+Round-trip notes:
+- All four macros are non-nullable and default to `0.0`; never `null`.
+- `0.0` is the canonical "no goal" sentinel — the UI hides the row and never attempts division-by-zero math against it.
+- A target with `dateMs == null` indicates a legacy single-row save (kept for back-compat with `WorkoutRepository.getNutritionTarget()` / `saveNutritionTarget()`).
+
+### FoodUnitType
+
+Enum representing the unit system used for a food's reference amount.
+
+| Value | Description |
+|---|---|
+| `count` | Discrete items (e.g., "per 1 egg", "per 1 slice") |
+| `grams` | Weight-based (e.g., "per 100 g") |
+
+Methods: `fromString(String?)` parses storage format (`'count'` or `'grams'`, defaults to `grams`); `toStorageString()` serializes to storage format.
+
+### FoodGroup
+
+User-created grouping category for foods (e.g., "Proteins", "Vegetables"). Foods with `groupId == null` render in a trailing "Ungrouped" section.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `String` | UUID |
+| `name` | `String` | Group display name |
+| `color` | `String?` | Optional hex color (e.g., "#FF5722") |
+| `isArchived` | `bool` | Soft-delete flag |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last update timestamp |
+
+Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
+
+### Food
+
+A food item with macronutrient metadata. Foods exist in two collections:
+- **Catalog** (`isCatalog == true`): the **global managed library** of foods. Mutated at runtime — the user can edit any catalog food (row tap in the **Library** tab of `AddFoodScreen`) and create new catalog foods (**+ New Item** tab). The bundled seed (`FoodCatalogSeed` / `assets/data/food_catalog.json`) is loaded once on first install and is then mutable.
+- **Library** (`isCatalog == false`): user-owned foods, the personal logging library. Catalog copies land here via the **Add** button on a catalog row.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `String` | UUID |
+| `name` | `String` | Food display name |
+| `groupId` | `String?` | Optional `FoodGroup.id`, null = Ungrouped |
+| `unitType` | `FoodUnitType` | `count` or `grams` |
+| `referenceAmount` | `double` | Quantity the macros are expressed per (e.g., 100.0 for "per 100 g") |
+| `referenceLabel` | `String` | Display unit (e.g., "g", "egg", "tbsp") |
+| `isCatalog` | `bool` | `true` = bundled catalog, `false` = user library |
+| `protein` | `int` | Grams of protein per reference amount |
+| `carbs` | `int` | Grams of carbs per reference amount |
+| `fiber` | `int?` | Optional grams of fiber |
+| `fat` | `int` | Grams of fat per reference amount |
+| `sodium` | `int?` | Optional milligrams of sodium |
+| `isArchived` | `bool` | Soft-delete flag |
+| `notes` | `String?` | **Info** — optional free-form user notes. **Not** used to carry the catalog's category label; the category is stored on `groupId` instead. Catalog rows are seeded with `notes = null`; user-typed notes live on library rows. |
+| `imagePath` | `String?` | Optional native-first local file path to a food photo. Mirrors the `UserProfile.avatarPath` contract: the path is opaque to the repository and only the OS / user can keep the file alive. Web has no persistent file API, so the picker is a no-op there and the field stays `null`. Legacy rows (pre-image) deserialize to `null`. |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last update timestamp |
+
+Derived getters:
+- `calories`: computed as `protein * 4 + carbs * 4 + fat * 9`
+- `netCarbs`: computed as `carbs - (fiber ?? 0)`
+- `isCatalogFood`: `true` when `isCatalog == true`
+- `isLibraryFood`: `true` when `isCatalog == false`
+
+Legacy compatibility: `servingSize` and `servingUnit` are deprecated getters that return `referenceAmount.round()` and `referenceLabel` respectively. `Food.fromMap()` falls back to these legacy fields for rows that lack the new fields.
+
+Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
+
+> **Note:** `copyWith()` uses a private sentinel for the two nullable fields — `groupId` and `imagePath` — so callers can clear them (`copyWith(groupId: null)` / `copyWith(imagePath: null)`) without losing the previous value. This is what the Categories tab's group-reassignment path relies on when it moves foods to "Ungrouped" (`groupId = null`), and what the Edit Food screen relies on when the user clears the image tile (`imagePath = null`). The file on disk is left intact in both cases — it is the user's responsibility.
+
+#### Catalog `category` → `groupId` resolution
+
+Catalog rows in `assets/data/food_catalog.json` carry a human-readable
+`category` string ("Proteins", "Dairy", …). At load time
+(`FoodCatalogLoader._categoryToGroupId`) the category is resolved to
+the matching `FoodGroup.id` from `SeedData.defaultFoodGroups`
+(case-insensitive). The result is written to `groupId`; the JSON
+`category` is **not** stored in `notes`.
+
+- Resolved group ids: `food-group-proteins`, `food-group-dairy`,
+  `food-group-grains-starches`, `food-group-fruits`,
+  `food-group-vegetables`, `food-group-nuts-seeds-fats`,
+  `food-group-snacks-prepared`, `food-group-drinks`,
+  `food-group-condiments`.
+- Unknown categories (added after the seed map is updated) fall
+  through to `groupId = null` (Ungrouped).
+- The same lookup is mirrored in
+  `scripts/generate_food_catalog_seed.dart` so the hardcoded
+  `FoodCatalogSeed.sampleCatalogFoods` list stays in lockstep with
+  the JSON.
+- Pre-existing installs (with `notes: 'Proteins'` etc. and
+  `group_id = NULL`) are backfilled by the Hive one-shot migration
+  `food_category_groupid_migrated_v1` — see `db_integration.md` for
+  details and the equivalent SQL block in `scripts/sqlite_schema.sql`
+  for the future SQLite importer.
+
+### ConsumedFood
+
+A frozen snapshot of a logged food for a specific day. Stores complete state at log time to ensure historical accuracy even if the source food or targets are later edited or deleted.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `String` | UUID |
+| `loggedAtMs` | `int` | Wall-clock timestamp when logged |
+| `dateMs` | `int` | Day key (local midnight ms) this entry counts toward |
+| `sourceFoodId` | `String?` | Original `Food.id` at log time (nullable if food was deleted) |
+| `name` | `String` | **FROZEN** food name |
+| `unitType` | `FoodUnitType` | **FROZEN** unit type |
+| `referenceAmount` | `double` | **FROZEN** reference amount |
+| `referenceLabel` | `String` | **FROZEN** reference label |
+| `protein` | `int` | **FROZEN** protein per reference |
+| `carbs` | `int` | **FROZEN** carbs per reference |
+| `fiber` | `int?` | **FROZEN** fiber (nullable) |
+| `fat` | `int` | **FROZEN** fat per reference |
+| `sodium` | `int?` | **FROZEN** sodium (nullable) |
+| `amountConsumed` | `double` | Amount consumed in the food's own unit (g for grams-type foods, count for count-type foods) |
+| `groupIdSnapshot` | `String?` | **FROZEN** group ID |
+| `groupNameSnapshot` | `String?` | **FROZEN** group name |
+| `targetCalories` | `double` | **FROZEN** daily calorie target |
+| `targetProtein` | `double` | **FROZEN** daily protein target |
+| `targetCarbs` | `double` | **FROZEN** daily carbs target |
+| `targetFat` | `double` | **FROZEN** daily fat target |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last update timestamp |
+
+Derived getters:
+- `caloriesConsumed`: computed as
+  `(protein * 4 + carbs * 4 + fat * 9) * (amountConsumed / referenceAmount)`,
+  then rounded to an int. The macros on the snapshot are stored
+  per the food's reference, so the scaling factor is
+  `amountConsumed / referenceAmount`. Examples:
+  - 150 g of a per-100 g food (31P / 0C / 3F = 151 kcal):
+    `151 * (150 / 100) = 226.5` → 226 or 227 depending on rounding.
+  - 3 of a per-1-egg food (6P / 1C / 5F = 73 kcal):
+    `73 * (3 / 1) = 219`.
+
+Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
+
+---
+
+## Consumed-Food State Cache (`NutritionState`)
+
+`NutritionState` (`lib/state/nutrition_state.dart`) caches today's
+consumed-food snapshots in memory so the calorie ring on the nutrition
+page can rebuild without re-querying the repository on every keystroke.
+The cache is single-day (local-time) and is cleared on day rollover.
+
+| Field / method | Type | Description |
+|---|---|---|
+| `consumedToday` | `List<ConsumedFood>` | Unmodifiable view of today's snapshots. Empty until first load. |
+| `todayConsumedCalories` | `int` | Sum of `ConsumedFood.caloriesConsumed` over `consumedToday`. Pure / derived; 0 when the cache is empty. |
+| `todayConsumedProtein` | `int` | Sum of `protein * amountConsumed / referenceAmount` over `consumedToday`, accumulated as a `double` and rounded **once at the end**. Matches the `caloriesConsumed` rounding contract and avoids per-row rounding drift on fractional servings. |
+| `todayConsumedCarbs` | `int` | Same shape as `todayConsumedProtein`, for carbs. |
+| `todayConsumedFiber` | `int` | Same shape as `todayConsumedProtein`, for fiber. `ConsumedFood.fiber` is `int?`; `null` is treated as 0. |
+| `todayConsumedFat` | `int` | Same shape as `todayConsumedProtein`, for fat. |
+| `consumedTodaySorted` | `List<ConsumedFood>` | `consumedToday` sorted by `loggedAtMs` ascending. New list; the cache stays in insertion order. |
+| `loadConsumedToday()` | `Future<void>` | Reloads today's snapshots from the repository, replaces the cache, and notifies listeners. Idempotent; safe to call repeatedly. |
+| `getTodayConsumedFoods()` | `Future<List<ConsumedFood>>` | Convenience wrapper that does the same load and returns the resulting list. |
+| `refreshConsumedToday()` | `Future<List<ConsumedFood>>` | Sugar for `loadConsumedToday()` that returns the resulting list. |
+| `logConsumedFood(food, amount)` | `Future<String?>` | Builds a frozen `ConsumedFood` snapshot from the source food plus the cached daily target, persists it via the repository, and appends it to the cache so the ring updates immediately. Returns the new id, or `null` on persistence failure. Validates `amount > 0`. |
+| `logConsumedFoodAt(food, amount)` | `Future<String?>` | Day-uniqueness variant: if a row for `(sourceFoodId, today)` already exists, updates its `amountConsumed` in place; otherwise delegates to `logConsumedFood`. Used by the per-row checkbox + amount-input UI on the food library card. Returns the row id, or `null` on invalid amount or persistence failure. |
+| `unlogFoodToday(foodId)` | `Future<bool>` | Removes the day-log row for `foodId` (today). Returns `true` if a row was removed, `false` otherwise. |
+| `findLoggedTodayForFood(foodId)` | `ConsumedFood?` | Cache-only lookup of the day's row for `foodId`. Returns `null` when not logged today. |
+| `isFoodLoggedToday(foodId)` | `bool` | True when a day-log row exists for `foodId`. Drives the row's checkbox `value:` binding. |
+| `deleteConsumedFood(id)` | `Future<bool>` | Removes a consumed-food row and refreshes the cache. No-op (and returns `false`) if the id is not in the cache. |
+| `clearConsumedToday()` | `void` | Empties the cache and notifies listeners. Intended for day-rollover. |
+
+Derived calorie math (`(protein*4 + carbs*4 + fat*9) * (amountConsumed / referenceAmount)`,
+rounded) lives on `ConsumedFood` and is unchanged at the field level; no new
+fields were added to the model, this section documents state-side caching only.
+
+---
+
 ## Relationship Diagram
 
 ```
@@ -408,5 +604,5 @@ MetricDefinition ←── UnitModel
 
 ---
 
-**Document Version**: 1.3
-**Last Updated**: April 13, 2026
+**Document Version**: 1.4
+**Last Updated**: June 5, 2026

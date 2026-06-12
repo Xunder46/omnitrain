@@ -9,6 +9,7 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ Future<_Deps> _buildDeps({String? modality}) async {
   final workoutState = WorkoutState(repo);
   final routineState = RoutineState(repo);
   final sessionSummaryService = SessionSummaryService(repo);
-  final settingsState = SettingsState(repo);
+  final settingsState = SettingsState(repo, fakePreferencesService());
   await settingsState.initialize();
   await workoutState.createNewSession(modality: modality);
   return (

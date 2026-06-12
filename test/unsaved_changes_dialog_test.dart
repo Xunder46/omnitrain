@@ -8,6 +8,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 void main() {
   Future<
@@ -70,7 +71,7 @@ void main() {
                         routineState: routineState,
                         sessionSummaryService: sessionSummaryService,
                         timerAlertService: FakeTimerAlertService(),
-                        settingsState: SettingsState(MockWorkoutRepository()),
+                        settingsState: SettingsState(MockWorkoutRepository(), fakePreferencesService()),
                         editMode: true,
                       ),
                     ),

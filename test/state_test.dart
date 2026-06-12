@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/workout_constants.dart';
 import 'package:omnitrain/core/models/routine_session_manifest.dart';
+import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
+import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -2865,6 +2867,519 @@ void main() {
       expect(result.any((e) => e['id'] == x), isTrue);
       expect(result.any((e) => e['id'] == b1), isTrue);
     });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // NutritionState — daily targets
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('NutritionState', () {
+    // ── S-001 First load today (no targets; ancestor walk) ─────────────────
+    test('loadNutritionTargetForDate returns null when no ancestor exists',
+        () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      final today = OmniDateUtils.todayMidnightMs();
+      await state.loadNutritionTargetForDate(today);
+      expect(state.nutritionTarget, isNull);
+    });
+
+    test('loadNutritionTargetForDate rolls over from yesterday\'s target',
+        () async {
+      final repo = await _freshRepo();
+      final yesterday = OmniDateUtils.startOfDayMs(
+        DateTime.now().subtract(const Duration(days: 1)),
+      );
+      final yesterdayTarget = NutritionTarget(
+        calories: 2000,
+        protein: 120,
+        carbs: 250,
+        fat: 70,
+        dateMs: yesterday,
+      );
+      await repo.saveNutritionTargetForDate(yesterday, yesterdayTarget);
+
+      final state = NutritionState(repo);
+      final today = OmniDateUtils.todayMidnightMs();
+      await state.loadNutritionTargetForDate(today);
+      expect(state.nutritionTarget, isNotNull);
+      expect(state.nutritionTarget?.calories, 2000);
+      expect(state.nutritionTarget?.protein, 120);
+      // The rolled-over copy must carry today's date.
+      expect(state.nutritionTarget?.dateMs, today);
+    });
+
+    // ── S-002 Save all four fields ─────────────────────────────────────────
+    test('saveNutritionTargetForDate persists all four macros', () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      final today = OmniDateUtils.todayMidnightMs();
+      final target = NutritionTarget(
+        calories: 2500,
+        protein: 150,
+        carbs: 300,
+        fat: 80,
+      );
+      await state.saveNutritionTargetForDate(today, target);
+      expect(state.nutritionTarget?.calories, 2500);
+      expect(state.nutritionTarget?.protein, 150);
+      expect(state.nutritionTarget?.carbs, 300);
+      expect(state.nutritionTarget?.fat, 80);
+
+      // Confirm persistence by reloading via a new state.
+      final reload = NutritionState(repo);
+      await reload.loadNutritionTargetForDate(today);
+      expect(reload.nutritionTarget?.calories, 2500);
+    });
+
+    // ── S-003 Clear a target field (store as 0.0) ─────────────────────────
+    test(
+        'saveNutritionTargetForDate stores 0.0 for cleared fields (not null)',
+        () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      final today = OmniDateUtils.todayMidnightMs();
+      await state.saveNutritionTargetForDate(
+        today,
+        NutritionTarget(calories: 2500, protein: 150, carbs: 300, fat: 80),
+      );
+      // Re-save with carbs cleared.
+      await state.saveNutritionTargetForDate(
+        today,
+        NutritionTarget(calories: 2500, protein: 150, carbs: 0, fat: 80),
+      );
+      expect(state.nutritionTarget?.carbs, 0.0);
+
+      final reload = NutritionState(repo);
+      await reload.loadNutritionTargetForDate(today);
+      expect(reload.nutritionTarget?.carbs, 0.0);
+    });
+
+    // ── S-005 Hidden 0 values (isUnset) ───────────────────────────────────
+    test('isUnset getter reflects "all four macros are 0"', () {
+      expect(NutritionTarget().isUnset, isTrue);
+      final partial = NutritionTarget(calories: 2000);
+      expect(partial.isUnset, isFalse);
+    });
+
+    // ── S-006 Save → reload (legacy delegation) ───────────────────────────
+    test('legacy saveNutritionTarget delegates to today\'s date', () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      await state.saveNutritionTarget(
+        NutritionTarget(calories: 2200, protein: 110, carbs: 220, fat: 55),
+      );
+      expect(state.nutritionTarget?.calories, 2200);
+
+      final reload = NutritionState(repo);
+      await reload.loadNutritionTarget();
+      expect(reload.nutritionTarget?.calories, 2200);
+    });
+
+    // ── S-007 Forward-propagation: yesterday is unaffected ───────────────
+    test(
+        'saveNutritionTargetForDate does NOT modify past dates when '
+        'forward-propagating', () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      final yesterday = OmniDateUtils.startOfDayMs(
+        DateTime.now().subtract(const Duration(days: 1)),
+      );
+      final today = OmniDateUtils.todayMidnightMs();
+      final tomorrow = OmniDateUtils.startOfDayMs(
+        DateTime.now().add(const Duration(days: 1)),
+      );
+
+      // Seed yesterday + today with identical values.
+      final original = NutritionTarget(
+        calories: 2000,
+        protein: 120,
+        carbs: 250,
+        fat: 70,
+      );
+      await state.saveNutritionTargetForDate(yesterday, original);
+      await state.saveNutritionTargetForDate(today, original);
+
+      // Edit today.
+      await state.saveNutritionTargetForDate(
+        today,
+        NutritionTarget(calories: 2500, protein: 150, carbs: 300, fat: 80),
+      );
+
+      // Yesterday must be untouched.
+      final reload = NutritionState(repo);
+      await reload.loadNutritionTargetForDate(yesterday);
+      expect(reload.nutritionTarget?.calories, 2000);
+      expect(reload.nutritionTarget?.protein, 120);
+      expect(reload.nutritionTarget?.carbs, 250);
+      expect(reload.nutritionTarget?.fat, 70);
+
+      // Tomorrow (forward-propagated) reflects the new values.
+      await reload.loadNutritionTargetForDate(tomorrow);
+      expect(reload.nutritionTarget?.calories, 2500);
+      expect(reload.nutritionTarget?.protein, 150);
+    });
+
+    // ── S-004 Day rollover mechanics ───────────────────────────────────────
+    test('rolloverToDate loads the new date\'s target (or walks back)',
+        () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      final yesterday = OmniDateUtils.startOfDayMs(
+        DateTime.now().subtract(const Duration(days: 1)),
+      );
+      final target = NutritionTarget(
+        calories: 2100,
+        protein: 130,
+        carbs: 260,
+        fat: 75,
+      );
+      await state.saveNutritionTargetForDate(yesterday, target);
+
+      // Rollover to today; should find the ancestor and roll it forward.
+      final today = OmniDateUtils.todayMidnightMs();
+      await state.rolloverToDate(today);
+      expect(state.nutritionTarget?.calories, 2100);
+      expect(state.nutritionTarget?.dateMs, today);
+    });
+
+    // ── getTodayTarget convenience ────────────────────────────────────────
+    test('getTodayTarget returns the current day\'s target', () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      final today = OmniDateUtils.todayMidnightMs();
+      await state.saveNutritionTargetForDate(
+        today,
+        NutritionTarget(calories: 1800),
+      );
+      final result = await state.getTodayTarget();
+      expect(result?.calories, 1800);
+      // notifyListeners fires; the in-memory _nutritionTarget is updated.
+      expect(state.nutritionTarget?.calories, 1800);
+    });
+
+    // ── Cache behaviour ──────────────────────────────────────────────────
+    test('loadNutritionTargetForDate populates the per-date cache', () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      final today = OmniDateUtils.todayMidnightMs();
+      await state.saveNutritionTargetForDate(
+        today,
+        NutritionTarget(calories: 1900),
+      );
+      final fresh = NutritionState(repo);
+      await fresh.loadNutritionTargetForDate(today);
+      expect(fresh.getCachedTargetForDate(today), isNotNull);
+      expect(fresh.getCachedTargetForDate(today)?.calories, 1900);
+    });
+
+    // ── Loading state toggles ────────────────────────────────────────────
+    test('isLoading toggles during loadNutritionTargetForDate', () async {
+      final repo = await _freshRepo();
+      final state = NutritionState(repo);
+      final today = OmniDateUtils.todayMidnightMs();
+      // Capture notifications to verify isLoading transitions.
+      final loadingValues = <bool>[];
+      state.addListener(() => loadingValues.add(state.isLoading));
+      await state.loadNutritionTargetForDate(today);
+      // Should have notified at least twice: true (start) → false (end).
+      expect(loadingValues, contains(true));
+      expect(state.isLoading, isFalse);
+    });
+
+    // ── Consumed-food cache (real implementation) ───────────────────────
+    // Replaces the legacy stub test. The calorie ring on the nutrition
+    // page reads from `consumedToday` / `todayConsumedCalories`; these
+    // tests pin the contract: loads from the repo, populates the cache,
+    // sums via `ConsumedFood.caloriesConsumed`, and notifies listeners.
+    group('consumed-food cache', () {
+      test('initial cache is empty and loadConsumedToday keeps it empty',
+          () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        expect(state.consumedToday, isEmpty);
+        expect(state.todayConsumedCalories, 0);
+
+        await state.loadConsumedToday();
+        expect(state.consumedToday, isEmpty);
+        expect(state.todayConsumedCalories, 0);
+      });
+
+      test('getTodayConsumedFoods returns empty when repo has no rows',
+          () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final foods = await state.getTodayConsumedFoods();
+        expect(foods, isEmpty);
+        expect(state.consumedToday, isEmpty);
+      });
+
+      test('loadConsumedToday populates the cache from the repository',
+          () async {
+        final repo = await _freshRepo();
+        final today = OmniDateUtils.todayMidnightMs();
+
+        // Seed two consumed-food snapshots for today.
+        await repo.createConsumedFood(ConsumedFood(
+          id: 'c-1',
+          loggedAtMs: today + 1000,
+          dateMs: today,
+          sourceFoodId: 'food-1',
+          name: 'Oatmeal',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100,
+          referenceLabel: 'g',
+          protein: 13,
+          carbs: 68,
+          fat: 6,
+          amountConsumed: 1.0,
+          targetCalories: 2000,
+          targetProtein: 150,
+          targetCarbs: 200,
+          targetFat: 65,
+          createdAtMs: today,
+          updatedAtMs: today,
+        ));
+        await repo.createConsumedFood(ConsumedFood(
+          id: 'c-2',
+          loggedAtMs: today + 2000,
+          dateMs: today,
+          sourceFoodId: 'food-2',
+          name: 'Egg',
+          unitType: FoodUnitType.count,
+          referenceAmount: 1,
+          referenceLabel: 'egg',
+          protein: 6,
+          carbs: 1,
+          fat: 5,
+          amountConsumed: 2.0,
+          targetCalories: 2000,
+          targetProtein: 150,
+          targetCarbs: 200,
+          targetFat: 65,
+          createdAtMs: today,
+          updatedAtMs: today,
+        ));
+
+        final state = NutritionState(repo);
+        var notifications = 0;
+        state.addListener(() => notifications++);
+        await state.loadConsumedToday();
+
+        expect(state.consumedToday, hasLength(2));
+        expect(notifications, greaterThanOrEqualTo(1),
+            reason: 'loadConsumedToday must notify listeners on success');
+        // Oatmeal (per-100 g, amount=1.0): 13*4 + 68*4 + 6*9 = 378;
+        // scaled by 1/100 → 378 * 0.01 = 3.78 → 4.
+        // 2 eggs (per-1, amount=2.0): (6*4 + 1*4 + 5*9) * (2/1) = 146.
+        // Total: 4 + 146 = 150.
+        expect(state.todayConsumedCalories, 4 + 146);
+      });
+
+      test('loadConsumedToday is idempotent and refreshes the cache',
+          () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+
+        await state.loadConsumedToday();
+        final first = state.consumedToday;
+        await state.loadConsumedToday();
+        // Same empty result, but a fresh list instance.
+        expect(state.consumedToday, equals(first));
+        expect(state.consumedToday, isEmpty);
+      });
+
+      test('clearConsumedToday empties the cache and notifies listeners',
+          () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        await state.loadConsumedToday();
+        expect(state.consumedToday, isEmpty);
+
+        var notifications = 0;
+        state.addListener(() => notifications++);
+        state.clearConsumedToday();
+        // Empty-on-empty is a no-op; we don't require a notification here.
+        expect(state.consumedToday, isEmpty);
+        expect(notifications, 0);
+      });
+    });
+
+    // ── Per-macro totals (Phase 1 of the macro-donut-chart plan) ───────
+    // `todayConsumedProtein/Carbs/Fat` were pre-existing getters; the
+    // macro-donut-chart plan adds `todayConsumedFiber` (the only
+    // missing one) and pins the per-row scaling contract on all four
+    // by exercising it through log/delete.
+    group('per-macro totals', () {
+      test(
+        'empty cache: all four per-macro getters return 0',
+        () async {
+          final repo = await _freshRepo();
+          final state = NutritionState(repo);
+          expect(state.todayConsumedProtein, 0);
+          expect(state.todayConsumedCarbs, 0);
+          expect(state.todayConsumedFiber, 0);
+          expect(state.todayConsumedFat, 0);
+
+          // Loading an empty repo leaves the totals at 0.
+          await state.loadConsumedToday();
+          expect(state.todayConsumedProtein, 0);
+          expect(state.todayConsumedCarbs, 0);
+          expect(state.todayConsumedFiber, 0);
+          expect(state.todayConsumedFat, 0);
+        },
+      );
+
+      test(
+        'per-row scaling: grams food and count food both scale their '
+        'macros; values are summed unrounded and rounded once at the end',
+        () async {
+          final repo = await _freshRepo();
+          final state = NutritionState(repo);
+          final today = OmniDateUtils.todayMidnightMs();
+
+          // Per-100 g food, 1.5 portions logged: each macro is
+          // (1.5 / 100) = 0.015× the reference. pasta macros (P=30,
+          // C=80, F=10, F=4) contribute (0.45, 1.2, 0.15, 0.06).
+          await repo.createConsumedFood(ConsumedFood(
+            id: 'c-pasta',
+            loggedAtMs: today + 1000,
+            dateMs: today,
+            sourceFoodId: 'food-pasta',
+            name: 'Pasta',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            protein: 30,
+            carbs: 80,
+            fiber: 10,
+            fat: 4,
+            amountConsumed: 1.5,
+            targetCalories: 2000,
+            targetProtein: 150,
+            targetCarbs: 200,
+            targetFat: 65,
+            createdAtMs: today,
+            updatedAtMs: today,
+          ));
+          // Per-1-egg food, 2 eggs logged: each macro is 2× reference.
+          // (P=6, C=1, fiber=null, F=5) contribute (12, 2, 0, 10).
+          await repo.createConsumedFood(ConsumedFood(
+            id: 'c-eggs',
+            loggedAtMs: today + 2000,
+            dateMs: today,
+            sourceFoodId: 'food-eggs',
+            name: 'Egg',
+            unitType: FoodUnitType.count,
+            referenceAmount: 1,
+            referenceLabel: 'egg',
+            protein: 6,
+            carbs: 1,
+            fiber: null,
+            fat: 5,
+            amountConsumed: 2.0,
+            targetCalories: 2000,
+            targetProtein: 150,
+            targetCarbs: 200,
+            targetFat: 65,
+            createdAtMs: today,
+            updatedAtMs: today,
+          ));
+
+          await state.loadConsumedToday();
+          // protein: 0.45 + 12 = 12.45 → 12
+          expect(state.todayConsumedProtein, 12);
+          // carbs: 1.2 + 2 = 3.2 → 3
+          expect(state.todayConsumedCarbs, 3);
+          // fiber: 0.15 + 0 = 0.15 → 0
+          expect(state.todayConsumedFiber, 0);
+          // fat: 0.06 + 10 = 10.06 → 10
+          expect(state.todayConsumedFat, 10);
+        },
+      );
+
+      test('null fiber on a ConsumedFood is treated as 0', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
+
+        // Per-100 g food, 3.0 portions (300 g) so the scaled values
+        // produce non-zero totals. Rice macros (P=2, C=28, fiber=null,
+        // F=0) contribute (0.06, 0.84, 0, 0) — protein still rounds
+        // down to 0 even at 3 portions (this is the rounding-once
+        // contract, not a bug).
+        await repo.createConsumedFood(ConsumedFood(
+          id: 'c-rice',
+          loggedAtMs: today + 1000,
+          dateMs: today,
+          sourceFoodId: 'food-rice',
+          name: 'White Rice',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100,
+          referenceLabel: 'g',
+          protein: 2,
+          carbs: 28,
+          fiber: null,
+          fat: 0,
+          amountConsumed: 3.0,
+          targetCalories: 2000,
+          targetProtein: 150,
+          targetCarbs: 200,
+          targetFat: 65,
+          createdAtMs: today,
+          updatedAtMs: today,
+        ));
+
+        await state.loadConsumedToday();
+        expect(state.todayConsumedFiber, 0);
+        // Carbs: 28 * 3.0 / 100 = 0.84 → 1.
+        expect(state.todayConsumedCarbs, 1);
+      });
+
+      test(
+        'log + delete keep the per-macro totals in sync with the cache',
+        () async {
+          final repo = await _freshRepo();
+          final state = NutritionState(repo);
+
+          // Start empty.
+          expect(state.todayConsumedProtein, 0);
+          expect(state.todayConsumedCarbs, 0);
+          expect(state.todayConsumedFiber, 0);
+          expect(state.todayConsumedFat, 0);
+
+          // Log a food via the state — per-100 g chicken breast at
+          // 3.0 portions (300 g). Macros (P=31, C=0, F=0, F=3) →
+          // (0.93, 0, 0, 0.09). P rounds to 1, fat rounds to 0.
+          final food = Food(
+            id: 'food-chicken',
+            name: 'Chicken Breast',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            protein: 31,
+            carbs: 0,
+            fiber: 0,
+            fat: 3,
+            createdAtMs: 0,
+            updatedAtMs: 0,
+          );
+          await state.logConsumedFoodAt(food, 3.0);
+          expect(state.todayConsumedProtein, 1);
+          expect(state.todayConsumedCarbs, 0);
+          expect(state.todayConsumedFiber, 0);
+          expect(state.todayConsumedFat, 0);
+
+          // Delete the row — totals drop back to 0.
+          await state.unlogFoodToday(food.id);
+          expect(state.todayConsumedProtein, 0);
+          expect(state.todayConsumedCarbs, 0);
+          expect(state.todayConsumedFiber, 0);
+          expect(state.todayConsumedFat, 0);
+        },
+      );
+    });
+
   });
 
   // ══════════════════════════════════════════════════════════════════════════

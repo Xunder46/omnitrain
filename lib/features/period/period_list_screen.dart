@@ -32,7 +32,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
     return Scaffold(
       extendBody: true,
       extendBodyBehindAppBar: true,
-      appBar: const OmniBackHeader(title: 'Training Periods'),
+      appBar: const OmniBackHeader(title: 'Periodization'),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: widget.periodState,

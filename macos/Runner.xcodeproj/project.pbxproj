@@ -135,19 +135,19 @@
 				33FAB671232836740065AC1E /* Runner */,
 				33CEB47122A05771004F2AC0 /* Flutter */,
 				331C80D6294CF71000263BE5 /* RunnerTests */,
-				33CC10EE2044A3C60003C045 /* Products */,
+				33CC10EE2044A3C60003C045 /* Library */,
 				D73912EC22F37F3D000D13A0 /* Frameworks */,
 				4641E8F434BBFB281D89F5F7 /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
-		33CC10EE2044A3C60003C045 /* Products */ = {
+		33CC10EE2044A3C60003C045 /* Library */ = {
 			isa = PBXGroup;
 			children = (
 				33CC10ED2044A3C60003C045 /* omnitrain.app */,
 				331C80D5294CF71000263BE5 /* RunnerTests.xctest */,
 			);
-			name = Products;
+			name = Library;
 			sourceTree = "<group>";
 		};
 		33CC11242044D66E0003C045 /* Resources */ = {
@@ -292,7 +292,7 @@
 				Base,
 			);
 			mainGroup = 33CC10E42044A3C60003C045;
-			productRefGroup = 33CC10EE2044A3C60003C045 /* Products */;
+			productRefGroup = 33CC10EE2044A3C60003C045 /* Library */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (

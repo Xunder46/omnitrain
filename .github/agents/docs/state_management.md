@@ -375,10 +375,170 @@ Manages profile identity and body-measurement flows used by `ProfileScreen`.
 
 ---
 
+### `NutritionState`
+
+**File**: `lib/state/nutrition_state.dart`
+**Depends on**: `WorkoutRepository`
+
+Manages the user's daily nutrition targets and the cached "today's
+consumed foods" used by the calorie ring on the nutrition page. Targets
+are keyed by date (start-of-day ms) and roll over from the most recent
+ancestor day when no explicit entry exists. See
+[Daily targets persistence](db_integration.md#nutrition-targets-daily-rollover)
+and [Consumed-Food State Cache](data_models.md#consumed-food-state-cache-nutritionstate).
+
+#### Key State Fields
+
+| Field | Type | Purpose |
+|---|---|---|
+| `_nutritionTarget` | `NutritionTarget?` | The currently loaded (or rolled-over) target for the active day. |
+| `_isLoading` | `bool` | Loading state for async target operations. |
+| `_targetsByDate` | `Map<int, NutritionTarget?>` | Per-date cache of loaded targets. Avoids re-fetching the same day on subsequent navigation. |
+| `_consumedToday` | `List<ConsumedFood>` | Cached list of today's consumed-food snapshots. Empty until first load. |
+
+#### Key Methods
+
+| Method | Purpose |
+|---|---|
+| `loadNutritionTargetForDate(int dateMs)` | Loads the target for [dateMs]. Repository walks backward to find the most recent ancestor if no entry exists for the requested day. Updates cache + `_nutritionTarget` and notifies listeners. |
+| `saveNutritionTargetForDate(int dateMs, NutritionTarget target)` | Persists [target] for [dateMs]. The repository forward-propagates to future dates that still hold the old values; past dates are never modified. Updates cache + `_nutritionTarget` and notifies listeners. |
+| `getTodayTarget()` | Convenience: loads today's target, returns it, updates the cache, and notifies listeners. |
+| `rolloverToDate(int dateMs)` | Day-rollover safety net. Clears the in-memory `_consumedToday` cache and the per-date `_targetsByDate` cache (so a long-running app cannot leak yesterday's totals into today), then delegates to `loadNutritionTargetForDate(dateMs)` which performs the backward-walk fallback for the new day. Past `ConsumedFood` rows in storage are unaffected — the cache is the only thing cleared. |
+| `getCachedTargetForDate(int dateMs)` | Returns the cached target for [dateMs] without re-fetching. `null` if not yet loaded. |
+| `loadNutritionTarget()` | Legacy; delegates to `loadNutritionTargetForDate(todayMs)`. |
+| `saveNutritionTarget(NutritionTarget target)` | Legacy; delegates to `saveNutritionTargetForDate(todayMs, target)`. |
+| `consumedToday` | Unmodifiable view of today's cached consumed-food snapshots. Drives the calorie ring. |
+| `todayConsumedCalories` | Derived sum of `ConsumedFood.caloriesConsumed` over `consumedToday`. Pure / derived; 0 when the cache is empty. |
+| `todayConsumedProtein` | Derived sum of `protein * amountConsumed / referenceAmount` over `consumedToday`, accumulated as a `double` and rounded **once at the end**. Matches the `caloriesConsumed` rounding contract (which is also a single per-snapshot round) and avoids per-row rounding drift on fractional servings. |
+| `todayConsumedCarbs` | Same shape as `todayConsumedProtein`, for carbs. |
+| `todayConsumedFiber` | Same shape as `todayConsumedProtein`, for fiber. `ConsumedFood.fiber` is `int?`; `null` is treated as 0. |
+| `todayConsumedFat` | Same shape as `todayConsumedProtein`, for fat. |
+| `todayConsumedSodium` | Same shape as `todayConsumedFiber`, for sodium. D-7 freeze: `null` source sodium (or rows logged before the freeze) is treated as 0. Rendered as the corner chip `Na N mg` on the calorie-ring card. |
+| `consumedTodaySorted` | `consumedToday` sorted by `loggedAtMs` ascending. New list; the cache stays in insertion order. |
+| `loadConsumedToday()` | Reloads today's snapshots from the repository, replaces the cache, notifies listeners. Idempotent. |
+| `getTodayConsumedFoods()` | Convenience wrapper around `loadConsumedToday()`; returns the resulting list. |
+| `refreshConsumedToday()` | Sugar for `loadConsumedToday()` that returns the resulting list. |
+| `logConsumedFood(Food, double amount)` | Builds a frozen `ConsumedFood` snapshot from the source food plus the cached daily target, persists it via the repository, and appends it to the cache so the ring updates immediately. The snapshot freezes: food name, unit type, reference amount/label, macros, the source food's `sodium` (D-7), and the daily target fields. Returns the new id, or `null` on invalid amount (≤ 0) or persistence failure. |
+| `logConsumedFoodAt(Food, double amount)` | Day-uniqueness variant: if a row for `(sourceFoodId, today)` already exists, updates its `amountConsumed` in place; otherwise delegates to `logConsumedFood`. Used by the per-row checkbox + amount-input UI on the food library card. Returns the row id, or `null` on invalid amount or persistence failure. |
+| `unlogFoodToday(String foodId)` | Removes the day-log row for `foodId` (today). Returns `true` if a row was removed, `false` otherwise. |
+| `findLoggedTodayForFood(String foodId)` | Cache-only lookup of the day's row for `foodId`. Returns `null` when not logged today. |
+| `isFoodLoggedToday(String foodId)` | True when a day-log row exists for `foodId`. Drives the row's checkbox `value:` binding. |
+| `deleteConsumedFood(String id)` | Removes a consumed-food row via the repository and refreshes the cache. No-op (and returns `false`) if the id is not in the cache. |
+| `clearConsumedToday()` | Empties the consumed-food cache and notifies listeners. Intended for day rollover. |
+
+---
+
+### `FoodLibraryState`
+
+**File**: `lib/state/food_library_state.dart`
+**Depends on**: `WorkoutRepository`
+
+Manages the user's food library: food groups and food items with macronutrient metadata. Provides caching, CRUD operations, and search functionality. All operations route through the repository interface, enabling environment-agnostic persistence (Hive web, SQLite native).
+
+#### Key State Fields
+
+| Field | Type | Purpose |
+|---|---|---|
+| `_foodGroups` | `Map<String, FoodGroup>` | Cache of food groups keyed by id |
+| `_foods` | `Map<String, Food>` | Cache of food items keyed by id |
+| `_catalogFoods` | `Map<String, Food>` | Cache of bundled catalog foods (read-only); separate from `_foods` so catalog rows never leak into the library view |
+| `_isLoadingGroups` | `bool` | Loading state for food groups |
+| `_isLoadingFoods` | `bool` | Loading state for foods |
+| `_isLoadingCatalog` | `bool` | Loading state for the catalog cache |
+
+#### Key Methods (library + groups + search — unchanged surface in this iteration; see Catalog + Custom below for additions.)
+
+| Method | Purpose |
+|---|---|
+| `loadFoodGroups({includeArchived})` | Loads all food groups from repository, updates cache, notifies listeners |
+| `loadFoods({includeArchived})` | Loads all foods from repository, updates cache, notifies listeners |
+| `createFoodGroup(String name, {String? color})` | Creates a new food group with optional color, persists, and notifies |
+| `updateFoodGroup(FoodGroup group)` | Updates an existing food group and persists changes |
+| `archiveFoodGroup(String id)` | Archives (soft-deletes) a food group by setting `isArchived = true` |
+| `renameFoodGroup(String id, String newName)` | Renames a food group in place (preserves id / color / createdAtMs / isArchived). Used by the Categories tab's inline `TextField`. No-ops on empty / unchanged names; throws if the group is not in the cache. |
+| `deleteFoodGroupReassigningFoods(String id, String? toGroupId)` | Archives the group while reassigning all of its non-archived, user-owned foods to `toGroupId` (or `null` for "Ungrouped"). Foods are never deleted. Used by the Categories tab's trash affordance. |
+| `getFoodGroupById(String id)` | Retrieves a food group from cache or repository; returns null if not found |
+| `createFood(Food food)` | Creates a new food item, persists, and notifies (forces `isCatalog = false`) |
+| `updateFood(Food food)` | Updates an existing food and persists changes |
+| `archiveFood(String id)` | Archives (soft-deletes) a food by setting `isArchived = true` |
+| `removeFood(String id)` | Hard-deletes a food from the library; no-op for unknown ids; no-op for catalog foods; does not throw |
+| `isInLibrary(String catalogFoodId)` | Returns `true` iff a non-archived, user-owned library row matches the catalog source by name + reference + macros identity. Thin wrapper over [libraryIdFor](#libraryidfor) — does the same lookup, returns a boolean. |
+| `libraryIdFor(String catalogFoodId)` | Returns the matching library row's id (or `null`) using the same name + reference + macros identity rule. UI callers that need to call `removeFood` / `unlogFoodToday` against the matching row use this; `isInLibrary` is the boolean wrapper. |
+| `getFoodById(String id)` | Retrieves a food from cache or repository; returns null if not found |
+| `searchFoods(String query, {includeArchived})` | Case-insensitive substring search; queries repository, does not cache results |
+
+#### Caching Behavior
+
+- Food groups and foods are cached in-memo, remove) immediately update the cache
+- `removeFood()` only calls `notifyListeners()` when the food was in the cache (avoids spurious notifications for cold-cache no-ops)
+- `getFoodGroupById()` and `getFoodById()` check cache first, then repository
+- `searchFoods()` queries the repository directly without caching
+
+#### Removal Semantics
+
+The library supports two distinct deletion operations:
+- `archiveFood(id)` — soft-delete: sets `isArchived = true`, row retained for history and recovery
+- `removeFood(id)` — hard-delete: drops the row from storage. Past `ConsumedFood` snapshots are unaffected because they store a frozen copy of every food attribute at log time (`sourceFoodId` may become a dangling reference — this is expected and supported).
+
+#### Catalog Operations (Add-from-Catalog flow)
+
+The catalog is a bundled, read-only collection of common foods that
+ships with the app. Catalog rows live in their own repository box and
+are never returned by `WorkoutRepository.getFoods()`. The state
+caches them in `_catalogFoods` and exposes them through a separate
+getter so the Add-from-Catalog tab can re-render without a repository
+hit per frame.
+
+| Method | Purpose |
+|---|---|
+| `loadCatalogFoods({includeArchived})` | Loads the bundled catalog into `_catalogFoods`; idempotent. |
+| `catalogFoods` | Unmodifiable list of cached catalog foods (empty until `loadCatalogFoods` resolves). |
+| `isLoadingCatalogFoods` | Loading flag for the catalog cache. |
+| `addCatalogFoodToLibrary(String catalogFoodId)` | Copies a catalog food into the library via `WorkoutRepository.addCatalogFoodToLibrary`, inserts the new library row into `_foods`, and notifies listeners so the browse card picks it up. The catalog itself is unchanged. |
+| `searchCatalogFoods(String query)` | Pure local filter on `_catalogFoods` by case-insensitive substring on `name`; returns an alphabetical list. Empty query returns the full list. No network call. |
+| `createCatalogFood(FoodDraft draft)` | Creates a new food in the **catalog** (the global managed library). Persists via `WorkoutRepository.createCatalogFood`, inserts the row into `_catalogFoods`, and notifies listeners. Returns the new id. The new row has `isCatalog = true`; it appears in the **Library** tab on `AddFoodScreen` and can be added to the personal library via the **Add** button on the row. This is the iteration-3 path the **+ New Item** tab uses. |
+| `updateCatalogFood(Food existing, FoodDraft draft)` | Updates an existing **catalog** food (row tap → `EditFoodScreen` → save). Persists via `WorkoutRepository.updateCatalogFood`, updates the in-memory catalog cache, and notifies listeners. Preserves the original `id` and `isCatalog = true`; only `updatedAtMs` advances. Throws `StateError` if `existing.isCatalog` is not `true`; throws if the id is not in the catalog cache. Past `ConsumedFood` snapshots for past days are NOT modified (the snapshot model freezes name, macros, and reference at log time and does not include the image). |
+
+#### Custom-Food (Library) Edit / Create — kept for future use
+
+The `createCustomFood` and `updateCustomFood` API on `FoodLibraryState`
+is **kept** for any future code that wants to write to the personal
+library directly. The iteration-3 UI redirects the create + edit
+affordances to the catalog (above); the personal library still
+receives catalog copies via the existing **Add** flow on the
+catalog row. No screen currently calls `createCustomFood` /
+`updateCustomFood`.
+
+| Method | Purpose |
+|---|---|
+| `createCustomFood({name, groupId, unitType, referenceAmount, referenceLabel, protein, carbs, fiber, fat, sodium, notes, imagePath})` | Builds a `Food(isCatalog: false, ...)` with a fresh id assigned by the state, persists via the repository, inserts the row into `_foods`, and notifies listeners. Returns the new id. |
+| `updateCustomFood({id, name, groupId, unitType, referenceAmount, referenceLabel, protein, carbs, fiber, fat, sodium, notes, imagePath})` | Updates an existing library food. Preserves the original `id`, `isCatalog = false`, and `createdAtMs`; only `updatedAtMs` advances. |
+
+#### Consumed-Food Cache (in `NutritionState`, not `FoodLibraryState`)
+
+Consumed-food logging lives on `NutritionState` (see the
+`ConsumedFood State Cache` section of [Data Models](data_models.md#consumed-food-state-cache-nutritionstate))
+because it is day-scoped and powers the calorie ring on the nutrition
+page. `FoodLibraryState` owns the library (groups + foods) but does not
+own the day-log. The two states are independent: logging a consumed food
+does not mutate the library, and editing a library food does not
+retroactively change past day-log snapshots (the snapshots are frozen).
+
+#### Current Consumers
+
+- `NutritionScreen` (read-only browse card) — calls `loadFoodGroups()` and `loadFoods()` from `initState` and renders the cached data grouped by `FoodGroup`, with a trailing "Ungrouped" section for `groupId == null` foods. Each row is a `LogFoodRow` whose checkbox toggles the food in/out of today's log via `NutritionState`. The bottom "Manage Food Library" primary CTA and the `NutritionSummaryCard` were removed; the manage flow is reached via a pencil `IconButton` (key `food_library_manage_pencil`) in the Food Library card header.
+- `NutritionScreen` (calorie ring header) — calls `NutritionState.loadConsumedToday()` from `initState` and on return from `NutritionTargetScreen`; renders the `Today` header via `CalorieRingCard`, which reads `nutritionState.nutritionTarget` and `nutritionState.todayConsumedCalories` through a `ListenableBuilder`.
+- `NutritionScreen` (Food Library card pencil) — pushes `AddFoodScreen`; the icon does not call any state methods directly, the new screen owns the catalog load and the add-from-catalog / create-custom invocations.
+- `AddFoodScreen` (Library tab) — calls `loadCatalogFoods()` from a post-frame callback in `initState` and renders the cached catalog foods alphabetically. Each row's trailing action reflects whether the catalog food is in the user's library (via `libraryIdFor(catalogFoodId)` returning non-null — see [FoodLibraryState `libraryIdFor`](#libraryidfor)). Tapping Add calls `addCatalogFoodToLibrary(food.id)`; tapping the trash button (when the food is in the library) re-resolves the id via `libraryIdFor(food.id)` and calls `unlogFoodToday(libraryId)` (if logged today) then `removeFood(libraryId)`. Both actions stay on the screen — the user can add and remove multiple foods in one visit and only leaves via the system back arrow.
+- `AddFoodScreen` (Library tab) — row tap (outside the trailing Add / Remove button) opens `EditFoodScreen` via `EditFoodScreen.push(context, food: catalogFood, foodLibraryState: state)`. `EditFoodScreen` calls `updateCatalogFood(food, draft)` on save. The Add / Remove buttons still go through `addCatalogFoodToLibrary(food.id)` and `removeFood(libraryId)` (with `unlogFoodToday` first if the food is logged today) — the row tap is the iteration-3 entry point to the edit affordance.
+- `AddFoodScreen` (+ New Item tab) — calls `createCatalogFood(draft)` from the Save handler. Iteration 3 redirects the create path to the catalog so every new food the user creates is browsable in the Library tab and can be added to the personal library via the Add button on the row. The form is purely local; no state reads until save time. Pops on success; surfaces a `SnackBar` on failure.
+
+---
+
 ### `SettingsState`
 
 **File**: `lib/state/settings/settings_state.dart`
-**Depends on**: `WorkoutRepository`
+**Depends on**: `WorkoutRepository`, `PreferencesService`
 
 Owns persisted app appearance, calendar, timer-alert, and workout follow-up preferences. See [Theme & Settings](theme_and_settings.md) for full documentation.
 

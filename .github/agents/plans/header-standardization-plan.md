@@ -131,7 +131,7 @@ For each screen below, replace the `AppBar(...)` call with `OmniBackHeader(title
    - Replace `AppBar(title: Text(widget.existingPeriod == null ? 'Create Period' : 'Edit Period'), ...)` with `OmniBackHeader(title: widget.existingPeriod == null ? 'Create Period' : 'Edit Period')`
 
 5. **`lib/features/period/period_list_screen.dart`**
-   - Replace `AppBar(title: Text('Training Periods'), ...)` with `OmniBackHeader(title: 'Training Periods')`
+   - Replace `AppBar(title: Text('Periodization'), ...)` with `OmniBackHeader(title: 'Periodization')`
    - Add `extendBodyBehindAppBar: true`
 
 6. **`lib/features/profile/profile_screen.dart`**

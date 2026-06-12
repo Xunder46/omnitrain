@@ -6,12 +6,13 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 
 import 'helpers/fake_rest_notification_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 void main() {
   Future<SettingsState> makeSettings() async {
     final repo = MockWorkoutRepository();
     await repo.initialize();
-    final state = SettingsState(repo);
+    final state = SettingsState(repo, fakePreferencesService());
     await state.initialize();
     return state;
   }

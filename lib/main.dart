@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'app.dart';
+import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
 import 'data/repositories/hive_workout_repository.dart';
@@ -12,6 +13,8 @@ import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
+import 'state/nutrition_state.dart';
+import 'state/food_library_state.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/utils/rest_notification_service.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -49,6 +52,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _initializeLocalTimezone();
   try {
+    // Initialize services
+    final preferencesService = PreferencesServiceImpl();
+    await preferencesService.init();
+
     // Initialize repository (injectable, can be swapped per environment)
     final repository = await _createRepository();
     await repository.initialize();
@@ -67,8 +74,11 @@ void main() async {
     final calendarState = CalendarState(repository);
     final periodState = PeriodState(repository);
     final profileState = ProfileState(repository);
-    final settingsState = SettingsState(repository);
+    final settingsState = SettingsState(repository, preferencesService);
     await settingsState.initialize();
+    final nutritionState = NutritionState(repository);
+    await nutritionState.loadNutritionTarget();
+    final foodLibraryState = FoodLibraryState(repository);
     final timerAlertService = TimerAlertService();
     await timerAlertService.initialize();
     final restNotificationService = RestNotificationService();
@@ -91,12 +101,13 @@ void main() async {
         periodState: periodState,
         profileState: profileState,
         settingsState: settingsState,
+        nutritionState: nutritionState,
+        foodLibraryState: foodLibraryState,
         timerAlertService: timerAlertService,
         restNotificationService: restNotificationService,
       ),
     );
   } catch (e) {
-    print('Error initializing app: $e');
     runApp(
       const MaterialApp(
         home: Scaffold(

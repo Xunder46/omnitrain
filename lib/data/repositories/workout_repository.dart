@@ -313,7 +313,7 @@ abstract class WorkoutRepository {
   /// Used during routine deletion cascade.
   Future<void> deletePlannedSessionsByTemplateId(String templateId);
 
-  // ─── Training Periods ─────────────────────────────────────────────────────
+  // ─── Periodization ─────────────────────────────────────────────────────
 
   /// Get all training periods, ordered by start_date_ms ascending.
   Future<List<TrainingPeriod>> getPeriods();
@@ -385,4 +385,181 @@ abstract class WorkoutRepository {
 
   /// Write a named string preference.
   Future<void> setPreferenceString(String key, String value);
+
+  // Nutrition Targets
+  /// Get the nutrition target for a specific date (ms since epoch).
+  /// If target exists for that date, returns it.
+  /// If not, walks backward to find the most recent ancestor target and returns a copy.
+  /// Returns null if no ancestor target exists.
+  Future<NutritionTarget?> getNutritionTargetForDate(int dateMs);
+
+  /// Save a nutrition target for a specific date and propagate forward.
+  /// When saving, updates all future dates that had the old target values to the new values.
+  /// Only updates future targets that are identical to the one being replaced (forward-propagation rule).
+  /// Past targets are never modified.
+  Future<void> saveNutritionTargetForDate(int dateMs, NutritionTarget target);
+
+  /// Get today's nutrition target (convenience method; delegates to getNutritionTargetForDate with today).
+  /// Backwards compatibility: existing code using this method continues to work.
+  Future<NutritionTarget?> getNutritionTarget();
+
+  /// Save today's nutrition target and propagate forward (convenience method; delegates to saveNutritionTargetForDate with today).
+  /// Backwards compatibility: existing code using this method continues to work.
+  Future<void> saveNutritionTarget(NutritionTarget target);
+
+  // ─── Food Library ─────────────────────────────────────────────────────────
+
+  /// Get all non-archived food groups.
+  /// Pass [includeArchived] = true to include archived groups.
+  Future<List<FoodGroup>> getFoodGroups({bool includeArchived = false});
+
+  /// Get a single food group by ID, or null if not found.
+  Future<FoodGroup?> getFoodGroupById(String id);
+
+  /// Create a new food group; returns its ID.
+  Future<String> createFoodGroup(FoodGroup group);
+
+  /// Update an existing food group.
+  Future<void> updateFoodGroup(FoodGroup group);
+
+  /// Archive a food group (soft-delete: sets isArchived = true).
+  Future<void> archiveFoodGroup(String id);
+
+  /// Reassign a list of foods to a new group in a single transaction.
+  ///
+  /// Used by the Categories tab when deleting a non-empty group:
+  /// the caller passes the source group's food ids and a destination
+  /// group id (or `null` for "Ungrouped"). The repository updates
+  /// each food's `groupId` in place; foods are never deleted by
+  /// this method.
+  ///
+  /// Unknown food ids are silently skipped (idempotent). An empty
+  /// list is a no-op.
+  Future<void> reassignFoodsToGroup(
+    List<String> foodIds,
+    String? targetGroupId,
+  );
+
+  /// Get all non-archived foods.
+  /// Pass [includeArchived] = true to include archived foods.
+  Future<List<Food>> getFoods({bool includeArchived = false});
+
+  /// Get all non-archived foods belonging to a specific group.
+  /// Pass [includeArchived] = true to include archived foods.
+  Future<List<Food>> getFoodsByGroup(String groupId, {bool includeArchived = false});
+
+  /// Get a single food by ID, or null if not found.
+  Future<Food?> getFoodById(String id);
+
+  /// Search foods by name (case-insensitive substring match).
+  /// Pass [includeArchived] = true to include archived foods in results.
+  Future<List<Food>> searchFoods(String query, {bool includeArchived = false});
+
+  /// Create a new food; returns its ID.
+  Future<String> createFood(Food food);
+
+  /// Update an existing food.
+  Future<void> updateFood(Food food);
+
+  /// Archive a food (soft-delete: sets isArchived = true).
+  /// Does NOT remove from storage — archived foods remain in the database
+  /// but are excluded from active queries (getFoods, searchFoods, etc.)
+  /// unless [includeArchived] = true is passed.
+  Future<void> archiveFood(String id);
+
+  /// Hard-delete a library food from the user's library.
+  ///
+  /// This operation is safe because [ConsumedFood] (the day-log snapshot model)
+  /// freezes all food attributes at log time: name, unitType, referenceAmount,
+  /// referenceLabel, protein, carbs, fiber, fat, sodium, groupIdSnapshot,
+  /// groupNameSnapshot, and the daily targets. A [ConsumedFood] row stores its
+  /// own copy of every value — it does NOT reference the live [Food] row.
+  ///
+  /// The [sourceFoodId] field on [ConsumedFood] may become a dangling reference
+  /// after removal — this is expected and supported. The snapshot remains valid
+  /// because all needed values are frozen on the [ConsumedFood] itself.
+  ///
+  /// This method only touches user-owned library foods (isCatalog = false).
+  /// Catalog foods (isCatalog = true) are read-only and cannot be removed
+  /// through this method; passing a catalog ID is a no-op.
+  ///
+  /// Does nothing if [id] is not present in the library.
+  Future<void> removeFood(String id);
+
+  // ─── Food Catalog ─────────────────────────────────────────────────────────
+  // The catalog is the **global managed library**: a bundled set of
+  // foods that ships with the app and is mutable at runtime. Users
+  // can browse it on the **Library** tab of `AddFoodScreen`, edit any
+  // catalog food, and create new catalog foods via the **+ New Item**
+  // tab. Catalog foods can be added to the user's personal library
+  // for logging via the **Add** button on the row.
+
+  /// Get all catalog foods.
+  /// Pass [includeArchived] = true to include archived foods.
+  Future<List<Food>> getCatalogFoods({bool includeArchived = false});
+
+  /// Get a single catalog food by ID, or null if not found.
+  Future<Food?> getCatalogFoodById(String id);
+
+  /// Create a new catalog food. The new row has `isCatalog = true`
+  /// and a fresh id assigned by the state. Returns the new id.
+  Future<String> createCatalogFood(Food food);
+
+  /// Update an existing catalog food. Preserves the original `id`
+  /// and `isCatalog = true`; advances `updatedAtMs`. Implementations
+  /// should throw a clear exception when the id is not present.
+  Future<void> updateCatalogFood(Food food);
+
+  /// Delete a catalog food by ID (hard delete). This permanently
+  /// removes the food from the catalog. Does NOT affect user's
+  /// historical nutrition logs (ConsumedFood entries) since they
+  /// store frozen snapshots.
+  ///
+  /// Implementations should throw if the id is not present.
+  Future<void> deleteCatalogFood(String id);
+
+  /// Copy a catalog food into the user's library.
+  /// Returns the new library food's ID.
+  /// The new library food will have:
+  /// - A new generated ID (not the catalog ID)
+  /// - isCatalog = false
+  /// - All other fields copied from the catalog source
+  /// The original catalog food remains unchanged.
+  Future<String> addCatalogFoodToLibrary(String catalogFoodId);
+
+  // ─── Day Nutrition Log ────────────────────────────────────────────────────
+  // Foods consumed on a given day. Each entry is a frozen snapshot.
+
+  /// Get all consumed foods for a specific day.
+  /// Returns entries where dateMs matches the given day (local midnight).
+  Future<List<ConsumedFood>> getConsumedFoodsForDate(int dateMs);
+
+  /// Create a new consumed food entry (log a food).
+  /// Returns the new entry's ID.
+  Future<String> createConsumedFood(ConsumedFood entry);
+
+  /// Delete a consumed food entry by ID.
+  Future<void> deleteConsumedFood(String id);
+
+  /// Get consumed foods within a date range (inclusive).
+  /// Useful for reports or bulk operations.
+  Future<List<ConsumedFood>> getConsumedFoodsInRange(int fromMs, int toMs);
+
+  /// Update an existing consumed food entry by id.
+  ///
+  /// The entry's [ConsumedFood.id] is used as the storage key. The frozen
+  /// snapshot contract is preserved by the caller — this method writes
+  /// whatever fields the caller sets, but the UI/state layer is responsible
+  /// for keeping name, unit, reference, macros, and target fields stable
+  /// when only the amount has changed.
+  ///
+  /// Implementations should throw a clear exception (e.g. `StateError`)
+  /// when the id is not present, so the caller can detect the bug.
+  Future<void> updateConsumedFood(ConsumedFood entry);
+
+  /// Get a single consumed food entry by id, or `null` if not found.
+  ///
+  /// Used by the state layer as a cache-miss fallback when looking up a
+  /// row by [ConsumedFood.sourceFoodId] + [ConsumedFood.dateMs].
+  Future<ConsumedFood?> getConsumedFoodById(String id);
 }

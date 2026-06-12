@@ -1096,4 +1096,180 @@ void main() {
       expect(obj.value, isA<double>());
     });
   });
+
+  // ── NutritionTarget ──────────────────────────────────────────────────────
+
+  group('NutritionTarget', () {
+    test('fromMap/toMap round-trip preserves all fields', () {
+      final obj = NutritionTarget(
+        calories: 2500,
+        protein: 180,
+        carbs: 300,
+        fat: 80,
+        dateMs: 1749312000000,
+      );
+      final map = obj.toMap();
+      expect(map['calories'], 2500);
+      expect(map['protein'], 180);
+      expect(map['carbs'], 300);
+      expect(map['fat'], 80);
+      expect(map['date_ms'], 1749312000000);
+
+      final restored = NutritionTarget.fromMap(map);
+      expect(restored.calories, 2500);
+      expect(restored.protein, 180);
+      expect(restored.carbs, 300);
+      expect(restored.fat, 80);
+      expect(restored.dateMs, 1749312000000);
+    });
+
+    test('defaults are 0.0 (not nullable) when constructed empty', () {
+      final obj = NutritionTarget();
+      expect(obj.calories, 0.0);
+      expect(obj.protein, 0.0);
+      expect(obj.carbs, 0.0);
+      expect(obj.fat, 0.0);
+      expect(obj.dateMs, isNull);
+    });
+
+    test('fromMap defaults missing fields to 0.0', () {
+      final obj = NutritionTarget.fromMap(const {});
+      expect(obj.calories, 0.0);
+      expect(obj.protein, 0.0);
+      expect(obj.carbs, 0.0);
+      expect(obj.fat, 0.0);
+      expect(obj.dateMs, isNull);
+    });
+
+    test('fromMap accepts int values for numeric fields via num cast', () {
+      // Hive stores everything as `dynamic`; ints are a valid input form.
+      final obj = NutritionTarget.fromMap({
+        'calories': 2500,
+        'protein': 180,
+        'carbs': 300,
+        'fat': 80,
+      });
+      expect(obj.calories, 2500.0);
+      expect(obj.protein, 180.0);
+    });
+
+    test('isUnset is true only when all macros are 0', () {
+      expect(NutritionTarget().isUnset, isTrue);
+      expect(
+        NutritionTarget(calories: 0, protein: 0, carbs: 0, fat: 0).isUnset,
+        isTrue,
+      );
+      expect(NutritionTarget(calories: 1).isUnset, isFalse);
+      expect(NutritionTarget(protein: 1).isUnset, isFalse);
+      expect(NutritionTarget(carbs: 1).isUnset, isFalse);
+      expect(NutritionTarget(fat: 1).isUnset, isFalse);
+    });
+
+    test('copyWith updates only the provided fields', () {
+      final base = NutritionTarget(
+        calories: 2000,
+        protein: 100,
+        carbs: 200,
+        fat: 60,
+        dateMs: 1000,
+      );
+      final updated = base.copyWith(calories: 2500);
+      expect(updated.calories, 2500);
+      expect(updated.protein, 100);
+      expect(updated.carbs, 200);
+      expect(updated.fat, 60);
+      expect(updated.dateMs, 1000);
+    });
+
+    test('legacy round-trip (dateMs omitted) is null', () {
+      // The legacy single-row target never had a date_ms; round-tripping an
+      // explicit dateMs=missing must produce a null dateMs.
+      final obj = NutritionTarget(calories: 2000, protein: 100);
+      final map = obj.toMap();
+      expect(map.containsKey('date_ms'), isTrue);
+      expect(map['date_ms'], isNull);
+      final restored = NutritionTarget.fromMap(map);
+      expect(restored.dateMs, isNull);
+    });
+  });
+
+  // ── Food (June 2026 — imagePath + fiber round-trip) ─────────────────────
+
+  group('Food', () {
+    Food baseFood({String? imagePath}) => Food(
+          id: 'food-1',
+          name: 'Chicken breast, skinless',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100,
+          referenceLabel: 'g',
+          protein: 31,
+          carbs: 0,
+          fiber: 0,
+          fat: 4,
+          imagePath: imagePath,
+          createdAtMs: 1700000000000,
+          updatedAtMs: 1700000000000,
+        );
+
+    test('imagePath round-trips through fromMap/toMap', () {
+      final obj = baseFood(imagePath: '/tmp/photos/chicken.jpg');
+      final map = obj.toMap();
+      expect(map['image_path'], '/tmp/photos/chicken.jpg');
+
+      final restored = Food.fromMap(map);
+      expect(restored.imagePath, '/tmp/photos/chicken.jpg');
+    });
+
+    test('imagePath null round-trips as null', () {
+      final obj = baseFood();
+      final map = obj.toMap();
+      expect(map['image_path'], isNull);
+
+      final restored = Food.fromMap(map);
+      expect(restored.imagePath, isNull);
+    });
+
+    test('fromMap handles missing image_path as null (legacy row)', () {
+      final map = <String, dynamic>{
+        'id': 'food-1',
+        'name': 'Chicken breast, skinless',
+        'unit_type': 'grams',
+        'reference_amount': 100,
+        'reference_label': 'g',
+        'is_catalog': 0,
+        'protein': 31,
+        'carbs': 0,
+        'fiber': 0,
+        'fat': 4,
+        'is_archived': 0,
+        'created_at_ms': 1700000000000,
+        'updated_at_ms': 1700000000000,
+      };
+      final restored = Food.fromMap(map);
+      expect(restored.imagePath, isNull);
+    });
+
+    test('copyWith sentinel allows clearing imagePath', () {
+      final withImage = baseFood(imagePath: '/tmp/photos/x.jpg');
+      final cleared = withImage.copyWith(imagePath: null);
+      expect(cleared.imagePath, isNull);
+    });
+
+    test('copyWith without imagePath preserves existing value', () {
+      final withImage = baseFood(imagePath: '/tmp/photos/x.jpg');
+      final same = withImage.copyWith(name: 'Renamed');
+      expect(same.imagePath, '/tmp/photos/x.jpg');
+      expect(same.name, 'Renamed');
+    });
+
+    test('fiber round-trips through fromMap/toMap', () {
+      final obj = baseFood().copyWith(carbs: 20, fiber: 5);
+      final map = obj.toMap();
+      expect(map['fiber'], 5);
+
+      final restored = Food.fromMap(map);
+      expect(restored.fiber, 5);
+      expect(restored.carbs, 20);
+    });
+  });
 }

@@ -1,7 +1,7 @@
 # Feature: period-current-badge-text
 
 ## Overview
-Change the Training Periods list badge label for a period covering today from "Active" to "Current". This is copy-only and must not alter badge behavior, styling, or placement.
+Change the Periodization list badge label for a period covering today from "Active" to "Current". This is copy-only and must not alter badge behavior, styling, or placement.
 
 ## Requirements
 - On `PeriodListScreen`, keep the current active-period detection logic exactly as-is: `startDateMs <= now && endDateMs >= now`.

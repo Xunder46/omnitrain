@@ -12,6 +12,7 @@ import 'package:omnitrain/core/utils/rest_notification_service.dart';
 import 'package:omnitrain/core/utils/timer_alert_service.dart';
 import 'helpers/fake_rest_notification_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/fake_preferences_service.dart';
 
 Future<
   ({
@@ -56,7 +57,7 @@ Future<void> _pumpSession(
         routineState: routineState,
         sessionSummaryService: sessionSummaryService,
         timerAlertService: timerAlertService ?? FakeTimerAlertService(),
-        settingsState: settingsState ?? SettingsState(MockWorkoutRepository()),
+        settingsState: settingsState ?? SettingsState(MockWorkoutRepository(), fakePreferencesService()),
         restNotificationService:
             restNotificationService ?? FakeRestNotificationService(),
         editMode: editMode,
@@ -238,7 +239,7 @@ void main() {
   ) async {
     final deps = await _setupSession();
     final restService = FakeRestNotificationService();
-    final settings = SettingsState(deps.repository);
+    final settings = SettingsState(deps.repository, fakePreferencesService());
     await settings.initialize();
     await settings.setRestPingInterval(60);
 
@@ -416,7 +417,7 @@ void main() {
   ) async {
     final deps = await _setupSession(modality: 'sports');
     final restService = FakeRestNotificationService();
-    final settings = SettingsState(deps.repository);
+    final settings = SettingsState(deps.repository, fakePreferencesService());
     await settings.initialize();
     await settings.setEffortTimerSound('digital_buzzer');
 

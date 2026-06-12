@@ -872,4 +872,148 @@ void main() {
       expect(await repo.hasPeriodOverlap(150, 350, excludeId: 'p1'), isTrue);
     });
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // NutritionTarget — daily targets (backward-walk + forward-propagation)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('NutritionTarget (date-keyed) edge cases', () {
+    test('backward-walk returns null when no ancestor exists', () async {
+      final repo = await _freshRepo();
+      final farFuture = OmniDateUtils.startOfDayMs(
+        DateTime.now().add(const Duration(days: 30)),
+      );
+      expect(await repo.getNutritionTargetForDate(farFuture), isNull);
+    });
+
+    test('backward-walk finds the nearest ancestor (not the earliest)',
+        () async {
+      final repo = await _freshRepo();
+      final threeDaysAgo = OmniDateUtils.startOfDayMs(
+        DateTime.now().subtract(const Duration(days: 3)),
+      );
+      final oneDayAgo = OmniDateUtils.startOfDayMs(
+        DateTime.now().subtract(const Duration(days: 1)),
+      );
+      await repo.saveNutritionTargetForDate(
+        threeDaysAgo,
+        NutritionTarget(calories: 1500),
+      );
+      await repo.saveNutritionTargetForDate(
+        oneDayAgo,
+        NutritionTarget(calories: 2400),
+      );
+
+      final today = OmniDateUtils.todayMidnightMs();
+      // The two-days-ago slot is empty; the walk should land on the most
+      // recent ancestor (yesterday) and ignore the three-days-ago value.
+      final result = await repo.getNutritionTargetForDate(today);
+      expect(result?.calories, 2400);
+    });
+
+    test(
+        'forward-propagation updates future targets that match the OLD values',
+        () async {
+      final repo = await _freshRepo();
+      final today = OmniDateUtils.todayMidnightMs();
+      final tomorrow = OmniDateUtils.startOfDayMs(
+        DateTime.now().add(const Duration(days: 1)),
+      );
+      final dayAfter = OmniDateUtils.startOfDayMs(
+        DateTime.now().add(const Duration(days: 2)),
+      );
+
+      // Seed today + tomorrow + day-after with the SAME values.
+      final shared = NutritionTarget(
+        calories: 2000,
+        protein: 120,
+        carbs: 250,
+        fat: 70,
+      );
+      await repo.saveNutritionTargetForDate(today, shared);
+      await repo.saveNutritionTargetForDate(tomorrow, shared);
+      await repo.saveNutritionTargetForDate(dayAfter, shared);
+
+      // Edit today's values.
+      await repo.saveNutritionTargetForDate(
+        today,
+        NutritionTarget(calories: 2500, protein: 150, carbs: 300, fat: 80),
+      );
+
+      // Tomorrow should propagate.
+      final tomorrowTarget = await repo.getNutritionTargetForDate(tomorrow);
+      expect(tomorrowTarget?.calories, 2500);
+      expect(tomorrowTarget?.protein, 150);
+
+      // Day-after should also propagate.
+      final dayAfterTarget = await repo.getNutritionTargetForDate(dayAfter);
+      expect(dayAfterTarget?.calories, 2500);
+      expect(dayAfterTarget?.protein, 150);
+    });
+
+    test(
+        'forward-propagation does NOT touch future targets that already '
+        'differed from the old values', () async {
+      final repo = await _freshRepo();
+      final today = OmniDateUtils.todayMidnightMs();
+      final tomorrow = OmniDateUtils.startOfDayMs(
+        DateTime.now().add(const Duration(days: 1)),
+      );
+
+      // Today: A. Tomorrow: A. Day-after: B (user explicitly changed it).
+      final a = NutritionTarget(
+        calories: 2000,
+        protein: 120,
+        carbs: 250,
+        fat: 70,
+      );
+      final b = NutritionTarget(
+        calories: 3000,
+        protein: 180,
+        carbs: 350,
+        fat: 100,
+      );
+      await repo.saveNutritionTargetForDate(today, a);
+      await repo.saveNutritionTargetForDate(tomorrow, a);
+      // (Day-after left as B; it does not match A, so propagation skips it.)
+      final dayAfter = OmniDateUtils.startOfDayMs(
+        DateTime.now().add(const Duration(days: 2)),
+      );
+      await repo.saveNutritionTargetForDate(dayAfter, b);
+
+      // Edit today → A becomes A'.
+      final aPrime = NutritionTarget(
+        calories: 2500,
+        protein: 150,
+        carbs: 300,
+        fat: 80,
+      );
+      await repo.saveNutritionTargetForDate(today, aPrime);
+
+      // Tomorrow matches OLD A, so it should be updated to A'.
+      final tomorrowTarget = await repo.getNutritionTargetForDate(tomorrow);
+      expect(tomorrowTarget?.calories, 2500);
+
+      // Day-after matches NEITHER old A nor new A' (it was B); the
+      // repository's propagation rule looks for matches against the OLD
+      // value. Day-after was B, not A, so it stays B.
+      final dayAfterTarget = await repo.getNutritionTargetForDate(dayAfter);
+      expect(dayAfterTarget?.calories, 3000);
+    });
+
+    test('legacy get/save methods delegate to today\'s date', () async {
+      final repo = await _freshRepo();
+      await repo.saveNutritionTarget(
+        NutritionTarget(calories: 1900, protein: 100),
+      );
+      final today = OmniDateUtils.todayMidnightMs();
+      final reloaded = await repo.getNutritionTargetForDate(today);
+      expect(reloaded?.calories, 1900);
+      expect(reloaded?.protein, 100);
+
+      // Legacy getter agrees.
+      final legacy = await repo.getNutritionTarget();
+      expect(legacy?.calories, 1900);
+    });
+  });
 }
