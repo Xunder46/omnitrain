@@ -541,7 +541,7 @@ theme.colorScheme.primaryContainer
 **UI**: Alert dialog
 ```
 "Start New Session?"
-"Changing modality will start a new session. Current session will be saved."
+"Changing modality will start a new session. Current session will not be saved."
 [Cancel] [Start New]
 ```
 **Behavior**: Confirm → End current session, create new session, navigate to new session

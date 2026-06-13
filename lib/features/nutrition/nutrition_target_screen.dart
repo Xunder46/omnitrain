@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../state/nutrition_state.dart';
 import '../../data/models/models.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 
 /// Screen for setting today's daily calorie target.
 ///
@@ -16,6 +17,12 @@ import '../../data/models/models.dart';
 /// `NutritionTargetScreen` was previously a four-field form. The
 /// protein / carbs / fat inputs and the live macro-implied read-out
 /// have been removed; only the calories field remains.
+///
+/// The primary bottom **Save** action uses the shared
+/// [OmniBottomCTA] (see
+/// `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`)
+/// so the Save button shares the app-wide width, height, and
+/// vertical anchor with every other primary bottom CTA.
 class NutritionTargetScreen extends StatefulWidget {
   final NutritionState nutritionState;
 
@@ -103,8 +110,21 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
       appBar: AppBar(
         title: const Text('Daily Calorie Target'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      // The Save button is the screen's primary bottom action. It
+      // uses the shared `OmniBottomCTA` so it inherits the
+      // app-wide width, height, corner radius, and safe-area
+      // vertical anchor (see `OmniTheme.bottomCTA*` tokens).
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Save',
+        onPressed: _save,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          OmniTheme.formBottomCTAClearance,
+        ),
         child: Form(
           key: _formKey,
           child: Column(
@@ -140,24 +160,6 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: OmniTheme.colors.textMuted,
                     ),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                height: OmniTheme.buttonPrimaryHeight,
-                child: FilledButton(
-                  style: ButtonStyle(
-                    shape: WidgetStateProperty.all(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          OmniTheme.buttonBorderRadius,
-                        ),
-                      ),
-                    ),
-                  ),
-                  onPressed: _save,
-                  child: const Text('Save'),
-                ),
               ),
             ],
           ),

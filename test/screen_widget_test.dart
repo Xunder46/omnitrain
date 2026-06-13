@@ -60,38 +60,122 @@ Future<MockWorkoutRepository> _freshRepo() async {
 
 void main() {
   group('OmniBottomCTA', () {
-    testWidgets('uses the shared primary height and corner radius', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            bottomNavigationBar: OmniBottomCTA(
-              label: 'Continue',
-              onPressed: () {},
+    testWidgets(
+      'uses the shared primary height, width, corner radius, and vertical anchor',
+      (WidgetTester tester) async {
+        // Fixed surface so the test can assert exact pixel math.
+        const surface = Size(400, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              bottomNavigationBar: OmniBottomCTA(
+                label: 'Continue',
+                onPressed: () {},
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final ctaBox = tester.widget<SizedBox>(
-        find.descendant(
-          of: find.byType(OmniBottomCTA),
-          matching: find.byType(SizedBox),
-        ),
-      );
-      expect(ctaBox.height, OmniTheme.buttonPrimaryHeight);
+        // Height: the shared `OmniTheme.buttonPrimaryHeight`.
+        final ctaBox = tester.widget<SizedBox>(
+          find.descendant(
+            of: find.byType(OmniBottomCTA),
+            matching: find.byType(SizedBox),
+          ),
+        );
+        expect(ctaBox.height, OmniTheme.buttonPrimaryHeight);
 
-      final button = tester.widget<FilledButton>(find.byType(FilledButton));
-      final style = button.style!;
-      final shape =
-          style.shape!.resolve(<WidgetState>{})! as RoundedRectangleBorder;
-      expect(
-        shape.borderRadius,
-        BorderRadius.circular(OmniTheme.buttonBorderRadius),
-      );
-    });
+        // Width: full-width minus 2 × horizontal padding.
+        expect(
+          ctaBox.width,
+          double.infinity,
+          reason: 'CTA must fill its parent (width: double.infinity)',
+        );
+        final button = tester.widget<FilledButton>(find.byType(FilledButton));
+        final style = button.style!;
+        final shape =
+            style.shape!.resolve(<WidgetState>{})! as RoundedRectangleBorder;
+        expect(
+          shape.borderRadius,
+          BorderRadius.circular(OmniTheme.buttonBorderRadius),
+        );
+
+        // Vertical anchor: the button's bottom edge sits at
+        //   surfaceHeight - bottomSafeArea - bottomCTAVerticalBottomPadding.
+        // With no bottom safe area (test default), that's
+        //   surfaceHeight - OmniTheme.bottomCTAVerticalBottomPadding.
+        final buttonBox = tester.getRect(find.byType(FilledButton));
+        final expectedBottom = surface.height -
+            tester.view.padding.bottom / tester.view.devicePixelRatio -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(
+          buttonBox.bottom,
+          closeTo(expectedBottom, 0.5),
+          reason:
+              'CTA bottom must clear the device safe area by '
+              'OmniTheme.bottomCTAVerticalBottomPadding',
+        );
+
+        // Width rule: the button's render box is inset by
+        //   OmniTheme.bottomCTAHorizontalPadding on each side.
+        final expectedLeft = OmniTheme.bottomCTAHorizontalPadding;
+        final expectedRight =
+            surface.width - OmniTheme.bottomCTAHorizontalPadding;
+        expect(buttonBox.left, closeTo(expectedLeft, 0.5));
+        expect(buttonBox.right, closeTo(expectedRight, 0.5));
+      },
+    );
+
+    testWidgets(
+      'respects the device bottom safe area (S-002)',
+      (WidgetTester tester) async {
+        // Fixed surface; force a non-zero bottom safe area via
+        // MediaQuery override. This simulates an iPhone with the
+        // home indicator (34 px) or an Android with the gesture
+        // nav bar (~16-24 px).
+        const surface = Size(400, 800);
+        const bottomInset = 34.0;
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(
+                size: surface,
+                padding: EdgeInsets.only(bottom: bottomInset),
+              ),
+              child: Scaffold(
+                bottomNavigationBar: OmniBottomCTA(
+                  label: 'Save',
+                  onPressed: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The button's render box bottom must be at or above
+        //   surfaceHeight - bottomInset - bottomCTAVerticalBottomPadding.
+        // (Above the home indicator by exactly the bottom padding.)
+        final buttonBox = tester.getRect(find.byType(FilledButton));
+        final expectedBottom = surface.height -
+            bottomInset -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(
+          buttonBox.bottom,
+          closeTo(expectedBottom, 0.5),
+          reason:
+              'CTA must sit above the home indicator, offset by '
+              'OmniTheme.bottomCTAVerticalBottomPadding',
+        );
+      },
+    );
 
     testWidgets('settings screen keeps the streamlined section layout', (
       WidgetTester tester,
@@ -241,8 +325,58 @@ void main() {
       final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
       expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>());
       expect(scaffold.bottomSheet, isNull);
-      expect(find.text('+ Create Period'), findsOneWidget);
+      expect(find.text('+ Period'), findsOneWidget);
     });
+
+    testWidgets(
+      'anchors the primary bottom CTA at the shared width and vertical anchor (S-003)',
+      (WidgetTester tester) async {
+        // Fixed surface so the test can assert exact pixel math.
+        const surface = Size(400, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final periodState = PeriodState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(home: PeriodListScreen(periodState: periodState)),
+        );
+        await tester.pumpAndSettle();
+
+        // The CTA is the FilledButton inside OmniBottomCTA — find
+        // the button (not the text inside it) so the rect covers
+        // the whole button, not just the text glyphs.
+        final buttonRect = tester.getRect(
+          find.descendant(
+            of: find.byType(OmniBottomCTA),
+            matching: find.byType(FilledButton),
+          ),
+        );
+        // Shared horizontal margin: the button's left edge is inset
+        // by OmniTheme.bottomCTAHorizontalPadding from the screen
+        // edge, and its right edge is mirrored.
+        expect(
+          buttonRect.left,
+          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.right,
+          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        // Shared height.
+        expect(
+          buttonRect.height,
+          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
+        );
+        // Shared vertical anchor: button bottom is offset above the
+        // device safe area by OmniTheme.bottomCTAVerticalBottomPadding.
+        final expectedBottom = surface.height -
+            tester.view.padding.bottom / tester.view.devicePixelRatio -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2591,7 +2725,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
+        await tester.tap(
+          find.widgetWithText(FilledButton, '+ Planned Session'),
+        );
         await tester.pumpAndSettle();
 
         expect(find.text('Session Type'), findsOneWidget);
@@ -2646,7 +2782,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
+        await tester.tap(
+          find.widgetWithText(FilledButton, '+ Planned Session'),
+        );
         await tester.pumpAndSettle();
 
         final tokens = OmniTheme.colorsForTheme(AppTheme.forgeEmber);
@@ -2665,7 +2803,7 @@ void main() {
         final titleText = tester.widget<Text>(
           find.descendant(
             of: find.byType(BottomSheet),
-            matching: find.text('Add Planned Session'),
+            matching: find.text('+ Planned Session'),
           ),
         );
         expect(titleText.style?.color, tokens.textMuted);
@@ -2710,7 +2848,9 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
+          await tester.tap(
+            find.widgetWithText(FilledButton, '+ Planned Session'),
+          );
           await tester.pumpAndSettle();
         }
 
@@ -2810,7 +2950,9 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithIcon(OutlinedButton, Icons.add));
+        await tester.tap(
+          find.widgetWithText(FilledButton, '+ Planned Session'),
+        );
         await tester.pumpAndSettle();
 
         final bottomSheet = find.byType(BottomSheet);
@@ -3148,6 +3290,143 @@ void main() {
 
         // Non-rolling session: start time + duration suffix.
         expect(find.text('10:30 AM · 1h 0m'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'anchors the primary bottom CTA at the shared width and vertical anchor for today/future dates (S-001)',
+      (tester) async {
+        // Fixed surface so the test can assert exact pixel math.
+        const surface = Size(400, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+
+        // Future date — primary bottom CTA must be visible.
+        final futureDate = DateTime(2099, 12, 31);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DaySessionListScreen(
+              date: futureDate,
+              calendarState: calendarState,
+              routineState: routineState,
+              workoutState: workoutState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+              settingsState: SettingsState(repo, fakePreferencesService()),
+              timerAlertService: FakeTimerAlertService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The host's Scaffold has a non-null bottomNavigationBar
+        // (the shared primary bottom CTA on the bottomNavigationBar
+        // slot, not inline in the body).
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        expect(
+          scaffold.bottomNavigationBar,
+          isNotNull,
+          reason: 'Today/future DaySessionListScreen must have a primary '
+              'bottom CTA on the host Scaffold.bottomNavigationBar',
+        );
+
+        // The CTA is an OmniBottomCTA. We look for it as a descendant
+        // of the Scaffold because the bottomNavigationBar slot is the
+        // canonical location.
+        final ctaFinder = find.descendant(
+          of: find.byType(Scaffold),
+          matching: find.byType(OmniBottomCTA),
+        );
+        expect(ctaFinder, findsOneWidget);
+
+        // The CTA label is "+ Planned Session" — preserved verbatim
+        // from the previous inline `_AddButton` widget.
+        expect(
+          find.widgetWithText(FilledButton, '+ Planned Session'),
+          findsOneWidget,
+        );
+
+        // The CTA sits at the shared width and vertical anchor.
+        final buttonRect = tester.getRect(
+          find.descendant(
+            of: ctaFinder,
+            matching: find.byType(FilledButton),
+          ),
+        );
+        expect(
+          buttonRect.left,
+          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.right,
+          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.height,
+          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
+        );
+        final expectedBottom = surface.height -
+            tester.view.padding.bottom / tester.view.devicePixelRatio -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
+      },
+    );
+
+    testWidgets(
+      'renders no bottom CTA for past dates (S-002)',
+      (tester) async {
+        final repo = await _freshRepo();
+        final calendarState = CalendarState(repo);
+        await calendarState.init();
+        final routineState = RoutineState(repo);
+        final workoutState = WorkoutState(repo);
+        final routineSessionService = RoutineSessionService(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+
+        // Past date — read-only, no primary bottom CTA.
+        final pastDate = DateTime(2020, 6, 15);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DaySessionListScreen(
+              date: pastDate,
+              calendarState: calendarState,
+              routineState: routineState,
+              workoutState: workoutState,
+              routineSessionService: routineSessionService,
+              sessionSummaryService: sessionSummaryService,
+              settingsState: SettingsState(repo, fakePreferencesService()),
+              timerAlertService: FakeTimerAlertService(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The host's Scaffold has a null bottomNavigationBar.
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        expect(
+          scaffold.bottomNavigationBar,
+          isNull,
+          reason: 'Past dates are read-only and must not render a bottom CTA',
+        );
+
+        // The "+ Planned Session" label is absent on past dates.
+        expect(
+          find.widgetWithText(FilledButton, '+ Planned Session'),
+          findsNothing,
+        );
+
+        // The empty-state copy for past dates is shown.
+        expect(find.text('No sessions on this day.'), findsOneWidget);
       },
     );
   });
@@ -5926,6 +6205,108 @@ void main() {
         // The "Add photo" text is the visible label of the
         // placeholder body.
         expect(find.text('Add photo'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'FoodForm no longer renders an inline save button (S-010)',
+      (WidgetTester tester) async {
+        // The save CTA is no longer a child of the form body — it
+        // is rendered by the host scaffold's bottomNavigationBar.
+        // When FoodForm is mounted without a host scaffold CTA
+        // (the test harness), the food_form_save key is absent.
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadCatalogFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: FoodForm(
+                initial: null,
+                foodLibraryState: foodLibraryState,
+                onSave: (_) async => true,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The form body does not contain the save button.
+        expect(find.byKey(const Key('food_form_save')), findsNothing);
+        // The form body still has all the macro fields.
+        expect(find.byKey(const Key('food_form_name')), findsOneWidget);
+        expect(find.byKey(const Key('food_form_protein')), findsOneWidget);
+        expect(find.byKey(const Key('food_form_carbs')), findsOneWidget);
+        expect(find.byKey(const Key('food_form_fat')), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'EditFoodScreen hosts the shared bottom CTA at the shared width and vertical anchor (S-008)',
+      (WidgetTester tester) async {
+        // Fixed surface so the test can assert exact pixel math.
+        const surface = Size(400, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadCatalogFoods();
+        await foodLibraryState.createCatalogFood(
+          const FoodDraft(
+            name: 'Edit Shared CTA',
+            groupId: null,
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            protein: 31,
+            carbs: 0,
+            fiber: 0,
+            fat: 4,
+            sodium: null,
+            notes: null,
+            imagePath: null,
+          ),
+        );
+        await foodLibraryState.loadCatalogFoods();
+        final food = foodLibraryState.catalogFoods
+            .firstWhere((f) => f.name == 'Edit Shared CTA');
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: EditFoodScreen(
+              food: food,
+              foodLibraryState: foodLibraryState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The Save CTA is on the host's bottomNavigationBar.
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>());
+
+        // The CTA's `food_form_save` key is now on the bottom CTA.
+        final saveKey = find.byKey(const Key('food_form_save'));
+        expect(saveKey, findsOneWidget);
+        final buttonRect = tester.getRect(saveKey);
+        expect(
+          buttonRect.left,
+          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.right,
+          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.height,
+          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
+        );
+        final expectedBottom = surface.height -
+            tester.view.padding.bottom / tester.view.devicePixelRatio -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
       },
     );
 

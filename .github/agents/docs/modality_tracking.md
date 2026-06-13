@@ -91,7 +91,7 @@ User → Has active Resistance session
      → Taps "Cardio / Endurance" tile
      → System shows warning dialog:
         "Changing modality will start a new session.
-         Current session will be saved."
+         Current session will not be saved."
      → User confirms → New cardio session created
 ```
 

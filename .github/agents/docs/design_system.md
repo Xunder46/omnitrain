@@ -118,10 +118,14 @@ OmniTrain’s shared text hierarchy is expressed through `OmniTheme.colors`:
 
 ### Macro Chart Palette
 
-`OmniTheme.colors.macroChart` is a four-slot palette for the daily
-nutrition macro-distribution donut (`MacroDonutChart`). Slots map 1:1
-to the four sections drawn by the chart. Each theme defines a value
-tuned for contrast on its background:
+`OmniTheme.colors.macroChart` is a five-slot palette for the daily
+nutrition macro-distribution donut (`MacroDonutChart`). The first
+four slots map 1:1 to the four arc sections drawn by the chart;
+the fifth slot, `chartLabelDark`, is the dark text color used for
+in-band labels on **light** section backgrounds (the light
+counterpart is the theme's existing `textDominant` token, used
+for labels on dark section backgrounds). Each theme defines a
+value tuned for contrast on its background:
 
 | Slot | Role | Abyssal Neon | Forge & Ember | Obsidian Volt | Void Pulse | Crimson Dojo | Malachite Core |
 |------|------|--------------|---------------|---------------|------------|--------------|----------------|
@@ -129,6 +133,7 @@ tuned for contrast on its background:
 | `netCarbs` | Net Carbs slice (`carbs − fiber`) | `#4F8DF7` | `#5BA8F2` | `#4F8DF7` | `#6E94F2` | `#5BA8F2` | `#4F8DF7` |
 | `fiber` | Fiber slice | `#3FBF67` | `#54C97A` | `#3FBF67` | `#5BC982` | `#54C97A` | `#3FBF67` |
 | `fat` | Fat slice | `#E8B420` | `#F2C84B` | `#E8B420` | `#E8B420` | `#F2C84B` | `#E8B420` |
+| `chartLabelDark` | In-band label color on light section backgrounds | `#0B1424` | `#1A0B05` | `#0B0B0B` | `#0A071A` | `#1A0606` | `#0C0F0A` |
 
 The palette lives on `OmniTheme` so the "theme tokens only" rule is
 honoured; themes can override slots later without touching the chart.
@@ -139,6 +144,23 @@ honoured; themes can override slots later without touching the chart.
 > content (name + grams + %) was moved into the calorie ring's center
 > on tap. See `MacroDonutChart` and `MacroFocusContent` in
 > `docs/widget_catalog.md`.
+>
+> **Iteration 3 (`.github/agents/plans/daily-nutrition-macro-chart-plan.md`):**
+> The donut now also draws **in-band labels** (`"<initial> <N>g"`,
+> e.g. `"N 22g"`) at each section's mid-angle, upright on the band's
+> mid-radius. A luminance check via
+> `ThemeData.estimateBrightnessForColor` picks the label color per
+> section: light section colors (protein, fat) get
+> `macroChart.chartLabelDark`; dark section colors (net carbs,
+> fiber) get `textDominant`. The new `chartLabelDark` slot is the
+> only addition to the palette in this iteration. A section's
+> label is hidden when the painted text width exceeds the section's
+> arc length at mid-radius minus an 8 px pad, and the label's alpha
+> inherits the section's focus opacity (so an unfocused 0.4 section
+> also has a 0.4-alpha label). The Iteration 3 polish also fixed
+> the 12 o'clock seam notch — every inter-section gap (including
+> the wrap-around seam) is now exactly `gapDegrees` wide. See
+> `MacroDonutChart` in `docs/widget_catalog.md`.
 
 ---
 
@@ -302,12 +324,51 @@ Destructive buttons (delete, discard) use `FilledButton` with `backgroundColor: 
 ### OmniTheme Tokens
 
 ```dart
-OmniTheme.buttonBorderRadius        // 12.0 — primary, row-pair
-OmniTheme.buttonUtilityRadius       // 8.0  — utility, dialog
-OmniTheme.buttonIconRadius          // 10.0 — icon-only square
-OmniTheme.buttonPrimaryHeight       // 56.0 — full-width and row-pair height
-OmniTheme.buttonIconSize            // 60.0 — icon-only button size
+OmniTheme.buttonBorderRadius                // 12.0 — primary, row-pair
+OmniTheme.buttonUtilityRadius               // 8.0  — utility, dialog
+OmniTheme.buttonIconRadius                  // 10.0 — icon-only square
+OmniTheme.buttonPrimaryHeight               // 56.0 — full-width and row-pair height
+OmniTheme.buttonIconSize                    // 60.0 — icon-only button size
+OmniTheme.bottomCTAHorizontalPadding        // 16.0 — left/right inset for the shared bottom CTA
+OmniTheme.bottomCTAVerticalTopPadding       // 24.0 — top inset inside the shared bottom CTA footer
+OmniTheme.bottomCTAVerticalBottomPadding    // 16.0 — bottom inset above the device safe area
+OmniTheme.formBottomCTAClearance            // 112.0 — scroll view bottom padding to clear the shared bottom CTA
 ```
+
+### Primary Bottom CTA — shared width and vertical anchor (MANDATORY)
+
+Every screen that exposes a primary bottom action **must** use
+[`OmniBottomCTA`](widget_catalog.md#omnibottomcta) as the
+`Scaffold.bottomNavigationBar` (or, for screens with a custom
+`Stack`, as a `Positioned(left: 0, right: 0, bottom: 0, child: OmniBottomCTA(...))`).
+
+The shared widget enforces the same width and the same vertical
+anchor on every screen:
+
+* **Width rule** — `width: double.infinity` inset by
+  `OmniTheme.bottomCTAHorizontalPadding` (16) on each side. The
+  button's left/right edges sit at exactly the same horizontal
+  margin on every screen.
+* **Vertical anchor rule** — `SafeArea(top: false)` (bottom on by
+  default) plus `OmniTheme.bottomCTAVerticalBottomPadding` (16).
+  The button clears the iOS home indicator and Android navigation
+  bar uniformly. The user learns one location for "the main
+  action" everywhere.
+
+**Forbidden patterns** — do not bypass the shared widget at the
+bottom of a screen:
+
+* ❌ `Spacer() + SizedBox(width: double.infinity, height: buttonPrimaryHeight, child: FilledButton(...))`
+* ❌ `Positioned(... bottom: 0, child: FilledButton(...))` (use `OmniBottomCTA` instead so the width rule + safe-area handling are inherited)
+* ❌ Any inline `FilledButton` whose width is hard-coded or whose
+  vertical anchor is derived from the body content (it moves with
+  the scroll position).
+
+**Per-screen hosts** that need a stable test target (e.g. the
+food library `Key('food_form_save')`) use the `buttonKey` prop on
+`OmniBottomCTA` to forward a `Key` to the rendered `FilledButton`.
+The width, height, and vertical anchor remain shared; only the
+test surface key is custom.
 
 ---
 

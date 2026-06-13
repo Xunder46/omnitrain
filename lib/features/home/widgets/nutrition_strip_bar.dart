@@ -9,7 +9,7 @@ import '../../../core/constants/omni_theme.dart';
 /// only lays out what it is given.
 class StripSegment {
   /// Calorie contribution of this macro, pre-rounded to int.
-  /// Used to compute the segment's width and its "% of calories"
+  /// Used to compute the segment's width and its "%"
   /// label.
   final int kcal;
 
@@ -19,7 +19,7 @@ class StripSegment {
   final Color color;
 
   /// Human-readable label for the macro (e.g. `"P"`). The widget
-  /// renders this as the "% of calories" caption inside the
+  /// renders this as the "%" caption inside the
   /// segment, optionally paired with a "P · " prefix; the caller
   /// is free to pass `"P"` or `"P 25%"` etc. The widget just
   /// measures the final string and hides the label when it does

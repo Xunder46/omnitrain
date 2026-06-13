@@ -5,14 +5,16 @@
 // `test/state_test.dart` under the `NutritionState` group.
 //
 // Phase 3 alignment: D-3 / S-040 (calories-only target), S-041
-// (focused-macro center is grams + % of calories, no "of target"),
+// (focused-macro center is grams + %, no "of target"),
 // S-043 (sodium daily-total chip on the calorie-ring card), S-044
 // (sodium frozen onto the ConsumedFood snapshot at log time).
 
 import 'dart:convert';
+import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -20,8 +22,10 @@ import 'package:omnitrain/features/nutrition/nutrition_screen.dart';
 import 'package:omnitrain/features/nutrition/add_food_screen.dart';
 import 'package:omnitrain/features/nutrition/nutrition_target_screen.dart';
 import 'package:omnitrain/features/nutrition/widgets/calorie_ring_card.dart';
+import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -131,6 +135,60 @@ void main() {
       await fresh.loadNutritionTarget();
       expect(fresh.nutritionTarget?.calories, 0.0);
     });
+
+    testWidgets(
+      'anchors the primary bottom CTA at the shared width and vertical anchor (S-006)',
+      (tester) async {
+        // Fixed surface so the test can assert exact pixel math.
+        const surface = Size(400, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+
+        await tester.pumpWidget(
+          MaterialApp(home: NutritionTargetScreen(nutritionState: state)),
+        );
+        await tester.pumpAndSettle();
+
+        // The Save CTA is now in the bottomNavigationBar slot, not
+        // inline in the form body. The old inline Spacer()+SizedBox
+        // pattern is gone.
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>(),
+            reason: 'Primary bottom CTA must be Scaffold.bottomNavigationBar');
+        expect(find.text('Save'), findsOneWidget);
+
+        // Find the FilledButton (not the text inside it) so the
+        // rect covers the whole button, not just the text glyphs.
+        final buttonRect = tester.getRect(
+          find.descendant(
+            of: find.byType(OmniBottomCTA),
+            matching: find.byType(FilledButton),
+          ),
+        );
+        expect(
+          buttonRect.left,
+          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.right,
+          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.height,
+          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
+        );
+        final expectedBottom = surface.height -
+            tester.view.padding.bottom / tester.view.devicePixelRatio -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
+
+        // The calories field is still present and tappable above the CTA.
+        expect(find.byKey(const Key('calories_field')), findsOneWidget);
+      },
+    );
   });
 
   group('NutritionScreen', () {
@@ -167,7 +225,6 @@ void main() {
     testWidgets('renders "Na 0 mg" when nothing is logged', (tester) async {
       final repo = await _freshRepo();
       final nutrition = NutritionState(repo);
-      final foodLib = FoodLibraryState(repo);
       await nutrition.loadConsumedToday();
       await nutrition.loadNutritionTarget();
 
@@ -331,14 +388,14 @@ void main() {
           // total, not a macro focus.
           await pumpRing(tester, entries: const []);
           // The default center is the calorie ring's "0 kcal" view;
-          // there is no macro name or "% of calories" present.
+          // there is no macro name or "%" present.
           expect(find.textContaining('of calories'), findsNothing);
           expect(find.textContaining('of target'), findsNothing);
         },
       );
 
       testWidgets(
-        'focused Protein shows grams + "% of calories", no "of target"',
+        'focused Protein shows grams + "%", no "of target"',
         (tester) async {
           // 200g of a 31P/0C/4F per-100g chicken.
           // Protein kcal = 200/100 * 31 * 4 = 248.
@@ -376,7 +433,7 @@ void main() {
           // calories" copy).
           expect(donut, findsWidgets);
 
-          // Default (no focus) center: no "% of calories" copy yet.
+          // Default (no focus) center: no "%" copy yet.
           expect(find.textContaining('of calories'), findsNothing);
           expect(find.textContaining('of target'), findsNothing);
         },
@@ -508,17 +565,18 @@ void main() {
       expect(find.text('Almond'), findsOneWidget);
 
       // Macros for at least one food row are visible. Almond (ungrouped) is
-      // 622 cal, with 21P, 22C, 50F. Under the multiplier-ux layout the
-      // macros render in a 2×2 grid (cal/P top, C/F bottom) — each value
-      // is its own Text widget. Assert on the four cell values directly
-      // so the test pins the new layout without coupling to a string
-      // format.
-      expect(find.text('622 cal'), findsOneWidget);
-      expect(find.text('21P'), findsOneWidget);
-      expect(find.text('22C'), findsOneWidget);
-      expect(find.text('50F'), findsOneWidget);
-      // The old single-line compact format is gone.
-      expect(find.text('622 cal · 21P · 22C · 50F'), findsNothing);
+      // 622 cal, with 21P, 22C, 50F. Under the Iteration 1 single-line
+      // layout (S-007), the macros render as one Text widget
+      // `"<cal> cal · <P>P · <C>C · <F>F"` — format parity with
+      // `AddFoodScreen`'s catalog rows. Assert on the exact string
+      // so the test pins the new format.
+      expect(find.text('622 cal · 21P · 22C · 50F'), findsOneWidget);
+      // The old 2×2 grid cell format is gone: no separate "622 cal"
+      // / "21P" / "22C" / "50F" cell text.
+      expect(find.text('622 cal'), findsNothing);
+      expect(find.text('21P'), findsNothing);
+      expect(find.text('22C'), findsNothing);
+      expect(find.text('50F'), findsNothing);
 
       // Display-only: no add/log/FAB controls.
       expect(find.byIcon(Icons.add), findsNothing);
@@ -1341,7 +1399,22 @@ void main() {
   });
 
   group('LogFoodRow — log from library (S-001 / S-008)', () {
-    testWidgets('checkbox logs, amount input scales, uncheck removes', (
+    /// Read the thumb's `Semantics.checked` flag (replaces the old
+    /// `tester.widget<Checkbox>(...)` cast after the Iteration 1
+    /// thumb-toggle migration).
+    ///
+    /// The caller is responsible for `tester.ensureSemantics()` —
+    /// calling it inside this helper leaks a `SemanticsHandle` per
+    /// invocation, which the test framework rejects at teardown.
+    bool thumbChecked(WidgetTester tester, String foodId) {
+      final node = tester.getSemantics(
+        find.byKey(Key('log_food_thumb_$foodId')),
+      );
+      return node.getSemanticsData().flagsCollection.isChecked ==
+          CheckedState.isTrue;
+    }
+
+    testWidgets('thumb toggle logs, amount input scales, unlog removes', (
       tester,
     ) async {
       final repo = await _freshRepo();
@@ -1405,20 +1478,27 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Each food has a checkbox; the chicken checkbox is unchecked
-      // before any interaction.
-      final chickenCheckboxKey = const Key('log_food_checkbox_f-chicken-log');
-      final eggCheckboxKey = const Key('log_food_checkbox_f-egg-log');
-      expect(find.byKey(chickenCheckboxKey), findsOneWidget);
-      expect(find.byKey(eggCheckboxKey), findsOneWidget);
-      Checkbox chickenCb = tester.widget(find.byKey(chickenCheckboxKey));
+      // Enable semantics once for the whole test. The handle is
+      // disposed at the very end of the test body so the
+      // framework's leak check (which runs at the END of the
+      // body) sees a clean state. `addTearDown` callbacks fire
+      // AFTER the leak check, so they would not protect against
+      // the leak — explicit disposal is required.
+      final semHandle = tester.ensureSemantics();
+
+      // Each food has a tappable thumbnail toggle; the chicken
+      // thumb is unchecked (no log today) before any interaction.
+      final chickenThumbKey = const Key('log_food_thumb_f-chicken-log');
+      final eggThumbKey = const Key('log_food_thumb_f-egg-log');
+      expect(find.byKey(chickenThumbKey), findsOneWidget);
+      expect(find.byKey(eggThumbKey), findsOneWidget);
       expect(
-        chickenCb.value,
+        thumbChecked(tester, 'f-chicken-log'),
         isFalse,
-        reason: 'untouched checkbox starts unchecked',
+        reason: 'untouched thumb starts unchecked',
       );
 
-      // Type 150 into the chicken amount input and tap the checkbox.
+      // Type 150 into the chicken amount input and tap the thumb.
       // For grams-type foods, the amount field is the actual amount
       // (not a multiplier). 150g of chicken ⇒ 151 * (150/100) = 226.5 cal
       // (rounded to 226 or 227).
@@ -1432,7 +1512,7 @@ void main() {
       );
       await tester.enterText(find.byKey(chickenAmountKey), '150');
       await tester.pump();
-      await tester.tap(find.byKey(chickenCheckboxKey));
+      await tester.tap(find.byKey(chickenThumbKey));
       await tester.pumpAndSettle();
 
       // S-001: the snapshot is persisted with the scaled macros and
@@ -1443,15 +1523,18 @@ void main() {
         anyOf(226, 227),
         reason: '151 * (150/100) = 226.5 (rounded)',
       );
-      // The checkbox now reads as checked.
-      chickenCb = tester.widget(find.byKey(chickenCheckboxKey));
-      expect(chickenCb.value, isTrue);
+      // The thumb's semantics now read as checked.
+      expect(
+        thumbChecked(tester, 'f-chicken-log'),
+        isTrue,
+        reason: 'S-005: checked semantics after log',
+      );
 
       // Log the egg at 3 (S-002: 73 * 3 = 219). The egg row is
       // below the test viewport — scroll it into view before
       // tapping.
       await tester.scrollUntilVisible(
-        find.byKey(eggCheckboxKey),
+        find.byKey(eggThumbKey),
         200,
         scrollable: find.byType(Scrollable).first,
       );
@@ -1460,7 +1543,7 @@ void main() {
         '3',
       );
       await tester.pump();
-      await tester.tap(find.byKey(eggCheckboxKey));
+      await tester.tap(find.byKey(eggThumbKey));
       await tester.pumpAndSettle();
       expect(nutritionState.consumedToday.length, 2);
       expect(
@@ -1469,21 +1552,24 @@ void main() {
         reason: 'sum of both scaled logs',
       );
 
-      // S-008: uncheck chicken — the row's log is removed, the ring
-      // drops back to the egg-only total. The chicken is back at the
-      // top of the (alphabetical) list; scroll it into view before
-      // tapping.
+      // S-008: tap chicken's thumb again — the row's log is
+      // removed, the ring drops back to the egg-only total. The
+      // chicken is back at the top of the (alphabetical) list;
+      // scroll it into view before tapping.
       await tester.scrollUntilVisible(
-        find.byKey(chickenCheckboxKey),
+        find.byKey(chickenThumbKey),
         200,
         scrollable: find.byType(Scrollable).first,
       );
-      await tester.tap(find.byKey(chickenCheckboxKey));
+      await tester.tap(find.byKey(chickenThumbKey));
       await tester.pumpAndSettle();
       expect(nutritionState.consumedToday.length, 1);
       expect(nutritionState.todayConsumedCalories, 219);
-      chickenCb = tester.widget(find.byKey(chickenCheckboxKey));
-      expect(chickenCb.value, isFalse);
+      expect(
+        thumbChecked(tester, 'f-chicken-log'),
+        isFalse,
+        reason: 'S-004: checked semantics cleared after unlog',
+      );
 
       // Repository confirms the chicken log row is gone. Read all
       // today's consumed foods via the in-memory snapshot (we don't
@@ -1497,6 +1583,289 @@ void main() {
           .toList();
       expect(remainingEgg.length, 1);
       expect(remainingChicken.length, 0, reason: 'uncheck removes the log');
+
+      // Dispose the semantics handle explicitly so the
+      // framework's leak check (which runs at the END of the
+      // body) sees a clean state.
+      semHandle.dispose();
+    });
+
+    // ── S-002 / S-005 / S-006 / S-007 — new surface in Iteration 1 ──
+    //
+    // The leading checkbox is replaced by a tappable thumbnail
+    // (S-001/S-002). Macros collapse to a single
+    // `"<cal> cal · <P>P · <C>C · <F>F"` line (S-007). Hairline
+    // dividers render between rows in a group (S-006). Semantics
+    // exposes `checked: true/false` so screen readers + tests see
+    // a toggle (S-005).
+
+    testWidgets('S-002: food without image shows muted placeholder thumb', (
+      tester,
+    ) async {
+      // Foods without an imagePath render the muted placeholder
+      // (40×40 rounded surface + restaurant_outlined icon). This
+      // is the common case on web (image picker is a no-op there).
+      final repo = await _freshRepo();
+      final nutrition = NutritionState(repo);
+      final foodLib = FoodLibraryState(repo);
+      await nutrition.loadConsumedToday();
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LogFoodRow(
+              key: const Key('row_no_image'),
+              food: const Food(
+                id: 'f-no-image',
+                name: 'No-image food',
+                unitType: FoodUnitType.grams,
+                referenceAmount: 100.0,
+                referenceLabel: 'per 100 g',
+                protein: 0,
+                carbs: 0,
+                fat: 0,
+                createdAtMs: 1,
+                updatedAtMs: 1,
+              ),
+              nutritionState: nutrition,
+              foodLibraryState: foodLib,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Thumb key is present.
+      expect(
+        find.byKey(const Key('log_food_thumb_f-no-image')),
+        findsOneWidget,
+      );
+      // The placeholder icon is rendered (no image was set).
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('log_food_thumb_f-no-image')),
+          matching: find.byIcon(Icons.restaurant_outlined),
+        ),
+        findsOneWidget,
+        reason: 'S-002: placeholder icon when no image is set',
+      );
+    });
+
+    testWidgets(
+      'S-005: thumb exposes checked semantics; toggles when tapped',
+      (tester) async {
+        final repo = await _freshRepo();
+        final nutrition = NutritionState(repo);
+        final foodLib = FoodLibraryState(repo);
+        await nutrition.loadConsumedToday();
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LogFoodRow(
+                food: const Food(
+                  id: 'f-sem',
+                  name: 'Sem food',
+                  unitType: FoodUnitType.grams,
+                  referenceAmount: 100.0,
+                  referenceLabel: 'per 100 g',
+                  protein: 10,
+                  carbs: 10,
+                  fat: 10,
+                  createdAtMs: 1,
+                  updatedAtMs: 1,
+                ),
+                nutritionState: nutrition,
+                foodLibraryState: foodLib,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Enable semantics once for the whole test. The handle is
+        // disposed at the very end of the test body so the
+        // framework's leak check sees a clean state.
+        final handle = tester.ensureSemantics();
+
+        // Unlogged → unchecked.
+        {
+          final node = tester.getSemantics(
+            find.byKey(const Key('log_food_thumb_f-sem')),
+          );
+          expect(
+            node.getSemanticsData().flagsCollection.isChecked,
+            CheckedState.isFalse,
+            reason: 'S-005: unchecked when not logged',
+          );
+        }
+
+        // Tap → log → checked.
+        await tester.tap(find.byKey(const Key('log_food_thumb_f-sem')));
+        await tester.pumpAndSettle();
+        expect(nutrition.isFoodLoggedToday('f-sem'), isTrue);
+        {
+          final node = tester.getSemantics(
+            find.byKey(const Key('log_food_thumb_f-sem')),
+          );
+          expect(
+            node.getSemanticsData().flagsCollection.isChecked,
+            CheckedState.isTrue,
+            reason: 'S-005: checked when logged',
+          );
+        }
+
+        // Tap → unlog → unchecked again.
+        await tester.tap(find.byKey(const Key('log_food_thumb_f-sem')));
+        await tester.pumpAndSettle();
+        expect(nutrition.isFoodLoggedToday('f-sem'), isFalse);
+        {
+          final node = tester.getSemantics(
+            find.byKey(const Key('log_food_thumb_f-sem')),
+          );
+          expect(
+            node.getSemanticsData().flagsCollection.isChecked,
+            CheckedState.isFalse,
+            reason: 'S-004/S-005: unchecked after unlog',
+          );
+        }
+
+        // Dispose the semantics handle explicitly so the
+        // framework's leak check sees a clean state.
+        handle.dispose();
+      },
+    );
+
+    testWidgets('S-007: macros are a single `<cal> cal · <P>P · <C>C · <F>F` line', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final nutrition = NutritionState(repo);
+      final foodLib = FoodLibraryState(repo);
+      await nutrition.loadConsumedToday();
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
+
+      // Per-100 g sample: 10P / 10C / 10F = 170 kcal. Macro text:
+      // "170 cal · 10P · 10C · 10F".
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LogFoodRow(
+              food: const Food(
+                id: 'f-macros',
+                name: 'Macro sample',
+                unitType: FoodUnitType.grams,
+                referenceAmount: 100.0,
+                referenceLabel: 'per 100 g',
+                protein: 10,
+                carbs: 10,
+                fat: 10,
+                createdAtMs: 1,
+                updatedAtMs: 1,
+              ),
+              nutritionState: nutrition,
+              foodLibraryState: foodLib,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Single-line format.
+      expect(
+        find.text('170 cal · 10P · 10C · 10F'),
+        findsOneWidget,
+        reason: 'S-007: single-line macro format with middle-dot separators',
+      );
+      // The old 2×2 grid cells are gone: no separate "170 cal",
+      // "10P", "10C", "10F" cells.
+      // (These substrings are still part of the single line above;
+      // we check that the OLD `grid` widget is gone by asserting
+      // the 2×2 grid container is not present.)
+      // The grid used a 73-px-wide SizedBox for the "cal" cell;
+      // verify that no SizedBox of width 73 exists inside the row.
+      // (Width 73 is the grid's specific column width; nothing
+      // else in the row uses that exact width.)
+      final rowFinder = find.byType(LogFoodRow);
+      expect(rowFinder, findsOneWidget);
+      // The amount textbox also uses width 73; it's still present
+      // — the assertion we want is that the grid's "cal" SizedBox
+      // is gone. Skip the SizedBox assertion and instead verify
+      // the exact macro line is the only Text containing "10P".
+      expect(find.textContaining('10P'), findsOneWidget);
+    });
+
+    testWidgets('S-006: hairline divider between rows, none after last', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      const now = 1700000000000;
+      await repo.createFoodGroup(
+        const FoodGroup(
+          id: 'g-div',
+          name: 'Divider Test Group',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+      // Three foods so we can assert the per-group divider index.
+      for (final id in ['f-a', 'f-b', 'f-c']) {
+        await repo.createFood(
+          Food(
+            id: id,
+            name: 'Food $id',
+            unitType: FoodUnitType.grams,
+            groupId: 'g-div',
+            referenceAmount: 100.0,
+            referenceLabel: 'per 100 g',
+            protein: 0,
+            carbs: 0,
+            fat: 0,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+      }
+      final nutrition = NutritionState(repo);
+      final foodLib = FoodLibraryState(repo);
+      await nutrition.loadConsumedToday();
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutrition,
+            foodLibraryState: foodLib,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // A divider sits between row 0 and row 1 (index 1) AND
+      // between row 1 and row 2 (index 2). No divider after the
+      // last row (index 3 would be after the last row; it does
+      // not exist).
+      expect(
+        find.byKey(const Key('group_Divider Test Group_divider_1')),
+        findsOneWidget,
+        reason: 'S-006: divider between row 0 and row 1',
+      );
+      expect(
+        find.byKey(const Key('group_Divider Test Group_divider_2')),
+        findsOneWidget,
+        reason: 'S-006: divider between row 1 and row 2',
+      );
+      expect(
+        find.byKey(const Key('group_Divider Test Group_divider_3')),
+        findsNothing,
+        reason: 'S-006: no divider after the last row',
+      );
     });
   });
 
@@ -2103,5 +2472,216 @@ void main() {
       expect(afterFoods[0].groupId, isNull);
       expect(foodLib.activeFoodGroups.any((g) => g.id == groupId), isFalse);
     });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // AddFoodScreen — shared bottom CTA across tabs (S-001, S-002, S-003)
+  // ═══════════════════════════════════════════════════════════════════════
+  //
+  // Both the **My Foods** and **Categories** tabs of `AddFoodScreen`
+  // (the "Manage Food Library" screen) expose a primary bottom
+  // action — "+ New Food" and "+ New Category" respectively. Per
+  // the shared-CTA contract, both must route through
+  // `Scaffold.bottomNavigationBar: OmniBottomCTA` so the buttons
+  // sit at the same width, height, and vertical anchor as every
+  // other primary bottom CTA in the app.
+  //
+  // The Library tab is browse-only and has no bottom CTA.
+
+  group('AddFoodScreen — shared bottom CTA (S-001 / S-002 / S-003)', () {
+    testWidgets(
+      'anchors the My Foods tab\'s primary bottom CTA at the shared width and vertical anchor (S-001)',
+      (tester) async {
+        // Fixed surface so the test can assert exact pixel math.
+        const surface = Size(400, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final foodLib = FoodLibraryState(repo);
+        final nutrition = NutritionState(repo);
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+        await foodLib.loadCatalogFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AddFoodScreen(
+              foodLibraryState: foodLib,
+              nutritionState: nutrition,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to the "My Foods" tab.
+        await tester.tap(find.text('My Foods'));
+        await tester.pumpAndSettle();
+
+        // The host's Scaffold has a non-null bottomNavigationBar
+        // (a tab-aware AnimatedBuilder that renders the right CTA
+        // for the active tab).
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        expect(
+          scaffold.bottomNavigationBar,
+          isNotNull,
+          reason: 'My Foods tab must have a primary bottom CTA on the host '
+              'Scaffold.bottomNavigationBar',
+        );
+
+        // The My Foods CTA is an OmniBottomCTA. We look for it as a
+        // descendant of the bottomNavigationBar slot because the
+        // CTA is wrapped in an AnimatedBuilder for tab transitions.
+        final ctaFinder = find.descendant(
+          of: find.byType(Scaffold),
+          matching: find.byType(OmniBottomCTA),
+        );
+        expect(ctaFinder, findsOneWidget);
+
+        // The "New Food" label is rendered by the CTA.
+        expect(find.text('New Food'), findsOneWidget);
+
+        // The CTA sits at the shared width and vertical anchor.
+        final buttonRect = tester.getRect(
+          find.descendant(
+            of: ctaFinder,
+            matching: find.byType(FilledButton),
+          ),
+        );
+        expect(
+          buttonRect.left,
+          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.right,
+          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.height,
+          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
+        );
+        final expectedBottom = surface.height -
+            tester.view.padding.bottom / tester.view.devicePixelRatio -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
+      },
+    );
+
+    testWidgets(
+      'anchors the Categories tab\'s primary bottom CTA at the shared width and vertical anchor (S-002)',
+      (tester) async {
+        // Fixed surface so the test can assert exact pixel math.
+        const surface = Size(400, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final foodLib = FoodLibraryState(repo);
+        final nutrition = NutritionState(repo);
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+        await foodLib.loadCatalogFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AddFoodScreen(
+              foodLibraryState: foodLib,
+              nutritionState: nutrition,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to the "Categories" tab.
+        await tester.tap(find.text('Categories'));
+        await tester.pumpAndSettle();
+
+        // The host's Scaffold has a non-null bottomNavigationBar
+        // (a tab-aware AnimatedBuilder that renders the right CTA
+        // for the active tab).
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        expect(
+          scaffold.bottomNavigationBar,
+          isNotNull,
+          reason: 'Categories tab must have a primary bottom CTA on the host '
+              'Scaffold.bottomNavigationBar',
+        );
+
+        // The Categories CTA is an OmniBottomCTA. We look for it as
+        // a descendant of the bottomNavigationBar slot because the
+        // CTA is wrapped in an AnimatedBuilder for tab transitions.
+        final ctaFinder = find.descendant(
+          of: find.byType(Scaffold),
+          matching: find.byType(OmniBottomCTA),
+        );
+        expect(ctaFinder, findsOneWidget);
+
+        // The `new_category_button` key is preserved on the rendered
+        // FilledButton so the existing test contract continues to work.
+        final newCategoryKey = find.byKey(const Key('new_category_button'));
+        expect(newCategoryKey, findsOneWidget);
+
+        // The CTA sits at the shared width and vertical anchor.
+        final buttonRect = tester.getRect(
+          find.descendant(
+            of: ctaFinder,
+            matching: find.byType(FilledButton),
+          ),
+        );
+        expect(
+          buttonRect.left,
+          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.right,
+          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.height,
+          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
+        );
+        final expectedBottom = surface.height -
+            tester.view.padding.bottom / tester.view.devicePixelRatio -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
+      },
+    );
+
+    testWidgets(
+      'renders no bottom CTA on the Library tab (S-003)',
+      (tester) async {
+        final repo = await _freshRepo();
+        final foodLib = FoodLibraryState(repo);
+        final nutrition = NutritionState(repo);
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+        await foodLib.loadCatalogFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AddFoodScreen(
+              foodLibraryState: foodLib,
+              nutritionState: nutrition,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The Library tab is the default. No OmniBottomCTA is
+        // rendered (the AnimatedBuilder returns SizedBox.shrink()
+        // for the Library tab).
+        expect(
+          find.descendant(
+            of: find.byType(Scaffold),
+            matching: find.byType(OmniBottomCTA),
+          ),
+          findsNothing,
+        );
+        // The "New Food" / "+ New Category" labels are absent on the
+        // Library tab.
+        expect(find.text('New Food'), findsNothing);
+        expect(find.text('+ New Category'), findsNothing);
+      },
+    );
   });
 }

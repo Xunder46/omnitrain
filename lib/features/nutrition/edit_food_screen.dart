@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/navigation/navigation.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 import 'widgets/food_form.dart';
 
 /// Edit Food screen — opens from a row tap in the **Library** tab
@@ -22,12 +23,20 @@ import 'widgets/food_form.dart';
 /// frozen (the snapshot model does not include the image, and
 /// the food's `name` / macros are frozen at log time).
 ///
+/// **Primary bottom CTA**: the **Save** action uses the shared
+/// [OmniBottomCTA] (see
+/// `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`),
+/// wired to a [FoodFormController] that triggers the form's
+/// validation + save pipeline. The `Key('food_form_save')` is
+/// preserved on the bottom CTA for backward compatibility with
+/// existing test contracts.
+///
 /// Pure presentation:
 ///   * No repository access (all writes go through
 ///     [FoodLibraryState]).
 ///   * All colors come from [OmniTheme.colors] /
 ///     `ThemeData.colorScheme`.
-class EditFoodScreen extends StatelessWidget {
+class EditFoodScreen extends StatefulWidget {
   final Food food;
   final FoodLibraryState foodLibraryState;
 
@@ -56,22 +65,48 @@ class EditFoodScreen extends StatelessWidget {
   }
 
   @override
+  State<EditFoodScreen> createState() => _EditFoodScreenState();
+}
+
+class _EditFoodScreenState extends State<EditFoodScreen> {
+  final FoodFormController _formController = FoodFormController();
+
+  @override
+  void dispose() {
+    _formController.detach();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Food')),
       body: FoodForm(
-        initial: food,
-        foodLibraryState: foodLibraryState,
+        initial: widget.food,
+        foodLibraryState: widget.foodLibraryState,
         saveLabel: 'Save',
         showNotesField: true,
+        controller: _formController,
         onSave: (draft) async {
           try {
-            await foodLibraryState.updateCatalogFood(food, draft);
+            await widget.foodLibraryState.updateCatalogFood(
+              widget.food,
+              draft,
+            );
             return true;
           } catch (_) {
             return false;
           }
         },
+      ),
+      // The shared primary bottom CTA. The `food_form_save` key
+      // is preserved on the rendered FilledButton so the
+      // existing test contract (`find.byKey(Key('food_form_save'))`)
+      // continues to work without any test-code changes.
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Save',
+        buttonKey: const Key('food_form_save'),
+        onPressed: _formController.submit,
       ),
     );
   }

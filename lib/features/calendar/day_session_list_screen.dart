@@ -17,6 +17,7 @@ import '../../state/settings/settings_state.dart';
 import '../session/workout_session_screen.dart';
 import '../session/session_summary_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 
 /// Shows all sessions (planned + completed TrainingSessions) for a single day.
 ///
@@ -80,6 +81,20 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: OmniBackHeader(title: title),
+      // Primary bottom CTA on the host's `bottomNavigationBar`. For
+      // today/future dates this routes through the shared
+      // `OmniBottomCTA` (see
+      // `.github/agents/plans/day-session-list-bottom-cta-plan.md`)
+      // so the "+ Planned Session" button sits at the same width,
+      // height, and safe-area-anchored bottom as every other primary
+      // bottom CTA in the app. For past dates the screen is
+      // read-only and the slot is null.
+      bottomNavigationBar: _isTodayOrFuture
+          ? OmniBottomCTA(
+              label: '+ Planned Session',
+              onPressed: () => _addPlanned(context),
+            )
+          : null,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: widget.calendarState,
@@ -96,7 +111,19 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                   child: isEmpty
                       ? _EmptyState(isPast: _isPast)
                       : ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          // Bottom padding clears the host's shared
+                          // bottom CTA when `_isTodayOrFuture` is
+                          // true. For past dates the bottom
+                          // NavigationBar slot is null and the
+                          // standard 16 px padding is used.
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            8,
+                            16,
+                            _isTodayOrFuture
+                                ? OmniTheme.formBottomCTAClearance
+                                : 16,
+                          ),
                           children: [
                             if (completed.isNotEmpty) ...[
                               const _SectionHeader(title: 'Completed'),
@@ -159,8 +186,6 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
                           ],
                         ),
                 ),
-                if (_isTodayOrFuture)
-                  _AddButton(onTap: () => _addPlanned(context)),
               ],
             );
           },
@@ -444,39 +469,6 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _AddButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _AddButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: SizedBox(
-        height: OmniTheme.buttonPrimaryHeight,
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          style: ButtonStyle(
-            shape: WidgetStateProperty.all(
-              RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  OmniTheme.buttonBorderRadius,
-                ),
-              ),
-            ),
-          ),
-          onPressed: onTap,
-          icon: const Icon(Icons.add),
-          label: const FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text('Add Planned Session'),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SessionRow extends StatelessWidget {
   final CalendarEntry entry;
   final RoutineState routineState;
@@ -748,7 +740,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
               children: [
                 Text(
                   widget.initial == null
-                      ? 'Add Planned Session'
+                      ? '+ Planned Session'
                       : 'Edit Session',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,

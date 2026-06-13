@@ -9,6 +9,7 @@ import '../../../core/utils/food_helpers.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
 import '../../../state/nutrition_state.dart';
+import 'food_thumbnail.dart';
 
 /// A single food-library row that doubles as the "log a food as consumed"
 /// affordance on the nutrition page.
@@ -16,12 +17,28 @@ import '../../../state/nutrition_state.dart';
 /// Layout (left to right):
 ///
 ///   ```
-///   [ ☑/☐ checkbox ]   [ food name (1 line) ]           [ amount ] [label]
-///                       ┌──────────────┐                  [ textbox ] [g/ml]
-///                       │ 31P    0C    │   ← 2×2 macro grid          ┌──┴──┐
-///                       │ 3F    151cal│     (cal/P top, C/F bottom) │     │
-///                       └──────────────┘                            └──┬──┘
+///   [ thumb ]    [ food name (1 line) ]           [ amount ] [label]
+///   [ toggle ]   [ <cal> cal · <P>P · <C>C · <F>F ]   [ textbox ] [g/ml]
+///       (40×40)  ▲                                   ▲
+///       (tappable                                     │
+///       ≥48dp)                                        │
 ///   ```
+///
+/// **Iteration 1** replaces the leading `Checkbox` with a tappable
+/// [FoodThumbnail] that IS the log/unlog toggle (S-001). Foods
+/// without an image render the muted placeholder thumb (S-002 — the
+/// common case on web, where the image picker is a no-op). The
+/// thumb's tap target is padded to **≥ 48 dp** in both dimensions
+/// (design-system gym-glove rule). The checked state is animated
+/// via `AnimatedContainer` at
+/// `OmniTheme.animationDuration` / `OmniTheme.animationCurve`:
+///   - Logged: 2 px primary border + a corner check badge.
+///   - Unlogged: hairline divider-color border, no badge.
+/// The thumb wraps a `Semantics(checked: ...)` node so screen
+/// readers + tests see a toggle (S-005). Iteration 1 also
+/// condenses the 2×2 macro grid to a single
+/// `"<cal> cal · <P>P · <C>C · <F>F"` line (S-007) for format
+/// parity with `AddFoodScreen` rows.
 ///
 /// The amount field behavior depends on the food's [FoodUnitType]:
 ///   - For `grams` (weight-based foods): the typed value is the **actual
@@ -31,11 +48,11 @@ import '../../../state/nutrition_state.dart';
 ///     against the reference (e.g., reference 1 egg, user enters 0.5
 ///     → 0.5 eggs consumed).
 ///
-/// The checkbox is the primary "mark consumed" toggle; tapping it
-/// logs the food at the current amount. Editing the amount on a
-/// logged row **auto-commits** the new amount to the day log
-/// (debounced ~250 ms) — the user does NOT need to re-tap the
-/// checkbox; the ring and totals update live.
+/// The thumb toggle is the primary "mark consumed" affordance.
+/// Tapping it logs the food at the current amount. Editing the
+/// amount on a logged row **auto-commits** the new amount to the
+/// day log (debounced ~250 ms) — the user does NOT need to re-tap
+/// the thumb; the ring and totals update live.
 ///
 /// The per-row "remove from library" trashcan has been removed (a
 /// redesigned deletion UX is a follow-up). The hard-delete API on
@@ -43,7 +60,7 @@ import '../../../state/nutrition_state.dart';
 /// this row.
 ///
 /// Validation: the amount must be `> 0`. While the input is
-/// invalid (empty, zero, or non-numeric), the checkbox tap is a
+/// invalid (empty, zero, or non-numeric), the thumb tap is a
 /// no-op and an inline error renders. Both count and grams foods
 /// accept any positive number (whole numbers and decimals).
 ///
@@ -202,7 +219,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
     // immediately. Then restart the auto-commit debounce so the
     // new amount is written to the day log after the user
     // stops typing (only when the food is already logged today;
-    // otherwise the checkbox is the explicit commit affordance).
+    // otherwise the thumb is the explicit commit affordance).
     setState(() {
       _validateAmount();
     });
@@ -231,26 +248,32 @@ class _LogFoodRowState extends State<LogFoodRow> {
     await widget.nutritionState.logConsumedFoodAt(widget.food, amount);
   }
 
-  /// Toggle the food's log state. Called from the checkbox
-  /// `onChanged`. Validates the multiplier first; if invalid, the
-  /// toggle is a no-op and the inline error is surfaced.
-  Future<void> _toggle(bool? value) async {
+  /// Toggle the food's log state. Called from the thumb
+  /// `onTap`. `nextState` is `true` to log, `false` to unlog.
+  /// Validates the amount first; if invalid (e.g. the user
+  /// cleared the amount field before tapping), the toggle is a
+  /// no-op and the inline error is surfaced.
+  Future<void> _toggle(bool nextState) async {
     final isLogged =
         widget.nutritionState.isFoodLoggedToday(widget.food.id);
-    if (value == true && !isLogged) {
-      // Log on. Translate multiplier to food's own-unit amount
-      // before handing off to the state.
+    if (nextState == true && !isLogged) {
+      // Log on. Translate the typed value to the food's
+      // own-unit amount before handing off to the state.
       final amount = _amountInOwnUnit();
       if (amount == null) {
         setState(() {}); // surface the validation error
         return;
       }
       await widget.nutritionState.logConsumedFoodAt(widget.food, amount);
-    } else if (value == false && isLogged) {
+    } else if (nextState == false && isLogged) {
       // Unlog.
       await widget.nutritionState.unlogFoodToday(widget.food.id);
     }
-    // value == current logged state → no-op.
+    // `nextState == isLogged` is a no-op (the user tapped a
+    // thumb that was already in the target state — e.g. tapped
+    // the checked thumb when it was already checked; the thumb
+    // widget does not fire onTap in that case anyway, but the
+    // guard is kept defensively).
   }
 
   /// Re-commit the current multiplier for an already-logged food.
@@ -280,16 +303,20 @@ class _LogFoodRowState extends State<LogFoodRow> {
       listenable: widget.nutritionState,
       builder: (context, _) {
         final isLogged = widget.nutritionState.isFoodLoggedToday(food.id);
+        // Single-line macro string (S-007). Format parity with
+        // `AddFoodScreen`'s catalog rows.
+        final macroText =
+            '$cal cal · ${food.protein}P · ${food.carbs}C · ${food.fat}F';
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4.0),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ── Checkbox: primary log/unlog affordance ────────────
-              Checkbox(
-                key: Key('log_food_checkbox_${food.id}'),
-                value: isLogged,
-                onChanged: _toggle,
+              // ── Thumb toggle: primary log/unlog affordance ───────
+              _ThumbToggle(
+                food: food,
+                isLogged: isLogged,
+                onTap: () => _toggle(isLogged ? false : true),
               ),
               // ── Food name + macros (takes remaining space) ────────
               Expanded(
@@ -306,15 +333,18 @@ class _LogFoodRowState extends State<LogFoodRow> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    // 2×2 macro grid: P/C top, F/cal bottom. Each
-                    // cell is its own Text widget (no separator
-                    // strings) so the cells can lay out in a
-                    // responsive grid.
-                    _MacroGrid(
-                      calories: cal,
-                      protein: food.protein,
-                      carbs: food.carbs,
-                      fat: food.fat,
+                    // Single-line macros (S-007) — format parity
+                    // with `AddFoodScreen` rows.
+                    Text(
+                      macroText,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: themeColors.textSecondary,
+                        fontFeatures: const [
+                          FontFeature.tabularFigures(),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -403,68 +433,163 @@ class _LogFoodRowState extends State<LogFoodRow> {
   }
 }
 
-/// 2×2 macro grid: calories + protein on the top row, carbs + fat
-/// on the bottom row. Each cell is its own Text widget so the grid
-/// lays out in the parent Row's available space.
+/// Tappable food thumbnail that IS the log/unlog toggle on a
+/// [LogFoodRow] (S-001..S-005).
 ///
-/// Format (matches the test contract):
-///   - macro cells are compact: `21P`, `22C`, `50F` (no space between
-///     the number and the unit letter)
-///   - the calorie cell is spaced: `622 cal` (a space between the
-///     number and the word "cal")
-///
-/// Zero-macro values still render their `0` cell — a food with
-/// `protein = 0` renders `0P`, not an empty cell. This keeps the
-/// grid visually consistent and lets the test suite assert on the
-/// macro values directly.
-class _MacroGrid extends StatelessWidget {
-  final int calories;
-  final int protein;
-  final int carbs;
-  final int fat;
+/// Composition:
+///   - 48×48 tappable area (the design-system gym-glove minimum)
+///     padding the 40×40 [FoodThumbnail] to a comfortable tap
+///     target.
+///   - The 40×40 thumbnail is rendered with an `AnimatedContainer`
+///     border that animates between the unselected (hairline
+///     `divider`) and selected (2 px `primary`) states at
+///     [OmniTheme.animationDuration] / [OmniTheme.animationCurve].
+///   - When [isLogged] is `true`, a 16×16 check badge in the
+///     top-right corner fades in (also animated), filled with
+///     `primary` and a white check glyph.
+///   - The whole thing is wrapped in a `Semantics(checked: ...)`
+///     node so screen readers + tests see a toggle (S-005).
+///   - The `Key('log_food_thumb_<food.id>')` is mounted on the
+///     `Semantics` wrapper (not the [GestureDetector]) so test
+///     semantics lookups find the correct node — `tester.getSemantics`
+///     on the key returns the Semantics node carrying the
+///     `checked` / `label` properties.
+class _ThumbToggle extends StatefulWidget {
+  final Food food;
+  final bool isLogged;
+  final VoidCallback onTap;
 
-  const _MacroGrid({
-    required this.calories,
-    required this.protein,
-    required this.carbs,
-    required this.fat,
+  /// Diameter of the visible thumbnail (also the badge's parent
+  /// box width). Matches `FoodThumbnail`'s default.
+  static const double _thumbSize = 40.0;
+
+  /// Tap-target dimension. The design-system gym-glove rule
+  /// requires ≥ 48 dp.
+  static const double _tapTargetSize = 48.0;
+
+  /// Diameter of the check badge overlay.
+  static const double _badgeSize = 16.0;
+
+  /// Width of the selected-state border (2 px per S-003).
+  static const double _selectedBorderWidth = 2.0;
+
+  /// Width of the unselected-state border (hairline).
+  static const double _unselectedBorderWidth = 1.0;
+
+  const _ThumbToggle({
+    required this.food,
+    required this.isLogged,
+    required this.onTap,
   });
 
   @override
+  State<_ThumbToggle> createState() => _ThumbToggleState();
+}
+
+class _ThumbToggleState extends State<_ThumbToggle> {
+  /// Whether the user is currently pressing the thumb. Drives
+  /// the 0.96× press scale (S-003 / S-004 feedback).
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final themeColors = OmniTheme.colors;
-    final cellStyle = theme.textTheme.bodySmall?.copyWith(
-      color: themeColors.textSecondary,
-      fontFeatures: const [FontFeature.tabularFigures()],
+    final isLogged = widget.isLogged;
+    final borderColor = isLogged ? themeColors.primary : themeColors.divider;
+    final borderWidth =
+        isLogged ? _ThumbToggle._selectedBorderWidth : _ThumbToggle._unselectedBorderWidth;
+
+    final thumb = AnimatedContainer(
+      duration: OmniTheme.animationDuration,
+      curve: OmniTheme.animationCurve,
+      width: _ThumbToggle._thumbSize,
+      height: _ThumbToggle._thumbSize,
+      decoration: BoxDecoration(
+        border: Border.all(color: borderColor, width: borderWidth),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: FoodThumbnail(
+          imagePath: widget.food.imagePath,
+          size: _ThumbToggle._thumbSize,
+          // The thumbnail widget paints its own border for the
+          // placeholder (0.2-alpha muted outline) and none when an
+          // image is present. We render OUR border on the
+          // AnimatedContainer so the two don't double up.
+        ),
+      ),
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Top row: cal · P
-        Row(
-          children: [
-            SizedBox(
-              width: 73,
-              child: Text('$calories cal', style: cellStyle),
-            ),
-            const SizedBox(width: 8),
-            Text('${protein}P', style: cellStyle),
-          ],
+
+    return Semantics(
+      key: Key('log_food_thumb_${widget.food.id}'),
+      container: true,
+      checked: isLogged,
+      label: isLogged ? 'Unlog ${widget.food.name}' : 'Log ${widget.food.name}',
+      button: true,
+      enabled: true,
+      onTap: widget.onTap,
+      excludeSemantics: false,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        child: SizedBox(
+          width: _ThumbToggle._tapTargetSize,
+          height: _ThumbToggle._tapTargetSize,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              // The thumb itself, centered in the 48×48 tap target.
+              // AnimatedScale provides the 0.96× press feedback
+              // (the standard pressed scale is too aggressive for
+              // a small inline thumb; 0.96 is the same ratio the
+              // CrownControl chip uses elsewhere, so a touch on the
+              // thumb feels consistent with the rest of the app's
+              // interactive surfaces).
+              AnimatedScale(
+                scale: _pressed ? 0.96 : 1.0,
+                duration: OmniTheme.animationDuration,
+                curve: OmniTheme.animationCurve,
+                child: thumb,
+              ),
+              // Check badge — top-right corner, only visible when
+              // logged. AnimatedOpacity cross-fades the badge
+              // (S-003 / S-004) so the selected-state transition
+              // feels matched to the border animation.
+              Positioned(
+                top: 0,
+                right: 0,
+                child: AnimatedOpacity(
+                  duration: OmniTheme.animationDuration,
+                  curve: OmniTheme.animationCurve,
+                  opacity: isLogged ? 1.0 : 0.0,
+                  child: Container(
+                    width: _ThumbToggle._badgeSize,
+                    height: _ThumbToggle._badgeSize,
+                    decoration: BoxDecoration(
+                      color: themeColors.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: themeColors.surface,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.check,
+                      size: 12,
+                      color: themeColors.surface,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        // Bottom row: C · F
-        Row(
-          children: [
-            SizedBox(
-              width: 73,
-              child: Text('${carbs}C', style: cellStyle),
-            ),
-            const SizedBox(width: 8),
-            Text('${fat}F', style: cellStyle),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }

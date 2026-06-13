@@ -17,6 +17,8 @@
 //   S-008: Uncheck removes the log; re-check creates a new one.
 //   S-009: Amount input rejects 0 and negative values.
 
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
@@ -656,18 +658,27 @@ void main() {
       await tester.pumpAndSettle();
 
       final amountKey = Key('log_food_amount_${food.id}');
-      final checkboxKey = Key('log_food_checkbox_${food.id}');
+      final thumbKey = Key('log_food_thumb_${food.id}');
       await tester.enterText(find.byKey(amountKey), '');
       await tester.enterText(find.byKey(amountKey), '0.5');
       await tester.pump();
-      await tester.tap(find.byKey(checkboxKey));
+      await tester.tap(find.byKey(thumbKey));
       await tester.pumpAndSettle();
 
-      // The food is logged at amount = 0.5; the row is now checked.
+      // The food is logged at amount = 0.5; the thumb's
+      // checked semantics are now `isTrue` (S-005).
       expect(nutritionState.consumedToday.length, 1);
       expect(nutritionState.consumedToday.first.amountConsumed, 0.5);
-      final cb = tester.widget<Checkbox>(find.byKey(checkboxKey));
-      expect(cb.value, isTrue);
+      final semHandle = tester.ensureSemantics();
+      try {
+        final node = tester.getSemantics(find.byKey(thumbKey));
+        expect(
+          node.getSemanticsData().flagsCollection.isChecked,
+          CheckedState.isTrue,
+        );
+      } finally {
+        semHandle.dispose();
+      }
     });
 
     testWidgets('zero count is still rejected', (tester) async {
@@ -695,11 +706,11 @@ void main() {
       await tester.pumpAndSettle();
 
       final amountKey = Key('log_food_amount_${food.id}');
-      final checkboxKey = Key('log_food_checkbox_${food.id}');
+      final thumbKey = Key('log_food_thumb_${food.id}');
       await tester.enterText(find.byKey(amountKey), '');
       await tester.enterText(find.byKey(amountKey), '0');
       await tester.pump();
-      await tester.tap(find.byKey(checkboxKey));
+      await tester.tap(find.byKey(thumbKey));
       await tester.pumpAndSettle();
 
       expect(nutritionState.consumedToday, isEmpty,

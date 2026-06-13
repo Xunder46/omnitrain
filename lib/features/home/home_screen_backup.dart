@@ -307,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             builder: (context) => AlertDialog(
               title: const Text('Start New Session?'),
               content: const Text(
-                'Opening a routine will start a new session. Current session will be saved.',
+                'Opening a routine will start a new session. Current session will not be saved.',
               ),
               actions: [
                 TextButton(
@@ -404,7 +404,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         builder: (context) => AlertDialog(
           title: const Text('Start New Session?'),
           content: const Text(
-            'Changing modality will start a new session. Current session will be saved.',
+            'Changing modality will start a new session. Current session will not be saved.',
           ),
           actions: [
             TextButton(

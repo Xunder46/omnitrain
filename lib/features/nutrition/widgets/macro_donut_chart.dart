@@ -118,6 +118,19 @@ class _MacroDonutChartState extends State<MacroDonutChart> {
     final opacities = widget.sectionOpacities ??
         List<double>.filled(sections.length, 1.0);
 
+    // In-band label styling. The painter has no `BuildContext`,
+    // so the widget reads the theme once and forwards the
+    // resolved text style + light/dark label colors.
+    final theme = Theme.of(context);
+    final labelTextStyle = theme.textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ) ??
+        const TextStyle(fontSize: 11, fontWeight: FontWeight.w700);
+    final themeColors = OmniTheme.colors;
+    final lightLabelColor = themeColors.textDominant;
+    final darkLabelColor = themeColors.macroChart.chartLabelDark;
+
     return Semantics(
       container: true,
       label: _semanticLabel(sections, _focusedSectionIndex),
@@ -139,6 +152,9 @@ class _MacroDonutChartState extends State<MacroDonutChart> {
               sections: sections,
               strokeWidth: widget.strokeWidth,
               opacities: opacities,
+              labelTextStyle: labelTextStyle,
+              lightLabelColor: lightLabelColor,
+              darkLabelColor: darkLabelColor,
             ),
           ),
         ),
@@ -353,9 +369,17 @@ List<MacroSection> computeMacroSections({
   }
 
   final result = <MacroSection>[];
-  var cursor = -math.pi / 2; // 12 o'clock in painter convention
+  // Place the first section's leading edge at 12 o'clock + gap/2
+  // (the half-gap offsets the section into the donut so the seam
+  // is centered at 12 o'clock rather than the section's own
+  // leading edge sitting on 12 o'clock). Each subsequent
+  // section's leading edge sits `sweep + gap` later, so the gap
+  // between adjacent sections is exactly `gap` radians — and the
+  // wrap-around seam is also `gap` radians (no leftover
+  // accumulating at 12 o'clock).
+  var cursor = -math.pi / 2 + gapRad / 2;
   for (var i = 0; i < nonzero.length; i++) {
-    final start = cursor + gapRad / 2;
+    final start = cursor;
     final sweep = sweeps[i];
     final mid = start + sweep / 2;
     result.add(
@@ -368,7 +392,7 @@ List<MacroSection> computeMacroSections({
         midAngleRadians: mid,
       ),
     );
-    cursor = start + sweep;
+    cursor = start + sweep + gapRad;
   }
   return result;
 }
@@ -380,6 +404,105 @@ class _RawSection {
   const _RawSection(this.name, this.grams, this.color);
 }
 
+// ─── In-band label decision ──────────────────────────────────────────────────
+
+/// One in-band label decision for a single [MacroSection]. The
+/// painter uses [text] and [position] to render the label; when
+/// [text] is `null`, the section is too narrow to fit a label and
+/// the painter skips it (S-017).
+///
+/// Initials map (documented design choice — unambiguous against
+/// the fixed visual order Net Carbs → Fiber → Fat → Protein):
+///
+///   - **N**  — Net Carbs
+///   - **Fb** — Fiber (disambiguated from Fat's single-letter F)
+///   - **F**  — Fat
+///   - **P**  — Protein
+class MacroLabel {
+  /// Section this label belongs to. Used by the painter to look
+  /// up the section's color for the luminance-based label-color
+  /// pick.
+  final String sectionName;
+
+  /// The label text in `"<initial> <N>g"` form (e.g. `"N 22g"`).
+  /// `null` when the section is too narrow to fit the label
+  /// (S-017) — the painter skips rendering in that case.
+  final String? text;
+
+  /// Position of the label's center in chart-local coordinates
+  /// (origin at the chart's top-left). The painter draws the
+  /// text centered on this point. `null` when [text] is `null`.
+  final Offset? position;
+
+  const MacroLabel({
+    required this.sectionName,
+    this.text,
+    this.position,
+  });
+}
+
+/// Compute the in-band label for every section. Pure / no widget
+/// tree — the painter supplies a `labelWidthOf` function that
+/// returns the painted width of a given text (typically
+/// `TextPainter..layout().width` in the painter, a stub in tests).
+///
+/// For each section:
+///   - If `labelWidthOf(text) > sweep · midRadius − 8`, the label
+///     is hidden (text and position are both `null`) — there is
+///     not enough arc length to fit the text with the 8 px
+///     breathing pad (S-017, mirrors the S-053 narrow-label
+///     pattern used elsewhere in the app).
+///   - Otherwise, the label is rendered at
+///     `(cx + midR·cos(midAngle), cy + midR·sin(midAngle))` —
+///     the band's mid-radius at the section's mid-angle, in the
+///     painter's CCW-from-`+X` convention. The text is drawn
+///     upright (no rotation) so it remains readable at every
+///     angle.
+List<MacroLabel> computeMacroLabels({
+  required List<MacroSection> sections,
+  required Size chartSize,
+  required double strokeWidth,
+  required double Function(String text) labelWidthOf,
+}) {
+  final midR = (chartSize.width - strokeWidth) / 2;
+  const padding = 8.0;
+  final cx = chartSize.width / 2;
+  final cy = chartSize.height / 2;
+  final result = <MacroLabel>[];
+  for (final s in sections) {
+    final text = _macroLabelText(s);
+    final arcLength = s.sweepAngleRadians * midR;
+    final width = labelWidthOf(text);
+    if (width > arcLength - padding) {
+      result.add(MacroLabel(sectionName: s.name));
+      continue;
+    }
+    final pos = Offset(
+      cx + midR * math.cos(s.midAngleRadians),
+      cy + midR * math.sin(s.midAngleRadians),
+    );
+    result.add(MacroLabel(
+      sectionName: s.name,
+      text: text,
+      position: pos,
+    ));
+  }
+  return result;
+}
+
+/// `"<initial> <N>g"` formatter for an in-band label. See
+/// [MacroLabel] for the initial mapping.
+String _macroLabelText(MacroSection s) {
+  final initial = switch (s.name) {
+    'Net Carbs' => 'N',
+    'Fiber' => 'Fb',
+    'Fat' => 'F',
+    'Protein' => 'P',
+    _ => '?',
+  };
+  return '$initial ${s.grams}g';
+}
+
 // ─── Painter ─────────────────────────────────────────────────────────────────
 
 class _MacroDonutPainter extends CustomPainter {
@@ -387,10 +510,27 @@ class _MacroDonutPainter extends CustomPainter {
   final double strokeWidth;
   final List<double> opacities;
 
+  /// Text style used for in-band labels. The widget supplies a
+  /// style derived from the active theme; the painter does not
+  /// read `Theme.of(context)` itself (it has no `BuildContext`).
+  final TextStyle labelTextStyle;
+
+  /// Light text color used for in-band labels on **dark** section
+  /// backgrounds. Typically the theme's `textDominant` token.
+  final Color lightLabelColor;
+
+  /// Dark text color used for in-band labels on **light** section
+  /// backgrounds. Typically the theme's `macroChart.chartLabelDark`
+  /// token.
+  final Color darkLabelColor;
+
   const _MacroDonutPainter({
     required this.sections,
     required this.strokeWidth,
     required this.opacities,
+    required this.labelTextStyle,
+    required this.lightLabelColor,
+    required this.darkLabelColor,
   });
 
   @override
@@ -398,9 +538,25 @@ class _MacroDonutPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (math.min(size.width, size.height) - strokeWidth) / 2;
 
+    // Pre-compute the label decision once; the painter iterates
+    // both lists in parallel (same length, same order).
+    final labels = computeMacroLabels(
+      sections: sections,
+      chartSize: size,
+      strokeWidth: strokeWidth,
+      labelWidthOf: (text) {
+        final tp = TextPainter(
+          text: TextSpan(text: text, style: labelTextStyle),
+          textDirection: TextDirection.ltr,
+          textAlign: TextAlign.center,
+        )..layout();
+        return tp.width;
+      },
+    );
+
     for (var i = 0; i < sections.length; i++) {
       final s = sections[i];
-      final opacity = i < opacities.length ? opacities[i]/1.2 : 1.0;
+      final opacity = i < opacities.length ? opacities[i] : 1.0;
       // Skip fully-transparent sections to keep the donut quiet
       // when one macro is focused.
       if (opacity <= 0.0) continue;
@@ -416,6 +572,38 @@ class _MacroDonutPainter extends CustomPainter {
         false,
         paint,
       );
+
+      // In-band label: skip when the section is too narrow (the
+      // helper returns text == null in that case). The label's
+      // alpha inherits the section's focus opacity (S-018) and
+      // its color is picked from the section's luminance —
+      // light sections get `darkLabelColor`, dark sections get
+      // `lightLabelColor` (S-016).
+      final label = labels[i];
+      final labelText = label.text;
+      final labelPos = label.position;
+      if (labelText == null || labelPos == null) continue;
+      final labelColor = ThemeData.estimateBrightnessForColor(s.color) ==
+              Brightness.light
+          ? darkLabelColor
+          : lightLabelColor;
+      final labelPainter = TextPainter(
+        text: TextSpan(
+          text: labelText,
+          style: labelTextStyle.copyWith(
+            color: labelColor.withValues(alpha: opacity),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.center,
+      )..layout();
+      // The label is centered on the section's mid-radius at the
+      // mid-angle. `TextPainter.paint` takes the top-left of the
+      // text, so offset by half the painted size to center.
+      labelPainter.paint(
+        canvas,
+        labelPos - Offset(labelPainter.width / 2, labelPainter.height / 2),
+      );
     }
   }
 
@@ -423,7 +611,10 @@ class _MacroDonutPainter extends CustomPainter {
   bool shouldRepaint(_MacroDonutPainter old) =>
       old.sections != sections ||
       old.strokeWidth != strokeWidth ||
-      !_listEquals(old.opacities, opacities);
+      !_listEquals(old.opacities, opacities) ||
+      old.labelTextStyle != labelTextStyle ||
+      old.lightLabelColor != lightLabelColor ||
+      old.darkLabelColor != darkLabelColor;
 
   static bool _listEquals(List<double> a, List<double> b) {
     if (a.length != b.length) return false;
@@ -452,7 +643,6 @@ class MacroFocusContent extends StatelessWidget {
 
   /// Section's share of today's consumed calories, 0..100. For
   /// `informational` sections (fiber), pass 0 — the widget renders
-  /// the qualifier "informational share" instead of a percentage.
   final int percentOfCalories;
 
   /// Color used as a small accent dot next to the name, so the
@@ -462,7 +652,7 @@ class MacroFocusContent extends StatelessWidget {
 
   /// `true` for sections that do not contribute to total calories
   /// (currently just fiber). When `true`, the widget renders the
-  /// informational qualifier instead of a "% of calories" string.
+  /// informational qualifier instead of a "%" string.
   final bool informational;
 
   const MacroFocusContent({
@@ -482,7 +672,7 @@ class MacroFocusContent extends StatelessWidget {
     // 8 px horizontal padding (144 px usable width). The
     // biggest macro name is "Net Carbs" (~80 px at titleSmall
     // bold); "Protein" / "Fat" / "Fiber" are shorter. The
-    // second line can stretch longer; "30 g · 25% of calories"
+    // second line can stretch longer; "30 g · 25%"
     // (~22 chars) still fits comfortably at labelSmall.
     final nameStyle = theme.textTheme.titleSmall?.copyWith(
           color: themeColors.textDominant,
@@ -497,8 +687,8 @@ class MacroFocusContent extends StatelessWidget {
         const TextStyle();
 
     final detail = informational
-        ? '$grams g · informational share'
-        : '$grams g · $percentOfCalories% of calories';
+        ? '$grams g'
+        : '$grams g · $percentOfCalories%';
 
     return Column(
       mainAxisSize: MainAxisSize.min,

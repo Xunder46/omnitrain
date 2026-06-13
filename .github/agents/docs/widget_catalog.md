@@ -93,20 +93,27 @@ Uses `OmniTheme.colors.surface`, `surfaceBorderRadius`, `OmniTheme.colors.surfac
 
 **File**: `lib/widgets/layout/omni_bottom_cta.dart`
 
-Shared full-width bottom call-to-action used by screens with a single persistent footer action.
+Shared full-width bottom call-to-action used by screens with a single persistent footer action. **Single source of truth for primary bottom CTA placement and width** — see `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`.
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `label` | `String` | required | Button text; a leading `+` triggers the shared add affordance |
 | `onPressed` | `VoidCallback?` | required | Tap handler; `null` disables the CTA |
 | `isDestructive` | `bool` | `false` | Uses the active theme’s destructive/error colors |
+| `buttonKey` | `Key?` | `null` | Optional `Key` forwarded to the rendered `FilledButton`. Used by host screens that need a stable test target (e.g. the `food_form_save` key on the food library host screens) |
 
 **Behavior**:
-- Fixed height: `OmniTheme.buttonPrimaryHeight`
-- Fixed radius: `OmniTheme.buttonBorderRadius`
-- Footer-safe spacing via `SafeArea(top: false)` with shared padding
-- Theme-reactive fade gradient behind the button using `colorScheme.surface`
-- Prevents per-screen CTA styling drift by centralizing footer layout and colors
+- **Height**: `OmniTheme.buttonPrimaryHeight` (56 dp).
+- **Width**: `double.infinity` inset by `OmniTheme.bottomCTAHorizontalPadding` (16) on each side. The button's left/right edges sit at exactly the same horizontal margin on every screen.
+- **Corner radius**: `OmniTheme.buttonBorderRadius` (12 dp).
+- **Vertical anchor**: `SafeArea(top: false)` (bottom on by default) plus `OmniTheme.bottomCTAVerticalBottomPadding` (16). The button clears the device home indicator (iOS) and gesture / 3-button nav bar (Android) uniformly.
+- **Top padding**: `OmniTheme.bottomCTAVerticalTopPadding` (24) — the gap between content above and the CTA so the gradient fade reads as a deliberate break.
+- **Footer treatment**: theme-reactive fade gradient using `colorScheme.surface` so the CTA lifts above scrollable content.
+- Prevents per-screen CTA styling drift by centralizing footer layout, colors, and safe-area handling.
+
+**Call-site contract**:
+- All primary bottom CTAs use this widget. Inline `Spacer() + SizedBox + FilledButton` is **not** permitted at the bottom of a screen — that pattern has been removed in favour of `Scaffold.bottomNavigationBar: OmniBottomCTA(...)`.
+- Form bodies that need clearance for the bottom CTA use `OmniTheme.formBottomCTAClearance` (112) as the scroll view's bottom padding.
 
 ### `NoiseOverlayPainter`
 
@@ -351,6 +358,36 @@ the rest) and pass them in. When all four macros are 0, renders an
 empty `SizedBox` so the parent can fall back to the calorie ring
 alone.
 
+**Iteration 3 polish** added:
+
+- **In-band labels** at each section's mid-angle, on the band's
+  mid-radius, drawn upright (not rotated). Format is
+  `"<initial> <N>g"` with initials:
+  - **N**  — Net Carbs
+  - **Fb** — Fiber (disambiguated from Fat's single-letter F)
+  - **F**  — Fat
+  - **P**  — Protein
+  Example: a 22 g net carbs section renders `"N 22g"`. The label
+  color is picked per section via
+  `ThemeData.estimateBrightnessForColor`: light section colors
+  (e.g. protein's near-white, fat's amber) get the theme's
+  `macroChart.chartLabelDark` slot; dark section colors
+  (e.g. net carbs' blue, fiber's green) get the theme's
+  `textDominant` slot. No hardcoded colors. Labels inherit the
+  section's focus opacity (S-018) — when a section is unfocused
+  and at 0.4 opacity, its label also fades to 0.4.
+- **Fit test** (S-017): a section's label is hidden when the
+  painted text width exceeds the section's arc length at
+  mid-radius minus an 8 px breathing pad. A single 1 g Fiber
+  slice next to three 200 g macros therefore renders no label
+  in the Fiber slot, while the other three sections keep theirs.
+- **Even gaps** (S-015): every inter-section gap (including the
+  wrap-around seam at 12 o'clock) is exactly `gapDegrees` wide.
+  The cursor in `computeMacroSections` now advances by
+  `sweep + gap` per boundary (not `sweep + gap/2`), so the
+  leftover half-gap that previously piled up at 12 o'clock is
+  gone. Verified for n = 1..4 sections.
+
 | Prop | Type | Default | Description |
 |---|---|---|---|
 | `protein` | `int` | required | Today's consumed protein grams. Negative inputs are clamped to 0. |
@@ -365,8 +402,14 @@ alone.
 
 **Behavior**:
 - Section sweep angles are proportional to grams. Non-zero sections
-  share the full 360°; a half-gap is applied on the leading edge of
-  each section so the donut closes cleanly.
+  share the full 360°; the gap between every adjacent pair of
+  sections (including the wrap-around seam at 12 o'clock) is exactly
+  `gapDegrees` wide — no wide notch at the seam (S-015, Iteration 3
+  polish). The first section's leading edge is offset by `gap/2`
+  from 12 o'clock so the seam is centered at 12 o'clock rather than
+  on the section's leading edge; the cursor in `computeMacroSections`
+  advances by `sweep + gap` per boundary so the gap math closes the
+  circle exactly for any n = 1..4 sections.
 - A `GestureDetector` with `HitTestBehavior.opaque` wraps the
   `CustomPaint` and owns hit testing for the entire chart. Tap
   regions are the donut sections themselves; taps inside the inner
@@ -394,6 +437,20 @@ alone.
   `onSectionFocusChange` callback fires with the new index. Tapping
   the same section again, or tapping the empty center, fires the
   callback with `null` (deselect).
+- In-band labels are drawn at each section's mid-angle, on the
+  band's mid-radius, upright (no rotation). The label text is the
+  documented initial + grams (e.g. `"N 22g"`, `"Fb 8g"`, `"F 30g"`,
+  `"P 100g"`); the label color is picked per section via a luminance
+  check (`ThemeData.estimateBrightnessForColor`): light section
+  colors get `OmniTheme.colors.macroChart.chartLabelDark`; dark
+  section colors get `OmniTheme.colors.textDominant`. No hardcoded
+  colors. A section's label is hidden when the painted text width
+  exceeds the section's arc length at mid-radius minus an 8 px pad
+  (S-017). Label alpha inherits the section's `sectionOpacities`
+  value, so labels fade to 0.4 alongside their section when a focus
+  is active (S-018). The label-decision math is factored into the
+  pure top-level `computeMacroLabels(...)` function (returns a
+  `List<MacroLabel>`) so it can be unit-tested without a widget tree.
 - Per-section opacity is applied by the painter as the alpha channel
   of the section's color. A section whose opacity is 0 is skipped
   entirely (no transparent arc rendered), keeping the donut quiet
@@ -456,8 +513,19 @@ Drives three branches from `FoodLibraryState`:
 
 **Behavior**:
 - Renders one `LogFoodRow` per food. The `LogFoodRow` is the actual
-  logging affordance (checkbox + multiplier + 2×2 macro grid); this
-  section is responsible for the grouped list layout only.
+  logging affordance (thumbnail toggle + amount input + single-line
+  macros); this section is responsible for the grouped list layout +
+  the per-row hairline dividers (S-006) only.
+- **`_GroupBlock` dividers (S-006)**: between rows within a group, a
+  1 px hairline divider (`OmniTheme.colors.divider`) is rendered. No
+  divider is rendered above the first row, and no divider is rendered
+  after the last row (so the existing 16 px bottom padding on the group
+  block provides the gap to the next group). The per-divider key is
+  `Key('group_<groupName>_divider_<i>')` where `<i>` is the row index
+  that follows the divider (so `divider_1` sits between row 0 and row 1
+  in a group; for a 3-row group the dividers are `_divider_1` and
+  `_divider_2`, never `_divider_3`). Tests can assert presence by index
+  and absence of the post-last-row index in one test each.
 - Computes calories per food with `calculateCalories(food)` from
   `lib/core/utils/food_helpers.dart`; calories are never stored on
   the `Food` model.
@@ -738,48 +806,41 @@ A single food-library row that doubles as the "log a food as consumed"
 affordance on the nutrition page. Layout, left to right:
 
 ```
-[ ☑/☐ checkbox ]  [ name (up to 2 lines)  +  2×2 macro grid ]  [ amount input × + portion label ]
+[ thumb toggle ]  [ name (1 line) + "<cal> cal · <P>P · <C>C · <F>F" ]  [ amount input + unit label ]
 ```
 
-The right-hand column is a `Column` of two rows: the top row holds
-the amount `TextField` and an `×` glyph to its right (indicating the
-field is a **multiplier** against the food's portion); the bottom row
-holds the portion label (e.g. `100 g`, `1 egg`) in `labelSmall` font.
+**Iteration 1 (thumbnail toggle)** replaced the leading `Checkbox`
+with a tappable food thumbnail. The thumb IS the log/unlog toggle
+(S-001): tapping it logs the food at the current amount (or unlogs).
+Foods with `imagePath` show the image; foods without show the muted
+placeholder from `FoodThumbnail` (S-002 — the common case on web
+where the image picker is a no-op). The visible thumb is 40×40 and
+the tap target is padded to **48×48** (design-system gym-glove rule).
+The thumb's `Semantics(checked: isLogged, label: "Log <name>" /
+"Unlog <name>", button: true)` wrapper exposes the toggle to screen
+readers and tests via `flagsCollection.isChecked` (S-005).
 
-The amount field is a multiplier. The default is `1` for both count
-and grams foods (a multiplier of `1` always means "one full portion").
-The widget translates the typed multiplier to a raw amount
-(`multiplier * referenceAmount`) before calling
-`NutritionState.logConsumedFoodAt`; the data layer's "raw amount in
-the food's own unit" contract is preserved. A typed `0.5` on a
-per-100 g food ⇒ 50 g of macros persisted; a typed `1.5` on a
-per-1-egg food ⇒ 1.5 eggs persisted.
+**Selected state** (S-003): 2 px primary border + a 16×16 check badge
+in the top-right corner filled with `primary`. The transition is
+animated via `AnimatedContainer` (border) and `AnimatedOpacity`
+(badge) at `OmniTheme.animationDuration` (180 ms) and
+`OmniTheme.animationCurve` (`easeInOut`). **Unselected state**
+(S-004): 1 px hairline `divider` border, no badge. **Press feedback**
+(S-003 / S-004): an `AnimatedScale` shrinks the visible thumb to
+0.96× its size while pressed.
 
-The 2×2 macro grid (`_MacroGrid` private helper) is rendered directly
-beneath the food name:
+The amount input behavior is unchanged from prior iterations — the
+typed value is the food's own-unit amount for grams foods and a
+multiplier for count foods. Editing the amount on a logged row
+auto-commits the new amount to the day log (debounced ~250 ms).
+Validation: amount must be `> 0`; an invalid amount makes the thumb
+tap a no-op and renders an inline error.
 
-```
-┌─────────────┬─────────────┐
-│ Protein     │ Calories    │
-├─────────────┼─────────────┤
-│ Carbs       │ Fat         │
-└─────────────┴─────────────┘
-```
-
-All four cells always render — zero macros show as `0P` / `0C` /
-`0F` / `0 cal` rather than being hidden, so the row's vertical
-rhythm stays consistent and screen readers can read the values
-uniformly. Cell widths are fixed (`_MacroGrid._cellWidth = 56`) so
-the columns line up across rows on the same screen.
-
-The food name wraps to 2 lines (with an ellipsis fallback on a third)
-so longer names stay readable now that the inline "per …" label has
-been removed.
-
-The checkbox is the primary "mark consumed" toggle; tapping it logs
-the food at the current multiplier (or unlogs it). Editing the amount
-input re-logs the food at the new multiplier via the day-uniqueness
-contract on `NutritionState.logConsumedFoodAt`.
+**Iteration 1 (single-line macros — S-007)** replaced the 2×2 macro
+grid with a single `Text` line in the format
+`"<cal> cal · <P>P · <C>C · <F>F"` (e.g. `"90 cal · 0P · 0C · 10F"`)
+for format parity with `AddFoodScreen` rows. The line is one `Text`
+widget with `maxLines: 1` and `TextOverflow.ellipsis`.
 
 | Prop | Type | Description |
 |------|------|-------------|
@@ -787,21 +848,27 @@ contract on `NutritionState.logConsumedFoodAt`.
 | `nutritionState` | `NutritionState` | Day-log state (read for `isFoodLoggedToday`; mutate via `logConsumedFoodAt` / `unlogFoodToday`). |
 | `foodLibraryState` | `FoodLibraryState` | Symmetric constructor parameter; not mutated by the row. |
 
-**Validation**: the multiplier must be `> 0`. Both count and grams
-foods accept any positive decimal — `0.5` on a per-1-egg food means
-"half an egg" and is perfectly valid (a previous iteration rejected
-fractional counts; that check was removed for the multiplier
-contract). While the input is invalid, the checkbox tap is a no-op
-and an inline error renders below the input.
+**Stable keys (for tests)**:
+- `Key('log_food_thumb_<food.id>')` — mounted on the `Semantics`
+  wrapper of the thumb toggle (not the inner `GestureDetector`).
+  Tests look up the toggle's checked state via
+  `tester.getSemantics(find.byKey(...)).getSemanticsData().flagsCollection.isChecked`
+  (returns `CheckedState.isTrue` when logged, `CheckedState.isFalse`
+  when not). The key is on `Semantics` (not `GestureDetector`) so
+  that semantics-tree lookups find the correct node carrying the
+  `checked` / `label` properties.
+- `Key('log_food_amount_<food.id>')` — mounted on the amount input.
 
-**Pre-fill**: on a fresh row, the field shows `1`. If the food is
-already logged today, the field pre-fills with the existing
-snapshot's raw `amountConsumed` (per the "leave historical logs
-alone" decision) — a previously-logged 75 g grams-food still shows
-`75` in the field, not `0.75`.
+**Row separation (S-006)**: hairline dividers (`divider` color,
+1 px) render between rows in a group, never after the last row.
+Implemented in `_GroupBlock` (the private widget in
+`nutrition_screen.dart` that renders each food group). The
+per-divider key is `Key('group_<groupName>_divider_<i>')` where
+`<i>` is the row index that follows the divider.
 
 The widget rebuilds via `ListenableBuilder(listenable: nutritionState)`
-so the checkbox updates the moment a log is written.
+so the thumb's checked state and the amount input's pre-fill update
+the moment a log is written.
 
 ---
 

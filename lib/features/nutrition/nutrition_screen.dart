@@ -315,6 +315,7 @@ class _GroupBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final themeColors = OmniTheme.colors;
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Column(
@@ -325,16 +326,31 @@ class _GroupBlock extends StatelessWidget {
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
               letterSpacing: OmniTheme.titleLetterSpacing,
-              color: OmniTheme.colors.textDominant,
+              color: themeColors.textDominant,
             ),
           ),
           const SizedBox(height: 8),
-          for (final f in foods)
+          // Iteration 1 (S-006): 1 px hairline divider between
+          // rows within a group, no divider above the first row
+          // and no divider after the last row. The collection-if
+          // + spread builds [row, divider, row, divider, row]
+          // without trailing chrome. The `Key` is the per-group
+          // divider index so tests can assert presence/absence
+          // by index.
+          for (var i = 0; i < foods.length; i++) ...[
+            if (i > 0)
+              Divider(
+                key: Key('group_${groupName}_divider_$i'),
+                color: themeColors.divider,
+                height: 1,
+                thickness: 1,
+              ),
             LogFoodRow(
-              food: f,
+              food: foods[i],
               foodLibraryState: foodLibraryState,
               nutritionState: nutritionState,
             ),
+          ],
         ],
       ),
     );

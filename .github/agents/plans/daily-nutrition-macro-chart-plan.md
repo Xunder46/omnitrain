@@ -1314,6 +1314,434 @@ is in place, all docs are updated, all 1363 tests pass
 project-wide. No critical or blocking issues. The
 findings above are non-blocking polish suggestions.
 
+---
+
+## Iteration 4 — Donut polish: even gaps + in-band labels
+
+> Folded from the human-checkpoint feedback after Iteration 3:
+> the donut still had a wide notch at 12 o'clock (the seam gap
+> was `(n+1)·gap/2` instead of `gap/2`), and the band had no
+> value labels at all — every macro reading required a tap to
+> surface the grams. The user asked for (a) every inter-section
+> gap to be exactly `gapDegrees` wide (including the wrap-around
+> seam), and (b) in-band labels showing the macro's initial +
+> grams on each wide-enough section, with no hardcoded colors.
+
+### Overview
+
+Two related changes to the macro donut shipped in Iteration 3:
+
+1. **Even gaps.** `computeMacroSections` now advances the cursor
+   by `sweep + gap` per boundary (not `sweep + gap/2`), so the
+   wrap-around seam at 12 o'clock is exactly `gapDegrees` wide —
+   same as every other inter-section gap. The bug is fixed at
+   its source: the cursor math, not a per-section patch.
+2. **In-band labels.** Each non-zero section now renders a
+   `"<initial> <N>g"` label at its mid-angle on the band's
+   mid-radius, drawn upright. A section's label is hidden when
+   the painted text width exceeds the section's arc length at
+   mid-radius minus an 8 px pad. The label color is picked per
+   section via `ThemeData.estimateBrightnessForColor`:
+   light section colors (protein, fat) get a new
+   `macroChart.chartLabelDark` token; dark section colors
+   (net carbs, fiber) get the existing `textDominant` token.
+   No hardcoded colors. Labels inherit their section's focus
+   opacity — when a section is unfocused at 0.4 opacity, its
+   label also fades to 0.4.
+
+The data layer, the state class, the model, the
+`WorkoutRepository` interface, and the `CalorieRing` widget
+are all unchanged. The change is contained to the chart
+widget, the macro palette, and the docs.
+
+### Requirements
+
+- The cursor in `computeMacroSections` advances by `sweep + gap`
+  per boundary. The first section's leading edge is offset by
+  `gap/2` from 12 o'clock so the seam is centered at 12
+  o'clock.
+- Every inter-section gap (including the wrap-around seam at
+  12 o'clock) is exactly `gapDegrees` wide, for any n = 1..4
+  non-zero sections.
+- Each non-zero section renders a `"<initial> <N>g"` label at
+  its mid-angle, on the band's mid-radius, upright (not
+  rotated). The initials are:
+  - **N**  — Net Carbs
+  - **Fb** — Fiber (disambiguated from Fat's single-letter F)
+  - **F**  — Fat
+  - **P**  — Protein
+- A section's label is hidden when the painted text width
+  exceeds `sweep · midRadius − 8` (S-053 narrow-label
+  pattern, with the 8 px padding).
+- The label color is picked per section via
+  `ThemeData.estimateBrightnessForColor(section.color)`. Light
+  sections use `macroChart.chartLabelDark`; dark sections use
+  `textDominant`. The new `chartLabelDark` slot is defined for
+  all six themes.
+- The label's alpha inherits the section's `sectionOpacities`
+  value — when a section is unfocused at 0.4 opacity, its
+  label also fades to 0.4.
+- Tap-to-focus, focus survival, the empty-day branch, and
+  every other existing behavior is unchanged.
+- No new colors outside the palette. No new dependencies. No
+  data-model changes. No repository-interface changes. No
+  schema changes. No state-class changes.
+
+### Acceptance criteria
+
+- [x] No wide notch at 12 o'clock; every inter-section gap
+      (including the wrap-around seam) is exactly `gapDegrees`
+      wide for n = 1..4 sections.
+- [x] Flat section ends retained (`StrokeCap.butt`, unchanged).
+- [x] Wide sections show `"<initial> <N>g"`; narrow sections
+      show no label.
+- [x] Labels fade with focus opacity; tap-to-focus unchanged.
+- [x] Theme tokens only — light sections use
+      `macroChart.chartLabelDark` (new), dark sections use
+      `textDominant` (existing). No hardcoded colors.
+- [x] Works on web (HiveWorkoutRepository) — no `dart:io`, no
+      `Platform.is*`, no SQLite-specific imports in changed
+      files.
+- [x] `flutter analyze` clean for all changed files.
+- [x] `flutter test` — 1430/1432 pass project-wide (2
+      pre-existing failures in `test/screen_widget_test.dart`
+      and `test/home_nutrition_strip_test.dart` are unrelated
+      to the macro chart and reproduce on the baseline without
+      my changes).
+
+### Scenarios
+
+#### S-015: Even seam — every gap is `gapDegrees` wide
+- Trigger: User opens the daily nutrition screen after
+  logging food that covers 2, 3, or 4 macros.
+- Precondition: `computeMacroSections` is called with n
+  non-zero macros.
+- Flow:
+  1. The cursor advances by `sweep + gap` per boundary.
+  2. The first section's start is `-π/2 + gap/2` (12
+     o'clock + half gap).
+  3. The last section's end is `start_0 + 2π - gap`.
+  4. The seam from `end_last` back to `start_0` (going
+     forward through `+π`) is exactly `gap` radians.
+  5. The same `gap` radians separates every adjacent pair
+     of sections.
+- Expected outcome: Visually, the donut has no wide notch
+  at 12 o'clock. Every inter-section gap is the same size
+  (the seam is not visibly wider than the others).
+- Unit-tested in
+  `test/features/nutrition/macro_donut_chart_test.dart`'s
+  `computeMacroSections — even seam (S-015)` group: 7 tests
+  covering n = 1..4, asymmetric weights, the all-zero case,
+  and the `2π` closure invariant.
+
+#### S-016: In-band labels — wide sections show initial + grams
+- Trigger: User opens the daily nutrition screen with
+  macros logged.
+- Precondition: At least one macro has non-zero grams.
+- Flow:
+  1. The painter calls `computeMacroLabels` once.
+  2. For each section, the helper decides whether the
+     label fits (painted width ≤ `sweep · midRadius − 8`).
+  3. For sections where the label fits, the painter draws
+     `"<initial> <N>g"` centered on the section's
+     mid-radius at the mid-angle, upright.
+  4. The label color is picked via the section's
+     luminance: light sections get
+     `macroChart.chartLabelDark`; dark sections get
+     `textDominant`.
+- Expected outcome: Each non-zero, wide-enough section
+  shows its initial + grams. The label is centered on the
+  band's mid-radius and is upright at every angle.
+- Unit-tested in
+  `test/features/nutrition/macro_donut_chart_test.dart`'s
+  `computeMacroLabels — in-band labels (S-016 / S-017)`
+  group: 6 tests covering the all-fit case, the documented
+  initial+grams format (`"N 50g"`, `"F 30g"`, `"Fb 30g"`,
+  `"P 100g"`), label position at mid-angle/mid-radius,
+  the all-hidden case (stub too wide for every section),
+  the mixed case (one section too narrow, others fit),
+  and the n=1 single-section case.
+
+#### S-017: Narrow section — label is hidden when it would overflow
+- Trigger: User logs a food that creates a small Fiber
+  slice (e.g. 1 g) next to three large macros.
+- Precondition: At least one section's arc length at
+  mid-radius is shorter than the painted label width
+  plus the 8 px pad.
+- Flow:
+  1. The painter calls `computeMacroLabels`.
+  2. For the narrow section, the painted width exceeds
+     the section's arc length minus 8 px; the helper
+     returns `text = null, position = null` for that
+     section.
+  3. The painter skips drawing any label for that
+     section.
+- Expected outcome: The narrow section's arc is drawn
+  cleanly (the existing per-section paint) but no label
+  text is rendered over it. Wider sections in the same
+  chart keep their labels.
+- Unit-tested in the `computeMacroLabels` group
+  (`narrow section: label is hidden when width > arc
+  length - 8` and `narrow section is hidden but wide
+  sections still get labels` tests).
+
+#### S-018: Focus interaction — labels inherit section opacity
+- Trigger: User taps a section to focus it.
+- Precondition: The chart is in the default (no-focus)
+  state; a section is tapped.
+- Flow:
+  1. The parent sets `sectionOpacities` so the focused
+     section is 1.0 and every other section is 0.4.
+  2. The painter applies the same opacity to the
+     label's alpha (the label's `withValues(alpha:
+     sectionOpacity)`).
+  3. Tapping a different section moves the focus; the
+     previously focused section's label fades to 0.4 and
+     the newly focused section's label returns to 1.0.
+  4. Tapping the focused section again (or the empty
+     center) clears the focus; every label returns to
+     1.0.
+- Expected outcome: The labels fade in lockstep with
+  their sections. Tapping a section still focuses it
+  (no behavior change to the hit-test or the
+  `onSectionFocusChange` callback).
+- The opacity-multiplication is a single line in the
+  painter: the label's color is created via
+  `labelColor.withValues(alpha: opacity)`, where
+  `opacity` is the same per-section value used to paint
+  the arc. The widget tests in
+  `test/nutrition_test.dart`'s
+  `CalorieRingCard — focused-macro center (D-4 / S-041)`
+  group still pass (the center content + ring fade is
+  unchanged; only the in-band labels gain a new paint
+  step).
+
+### Iteration 4 — DB / Backend / Frontend Changes
+
+#### DB Changes
+None.
+
+#### Backend Changes
+None.
+
+#### Frontend Changes
+
+##### 1. Fix the cursor advance in `computeMacroSections`
+File: `lib/features/nutrition/widgets/macro_donut_chart.dart`
+
+- The cursor now advances by `sweep + gap` per boundary
+  (not `sweep` only, with the next section's start
+  adding `gap/2`).
+- The first section's leading edge is at
+  `-π/2 + gap/2`; the first section's `start` is that
+  same value (the helper no longer adds an extra
+  `gap/2` when computing `start`).
+- The wrap-around seam is now exactly `gap` radians wide
+  (verified by the test helper for n = 1..4 sections).
+- The function's doc comment is updated to state the
+  gap-closure invariant.
+
+##### 2. New `MacroLabel` data class + `computeMacroLabels` helper
+File: `lib/features/nutrition/widgets/macro_donut_chart.dart`
+
+- New data class `MacroLabel` with `sectionName`,
+  nullable `text`, nullable `position`. The painter
+  uses `(text, position)` to render; when `text` is
+  `null`, the section's label is hidden (S-017).
+- New pure top-level function
+  `computeMacroLabels(sections, chartSize, strokeWidth, labelWidthOf)`
+  returning a `List<MacroLabel>`. The function iterates
+  each section, computes the label text, fits it
+  against `sweep · midRadius − 8`, and either returns
+  a positioned label or a `text: null` placeholder.
+- The function takes a `labelWidthOf` callback so the
+  painter can pass `TextPainter..layout().width` in
+  production and tests can pass a stub.
+- The function is unit-testable without a widget tree
+  (the 6 tests in
+  `test/features/nutrition/macro_donut_chart_test.dart`).
+- The label-text formatter (`_macroLabelText`) is a
+  private helper that maps the section's name to its
+  documented initial:
+  - `'Net Carbs'` → `'N'`
+  - `'Fiber'` → `'Fb'`
+  - `'Fat'` → `'F'`
+  - `'Protein'` → `'P'`
+
+##### 3. Painter integration
+File: `lib/features/nutrition/widgets/macro_donut_chart.dart`
+
+- The `_MacroDonutPainter` gains three new fields:
+  `labelTextStyle` (TextStyle), `lightLabelColor`
+  (Color), `darkLabelColor` (Color). The widget reads
+  the active theme and resolves these once per build.
+- `paint(canvas, size)` now calls `computeMacroLabels`
+  once at the top of the method (with a `TextPainter`
+  callback for `labelWidthOf`) and uses the result
+  inside the existing per-section loop.
+- For each section, after the arc is drawn, the
+  painter:
+  1. Skips the label if `computeMacroLabels` returned
+     `text: null` (S-017).
+  2. Picks the label color via
+     `ThemeData.estimateBrightnessForColor(s.color)`:
+     `Brightness.light` → `darkLabelColor`; `Brightness.dark`
+     → `lightLabelColor` (S-016).
+  3. Creates a `TextPainter` with the resolved text +
+     style + color (the color's alpha is multiplied by
+     the section's focus opacity via
+     `withValues(alpha: opacity)`, S-018).
+  4. Paints the text centered on the section's
+     mid-radius at the mid-angle (offset is
+     `position - Offset(width/2, height/2)`).
+- `shouldRepaint` is updated to include the new
+  fields.
+
+##### 4. `MacroChartPalette` gains a `chartLabelDark` slot
+File: `lib/core/constants/omni_theme.dart`
+
+- New `chartLabelDark: Color` field on
+  `MacroChartPalette`. Defined for all six themes
+  (abyssalNeon, forgeEmber, obsidianVolt, voidPulse,
+  crimsonDojo, malachiteCore) with values tuned to be
+  dark (`ThemeData.estimateBrightnessForColor` returns
+  `Brightness.dark`) so the contrast on a light section
+  is high. The new values are essentially the theme's
+  `backgroundTop` / `backgroundBottom` color (each
+  theme already defines a deep, dark background).
+
+##### 5. Tests
+File: `test/features/nutrition/macro_donut_chart_test.dart`
+(new file at the path specified in this plan)
+
+- 7 tests for `computeMacroSections` (S-015): even-seam
+  invariant for n = 1..4, asymmetric weights, all-zero,
+  2π closure.
+- 4 tests for `resolveSectionHit`: the prior iteration's
+  regression test + 3 invariants (cardinal angles,
+  center sentinel, outside-the-chart null). These were
+  the existing tests for the painter-angle offset fix;
+  re-stated here so the file is the single home for
+  the macro-donut pure-function test surface.
+- 2 tests for `MacroChartPalette`: every theme defines
+  a `chartLabelDark` color; the default theme's
+  `chartLabelDark` reads as `Brightness.dark`.
+- 6 tests for `computeMacroLabels` (S-016 / S-017):
+  every section gets a label when they all fit; the
+  initial+grams format matches the documented mapping;
+  the label position is at mid-angle/mid-radius; the
+  narrow section hides its label; the mixed case
+  (one narrow, others wide); the n=1 single-section
+  case is not hidden.
+- Total: 20 new tests, all green. The existing
+  `test/nutrition_test.dart` (which has the
+  `CalorieRingCard` integration tests) is unchanged
+  and its tests still pass.
+
+##### 6. Doc hygiene
+- `docs/widget_catalog.md` — `MacroDonutChart` entry
+  gained (a) an Iteration 3 polish block at the top
+  describing the in-band labels, the fit test, and the
+  even gaps, and (b) two updated bullets in the
+  Behavior list (even gaps; in-band label mechanics).
+- `docs/design_system.md` — the Macro Chart Palette
+  section now lists 5 slots (the four section colors +
+  `chartLabelDark`) with a per-theme table; the
+  Iteration 3 blockquote at the bottom of the section
+  documents the new label color pick, the fit test,
+  and the seam fix.
+- `docs/state_management.md` — N/A (no state changes).
+- `docs/data_models.md` — N/A.
+- `docs/db_integration.md` — N/A.
+- `docs/navigation_and_screens.md` — N/A.
+
+### Progress
+
+#### Phase 0 — Plan — Complete ✓
+- [x] Verified the gap bug numerically: with the current
+      buggy code, n=4 produces a 3.75° seam vs 0.75°
+      elsewhere (5× the size, exactly `(n+1)·gap/2`).
+- [x] Scenario register (S-015..S-018) is complete and
+      covers even gaps, in-band labels, narrow sections,
+      and focus interaction.
+
+#### Phase 1 — Data layer (DBA) — N/A
+- No data layer change in this iteration. Skipped.
+
+#### Phase 2 — Logic & UI (Developer) — Complete ✓
+- [x] Wrote 20 red tests in
+      `test/features/nutrition/macro_donut_chart_test.dart`
+      (gap equality, hit-test regression, palette
+      `chartLabelDark` slot, label decision/format/
+      position/fit). Confirmed the gap-equality tests
+      failed before the fix (the actual seam was 0.013
+      rad vs the expected 0.026 rad, exactly `gap/2` —
+      the bug pattern).
+- [x] Fixed `computeMacroSections`: cursor now advances
+      by `sweep + gap` per boundary; first section's
+      leading edge is `-π/2 + gap/2`.
+- [x] Added the `chartLabelDark` slot to
+      `MacroChartPalette` and defined values for all
+      6 themes.
+- [x] Added the `MacroLabel` data class and the pure
+      `computeMacroLabels` helper. The helper takes a
+      `labelWidthOf` callback so the painter can use
+      `TextPainter..layout().width` and tests can use a
+      stub.
+- [x] Integrated label rendering into
+      `_MacroDonutPainter`: per-section luminance check
+      picks `lightLabelColor` (textDominant) vs
+      `darkLabelColor` (macroChart.chartLabelDark);
+      label alpha inherits the section's focus opacity;
+      narrow sections are skipped via `text == null`.
+- [x] Wired the widget to compute the new painter
+      fields from the active theme
+      (`Theme.of(context).textTheme.labelSmall` for the
+      style; `textDominant` and `macroChart.chartLabelDark`
+      for the two label colors).
+- [x] All 20 new tests pass. `flutter test` — 1430/1432
+      pass project-wide (the 2 pre-existing failures
+      reproduce on the baseline without my changes and
+      are unrelated to the macro chart).
+- [x] `flutter analyze` clean for all changed files
+      (the 3 files: `omni_theme.dart`,
+      `macro_donut_chart.dart`,
+      `test/features/nutrition/macro_donut_chart_test.dart`).
+- [x] Doc hygiene: `widget_catalog.md` updated
+      (Iteration 3 polish block + 2 behavior bullets);
+      `design_system.md` updated (5-slot palette table
+      + Iteration 3 blockquote).
+
+#### Phase 3 — Code review — TBD
+- Awaiting review by @code-reviewer.
+
+#### Findings (non-blocking)
+- `lib/features/nutrition/widgets/macro_donut_chart.dart`
+  — the painter computes `computeMacroLabels` inside
+  `paint(...)` (not `shouldRepaint`); for 1..4 sections
+  this is a tiny per-frame cost (4 `TextPainter.layout()`
+  calls + 4 width comparisons). If the chart is ever
+  embedded in a 60 fps scroll view, consider hoisting
+  the label decision to the widget's `build` method and
+  passing the resolved `List<MacroLabel>` to the
+  painter. (SUGGESTION)
+- `lib/core/constants/omni_theme.dart` — the new
+  `chartLabelDark` values are essentially each theme's
+  deepest background color. They could be defined as
+  `colors.backgroundBottom` references (computed at
+  call time) rather than as 6 hard-coded hex values, but
+  the current explicit form is more readable and the
+  hex is local to the palette definition. (SUGGESTION)
+- `test/features/nutrition/macro_donut_chart_test.dart`
+  — the `computeMacroLabels` tests use stub
+  `labelWidthOf` callbacks (20 px, 30 px, 500 px) that
+  approximate the real `TextPainter` widths. A future
+  iteration could replace the stubs with a real
+  `TextPainter` in a test-only `WidgetsBinding` setup
+  to assert against the actual painted widths; the
+  current stubs are adequate for the structural
+  invariants the suite targets. (SUGGESTION)
+
 ## Feedback
 
 (no feedback yet)

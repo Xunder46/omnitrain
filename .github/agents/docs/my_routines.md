@@ -61,7 +61,7 @@ MyRoutinesScreen → Tap a routine card
 ```
 
 If an active session exists, a confirmation dialog appears:
-> "Starting a routine will start a new session. Current session will be saved."
+> "Starting a routine will start a new session. Current session will not be saved."
 
 ### 4. Editing a Routine
 ```

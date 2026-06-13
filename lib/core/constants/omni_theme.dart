@@ -8,11 +8,17 @@ enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, voidPulse, crimsonDojo, m
 ///   - `netCarbs`  — saturated blue (net = carbs − fiber)
 ///   - `fiber`     — saturated green
 ///   - `fat`       — saturated amber/yellow
+///   - `chartLabelDark` — dark text color used for in-band labels
+///     when the section color is light (estimated via
+///     `ThemeData.estimateBrightnessForColor`). The light counterpart
+///     is the theme's `textDominant` token (the existing palette
+///     contract does not duplicate it here).
 typedef MacroChartPalette = ({
   Color protein,
   Color netCarbs,
   Color fiber,
   Color fat,
+  Color chartLabelDark,
 });
 
 typedef OmniThemeColors = ({
@@ -55,6 +61,7 @@ class OmniTheme {
             netCarbs: Color(0xFF4F8DF7),
             fiber: Color(0xFF3FBF67),
             fat: Color(0xFFE8B420),
+            chartLabelDark: Color(0xFF0B1424),
           ),
         );
       case AppTheme.forgeEmber:
@@ -75,6 +82,7 @@ class OmniTheme {
             netCarbs: Color(0xFF5BA8F2),
             fiber: Color(0xFF54C97A),
             fat: Color(0xFFF2C84B),
+            chartLabelDark: Color(0xFF1A0B05),
           ),
         );
       case AppTheme.obsidianVolt:
@@ -95,6 +103,7 @@ class OmniTheme {
             netCarbs: Color(0xFF4F8DF7),
             fiber: Color(0xFF3FBF67),
             fat: Color(0xFFE8B420),
+            chartLabelDark: Color(0xFF0B0B0B),
           ),
         );
       case AppTheme.voidPulse:
@@ -115,6 +124,7 @@ class OmniTheme {
             netCarbs: Color(0xFF6E94F2),
             fiber: Color(0xFF5BC982),
             fat: Color(0xFFE8B420),
+            chartLabelDark: Color(0xFF0A071A),
           ),
         );
       case AppTheme.crimsonDojo:
@@ -135,6 +145,7 @@ class OmniTheme {
             netCarbs: Color(0xFF5BA8F2),
             fiber: Color(0xFF54C97A),
             fat: Color(0xFFF2C84B),
+            chartLabelDark: Color(0xFF1A0606),
           ),
         );
       case AppTheme.malachiteCore:
@@ -155,6 +166,7 @@ class OmniTheme {
             netCarbs: Color(0xFF4F8DF7),
             fiber: Color(0xFF3FBF67),
             fat: Color(0xFFE8B420),
+            chartLabelDark: Color(0xFF0C0F0A),
           ),
         );
     }
@@ -299,6 +311,35 @@ class OmniTheme {
 
   /// Fixed size for icon-only square buttons.
   static const double buttonIconSize = 60.0;
+
+  // ═══════════════════════════════════════════════════════════
+  // BOTTOM CTA
+  // ═══════════════════════════════════════════════════════════
+
+  /// Horizontal margin applied on each side of every primary
+  /// bottom CTA. Keeps the button inset from the screen edge on
+  /// both phone and tablet form factors, and matches the column
+  /// padding used elsewhere in the app.
+  static const double bottomCTAHorizontalPadding = 16.0;
+
+  /// Top padding inside the bottom CTA footer. Sits between the
+  /// content above and the CTA so the gradient fade reads as a
+  /// deliberate break instead of crowding the button.
+  static const double bottomCTAVerticalTopPadding = 24.0;
+
+  /// Bottom padding inside the bottom CTA footer — the gap
+  /// between the button's bottom edge and the device's home
+  /// indicator / Android nav bar. Combined with `SafeArea(top:
+  /// false)` (bottom on by default) this gives a stable
+  /// safe-area-aware vertical anchor.
+  static const double bottomCTAVerticalBottomPadding = 16.0;
+
+  /// Bottom padding applied to scrollable form bodies so the
+  /// last form field is never hidden behind the bottom CTA.
+  /// Tuned to the shared CTA footprint
+  /// (`bottomCTAVerticalTopPadding` + `buttonPrimaryHeight` +
+  /// `bottomCTAVerticalBottomPadding` + breathing room).
+  static const double formBottomCTAClearance = 112.0;
 
   // ═══════════════════════════════════════════════════════════
   // TEXT SCALE CLAMP

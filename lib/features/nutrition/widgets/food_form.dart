@@ -37,7 +37,16 @@ export '../../../core/models/food_draft.dart' show FoodDraft;
 ///   * Fat (g) — macro field
 ///   * Sodium (mg) — macro field (optional, blank = unset)
 ///   * Notes (when [showNotesField] is true)
-///   * Save button (full-width primary CTA)
+///
+/// **Primary bottom CTA**: the form no longer renders an inline
+/// `Save` button. The host screen owns the bottom CTA via the
+/// shared [OmniBottomCTA] (see
+/// `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`).
+/// The host wires the CTA's `onPressed` to
+/// [FoodFormController.submit] so the form's validation + save
+/// pipeline still runs in one place. See
+/// `EditFoodScreen` / `_NewFoodFormScreen` /
+/// `_LegacyLibraryEditScreen` for the standard wiring.
 ///
 /// Fiber is exposed alongside carbs in the macro list, matching
 /// the [Food.fiber] field on the model. The existing
@@ -77,6 +86,13 @@ class FoodForm extends StatefulWidget {
   /// Caller is responsible for navigation in this case.
   final bool skipPopOnSave;
 
+  /// Host-provided controller. The host's bottom CTA calls
+  /// [FoodFormController.submit] which routes through the form's
+  /// `_onSave` pipeline (validation + save callback). Required
+  /// when the host renders the CTA outside the form (the standard
+  /// case after the shared-CTA migration).
+  final FoodFormController? controller;
+
   const FoodForm({
     super.key,
     required this.initial,
@@ -85,10 +101,52 @@ class FoodForm extends StatefulWidget {
     this.saveLabel = 'Save',
     this.showNotesField = false,
     this.skipPopOnSave = false,
+    this.controller,
   });
 
   @override
   State<FoodForm> createState() => _FoodFormState();
+}
+
+/// Public controller that lets a host's bottom CTA trigger the
+/// [FoodForm]'s save pipeline without exposing the form's private
+/// state.
+///
+/// The host instantiates one of these, passes it to
+/// [FoodForm.controller], and calls [submit] from the
+/// [OmniBottomCTA.onPressed] handler. The form's internal
+/// `_onSave()` (validate + `widget.onSave(draft)`) runs exactly
+/// the same way it did when the save button was inline.
+///
+/// The form's `initState` calls [attach] with its internal save
+/// handler; the form's `dispose` calls [detach] to clear the
+/// reference. The host should dispose the controller in its own
+/// `dispose` as a safety net (in case the form is rebuilt without
+/// reattaching).
+class FoodFormController {
+  VoidCallback? _onSubmit;
+
+  /// Register the form's internal save handler. Called by the
+  /// [FoodForm] in its `initState`. Public because Dart's
+  /// privacy is library-scoped, not class-scoped, so a separate
+  /// file like [EditFoodScreen] cannot call a private method
+  /// on this controller.
+  void attach(VoidCallback onSubmit) {
+    _onSubmit = onSubmit;
+  }
+
+  /// Clear the form's save handler. Called by the [FoodForm] in
+  /// its `dispose`, and by the host as a safety net.
+  void detach() {
+    _onSubmit = null;
+  }
+
+  /// Triggers the form's save pipeline. No-op if the controller
+  /// is not yet attached to a form (e.g. during navigation
+  /// transitions).
+  void submit() {
+    _onSubmit?.call();
+  }
 }
 
 class _FoodFormState extends State<FoodForm> {
@@ -117,6 +175,10 @@ class _FoodFormState extends State<FoodForm> {
   @override
   void initState() {
     super.initState();
+    // Wire the host's controller (if any) to this form's save
+    // pipeline so the host's bottom CTA can trigger the form's
+    // validation + save flow without exposing private state.
+    widget.controller?.attach(_onSave);
     final initial = widget.initial;
     _name = TextEditingController(text: initial?.name ?? '');
     _referenceAmount = TextEditingController(
@@ -142,6 +204,7 @@ class _FoodFormState extends State<FoodForm> {
 
   @override
   void dispose() {
+    widget.controller?.detach();
     _name.dispose();
     _referenceAmount.dispose();
     _referenceLabel.dispose();
@@ -428,23 +491,13 @@ class _FoodFormState extends State<FoodForm> {
                   ),
                 ),
               ],
-              const SizedBox(height: 24),
-              SizedBox(
-                height: OmniTheme.buttonPrimaryHeight,
-                width: double.infinity,
-                child: FilledButton(
-                  key: const Key('food_form_save'),
-                  onPressed: _saving ? null : _onSave,
-                  style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonBorderRadius,
-                      ),
-                    ),
-                  ),
-                  child: Text(widget.saveLabel),
-                ),
-              ),
+              // The form no longer renders an inline save button.
+              // The host screen owns the primary bottom CTA via
+              // the shared `OmniBottomCTA`. The host wires the
+              // CTA's `onPressed` to `FoodFormController.submit`,
+              // which calls into the form's `_onSave` pipeline
+              // (validation + `widget.onSave(draft)`) — the same
+              // pipeline the inline button used to trigger.
             ],
           ),
         );

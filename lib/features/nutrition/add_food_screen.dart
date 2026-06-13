@@ -9,6 +9,7 @@ import '../../state/nutrition_state.dart';
 import 'edit_food_screen.dart';
 import 'widgets/food_form.dart';
 import 'widgets/food_thumbnail.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 
 /// Sentinel used by [_DeleteCategoryDialog] to distinguish "user
 /// tapped Cancel" from "user picked Ungrouped (which is a legitimate
@@ -82,6 +83,79 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     super.dispose();
   }
 
+  // ── Tab-aware primary bottom CTA ──────────────────────────────────────
+  //
+  // The My Foods and Categories tabs each have a single primary
+  // bottom action (New Food / + New Category). Both are routed
+  // through the shared `OmniBottomCTA` on the host's
+  // `Scaffold.bottomNavigationBar` (see
+  // `.github/agents/plans/add-food-screen-bottom-cta-plan.md` and
+  // `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`)
+  // so they sit at the same width, height, and vertical anchor as
+  // every other primary bottom CTA in the app. The Library tab is
+  // browse-only and renders no bottom CTA.
+  //
+  // The CTA rebuilds via `AnimatedBuilder` on the tab controller
+  // (the controller is a `Listenable`); when the user swipes or
+  // taps a different tab, the previous CTA fades out and the new
+  // one fades in over `OmniTheme.animationDuration`.
+
+  /// Index constants — must match the `TabBar` order above.
+  static const int _libraryTabIndex = 0;
+  static const int _myFoodsTabIndex = 1;
+  static const int _categoriesTabIndex = 2;
+
+  /// Pushes the full-screen New Food form (shared with the previous
+  /// inline `_AddNewFoodButton._openNewFoodForm` method).
+  void _openNewFoodForm(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _NewFoodFormScreen(
+          foodLibraryState: widget.foodLibraryState,
+        ),
+      ),
+    );
+  }
+
+  /// Creates a new category (shared with the previous inline
+  /// `_CategoriesTabState._createCategory` method).
+  Future<void> _createCategory() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.foodLibraryState.createFoodGroup('New Category');
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not create category')),
+      );
+    }
+  }
+
+  /// The tab-aware bottom CTA. Returns `SizedBox.shrink()` on the
+  /// Library tab; the appropriate `OmniBottomCTA` on the other two.
+  Widget _buildBottomCTA(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _tabController,
+      builder: (context, _) {
+        switch (_tabController.index) {
+          case _myFoodsTabIndex:
+            return OmniBottomCTA(
+              label: '+ New Food',
+              onPressed: () => _openNewFoodForm(context),
+            );
+          case _categoriesTabIndex:
+            return OmniBottomCTA(
+              label: '+ New Category',
+              buttonKey: const Key('new_category_button'),
+              onPressed: _createCategory,
+            );
+          case _libraryTabIndex:
+          default:
+            return const SizedBox.shrink();
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -110,6 +184,11 @@ class _AddFoodScreenState extends State<AddFoodScreen>
           _CategoriesTab(foodLibraryState: widget.foodLibraryState),
         ],
       ),
+      // Tab-aware primary bottom CTA. The host owns the bottom CTA
+      // (not the individual tabs) so the shared placement + width
+      // apply uniformly across tabs. See
+      // `.github/agents/plans/add-food-screen-bottom-cta-plan.md`.
+      bottomNavigationBar: _buildBottomCTA(context),
     );
   }
 }
@@ -126,7 +205,12 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 /// callback that dispatches to the correct update path based on
 /// `food.isCatalog`. Once all legacy rows are deleted (or migrated)
 /// this shim can be removed.
-class _LegacyLibraryEditScreen extends StatelessWidget {
+///
+/// The primary bottom **Save** action uses the shared
+/// [OmniBottomCTA] wired to a [FoodFormController]. The
+/// `Key('food_form_save')` is preserved on the bottom CTA so the
+/// existing test contract continues to work.
+class _LegacyLibraryEditScreen extends StatefulWidget {
   final Food food;
   final FoodLibraryState foodLibraryState;
 
@@ -136,22 +220,40 @@ class _LegacyLibraryEditScreen extends StatelessWidget {
   });
 
   @override
+  State<_LegacyLibraryEditScreen> createState() =>
+      _LegacyLibraryEditScreenState();
+}
+
+class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
+  final FoodFormController _formController = FoodFormController();
+
+  @override
+  void dispose() {
+    _formController.detach();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Edit Food')),
       body: FoodForm(
-        initial: food,
-        foodLibraryState: foodLibraryState,
+        initial: widget.food,
+        foodLibraryState: widget.foodLibraryState,
         saveLabel: 'Save',
         showNotesField: true,
+        controller: _formController,
         onSave: (draft) async {
           final messenger = ScaffoldMessenger.of(context);
           try {
-            if (food.isCatalog) {
-              await foodLibraryState.updateCatalogFood(food, draft);
+            if (widget.food.isCatalog) {
+              await widget.foodLibraryState.updateCatalogFood(
+                widget.food,
+                draft,
+              );
             } else {
-              await foodLibraryState.updateCustomFood(
-                id: food.id,
+              await widget.foodLibraryState.updateCustomFood(
+                id: widget.food.id,
                 name: draft.name,
                 groupId: draft.groupId,
                 unitType: draft.unitType,
@@ -169,11 +271,16 @@ class _LegacyLibraryEditScreen extends StatelessWidget {
             return true;
           } catch (e) {
             messenger.showSnackBar(
-              SnackBar(content: Text('Could not save ${food.name}: $e')),
+              SnackBar(content: Text('Could not save ${widget.food.name}: $e')),
             );
             return false;
           }
         },
+      ),
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Save',
+        buttonKey: const Key('food_form_save'),
+        onPressed: _formController.submit,
       ),
     );
   }
@@ -491,7 +598,13 @@ class _MyFoodsTab extends StatelessWidget {
         if (merged.isEmpty) {
           return Center(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(
+                24,
+                24,
+                24,
+                // Clear the host's bottom CTA (New Food).
+                OmniTheme.formBottomCTAClearance,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -515,77 +628,35 @@ class _MyFoodsTab extends StatelessWidget {
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 24),
-                  _AddNewFoodButton(foodLibraryState: foodLibraryState),
                 ],
               ),
             ),
           );
         }
 
-        return Column(
-          children: [
-            Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: merged.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, i) {
-                  final f = merged[i];
-                  return _UserFoodRow(
-                    food: f,
-                    foodLibraryState: foodLibraryState,
-                    nutritionState: nutritionState,
-                  );
-                },
-              ),
-            ),
-            // Add New Food button at bottom
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: _AddNewFoodButton(foodLibraryState: foodLibraryState),
-            ),
-          ],
+        return ListView.separated(
+          // Bottom padding clears the host's shared bottom CTA (New
+          // Food). Top padding mirrors the small inset that the
+          // non-empty state previously provided via the `Column`'s
+          // top edge.
+          padding: const EdgeInsets.fromLTRB(
+            0,
+            8,
+            0,
+            OmniTheme.formBottomCTAClearance,
+          ),
+          itemCount: merged.length,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (context, i) {
+            final f = merged[i];
+            return _UserFoodRow(
+              food: f,
+              foodLibraryState: foodLibraryState,
+              nutritionState: nutritionState,
+            );
+          },
         );
       },
-    );
-  }
-}
-
-/// Button to add a new custom food to the catalog.
-class _AddNewFoodButton extends StatelessWidget {
-  final FoodLibraryState foodLibraryState;
-
-  const _AddNewFoodButton({required this.foodLibraryState});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      height: OmniTheme.buttonPrimaryHeight,
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: () => _openNewFoodForm(context),
-        style: FilledButton.styleFrom(
-          backgroundColor: theme.colorScheme.primary,
-          foregroundColor: theme.colorScheme.onPrimary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
-          ),
-        ),
-        icon: const Icon(Icons.add),
-        label: const Text('New Food'),
-      ),
-    );
-  }
-
-  void _openNewFoodForm(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _NewFoodFormScreen(
-          foodLibraryState: foodLibraryState,
-        ),
-      ),
     );
   }
 }
@@ -607,10 +678,23 @@ class _AddNewFoodButton extends StatelessWidget {
 ///     Foods and is editable from there) and a snackbar surfaces the
 ///     library-add error. The form still pops, so the user is not
 ///     trapped on a save screen.
-class _NewFoodFormScreen extends StatelessWidget {
+class _NewFoodFormScreen extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
 
   const _NewFoodFormScreen({required this.foodLibraryState});
+
+  @override
+  State<_NewFoodFormScreen> createState() => _NewFoodFormScreenState();
+}
+
+class _NewFoodFormScreenState extends State<_NewFoodFormScreen> {
+  final FoodFormController _formController = FoodFormController();
+
+  @override
+  void dispose() {
+    _formController.detach();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -620,13 +704,15 @@ class _NewFoodFormScreen extends StatelessWidget {
       ),
       body: FoodForm(
         initial: null,
-        foodLibraryState: foodLibraryState,
+        foodLibraryState: widget.foodLibraryState,
         saveLabel: 'Create',
+        controller: _formController,
         onSave: (draft) async {
           final messenger = ScaffoldMessenger.of(context);
           String? catalogId;
           try {
-            catalogId = await foodLibraryState.createCatalogFood(draft);
+            catalogId =
+                await widget.foodLibraryState.createCatalogFood(draft);
           } catch (_) {
             messenger.showSnackBar(
               const SnackBar(content: Text('Could not create food')),
@@ -634,7 +720,7 @@ class _NewFoodFormScreen extends StatelessWidget {
             return false;
           }
           try {
-            await foodLibraryState.addCatalogFoodToLibrary(catalogId);
+            await widget.foodLibraryState.addCatalogFoodToLibrary(catalogId);
           } catch (e) {
             // Catalog row is preserved; the user can re-add to
             // library from the My Foods tab. Surface the error so
@@ -654,6 +740,14 @@ class _NewFoodFormScreen extends StatelessWidget {
           if (context.mounted) Navigator.of(context).pop();
           return true;
         },
+      ),
+      // The shared primary bottom CTA. The `food_form_save` key
+      // is preserved on the rendered FilledButton for backward
+      // compatibility with the existing test contract.
+      bottomNavigationBar: OmniBottomCTA(
+        label: 'Create',
+        buttonKey: const Key('food_form_save'),
+        onPressed: _formController.submit,
       ),
     );
   }
@@ -1193,66 +1287,37 @@ class _CategoriesTabState extends State<_CategoriesTab> {
           foodsByGroup[f.groupId] = (foodsByGroup[f.groupId] ?? 0) + 1;
         }
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        return ListView(
+          // Bottom padding clears the host's shared bottom CTA
+          // (+ New Category).
+          padding: const EdgeInsets.fromLTRB(
+            0,
+            8,
+            0,
+            OmniTheme.formBottomCTAClearance,
+          ),
           children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                children: [
-                  for (final g in groups)
-                    _CategoryRow(
-                      group: g,
-                      controller: _controllerFor(g.id, g.name),
-                      foodCount: foodsByGroup[g.id] ?? 0,
-                      onRename: (newName) =>
-                          widget.foodLibraryState.renameFoodGroup(
-                            g.id,
-                            newName,
-                          ),
-                      onDelete: () => _confirmAndDeleteGroup(
-                        context,
-                        g,
-                        foodsByGroup[g.id] ?? 0,
-                        groups,
-                      ),
-                    ),
-                  _UngroupedRow(foodCount: foodsByGroup[null] ?? 0),
-                ],
-              ),
-            ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: OutlinedButton.icon(
-                  key: const Key('new_category_button'),
-                  icon: const Icon(Icons.add),
-                  label: const Text('+ New Category'),
-                  onPressed: _createCategory,
+            for (final g in groups)
+              _CategoryRow(
+                group: g,
+                controller: _controllerFor(g.id, g.name),
+                foodCount: foodsByGroup[g.id] ?? 0,
+                onRename: (newName) => widget.foodLibraryState.renameFoodGroup(
+                  g.id,
+                  newName,
+                ),
+                onDelete: () => _confirmAndDeleteGroup(
+                  context,
+                  g,
+                  foodsByGroup[g.id] ?? 0,
+                  groups,
                 ),
               ),
-            ),
+            _UngroupedRow(foodCount: foodsByGroup[null] ?? 0),
           ],
         );
       },
     );
-  }
-
-  /// Create a new category with a default name. The new row is
-  /// added to the bottom of the list; the user taps the row's
-  /// `TextField` to rename it (the row does not auto-focus to keep
-  /// the keyboard from popping up unexpectedly on the new-category
-  /// button tap).
-  Future<void> _createCategory() async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await widget.foodLibraryState.createFoodGroup('New Category');
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Could not create category')),
-      );
-    }
   }
 
   /// Confirm a non-empty group delete, then reassign + archive.

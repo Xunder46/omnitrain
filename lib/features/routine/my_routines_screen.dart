@@ -227,7 +227,7 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
         builder: (context) => AlertDialog(
           title: const Text('Start New Session?'),
           content: const Text(
-            'Starting a routine will start a new session. Current session will be saved.',
+            'Starting a routine will start a new session. Current session will not be saved.',
           ),
           actions: [
             TextButton(
