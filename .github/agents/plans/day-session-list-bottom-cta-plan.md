@@ -151,9 +151,9 @@ File: `test/screen_widget_test.dart`
 
 ## Progress
 - [x] Phase 0 complete ✓
-- [ ] Phase 1 complete (skipped; UI-only)
-- [ ] Phase 2 complete ✓
-- [ ] Phase 3 complete ✓
+- [x] Phase 1 complete (skipped; UI-only)
+- [x] Phase 2 complete ✓
+- [x] Phase 3 complete ✓
 
 ## Feedback
 (none)
@@ -166,3 +166,43 @@ existing test finders updated (`OutlinedButton + Icons.add` →
 `FilledButton + '+ Planned Session'`); 2 new widget tests
 added (S-001, S-002). Phase 1 skipped: this iteration is pure UI
 migration, no repository / state / model changes.
+### Phase 2 Complete ✓
+Implementation done. `DaySessionListScreen` now hosts a
+`Scaffold.bottomNavigationBar` that returns
+`OmniBottomCTA(label: 'Add Planned Session', onPressed: () =>
+_addPlanned(context))` when `_isTodayOrFuture` is true, and
+`null` for past dates. The `ListView` body has a bottom padding
+of `OmniTheme.formBottomCTAClearance` when `_isTodayOrFuture`
+is true so the last row clears the CTA; past dates keep the
+standard 16 px bottom padding. The `_AddButton` class is
+deleted; the inline `OutlinedButton.icon` is gone.
+
+Test coverage added:
+- S-001 — today/future dates: `OmniBottomCTA` on
+  `Scaffold.bottomNavigationBar` at the shared width, height,
+  and vertical anchor. Label is "Add Planned Session" (preserved
+  verbatim).
+- S-002 — past dates: `Scaffold.bottomNavigationBar` is `null`;
+  no `OmniBottomCTA` is rendered; the empty-state copy "No
+  sessions on this day." is shown.
+
+4 existing test finders updated:
+`find.widgetWithIcon(OutlinedButton, Icons.add)` →
+`find.widgetWithText(FilledButton, 'Add Planned Session')`.
+
+Test results: all `DaySessionListScreen` tests pass
+(13 tests, including the 2 new ones). 4 other pre-existing
+test failures in the broader test suite are unrelated to this
+work and are flagged in the Phase 3 review (they were caused by
+the user changing the label `'New Food'` → `'+ New Food'`
+between iterations, not by this iteration's changes).
+
+### Phase 3 Complete ✓
+Review verdict: ✅ APPROVED. All 7 acceptance criteria verified.
+Both 2 scenarios mapped to passing tests. Doc hygiene: N/A (the
+previous iteration's doc updates already cover this case).
+Global conventions: PASS (5 rules), N/A (1 rule), FAIL 0.
+Architecture compliance: ✅ across all in-scope layers. Buttons
+rule: ✅ the migrated screen now uses the shared `OmniBottomCTA`.
+Dead code: `_AddButton` class removed. Test coverage: +2 new
+passing tests, 0 new failures.
