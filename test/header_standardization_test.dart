@@ -293,11 +293,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The '+' FilledButton must be a descendant of OmniBackHeader.
+      // The '+' action button must be a descendant of OmniBackHeader.
+      // CalendarScreen uses an `OutlinedButton` (styled with the
+      // primary color + utility radius) so the Periods affordance
+      // reads as a tertiary header action, not a primary CTA.
       expect(
         find.descendant(
           of: find.byType(OmniBackHeader),
-          matching: find.widgetWithText(FilledButton, '+'),
+          matching: find.widgetWithText(OutlinedButton, '+'),
         ),
         findsOneWidget,
       );

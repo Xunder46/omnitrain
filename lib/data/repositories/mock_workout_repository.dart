@@ -177,6 +177,14 @@ class MockWorkoutRepository implements WorkoutRepository {
       _foodGroups[group.id] = group;
     }
 
+    // Seed the now-relative nutrition log so the Stats screen's
+    // Nutrition Trend card has data on the web/QA build. These rows
+    // are frozen snapshots — once written, editing the source food
+    // or targets does not change them.
+    for (final consumed in SeedData.sampleConsumedFoods()) {
+      _consumedFoods[consumed.id] = consumed;
+    }
+
     // NOTE: SeedData.sampleTrainingSessions/sampleSessionSegments/sampleSessionBlocks/
     // sampleSegmentEfforts are available as reference data but NOT auto-loaded here.
     // Use them to manually populate a demo session when needed.
@@ -1395,6 +1403,17 @@ class MockWorkoutRepository implements WorkoutRepository {
   Future<void> reset() async {
     clear();
     await initialize();
+  }
+
+  /// Test-only hook: clears the seeded consumed-foods map so a test can
+  /// start with an empty day-log without losing the rest of the seed
+  /// (exercises, foods, etc.). The `sampleConsumedFoods()` seed preloads
+  /// three today-dated rows for the Stats Nutrition Trend card; tests
+  /// that exercise the per-row scaling or cache-count contract of
+  /// `NutritionState.loadConsumedToday` need a clean slate.
+  @visibleForTesting
+  void clearConsumedFoodsForTest() {
+    _consumedFoods.clear();
   }
 
   // ===== PLANNED SESSIONS =====

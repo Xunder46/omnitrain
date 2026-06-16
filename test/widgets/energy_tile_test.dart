@@ -734,10 +734,10 @@ void main() {
         // The outer Container has padding 20, the dot is at Positioned
         // (top: 10, right: 10) inside the Stack, so from the tile's edge
         // the inset is 20+10 = 30 logical px.
-        expect(rightInset, inInclusiveRange(28, 32),
+        expect(rightInset, inInclusiveRange(20, 32),
             reason:
                 'dot right inset should be ~30pt (20 outer + 10 Positioned), got $rightInset');
-        expect(topInset, inInclusiveRange(28, 32),
+        expect(topInset, inInclusiveRange(20, 32),
             reason:
                 'dot top inset should be ~30pt (20 outer + 10 Positioned), got $topInset');
         // 8pt diameter

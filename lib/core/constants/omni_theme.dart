@@ -341,6 +341,25 @@ class OmniTheme {
   /// `bottomCTAVerticalBottomPadding` + breathing room).
   static const double formBottomCTAClearance = 112.0;
 
+  /// Bottom offset for the rest-timer overlay chip. The chip is the
+  /// single rest indicator used on the session list view and the
+  /// exercise detail view, so this value is the **shared vertical
+  /// anchor** for both screens — the rest indicator must feel like
+  /// it lives in one consistent spot.
+  ///
+  /// Tuned to sit `kRestOverlayToCTAGap` dp above the top edge of
+  /// the bottom CTA (CTA footprint is
+  /// `bottomCTAVerticalTopPadding` + `buttonPrimaryHeight` +
+  /// `bottomCTAVerticalBottomPadding` = 96 dp before SafeArea), so
+  /// the chip never crowds the Log Set / Finish Workout button.
+  static const double restOverlayBottomOffset = 176.0;
+
+  /// Minimum vertical gap between the rest overlay chip and the
+  /// top edge of the bottom CTA. 80 dp — leaves a clear, calm
+  /// separation on the smallest supported screen heights without
+  /// pushing the chip into the metric content on larger phones.
+  static const double kRestOverlayToCTAGap = 80.0;
+
   // ═══════════════════════════════════════════════════════════
   // TEXT SCALE CLAMP
   // ═══════════════════════════════════════════════════════════

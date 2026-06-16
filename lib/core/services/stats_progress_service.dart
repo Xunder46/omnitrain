@@ -8,6 +8,7 @@ import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
 import '../models/stats_progress.dart';
+import '../utils/date_utils.dart';
 import '../utils/observation_grouper.dart';
 
 class StatsProgressService {
@@ -25,10 +26,18 @@ class StatsProgressService {
   /// Maximum number of recent PRs to return in [StatsProgressData.recentPRs].
   static const int kRecentPRCount = 5;
 
+  /// Default "visible window" hint for the NUTRITION card. The card
+  /// now scrolls through **full** history (the scrollable
+  /// `ScrollableTrendChart` shows as much as fits and lets the user
+  /// drag for older days). The constant stays as a soft default
+  /// for callers that want a fixed window; the card itself uses
+  /// `days: null`.
+  static const int kNutritionTrendDays = 10;
+
   /// Compute all progress data for the Stats screen.
   ///
-  /// Complexity: O(sessions × segments × efforts). Acceptable for any
-  /// foreseeable on-device history without caching in v1.
+  /// Complexity: O(sessions × segments × efforts + food rows in window).
+  /// Acceptable for any foreseeable on-device history without caching in v1.
   Future<StatsProgressData> computeProgressData() async {
     final allSessions = await _repository.getAllSessions();
     final completed = allSessions.where((s) => s.endedAtMs != null).toList();
@@ -91,7 +100,7 @@ class StatsProgressService {
         double totalVolume = 0;
 
         for (final set in sets) {
-          final e1rm = _epley(set.weight, set.reps);
+          final e1rm = epley1RM(set.weight, set.reps);
           if (e1rm != null) {
             if (e1rm > maxE1Rm) maxE1Rm = e1rm;
             totalVolume += set.weight * set.reps;
@@ -172,10 +181,18 @@ class StatsProgressService {
       topCardio.add(CardioProgress(exerciseName: name, trend: trend));
     }
 
+    // Nutrition trend (NUTRITION card). Pure-Dart aggregation that
+    // depends only on the repository — identical on Hive (web) and
+    // any future native SQLite implementation. The card scrolls
+    // through full history, so the service is called with
+    // `days: null` to remove the 10-day cap.
+    final nutritionTrend = await computeNutritionTrend(days: null);
+
     return StatsProgressData(
       topLifts: topLifts,
       topCardio: topCardio,
       recentPRs: recentPRs,
+      nutritionTrend: nutritionTrend,
     );
   }
 
@@ -270,11 +287,157 @@ class StatsProgressService {
     return ranked.take(n).map((e) => e.id).toList();
   }
 
+  /// Compute the per-day nutrition trend. Days with no
+  /// `ConsumedFood` rows are skipped, not zero-filled. Returns an
+  /// empty list when no food was logged in the window.
+  ///
+  /// Pass [days] to cap the window (today + N-1 prior, e.g.
+  /// `days: 10` for the original 10-day window). Pass `null` (the
+  /// default) for **full history** — the NUTRITION card uses this
+  /// so its scrollable chart can plot every logged day.
+  ///
+  /// Per-day math:
+  ///   calories = Σ `ConsumedFood.caloriesConsumed` (per-row,
+  ///              already rounded)
+  ///   macro    = Σ `(macro × amountConsumed / referenceAmount)`,
+  ///              accumulated as a `double` and rounded **once** per
+  ///              day so per-row fractional grams do not vanish.
+  ///
+  /// Carbs use the snapshot's **total** carbs (not net carbs). The
+  /// line color token happens to be named `netCarbs` (the donut's
+  /// blue slot), but the value plotted here is total carbs to
+  /// match the home strip's "total carbs for blue" semantics.
+  Future<List<NutritionTrendPoint>> computeNutritionTrend({
+    int? days = kNutritionTrendDays,
+  }) async {
+    final todayMs = OmniDateUtils.todayMidnightMs();
+    final fromMs = days == null
+        // Full history: from epoch so even year-old rows come back.
+        // The repository filters by dateMs and we never carry more
+        // than the user actually logged.
+        ? 0
+        // Windowed: fromMs = local midnight of (today - (days-1)).
+        : DateTime(
+            DateTime.fromMillisecondsSinceEpoch(todayMs)
+                .subtract(Duration(days: days - 1))
+                .year,
+            DateTime.fromMillisecondsSinceEpoch(todayMs)
+                .subtract(Duration(days: days - 1))
+                .month,
+            DateTime.fromMillisecondsSinceEpoch(todayMs)
+                .subtract(Duration(days: days - 1))
+                .day,
+          ).millisecondsSinceEpoch;
+    // toMs = end of "today" (23:59:59.999 local) so today's row is
+    // included even though dateMs is today's local midnight.
+    final toMs = OmniDateUtils.endOfDayMs(
+      DateTime.fromMillisecondsSinceEpoch(todayMs),
+    );
+
+    final rows = await _repository.getConsumedFoodsInRange(fromMs, toMs);
+    if (rows.isEmpty) return const [];
+
+    // dateMs (int) → running accumulators. Per-row scaling uses
+    // `amountConsumed / referenceAmount`; we accumulate as double
+    // and round once at the end so sub-gram totals do not drop to
+    // zero from per-row rounding.
+    final dayCalories = <int, int>{};
+    final dayProteinD = <int, double>{};
+    final dayCarbsD = <int, double>{};
+    final dayFatD = <int, double>{};
+    final dayDate = <int, DateTime>{};
+
+    for (final r in rows) {
+      final dayKey = r.dateMs;
+      // Per-row, pre-rounded calories. Sum is a sum-of-rounded
+      // values; matches the calorie ring's total.
+      dayCalories[dayKey] =
+          (dayCalories[dayKey] ?? 0) + r.caloriesConsumed;
+      // Macro grams: accumulate as double, round once at the end.
+      final scale = r.amountConsumed / r.referenceAmount;
+      dayProteinD[dayKey] = (dayProteinD[dayKey] ?? 0) + r.protein * scale;
+      dayCarbsD[dayKey] = (dayCarbsD[dayKey] ?? 0) + r.carbs * scale;
+      dayFatD[dayKey] = (dayFatD[dayKey] ?? 0) + r.fat * scale;
+      // Local-midnight DateTime, derived from dateMs (which is
+      // already local midnight per the seed contract).
+      final dt = DateTime.fromMillisecondsSinceEpoch(dayKey);
+      dayDate[dayKey] = DateTime(dt.year, dt.month, dt.day);
+    }
+
+    final dayKeys = dayDate.keys.toList()..sort();
+    return dayKeys
+        .map(
+          (k) => NutritionTrendPoint(
+            date: dayDate[k]!,
+            calories: dayCalories[k] ?? 0,
+            protein: (dayProteinD[k] ?? 0).round(),
+            carbs: (dayCarbsD[k] ?? 0).round(),
+            fat: (dayFatD[k] ?? 0).round(),
+          ),
+        )
+        .toList();
+  }
+
   /// Epley 1-rep-max estimate: weight × (1 + reps / 30).
   /// Returns null when weight or reps is zero/negative.
-  static double? _epley(double weight, int reps) {
+  ///
+  /// **Source of truth.** The Stats screen (`computeProgressData`'s
+  /// PR detection loop) and the in-session "Congrats! New PR" toast
+  /// (see `.github/agents/plans/in-session-pr-toast-plan.md`) both
+  /// call this method. Do not introduce a second e1RM helper — keep
+  /// the formula in one place so the two surfaces cannot drift.
+  static double? epley1RM(double weight, int reps) {
     if (weight <= 0 || reps <= 0) return null;
     return weight * (1 + reps / 30.0);
+  }
+
+  /// Returns the highest [epley1RM] ever logged for [exerciseId]
+  /// across all **completed** sessions. Returns `0.0` (not `null`)
+  /// when no prior set exists for the exercise, so callers can use a
+  /// single strict `>` comparison to detect a new personal record —
+  /// a first-ever set is a PR because its positive e1RM is greater
+  /// than `0.0` (Decision Ledger D-2, D-3 in
+  /// `.github/agents/plans/in-session-pr-toast-plan.md`).
+  ///
+  /// **Source of truth.** This is the same walk `computeProgressData`
+  /// performs when it detects PRs for the Stats screen. In-progress
+  /// sessions are intentionally excluded so the in-session toast and
+  /// the Stats screen agree on the standing best at the moment of a
+  /// new set. Only `effortKind == 'set'` efforts are considered,
+  /// matching the "Effort-Type Keying" rule in `docs/stats_screen.md`.
+  ///
+  /// S-009 (in `.github/agents/plans/in-session-pr-toast-plan.md`)
+  /// is the structural-guard test that locks this method to the
+  /// Stats screen's PR detector for the same input data.
+  Future<double> getAllTimeBestE1RM(String exerciseId) async {
+    final sessions = await _repository.getAllSessions();
+    final completed = sessions.where((s) => s.endedAtMs != null).toList();
+
+    double best = 0.0;
+    for (final session in completed) {
+      final segments = await _repository.getSessionSegments(session.id);
+      for (final segment in segments) {
+        final efforts = await _repository.getSegmentEfforts(segment.id);
+        for (final effort in efforts) {
+          if (effort.effortKind != 'set') continue;
+          if (effort.exerciseId != exerciseId) continue;
+
+          final observations =
+              await _repository.getEffortObservations(effort.id);
+          final entries =
+              ObservationGrouper.groupByEffortKind('set', observations);
+          for (final entry in entries) {
+            final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
+            final reps = entry['reps'] as int? ?? 0;
+            final e1rm = epley1RM(weight, reps);
+            if (e1rm != null && e1rm > best) {
+              best = e1rm;
+            }
+          }
+        }
+      }
+    }
+    return best;
   }
 }
 

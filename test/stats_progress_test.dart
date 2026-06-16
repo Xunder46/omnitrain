@@ -14,6 +14,20 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
+/// Wipe the seeded nutrition log so nutrition-trend tests start
+/// from a clean baseline. Only the now-relative consumed-food
+/// rows from `SeedData.sampleConsumedFoods()` are cleared — every
+/// other entity remains intact.
+Future<void> _clearSeededFoods(MockWorkoutRepository repo) async {
+  // The seeds are id-prefixed `seed-consumed-*`; pull them all
+  // and delete by id so we don't disturb any rows the test added.
+  for (final entry in await repo.getConsumedFoodsInRange(0, 9999999999999)) {
+    if (entry.id.startsWith('seed-consumed-')) {
+      await repo.deleteConsumedFood(entry.id);
+    }
+  }
+}
+
 /// Seed a completed session starting at [day] midnight.
 Future<TrainingSession> _seedSession(
   MockWorkoutRepository repo, {
@@ -846,5 +860,508 @@ void main() {
       expect(point.paceSecPerKm, isNull);
       expect(point.distanceM, isNull);
     });
+  });
+
+  // ── Nutrition trend aggregation (Stats screen NUTRITION card) ────────────
+  // The card is fed by `StatsProgressData.nutritionTrend`, a list of
+  // `NutritionTrendPoint { date, calories, protein, carbs, fat }`.
+  // S-001..S-006 cover the UI; these tests cover the aggregation
+  // contract that the card renders against.
+
+  // Frozen-snapshot test helper. Macros are per the food's
+  // reference (per 100 g or per 1 serving); the service scales
+  // them by amountConsumed/referenceAmount and rounds once per day.
+  Future<void> _seedConsumedFood(
+    MockWorkoutRepository repo, {
+    required String id,
+    required DateTime day,
+    required String name,
+    required int protein,
+    required int carbs,
+    required int fat,
+    required double amountConsumed,
+    double referenceAmount = 100,
+    String referenceLabel = '100 g',
+    FoodUnitType unitType = FoodUnitType.grams,
+  }) async {
+    final dateMs = DateTime(
+      day.year,
+      day.month,
+      day.day,
+    ).millisecondsSinceEpoch;
+    await repo.createConsumedFood(
+      ConsumedFood(
+        id: id,
+        loggedAtMs: dateMs + (12 * 60 * 60 * 1000), // 12:00 local
+        dateMs: dateMs,
+        sourceFoodId: id,
+        name: name,
+        unitType: unitType,
+        referenceAmount: referenceAmount,
+        referenceLabel: referenceLabel,
+        protein: protein,
+        carbs: carbs,
+        fiber: 0,
+        fat: fat,
+        sodium: null,
+        amountConsumed: amountConsumed,
+        groupIdSnapshot: 'food-group-proteins',
+        groupNameSnapshot: 'Proteins',
+        targetCalories: 2400,
+        targetProtein: 160,
+        targetCarbs: 280,
+        targetFat: 80,
+        createdAtMs: dateMs,
+        updatedAtMs: dateMs,
+      ),
+    );
+  }
+
+  DateTime _dayAt(int daysAgo) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return today.subtract(Duration(days: daysAgo));
+  }
+
+  group('Nutrition trend aggregation', () {
+    // The shared mock repo now seeds a now-relative nutrition log
+    // on `initialize()`. Each test gets a fresh repo via
+    // `_freshRepo()` and immediately wipes the seeded rows so the
+    // baseline is empty. The seeds remain in place for the running
+    // app / web build — only the test baseline is reset here.
+    Future<MockWorkoutRepository> cleanRepo() async {
+      final repo = await _freshRepo();
+      await _clearSeededFoods(repo);
+      return repo;
+    }
+
+    test(
+      'S-005: zero logged days in the last 10 → empty nutritionTrend',
+      () async {
+        final repo = await cleanRepo();
+        // No food rows at all → trend is empty.
+        final data = await StatsProgressService(repo).computeProgressData();
+        expect(data.nutritionTrend, isEmpty);
+      },
+    );
+
+    test(
+      'S-004: exactly 1 logged day in window → single NutritionTrendPoint',
+      () async {
+        final repo = await cleanRepo();
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-1',
+          day: _dayAt(0),
+          name: 'Chicken breast',
+          protein: 31,
+          carbs: 0,
+          fat: 4,
+          amountConsumed: 150,
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+        expect(data.nutritionTrend, hasLength(1));
+        final p = data.nutritionTrend.first;
+        // Date is local midnight (date components only).
+        expect(p.date.year, _dayAt(0).year);
+        expect(p.date.month, _dayAt(0).month);
+        expect(p.date.day, _dayAt(0).day);
+        // Protein: 31 × (150/100) = 46.5 → rounds to 47 (rounds half-up).
+        // Same arithmetic for carbs (0) and fat (4 × 1.5 = 6).
+        expect(p.protein, 47);
+        expect(p.carbs, 0);
+        expect(p.fat, 6);
+        // Calories: per-row rounding on the snapshot, so 150g of a
+        // 100g-snapshot with 31/0/4 = (31*4+0*4+4*9)*1.5 = 162*1.5 = 243.
+        // The snapshot's caloriesConsumed returns the *rounded*
+        // 31*4+0+4*9 = 160 (×1.5) = 240, since the getter rounds.
+        expect(p.calories, 240);
+      },
+    );
+
+    test(
+      'S-001: multiple days → ascending sort, per-day macro grams '
+      '(round-once), calories as Σ caloriesConsumed',
+      () async {
+        final repo = await cleanRepo();
+        // Day 0: 150 g chicken (31/0/4 100 g) → protein 47, fat 6.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-d0',
+          day: _dayAt(0),
+          name: 'Chicken breast',
+          protein: 31,
+          carbs: 0,
+          fat: 4,
+          amountConsumed: 150,
+        );
+        // Day 3: 200 g greek_yogurt (10/4/0 100 g) → protein 20, carbs 8.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-d3a',
+          day: _dayAt(3),
+          name: 'Greek yogurt',
+          protein: 10,
+          carbs: 4,
+          fat: 0,
+          amountConsumed: 200,
+        );
+        // Day 3: 1 tbsp peanut_butter (4/3/8 tbsp) → protein 4, carbs 3, fat 8.
+        // Day 3 protein sum: 20 + 4 = 24.
+        // Day 3 carbs sum: 8 + 3 = 11.
+        // Day 3 fat sum: 0 + 8 = 8.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-d3b',
+          day: _dayAt(3),
+          name: 'Peanut butter',
+          unitType: FoodUnitType.count,
+          referenceAmount: 1,
+          referenceLabel: 'tbsp',
+          protein: 4,
+          carbs: 3,
+          fat: 8,
+          amountConsumed: 1,
+        );
+        // Day 7: 120 g oats (13/67/7 100 g) → protein 16, carbs 80, fat 8.
+        // (13*1.2=15.6 → 16; 67*1.2=80.4 → 80; 7*1.2=8.4 → 8)
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-d7',
+          day: _dayAt(7),
+          name: 'Oats',
+          protein: 13,
+          carbs: 67,
+          fat: 7,
+          amountConsumed: 120,
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+        // Day 2 / 6 / 9 had no rows → not plotted (skip-empty).
+        expect(data.nutritionTrend, hasLength(3));
+
+        // Ascending: day 7 (oldest) at index 0, day 3 in the
+        // middle, day 0 (today) at index 2.
+        final dates = data.nutritionTrend.map((p) => p.date.day).toList();
+        expect(dates, [dates.toList()..sort()].first);
+
+        // Day 7 totals (single row, fractional grams → round-once).
+        // This is the OLDEST point in the trend (ascending).
+        final d7 = data.nutritionTrend[0];
+        expect(d7.protein, 16);
+        expect(d7.carbs, 80);
+        expect(d7.fat, 8);
+        // Per-row calories: (13*4+67*4+7*9)*(120/100).round()
+        // = (52+268+63)*1.2 = 383*1.2 = 459.6 → rounds to 460.
+        expect(d7.calories, 460);
+
+        // Day 3 totals (two rows summed). Middle of the trend.
+        final d3 = data.nutritionTrend[1];
+        expect(d3.protein, 24);
+        expect(d3.carbs, 11);
+        expect(d3.fat, 8);
+        // Day 3: greek_yogurt (10/4/0 100g × 2.0) + peanut_butter (4/3/8 × 1.0).
+        // Per-row calories (snapshot rounds per row, not at the end):
+        //   yogurt: (10*4 + 4*4 + 0*9) * (200/100) = 56 * 2 = 112
+        //   pb:     (4*4  + 3*4 + 8*9) * (1/1)    = 16+12+72 = 100
+        // Σ = 112 + 100 = 212.
+        expect(d3.calories, 212);
+
+        // Day 0 totals (single row). The NEWEST point in the trend
+        // (ascending) — chicken at index 2.
+        final d0 = data.nutritionTrend[2];
+        expect(d0.protein, 47);
+        expect(d0.carbs, 0);
+        expect(d0.fat, 6);
+        // Per-row caloriesConsumed = (31*4+0*4+4*9)*(150/100).round()
+        // = (124+36)*1.5.round() = 160*1.5 = 240. Day 0 has one row → 240.
+        expect(d0.calories, 240);
+      },
+    );
+
+    test('window bound: rows older than 10 days are excluded', () async {
+      final repo = await cleanRepo();
+      // 11 days ago — must NOT be included.
+      await _seedConsumedFood(
+        repo,
+        id: 'cf-old',
+        day: _dayAt(11),
+        name: 'Old row',
+        protein: 31,
+        carbs: 0,
+        fat: 4,
+        amountConsumed: 100,
+      );
+      // Today — included.
+      await _seedConsumedFood(
+        repo,
+        id: 'cf-today',
+        day: _dayAt(0),
+        name: 'Today row',
+        protein: 10,
+        carbs: 4,
+        fat: 0,
+        amountConsumed: 100,
+      );
+
+      // The full-history path now includes both rows; verify the
+      // windowed path excludes the 11-day-old row.
+      final trend = await StatsProgressService(repo)
+          .computeNutritionTrend(days: 10);
+      expect(trend, hasLength(1));
+      expect(trend.first.date.day, _dayAt(0).day);
+    });
+
+    test(
+      'skip-empty: gaps between logged days are not zero-filled',
+      () async {
+        final repo = await cleanRepo();
+        // Day 0 + Day 4 (skipping 1, 2, 3).
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-a',
+          day: _dayAt(0),
+          name: 'A',
+          protein: 10,
+          carbs: 5,
+          fat: 2,
+          amountConsumed: 100,
+        );
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-b',
+          day: _dayAt(4),
+          name: 'B',
+          protein: 8,
+          carbs: 12,
+          fat: 3,
+          amountConsumed: 100,
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+        expect(data.nutritionTrend, hasLength(2));
+        // Ascending by date: day 0 first, day 4 second.
+        expect(
+          data.nutritionTrend[0].date.isBefore(data.nutritionTrend[1].date),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'round-once: per-day macro grams accumulate as double and round once',
+      () async {
+        final repo = await cleanRepo();
+        // Two rows on the same day with macros that would round to 0
+        // per-row (e.g. 0.45 g each). Sum-then-round: 0.9 → 1.
+        // Each row: protein 30, amountConsumed 1, referenceAmount 100
+        // → 30 * (1/100) = 0.3 g.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-r1',
+          day: _dayAt(0),
+          name: 'Tiny 1',
+          protein: 30,
+          carbs: 0,
+          fat: 0,
+          amountConsumed: 1,
+        );
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-r2',
+          day: _dayAt(0),
+          name: 'Tiny 2',
+          protein: 30,
+          carbs: 0,
+          fat: 0,
+          amountConsumed: 1,
+        );
+        // Three rows of 0.3 g each = 0.9 g → rounds to 1.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-r3',
+          day: _dayAt(0),
+          name: 'Tiny 3',
+          protein: 30,
+          carbs: 0,
+          fat: 0,
+          amountConsumed: 1,
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+        expect(data.nutritionTrend, hasLength(1));
+        // 3 × 0.3 g = 0.9 g → rounds to 1 g. Per-row rounding would
+        // drop each row to 0 g and lose the data.
+        expect(data.nutritionTrend.first.protein, 1);
+      },
+    );
+
+    test(
+      'carbs use total carbs grams (not net carbs) — matches the strip',
+      () async {
+        final repo = await cleanRepo();
+        // 100 g of a food with 20 g carbs (fiber=2 → net = 18). The
+        // strip uses total carbs (20), so the line value here must
+        // also be 20, not 18.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-fiber',
+          day: _dayAt(0),
+          name: 'Whole wheat bread',
+          protein: 4,
+          carbs: 20,
+          fat: 1,
+          amountConsumed: 100,
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+        expect(data.nutritionTrend, hasLength(1));
+        expect(data.nutritionTrend.first.carbs, 20);
+      },
+    );
+  });
+
+  // ── Full-history nutrition aggregation (S-003) ────────────────────────────
+  // The chart switched from a 10-day cap to "full history". The
+  // service exposes the window via the optional `days:` argument
+  // (null = full history, from 0..now inclusive). The chart
+  // always uses `days: null`. The 10-day constant remains as a
+  // soft hint for callers that still want a fixed window.
+
+  group('computeNutritionTrend (full history)', () {
+    test(
+      'S-003: days: null returns all logged days (no 10-day cap)',
+      () async {
+        final repo = await _freshRepo();
+        await _clearSeededFoods(repo);
+        // Seed rows on day 0 and day 25 (well outside the old 10-day
+        // cap) — both must be returned.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-fh-0',
+          day: _dayAt(0),
+          name: 'Today',
+          protein: 31,
+          carbs: 0,
+          fat: 4,
+          amountConsumed: 100,
+        );
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-fh-25',
+          day: _dayAt(25),
+          name: 'Old',
+          protein: 10,
+          carbs: 5,
+          fat: 1,
+          amountConsumed: 100,
+        );
+
+        final trend = await StatsProgressService(repo)
+            .computeNutritionTrend(days: null);
+        expect(trend, hasLength(2));
+        // Ascending: day 25 (oldest) at index 0, day 0 (newest) at index 1.
+        expect(
+          trend[0].date.isBefore(trend[1].date),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'days: N still applies the window cap (backwards-compatible)',
+      () async {
+        final repo = await _freshRepo();
+        await _clearSeededFoods(repo);
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-cap-0',
+          day: _dayAt(0),
+          name: 'Today',
+          protein: 10,
+          carbs: 0,
+          fat: 0,
+          amountConsumed: 100,
+        );
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-cap-15',
+          day: _dayAt(15),
+          name: 'Out of window',
+          protein: 10,
+          carbs: 0,
+          fat: 0,
+          amountConsumed: 100,
+        );
+
+        final trend = await StatsProgressService(repo)
+            .computeNutritionTrend(days: 10);
+        expect(trend, hasLength(1));
+        expect(trend.first.date.day, _dayAt(0).day);
+      },
+    );
+
+    test(
+      'full history still skips empty days and rounds macros once per day',
+      () async {
+        final repo = await _freshRepo();
+        await _clearSeededFoods(repo);
+        // Day 0: two rows → round-once aggregation.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-fh-r1',
+          day: _dayAt(0),
+          name: 'A',
+          protein: 30,
+          carbs: 0,
+          fat: 0,
+          amountConsumed: 1,
+        );
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-fh-r2',
+          day: _dayAt(0),
+          name: 'B',
+          protein: 30,
+          carbs: 0,
+          fat: 0,
+          amountConsumed: 1,
+        );
+        // Day 7: one row.
+        await _seedConsumedFood(
+          repo,
+          id: 'cf-fh-r3',
+          day: _dayAt(7),
+          name: 'C',
+          protein: 50,
+          carbs: 0,
+          fat: 0,
+          amountConsumed: 1,
+        );
+
+        final trend = await StatsProgressService(repo)
+            .computeNutritionTrend(days: null);
+        // Days 1..6, 8..N skipped (no rows on those days).
+        expect(trend, hasLength(2));
+        // Ascending: day 7 first (oldest), day 0 second.
+        final day0 = trend[1];
+        // Day 0: 2 rows × (30 × 1/100) = 0.6 g → round-once → 1.
+        expect(day0.protein, 1);
+        // Day 7: 50 × 1/100 = 0.5 g → rounds to 1.
+        expect(trend[0].protein, 1);
+      },
+    );
+
+    test(
+      'empty repo → empty trend (full history, no data)',
+      () async {
+        final repo = await _freshRepo();
+        await _clearSeededFoods(repo);
+        final trend = await StatsProgressService(repo)
+            .computeNutritionTrend(days: null);
+        expect(trend, isEmpty);
+      },
+    );
   });
 }

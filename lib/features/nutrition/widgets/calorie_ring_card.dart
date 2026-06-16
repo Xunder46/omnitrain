@@ -211,7 +211,7 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                         CalorieRing(
                           consumed: consumed.toDouble(),
                           target: targetCalories,
-                          size: 200,
+                          size: 195,
                           centerOverride: centerOverride,
                         ),
                         // Outer macro donut on top — its
@@ -233,7 +233,7 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                           netCarbs: netCarbsRaw,
                           fiber: fiber,
                           fat: fat,
-                          size: 280,
+                          size: 300,
                           sectionOpacities: opacities,
                           onSectionFocusChange: (newIndex) {
                             // No-op if the index didn't change.

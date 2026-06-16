@@ -31,10 +31,16 @@ import 'package:omnitrain/state/nutrition_state.dart';
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
   await repo.initialize();
+  // Wipe the seeded consumed-foods map so tests start from an empty
+  // day-log. The `SeedData.sampleConsumedFoods()` seed preloads three
+  // today-dated rows for the Stats Nutrition Trend card; tests that
+  // read `consumedToday` / `todayConsumedCalories` need a clean slate
+  // to keep their totals and frozen-snapshot assertions deterministic.
+  repo.clearConsumedFoodsForTest();
   return repo;
 }
 
-/// Grams-type library food: per 100 g, 31P / 0C / 3F = 151 kcal.
+/// Grams-type library food: 100 g, 31P / 0C / 3F = 151 kcal.
 Food _chicken({
   String id = 'food-chicken',
   int protein = 31,
@@ -48,7 +54,7 @@ Food _chicken({
     groupId: groupId,
     unitType: FoodUnitType.grams,
     referenceAmount: 100.0,
-    referenceLabel: 'per 100 g',
+    referenceLabel: '100 g',
     protein: protein,
     carbs: carbs,
     fat: fat,
@@ -57,14 +63,14 @@ Food _chicken({
   );
 }
 
-/// Count-type library food: per 1 egg, 6P / 1C / 5F = 69 kcal.
+/// Count-type library food: 1 egg, 6P / 1C / 5F = 69 kcal.
 Food _egg({String id = 'food-egg'}) {
   return Food(
     id: id,
     name: 'Egg',
     unitType: FoodUnitType.count,
     referenceAmount: 1.0,
-    referenceLabel: 'per 1 egg',
+    referenceLabel: '1 egg',
     protein: 6,
     carbs: 1,
     fat: 5,

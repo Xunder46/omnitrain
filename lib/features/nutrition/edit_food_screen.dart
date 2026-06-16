@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../../core/navigation/navigation.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
-import '../../widgets/layout/omni_bottom_cta.dart';
 import 'widgets/food_form.dart';
 
 /// Edit Food screen — opens from a row tap in the **Library** tab
@@ -87,6 +86,8 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
         saveLabel: 'Save',
         showNotesField: true,
         controller: _formController,
+        autoSaveOnBlur: true,
+        skipPopOnSave: true,
         onSave: (draft) async {
           try {
             await widget.foodLibraryState.updateCatalogFood(
@@ -99,15 +100,7 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
           }
         },
       ),
-      // The shared primary bottom CTA. The `food_form_save` key
-      // is preserved on the rendered FilledButton so the
-      // existing test contract (`find.byKey(Key('food_form_save'))`)
-      // continues to work without any test-code changes.
-      bottomNavigationBar: OmniBottomCTA(
-        label: 'Save',
-        buttonKey: const Key('food_form_save'),
-        onPressed: _formController.submit,
-      ),
+      // Auto-save on blur - no save button needed for existing foods.
     );
   }
 }

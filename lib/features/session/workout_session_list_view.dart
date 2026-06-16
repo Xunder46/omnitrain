@@ -373,7 +373,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 130,
+              bottom: OmniTheme.restOverlayBottomOffset,
               child: Center(
                 child: _buildRestOverlayChip(theme, _formatGlobalRestElapsed()),
               ),
@@ -499,7 +499,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 130,
+              bottom: OmniTheme.restOverlayBottomOffset,
               child: Center(
                 child: _buildRestOverlayChip(theme, _formatGlobalRestElapsed()),
               ),
@@ -524,6 +524,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   Widget _buildRestOverlayChip(ThemeData theme, String elapsedText) {
     return Container(
+      key: const Key('rest-overlay-chip'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withOpacity(0.8),
@@ -769,7 +770,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: 130,
+                bottom: OmniTheme.restOverlayBottomOffset,
                 child: Center(
                   child: _buildRestOverlayChip(
                     theme,

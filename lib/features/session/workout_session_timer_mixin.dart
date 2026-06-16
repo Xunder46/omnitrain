@@ -365,7 +365,28 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           widget.settingsState.effortTimerSound,
         ),
       );
-      unawaited(widget.workoutState.completeRound(effortId, entryIndex));
+      // After auto-expiry, open a rest for the NEXT entry (entryIndex + 1).
+      // The manual `_logSet` path records a rest for `_currentSet` (which is
+      // `entryIndex + 1` for the just-logged entry). Mirroring that contract
+      // here is what makes the rest overlay chip appear when a period ends
+      // itself — the original bug was that auto-expiry only completed the
+      // round without recording the rest.
+      final nextEntryIndex = entryIndex + 1;
+      final restStartMs = DateTime.now().millisecondsSinceEpoch;
+      widget.workoutState.completeRound(effortId, entryIndex).then((_) {
+        if (!mounted) return;
+        unawaited(
+          widget.workoutState.recordRestStart(effortId, nextEntryIndex),
+        );
+        unawaited(
+          widget.restNotificationService.scheduleRestPings(
+            restStartMs: restStartMs,
+            intervalSecs: widget.settingsState.restPingInterval,
+            soundId: widget.settingsState.restPingSound,
+            playSound: !_isAppInForeground,
+          ),
+        );
+      });
     } else {
       _effortTimers[timerKey]?.cancel();
       _effortRunning[timerKey] = false;
@@ -379,7 +400,27 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           widget.settingsState.effortTimerSound,
         ),
       );
-      unawaited(widget.workoutState.finishTimedEntry(effortId, entryIndex));
+      // Parity with the round path: record a rest for the next entry and
+      // schedule rest pings so the rest overlay chip appears after a timed
+      // or drill entry auto-completes. The manual `_logSet` path does the
+      // same; without this, a timed interval that finishes itself leaves
+      // no rest indicator for the user to see.
+      final nextEntryIndex = entryIndex + 1;
+      final restStartMs = DateTime.now().millisecondsSinceEpoch;
+      widget.workoutState.finishTimedEntry(effortId, entryIndex).then((_) {
+        if (!mounted) return;
+        unawaited(
+          widget.workoutState.recordRestStart(effortId, nextEntryIndex),
+        );
+        unawaited(
+          widget.restNotificationService.scheduleRestPings(
+            restStartMs: restStartMs,
+            intervalSecs: widget.settingsState.restPingInterval,
+            soundId: widget.settingsState.restPingSound,
+            playSound: !_isAppInForeground,
+          ),
+        );
+      });
     }
   }
 

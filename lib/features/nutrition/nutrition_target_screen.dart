@@ -130,25 +130,62 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextFormField(
-                key: const Key('calories_field'),
-                controller: _caloriesController,
-                decoration: const InputDecoration(
-                  labelText: 'Calories',
-                  hintText: 'Leave empty for no goal',
+              Center(
+                child: TextFormField(
+                  key: const Key('calories_field'),
+                  controller: _caloriesController,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Calories',
+                    hintText: '—',
+                    labelStyle: TextStyle(
+                      fontSize: 16,
+                      color: OmniTheme.colors.textMuted,
+                    ),
+                    hintStyle: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: OmniTheme.colors.textMuted,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 24,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: OmniTheme.colors.surfaceBorder,
+                        width: 2,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: OmniTheme.colors.primary,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return null;
+                    final parsed = double.tryParse(value);
+                    if (parsed == null) {
+                      return 'Please enter a valid number';
+                    }
+                    if (parsed < 0) {
+                      return 'Please enter a non-negative number';
+                    }
+                    return null;
+                  },
                 ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return null;
-                  final parsed = double.tryParse(value);
-                  if (parsed == null) {
-                    return 'Please enter a valid number';
-                  }
-                  if (parsed < 0) {
-                    return 'Please enter a non-negative number';
-                  }
-                  return null;
-                },
               ),
               const SizedBox(height: 8),
               // D-3 framing copy: the daily target is a single

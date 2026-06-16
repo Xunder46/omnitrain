@@ -1,4 +1,6 @@
 // filepath: lib/features/nutrition/add_food_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
@@ -64,6 +66,14 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
+  /// Tracks the ID of the most recently created category.
+  /// This category will be shown at the end of the list (not sorted)
+  /// until the user navigates away or creates another category.
+  String? _newlyCreatedCategoryId;
+
+  /// Category ID to focus (used for newly created category).
+  String? _focusCategoryId;
+
   @override
   void initState() {
     super.initState();
@@ -119,10 +129,16 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
   /// Creates a new category (shared with the previous inline
   /// `_CategoriesTabState._createCategory` method).
+  /// Tracks the new category ID so it appears at the end of the list.
   Future<void> _createCategory() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await widget.foodLibraryState.createFoodGroup('New Category');
+      final newId = await widget.foodLibraryState.createFoodGroup('New Category');
+      // Track this as the newly created category and focus it
+      setState(() {
+        _newlyCreatedCategoryId = newId;
+        _focusCategoryId = newId;
+      });
     } catch (_) {
       messenger.showSnackBar(
         const SnackBar(content: Text('Could not create category')),
@@ -181,7 +197,11 @@ class _AddFoodScreenState extends State<AddFoodScreen>
             foodLibraryState: widget.foodLibraryState,
             nutritionState: widget.nutritionState,
           ),
-          _CategoriesTab(foodLibraryState: widget.foodLibraryState),
+          _CategoriesTab(
+            foodLibraryState: widget.foodLibraryState,
+            newlyCreatedCategoryId: _newlyCreatedCategoryId,
+            focusCategoryId: _focusCategoryId,
+          ),
         ],
       ),
       // Tab-aware primary bottom CTA. The host owns the bottom CTA
@@ -1237,8 +1257,14 @@ class _CatalogRowState extends State<_CatalogRow> {
 /// informational (food count) and cannot be renamed or deleted.
 class _CategoriesTab extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
+  final String? newlyCreatedCategoryId;
+  final String? focusCategoryId;
 
-  const _CategoriesTab({required this.foodLibraryState});
+  const _CategoriesTab({
+    required this.foodLibraryState,
+    this.newlyCreatedCategoryId,
+    this.focusCategoryId,
+  });
 
   @override
   State<_CategoriesTab> createState() => _CategoriesTabState();
@@ -1251,6 +1277,12 @@ class _CategoriesTabState extends State<_CategoriesTab> {
   /// when the group leaves the list.
   final Map<String, TextEditingController> _controllers = {};
 
+  /// Tracks the FocusNode for each group's name field.
+  /// Used to maintain focus after auto-save.
+  final Map<String, FocusNode> _focusNodes = {};
+
+
+
   TextEditingController _controllerFor(String groupId, String name) {
     final existing = _controllers[groupId];
     if (existing != null) return existing;
@@ -1259,12 +1291,40 @@ class _CategoriesTabState extends State<_CategoriesTab> {
     return c;
   }
 
+  FocusNode _focusNodeFor(String groupId) {
+    final existing = _focusNodes[groupId];
+    if (existing != null) return existing;
+    final node = FocusNode();
+    _focusNodes[groupId] = node;
+    return node;
+  }
+
   @override
   void dispose() {
     for (final c in _controllers.values) {
       c.dispose();
     }
+    for (final node in _focusNodes.values) {
+      node.dispose();
+    }
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CategoriesTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If focusCategoryId changed, request focus after frame renders
+    if (widget.focusCategoryId != null &&
+        widget.focusCategoryId != oldWidget.focusCategoryId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _focusNodes[widget.focusCategoryId]?.requestFocus();
+      });
+    }
+  }
+
+  /// Saves the category name on blur (tap away) or Enter key press.
+  Future<void> _saveCategoryName(String groupId, String newName) async {
+    await widget.foodLibraryState.renameFoodGroup(groupId, newName);
   }
 
   @override
@@ -1275,9 +1335,16 @@ class _CategoriesTabState extends State<_CategoriesTab> {
         final groups = _sorted(widget.foodLibraryState.activeFoodGroups);
         final foods = widget.foodLibraryState.foods;
 
-        // Drop controllers for groups no longer in the active list.
+        // Drop controllers and focus nodes for groups no longer in the active list.
         final activeIds = groups.map((g) => g.id).toSet();
         _controllers.removeWhere((id, _) => !activeIds.contains(id));
+        _focusNodes.removeWhere((id, node) {
+          if (!activeIds.contains(id)) {
+            node.dispose();
+            return true;
+          }
+          return false;
+        });
 
         // Count foods per group id (for the ungrouped row and the
         // empty-delete check).
@@ -1301,11 +1368,9 @@ class _CategoriesTabState extends State<_CategoriesTab> {
               _CategoryRow(
                 group: g,
                 controller: _controllerFor(g.id, g.name),
+                focusNode: _focusNodeFor(g.id),
                 foodCount: foodsByGroup[g.id] ?? 0,
-                onRename: (newName) => widget.foodLibraryState.renameFoodGroup(
-                  g.id,
-                  newName,
-                ),
+                onNameSubmitted: (newName) => _saveCategoryName(g.id, newName),
                 onDelete: () => _confirmAndDeleteGroup(
                   context,
                   g,
@@ -1373,28 +1438,44 @@ class _CategoriesTabState extends State<_CategoriesTab> {
     }
   }
 
-  static List<FoodGroup> _sorted(List<FoodGroup> groups) {
+  /// Sorts groups alphabetically, but keeps the newly created category
+  /// at the end of the list (not sorted) so user can find it easily.
+  List<FoodGroup> _sorted(List<FoodGroup> groups) {
     final copy = [...groups];
-    copy.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return copy;
+
+    // Separate the newly created category from the rest
+    final newlyCreatedId = widget.newlyCreatedCategoryId;
+    final newlyCreated = newlyCreatedId != null
+        ? copy.where((g) => g.id == newlyCreatedId).toList()
+        : <FoodGroup>[];
+    final others = newlyCreatedId != null
+        ? copy.where((g) => g.id != newlyCreatedId).toList()
+        : copy;
+
+    // Sort the rest alphabetically
+    others.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    // Return sorted list with newly created at the end
+    return [...others, ...newlyCreated];
   }
 }
 
 /// A single category row: editable name on the left, trash icon on
-/// the right. The TextField commits the rename on `onEditingComplete`
-/// (IME action / unfocus) and on `onSubmitted` (Enter key).
+/// the right. The TextField saves on blur (tap away) or Enter key.
 class _CategoryRow extends StatelessWidget {
   final FoodGroup group;
   final TextEditingController controller;
+  final FocusNode focusNode;
   final int foodCount;
-  final Future<void> Function(String newName) onRename;
+  final Future<void> Function(String newName) onNameSubmitted;
   final Future<void> Function() onDelete;
 
   const _CategoryRow({
     required this.group,
     required this.controller,
+    required this.focusNode,
     required this.foodCount,
-    required this.onRename,
+    required this.onNameSubmitted,
     required this.onDelete,
   });
 
@@ -1409,6 +1490,7 @@ class _CategoryRow extends StatelessWidget {
             child: TextField(
               key: Key('category_name_${group.id}'),
               controller: controller,
+              focusNode: focusNode,
               decoration: InputDecoration(
                 isDense: true,
                 border: const OutlineInputBorder(),
@@ -1421,8 +1503,9 @@ class _CategoryRow extends StatelessWidget {
                 ),
               ),
               textInputAction: TextInputAction.done,
-              onEditingComplete: () => onRename(controller.text),
-              onSubmitted: (_) => onRename(controller.text),
+              onTapOutside: (_) => onNameSubmitted(controller.text),
+              onEditingComplete: () => onNameSubmitted(controller.text),
+              onSubmitted: onNameSubmitted,
             ),
           ),
           const SizedBox(width: 8),
@@ -1433,7 +1516,7 @@ class _CategoryRow extends StatelessWidget {
               key: Key('category_delete_${group.id}'),
               icon: const Icon(Icons.delete_outline),
               tooltip: 'Delete category',
-              onPressed: () => onDelete(),
+              onPressed: onDelete,
             ),
           ),
         ],

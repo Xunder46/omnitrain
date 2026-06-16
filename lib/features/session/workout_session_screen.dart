@@ -14,9 +14,11 @@ import '../../state/workout/workout_state.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/services/stats_progress_service.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
+import '../../widgets/session/pr_toast.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
@@ -115,6 +117,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // Prevents the rest timer from restarting when navigating back/forward
   // through already-logged sets.
   final Set<String> _loggedSetKeys = {};
+
+  // D-8 throttle retrofit hook for the in-session PR toast. By default
+  // every beating set in a session fires its own toast (one toast per
+  // beating set — the prompt's pre-stated assumption). To throttle to
+  // "first PR in a session wins" instead, add a guard
+  // `if (_prCelebratedEffortIds.contains(effortId)) return;` and an
+  // `add(effortId)` inside `_maybeShowPRToast`; the field is declared
+  // and ready so the retrofit is two focused lines in one place. The
+  // current behaviour never consults the set, so multiple beating sets
+  // in the same session each fire their own toast. See
+  // `.github/agents/plans/in-session-pr-toast-plan.md` for the contract.
+  // ignore: unused_field
+  final Set<String> _prCelebratedEffortIds = {};
 
   @override
   Timer? _ticker;
@@ -720,6 +735,31 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       );
     }
 
+    // In-session personal-record check. Fires the brief, non-blocking
+    // "Congrats! New PR" toast when the just-logged strength set's Epley
+    // e1RM strictly exceeds the user's all-time best for the exercise
+    // (per the Stats screen's PR definition). The check is gated on
+    // `set` only (D-5) and skips skipped entries (D-7); edit mode is
+    // also blocked inside the helper (D-6). The SnackBar is fire-and-
+    // forget — it never awaits and never blocks the rest timer or the
+    // set advance below.
+    //
+    // Plan: .github/agents/plans/in-session-pr-toast-plan.md
+    // Decision Ledger: D-1 (Epley), D-2 (standing best), D-3 (strict
+    // greater), D-5 (set only), D-6 (no edit), D-7 (no skip),
+    // D-8 (one toast per beating set).
+    if (effortKind == 'set' && !isSkippedSetKindEntry) {
+      final exerciseId = (exercise['exerciseId'] as String?) ?? '';
+      final reps = (currentEntry['reps'] as int?) ?? 0;
+      final weight = (currentEntry['weight'] as double?) ?? 0.0;
+      await _maybeShowPRToast(
+        effortId: effortId,
+        exerciseId: exerciseId,
+        reps: reps,
+        weight: weight,
+      );
+    }
+
     // Haptic feedback on successful log
     if (!kIsWeb) {
       HapticFeedback.lightImpact();
@@ -772,6 +812,55 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     if (nextExerciseIndex != null) {
       unawaited(_loadExerciseNoteForIndex(nextExerciseIndex!));
     }
+  }
+
+  /// Checks if the just-logged strength set is a new personal record
+  /// and, if so, shows the brief, non-blocking "Congrats! New PR"
+  /// SnackBar.
+  ///
+  /// Returns silently (no toast) when the set is not eligible or is
+  /// not a PR. The call is fire-and-forget from `_logSet` — it never
+  /// blocks the rest timer or the set advance.
+  ///
+  /// Decision Ledger references (in
+  /// `.github/agents/plans/in-session-pr-toast-plan.md`):
+  /// - D-1: Epley e1RM = weight × (1 + reps / 30)
+  /// - D-2: Standing best via `StatsProgressService.getAllTimeBestE1RM`
+  ///   (completed sessions only — in-progress sets are excluded)
+  /// - D-3: Strictly greater than the standing best
+  /// - D-5: Strength (`set`) sets only — gated by the caller
+  /// - D-6: Suppressed in edit mode
+  /// - D-7: Skipped sets (zero reps) are excluded — gated by the caller
+  /// - D-8: One toast per beating set (default); throttle hook is
+  ///   `_prCelebratedEffortIds` (declared alongside `_loggedSetKeys`)
+  Future<void> _maybeShowPRToast({
+    required String effortId,
+    required String exerciseId,
+    required int reps,
+    required double weight,
+  }) async {
+    // D-6: no toast in edit mode.
+    if (widget.editMode) return;
+    if (exerciseId.isEmpty) return;
+
+    final newE1rm = StatsProgressService.epley1RM(weight, reps);
+    // `null` means reps or weight was non-positive — the set has no
+    // meaningful e1RM and the PR check is skipped.
+    if (newE1rm == null) return;
+
+    final standingBest = await StatsProgressService(
+      widget.workoutState.repository,
+    ).getAllTimeBestE1RM(exerciseId);
+
+    // D-3: strictly greater. A set equal to the standing best is NOT
+    // a PR (matches the Stats screen's ">" comparison).
+    if (newE1rm <= standingBest) return;
+
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    // Fire-and-forget — `showSnackBar` is synchronous; the SnackBar's
+    // auto-dismiss timer is internal. We do not await.
+    messenger.showSnackBar(PRToast.buildPRSnackBar(Theme.of(context)));
   }
 
   void _previousSet() {

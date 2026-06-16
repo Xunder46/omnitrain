@@ -290,6 +290,7 @@ class _FilledStrip extends StatelessWidget {
               // false) keeps the content above the bottom
               // home-indicator inset.
               Positioned.fill(
+                top: 30,
                 child: _OverlayLabel(
                   consumedCalories: consumedCalories,
                   targetCalories: targetCalories,

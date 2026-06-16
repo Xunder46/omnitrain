@@ -125,8 +125,9 @@ class _LogFoodRowState extends State<LogFoodRow> {
     // input with the existing consumed amount.
     // For grams: show the actual amount consumed.
     // For count: show the multiplier (amountConsumed / referenceAmount).
-    final existing =
-        widget.nutritionState.findLoggedTodayForFood(widget.food.id);
+    final existing = widget.nutritionState.findLoggedTodayForFood(
+      widget.food.id,
+    );
     if (existing != null) {
       final displayValue = widget.food.unitType == FoodUnitType.grams
           ? existing.amountConsumed
@@ -254,8 +255,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
   /// cleared the amount field before tapping), the toggle is a
   /// no-op and the inline error is surfaced.
   Future<void> _toggle(bool nextState) async {
-    final isLogged =
-        widget.nutritionState.isFoodLoggedToday(widget.food.id);
+    final isLogged = widget.nutritionState.isFoodLoggedToday(widget.food.id);
     if (nextState == true && !isLogged) {
       // Log on. Translate the typed value to the food's
       // own-unit amount before handing off to the state.
@@ -339,9 +339,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
                       macroText,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: themeColors.textSecondary,
-                        fontFeatures: const [
-                          FontFeature.tabularFigures(),
-                        ],
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -367,9 +365,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
                       inputFormatters: [_AmountInputFormatter()],
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: themeColors.textDominant,
-                        fontFeatures: const [
-                          FontFeature.tabularFigures(),
-                        ],
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                       decoration: InputDecoration(
                         isDense: true,
@@ -407,29 +403,27 @@ class _LogFoodRowState extends State<LogFoodRow> {
   }
 
   /// Render the unit label for display beneath the amount textbox.
-  /// For grams: returns the reference label (e.g., "g", "ml").
-  /// For count: returns "units" as the label.
+  /// Shows "{referenceAmount} {referenceLabel}" (e.g., "100 g", "1 unit").
+  /// Handles legacy labels like "per 100g" by extracting just the unit part.
   static String _unitLabel(Food food) {
-    if (food.unitType == FoodUnitType.count) {
-      return 'units';
-    }
-    // For grams, extract just the unit (e.g., "g", "ml") from the reference label
-    final raw = food.referenceLabel.trim();
-    // Strip "per " prefix if present
-    String label = raw;
+    final amount = food.referenceAmount.toInt();
+    var label = food.referenceLabel.trim();
+
+    // Handle legacy labels that contain "per" (e.g., "per 100g", "per 100 g")
     if (label.toLowerCase().startsWith('per ')) {
       label = label.substring(4).trim();
-    }
-    // If it starts with a number, just return the unit part (e.g., "100 g" -> "g")
-    final parts = label.split(' ');
-    if (parts.length >= 2) {
-      // Check if first part is a number
-      final numPart = double.tryParse(parts[0]);
-      if (numPart != null) {
-        return parts.sublist(1).join(' ');
+      // If it still starts with a number, extract just the unit part
+      final parts = label.split(' ');
+      if (parts.isNotEmpty) {
+        final firstPart = parts[0];
+        if (double.tryParse(firstPart) != null) {
+          // First part is a number, take the rest
+          label = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+        }
       }
     }
-    return label;
+
+    return '$amount $label';
   }
 }
 
@@ -496,8 +490,9 @@ class _ThumbToggleState extends State<_ThumbToggle> {
     final themeColors = OmniTheme.colors;
     final isLogged = widget.isLogged;
     final borderColor = isLogged ? themeColors.primary : themeColors.divider;
-    final borderWidth =
-        isLogged ? _ThumbToggle._selectedBorderWidth : _ThumbToggle._unselectedBorderWidth;
+    final borderWidth = isLogged
+        ? _ThumbToggle._selectedBorderWidth
+        : _ThumbToggle._unselectedBorderWidth;
 
     final thumb = AnimatedContainer(
       duration: OmniTheme.animationDuration,

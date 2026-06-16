@@ -22,7 +22,10 @@ HomeScreen
 ## What the Screen Displays
 
 The screen renders an empty-state card when no completed sessions exist;
-otherwise it shows four sections:
+otherwise it shows four sections. Every on-card chart is a
+horizontally scrollable `ScrollableTrendChart` (pinned y-axis, full
+history, opens scrolled to the newest point). See
+[Scrollable Charts](#scrollable-charts) below.
 
 ### ALL TIME
 A row of three stat pills (unchanged from v1):
@@ -39,17 +42,52 @@ Auto-detects the top-3 most-frequently-trained exercises with at least one
 
 For each lift:
 - **e1RM trend** — estimated 1-rep-max per training day (Epley: `w × (1 + r/30)`),
-  max across sets in that day; rendered as a `LineChart` when ≥ 2 data points.
-  Values are converted to the user's preferred weight unit (`UnitFormatter.convertWeight`).
-- **Volume trend** — total `weight × reps` per training day; `LineChart` when ≥ 2 points.
-  Displayed in the user's preferred weight unit.
-- Single-point fallback: inline text (no chart).
+  max across sets in that day; rendered as a scrollable `LineChart` when
+  ≥ 2 data points. Values are converted to the user's preferred weight
+  unit (`UnitFormatter.convertWeight`).
+- **Volume trend** — total `weight × reps` per training day; scrollable
+  `LineChart` when ≥ 2 points. Displayed in the user's preferred weight
+  unit.
+- Single-point fallback: inline text (no chart, no scroll).
 
 A **Recent PRs** card follows, listing up to 5 exercises where the all-time
 e1RM high was set or exceeded (first-ever session counts as a PR). PR values
 are also shown in the user's preferred weight unit.
 
 Empty state: "No strength history yet." when `topLifts` is empty.
+
+#### Source of truth (Stats screen ↔ in-session toast)
+
+The in-session "Congrats! New PR" toast fires from
+`WorkoutSessionScreen._logSet()` (see
+[`PRToast` in the widget catalog](widget_catalog.md#prtoast))
+and uses the **same** Epley e1RM formula and **same** all-time-best
+query as this screen:
+
+- **Formula** — `StatsProgressService.epley1RM(weight, reps)` returns
+  `weight × (1 + reps / 30)` (returns `null` when weight or reps is
+  non-positive). Both the Stats PR detection loop in
+  `computeProgressData` and the in-session check call this static
+  helper. There is exactly one PR formula in the codebase.
+- **Standing-best query** —
+  `StatsProgressService.getAllTimeBestE1RM(exerciseId)` walks all
+  **completed** sessions (in-progress sessions are excluded so the
+  in-session toast and the Stats screen agree on the standing best
+  at the moment of a new set). Only `effortKind == 'set'` efforts
+  contribute, matching the "Effort-Type Keying" rule below.
+- **Strict comparison** — the in-session toast fires when
+  `newE1rm > standingBest` (D-3 in the plan), and the Stats PR
+  detector uses the same strict `>` comparison when walking the
+  per-day e1RM trend. A set equal to the standing best is **not** a
+  PR on either surface.
+
+If you change the PR formula, the standing-best query, or the
+comparison operator on either side, the structural-guard test
+**S-009** in
+`.github/agents/plans/in-session-pr-toast-plan.md` will fail loudly.
+Do not introduce a second e1RM helper or a second standing-best
+query — the two surfaces must continue to share a single source of
+truth.
 
 ### CARDIO
 Auto-detects the top-2 most-frequently-performed exercises with at least one
@@ -60,11 +98,104 @@ For each activity:
   when at least one day has a distance measurement and ≥ 2 data points.
   Distance is rendered as a secondary overlaid trend (converted to preferred
   distance units) so pace and distance direction can be compared in one card.
+  Multi-line — pace and distance scroll together on a shared x-domain.
 - **Duration chart** — total session minutes per training day; fallback when no
   distance data or only 1 data point.
 - Single-point fallback: inline text.
 
 Empty state: "No cardio history yet." when `topCardio` is empty.
+
+### NUTRITION
+A **full-history** nutrition trend computed from every logged `ConsumedFood`
+row in the repository (no 10-day cap). The card carries a segmented pill
+toggle over the same plotted-day set:
+
+- **Calories view (default)** — single line in `themeColors.primary`,
+  one point per logged day with kcal/day. Y-axis labels use `ChartAxisHelper`
+  with `' kcal'` units; tooltip shows `"<n> kcal"`.
+- **Macros view** — three lines (protein, carbs, fat) on a shared grams
+  scale, each in its `OmniTheme.colors.macroChart` slot:
+  protein → `.protein`, carbs → `.netCarbs` (the carbs/blue slot), fat
+  → `.fat`. Tooltip shows grams per series; legend rendered below the
+  chart.
+
+Both views share the same plotted-day set — any logged food makes the
+day present for all series — so toggling never changes the x-domain.
+
+- **Window** — full history (`StatsProgressService.computeNutritionTrend(days: null)`).
+  A soft `kNutritionTrendDays = 10` constant remains as a default for
+  callers that want a fixed window; the card itself never caps the
+  range.
+- **Empty days are skipped** — only logged days are plotted, sorted
+  ascending by date. Matches the strength/cardio trend behavior.
+- **Single-point fallback** — when exactly 1 day in history has logged
+  food, the card renders an inline single-point summary instead of a
+  chart (Calories view: `"<n> kcal — 1 day, log more to see a trend"`;
+  Macros view: per-macro summary).
+- **Hide when empty** — when 0 days have logged food, the card is
+  omitted from the list entirely.
+- **No-sessions branch** — when `_totalSessions == 0`, the global
+  empty-state card is shown and the nutrition trend is not loaded.
+
+#### Per-day math (pure-Dart, in `StatsProgressService`)
+
+```
+calories = Σ ConsumedFood.caloriesConsumed          // per-row, already rounded
+protein  = Σ (protein × amountConsumed / referenceAmount)  accumulated as double, rounded once per day
+carbs    = Σ (carbs   × amountConsumed / referenceAmount)  accumulated as double, rounded once per day (total carbs, not net)
+fat      = Σ (fat     × amountConsumed / referenceAmount)  accumulated as double, rounded once per day
+```
+
+The carbs line plots **total** carbs grams (not net carbs), matching
+the home strip's "total carbs for blue" semantics. The color token
+is named `netCarbs` because the donut reuses that slot, but the value
+plotted here is total carbs.
+
+The aggregation is computed by
+`StatsProgressService.computeNutritionTrend({int? days})` and is the
+same on Hive (web) and any future native SQLite implementation — it
+depends only on `WorkoutRepository.getConsumedFoodsInRange` and the
+`ConsumedFood` model, both environment-agnostic.
+
+---
+
+## Scrollable Charts
+
+Every on-card line chart on this screen — strength e1RM, strength volume,
+cardio pace + distance, cardio duration, nutrition calories, nutrition
+macros — renders inside a `ScrollableTrendChart` wrapper
+([`lib/features/stats/widgets/scrollable_trend_chart.dart`](../../lib/features/stats/widgets/scrollable_trend_chart.dart))
+that combines:
+
+- A **pinned y-axis label column** on the left (static; never moves
+  when the user drags the plot). The column renders the same
+  `min / min+interval / … / max` values the chart uses, so the labels
+  stay aligned with the plot as it scrolls.
+- A **horizontally scrollable plot** on the right, where `fl_chart`'s
+  own `leftTitles` is hidden (the pinned column replaces it).
+- A **fixed per-point width** of 48 px (`kScrollableTrendPerPointWidth`).
+  The plot's intrinsic width is
+  `max(viewportWidth, points × perPointWidth)` — so sparse data fills
+  the card with no scroll, dense data scrolls.
+- A `ScrollController` that **jumps to `maxScrollExtent`** after first
+  layout so the card opens scrolled to the newest point on the right.
+  `reverse: true` was rejected because it would also flip the plot's
+  content direction.
+- On-card `lineTouchData` tooltips preserved (tap a point → value).
+  No GestureDetector, modal, or sheet widget.
+
+### Nested scrolling
+
+A horizontal `SingleChildScrollView` inside the screen's vertical
+`ListView` is safe: the two scroll axes do not conflict. The vertical
+page scroll still works while the user drags the chart.
+
+### Why not fl_chart's built-in scroll?
+
+`fl_chart` has no native pinned axis. The supported pattern for
+"scrollable chart with labels that don't move" is a static label
+column + a scrollable plot sharing the same `ChartAxisBounds` — the
+exact pattern this wrapper implements.
 
 ---
 
@@ -108,6 +239,15 @@ final data = await StatsProgressService(
 | `kTopLiftCount` | 3 | Max lifts shown in Strength section |
 | `kTopCardioCount` | 2 | Max cardio activities shown |
 | `kRecentPRCount` | 5 | Max PR rows in the Recent PRs card |
+| `kNutritionTrendDays` | 10 | Soft "default visible window" hint; the NUTRITION card uses `days: null` for full history |
+
+## Key Constants (`ScrollableTrendChart`)
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| `kScrollableTrendPerPointWidth` | 48 px | Fixed horizontal slot per plotted point |
+| `kScrollableTrendPinnedAxisWidth` | 64 px | Width of the static y-axis label column |
+| `kScrollableTrendChartHeight` | 120 px | Standard on-card chart height |
 
 ---
 
@@ -116,12 +256,15 @@ final data = await StatsProgressService(
 | File | Role |
 |------|------|
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
-| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint` |
-| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service |
+| `lib/features/stats/widgets/scrollable_trend_chart.dart` | Scrollable chart wrapper (pinned y-axis, horizontal scroll, newest-first jump) |
+| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint` |
+| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`) |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |
 | `lib/core/utils/unit_formatter.dart` | `weightLabel(settings)` → `'kg'`/`'lbs'`; `convertWeight(kg, settings)` → display value; `distanceLabel(settings)` → `'km'`/`'mi'` |
+| `lib/core/utils/date_utils.dart` | `todayMidnightMs()`, `endOfDayMs()` — anchor the nutrition window |
+| `lib/core/utils/chart_axis_helper.dart` | `computeBounds()`, `formatYAxisValue()`, `formatDateLabel()` — shared by the chart builders and the pinned y-axis column |
 
 ---
 
@@ -133,8 +276,8 @@ final data = await StatsProgressService(
 
 ---
 
-**Document Version**: 2.0
-**Last Updated**: May 2026
+**Document Version**: 2.2
+**Last Updated**: June 2026
 
 
 ---

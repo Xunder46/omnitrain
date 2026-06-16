@@ -93,6 +93,10 @@ class FoodForm extends StatefulWidget {
   /// case after the shared-CTA migration).
   final FoodFormController? controller;
 
+  /// When true, the form auto-saves on blur (tap outside any field)
+  /// instead of requiring a save button press.
+  final bool autoSaveOnBlur;
+
   const FoodForm({
     super.key,
     required this.initial,
@@ -102,6 +106,7 @@ class FoodForm extends StatefulWidget {
     this.showNotesField = false,
     this.skipPopOnSave = false,
     this.controller,
+    this.autoSaveOnBlur = false,
   });
 
   @override
@@ -151,6 +156,7 @@ class FoodFormController {
 
 class _FoodFormState extends State<FoodForm> {
   final _formKey = GlobalKey<FormState>();
+  final _focusNode = FocusNode();
   late final TextEditingController _name;
   late final TextEditingController _referenceAmount;
   late final TextEditingController _referenceLabel;
@@ -179,6 +185,12 @@ class _FoodFormState extends State<FoodForm> {
     // pipeline so the host's bottom CTA can trigger the form's
     // validation + save flow without exposing private state.
     widget.controller?.attach(_onSave);
+
+    // Set up focus listener for auto-save on blur
+    if (widget.autoSaveOnBlur) {
+      _focusNode.addListener(_onFocusChange);
+    }
+
     final initial = widget.initial;
     _name = TextEditingController(text: initial?.name ?? '');
     _referenceAmount = TextEditingController(
@@ -214,7 +226,18 @@ class _FoodFormState extends State<FoodForm> {
     _fat.dispose();
     _sodium.dispose();
     _notes.dispose();
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
     super.dispose();
+  }
+
+  // ─── Focus handler for auto-save ────────────────────────────────────
+
+  void _onFocusChange() {
+    // When focus leaves the form (blur), auto-save
+    if (widget.autoSaveOnBlur && !_focusNode.hasFocus) {
+      _onSave();
+    }
   }
 
   // ─── Image picker ────────────────────────────────────────────────────
@@ -312,9 +335,11 @@ class _FoodFormState extends State<FoodForm> {
         final groups = _sortedGroups(widget.foodLibraryState.activeFoodGroups);
         return Form(
           key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
+          child: Focus(
+            focusNode: _focusNode,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
               FoodFormImageTile(
                 key: const Key('food_form_image_tile'),
                 imagePath: _imagePath,
@@ -370,11 +395,11 @@ class _FoodFormState extends State<FoodForm> {
                 items: const [
                   DropdownMenuItem(
                     value: FoodUnitType.count,
-                    child: Text('Count (per 1 unit)'),
+                    child: Text('Count (1 unit)'),
                   ),
                   DropdownMenuItem(
                     value: FoodUnitType.grams,
-                    child: Text('Grams (per 100 g)'),
+                    child: Text('Grams (100 g)'),
                   ),
                 ],
                 onChanged: (v) {
@@ -438,7 +463,7 @@ class _FoodFormState extends State<FoodForm> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Macros (per the reference above)',
+                'Macros (the reference above)',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: OmniTheme.colors.textSecondary,
                 ),
@@ -500,6 +525,7 @@ class _FoodFormState extends State<FoodForm> {
               // pipeline the inline button used to trigger.
             ],
           ),
+        ),
         );
       },
     );

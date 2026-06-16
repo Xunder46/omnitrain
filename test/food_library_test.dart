@@ -12,6 +12,19 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
+/// Variant of [_freshRepo] that wipes the seeded consumed-foods map
+/// after initialization. The `SeedData.sampleConsumedFoods()` seed
+/// preloads rows for days 0/1/3/4/5/7/8/10/12/14/.../43 — so any test
+/// that creates a `ConsumedFood` for one of those dates and then
+/// asserts the count via `getConsumedFoodsForDate(dateMs)` will see
+/// the seed row on top of its own row. Use this helper for tests
+/// that need a clean day-log.
+Future<MockWorkoutRepository> _freshRepoCleanConsumed() async {
+  final repo = await _freshRepo();
+  repo.clearConsumedFoodsForTest();
+  return repo;
+}
+
 /// Helper to create a library food for testing.
 Food _testFood({
   String id = 'food-test-1',
@@ -169,7 +182,7 @@ void main() {
       });
 
       test('removeFood leaves past day-log snapshots intact', () async {
-        final repo = await _freshRepo();
+        final repo = await _freshRepoCleanConsumed();
 
         // Seed a library food
         final food = _testFood(
@@ -182,7 +195,9 @@ void main() {
         await repo.createFood(food);
 
         // Seed a consumed food (snapshot) that references the library food
-        // Use a past date: June 1, 2026 (midnight local time)
+        // Use a past date: June 1, 2026 (midnight local time).
+        // June 1 is day-14 in the seed (100 g oats), so the
+        // clean-consumed fixture is required to isolate this test's row.
         final pastDateMs = DateTime(2026, 6, 1).millisecondsSinceEpoch;
 
         final consumed = _testConsumedFood(
@@ -239,13 +254,16 @@ void main() {
       });
 
       test('removeFood does not affect other days\' snapshots', () async {
-        final repo = await _freshRepo();
+        final repo = await _freshRepoCleanConsumed();
 
         // Seed a library food
         final food = _testFood(id: 'food-multi-day', name: 'Multi Day Food');
         await repo.createFood(food);
 
-        // Seed consumed foods for multiple days
+        // Seed consumed foods for multiple days.
+        // June 1 (day-14) and June 3 (day-12) both have seed rows
+        // (oats, chicken+rice), so the clean-consumed fixture is
+        // required to isolate this test's rows.
         final date1 = DateTime(2026, 6, 1).millisecondsSinceEpoch;
         final date2 = DateTime(2026, 6, 2).millisecondsSinceEpoch;
         final date3 = DateTime(2026, 6, 3).millisecondsSinceEpoch;

@@ -5396,6 +5396,627 @@ class SeedData {
       updatedAtMs: 1744015200000,
     ),
   ];
+
+  /// Now-relative seed nutrition log used by the Stats screen's
+  /// Nutrition Trend card. Each row is a frozen [ConsumedFood]
+  /// snapshot that reuses the bundled catalog's macro values so the
+  /// totals line up with what the user would see if they logged
+  /// these foods from the library.
+  ///
+  /// Spans the last 45 days. Several days are intentionally
+  /// skipped (no rows) so QA can verify the "skip empty days"
+  /// behavior of the trend (S-001 / S-005). Macros and calories
+  /// vary across days so the three macro lines and the calorie
+  /// line show visible movement in both the Calories and Macros
+  /// views. The chart now scrolls through the full history, so
+  /// the seed needs enough logged days to engage the horizontal
+  /// scroll on a phone-width card (≥ ~8 days at 48 px per point).
+  static List<ConsumedFood> sampleConsumedFoods() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    int dayMs(int daysAgo) =>
+        today.subtract(Duration(days: daysAgo)).millisecondsSinceEpoch;
+
+    // Frozen snapshots — every field is populated so the rows are
+    // self-contained and survive food/target edits later.
+    // Macros match the bundled catalog entries (per 100 g or per
+    // serving) so the displayed totals are realistic.
+    final rows = <ConsumedFood>[];
+
+    // Helper to build a frozen snapshot at a given day offset.
+    ConsumedFood row({
+      required String id,
+      required int daysAgo,
+      required String name,
+      required FoodUnitType unitType,
+      required double referenceAmount,
+      required String referenceLabel,
+      required int protein,
+      required int carbs,
+      required int? fiber,
+      required int fat,
+      required double amountConsumed,
+      String? sourceFoodId,
+      String? groupIdSnapshot,
+      String? groupNameSnapshot,
+    }) {
+      final loggedAtMs = dayMs(daysAgo) + (12 * 60 * 60 * 1000); // 12:00 local
+      return ConsumedFood(
+        id: id,
+        loggedAtMs: loggedAtMs,
+        dateMs: dayMs(daysAgo),
+        sourceFoodId: sourceFoodId,
+        name: name,
+        unitType: unitType,
+        referenceAmount: referenceAmount,
+        referenceLabel: referenceLabel,
+        protein: protein,
+        carbs: carbs,
+        fiber: fiber,
+        fat: fat,
+        sodium: null,
+        amountConsumed: amountConsumed,
+        groupIdSnapshot: groupIdSnapshot,
+        groupNameSnapshot: groupNameSnapshot,
+        // Frozen daily targets (typical intermediate-user values).
+        targetCalories: 2400,
+        targetProtein: 160,
+        targetCarbs: 280,
+        targetFat: 80,
+        createdAtMs: loggedAtMs,
+        updatedAtMs: loggedAtMs,
+      );
+    }
+
+    // Day 0 (today): 150 g chicken_breast (catalog: 31P/0C/4F 100 g)
+    rows.add(
+      row(
+        id: 'seed-consumed-d0-chicken',
+        daysAgo: 0,
+        name: 'Chicken breast, skinless',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 31,
+        carbs: 0,
+        fiber: 0,
+        fat: 4,
+        amountConsumed: 150,
+        sourceFoodId: 'chicken_breast',
+        groupIdSnapshot: 'food-group-proteins',
+        groupNameSnapshot: 'Proteins',
+      ),
+    );
+    // Day 0: 100 g white_rice (catalog: 3P/28C/0F 100 g)
+    rows.add(
+      row(
+        id: 'seed-consumed-d0-rice',
+        daysAgo: 0,
+        name: 'White rice, cooked',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 3,
+        carbs: 28,
+        fiber: 0,
+        fat: 0,
+        amountConsumed: 100,
+        sourceFoodId: 'white_rice',
+        groupIdSnapshot: 'food-group-grains-starches',
+        groupNameSnapshot: 'Grains & Starches',
+      ),
+    );
+    // Day 0: 1 tbsp olive_oil (catalog: 0P/0C/14F tbsp)
+    rows.add(
+      row(
+        id: 'seed-consumed-d0-oil',
+        daysAgo: 0,
+        name: 'Olive oil',
+        unitType: FoodUnitType.count,
+        referenceAmount: 1,
+        referenceLabel: 'tbsp',
+        protein: 0,
+        carbs: 0,
+        fiber: 0,
+        fat: 14,
+        amountConsumed: 1,
+        sourceFoodId: 'olive_oil',
+        groupIdSnapshot: 'food-group-nuts-seeds-fats',
+        groupNameSnapshot: 'Nuts, Seeds & Fats',
+      ),
+    );
+
+    // Day 1: lighter day — 2 large eggs (catalog: 6P/1C/5F egg)
+    rows.add(
+      row(
+        id: 'seed-consumed-d1-eggs',
+        daysAgo: 1,
+        name: 'Egg, large',
+        unitType: FoodUnitType.count,
+        referenceAmount: 1,
+        referenceLabel: 'egg',
+        protein: 6,
+        carbs: 1,
+        fiber: 0,
+        fat: 5,
+        amountConsumed: 2,
+        sourceFoodId: 'egg',
+        groupIdSnapshot: 'food-group-proteins',
+        groupNameSnapshot: 'Proteins',
+      ),
+    );
+    // Day 1: 1 medium banana (catalog: 1P/27C/0F)
+    rows.add(
+      row(
+        id: 'seed-consumed-d1-banana',
+        daysAgo: 1,
+        name: 'Banana, medium',
+        unitType: FoodUnitType.count,
+        referenceAmount: 1,
+        referenceLabel: 'medium',
+        protein: 1,
+        carbs: 27,
+        fiber: 3,
+        fat: 0,
+        amountConsumed: 1,
+        sourceFoodId: 'banana',
+        groupIdSnapshot: 'food-group-fruits',
+        groupNameSnapshot: 'Fruits',
+      ),
+    );
+
+    // Day 2: SKIPPED (no rows) — verifies the skip-empty behavior.
+
+    // Day 3: 200 g greek_yogurt (catalog: 10P/4C/0F 100 g)
+    rows.add(
+      row(
+        id: 'seed-consumed-d3-yogurt',
+        daysAgo: 3,
+        name: 'Greek yogurt, plain nonfat',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 10,
+        carbs: 4,
+        fiber: 0,
+        fat: 0,
+        amountConsumed: 200,
+        sourceFoodId: 'greek_yogurt',
+        groupIdSnapshot: 'food-group-dairy',
+        groupNameSnapshot: 'Dairy',
+      ),
+    );
+    // Day 3: 2 tbsp peanut_butter (catalog: 4P/3C/8F tbsp)
+    rows.add(
+      row(
+        id: 'seed-consumed-d3-pb',
+        daysAgo: 3,
+        name: 'Peanut butter',
+        unitType: FoodUnitType.count,
+        referenceAmount: 1,
+        referenceLabel: 'tbsp',
+        protein: 4,
+        carbs: 3,
+        fiber: 2,
+        fat: 8,
+        amountConsumed: 2,
+        sourceFoodId: 'peanut_butter',
+        groupIdSnapshot: 'food-group-nuts-seeds-fats',
+        groupNameSnapshot: 'Nuts, Seeds & Fats',
+      ),
+    );
+
+    // Day 4: 120 g oats (catalog: 13P/67C/7F 100 g) — high-carb day
+    rows.add(
+      row(
+        id: 'seed-consumed-d4-oats',
+        daysAgo: 4,
+        name: 'Oats, dry',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 13,
+        carbs: 67,
+        fiber: 10,
+        fat: 7,
+        amountConsumed: 120,
+        sourceFoodId: 'oats',
+        groupIdSnapshot: 'food-group-grains-starches',
+        groupNameSnapshot: 'Grains & Starches',
+      ),
+    );
+
+    // Day 5: 150 g salmon (catalog: 25P/0C/13F 100 g) — high-fat day
+    rows.add(
+      row(
+        id: 'seed-consumed-d5-salmon',
+        daysAgo: 5,
+        name: 'Salmon, cooked',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 25,
+        carbs: 0,
+        fiber: 0,
+        fat: 13,
+        amountConsumed: 150,
+        sourceFoodId: 'salmon',
+        groupIdSnapshot: 'food-group-proteins',
+        groupNameSnapshot: 'Proteins',
+      ),
+    );
+    // Day 5: 100 g brown_rice (catalog: 3P/23C/1F 100 g)
+    rows.add(
+      row(
+        id: 'seed-consumed-d5-rice',
+        daysAgo: 5,
+        name: 'Brown rice, cooked',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 3,
+        carbs: 23,
+        fiber: 2,
+        fat: 1,
+        amountConsumed: 100,
+        sourceFoodId: 'brown_rice',
+        groupIdSnapshot: 'food-group-grains-starches',
+        groupNameSnapshot: 'Grains & Starches',
+      ),
+    );
+
+    // Day 6: SKIPPED (no rows).
+
+    // Day 7: 200 g chicken_breast
+    rows.add(
+      row(
+        id: 'seed-consumed-d7-chicken',
+        daysAgo: 7,
+        name: 'Chicken breast, skinless',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 31,
+        carbs: 0,
+        fiber: 0,
+        fat: 4,
+        amountConsumed: 200,
+        sourceFoodId: 'chicken_breast',
+        groupIdSnapshot: 'food-group-proteins',
+        groupNameSnapshot: 'Proteins',
+      ),
+    );
+
+    // Day 8: 100 g pasta (catalog: 5P/25C/1F 100 g)
+    rows.add(
+      row(
+        id: 'seed-consumed-d8-pasta',
+        daysAgo: 8,
+        name: 'Pasta, cooked',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 5,
+        carbs: 25,
+        fiber: 2,
+        fat: 1,
+        amountConsumed: 100,
+        sourceFoodId: 'pasta',
+        groupIdSnapshot: 'food-group-grains-starches',
+        groupNameSnapshot: 'Grains & Starches',
+      ),
+    );
+    // Day 8: 100 g ground_beef (catalog: 26P/0C/15F 100 g)
+    rows.add(
+      row(
+        id: 'seed-consumed-d8-beef',
+        daysAgo: 8,
+        name: 'Ground beef, 85% lean, cooked',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: '100 g',
+        protein: 26,
+        carbs: 0,
+        fiber: 0,
+        fat: 15,
+        amountConsumed: 100,
+        sourceFoodId: 'ground_beef',
+        groupIdSnapshot: 'food-group-proteins',
+        groupNameSnapshot: 'Proteins',
+      ),
+    );
+
+    // Day 9: SKIPPED (no rows).
+
+    // ── Older history (days 10..45) ────────────────────────────────────────
+    // The chart now scrolls through full history, so we seed a
+    // handful of older days to engage the horizontal scroll on a
+    // phone-width card. Every other day is logged; some days
+    // intentionally empty to exercise the skip-empty behavior.
+    // Macros vary day-to-day so the three macro lines and the
+    // calorie line show visible movement across history.
+    final olderDayMeals = <int, List<({String name, String sourceFoodId, String groupId, String groupName, int protein, int carbs, int? fiber, int fat, double amountConsumed, double referenceAmount, String referenceLabel, FoodUnitType unitType})>>{
+      // 10: 100 g ground_beef + 1 tbsp olive oil (high-fat day)
+      10: [
+        (
+          name: 'Ground beef, 85% lean, cooked',
+          sourceFoodId: 'ground_beef',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 26, carbs: 0, fiber: 0, fat: 15,
+          amountConsumed: 100, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+        (
+          name: 'Olive oil',
+          sourceFoodId: 'olive_oil',
+          groupId: 'food-group-nuts-seeds-fats',
+          groupName: 'Nuts, Seeds & Fats',
+          protein: 0, carbs: 0, fiber: 0, fat: 14,
+          amountConsumed: 1, referenceAmount: 1,
+          referenceLabel: 'tbsp', unitType: FoodUnitType.count,
+        ),
+      ],
+      // 12: 150 g chicken + 100 g white_rice
+      12: [
+        (
+          name: 'Chicken breast, skinless',
+          sourceFoodId: 'chicken_breast',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 31, carbs: 0, fiber: 0, fat: 4,
+          amountConsumed: 150, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+        (
+          name: 'White rice, cooked',
+          sourceFoodId: 'white_rice',
+          groupId: 'food-group-grains-starches',
+          groupName: 'Grains & Starches',
+          protein: 3, carbs: 28, fiber: 0, fat: 0,
+          amountConsumed: 100, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+      // 14: 100 g oats
+      14: [
+        (
+          name: 'Oats, dry',
+          sourceFoodId: 'oats',
+          groupId: 'food-group-grains-starches',
+          groupName: 'Grains & Starches',
+          protein: 13, carbs: 67, fiber: 10, fat: 7,
+          amountConsumed: 100, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+      // 16: 200 g greek_yogurt
+      16: [
+        (
+          name: 'Greek yogurt, plain nonfat',
+          sourceFoodId: 'greek_yogurt',
+          groupId: 'food-group-dairy',
+          groupName: 'Dairy',
+          protein: 10, carbs: 4, fiber: 0, fat: 0,
+          amountConsumed: 200, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+      // 18: 200 g salmon + 100 g brown_rice
+      18: [
+        (
+          name: 'Salmon, cooked',
+          sourceFoodId: 'salmon',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 25, carbs: 0, fiber: 0, fat: 13,
+          amountConsumed: 200, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+        (
+          name: 'Brown rice, cooked',
+          sourceFoodId: 'brown_rice',
+          groupId: 'food-group-grains-starches',
+          groupName: 'Grains & Starches',
+          protein: 3, carbs: 23, fiber: 2, fat: 1,
+          amountConsumed: 100, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+      // 20: 3 eggs + 1 banana
+      20: [
+        (
+          name: 'Egg, large',
+          sourceFoodId: 'egg',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 6, carbs: 1, fiber: 0, fat: 5,
+          amountConsumed: 3, referenceAmount: 1,
+          referenceLabel: 'egg', unitType: FoodUnitType.count,
+        ),
+        (
+          name: 'Banana, medium',
+          sourceFoodId: 'banana',
+          groupId: 'food-group-fruits',
+          groupName: 'Fruits',
+          protein: 1, carbs: 27, fiber: 3, fat: 0,
+          amountConsumed: 1, referenceAmount: 1,
+          referenceLabel: 'medium', unitType: FoodUnitType.count,
+        ),
+      ],
+      // 22: 100 g ground_beef + 1 tbsp olive oil
+      22: [
+        (
+          name: 'Ground beef, 85% lean, cooked',
+          sourceFoodId: 'ground_beef',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 26, carbs: 0, fiber: 0, fat: 15,
+          amountConsumed: 100, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+        (
+          name: 'Olive oil',
+          sourceFoodId: 'olive_oil',
+          groupId: 'food-group-nuts-seeds-fats',
+          groupName: 'Nuts, Seeds & Fats',
+          protein: 0, carbs: 0, fiber: 0, fat: 14,
+          amountConsumed: 1, referenceAmount: 1,
+          referenceLabel: 'tbsp', unitType: FoodUnitType.count,
+        ),
+      ],
+      // 24: 100 g pasta
+      24: [
+        (
+          name: 'Pasta, cooked',
+          sourceFoodId: 'pasta',
+          groupId: 'food-group-grains-starches',
+          groupName: 'Grains & Starches',
+          protein: 5, carbs: 25, fiber: 2, fat: 1,
+          amountConsumed: 100, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+      // 26: 200 g chicken_breast
+      26: [
+        (
+          name: 'Chicken breast, skinless',
+          sourceFoodId: 'chicken_breast',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 31, carbs: 0, fiber: 0, fat: 4,
+          amountConsumed: 200, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+      // 28: 2 tbsp peanut butter
+      28: [
+        (
+          name: 'Peanut butter',
+          sourceFoodId: 'peanut_butter',
+          groupId: 'food-group-nuts-seeds-fats',
+          groupName: 'Nuts, Seeds & Fats',
+          protein: 4, carbs: 3, fiber: 2, fat: 8,
+          amountConsumed: 2, referenceAmount: 1,
+          referenceLabel: 'tbsp', unitType: FoodUnitType.count,
+        ),
+      ],
+      // 30: 120 g oats + 1 banana
+      30: [
+        (
+          name: 'Oats, dry',
+          sourceFoodId: 'oats',
+          groupId: 'food-group-grains-starches',
+          groupName: 'Grains & Starches',
+          protein: 13, carbs: 67, fiber: 10, fat: 7,
+          amountConsumed: 120, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+        (
+          name: 'Banana, medium',
+          sourceFoodId: 'banana',
+          groupId: 'food-group-fruits',
+          groupName: 'Fruits',
+          protein: 1, carbs: 27, fiber: 3, fat: 0,
+          amountConsumed: 1, referenceAmount: 1,
+          referenceLabel: 'medium', unitType: FoodUnitType.count,
+        ),
+      ],
+      // 33: 100 g white_rice + 150 g chicken
+      33: [
+        (
+          name: 'White rice, cooked',
+          sourceFoodId: 'white_rice',
+          groupId: 'food-group-grains-starches',
+          groupName: 'Grains & Starches',
+          protein: 3, carbs: 28, fiber: 0, fat: 0,
+          amountConsumed: 100, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+        (
+          name: 'Chicken breast, skinless',
+          sourceFoodId: 'chicken_breast',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 31, carbs: 0, fiber: 0, fat: 4,
+          amountConsumed: 150, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+      // 36: 2 eggs + 1 tbsp olive oil
+      36: [
+        (
+          name: 'Egg, large',
+          sourceFoodId: 'egg',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 6, carbs: 1, fiber: 0, fat: 5,
+          amountConsumed: 2, referenceAmount: 1,
+          referenceLabel: 'egg', unitType: FoodUnitType.count,
+        ),
+        (
+          name: 'Olive oil',
+          sourceFoodId: 'olive_oil',
+          groupId: 'food-group-nuts-seeds-fats',
+          groupName: 'Nuts, Seeds & Fats',
+          protein: 0, carbs: 0, fiber: 0, fat: 14,
+          amountConsumed: 1, referenceAmount: 1,
+          referenceLabel: 'tbsp', unitType: FoodUnitType.count,
+        ),
+      ],
+      // 40: 200 g greek_yogurt
+      40: [
+        (
+          name: 'Greek yogurt, plain nonfat',
+          sourceFoodId: 'greek_yogurt',
+          groupId: 'food-group-dairy',
+          groupName: 'Dairy',
+          protein: 10, carbs: 4, fiber: 0, fat: 0,
+          amountConsumed: 200, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+      // 43: 200 g salmon
+      43: [
+        (
+          name: 'Salmon, cooked',
+          sourceFoodId: 'salmon',
+          groupId: 'food-group-proteins',
+          groupName: 'Proteins',
+          protein: 25, carbs: 0, fiber: 0, fat: 13,
+          amountConsumed: 200, referenceAmount: 100,
+          referenceLabel: '100 g', unitType: FoodUnitType.grams,
+        ),
+      ],
+    };
+
+    for (final entry in olderDayMeals.entries) {
+      final daysAgo = entry.key;
+      for (var i = 0; i < entry.value.length; i++) {
+        final m = entry.value[i];
+        rows.add(
+          row(
+            id: 'seed-consumed-d$daysAgo-${m.sourceFoodId}-$i',
+            daysAgo: daysAgo,
+            name: m.name,
+            unitType: m.unitType,
+            referenceAmount: m.referenceAmount,
+            referenceLabel: m.referenceLabel,
+            protein: m.protein,
+            carbs: m.carbs,
+            fiber: m.fiber,
+            fat: m.fat,
+            amountConsumed: m.amountConsumed,
+            sourceFoodId: m.sourceFoodId,
+            groupIdSnapshot: m.groupId,
+            groupNameSnapshot: m.groupName,
+          ),
+        );
+      }
+    }
+
+    return rows;
+  }
 }
 
 /// Helper class for metric-to-effort-kind relationships

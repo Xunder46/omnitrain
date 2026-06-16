@@ -77,9 +77,9 @@ class MacroDonutChart extends StatefulWidget {
     required this.netCarbs,
     required this.fiber,
     required this.fat,
-    this.size = 240,
-    this.strokeWidth = 36,
-    this.gapDegrees = 1.5,
+    this.size = 300,
+    this.strokeWidth = 40,
+    this.gapDegrees = 0.5,
     this.sectionOpacities,
     this.onSectionFocusChange,
   });
@@ -500,7 +500,7 @@ String _macroLabelText(MacroSection s) {
     'Protein' => 'P',
     _ => '?',
   };
-  return '$initial ${s.grams}g';
+  return '$initial${s.grams}g';
 }
 
 // ─── Painter ─────────────────────────────────────────────────────────────────

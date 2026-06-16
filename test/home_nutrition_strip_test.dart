@@ -74,6 +74,20 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
+/// Variant of [_freshRepo] that wipes the seeded consumed-foods map
+/// after initialization. The S-055 and S-057 tests log a food and
+/// assert on the exact "consumed / target cal" label; the
+/// `SeedData.sampleConsumedFoods()` seed preloads three today-dated
+/// rows (chicken 150 g, rice 100 g, olive oil 1 tbsp) which would
+/// inflate the total and break the assertion. Use this helper for
+/// any test that reads `todayConsumedCalories` / `consumedToday`
+/// from a fresh `NutritionState`.
+Future<MockWorkoutRepository> _freshRepoCleanConsumed() async {
+  final repo = await _freshRepo();
+  repo.clearConsumedFoodsForTest();
+  return repo;
+}
+
 class _FakePreferencesService implements PreferencesService {
   int _hubOpenCount = 0;
 
@@ -107,7 +121,7 @@ Food _chicken() => Food(
       name: 'Chicken Breast',
       unitType: FoodUnitType.grams,
       referenceAmount: 100.0,
-      referenceLabel: 'per 100 g',
+      referenceLabel: '100 g',
       protein: 31,
       carbs: 0,
       fat: 3,
@@ -374,7 +388,7 @@ void main() {
       expect(find.byKey(const Key('nutrition_strip_label')), findsNothing);
       // Default copy per D-5 / D-8.
       expect(
-        find.text('Track your nutrition — tap to log your day'),
+        find.text('Track your nutrition — tap to start'),
         findsOneWidget,
       );
     });
@@ -530,7 +544,7 @@ void main() {
     testWidgets('logging a food via the shared NutritionState makes the '
         'home strip rebuild without manual refresh', (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final repo = await _freshRepo();
+      final repo = await _freshRepoCleanConsumed();
       final homeScreen = await _buildHomeScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: homeScreen));
@@ -568,7 +582,7 @@ void main() {
 
     testWidgets('unlogging a food updates the strip live', (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final repo = await _freshRepo();
+      final repo = await _freshRepoCleanConsumed();
       final homeScreen = await _buildHomeScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: homeScreen));
@@ -695,7 +709,7 @@ void main() {
         'strip continues to render its current values across the '
         'transition (no empty-state flash)', (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final repo = await _freshRepo();
+      final repo = await _freshRepoCleanConsumed();
       final homeScreen = await _buildHomeScreen(repo);
 
       await tester.pumpWidget(MaterialApp(home: homeScreen));

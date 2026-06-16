@@ -30,6 +30,12 @@ import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
   await repo.initialize();
+  // Wipe the seeded consumed-foods map so tests start from an empty
+  // day-log. The `SeedData.sampleConsumedFoods()` seed preloads three
+  // today-dated rows (chicken, rice, olive oil) for the Stats Nutrition
+  // Trend card; tests that read `consumedToday` / `todayConsumedCalories`
+  // need a clean slate to keep their totals deterministic.
+  repo.clearConsumedFoodsForTest();
   return repo;
 }
 
@@ -262,7 +268,7 @@ void main() {
           name: 'Chicken Breast',
           unitType: FoodUnitType.grams,
           referenceAmount: 100.0,
-          referenceLabel: 'per 100 g',
+          referenceLabel: '100 g',
           protein: 31,
           carbs: 0,
           fat: 4,
@@ -275,7 +281,7 @@ void main() {
           name: 'Avocado',
           unitType: FoodUnitType.grams,
           referenceAmount: 100.0,
-          referenceLabel: 'per 100 g',
+          referenceLabel: '100 g',
           protein: 2,
           carbs: 9,
           fat: 15,
@@ -320,7 +326,7 @@ void main() {
         name: 'Cured Meat',
         unitType: FoodUnitType.grams,
         referenceAmount: 100.0,
-        referenceLabel: 'per 100 g',
+        referenceLabel: '100 g',
         protein: 20,
         carbs: 0,
         fat: 10,
@@ -1298,7 +1304,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Tap the "+ New Food" button at the bottom.
-        await tester.tap(find.text('New Food'));
+        await tester.tap(find.text('+ New Food'));
         await tester.pumpAndSettle();
 
         // Fill the form.
@@ -1384,7 +1390,7 @@ void main() {
         // Switch to "My Foods" tab and tap "+ New Food" button
         await tester.tap(find.text('My Foods'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('New Food'));
+        await tester.tap(find.text('+ New Food'));
         await tester.pumpAndSettle();
 
         // Save with no name entered.
@@ -1436,7 +1442,7 @@ void main() {
           unitType: FoodUnitType.grams,
           groupId: 'g-pro-log',
           referenceAmount: 100.0,
-          referenceLabel: 'per 100 g',
+          referenceLabel: '100 g',
           protein: 31,
           carbs: 0,
           fat: 3,
@@ -1452,7 +1458,7 @@ void main() {
           unitType: FoodUnitType.count,
           groupId: 'g-pro-log',
           referenceAmount: 1.0,
-          referenceLabel: 'per 1 egg',
+          referenceLabel: '1 egg',
           protein: 6,
           carbs: 1,
           fat: 5,
@@ -1622,7 +1628,7 @@ void main() {
                 name: 'No-image food',
                 unitType: FoodUnitType.grams,
                 referenceAmount: 100.0,
-                referenceLabel: 'per 100 g',
+                referenceLabel: '100 g',
                 protein: 0,
                 carbs: 0,
                 fat: 0,
@@ -1672,7 +1678,7 @@ void main() {
                   name: 'Sem food',
                   unitType: FoodUnitType.grams,
                   referenceAmount: 100.0,
-                  referenceLabel: 'per 100 g',
+                  referenceLabel: '100 g',
                   protein: 10,
                   carbs: 10,
                   fat: 10,
@@ -1761,7 +1767,7 @@ void main() {
                 name: 'Macro sample',
                 unitType: FoodUnitType.grams,
                 referenceAmount: 100.0,
-                referenceLabel: 'per 100 g',
+                referenceLabel: '100 g',
                 protein: 10,
                 carbs: 10,
                 fat: 10,
@@ -1822,7 +1828,7 @@ void main() {
             unitType: FoodUnitType.grams,
             groupId: 'g-div',
             referenceAmount: 100.0,
-            referenceLabel: 'per 100 g',
+            referenceLabel: '100 g',
             protein: 0,
             carbs: 0,
             fat: 0,
@@ -2538,8 +2544,8 @@ void main() {
         );
         expect(ctaFinder, findsOneWidget);
 
-        // The "New Food" label is rendered by the CTA.
-        expect(find.text('New Food'), findsOneWidget);
+        // The "+ New Food" label is rendered by the CTA.
+        expect(find.text('+ New Food'), findsOneWidget);
 
         // The CTA sits at the shared width and vertical anchor.
         final buttonRect = tester.getRect(
@@ -2677,9 +2683,9 @@ void main() {
           ),
           findsNothing,
         );
-        // The "New Food" / "+ New Category" labels are absent on the
-        // Library tab.
-        expect(find.text('New Food'), findsNothing);
+        // The "+ New Food" / "+ New Category" labels are absent on
+        // the Library tab.
+        expect(find.text('+ New Food'), findsNothing);
         expect(find.text('+ New Category'), findsNothing);
       },
     );

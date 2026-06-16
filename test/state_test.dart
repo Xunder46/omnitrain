@@ -18,6 +18,17 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
+/// Variant of [_freshRepo] that wipes the seeded today-dated consumed-food
+/// rows after initialization. Use this for tests that pin exact counts or
+/// per-row macro sums on `NutritionState.consumedToday`; the seed loads
+/// three rows for `daysAgo: 0` which would otherwise pollute the cache
+/// the moment `loadConsumedToday()` is called.
+Future<MockWorkoutRepository> _freshRepoCleanConsumed() async {
+  final repo = await _freshRepo();
+  repo.clearConsumedFoodsForTest();
+  return repo;
+}
+
 void main() {
   // ══════════════════════════════════════════════════════════════════════════
   // RoutineState
@@ -3095,7 +3106,7 @@ void main() {
     group('consumed-food cache', () {
       test('initial cache is empty and loadConsumedToday keeps it empty',
           () async {
-        final repo = await _freshRepo();
+        final repo = await _freshRepoCleanConsumed();
         final state = NutritionState(repo);
         expect(state.consumedToday, isEmpty);
         expect(state.todayConsumedCalories, 0);
@@ -3107,7 +3118,7 @@ void main() {
 
       test('getTodayConsumedFoods returns empty when repo has no rows',
           () async {
-        final repo = await _freshRepo();
+        final repo = await _freshRepoCleanConsumed();
         final state = NutritionState(repo);
         final foods = await state.getTodayConsumedFoods();
         expect(foods, isEmpty);
@@ -3116,7 +3127,7 @@ void main() {
 
       test('loadConsumedToday populates the cache from the repository',
           () async {
-        final repo = await _freshRepo();
+        final repo = await _freshRepoCleanConsumed();
         final today = OmniDateUtils.todayMidnightMs();
 
         // Seed two consumed-food snapshots for today.
@@ -3178,7 +3189,7 @@ void main() {
 
       test('loadConsumedToday is idempotent and refreshes the cache',
           () async {
-        final repo = await _freshRepo();
+        final repo = await _freshRepoCleanConsumed();
         final state = NutritionState(repo);
 
         await state.loadConsumedToday();
@@ -3191,7 +3202,7 @@ void main() {
 
       test('clearConsumedToday empties the cache and notifies listeners',
           () async {
-        final repo = await _freshRepo();
+        final repo = await _freshRepoCleanConsumed();
         final state = NutritionState(repo);
         await state.loadConsumedToday();
         expect(state.consumedToday, isEmpty);
@@ -3214,7 +3225,7 @@ void main() {
       test(
         'empty cache: all four per-macro getters return 0',
         () async {
-          final repo = await _freshRepo();
+          final repo = await _freshRepoCleanConsumed();
           final state = NutritionState(repo);
           expect(state.todayConsumedProtein, 0);
           expect(state.todayConsumedCarbs, 0);
@@ -3234,9 +3245,9 @@ void main() {
         'per-row scaling: grams food and count food both scale their '
         'macros; values are summed unrounded and rounded once at the end',
         () async {
-          final repo = await _freshRepo();
-          final state = NutritionState(repo);
-          final today = OmniDateUtils.todayMidnightMs();
+        final repo = await _freshRepoCleanConsumed();
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
 
           // Per-100 g food, 1.5 portions logged: each macro is
           // (1.5 / 100) = 0.015× the reference. pasta macros (P=30,
@@ -3299,7 +3310,7 @@ void main() {
       );
 
       test('null fiber on a ConsumedFood is treated as 0', () async {
-        final repo = await _freshRepo();
+        final repo = await _freshRepoCleanConsumed();
         final state = NutritionState(repo);
         final today = OmniDateUtils.todayMidnightMs();
 

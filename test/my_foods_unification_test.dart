@@ -584,7 +584,7 @@ void main() {
       if (data == 'My Foods') continue;
       if (data == 'Library') continue;
       if (data == 'Categories') continue;
-      if (data == 'New Food') continue;
+      if (data == '+ New Food') continue;
       if (data == 'No custom foods yet') continue;
       if (data == 'Create your own foods to use in your nutrition tracking') {
         continue;

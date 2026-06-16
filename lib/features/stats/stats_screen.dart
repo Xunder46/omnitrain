@@ -12,6 +12,13 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import 'widgets/scrollable_trend_chart.dart';
+
+/// Segmented toggle state for the NUTRITION card. Local widget
+/// state only — not persisted across sessions. The two views
+/// share the same plotted-day set; switching just swaps the
+/// chart area, never re-queries the repository.
+enum _NutritionView { calories, macros }
 
 class StatsScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -41,6 +48,7 @@ class _StatsScreenState extends State<StatsScreen> {
   int _streakDays = 0;
 
   StatsProgressData? _progressData;
+  _NutritionView _nutritionView = _NutritionView.calories;
 
   @override
   void initState() {
@@ -70,7 +78,9 @@ class _StatsScreenState extends State<StatsScreen> {
       await calendarState.init();
       final streak = calendarState.streakDays;
 
-      // Compute progress data (e1RM trends, volume trends, cardio trends, PRs).
+      // Compute progress data (e1RM trends, volume trends, cardio trends,
+      // PRs, and the nutrition trend — all in one call so we don't
+      // double-walk the repository for the same screen).
       final progressData = await StatsProgressService(
         widget.workoutState.repository,
       ).computeProgressData();
@@ -123,6 +133,7 @@ class _StatsScreenState extends State<StatsScreen> {
                             ..._buildStrengthSection(context, themeColors),
                             const SizedBox(height: 24),
                             ..._buildCardioSection(context, themeColors),
+                            ..._buildNutritionSection(context, themeColors),
                           ],
                   ),
           ),
@@ -548,6 +559,631 @@ class _StatsScreenState extends State<StatsScreen> {
     }
 
     return widgets;
+  }
+
+  // ── Nutrition section (last 10-day kcal + macros trend) ──────────────────
+
+  /// Returns the widgets for the NUTRITION section. Returns an
+  /// empty list when the trend has zero logged days in the last
+  /// 10 — the card hides itself in that case (S-005). S-006 (no
+  /// sessions at all) is handled upstream because this method is
+  /// only called in the has-sessions branch.
+  List<Widget> _buildNutritionSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final trend = _progressData?.nutritionTrend ?? const [];
+    return [
+      const SizedBox(height: 24),
+      _buildSectionLabel(context, 'NUTRITION', themeColors),
+      const SizedBox(height: 8),
+      _buildNutritionCard(context, themeColors, trend),
+    ];
+  }
+
+  /// Reserved height for the legend row that lives below the
+  /// macros chart. The calories view reserves the same height
+  /// with an empty `SizedBox` so toggling between the two views
+  /// does not change the card's total height.
+  static const double _kNutritionLegendRowHeight = 24;
+  static const double _kNutritionLegendGap = 8;
+
+  Widget _buildNutritionCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    List<NutritionTrendPoint> trend,
+  ) {
+    final theme = Theme.of(context);
+    final macroColors = themeColors.macroChart;
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildNutritionToggle(theme, themeColors),
+          const SizedBox(height: 12),
+          if (trend.isEmpty) ...[
+            _buildEmptyNutritionChart(theme, themeColors),
+            const SizedBox(height: _kNutritionLegendGap),
+            SizedBox(
+              height: _kNutritionLegendRowHeight,
+              child: _nutritionView == _NutritionView.macros
+                  ? Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      children: [
+                        _buildLegendItem(
+                          theme,
+                          macroColors.protein,
+                          'Protein (g)',
+                          themeColors,
+                        ),
+                        _buildLegendItem(
+                          theme,
+                          macroColors.netCarbs,
+                          'Carbs (g)',
+                          themeColors,
+                        ),
+                        _buildLegendItem(
+                          theme,
+                          macroColors.fat,
+                          'Fat (g)',
+                          themeColors,
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ] else if (trend.length >= 2) ...[
+            if (_nutritionView == _NutritionView.calories)
+              _buildCaloriesChart(themeColors, trend)
+            else
+              _buildMacrosChart(context, theme, themeColors, trend),
+            const SizedBox(height: _kNutritionLegendGap),
+            // Always reserve the legend row's height so toggling
+            // Calories ↔ Macros does not change the card's height.
+            SizedBox(
+              height: _kNutritionLegendRowHeight,
+              child: _nutritionView == _NutritionView.macros
+                  ? Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      children: [
+                        _buildLegendItem(
+                          theme,
+                          macroColors.protein,
+                          'Protein (g)',
+                          themeColors,
+                        ),
+                        _buildLegendItem(
+                          theme,
+                          macroColors.netCarbs,
+                          'Carbs (g)',
+                          themeColors,
+                        ),
+                        _buildLegendItem(
+                          theme,
+                          macroColors.fat,
+                          'Fat (g)',
+                          themeColors,
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ] else
+            // S-004: exactly 1 logged day → inline single-point card.
+            if (_nutritionView == _NutritionView.calories)
+              _buildSingleNutritionCaloriesPoint(
+                theme: theme,
+                themeColors: themeColors,
+                point: trend.first,
+              )
+            else
+              _buildSingleNutritionMacrosPoint(
+                theme: theme,
+                themeColors: themeColors,
+                point: trend.first,
+              ),
+        ],
+      ),
+    );
+  }
+
+  /// Segmented toggle. Uses Material 3 SegmentedButton for a
+  /// unified toggle control look. Selection is local widget state —
+  /// the underlying trend data is unchanged across toggles (S-003).
+  Widget _buildNutritionToggle(ThemeData theme, OmniThemeColors themeColors) {
+    return SegmentedButton<_NutritionView>(
+      segments: const [
+        ButtonSegment(
+          value: _NutritionView.calories,
+          label: Text('Calories'),
+        ),
+        ButtonSegment(
+          value: _NutritionView.macros,
+          label: Text('Macros'),
+        ),
+      ],
+      selected: {_nutritionView},
+      onSelectionChanged: (selection) {
+        if (selection.isNotEmpty && selection.first != _nutritionView) {
+          setState(() => _nutritionView = selection.first);
+        }
+      },
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return themeColors.primary;
+          }
+          return themeColors.surface;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return themeColors.surface;
+          }
+          return themeColors.textSecondary;
+        }),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Nutrition: calories chart (default view) ─────────────────────────────
+
+  Widget _buildCaloriesChart(
+    OmniThemeColors themeColors,
+    List<NutritionTrendPoint> trend,
+  ) {
+    final values = trend.map((p) => p.calories.toDouble()).toList();
+    final bounds = ChartAxisHelper.computeBounds(values);
+    final spots = List.generate(
+      trend.length,
+      (i) => FlSpot(i.toDouble(), trend[i].calories.toDouble()),
+    );
+
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: 'kcal',
+      pointCount: trend.length,
+      chartBuilder: (plotWidth) {
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (trend.length - 1).toDouble(),
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: LineTouchData(
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipItems: (spots) => spots
+                    .map(
+                      (s) => LineTooltipItem(
+                        '${s.y.toStringAsFixed(0)} kcal',
+                        TextStyle(
+                          fontSize: 11,
+                          color: OmniTheme.colors.textDominant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: _kTopAxisHeadroom,
+                ),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.round();
+                    if (idx < 0 || idx >= trend.length) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!ChartAxisHelper.shouldShowDateLabel(
+                      idx,
+                      trend.length,
+                    )) {
+                      return const SizedBox.shrink();
+                    }
+                    return SideTitleWidget(
+                      meta: meta,
+                      space: 4,
+                      child: Text(
+                        ChartAxisHelper.formatDateLabel(trend[idx].date),
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: themeColors.textMuted,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: themeColors.divider, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: spots,
+                color: themeColors.primary,
+                isCurved: true,
+                curveSmoothness: 0.3,
+                barWidth: 2,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                    radius: 3,
+                    color: themeColors.primary,
+                    strokeWidth: 1.5,
+                    strokeColor: themeColors.surface,
+                  ),
+                ),
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: themeColors.primary.withAlpha(25),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Builds an empty chart showing zero values when there's no
+  /// nutrition data logged. This maintains the same visual structure
+  /// as the regular charts.
+  Widget _buildEmptyNutritionChart(
+    ThemeData theme,
+    OmniThemeColors themeColors,
+  ) {
+    final macroColors = themeColors.macroChart;
+    const emptyPointCount = 7;
+    final bounds = const ChartAxisBounds(min: 0, max: 1, interval: 1);
+
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: '',
+      pointCount: emptyPointCount,
+      chartBuilder: (plotWidth) {
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (emptyPointCount - 1).toDouble(),
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: const LineTouchData(enabled: false),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: _kTopAxisHeadroom,
+                ),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    if (value == 0 || value == (emptyPointCount - 1).toDouble()) {
+                      return SideTitleWidget(
+                        meta: meta,
+                        space: 4,
+                        child: Text(
+                          ChartAxisHelper.formatDateLabel(
+                            DateTime.now()
+                                .subtract(Duration(days: ((emptyPointCount - 1) - value).toInt())),
+                          ),
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: themeColors.textMuted,
+                          ),
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ),
+            ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: themeColors.divider, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              if (_nutritionView == _NutritionView.calories)
+                LineChartBarData(
+                  spots: List.generate(
+                    emptyPointCount,
+                    (i) => FlSpot(i.toDouble(), 0),
+                  ),
+                  color: themeColors.primary,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                      radius: 3,
+                      color: themeColors.primary,
+                      strokeWidth: 1.5,
+                      strokeColor: themeColors.surface,
+                    ),
+                  ),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: themeColors.primary.withAlpha(25),
+                  ),
+                )
+              else
+                ...[
+                  LineChartBarData(
+                    spots:
+                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
+                    color: macroColors.protein,
+                    isCurved: true,
+                    curveSmoothness: 0.3,
+                    barWidth: 2,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(show: false),
+                    belowBarData: BarAreaData(show: false),
+                  ),
+                  LineChartBarData(
+                    spots:
+                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
+                    color: macroColors.netCarbs,
+                    isCurved: true,
+                    curveSmoothness: 0.3,
+                    barWidth: 2,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(show: false),
+                    belowBarData: BarAreaData(show: false),
+                  ),
+                  LineChartBarData(
+                    spots:
+                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
+                    color: macroColors.fat,
+                    isCurved: true,
+                    curveSmoothness: 0.3,
+                    barWidth: 2,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(show: false),
+                    belowBarData: BarAreaData(show: false),
+                  ),
+                ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Nutrition: macros chart (3 lines + legend) ───────────────────────────
+
+  Widget _buildMacrosChart(
+    BuildContext context,
+    ThemeData theme,
+    OmniThemeColors themeColors,
+    List<NutritionTrendPoint> trend,
+  ) {
+    final macroColors = themeColors.macroChart;
+    final proteinValues = trend.map((p) => p.protein.toDouble()).toList();
+    final carbsValues = trend.map((p) => p.carbs.toDouble()).toList();
+    final fatValues = trend.map((p) => p.fat.toDouble()).toList();
+
+    // Compute shared y-bounds across the three series so the
+    // lines live on a single scale. Floors are per-line so a
+    // zero-only series still gets a visible range.
+    final allValues = [...proteinValues, ...carbsValues, ...fatValues];
+    final bounds = allValues.every((v) => v == 0)
+        ? const ChartAxisBounds(min: 0, max: 1, interval: 1)
+        : ChartAxisHelper.computeBounds(allValues);
+
+    LineChartBarData series({
+      required List<double> values,
+      required Color color,
+    }) {
+      final spots = <FlSpot>[];
+      for (var i = 0; i < values.length; i++) {
+        spots.add(FlSpot(i.toDouble(), values[i]));
+      }
+      return LineChartBarData(
+        spots: spots,
+        color: color,
+        isCurved: true,
+        curveSmoothness: 0.3,
+        barWidth: 2,
+        isStrokeCapRound: true,
+        dotData: FlDotData(
+          show: true,
+          getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+            radius: 3,
+            color: color,
+            strokeWidth: 1.5,
+            strokeColor: themeColors.surface,
+          ),
+        ),
+        belowBarData: BarAreaData(show: false),
+      );
+    }
+
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: 'g',
+      pointCount: trend.length,
+      chartBuilder: (plotWidth) {
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (trend.length - 1).toDouble(),
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: LineTouchData(
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipItems: (spots) => spots
+                    .map(
+                      (s) => LineTooltipItem(
+                        '${s.y.toStringAsFixed(0)} g',
+                        TextStyle(
+                          fontSize: 11,
+                          color: OmniTheme.colors.textDominant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: _kTopAxisHeadroom,
+                ),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.round();
+                    if (idx < 0 || idx >= trend.length) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!ChartAxisHelper.shouldShowDateLabel(
+                      idx,
+                      trend.length,
+                    )) {
+                      return const SizedBox.shrink();
+                    }
+                    return SideTitleWidget(
+                      meta: meta,
+                      space: 4,
+                      child: Text(
+                        ChartAxisHelper.formatDateLabel(trend[idx].date),
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: themeColors.textMuted,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: themeColors.divider, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              // NOTE: the carbs line plots **total** carbs grams
+              // (not net carbs), matching the home strip's "total
+              // carbs for blue" semantics. The color slot is
+              // named `netCarbs` because the donut reuses it.
+              series(values: proteinValues, color: macroColors.protein),
+              series(values: carbsValues, color: macroColors.netCarbs),
+              series(values: fatValues, color: macroColors.fat),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Nutrition: single-point fallback (S-004) ─────────────────────────────
+
+  Widget _buildSingleNutritionCaloriesPoint({
+    required ThemeData theme,
+    required OmniThemeColors themeColors,
+    required NutritionTrendPoint point,
+  }) {
+    return _buildSinglePointCard(
+      theme: theme,
+      themeColors: themeColors,
+      label: 'Calories:',
+      value: '${point.calories} kcal',
+      date: point.date,
+    );
+  }
+
+  Widget _buildSingleNutritionMacrosPoint({
+    required ThemeData theme,
+    required OmniThemeColors themeColors,
+    required NutritionTrendPoint point,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: themeColors.divider.withAlpha(30),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'P ${point.protein} g · C ${point.carbs} g · F ${point.fat} g',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: OmniTheme.colors.textDominant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '1 day — log more to see a trend',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: themeColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCardioCard(

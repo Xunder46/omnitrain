@@ -109,7 +109,8 @@ void main() {
         // With no bottom safe area (test default), that's
         //   surfaceHeight - OmniTheme.bottomCTAVerticalBottomPadding.
         final buttonBox = tester.getRect(find.byType(FilledButton));
-        final expectedBottom = surface.height -
+        final expectedBottom =
+            surface.height -
             tester.view.padding.bottom / tester.view.devicePixelRatio -
             OmniTheme.bottomCTAVerticalBottomPadding;
         expect(
@@ -130,52 +131,52 @@ void main() {
       },
     );
 
-    testWidgets(
-      'respects the device bottom safe area (S-002)',
-      (WidgetTester tester) async {
-        // Fixed surface; force a non-zero bottom safe area via
-        // MediaQuery override. This simulates an iPhone with the
-        // home indicator (34 px) or an Android with the gesture
-        // nav bar (~16-24 px).
-        const surface = Size(400, 800);
-        const bottomInset = 34.0;
-        await tester.binding.setSurfaceSize(surface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets('respects the device bottom safe area (S-002)', (
+      WidgetTester tester,
+    ) async {
+      // Fixed surface; force a non-zero bottom safe area via
+      // MediaQuery override. This simulates an iPhone with the
+      // home indicator (34 px) or an Android with the gesture
+      // nav bar (~16-24 px).
+      const surface = Size(400, 800);
+      const bottomInset = 34.0;
+      await tester.binding.setSurfaceSize(surface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: surface,
-                padding: EdgeInsets.only(bottom: bottomInset),
-              ),
-              child: Scaffold(
-                bottomNavigationBar: OmniBottomCTA(
-                  label: 'Save',
-                  onPressed: () {},
-                ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: surface,
+              padding: EdgeInsets.only(bottom: bottomInset),
+            ),
+            child: Scaffold(
+              bottomNavigationBar: OmniBottomCTA(
+                label: 'Save',
+                onPressed: () {},
               ),
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // The button's render box bottom must be at or above
-        //   surfaceHeight - bottomInset - bottomCTAVerticalBottomPadding.
-        // (Above the home indicator by exactly the bottom padding.)
-        final buttonBox = tester.getRect(find.byType(FilledButton));
-        final expectedBottom = surface.height -
-            bottomInset -
-            OmniTheme.bottomCTAVerticalBottomPadding;
-        expect(
-          buttonBox.bottom,
-          closeTo(expectedBottom, 0.5),
-          reason:
-              'CTA must sit above the home indicator, offset by '
-              'OmniTheme.bottomCTAVerticalBottomPadding',
-        );
-      },
-    );
+      // The button's render box bottom must be at or above
+      //   surfaceHeight - bottomInset - bottomCTAVerticalBottomPadding.
+      // (Above the home indicator by exactly the bottom padding.)
+      final buttonBox = tester.getRect(find.byType(FilledButton));
+      final expectedBottom =
+          surface.height -
+          bottomInset -
+          OmniTheme.bottomCTAVerticalBottomPadding;
+      expect(
+        buttonBox.bottom,
+        closeTo(expectedBottom, 0.5),
+        reason:
+            'CTA must sit above the home indicator, offset by '
+            'OmniTheme.bottomCTAVerticalBottomPadding',
+      );
+    });
 
     testWidgets('settings screen keeps the streamlined section layout', (
       WidgetTester tester,
@@ -365,13 +366,11 @@ void main() {
           closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
         );
         // Shared height.
-        expect(
-          buttonRect.height,
-          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
-        );
+        expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
         // Shared vertical anchor: button bottom is offset above the
         // device safe area by OmniTheme.bottomCTAVerticalBottomPadding.
-        final expectedBottom = surface.height -
+        final expectedBottom =
+            surface.height -
             tester.view.padding.bottom / tester.view.devicePixelRatio -
             OmniTheme.bottomCTAVerticalBottomPadding;
         expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
@@ -1792,15 +1791,16 @@ void main() {
             ),
           ),
         );
-      // See note above re: pulse animation and pumpAndSettle.
-      await tester.pump(const Duration(milliseconds: 200));
+        // See note above re: pulse animation and pumpAndSettle.
+        await tester.pump(const Duration(milliseconds: 200));
 
-      await tester.tap(find.byIcon(Icons.folder_open));
-      await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(find.byIcon(Icons.folder_open));
+        await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.text('Start New Session?'), findsOneWidget);
-      expect(find.byType(MyRoutinesScreen), findsNothing);
-    });
+        expect(find.text('Start New Session?'), findsOneWidget);
+        expect(find.byType(MyRoutinesScreen), findsNothing);
+      },
+    );
 
     testWidgets('does not show unfinished-session launch modal copy', (
       WidgetTester tester,
@@ -3335,7 +3335,8 @@ void main() {
         expect(
           scaffold.bottomNavigationBar,
           isNotNull,
-          reason: 'Today/future DaySessionListScreen must have a primary '
+          reason:
+              'Today/future DaySessionListScreen must have a primary '
               'bottom CTA on the host Scaffold.bottomNavigationBar',
         );
 
@@ -3357,10 +3358,7 @@ void main() {
 
         // The CTA sits at the shared width and vertical anchor.
         final buttonRect = tester.getRect(
-          find.descendant(
-            of: ctaFinder,
-            matching: find.byType(FilledButton),
-          ),
+          find.descendant(of: ctaFinder, matching: find.byType(FilledButton)),
         );
         expect(
           buttonRect.left,
@@ -3370,65 +3368,60 @@ void main() {
           buttonRect.right,
           closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
         );
-        expect(
-          buttonRect.height,
-          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
-        );
-        final expectedBottom = surface.height -
+        expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
+        final expectedBottom =
+            surface.height -
             tester.view.padding.bottom / tester.view.devicePixelRatio -
             OmniTheme.bottomCTAVerticalBottomPadding;
         expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
       },
     );
 
-    testWidgets(
-      'renders no bottom CTA for past dates (S-002)',
-      (tester) async {
-        final repo = await _freshRepo();
-        final calendarState = CalendarState(repo);
-        await calendarState.init();
-        final routineState = RoutineState(repo);
-        final workoutState = WorkoutState(repo);
-        final routineSessionService = RoutineSessionService(repo);
-        final sessionSummaryService = SessionSummaryService(repo);
+    testWidgets('renders no bottom CTA for past dates (S-002)', (tester) async {
+      final repo = await _freshRepo();
+      final calendarState = CalendarState(repo);
+      await calendarState.init();
+      final routineState = RoutineState(repo);
+      final workoutState = WorkoutState(repo);
+      final routineSessionService = RoutineSessionService(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
 
-        // Past date — read-only, no primary bottom CTA.
-        final pastDate = DateTime(2020, 6, 15);
+      // Past date — read-only, no primary bottom CTA.
+      final pastDate = DateTime(2020, 6, 15);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: DaySessionListScreen(
-              date: pastDate,
-              calendarState: calendarState,
-              routineState: routineState,
-              workoutState: workoutState,
-              routineSessionService: routineSessionService,
-              sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo, fakePreferencesService()),
-              timerAlertService: FakeTimerAlertService(),
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DaySessionListScreen(
+            date: pastDate,
+            calendarState: calendarState,
+            routineState: routineState,
+            workoutState: workoutState,
+            routineSessionService: routineSessionService,
+            sessionSummaryService: sessionSummaryService,
+            settingsState: SettingsState(repo, fakePreferencesService()),
+            timerAlertService: FakeTimerAlertService(),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // The host's Scaffold has a null bottomNavigationBar.
-        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-        expect(
-          scaffold.bottomNavigationBar,
-          isNull,
-          reason: 'Past dates are read-only and must not render a bottom CTA',
-        );
+      // The host's Scaffold has a null bottomNavigationBar.
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+      expect(
+        scaffold.bottomNavigationBar,
+        isNull,
+        reason: 'Past dates are read-only and must not render a bottom CTA',
+      );
 
-        // The "+ Planned Session" label is absent on past dates.
-        expect(
-          find.widgetWithText(FilledButton, '+ Planned Session'),
-          findsNothing,
-        );
+      // The "+ Planned Session" label is absent on past dates.
+      expect(
+        find.widgetWithText(FilledButton, '+ Planned Session'),
+        findsNothing,
+      );
 
-        // The empty-state copy for past dates is shown.
-        expect(find.text('No sessions on this day.'), findsOneWidget);
-      },
-    );
+      // The empty-state copy for past dates is shown.
+      expect(find.text('No sessions on this day.'), findsOneWidget);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -6151,7 +6144,8 @@ void main() {
           fiber: 0,
           fat: 4,
           isCatalog: true,
-          imagePath: '/tmp/missing.jpg', // file is missing; falls back to placeholder
+          imagePath:
+              '/tmp/missing.jpg', // file is missing; falls back to placeholder
           createdAtMs: 1000,
           updatedAtMs: 1000,
         );
@@ -6208,107 +6202,38 @@ void main() {
       },
     );
 
-    testWidgets(
-      'FoodForm no longer renders an inline save button (S-010)',
-      (WidgetTester tester) async {
-        // The save CTA is no longer a child of the form body — it
-        // is rendered by the host scaffold's bottomNavigationBar.
-        // When FoodForm is mounted without a host scaffold CTA
-        // (the test harness), the food_form_save key is absent.
-        final repo = await _freshRepo();
-        final foodLibraryState = FoodLibraryState(repo);
-        await foodLibraryState.loadCatalogFoods();
+    testWidgets('FoodForm no longer renders an inline save button (S-010)', (
+      WidgetTester tester,
+    ) async {
+      // The save CTA is no longer a child of the form body — it
+      // is rendered by the host scaffold's bottomNavigationBar.
+      // When FoodForm is mounted without a host scaffold CTA
+      // (the test harness), the food_form_save key is absent.
+      final repo = await _freshRepo();
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadCatalogFoods();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: FoodForm(
-                initial: null,
-                foodLibraryState: foodLibraryState,
-                onSave: (_) async => true,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // The form body does not contain the save button.
-        expect(find.byKey(const Key('food_form_save')), findsNothing);
-        // The form body still has all the macro fields.
-        expect(find.byKey(const Key('food_form_name')), findsOneWidget);
-        expect(find.byKey(const Key('food_form_protein')), findsOneWidget);
-        expect(find.byKey(const Key('food_form_carbs')), findsOneWidget);
-        expect(find.byKey(const Key('food_form_fat')), findsOneWidget);
-      },
-    );
-
-    testWidgets(
-      'EditFoodScreen hosts the shared bottom CTA at the shared width and vertical anchor (S-008)',
-      (WidgetTester tester) async {
-        // Fixed surface so the test can assert exact pixel math.
-        const surface = Size(400, 800);
-        await tester.binding.setSurfaceSize(surface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final repo = await _freshRepo();
-        final foodLibraryState = FoodLibraryState(repo);
-        await foodLibraryState.loadCatalogFoods();
-        await foodLibraryState.createCatalogFood(
-          const FoodDraft(
-            name: 'Edit Shared CTA',
-            groupId: null,
-            unitType: FoodUnitType.grams,
-            referenceAmount: 100,
-            referenceLabel: 'g',
-            protein: 31,
-            carbs: 0,
-            fiber: 0,
-            fat: 4,
-            sodium: null,
-            notes: null,
-            imagePath: null,
-          ),
-        );
-        await foodLibraryState.loadCatalogFoods();
-        final food = foodLibraryState.catalogFoods
-            .firstWhere((f) => f.name == 'Edit Shared CTA');
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: EditFoodScreen(
-              food: food,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FoodForm(
+              initial: null,
               foodLibraryState: foodLibraryState,
+              onSave: (_) async => true,
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // The Save CTA is on the host's bottomNavigationBar.
-        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-        expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>());
-
-        // The CTA's `food_form_save` key is now on the bottom CTA.
-        final saveKey = find.byKey(const Key('food_form_save'));
-        expect(saveKey, findsOneWidget);
-        final buttonRect = tester.getRect(saveKey);
-        expect(
-          buttonRect.left,
-          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
-        expect(
-          buttonRect.right,
-          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
-        expect(
-          buttonRect.height,
-          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
-        );
-        final expectedBottom = surface.height -
-            tester.view.padding.bottom / tester.view.devicePixelRatio -
-            OmniTheme.bottomCTAVerticalBottomPadding;
-        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
-      },
-    );
+      // The form body does not contain the save button.
+      expect(find.byKey(const Key('food_form_save')), findsNothing);
+      // The form body still has all the macro fields.
+      expect(find.byKey(const Key('food_form_name')), findsOneWidget);
+      expect(find.byKey(const Key('food_form_protein')), findsOneWidget);
+      expect(find.byKey(const Key('food_form_carbs')), findsOneWidget);
+      expect(find.byKey(const Key('food_form_fat')), findsOneWidget);
+    });
 
     testWidgets(
       'EditFoodScreen renders FoodForm with Save label and pre-fills name',
@@ -6338,8 +6263,9 @@ void main() {
           ),
         );
         await foodLibraryState.loadCatalogFoods();
-        final food = foodLibraryState.catalogFoods
-            .firstWhere((f) => f.name == 'Edit Screen Test');
+        final food = foodLibraryState.catalogFoods.firstWhere(
+          (f) => f.name == 'Edit Screen Test',
+        );
 
         await tester.pumpWidget(
           MaterialApp(
@@ -6397,7 +6323,8 @@ void main() {
             fat: 4,
             sodium: null,
             notes: null,
-            imagePath: '/tmp/native-only.jpg', // file does not exist on the test runner; the row still renders the slot
+            imagePath:
+                '/tmp/native-only.jpg', // file does not exist on the test runner; the row still renders the slot
           ),
         );
         await foodLibraryState.loadCatalogFoods();
@@ -6434,6 +6361,11 @@ void main() {
         final repo = await _freshRepo();
         final foodLibraryState = FoodLibraryState(repo);
         final nutritionState = NutritionState(repo);
+        // AddFoodScreen.initState loads catalog + foods but NOT
+        // groups. The EditFoodScreen's FoodForm DropdownButton
+        // needs the groups loaded so the catalog food's
+        // groupId ("food-group-proteins") has a matching item.
+        await foodLibraryState.loadFoodGroups();
         await foodLibraryState.loadCatalogFoods();
 
         await tester.pumpWidget(
@@ -6456,5 +6388,252 @@ void main() {
         expect(find.text('Edit Food'), findsOneWidget);
       },
     );
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Rest timer chip — vertical position parity across screens
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Pumps a non-rolling session with one exercise and an open rest, so
+  // the rest overlay chip is guaranteed to be on screen.
+  Future<WorkoutSessionScreen> pumpSessionWithOpenRest(
+    WidgetTester tester, {
+    required Size surface,
+  }) async {
+    await tester.binding.setSurfaceSize(surface);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repo = await _freshRepo();
+    final workoutState = WorkoutState(repo);
+    final routineState = RoutineState(repo);
+    await workoutState.createNewSession(isRolling: false);
+    final exercises = await repo.getExercises();
+    final effortId = await workoutState.addExerciseToSession(
+      exercises.first,
+      chosenMetric: 'reps',
+    );
+    // Open a rest for the just-added set so the rest chip renders.
+    await workoutState.recordRestStart(effortId, 0);
+
+    final screen = WorkoutSessionScreen(
+      workoutState: workoutState,
+      routineState: routineState,
+      sessionSummaryService: SessionSummaryService(repo),
+      timerAlertService: FakeTimerAlertService(),
+      settingsState: SettingsState(repo, fakePreferencesService()),
+    );
+    await tester.pumpWidget(MaterialApp(home: screen));
+    // Dismiss the auto-opened picker so the session screen is foregrounded.
+    if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pumpAndSettle();
+    }
+    return screen;
+  }
+
+  group('Rest overlay chip – vertical position', () {
+    testWidgets(
+      'detail view: rest chip sits above the Log Set button with the shared offset',
+      (WidgetTester tester) async {
+        const surface = Size(400, 1000);
+        await pumpSessionWithOpenRest(tester, surface: surface);
+
+        // The default landing surface is the list view. Tap the first
+        // exercise to switch to the per-exercise detail view.
+        final exercisesRepo = (await _freshRepo());
+        final firstExercise = (await exercisesRepo.getExercises()).first;
+        await tester.tap(find.text(firstExercise.name));
+        await tester.pumpAndSettle();
+
+        // The detail view uses `_buildSetControls` (a Row containing
+        // the Log Set `FilledButton`), not the bottom OmniBottomCTA.
+        // Look up the primary action by its label.
+        final logSetFinder = find.widgetWithText(FilledButton, 'Log Set');
+        final chipFinder = find.byKey(const Key('rest-overlay-chip'));
+        expect(chipFinder, findsOneWidget);
+        expect(logSetFinder, findsOneWidget);
+
+        final chipRect = tester.getRect(chipFinder);
+        final logSetRect = tester.getRect(logSetFinder);
+        expect(
+          chipRect.bottom,
+          lessThanOrEqualTo(logSetRect.top),
+          reason: 'rest chip must not overlap the Log Set button',
+        );
+
+        // Minimum vertical separation = the shared
+        // `kRestOverlayToCTAGap` (80 dp) minus a small tolerance for
+        // text-scale and SafeArea rounding. Use 40 dp as the absolute
+        // floor so a future drift away from 80 dp is still caught.
+        final gap = logSetRect.top - chipRect.bottom;
+        expect(
+          gap,
+          greaterThanOrEqualTo(OmniTheme.kRestOverlayToCTAGap - 40.0),
+          reason:
+              'rest chip must clear the Log Set button by at least the '
+              'shared separation gap (kRestOverlayToCTAGap)',
+        );
+      },
+    );
+
+    testWidgets(
+      'list view: rest chip sits above the Finish Workout CTA with the shared offset',
+      (WidgetTester tester) async {
+        const surface = Size(400, 1000);
+        await pumpSessionWithOpenRest(tester, surface: surface);
+
+        // The list view is the default landing view, so the rest chip
+        // and the Finish Workout CTA must be in the same Stack.
+        final chipFinder = find.byKey(const Key('rest-overlay-chip'));
+        final ctaFinder = find.byType(OmniBottomCTA);
+        expect(chipFinder, findsOneWidget);
+        expect(ctaFinder, findsOneWidget);
+
+        final chipRect = tester.getRect(chipFinder);
+        final ctaRect = tester.getRect(ctaFinder);
+        expect(
+          chipRect.bottom,
+          lessThan(ctaRect.top),
+          reason: 'rest chip must not overlap the bottom CTA',
+        );
+
+        final gap = ctaRect.top - chipRect.bottom;
+        expect(
+          gap,
+          greaterThanOrEqualTo(OmniTheme.kRestOverlayToCTAGap - 40.0),
+          reason:
+              'rest chip must clear the bottom CTA by at least the shared '
+              'separation gap (kRestOverlayToCTAGap)',
+        );
+      },
+    );
+
+    testWidgets(
+      'rest chip resolves to the same vertical anchor on list and detail views',
+      (WidgetTester tester) async {
+        const surface = Size(400, 1000);
+        await pumpSessionWithOpenRest(tester, surface: surface);
+
+        // 1) Capture the chip's bottom in the list view (default landing).
+        final listChipRect = tester.getRect(
+          find.byKey(const Key('rest-overlay-chip')),
+        );
+
+        // 2) Switch to detail view and re-capture the chip's bottom.
+        final repo = await _freshRepo();
+        final firstExercise = (await repo.getExercises()).first;
+        await tester.tap(find.text(firstExercise.name));
+        await tester.pumpAndSettle();
+        final detailChipRect = tester.getRect(
+          find.byKey(const Key('rest-overlay-chip')),
+        );
+
+        // Both views share the same `restOverlayBottomOffset`, so the
+        // chip's bottom must be at the same screen-Y in both.
+        expect(
+          listChipRect.bottom,
+          detailChipRect.bottom,
+          reason:
+              'rest chip must use the shared restOverlayBottomOffset on '
+              'both screens',
+        );
+        // And that bottom must equal the constant itself (relative to
+        // the screen height), so the spec's "same vertical position"
+        // claim is provably true and not just numerically equal.
+        expect(
+          surface.height - listChipRect.bottom,
+          OmniTheme.restOverlayBottomOffset,
+          reason: 'chip bottom must equal restOverlayBottomOffset',
+        );
+      },
+    );
+
+    testWidgets(
+      'rest chip and CTA do not overlap on the smallest supported screen height',
+      (WidgetTester tester) async {
+        // 568 pt is the iPhone SE 1st-gen / 5s viewport height — the
+        // smallest supported production surface. The chip must still
+        // clear the Log Set / Finish Workout CTA at this size.
+        const surface = Size(320, 568);
+        await pumpSessionWithOpenRest(tester, surface: surface);
+
+        final chipRect = tester.getRect(
+          find.byKey(const Key('rest-overlay-chip')),
+        );
+        final ctaRect = tester.getRect(find.byType(OmniBottomCTA));
+        expect(
+          chipRect.bottom,
+          lessThanOrEqualTo(ctaRect.top),
+          reason: 'rest chip must not overlap the bottom CTA on a small screen',
+        );
+      },
+    );
+
+    testWidgets(
+      'rest chip and CTA do not overlap on the largest supported screen height',
+      (WidgetTester tester) async {
+        // 1366 pt is the iPad Pro 12.9 landscape viewport — a typical
+        // "largest supported" target. The chip must remain above the
+        // CTA at this size (not float over scrollable content).
+        const surface = Size(1024, 1366);
+        await pumpSessionWithOpenRest(tester, surface: surface);
+
+        final chipRect = tester.getRect(
+          find.byKey(const Key('rest-overlay-chip')),
+        );
+        final ctaRect = tester.getRect(find.byType(OmniBottomCTA));
+        expect(
+          chipRect.bottom,
+          lessThanOrEqualTo(ctaRect.top),
+          reason: 'rest chip must not overlap the bottom CTA on a large screen',
+        );
+      },
+    );
+
+    testWidgets('Session Time chip position is unchanged (regression guard)', (
+      WidgetTester tester,
+    ) async {
+      // The rest-chip move is vertical-only on the rest indicator.
+      // The Session Time chip (session clock) must remain pinned
+      // under the header at the same Y across the move.
+      const surface = Size(400, 1000);
+      await pumpSessionWithOpenRest(tester, surface: surface);
+
+      final sessionTimeText = find.text('Session Time');
+      expect(sessionTimeText, findsOneWidget);
+      final listRect = tester.getRect(sessionTimeText);
+
+      // The Session Time chip lives in the list view header column,
+      // well above the bottom CTA. It must not have been dragged
+      // into the lower half by the rest-chip repositioning.
+      final ctaRect = tester.getRect(find.byType(OmniBottomCTA));
+      expect(
+        listRect.top,
+        lessThan(ctaRect.center.dy),
+        reason: 'Session Time chip must remain in the upper half of the screen',
+      );
+
+      // Switch to detail view; the Session Time chip is not rendered
+      // there, but the rest chip must still sit below the header and
+      // above the Log Set button.
+      final repo = await _freshRepo();
+      final firstExercise = (await repo.getExercises()).first;
+      await tester.tap(find.text(firstExercise.name));
+      await tester.pumpAndSettle();
+      expect(find.text('Session Time'), findsNothing);
+      final chipRect = tester.getRect(
+        find.byKey(const Key('rest-overlay-chip')),
+      );
+      final logSetFinder = find.widgetWithText(FilledButton, 'Log Set');
+      expect(logSetFinder, findsOneWidget);
+      final logSetRect = tester.getRect(logSetFinder);
+      expect(
+        chipRect.bottom,
+        lessThanOrEqualTo(logSetRect.top),
+        reason: 'rest chip must clear the Log Set button on the detail view',
+      );
+    });
   });
 }

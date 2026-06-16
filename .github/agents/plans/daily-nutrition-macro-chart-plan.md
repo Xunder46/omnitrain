@@ -493,6 +493,141 @@ that do not block the feature.
 
 ---
 
+## Post-review fixes — Test fixture contamination (Iteration 1.1)
+
+> Human follow-up: running `test/state_test.dart` showed 3 critical
+> failures in the "consumed-food cache" and "per-macro totals" groups.
+> Root cause: `MockWorkoutRepository.initialize()` pre-seeds three
+> `ConsumedFood` rows dated today (`daysAgo: 0`) for the Stats
+> Nutrition Trend card (see `SeedData.sampleConsumedFoods()` at
+> `lib/mock/seed_data.dart:5465-5545`). Any test that calls
+> `NutritionState.loadConsumedToday()` reads those seed rows into
+> `_consumedToday`, breaking the count and per-row-scaling assertions.
+
+### Changes
+
+#### 1. Test-only hook on the mock repository
+File: `lib/data/repositories/mock_workout_repository.dart`
+
+Added a `@visibleForTesting void clearConsumedFoodsForTest()` method
+next to the existing `clear()`/`reset()` helpers. Wipes the
+`_consumedFoods` map after `initialize()` so a test can start with
+an empty day-log without losing the rest of the seed (exercises,
+foods, equipment, etc.).
+
+Non-breaking: the method is annotated `@visibleForTesting` and only
+reachable from test code. The seed data is preserved for the Stats
+Nutrition Trend card on web/QA builds.
+
+#### 2. Clean-consumed test fixture helper
+File: `test/state_test.dart`
+
+Added `_freshRepoCleanConsumed()` next to the existing
+`_freshRepo()`. Calls `_freshRepo()` and then
+`clearConsumedFoodsForTest()`. Used by 8 tests in the "consumed-food
+cache" and "per-macro totals" groups that pin exact counts or
+per-row macro sums on `consumedToday`.
+
+### Tests routed through the clean fixture
+
+| Test | Reason |
+|---|---|
+| `loadConsumedToday populates the cache from the repository` | Asserts `consumedToday, hasLength(2)` after seeding 2 rows; seed adds 3 more |
+| `initial cache is empty and loadConsumedToday keeps it empty` | Asserts empty cache after `loadConsumedToday()` |
+| `getTodayConsumedFoods returns empty when repo has no rows` | Asserts empty result from `getTodayConsumedFoods()` |
+| `loadConsumedToday is idempotent and refreshes the cache` | Asserts empty after two loads |
+| `clearConsumedToday empties the cache and notifies listeners` | Asserts empty after `loadConsumedToday()` |
+| `per-row scaling: grams food and count food both scale their macros` | Per-row math contaminated by seeded chicken (46.5g P) + rice (3g P) |
+| `null fiber on a ConsumedFood is treated as 0` | Carbs assertion contaminated by seeded rice (28g) |
+| `empty cache: all four per-macro getters return 0` | All four macros non-zero from seed |
+
+### Progress
+- [x] Added `@visibleForTesting clearConsumedFoodsForTest()` on
+      `MockWorkoutRepository`.
+- [x] Added `_freshRepoCleanConsumed()` helper in `test/state_test.dart`.
+- [x] Routed all 8 affected tests through the clean fixture.
+- [x] `flutter test test/state_test.dart` — 196/196 pass.
+- [x] `flutter analyze` clean on both changed files.
+- [x] Global conventions verified:
+      - **Reuse the canonical owner**: PASS — the test-only hook
+        lives on the existing `MockWorkoutRepository`; no parallel
+        test-double was created.
+      - All other rules N/A (no UI, units, themes, analytics, or
+        timestamps touched).
+
+#### Follow-up: food_library_test.dart (Iteration 1.2)
+- [x] Added `_freshRepoCleanConsumed()` helper in
+      `test/food_library_test.dart` (same pattern as
+      `test/state_test.dart`).
+- [x] Routed 2 `Library removal` tests through the clean fixture:
+      `removeFood leaves past day-log snapshots intact` (June 1 =
+      day-14, seed has 100 g oats) and `removeFood does not affect
+      other days' snapshots` (June 1/2/3 = day-14/13/12, day-14 and
+      day-12 both have seed rows).
+- [x] `flutter test test/food_library_test.dart` — 25/25 pass.
+- [x] `flutter test test/state_test.dart test/food_library_test.dart` —
+      221/221 pass.
+- [x] `flutter analyze` clean on the changed file.
+
+#### Follow-up: home_nutrition_strip_test.dart (Iteration 1.3)
+- [x] Added `_freshRepoCleanConsumed()` helper in
+      `test/home_nutrition_strip_test.dart` (same pattern).
+- [x] Routed 3 tests through the clean fixture:
+      `logging a food via the shared NutritionState makes the home
+      strip rebuild` (S-055, asserts "302 / 2,000 cal"), `unlogging
+      a food updates the strip live` (S-055, asserts "302 / 2,000
+      cal"), and `tapping the strip pushes the nutrition screen`
+      (S-057, asserts bar + label). All three use
+      `homeScreen.nutritionState` which reads the real state;
+      seeded today-dated rows (chicken 150 g, rice 100 g, oil 1
+      tbsp ≈ 436 kcal) inflated `todayConsumedCalories` and broke
+      the exact-label assertion.
+- [x] `flutter test test/home_nutrition_strip_test.dart` — 17/17 pass.
+- [x] `flutter test test/state_test.dart test/food_library_test.dart
+      test/home_nutrition_strip_test.dart` — 238/238 pass.
+- [x] `flutter analyze` clean on the changed file.
+
+#### Follow-up: screen_widget_test.dart (Iteration 1.4)
+- [x] Fixed `Catalog row on the Library tab opens EditFoodScreen on
+      row tap (S-001)` by adding `loadFoodGroups()` to the test
+      setup. Root cause was **not** seed contamination: it was a
+      missing data load. `AddFoodScreen.initState` calls
+      `loadCatalogFoods()` and `loadFoods()` but NOT
+      `loadFoodGroups()`. The catalog food "Chicken breast,
+      skinless" has `groupId = 'food-group-proteins'`; when the
+      test tapped the row, `EditFoodScreen` opened `FoodForm`
+      which built the category DropdownButton with `value:
+      'food-group-proteins'` but `groups` was empty (no call to
+      `loadFoodGroups()` anywhere in the test's widget tree).
+      Flutter's assertion `items.where((i) => i.value == value).length == 1`
+      fires for both "zero matches" and "2+ matches" — the
+      error message says "zero or 2 or more". Fixed by adding
+      `await foodLibraryState.loadFoodGroups();` to the test
+      before `loadCatalogFoods()`.
+- [x] `flutter test test/screen_widget_test.dart` — 168/168 pass.
+- [x] `flutter test test/state_test.dart test/food_library_test.dart
+      test/home_nutrition_strip_test.dart test/screen_widget_test.dart`
+      — 406/406 pass.
+- [x] `flutter analyze` clean on the changed file.
+
+### Out of scope
+The same seed-contamination pattern still affects tests in
+`test/nutrition_test.dart`,
+`test/my_foods_unification_test.dart`, and
+`test/nutrition_log_from_library_test.dart`. Those should be fixed
+in a follow-up iteration by routing the affected tests through the
+same clean-fixture helper (or by expanding it into a shared test
+utility).
+`test/home_nutrition_strip_test.dart`, `test/screen_widget_test.dart`,
+`test/my_foods_unification_test.dart`, and
+`test/nutrition_log_from_library_test.dart` (28 pre-existing
+failures at the time of this fix). Those are out of scope for the
+Iteration 1 review; they should be fixed in a follow-up iteration
+that routes the affected tests through the same clean-fixture
+helper (or expands it into a shared test utility).
+
+---
+
 ## Iteration 2 — Thicker ring + tap-to-focus with center swap
 
 > Folded from the human-checkpoint feedback after Iteration 1: the

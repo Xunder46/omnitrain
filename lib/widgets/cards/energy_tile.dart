@@ -208,8 +208,8 @@ class _EnergyTileState extends State<EnergyTile>
             // it is not announced separately from the tile.
             if (widget.isActive)
               Positioned(
-                top: 10,
-                right: 10,
+                top: 0,
+                right: 0,
                 child: ExcludeSemantics(
                   child: AnimatedBuilder(
                     animation: _pulse,
@@ -252,30 +252,14 @@ class _EnergyTileState extends State<EnergyTile>
                   // the upper region shrinks proportionally. `Expanded` is
                   // used so the icon stays centered within the upper band
                   // without leaking into the lower band.
-                  Expanded(
-                    flex: 3,
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        top: widget.isActive ? 22 : 4,
-                      ),
-                      child: Center(
-                        child: IconTheme(
-                          data: IconThemeData(
-                              color: iconColor, size: iconSize),
-                          child: widget.iconWidget ??
-                              Icon(widget.icon,
-                                  size: iconSize, color: iconColor),
-                        ),
-                      ),
-                    ),
-                  ),
+                  
                   if (shouldShowText) ...[
-                    const SizedBox(height: 8),
+                    //const SizedBox(height: 8),
                     Padding(
                       // Reserve room at the bottom for the 1px shadow
                       // strip on primary tiles and consistent label
                       // position across tiers.
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.only(bottom: 12, top: 8),
                       child: Text(
                         widget.title,
                         textAlign: TextAlign.center,
@@ -294,6 +278,23 @@ class _EnergyTileState extends State<EnergyTile>
                     ),
                   ] else
                     const Spacer(flex: 1),
+                    Expanded(
+                    flex: 3,
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        top: isSecondary ? 0 : 30,
+                      ),
+                      child: Center(
+                        child: IconTheme(
+                          data: IconThemeData(
+                              color: iconColor, size: iconSize),
+                          child: widget.iconWidget ??
+                              Icon(widget.icon,
+                                  size: iconSize, color: iconColor),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

@@ -417,10 +417,10 @@ void main() {
         labelWidthOf: wideStub,
       );
       final byName = {for (final l in labels) l.sectionName: l.text};
-      expect(byName['Net Carbs'], 'N 50g');
-      expect(byName['Fat'], 'F 30g');
-      expect(byName['Fiber'], 'Fb 30g');
-      expect(byName['Protein'], 'P 100g');
+      expect(byName['Net Carbs'], 'N50g');
+      expect(byName['Fat'], 'F30g');
+      expect(byName['Fiber'], 'Fb30g');
+      expect(byName['Protein'], 'P100g');
     });
 
     test('label position is at the section\'s mid-angle, mid-radius', () {
@@ -529,7 +529,7 @@ void main() {
         labelWidthOf: wideStub,
       );
       expect(labels.length, 1);
-      expect(labels[0].text, 'P 100g');
+      expect(labels[0].text, 'P100g');
     });
   });
 }

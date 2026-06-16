@@ -93,19 +93,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: FilledButton(
+            child: OutlinedButton(
               onPressed: () => _openPeriods(context),
               style: ButtonStyle(
                 visualDensity: VisualDensity.compact,
                 padding: const WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
                 shape: WidgetStatePropertyAll(
                   RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
+                      OmniTheme.buttonUtilityRadius,
                     ),
                   ),
+                ),
+                side: WidgetStatePropertyAll(
+                  BorderSide(color: Theme.of(context).colorScheme.primary),
+                ),
+                foregroundColor: WidgetStatePropertyAll(
+                  Theme.of(context).colorScheme.primary,
                 ),
               ),
               child: const Text('+'),

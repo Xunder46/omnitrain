@@ -100,7 +100,7 @@ class Exercise {
   final List<String> capabilities;
   final double?
   relevanceScore; // Transient field: populated only by ranked queries
-  /// Sport-specific default duration per round/period (in seconds).
+  /// Sport-specific default duration round/period (in seconds).
   /// Null = use the app-wide default (WorkoutConstants.defaultRoundDurationSecs = 180).
   /// Only meaningful for effortKind == 'round' exercises (martial arts, sports).
   /// Examples: Soccer Match = 2700 (45-min half), Ice Hockey = 1200 (20-min period).
@@ -1722,8 +1722,8 @@ class FoodGroup {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// The unit system used for a food's reference amount.
-/// - `count`: discrete items (e.g. "per 1 egg", "per 1 slice")
-/// - `grams`: weight-based (e.g. "per 100 g")
+/// - `count`: discrete items (e.g. "1 egg", "1 slice")
+/// - `grams`: weight-based (e.g. "100 g")
 enum FoodUnitType {
   count,
   grams;
@@ -1741,7 +1741,7 @@ enum FoodUnitType {
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Calories are computed (not stored): protein * 4 + carbs * 4 + fat * 9
-// All macro values are stored as integers (grams per serving).
+// All macro values are stored as integers (grams serving).
 
 class Food {
   final String id;
@@ -1752,7 +1752,7 @@ class Food {
   final FoodUnitType unitType;
 
   /// Reference amount — the quantity this food's macros are expressed per.
-  /// E.g., 100.0 for "per 100 g", 1.0 for "per 1 egg".
+  /// E.g., 100.0 for "100 g", 1.0 for "1 egg".
   final double referenceAmount;
 
   /// Reference label — the display unit for the reference amount.
@@ -1998,8 +1998,8 @@ class ConsumedFood {
   /// Computed calories consumed:
   /// `(protein * 4 + carbs * 4 + fat * 9) * (amountConsumed / referenceAmount)`.
   ///
-  /// The macros on the snapshot are stored **per the food's reference**
-  /// (e.g. per 100 g or per 1 egg). The `amountConsumed` is in the
+  /// The macros on the snapshot are stored **the food's reference**
+  /// (e.g. 100 g or 1 egg). The `amountConsumed` is in the
   /// food's own unit (g for grams-type foods, count for count-type
   /// foods), so the scaling factor is `amountConsumed / referenceAmount`.
   ///

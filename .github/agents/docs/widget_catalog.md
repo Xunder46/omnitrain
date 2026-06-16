@@ -768,6 +768,24 @@ Shared utility for value-adjustment math and popup parsing. Used by both `Metric
 - `MetricStepCalc.apply(metricType, currentValue, deltaY)` — drag step math (identical to previous `InlineMetricEditor._calculateNewValue`).
 - `MetricStepCalc.parseAndClamp(metricType, text)` — parse popup input, clamp to metric range, return typed result (`int` for reps, `double` for others). Returns `null` if unparseable.
 
+### `PRToast`
+
+**File**: `lib/widgets/session/pr_toast.dart`
+
+Static factory for the in-session "Congrats! New PR" celebration `SnackBar` that fires when a strength set beats the user's all-time best e1RM (per the Stats screen's PR definition). Non-blocking, auto-dismissing, theme-token-only.
+
+- `PRToast.buildPRSnackBar(ThemeData theme)` → `SnackBar` with:
+  - `duration: 2.0 s` — auto-dismisses; never blocks the rest timer or the next set.
+  - `behavior: SnackBarBehavior.floating` — does not push the bottom controls up; the user can keep typing in the numeric editor.
+  - `margin: EdgeInsets.only(bottom: 168, left: 16, right: 16)` — the 168 px bottom lift clears `WorkoutSessionScreen._kBottomControlsClearance` (140 px CTA + 24 px scroll padding) + 4 px tolerance.
+  - `backgroundColor: theme.colorScheme.surface` — derived from the active theme, never hardcoded.
+  - `content`: trophy `Icon(Icons.emoji_events, size: 18, color: theme.colorScheme.primary)` + `SizedBox(width: 8)` + `Text('Congrats! New PR', style: bodyMedium.copyWith(color: theme.colorScheme.onSurface))`.
+  - **No `action:`** field — the user is never asked to tap "Dismiss" or anything similar.
+
+**Where it is triggered**: `WorkoutSessionScreen._logSet()` calls `_maybeShowPRToast()` after `_persistEntryValues(...)` and before the rest-timer / advance logic. The check is gated on `effortKind == 'set' && !isSkippedSetKindEntry`, and the helper additionally blocks in `widget.editMode` (edit-mode suppression) and on `epley1RM == null` (zero reps or non-positive weight). The SnackBar call is fire-and-forget — `showSnackBar` is synchronous and the call chain continues immediately to `recordRestStart` and the set advance.
+
+**PR definition source of truth**: the in-session check uses `StatsProgressService.epley1RM(weight, reps)` and `StatsProgressService.getAllTimeBestE1RM(exerciseId)` — the same helpers the Stats screen's PR detection loop uses. There is exactly one PR definition; both surfaces change together. S-009 in the in-session PR toast plan is the structural-guard test that enforces this.
+
 ---
 
 ## Presentation Models
