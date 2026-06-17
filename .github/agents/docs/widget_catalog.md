@@ -621,7 +621,16 @@ Modal dialog for choosing a tracking method. Shown in Free Training mode and rou
 
 **File**: `lib/widgets/pickers/modality_picker_dialog.dart`
 
-Modal dialog for selecting a modality for an exercise being added to a null-modality (Free Training or Routine) session.
+Modal dialog for selecting a modality for an exercise being added.
+
+**Where it appears**:
+- Live Free Training sessions (null modality)
+- Routine building when the routine's **Focus Modality is "Mixed / Not set"** (null)
+- Per-exercise `Change Tracking` override on an already-added exercise (both focus-set and Mixed routines)
+
+**Where it does NOT appear**:
+- Live Resistance / Cardio / Sports / Isometric sessions (the session's modality is already known)
+- Routine building when the routine's Focus Modality is set — the new exercise silently inherits the focus modality's `effortKind`
 
 **Key features**:
 - Shows all five modalities plus a "General" option

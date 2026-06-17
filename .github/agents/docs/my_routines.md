@@ -37,15 +37,26 @@ If the user has an active routine session (intent = `'routine'`), tapping the My
 MyRoutinesScreen → Tap FAB (+)
   → RoutineSetupScreen (new routine, no name)
     → Enter routine name
+    → Optionally set "Focus Modality" (Resistance, Cardio, Sports, Isometric)
     → Tap (+) to add exercise
-      → ExercisePickerDialog (no modality filter)
-      → MetricChooserDialog (user picks tracking method)
+      → ExercisePickerScreen (no modality filter — full library)
+      → IF Focus Modality is set: exercise is added immediately with that
+        modality's effort kind — no further prompt.
+      → IF Focus Modality is "Mixed / Not set" (null): ModalityPickerDialog
+        opens; user picks modality → exercise added with that effort kind.
     → Configure targets (reps, weight, duration, etc.)
     → Add/remove sets per exercise
     → Reorder exercises via drag handles
+    → Per-exercise "Change Tracking" still opens ModalityPickerDialog
+      (override) in both focus-set and Mixed routines.
     → Tap "Save"
   → Returns to MyRoutinesScreen (routine appears in list)
 ```
+
+> **Focus Modality inheritance rule**: when a routine has a Focus Modality,
+> new exercises silently inherit it. Changing the focus on a routine with
+> already-added exercises does NOT retroactively alter them — only exercises
+> added after the change inherit the new focus.
 
 ### 3. Starting a Routine as a Session
 ```

@@ -159,6 +159,28 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
+  /// Small inline label that explains which "current window"
+  /// decided which exercises appear in this section. Reads as
+  /// `· Off-Season Strength Block` (period) or
+  /// `· Last 14 training days` (recent-days fallback). Lives
+  /// next to the section label so the readout explains itself.
+  Widget _buildWindowChip(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    StatsWindow window,
+  ) {
+    final theme = Theme.of(context);
+    return Text(
+      '· ${window.label}',
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: themeColors.textMuted,
+        fontStyle: FontStyle.italic,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   Widget _buildAggregateCard(
     BuildContext context,
     OmniThemeColors themeColors,
@@ -213,12 +235,23 @@ class _StatsScreenState extends State<StatsScreen> {
     BuildContext context,
     OmniThemeColors themeColors,
   ) {
+    final data = _progressData;
     final widgets = <Widget>[
-      _buildSectionLabel(context, 'STRENGTH', themeColors),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          _buildSectionLabel(context, 'STRENGTH', themeColors),
+          const SizedBox(width: 10),
+          if (data != null)
+            Flexible(
+              child: _buildWindowChip(context, themeColors, data.window),
+            ),
+        ],
+      ),
       const SizedBox(height: 8),
     ];
 
-    final data = _progressData;
     if (data == null || data.topLifts.isEmpty) {
       widgets.add(
         _buildSectionEmptyState(
@@ -536,12 +569,23 @@ class _StatsScreenState extends State<StatsScreen> {
     BuildContext context,
     OmniThemeColors themeColors,
   ) {
+    final data = _progressData;
     final widgets = <Widget>[
-      _buildSectionLabel(context, 'CARDIO', themeColors),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          _buildSectionLabel(context, 'CARDIO', themeColors),
+          const SizedBox(width: 10),
+          if (data != null)
+            Flexible(
+              child: _buildWindowChip(context, themeColors, data.window),
+            ),
+        ],
+      ),
       const SizedBox(height: 8),
     ];
 
-    final data = _progressData;
     if (data == null || data.topCardio.isEmpty) {
       widgets.add(
         _buildSectionEmptyState(

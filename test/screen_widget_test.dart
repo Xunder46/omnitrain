@@ -1427,6 +1427,253 @@ void main() {
         expect(drillInstances.every((t) => t.elapsedMs == 0), isTrue);
       },
     );
+
+    // ── Focus-modality inheritance in add-exercise flow ───────────────
+    // When a routine's Focus Modality is set, adding an exercise must
+    // silently inherit the modality — no ModalityPickerDialog. When
+    // Focus Modality is "Mixed / Not set" (null), the existing picker
+    // flow must still be shown.
+
+    testWidgets(
+      'focus-set routine: add exercise skips modality picker (resistance)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        await routineState.createNewRoutine('Push Day');
+        await routineState.updateRoutineFocusModality('resistance_lifting');
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Open the picker via the block "+" icon.
+        await tester.tap(find.byTooltip('Add exercise to block').first);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExercisePickerScreen), findsOneWidget);
+        // Picker must NOT auto-advance to the modality picker.
+        expect(find.byType(ModalityPickerDialog), findsNothing);
+
+        // Select an exercise from the picker (ListTile is the row).
+        await tester.tap(find.byType(ListTile).first);
+        await tester.pumpAndSettle();
+
+        // Modality picker must remain hidden — focus modality was inherited.
+        expect(find.byType(ModalityPickerDialog), findsNothing);
+        expect(find.byType(ExercisePickerScreen), findsNothing);
+
+        // The exercise was added with the focus modality's effort kind.
+        expect(routineState.currentEfforts, hasLength(1));
+        expect(routineState.currentEfforts.first.effortKind, 'set');
+      },
+    );
+
+    testWidgets(
+      'focus-set routine: add exercise skips modality picker (sports)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        await routineState.createNewRoutine('Game Day');
+        await routineState.updateRoutineFocusModality('sports');
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Add exercise to block').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(ListTile).first);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ModalityPickerDialog), findsNothing);
+        expect(routineState.currentEfforts, hasLength(1));
+        // 'sports' → effortKind 'round'.
+        expect(routineState.currentEfforts.first.effortKind, 'round');
+      },
+    );
+
+    testWidgets(
+      'Mixed routine: add exercise still shows modality picker',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        // focusModality left null (the "Mixed / Not set" default).
+        await routineState.createNewRoutine('Mixed Day');
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Add exercise to block').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(ListTile).first);
+        await tester.pumpAndSettle();
+
+        // Preserved path: the modality picker appears after exercise pick.
+        expect(find.byType(ModalityPickerDialog), findsOneWidget);
+        expect(routineState.currentEfforts, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'focus-set routine: cancelling picker does not show modality picker',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        await routineState.createNewRoutine('Cancel Focus');
+        await routineState.updateRoutineFocusModality('cardio_endurance');
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Add exercise to block').first);
+        await tester.pumpAndSettle();
+        expect(find.byType(ExercisePickerScreen), findsOneWidget);
+
+        // Dismiss the picker via the back arrow.
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExercisePickerScreen), findsNothing);
+        expect(find.byType(ModalityPickerDialog), findsNothing);
+        expect(routineState.currentEfforts, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'Mixed routine: cancelling picker does not show modality picker',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(600, 1200));
+        final repo = await _freshRepo();
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        await routineState.createNewRoutine('Cancel Mixed');
+        await routineState.saveRoutine();
+        final templateId = routineState.currentTemplate!.id;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RoutineSetupScreen(
+              routineState: routineState,
+              workoutState: workoutState,
+              templateId: templateId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Add exercise to block').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.arrow_back).first);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ExercisePickerScreen), findsNothing);
+        expect(find.byType(ModalityPickerDialog), findsNothing);
+        expect(routineState.currentEfforts, isEmpty);
+      },
+    );
+
+    test(
+      'changing focus modality does not retroactively alter existing efforts',
+      () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final routineState = RoutineState(repo);
+        routineState.setAutosaveEnabled(false);
+
+        // Build a routine with resistance focus and add an exercise under it.
+        await routineState.createNewRoutine('Shift Focus');
+        await routineState.updateRoutineFocusModality('resistance_lifting');
+        final firstEffortId = await routineState.addExerciseToRoutine(
+          exercises.first,
+          // Inherited from focus: effortKind 'set'.
+          'set',
+        );
+        expect(routineState.currentEfforts.first.effortKind, 'set');
+
+        // Change the focus to sports AFTER the first exercise exists.
+        await routineState.updateRoutineFocusModality('sports');
+
+        // Existing effort must be untouched.
+        expect(
+          routineState.currentEfforts
+              .firstWhere((e) => e.id == firstEffortId)
+              .effortKind,
+          'set',
+          reason: 'changing focus must not rewrite already-added efforts',
+        );
+
+        // Adding a new exercise should adopt the new focus modality.
+        final next = exercises.length > 1 ? exercises[1] : exercises.first;
+        final secondEffortId = await routineState.addExerciseToRoutine(
+          next,
+          // Inherited from the NEW focus: 'sports' → 'round'.
+          'round',
+        );
+        expect(routineState.currentEfforts, hasLength(2));
+        expect(
+          routineState.currentEfforts
+              .firstWhere((e) => e.id == secondEffortId)
+              .effortKind,
+          'round',
+        );
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

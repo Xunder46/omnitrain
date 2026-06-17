@@ -690,7 +690,8 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   void _addExercise(BuildContext context, String segmentId) async {
     if (widget.workoutState == null) return;
 
-    // Step 1: Pick exercise
+    // Step 1: Pick exercise. The picker shows the full library regardless of
+    // focus modality — picker filtering is out of scope for this change.
     final exercise = await OmniNavigator.push<Exercise>(
       context,
       (_) => ExercisePickerScreen(workoutState: widget.workoutState!),
@@ -700,19 +701,27 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
     _exerciseCache[exercise.id] = exercise;
 
-    // Step 2: Pick modality using the shared picker.
-    final modalityResult = await showDialog<(bool, String?)>(
-      context: context,
-      builder: (_) => const ModalityPickerDialog(),
-    );
+    // Step 2: Resolve effort kind. When the routine has a Focus Modality set,
+    // inherit it silently — the user already declared the routine's focus, so
+    // asking again per-exercise is redundant. The picker is only surfaced for
+    // "Mixed / Not set" routines where there is genuinely nothing to inherit.
+    final focusModality = widget.routineState.currentTemplate?.focusModality;
+    final String effortKind;
+    if (focusModality != null) {
+      effortKind = ModalityConfig.forModality(focusModality)?.effortKind ?? 'set';
+    } else {
+      final modalityResult = await showDialog<(bool, String?)>(
+        context: context,
+        builder: (_) => const ModalityPickerDialog(),
+      );
+      if (modalityResult == null) return;
 
-    if (modalityResult == null) return;
+      final (_, pickedModality) = modalityResult;
+      if (pickedModality == null) return;
 
-    final (_, pickedModality) = modalityResult;
-    if (pickedModality == null) return;
-
-    final effortKind =
-        ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
+      effortKind =
+          ModalityConfig.forModality(pickedModality)?.effortKind ?? 'set';
+    }
 
     await widget.routineState.addExerciseToRoutine(
       exercise,

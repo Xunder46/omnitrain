@@ -26,6 +26,13 @@ class StatsProgressService {
   /// Maximum number of recent PRs to return in [StatsProgressData.recentPRs].
   static const int kRecentPRCount = 5;
 
+  /// Single tunable: the number of most-recent "training days"
+  /// (calendar days with at least one completed session) that
+  /// define the recent-days window used for exercise selection
+  /// when no active training period qualifies. Changing this
+  /// constant changes the window everywhere it applies.
+  static const int kRecentTrainingDaysWindow = 14;
+
   /// Default "visible window" hint for the NUTRITION card. The card
   /// now scrolls through **full** history (the scrollable
   /// `ScrollableTrendChart` shows as much as fits and lets the user
@@ -42,6 +49,13 @@ class StatsProgressService {
     final allSessions = await _repository.getAllSessions();
     final completed = allSessions.where((s) => s.endedAtMs != null).toList();
 
+    // Resolve the current-state window for exercise SELECTION.
+    // Trends and PRs use the full `completed` list — only the
+    // bucket that drives the "who appears in Strength/Cardio"
+    // decision is windowed.
+    final periods = await _repository.getPeriods();
+    final window = resolveWindow(periods: periods, completedSessions: completed);
+
     // exerciseId → { training-day → list of SetTuple }
     final setsByExercise = <String, Map<DateTime, List<_SetTuple>>>{};
 
@@ -49,6 +63,7 @@ class StatsProgressService {
     final cardioByExercise = <String, Map<DateTime, _CardioDay>>{};
 
     for (final session in completed) {
+      if (!_sessionInWindow(session, window)) continue;
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
       final sessionDay = DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
 
@@ -82,13 +97,26 @@ class StatsProgressService {
     final topLiftIds = _selectTopN(setsByExercise, kTopLiftCount, nameCache);
     final topCardioIds = _selectTopN(cardioByExercise, kTopCardioCount, nameCache);
 
+    // Trends and PRs are FULL-HISTORY for the selected exercises
+    // — the window only decided who appears. Walk the unfiltered
+    // `completed` list once and aggregate per-selected-exercise
+    // day maps.
+    final fullSetsByExercise = await _buildFullSetsForExercises(
+      completed,
+      topLiftIds,
+    );
+    final fullCardioByExercise = await _buildFullCardioForExercises(
+      completed,
+      topCardioIds,
+    );
+
     // Build LiftProgress + collect PRs.
     final topLifts = <LiftProgress>[];
     final allPRs = <StatsPR>[];
 
     for (final exerciseId in topLiftIds) {
       final name = nameCache[exerciseId] ?? exerciseId;
-      final dayMap = setsByExercise[exerciseId]!;
+      final dayMap = fullSetsByExercise[exerciseId] ?? const {};
       final days = dayMap.keys.toList()..sort();
 
       final e1RmTrend = <TrendPoint>[];
@@ -160,7 +188,7 @@ class StatsProgressService {
     final topCardio = <CardioProgress>[];
     for (final exerciseId in topCardioIds) {
       final name = nameCache[exerciseId] ?? exerciseId;
-      final dayMap = cardioByExercise[exerciseId]!;
+      final dayMap = fullCardioByExercise[exerciseId] ?? const {};
       final days = dayMap.keys.toList()..sort();
 
       final trend = <CardioTrendPoint>[];
@@ -193,6 +221,7 @@ class StatsProgressService {
       topCardio: topCardio,
       recentPRs: recentPRs,
       nutritionTrend: nutritionTrend,
+      window: window,
     );
   }
 
@@ -438,6 +467,175 @@ class StatsProgressService {
       }
     }
     return best;
+  }
+
+  // ── Window resolution (current-state window for exercise selection) ───────
+
+  /// Resolves the [StatsWindow] used to select which exercises
+  /// appear in the Strength and Cardio sections. Both sections
+  /// always share one window in a given load.
+  ///
+  /// Selection rule (executed in order):
+  /// 1. If today is inside any [TrainingPeriod] that contains at
+  ///    least one [completedSessions] entry, use that period's
+  ///    `[startDateMs, endDateMs]` as the window. If more than one
+  ///    period qualifies, the one with the latest `startDateMs`
+  ///    wins (tiebreak by id ascending for determinism).
+  /// 2. Otherwise, take the N most-recent distinct training days
+  ///    (calendar days with ≥ 1 completed session), where
+  ///    N = [kRecentTrainingDaysWindow]. The window's `fromMs` is
+  ///    the start-of-day of the earliest selected day, and `toMs`
+  ///    is end-of-day of today.
+  /// 3. If no completed sessions exist, the recent-days window
+  ///    reports `recentDays: 0`; `fromMs`/`toMs` collapse to today
+  ///    so the filter cleanly yields zero sessions and the screen
+  ///    shows its existing empty states.
+  static StatsWindow resolveWindow({
+    required List<TrainingPeriod> periods,
+    required List<TrainingSession> completedSessions,
+    DateTime? now,
+  }) {
+    final today = now ?? DateTime.now();
+    final todayMidnight = DateTime(today.year, today.month, today.day);
+    final todayEnd =
+        DateTime(today.year, today.month, today.day, 23, 59, 59, 999);
+    final todayMidnightMs = todayMidnight.millisecondsSinceEpoch;
+
+    // 1) Active training period that covers today and contains
+    //    at least one qualifying session.
+    TrainingPeriod? chosen;
+    for (final period in periods) {
+      // Period covers today when start-of-day ≤ today ≤ end-of-day.
+      if (period.startDateMs > todayEnd.millisecondsSinceEpoch) continue;
+      if (period.endDateMs < todayMidnightMs) continue;
+      final hasSessionInRange = completedSessions.any(
+        (s) =>
+            s.endedAtMs != null &&
+            s.startedAtMs >= period.startDateMs &&
+            s.startedAtMs <= period.endDateMs,
+      );
+      if (!hasSessionInRange) continue;
+      if (chosen == null ||
+          period.startDateMs > chosen.startDateMs ||
+          (period.startDateMs == chosen.startDateMs &&
+              period.id.compareTo(chosen.id) < 0)) {
+        chosen = period;
+      }
+    }
+    if (chosen != null) {
+      return StatsWindow(
+        fromMs: DateTime.fromMillisecondsSinceEpoch(chosen.startDateMs),
+        toMs: DateTime.fromMillisecondsSinceEpoch(chosen.endDateMs),
+        label: chosen.name,
+        isPeriodScoped: true,
+        periodId: chosen.id,
+        periodName: chosen.name,
+      );
+    }
+
+    // 2) Recent training days. N is the single tunable.
+    const n = kRecentTrainingDaysWindow;
+    final distinctDays = <DateTime>{};
+    for (final s in completedSessions) {
+      if (s.endedAtMs == null) continue;
+      final dt = DateTime.fromMillisecondsSinceEpoch(s.startedAtMs);
+      distinctDays.add(DateTime(dt.year, dt.month, dt.day));
+    }
+    if (distinctDays.isEmpty) {
+      return StatsWindow(
+        fromMs: todayMidnight,
+        toMs: todayEnd,
+        label: 'Last $n training days',
+        isPeriodScoped: false,
+        recentDays: 0,
+      );
+    }
+    final sortedDesc = distinctDays.toList()
+      ..sort((a, b) => b.compareTo(a));
+    final selected = sortedDesc.take(n).toList()..sort();
+    final earliest = selected.first;
+    return StatsWindow(
+      fromMs: DateTime(earliest.year, earliest.month, earliest.day),
+      toMs: todayEnd,
+      label: 'Last $n training days',
+      isPeriodScoped: false,
+      recentDays: selected.length,
+    );
+  }
+
+  /// True when [session]'s `startedAtMs` falls within the
+  /// [StatsWindow] date range. The window is inclusive on both
+  /// ends; the helper centralizes the boundary check so the
+  /// selection iteration and the future consumers all agree.
+  static bool _sessionInWindow(TrainingSession session, StatsWindow window) {
+    return session.startedAtMs >=
+            window.fromMs.millisecondsSinceEpoch &&
+        session.startedAtMs <= window.toMs.millisecondsSinceEpoch;
+  }
+
+  /// Builds a per-selected-exercise full-history set trend map.
+  /// Walks the unfiltered [completed] list and aggregates `_SetTuple`
+  /// entries per training day for the given exercise IDs only.
+  /// The window decides which exercises are eligible; the trend
+  /// itself reaches back to every training day for those exercises.
+  Future<Map<String, Map<DateTime, List<_SetTuple>>>>
+      _buildFullSetsForExercises(
+    List<TrainingSession> completed,
+    List<String> exerciseIds,
+  ) async {
+    final result = <String, Map<DateTime, List<_SetTuple>>>{};
+    if (exerciseIds.isEmpty) return result;
+    final selected = exerciseIds.toSet();
+    for (final session in completed) {
+      if (session.endedAtMs == null) continue;
+      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
+        session.startedAtMs,
+      );
+      final sessionDay =
+          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final segments = await _repository.getSessionSegments(session.id);
+      for (final segment in segments) {
+        final efforts = await _repository.getSegmentEfforts(segment.id);
+        for (final effort in efforts) {
+          if (effort.effortKind != 'set') continue;
+          final exId = effort.exerciseId;
+          if (exId == null || !selected.contains(exId)) continue;
+          await _processSetEffort(effort, sessionDay, result);
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Builds a per-selected-exercise full-history cardio trend map.
+  /// See [_buildFullSetsForExercises] for the parallel contract.
+  Future<Map<String, Map<DateTime, _CardioDay>>>
+      _buildFullCardioForExercises(
+    List<TrainingSession> completed,
+    List<String> exerciseIds,
+  ) async {
+    final result = <String, Map<DateTime, _CardioDay>>{};
+    if (exerciseIds.isEmpty) return result;
+    final selected = exerciseIds.toSet();
+    for (final session in completed) {
+      if (session.endedAtMs == null) continue;
+      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
+        session.startedAtMs,
+      );
+      final sessionDay =
+          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final segments = await _repository.getSessionSegments(session.id);
+      for (final segment in segments) {
+        final efforts = await _repository.getSegmentEfforts(segment.id);
+        for (final effort in efforts) {
+          if (effort.effortKind != 'timed') continue;
+          final exId = effort.exerciseId;
+          if (exId == null || !selected.contains(exId)) continue;
+          await _processTimedEffort(effort, sessionDay, result);
+        }
+      }
+    }
+    return result;
   }
 }
 

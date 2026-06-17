@@ -252,7 +252,23 @@ class _EnergyTileState extends State<EnergyTile>
                   // the upper region shrinks proportionally. `Expanded` is
                   // used so the icon stays centered within the upper band
                   // without leaking into the lower band.
-                  
+                  Expanded(
+                    flex: 3,
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        top: 15,
+                      ),
+                      child: Center(
+                        child: IconTheme(
+                          data: IconThemeData(
+                              color: iconColor, size: iconSize),
+                          child: widget.iconWidget ??
+                              Icon(widget.icon,
+                                  size: iconSize, color: iconColor),
+                        ),
+                      ),
+                    ),
+                  ),
                   if (shouldShowText) ...[
                     //const SizedBox(height: 8),
                     Padding(
@@ -278,23 +294,6 @@ class _EnergyTileState extends State<EnergyTile>
                     ),
                   ] else
                     const Spacer(flex: 1),
-                    Expanded(
-                    flex: 3,
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        top: isSecondary ? 0 : 30,
-                      ),
-                      child: Center(
-                        child: IconTheme(
-                          data: IconThemeData(
-                              color: iconColor, size: iconSize),
-                          child: widget.iconWidget ??
-                              Icon(widget.icon,
-                                  size: iconSize, color: iconColor),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),

@@ -214,6 +214,70 @@ This means:
 
 ---
 
+## Selection Window (Current-State Window)
+
+The Strength and Cardio sections **select** their top exercises from a
+"current window" rather than all-time, so a lift trained heavily long
+ago can't occupy a card while the user's current focus never appears.
+**Only the selection is windowed**: every selected exercise's trend
+chart continues to use that exercise's FULL history, and the Recent
+PRs card stays all-time (a PR's whole point is being a lifetime high).
+The ALL TIME pills, the 30-day Activity bar chart, the Streak, and the
+Rest Time chart are unaffected.
+
+### Resolution Rule
+
+`StatsProgressService.resolveWindow(periods, completedSessions, now?)`
+runs once per `computeProgressData()` call and returns a
+`StatsWindow` value. The Strength and Cardio sections always share
+one window in a given load.
+
+1. **Active training period.** If today is inside any
+   `TrainingPeriod` that contains at least one completed session,
+   use that period's date range as the window. If multiple periods
+   qualify, the one with the latest `startDateMs` wins
+   (deterministic tiebreak by id ascending).
+2. **Recent training days (fallback).** Otherwise, take the
+   `kRecentTrainingDaysWindow` (default **14**) most-recent
+   *training days*. A training day is a calendar day with at
+   least one completed session; rest days and breaks do not
+   shrink the data. The window's `fromMs` is the start-of-day of
+   the earliest selected day; `toMs` is end-of-day of today.
+3. **No history at all.** When the repository has no completed
+   sessions, the recent-days window reports `recentDays: 0`;
+   `fromMs`/`toMs` collapse to today, the filter cleanly yields
+   zero sessions, and the screen renders its existing Strength /
+   Cardio empty states (the service does NOT silently widen to
+   all-time).
+
+### What Is (and Isn't) Windowed
+
+| Surface | Windowed? | Notes |
+|---------|-----------|-------|
+| Strength card exercise list (top-N) | **Yes** | Same `kTopLiftCount` cap and alphabetical tiebreak; only the session set selection runs over changes |
+| Cardio card exercise list (top-N) | **Yes** | Same `kTopCardioCount` cap and alphabetical tiebreak; same window as Strength |
+| Strength `e1RmTrend` / `volumeTrend` | No | Always full history for the selected exercise |
+| Cardio pace / distance / duration trend | No | Always full history for the selected exercise |
+| Recent PRs | No | Always all-time (Epley, `effortKind == 'set'`) |
+| ALL TIME pills (Sessions / Time / Streak) | No | Unchanged |
+| 30-day Activity bar chart | No | Unchanged |
+| Rest Time chart | No | Unchanged |
+| NUTRITION card | No | Always full history (`days: null`) |
+
+### On-screen Window Label
+
+Each section header is followed by an inline italic chip with the
+window's `label`:
+
+- Period-scoped: `"· <period.name>"` (e.g., `· Off-Season Strength Block`).
+- Recent-days: `"· Last <N> training days"` (e.g., `· Last 14 training days`).
+
+The chip explains the readout — a Strength or Cardio card that
+shows the user's current focus and a label that says
+`· Off-Season Strength Block` makes the scope obvious.
+
+---
+
 ## Data Loading
 
 All data is loaded in `_loadData()`, called once on first frame via
@@ -239,6 +303,7 @@ final data = await StatsProgressService(
 | `kTopLiftCount` | 3 | Max lifts shown in Strength section |
 | `kTopCardioCount` | 2 | Max cardio activities shown |
 | `kRecentPRCount` | 5 | Max PR rows in the Recent PRs card |
+| `kRecentTrainingDaysWindow` | 14 | Single tunable: number of recent "training days" used for the Strength/Cardio selection window when no period qualifies. See [Selection Window](#selection-window-current-state-window). |
 | `kNutritionTrendDays` | 10 | Soft "default visible window" hint; the NUTRITION card uses `days: null` for full history |
 
 ## Key Constants (`ScrollableTrendChart`)

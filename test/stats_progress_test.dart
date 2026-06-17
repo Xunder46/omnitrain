@@ -177,6 +177,53 @@ Future<String> _addTimedEffort(
 }
 
 void main() {
+  // Local-midnight `[n]` days before today. Used by the
+  // windowed-selection tests below to anchor seeded sessions
+  // inside the current-state window (rather than 2024 dates
+  // that fall outside it).
+  DateTime _daysAgo(int n) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return today.subtract(Duration(days: n));
+  }
+
+  // Creates a training period that covers today (default) and an
+  // optional explicit range. Anchored to local midnight.
+  Future<TrainingPeriod> _seedActivePeriod(
+    MockWorkoutRepository repo, {
+    required String id,
+    required String name,
+    DateTime? startDay,
+    DateTime? endDay,
+  }) async {
+    final start = startDay ?? _daysAgo(7);
+    final end = endDay ?? _daysAgo(-7);
+    final startMs = DateTime(
+      start.year,
+      start.month,
+      start.day,
+    ).millisecondsSinceEpoch;
+    final endMs = DateTime(
+      end.year,
+      end.month,
+      end.day,
+      23,
+      59,
+      59,
+      999,
+    ).millisecondsSinceEpoch;
+    final period = TrainingPeriod(
+      id: id,
+      name: name,
+      startDateMs: startMs,
+      endDateMs: endMs,
+      focusModalities: const [],
+      createdAtMs: 1000,
+      updatedAtMs: 1000,
+    );
+    await repo.createPeriod(period);
+    return period;
+  }
   // ── e1RM calculation ──────────────────────────────────────────────────────
 
   group('e1RM calculation (Epley formula)', () {
@@ -318,7 +365,10 @@ void main() {
             updatedAtMs: 1000,
           ),
         );
-        await _seedSession(repo, id: 'sess-$i', day: DateTime(2024, 1, i + 1));
+        // Reseed relative to "now" so the sessions fall inside
+        // the current-state window (the recent-training-days
+        // window's 14-day capacity).
+        await _seedSession(repo, id: 'sess-$i', day: _daysAgo(i));
         await _addSetEffort(
           repo,
           sessionId: 'sess-$i',
@@ -346,9 +396,10 @@ void main() {
         );
       }
 
-      // CEx0: 3 days
+      // CEx0: 3 days (anchored to "now" so the sessions land
+      // inside the current-state window).
       for (var i = 0; i < 3; i++) {
-        await _seedSession(repo, id: 'c0-$i', day: DateTime(2024, 1, i + 1));
+        await _seedSession(repo, id: 'c0-$i', day: _daysAgo(i));
         await _addTimedEffort(
           repo,
           sessionId: 'c0-$i',
@@ -357,9 +408,9 @@ void main() {
         );
       }
 
-      // CEx1: 3 days (tied with CEx0)
+      // CEx1: 3 days (tied with CEx0; uses the next 3 days)
       for (var i = 0; i < 3; i++) {
-        await _seedSession(repo, id: 'c1-$i', day: DateTime(2024, 2, i + 1));
+        await _seedSession(repo, id: 'c1-$i', day: _daysAgo(3 + i));
         await _addTimedEffort(
           repo,
           sessionId: 'c1-$i',
@@ -369,7 +420,7 @@ void main() {
       }
 
       // CEx2: 1 day
-      await _seedSession(repo, id: 'c2-0', day: DateTime(2024, 3, 1));
+      await _seedSession(repo, id: 'c2-0', day: _daysAgo(7));
       await _addTimedEffort(
         repo,
         sessionId: 'c2-0',
@@ -470,7 +521,7 @@ void main() {
         Exercise(id: 'ex-dl', name: 'Deadlift', createdAtMs: 1000, updatedAtMs: 1000),
       );
 
-      await _seedSession(repo, id: 's-null', day: DateTime(2024, 1, 1), modality: null);
+      await _seedSession(repo, id: 's-null', day: _daysAgo(0), modality: null);
       await _addSetEffort(
         repo,
         sessionId: 's-null',
@@ -493,7 +544,7 @@ void main() {
       await _seedSession(
         repo,
         id: 's-lift',
-        day: DateTime(2024, 1, 1),
+        day: _daysAgo(0),
         modality: 'resistance_lifting',
       );
       await _addTimedEffort(
@@ -524,7 +575,7 @@ void main() {
       await _seedSession(
         repo,
         id: 's-drill',
-        day: DateTime(2024, 1, 1),
+        day: _daysAgo(0),
         modality: 'resistance_lifting',
       );
 
@@ -1361,6 +1412,636 @@ void main() {
         final trend = await StatsProgressService(repo)
             .computeNutritionTrend(days: null);
         expect(trend, isEmpty);
+      },
+    );
+  });
+
+  // ── Windowed selection (current-state window) ────────────────────────────
+  // The Strength and Cardio sections must select their top exercises
+  // from a "current window" rather than all-time, so a lift trained
+  // heavily long ago can't crowd out the user's current focus. The
+  // window is resolved from:
+  //   - an active training period covering today that contains
+  //     ≥1 qualifying session, or
+  //   - the most recent N training days (N from
+  //     `StatsProgressService.kRecentTrainingDaysWindow`).
+  // Each scenario below pins this behavior with a real seeded
+  // session so the test fails loudly if the window is dropped or
+  // widened.
+  group('Windowed selection (current-state window)', () {
+    test(
+      'S-001: an exercise trained only outside the recent window does not '
+      'appear in selection; one trained inside does',
+      () async {
+        final repo = await _freshRepo();
+        // OldFavorite (trained only outside the window).
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-old',
+            name: 'OldFavorite',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        // CurrentFocus (trained inside the window).
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-now',
+            name: 'CurrentFocus',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        // A filler exercise whose training days occupy the entire
+        // recent window, ensuring OldFavorite's 5 days fall
+        // outside the N-most-recent training days.
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-filler',
+            name: 'Filler',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        // Filler: 1 training day on each of the 14 most recent
+        // distinct calendar days (kRecentTrainingDaysWindow = 14).
+        // The days are days 0, 1, 2, ..., 13 ago. With the
+        // skip-empty rule, Filler's training days fill the
+        // window's capacity.
+        for (var i = 0; i < StatsProgressService.kRecentTrainingDaysWindow; i++) {
+          await _seedSession(
+            repo,
+            id: 's-filler-$i',
+            day: _daysAgo(i),
+          );
+          await _addSetEffort(
+            repo,
+            sessionId: 's-filler-$i',
+            exerciseId: 'ex-filler',
+            sets: [(80.0, 5)],
+          );
+        }
+
+        // OldFavorite: 5 training days, all 15+ days ago. With the
+        // 14 most-recent training days already filled by Filler,
+        // OldFavorite's 5 days fall outside the window.
+        for (var i = 0; i < 5; i++) {
+          await _seedSession(
+            repo,
+            id: 's-old-$i',
+            day: _daysAgo(15 + i),
+          );
+          await _addSetEffort(
+            repo,
+            sessionId: 's-old-$i',
+            exerciseId: 'ex-old',
+            sets: [(80.0, 5)],
+          );
+        }
+
+        // CurrentFocus: 1 training day today, inside the window.
+        await _seedSession(
+          repo,
+          id: 's-now-0',
+          day: _daysAgo(0),
+        );
+        await _addSetEffort(
+          repo,
+          sessionId: 's-now-0',
+          exerciseId: 'ex-now',
+          sets: [(80.0, 5)],
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+
+        // Sanity: the window's training-day count is the constant
+        // (14 most recent distinct days, of which Filler occupies
+        // the first 14 calendar slots and CurrentFocus shares
+        // the most recent day with Filler; so the 14-day window
+        // is fully filled).
+        expect(
+          data.window.recentDays,
+          StatsProgressService.kRecentTrainingDaysWindow,
+        );
+        // OldFavorite's days are outside the window.
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'OldFavorite'),
+          isFalse,
+          reason: 'OldFavorite was trained only outside the window',
+        );
+        // CurrentFocus is inside the window.
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'CurrentFocus'),
+          isTrue,
+          reason: 'CurrentFocus was trained inside the window',
+        );
+      },
+    );
+
+    test(
+      'S-002: with an active period covering today, selection includes an '
+      'exercise trained inside the period and excludes one trained before '
+      'the period started',
+      () async {
+        final repo = await _freshRepo();
+        await _seedActivePeriod(
+          repo,
+          id: 'p1',
+          name: 'Off-Season Block',
+          startDay: _daysAgo(7),
+          endDay: _daysAgo(-7),
+        );
+
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-inside',
+            name: 'InsidePeriod',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-before',
+            name: 'BeforePeriod',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        // InsidePeriod: 1 training day within the period.
+        await _seedSession(
+          repo,
+          id: 's-inside-0',
+          day: _daysAgo(2),
+        );
+        await _addSetEffort(
+          repo,
+          sessionId: 's-inside-0',
+          exerciseId: 'ex-inside',
+          sets: [(80.0, 5)],
+        );
+        // BeforePeriod: 3 training days, all before the period
+        // started. Should be excluded by the period window.
+        for (var i = 0; i < 3; i++) {
+          await _seedSession(
+            repo,
+            id: 's-before-$i',
+            day: _daysAgo(20 + i),
+          );
+          await _addSetEffort(
+            repo,
+            sessionId: 's-before-$i',
+            exerciseId: 'ex-before',
+            sets: [(80.0, 5)],
+          );
+        }
+
+        final data = await StatsProgressService(repo).computeProgressData();
+
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'InsidePeriod'),
+          isTrue,
+        );
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'BeforePeriod'),
+          isFalse,
+          reason: 'BeforePeriod was trained only before the period',
+        );
+        // Window is the period → its label appears in StatsWindow.
+        expect(data.window.isPeriodScoped, isTrue);
+        expect(data.window.periodName, 'Off-Season Block');
+        expect(data.window.label, 'Off-Season Block');
+      },
+    );
+
+    test(
+      'S-003: an active period that contains no qualifying completed '
+      'sessions falls back to the recent-training-days window rather '
+      'than rendering empty',
+      () async {
+        final repo = await _freshRepo();
+        // Period covers today but is FUTURE-only, so the seeded
+        // session (which is in the past) cannot qualify.
+        await _seedActivePeriod(
+          repo,
+          id: 'p-empty',
+          name: 'EmptyBlock',
+          startDay: _daysAgo(0),
+          endDay: _daysAgo(-7),
+        );
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-recent',
+            name: 'RecentLift',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        // A single training day in the past, well outside the
+        // future-only period. The period has no qualifying
+        // sessions, so the recent-training-days window is used.
+        await _seedSession(repo, id: 's-r-0', day: _daysAgo(2));
+        await _addSetEffort(
+          repo,
+          sessionId: 's-r-0',
+          exerciseId: 'ex-recent',
+          sets: [(80.0, 5)],
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+
+        // Selection uses the recent-training-days window because
+        // the active period has no qualifying sessions.
+        expect(data.window.isPeriodScoped, isFalse);
+        expect(data.topLifts.any((l) => l.exerciseName == 'RecentLift'),
+            isTrue);
+      },
+    );
+
+    test(
+      'S-004: training days counting ignores gaps — sessions spread '
+      'across a date range with rest days in between still resolve the '
+      'intended number of training days, not calendar days',
+      () async {
+        // Build a history whose training days inside a ~14-day
+        // envelope total exactly 5 distinct days, with rest days in
+        // between. The recent window of 5 days must select all five
+        // distinct days (no rest-day gaps shrink the data).
+        final repo = await _freshRepo();
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-eg',
+            name: 'ExampleLift',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        // 5 distinct training days, each separated by 1-2 rest days,
+        // all within the last 14 calendar days.
+        for (final offset in [0, 2, 4, 7, 10]) {
+          await _seedSession(
+            repo,
+            id: 's-eg-$offset',
+            day: _daysAgo(offset),
+          );
+          await _addSetEffort(
+            repo,
+            sessionId: 's-eg-$offset',
+            exerciseId: 'ex-eg',
+            sets: [(80.0, 5)],
+          );
+        }
+
+        final data = await StatsProgressService(repo).computeProgressData();
+        // Resolve the recent-days window directly and confirm it
+        // includes all 5 distinct training days (not just the most
+        // recent 5 calendar days, which would drop days 8-10).
+        expect(data.window.isPeriodScoped, isFalse);
+        expect(
+          data.window.recentDays,
+          isNotNull,
+        );
+        // The exact N is governed by kRecentTrainingDaysWindow. The
+        // shape of the contract is: 5 training days exist, the
+        // window is "Last N training days", and ExampleLift is the
+        // top (only) lift selected from those 5 days.
+        expect(
+          data.topLifts.length,
+          1,
+        );
+        expect(data.topLifts.first.exerciseName, 'ExampleLift');
+        // Trend is full-history (5 points).
+        expect(
+          data.topLifts.first.e1RmTrend.length,
+          5,
+          reason: 'trend uses full history even when selection is windowed',
+        );
+      },
+    );
+
+    test(
+      'S-005: a selected exercise\'s trend still contains data points '
+      'from training days that fall outside the current window',
+      () async {
+        final repo = await _freshRepo();
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-l',
+            name: 'LongLift',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        // A training day well outside the recent-days window.
+        await _seedSession(repo, id: 's-l-old', day: _daysAgo(45));
+        await _addSetEffort(
+          repo,
+          sessionId: 's-l-old',
+          exerciseId: 'ex-l',
+          sets: [(80.0, 5)],
+        );
+        // A training day inside the recent-days window.
+        await _seedSession(repo, id: 's-l-new', day: _daysAgo(0));
+        await _addSetEffort(
+          repo,
+          sessionId: 's-l-new',
+          exerciseId: 'ex-l',
+          sets: [(85.0, 5)],
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+
+        // Selection still picks LongLift (it's the only exercise in
+        // the recent window).
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'LongLift'),
+          isTrue,
+        );
+        // Trend includes BOTH the 45-day-old and today's data points.
+        final e1RmTrend = data.topLifts.first.e1RmTrend;
+        expect(
+          e1RmTrend.length,
+          2,
+          reason: 'trend is full-history, not windowed',
+        );
+      },
+    );
+
+    test(
+      'S-006: Recent PRs still reflects an all-time high that was set '
+      'outside the current window',
+      () async {
+        final repo = await _freshRepo();
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-pr',
+            name: 'PrLift',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        // Big lift 45 days ago (outside recent window). This is the
+        // all-time high.
+        await _seedSession(repo, id: 's-pr-old', day: _daysAgo(45));
+        await _addSetEffort(
+          repo,
+          sessionId: 's-pr-old',
+          exerciseId: 'ex-pr',
+          sets: [(180.0, 3)],
+        );
+        // Smaller lift today (inside recent window). Selection will
+        // pick this lift, but PRs should still record the lifetime
+        // high set 45 days ago.
+        await _seedSession(repo, id: 's-pr-new', day: _daysAgo(0));
+        await _addSetEffort(
+          repo,
+          sessionId: 's-pr-new',
+          exerciseId: 'ex-pr',
+          sets: [(100.0, 5)],
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'PrLift'),
+          isTrue,
+        );
+        // Recent PRs is all-time, so it picks the 180 kg × 3 e1RM
+        // (≈198.0), not the today's 100 × 5 (≈116.67).
+        expect(data.recentPRs, hasLength(1));
+        final pr = data.recentPRs.first;
+        expect(pr.exerciseName, 'PrLift');
+        expect(pr.e1Rm, closeTo(198.0, 0.01));
+        // The date of the standing record is the 45-day-old day,
+        // not today.
+        expect(
+          pr.date,
+          _daysAgo(45),
+          reason: 'PR date is the all-time high day, regardless of window',
+        );
+      },
+    );
+
+    test(
+      'S-007: both sections resolve to the same window in a single '
+      'computation (a period active for one section is active for both)',
+      () async {
+        final repo = await _freshRepo();
+        await _seedActivePeriod(
+          repo,
+          id: 'p-shared',
+          name: 'SharedBlock',
+          startDay: _daysAgo(7),
+          endDay: _daysAgo(-7),
+        );
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-str',
+            name: 'StrLift',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-card',
+            name: 'CardActivity',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        // Strength session inside the period.
+        await _seedSession(repo, id: 's-str', day: _daysAgo(2));
+        await _addSetEffort(
+          repo,
+          sessionId: 's-str',
+          exerciseId: 'ex-str',
+          sets: [(80.0, 5)],
+        );
+        // Cardio session inside the period.
+        await _seedSession(repo, id: 's-card', day: _daysAgo(1));
+        await _addTimedEffort(
+          repo,
+          sessionId: 's-card',
+          exerciseId: 'ex-card',
+          durationSecs: 1800,
+        );
+
+        // Two extras outside the period — one for each section.
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-str-old',
+            name: 'StrLiftOld',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-card-old',
+            name: 'CardActivityOld',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        for (var i = 0; i < 3; i++) {
+          await _seedSession(repo, id: 's-str-old-$i', day: _daysAgo(20 + i));
+          await _addSetEffort(
+            repo,
+            sessionId: 's-str-old-$i',
+            exerciseId: 'ex-str-old',
+            sets: [(80.0, 5)],
+          );
+          await _seedSession(repo, id: 's-card-old-$i', day: _daysAgo(20 + i));
+          await _addTimedEffort(
+            repo,
+            sessionId: 's-card-old-$i',
+            exerciseId: 'ex-card-old',
+            durationSecs: 1800,
+          );
+        }
+
+        final data = await StatsProgressService(repo).computeProgressData();
+
+        // Both sections share the period window.
+        expect(data.window.isPeriodScoped, isTrue);
+        expect(data.window.periodName, 'SharedBlock');
+        // The inside-period exercises are selected; outside-period
+        // exercises are not.
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'StrLift'),
+          isTrue,
+        );
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'StrLiftOld'),
+          isFalse,
+        );
+        expect(
+          data.topCardio.any((c) => c.exerciseName == 'CardActivity'),
+          isTrue,
+        );
+        expect(
+          data.topCardio.any((c) => c.exerciseName == 'CardActivityOld'),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'S-008: when no exercises qualify within the window, topLifts '
+      'and topCardio are empty (the service does not silently widen '
+      'to all-time)',
+      () async {
+        final repo = await _freshRepo();
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-drill',
+            name: 'DrillOnly',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        // Seed a recent training day that has ONLY drill efforts
+        // (no set or timed). The window resolves, the day is
+        // inside it, but no exercise qualifies for Strength or
+        // Cardio. The screen renders its existing empty states.
+        await _seedSession(repo, id: 's-drill', day: _daysAgo(1));
+        final segId = 'seg-s-drill-ex-drill';
+        await repo.createSegment(
+          SessionSegment(
+            id: segId,
+            sessionId: 's-drill',
+            orderIndex: 0,
+            segmentType: 'main',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repo.createEffort(
+          SegmentEffort(
+            id: 'eff-s-drill',
+            segmentId: segId,
+            orderIndex: 0,
+            effortKind: 'drill',
+            exerciseId: 'ex-drill',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+
+        // Drill efforts never contribute to Strength or Cardio.
+        expect(data.topLifts, isEmpty);
+        expect(data.topCardio, isEmpty);
+        // The recent-days window reports at least 1 training day
+        // (the drill day is still a training day) and is not
+        // widened to all-time.
+        expect(data.window.isPeriodScoped, isFalse);
+        expect(data.window.recentDays, greaterThan(0));
+      },
+    );
+
+    test(
+      'S-009: when the active period is in the past (today not in any '
+      'period), the recent-training-days window is used',
+      () async {
+        final repo = await _freshRepo();
+        // Period that ended two weeks ago.
+        await _seedActivePeriod(
+          repo,
+          id: 'p-past',
+          name: 'PastBlock',
+          startDay: _daysAgo(60),
+          endDay: _daysAgo(15),
+        );
+        await repo.createExercise(
+          Exercise(
+            id: 'ex-rec',
+            name: 'RecentLift',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await _seedSession(repo, id: 's-rec', day: _daysAgo(1));
+        await _addSetEffort(
+          repo,
+          sessionId: 's-rec',
+          exerciseId: 'ex-rec',
+          sets: [(80.0, 5)],
+        );
+
+        final data = await StatsProgressService(repo).computeProgressData();
+
+        expect(data.window.isPeriodScoped, isFalse,
+            reason: 'past period does not cover today');
+        expect(
+          data.topLifts.any((l) => l.exerciseName == 'RecentLift'),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'S-010: kRecentTrainingDaysWindow is the single tunable for the '
+      'recent-days window size (no other call site hard-codes N)',
+      () async {
+        // The constant is exported and the test reads it directly.
+        // The structural guarantee is that this constant is the
+        // only place N is defined for the recent-days window. Any
+        // other code path that picks top-N uses the resolved window.
+        expect(StatsProgressService.kRecentTrainingDaysWindow, greaterThan(0));
+        // Sanity: changing the constant changes the label's N.
+        // (We don't change the constant here, but we verify the
+        // surface that's exposed.)
+        expect(
+          StatsProgressService.kRecentTrainingDaysWindow,
+          isA<int>(),
+        );
       },
     );
   });

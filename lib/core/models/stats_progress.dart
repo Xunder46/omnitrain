@@ -125,16 +125,104 @@ class StatsProgressData {
   /// window; the card hides itself in that case.
   final List<NutritionTrendPoint> nutritionTrend;
 
+  /// The "current window" that decided which exercises were eligible
+  /// for [topLifts] and [topCardio]. The window is a date range plus
+  /// a human-readable label so the UI can explain its selection.
+  /// The trend charts for selected exercises and the Recent PRs
+  /// list are NOT restricted by this window — they use full
+  /// history.
+  final StatsWindow window;
+
   const StatsProgressData({
     required this.topLifts,
     required this.topCardio,
     required this.recentPRs,
     this.nutritionTrend = const [],
+    required this.window,
   });
 
-  static const StatsProgressData empty = StatsProgressData(
-    topLifts: [],
-    topCardio: [],
-    recentPRs: [],
+  static final StatsProgressData empty = StatsProgressData(
+    topLifts: const [],
+    topCardio: const [],
+    recentPRs: const [],
+    window: StatsWindow.empty,
+  );
+}
+
+/// The "current window" used to select which exercises appear in the
+/// Stats screen's Strength and Cardio sections. Resolved once per
+/// `StatsProgressService.computeProgressData()` call from either:
+///   - the user-defined training period that covers today and contains
+///     at least one qualifying completed session, or
+///   - the most recent N "training days" (calendar days with at
+///     least one completed session) when no period qualifies, where
+///     N is `StatsProgressService.kRecentTrainingDaysWindow`.
+///
+/// Only the exercise **selection** is restricted to this window;
+/// trend charts for the selected exercises and the Recent PRs list
+/// continue to use full history (progression lives there, and a
+/// PR's whole point is being a lifetime high).
+class StatsWindow {
+  /// Local-midnight `DateTime` for the start of the window. When
+  /// the window has no qualifying days (zero training days), this
+  /// is start-of-today so the filter cleanly yields zero sessions.
+  final DateTime fromMs;
+
+  /// End-of-day `DateTime` for the end of the window (today by
+  /// default; the period's end-day when period-scoped).
+  final DateTime toMs;
+
+  /// Human-readable label for the on-screen window chip.
+  /// e.g. `"Off-Season Strength Block"` or `"Last 14 training days"`.
+  final String label;
+
+  /// True when the window was resolved from a `TrainingPeriod`;
+  /// false when it was resolved from recent training days.
+  final bool isPeriodScoped;
+
+  /// Period id when [isPeriodScoped]; null otherwise.
+  final String? periodId;
+
+  /// Period name when [isPeriodScoped]; null otherwise. Mirrors
+  /// [label] for period-scoped windows but kept separate so the
+  /// UI can map back to the period row if it wants to highlight
+  /// the period's color.
+  final String? periodName;
+
+  /// N (number of training days) when `!isPeriodScoped`; null
+  /// otherwise. The size of the window in calendar-day slots,
+  /// measured by "training days" (distinct days with ≥1 completed
+  /// session) — not calendar days, so rest days do not shrink
+  /// the data.
+  final int? recentDays;
+
+  const StatsWindow({
+    required this.fromMs,
+    required this.toMs,
+    required this.label,
+    required this.isPeriodScoped,
+    this.periodId,
+    this.periodName,
+    this.recentDays,
+  });
+
+  /// True when this window was resolved to a real, non-empty set of
+  /// sessions. A recent-days window with zero training days returns
+  /// false (and the Stats screen renders its existing empty states
+  /// for both sections).
+  bool get hasData => !isPeriodScoped
+      ? (recentDays != null && recentDays! > 0)
+      : true;
+
+  /// Sentinel empty window used by [StatsProgressData.empty].
+  /// Not user-visible; the screen never reaches this state because
+  /// `computeProgressData` always resolves a real window from
+  /// periods or recent days.
+  static final StatsWindow empty = StatsWindow(
+    fromMs: DateTime.fromMillisecondsSinceEpoch(0),
+    toMs: DateTime.fromMillisecondsSinceEpoch(0),
+    label: 'No data',
+    isPeriodScoped: false,
+    recentDays: 0,
   );
 }
