@@ -381,8 +381,13 @@ void main() {
     );
 
     testWidgets(
-      'reps renders dominant while weight renders secondary in session detail',
+      'reps and weight both render dominant in session detail',
       (tester) async {
+        // Plan: .github/agents/plans/exercise-detail-emphasis-tier-rebalance-plan.md
+        // Weight is now a primary data input (D-2), equal in tier and
+        // color to reps.  The old "weight is subordinate to reps"
+        // assumption from the original resistance-emphasis redesign
+        // no longer holds.
         final deps = await _buildSessionDeps(
           theme: AppTheme.abyssalNeon,
           effortKind: 'set',
@@ -419,12 +424,11 @@ void main() {
         final repsValueText = repsTexts.first;
         final weightValueText = weightTexts.first;
 
-        expect(
-          repsValueText.style?.fontSize,
-          greaterThan(weightValueText.style?.fontSize ?? 0),
-        );
+        // Both figures share the same emphasis tier (D-2/D-3): the
+        // same display font, the same size, and the same color.
+        expect(repsValueText.style?.fontSize, weightValueText.style?.fontSize);
         expect(repsValueText.style?.color, OmniTheme.colors.textDominant);
-        expect(weightValueText.style?.color, OmniTheme.colors.textSecondary);
+        expect(weightValueText.style?.color, OmniTheme.colors.textDominant);
       },
     );
 

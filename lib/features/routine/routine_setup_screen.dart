@@ -1242,7 +1242,7 @@ extension on _RoutineSetupScreenState {
               metricType: 'weight',
               currentValue: weight,
               unitLabel: _preferredWeightUnitLabel,
-              emphasisTier: MetricEmphasisTier.secondary,
+              emphasisTier: MetricEmphasisTier.dominant,
               onValueChanged: (value) => widget.routineState.setTargetValue(
                 effort.id,
                 MetricIds.weight,
@@ -1263,7 +1263,7 @@ extension on _RoutineSetupScreenState {
           metricType: 'extra-weight',
           currentValue: timedExtraWeight,
           unitLabel: 'EXTRA $_preferredWeightUnitLabel',
-          emphasisTier: MetricEmphasisTier.secondary,
+          emphasisTier: MetricEmphasisTier.dominant,
           onValueChanged: (value) => widget.routineState.setTargetValue(
             effort.id,
             MetricIds.extraWeight,
@@ -1291,7 +1291,7 @@ extension on _RoutineSetupScreenState {
                 fontWeight: FontWeight.w300,
                 letterSpacing: -2,
                 fontSize: theme.textTheme.displayMedium?.fontSize,
-                color: OmniTheme.colors.textDominant,
+                color: OmniTheme.colors.textSecondary,
               ),
             ),
             const SizedBox(height: 12),
@@ -1336,7 +1336,7 @@ extension on _RoutineSetupScreenState {
           metricType: 'extra-weight',
           currentValue: extraWeight,
           unitLabel: 'EXTRA $_preferredWeightUnitLabel',
-          emphasisTier: MetricEmphasisTier.secondary,
+          emphasisTier: MetricEmphasisTier.dominant,
           onValueChanged: (value) => widget.routineState.setTargetValue(
             effort.id,
             MetricIds.extraWeight,
