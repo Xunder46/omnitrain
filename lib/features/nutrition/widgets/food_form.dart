@@ -97,6 +97,27 @@ class FoodForm extends StatefulWidget {
   /// instead of requiring a save button press.
   final bool autoSaveOnBlur;
 
+  /// Optional partial-save callback fired after a successful photo
+  /// pick in **edit mode** (when [initial] is non-null). The host
+  /// wires this to `updateCustomFood` / `updateCatalogFood` so the
+  /// new `imagePath` lands in the data layer immediately, even on
+  /// screens that have no Save button (e.g. `EditFoodScreen` with
+  /// `autoSaveOnBlur: true`).
+  ///
+  /// The draft passed to this callback is built from [initial] with
+  /// only `imagePath` changed. Concurrent edits to the form's text
+  /// controllers are NOT clobbered (the pick should not overwrite
+  /// a half-typed name).
+  ///
+  /// In create mode ([initial] is null) the callback is **not**
+  /// fired — the form just stores the image locally and the user
+  /// saves the whole food via the existing Save button.
+  ///
+  /// The D-7 cleanup (delete previous managed file) is the
+  /// state method's responsibility; the form does not call the
+  /// service directly.
+  final Future<bool> Function(FoodDraft draft)? onImageSave;
+
   const FoodForm({
     super.key,
     required this.initial,
@@ -107,6 +128,7 @@ class FoodForm extends StatefulWidget {
     this.skipPopOnSave = false,
     this.controller,
     this.autoSaveOnBlur = false,
+    this.onImageSave,
   });
 
   @override
@@ -253,7 +275,8 @@ class _FoodFormState extends State<FoodForm> {
       if (kIsWeb) {
         if (!mounted) return;
         // Web has no persistent file API; mirror the avatar flow's
-        // user-facing message.
+        // user-facing message (D-5: web persistence is intentionally
+        // out of scope for this iteration).
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -263,14 +286,84 @@ class _FoodFormState extends State<FoodForm> {
         );
         return;
       }
-      if (!mounted) return;
-      setState(() => _imagePath = picked.path);
+      await handlePickedImage(picked);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to update photo: $e')),
       );
     }
+  }
+
+  /// Persist a picked [XFile] into the managed directory, update
+  /// the form's local `_imagePath`, and (in edit mode) fire
+  /// [FoodForm.onImageSave] so the data layer sees the new path
+  /// immediately.
+  ///
+  /// This is the single source of truth for the pick-handler
+  /// post-Persistence work. `_pickImage` is the user-facing
+  /// entry point that drives the OS picker and then delegates
+  /// here. Tests invoke this method directly to bypass the
+  /// `image_picker` platform channel.
+  ///
+  /// The "save on upload" behaviour addresses the food-library
+  /// photo-persistence bug: `EditFoodScreen` uses
+  /// `autoSaveOnBlur: true, skipPopOnSave: true` and has no Save
+  /// button, so a pure `_pickImage` would leave the food's
+  /// `imagePath` null in the data layer until the user blurred
+  /// focus off the form (which they may not do — they may just
+  /// tap back). Firing `onImageSave` here means the photo is
+  /// saved the moment it is picked.
+  @visibleForTesting
+  Future<void> handlePickedImage(XFile picked) async {
+    if (kIsWeb) return;
+    // D-1..D-9: copy the picked file into the managed directory.
+    // The picked file lives in a temporary cache the OS may purge,
+    // so we replace it with a stable app-owned path. D-6: on copy
+    // failure, the service has already cleaned up any partial
+    // destination; we do not mutate state.
+    final persistedPath = await widget.foodLibraryState.imageStorage
+        .persistPickedImage(picked);
+    if (!mounted) return;
+    setState(() => _imagePath = persistedPath);
+
+    // Save on upload — edit mode only. The create flow uses the
+    // existing Save button; partial-saving a half-typed new food
+    // would write a corrupt row. The partial draft is built from
+    // [FoodForm.initial] (the existing food) with only
+    // `imagePath` changed, so concurrent edits to the form's
+    // text controllers (e.g. a half-typed name) are preserved.
+    final onImageSave = widget.onImageSave;
+    if (onImageSave == null || widget.initial == null) return;
+    final partialDraft = _partialDraftFromInitial(persistedPath);
+    final ok = await onImageSave(partialDraft);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save photo')),
+      );
+    }
+  }
+
+  /// Build a [FoodDraft] from [FoodForm.initial] with only
+  /// `imagePath` swapped. Used by [handlePickedImage] to fire
+  /// [FoodForm.onImageSave] without clobbering in-flight edits
+  /// to the form's text controllers.
+  FoodDraft _partialDraftFromInitial(String? imagePath) {
+    final initial = widget.initial!;
+    return FoodDraft(
+      name: initial.name,
+      groupId: initial.groupId,
+      unitType: initial.unitType,
+      referenceAmount: initial.referenceAmount,
+      referenceLabel: initial.referenceLabel,
+      protein: initial.protein,
+      carbs: initial.carbs,
+      fiber: initial.fiber,
+      fat: initial.fat,
+      sodium: initial.sodium,
+      notes: initial.notes,
+      imagePath: imagePath,
+    );
   }
 
   void _clearImage() {

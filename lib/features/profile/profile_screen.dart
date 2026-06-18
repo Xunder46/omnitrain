@@ -362,15 +362,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         maxWidth: 1600,
       );
       if (pickedImage == null) return;
-      // Browser picking can work on web, but avatarPath is a native-first
-      // contract and cannot reliably replay a persisted local selection there.
+      // Web has no persistent file API; mirror the food-form
+      // message (D-5: web persistence is intentionally out of
+      // scope for this iteration).
       if (kIsWeb) {
         _showMessage(
           'Photo selection works on web, but avatar persistence is not supported there yet.',
         );
         return;
       }
-      await widget.profileState.updateAvatarPath(pickedImage.path);
+      // D-1..D-9: copy the picked file into the managed directory
+      // before saving to the data layer. The picked file lives in
+      // a temporary cache the OS may purge, so we replace it with
+      // a stable app-owned path. On failure, no state mutation
+      // happens (D-6: partial files are cleaned up by the service).
+      final persistedPath = await widget.profileState.imageStorage
+          .persistPickedImage(pickedImage);
+      await widget.profileState.updateAvatarPath(persistedPath);
     } catch (e) {
       _showMessage('Failed to update avatar: $e');
     }

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../core/models/food_draft.dart';
+import '../core/services/image_storage_service.dart';
 import '../data/models/models.dart';
 import '../data/repositories/workout_repository.dart';
 
@@ -13,6 +14,13 @@ import '../data/repositories/workout_repository.dart';
 /// allowing environment-agnostic persistence (Hive web, SQLite native).
 class FoodLibraryState extends ChangeNotifier {
   final WorkoutRepository _repository;
+
+  /// Optional image-storage helper. When provided, the state
+  /// self-heals stale food `imagePath`s on load (D-4) and deletes
+  /// the previous managed file when a food's photo is replaced or
+  /// removed (D-3, D-7). When null, these behaviours are no-ops —
+  /// used only by tests that do not exercise image persistence.
+  final ImageStorageService? _imageStorage;
 
   // ─── Private cache fields ─────────────────────────────────────────────────
   Map<String, FoodGroup> _foodGroups = {};
@@ -53,7 +61,58 @@ class FoodLibraryState extends ChangeNotifier {
 
   // ─── Constructor ──────────────────────────────────────────────────────────
 
-  FoodLibraryState(this._repository);
+  FoodLibraryState(this._repository, {ImageStorageService? imageStorage})
+      : _imageStorage = imageStorage;
+
+  /// Non-null accessor for the image storage helper. Screens that
+  /// host the food-photo picker (`FoodForm`) read this to perform
+  /// the file-system copy before calling the state save methods.
+  /// The production `main.dart` always injects a real service;
+  /// tests that do not exercise the picker should not read this
+  /// getter.
+  ImageStorageService get imageStorage {
+    final svc = _imageStorage;
+    if (svc == null) {
+      throw StateError(
+        'FoodLibraryState.imageStorage was read but no service was '
+        'injected. main.dart must construct an ImageStorageService '
+        'and pass it to FoodLibraryState. See '
+        '.github/agents/plans/image-persistence-fix-plan.md (D-8).',
+      );
+    }
+    return svc;
+  }
+
+  /// Load-time self-heal: any cached food whose `imagePath` points
+  /// at a file the OS has since deleted is converged to `null`
+  /// (D-4). The repository row is updated so the next launch is a
+  /// no-op. Per-row failures are logged to [debugPrint] but do not
+  /// propagate — the next load will retry them. The load itself
+  /// never throws because of self-heal.
+  Future<void> _selfHealFoodImages() async {
+    final svc = _imageStorage;
+    if (svc == null) return;
+    final stale = <String, Food>{};
+    for (final food in _foods.values) {
+      final path = food.imagePath;
+      if (path != null && path.isNotEmpty && !svc.exists(path)) {
+        stale[food.id] = food;
+      }
+    }
+    for (final entry in stale.entries) {
+      final healed = entry.value.copyWith(imagePath: null);
+      try {
+        await _repository.updateFood(healed);
+        _foods[entry.key] = healed;
+      } catch (e) {
+        // The state has no general error channel; surface to the
+        // debug log and let the next load retry.
+        debugPrint(
+          'FoodLibraryState self-heal failed for ${entry.key}: $e',
+        );
+      }
+    }
+  }
 
   // ─── Food Group Operations ────────────────────────────────────────────────
 
@@ -278,6 +337,10 @@ class FoodLibraryState extends ChangeNotifier {
         includeArchived: includeArchived,
       );
       _foods = {for (final f in foodsList) f.id: f};
+      // D-4: load-time self-heal for stale `imagePath`s. Runs
+      // after the cache is populated so the renderer never
+      // observes a non-null path that points at a gone file.
+      await _selfHealFoodImages();
     } catch (e) {
       _foods = {};
       rethrow;
@@ -607,6 +670,19 @@ class FoodLibraryState extends ChangeNotifier {
     if (!_catalogFoods.containsKey(existing.id)) {
       throw Exception('Catalog food not found: ${existing.id}');
     }
+    // D-7: replace/remove cleanup. Catalog edits may also clear
+    // the image; the previous managed file is removed here so the
+    // managed directory does not accumulate orphans. The
+    // user-library sync loop below re-uses the same `imagePath`,
+    // so this single delete covers both the catalog row and any
+    // synced user copies that previously held the same file.
+    final previousPath = existing.imagePath;
+    if (previousPath != draft.imagePath) {
+      final svc = _imageStorage;
+      if (svc != null && previousPath != null) {
+        await svc.deleteIfManaged(previousPath);
+      }
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     final updated = existing.copyWith(
       name: draft.name,
@@ -836,9 +912,11 @@ class FoodLibraryState extends ChangeNotifier {
   /// and listeners are notified.
   ///
   /// The image is stored as an opaque native-first local file path
-  /// (same contract as `UserProfile.avatarPath`). Passing
-  /// `imagePath: null` clears the image on the food (the file is
-  /// not deleted from disk — that is the user's responsibility).
+  /// (same contract as `UserProfile.avatarPath`). When
+  /// [imagePath] differs from the previous value, the state asks
+  /// the [ImageStorageService] to delete the previous managed file
+  /// (D-3, D-7). Passing `imagePath: null` clears the image and
+  /// deletes the previous managed file.
   ///
   /// `ConsumedFood` snapshots for past days are NOT modified: the
   /// snapshot model freezes name, macros, and reference at log
@@ -864,6 +942,16 @@ class FoodLibraryState extends ChangeNotifier {
     final existing = _foods[id];
     if (existing == null) {
       throw Exception('Food not found: $id');
+    }
+    // D-7: replace/remove cleanup. The state owns the
+    // "what was the previous image?" knowledge; the service
+    // enforces the managed-directory gate (D-3).
+    final previousPath = existing.imagePath;
+    if (previousPath != imagePath) {
+      final svc = _imageStorage;
+      if (svc != null && previousPath != null) {
+        await svc.deleteIfManaged(previousPath);
+      }
     }
     final now = DateTime.now().millisecondsSinceEpoch;
     final updated = Food(

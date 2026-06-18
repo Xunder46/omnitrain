@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'app.dart';
+import 'core/services/image_storage_service.dart';
 import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
@@ -66,6 +67,15 @@ void main() async {
     );
     final showOnboarding = !onboardingComplete;
 
+    // Native-only image storage helper (Phase 2 of the
+    // image-persistence fix plan). Owns the managed directory
+    // `<applicationDocumentsDirectory>/omni_images/` and is the
+    // sole gate for the pick-and-store flow on profile avatars and
+    // food photos. Construction resolves the documents directory
+    // once at app start; the same instance is shared by every
+    // state and screen that needs it (D-8).
+    final imageStorageService = await ImageStorageService.create();
+
     // Create state with repository
     final workoutState = WorkoutState(repository);
     final homeState = HomeState(repository);
@@ -73,12 +83,18 @@ void main() async {
     final routineState = RoutineState(repository);
     final calendarState = CalendarState(repository);
     final periodState = PeriodState(repository);
-    final profileState = ProfileState(repository);
+    final profileState = ProfileState(
+      repository,
+      imageStorage: imageStorageService,
+    );
     final settingsState = SettingsState(repository, preferencesService);
     await settingsState.initialize();
     final nutritionState = NutritionState(repository);
     await nutritionState.loadNutritionTarget();
-    final foodLibraryState = FoodLibraryState(repository);
+    final foodLibraryState = FoodLibraryState(
+      repository,
+      imageStorage: imageStorageService,
+    );
     final timerAlertService = TimerAlertService();
     await timerAlertService.initialize();
     final restNotificationService = RestNotificationService();

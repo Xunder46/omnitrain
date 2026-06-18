@@ -432,7 +432,7 @@ void main() {
             expect(find.byType(InlineMetricEditor), findsOneWidget);
             expect(
               _metricValueText(tester).style?.color,
-              OmniTheme.colors.textSecondary,
+              OmniTheme.colors.textDominant,
             );
           }
         }

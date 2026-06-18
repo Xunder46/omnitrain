@@ -99,6 +99,24 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
             return false;
           }
         },
+        // "Save on upload": the form has no Save button (the user
+        // explicitly removed it — see the user's Phase 3.X bug
+        // report), so the photo pick handler must persist the new
+        // imagePath to the data layer immediately. The partial
+        // draft is built from `widget.food` with only `imagePath`
+        // changed, so concurrent edits to the form's text
+        // controllers (a half-typed name, say) are preserved.
+        onImageSave: (draft) async {
+          try {
+            await widget.foodLibraryState.updateCatalogFood(
+              widget.food,
+              draft,
+            );
+            return true;
+          } catch (_) {
+            return false;
+          }
+        },
       ),
       // Auto-save on blur - no save button needed for existing foods.
     );

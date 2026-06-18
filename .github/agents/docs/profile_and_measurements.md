@@ -111,10 +111,56 @@ Key behavior:
 - `image_picker` is integrated for avatar actions.
 - Native/desktop: avatar path rendering uses `dart:io` implementation (`Image.file`).
 - Web: stub implementation safely falls back to icon; no `dart:io` import path is used.
-- Current contract is native-first (`avatarPath` local file path). Persisted web avatar replay is intentionally not solved in this iteration.
+- Current contract is native-first (`avatarPath` local file path). Web persistence is intentionally not solved in this iteration.
 
-Recommended follow-up for robust web persistence:
-- repository-backed web-safe representation (bytes, object URL, or base64/blob strategy)
+---
+
+## Avatar Persistence
+
+Profile avatars and food photos uploaded via the OS photo picker are
+stored in a managed directory inside the app's documents storage.
+This ensures the images survive app restarts on iOS/Android.
+
+### Storage Contract
+
+- **Managed directory**: `<applicationDocumentsDirectory>/omni_images/`
+- **Filename**: `<uuid-v4>.<ext>` where `<ext>` is preserved from the
+  picked image (with fallback chain: name → path → `.jpg`)
+- **Path is opaque**: The repository stores the path string but never
+  reads or writes the image file directly
+
+### Self-Heal on Load
+
+When loading a profile or food from the repository, if the stored path
+points to a file that no longer exists (e.g., a stale `image_picker`
+cache path from before this fix), the state writes `null` back to the
+record. This ensures the renderer shows its fallback instead of a broken
+image, and the data layer stops carrying orphan references.
+
+### Delete on Replace/Remove
+
+When the avatar or food photo is replaced or removed:
+1. The state captures the previous path from the loaded record
+2. The new value is persisted first
+3. The `ImageStorageService.deleteIfManaged(previousPath)` is called
+   to delete the previous managed file
+
+The service only deletes files under its managed directory — this
+protects against accidentally deleting files outside its scope.
+
+### Web Behavior
+
+On web, the `kIsWeb` early-return in the picker handlers shows a
+snackbar: "Photo selection works on web, but avatar/food photo
+persistence is not supported there yet." The service is not called.
+
+### Implementation Files
+
+- `lib/core/services/image_storage_service.dart` (conditional export)
+- `lib/core/services/image_storage_service_io.dart` (native implementation)
+- `lib/core/services/image_storage_service_stub.dart` (web stub)
+
+See also: `docs/db_integration.md` — "Image Storage (managed directory)"
 
 ---
 

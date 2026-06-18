@@ -251,6 +251,41 @@ importer is documented in `scripts/sqlite_schema.sql` under
 | `deleteConsumedFood(id)` | Deletes a consumed food entry. |
 | `getConsumedFoodsInRange(fromMs, toMs)` | Returns consumed foods in a date range (inclusive). |
 
+### Image Storage (managed directory)
+
+Profile avatars and food photos are stored as files in a managed
+directory, not as BLOBs in the database. This ensures native platform
+compatibility and proper memory handling for large images.
+
+**Managed directory**: `<applicationDocumentsDirectory>/omni_images/`
+
+**Filename shape**: `<uuid-v4>.<ext>` where `<ext>` is preserved from
+the picked image (with fallback chain: name → path → `.jpg`)
+
+**Storage contract**:
+- The image file is stored in the file system under the managed directory
+- The path string is stored in `avatar_path` (UserProfile) or
+  `image_path` (Food) as an opaque string
+- The repository never reads or writes the image file directly
+- This is the same contract documented in `docs/profile_and_measurements.md`
+  — "Avatar Persistence"
+
+**Why not SQL BLOB**: The file system is the native platform's native
+persistence for large binary assets. Storing images as BLOBs would
+require base64 encoding, which increases storage size by ~33% and
+complicates memory management when loading images for display. The
+managed directory approach keeps the SQL schema unchanged and leverages
+platform-native file caching.
+
+**Self-heal**: State classes check file existence on load. If a stored
+path points to a missing file, the state writes `null` back to the
+record so the next launch is a no-op.
+
+**Delete gate**: `ImageStorageService.isManaged(path)` is the sole gate
+for file deletion. The service only deletes files under its managed
+directory — this protects against accidentally deleting files outside
+its scope (legacy paths, user-typed paths, or external intents).
+
 ### Storage Shape
 
 **Library foods (Hive)**:
