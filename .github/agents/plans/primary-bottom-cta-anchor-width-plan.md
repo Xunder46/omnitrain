@@ -33,7 +33,7 @@ unchanged. Secondary and inline buttons are out of scope.
   - `WorkoutSessionScreen` (3 list-view branches — "Finish Workout" /
     "Save Changes")
   - `SessionSummaryScreen` ("Done")
-  - `PeriodListScreen` ("+ Period")
+  - `PeriodListScreen` ("+ New Period")
   - `CreatePeriodScreen` ("Save")
   - `ExerciseEditorScreen` ("Save exercise")
 - Button label, color, and on-press action for every migrated screen are
@@ -114,7 +114,7 @@ unchanged. Secondary and inline buttons are out of scope.
 - Precondition: `PeriodState` initialized
 - Flow: pumpWidget → pumpAndSettle
 - Expected outcome: `Scaffold.bottomNavigationBar` is `OmniBottomCTA`
-  with label "+ Period" and shared width / vertical anchor.
+  with label "+ New Period" and shared width / vertical anchor.
 - Edge case of: S-001
 
 ### S-004: CreatePeriodScreen primary bottom CTA

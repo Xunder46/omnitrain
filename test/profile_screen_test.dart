@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/profile/profile_screen.dart';
+import 'package:omnitrain/features/profile/widgets/measurement_history_chart_sheet.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'helpers/fake_preferences_service.dart';
@@ -54,7 +55,7 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -300));
     await tester.pumpAndSettle();
 
-    // Third add button (first additional measurement - Body Fat)
+    // Third add button (first additional measurement - BODY FAT)
     await tester.tap(find.byIcon(Icons.add).first);
     await tester.pumpAndSettle();
 
@@ -90,11 +91,25 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Body Weight'));
+    // Phase 4: the measurement name now lives in the
+    // [OmniCardHeader] above the card; tapping the header text does
+    // not open the history sheet. The sparkline area inside the
+    // card body holds the [InkWell] (key `measurement_sparkline_tap`).
+    // Tap the first sparkline to open the history sheet.
+    await tester.tap(find.byKey(const Key('measurement_sparkline_tap')).first);
     await tester.pumpAndSettle();
 
-    // The history sheet header shows the measurement label in uppercase
-    expect(find.text('BODY WEIGHT'), findsOneWidget);
+    // The history sheet header shows the measurement label in uppercase.
+    // A17: scope through the sheet — the uppercased `OmniCardHeader`
+    // title on the underlying screen also renders 'BODY WEIGHT' so an
+    // unscoped `find.text('BODY WEIGHT')` would match 2 widgets.
+    expect(
+      find.descendant(
+        of: find.byType(MeasurementHistoryChartSheet),
+        matching: find.text('BODY WEIGHT'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Note (optional)'), findsNothing);
   });
 
@@ -128,8 +143,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('176.4 lbs'), findsOneWidget);
-
+    // Phase 4: the card body no longer renders the formatted weight
+    // value (it renders a sparkline). The lbs preference is still
+    // honoured by the log sheet — which is what this assertion now
+    // covers. Tap the `+` icon in the [OmniCardHeader] actions slot
+    // (Phase 4: still keyed by the icon itself) to open the log
+    // sheet and verify the unit + prefilled value.
     await tester.tap(find.byIcon(Icons.add).first);
     await tester.pumpAndSettle();
 

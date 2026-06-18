@@ -133,15 +133,32 @@ class _MeasurementHistoryChartSheetState
   Widget _buildChart(ThemeData theme) {
     final chartMetrics = _buildChartMetrics(theme);
 
-    return SizedBox(
-      height: 220,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
-        child: Stack(
-          children: [
-            LineChart(chartMetrics.data),
-            _buildDotTapTargets(chartMetrics),
-          ],
+    // The chart is rendered at a fixed 340 dp width (user-tweaked
+    // from A20's 200 dp) and centered horizontally inside the
+    // sheet so it reads as a focused detail-view chart rather than
+    // a full-width data panel. Vertical axis values (Y-axis labels
+    // + horizontal grid lines that communicate value levels) are
+    // hidden entirely per A20 — only the data line + dots + bottom
+    // X-axis dates remain.
+    //
+    // Horizontal padding (16 dp on each side) gives the line
+    // breathing room from the chart's left/right edges so the
+    // start/end dots don't touch the rounded chart bounds. The
+    // X-axis dates (the only axis labels that render) live in the
+    // bottom `reservedSize` strip; their visibility is improved
+    // by reserving 32 dp and bumping the font size to 11 pt.
+    return Center(
+      child: SizedBox(
+        width: 340,
+        height: 220,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Stack(
+            children: [
+              LineChart(chartMetrics.data),
+              _buildDotTapTargets(chartMetrics),
+            ],
+          ),
         ),
       ),
     );
@@ -403,8 +420,6 @@ class _MeasurementHistoryChartSheetState
     final verticalPadding = range < 1 ? 1.0 : range * 0.15;
     final yMin = minValue - verticalPadding;
     final yMax = maxValue + verticalPadding;
-    final yRange = yMax - yMin;
-    final interval = yRange < 4 ? 1.0 : yRange / 4;
 
     final minX = _entries.length == 1 ? -0.5 : 0.0;
     final maxX = _entries.length == 1 ? 0.5 : (_entries.length - 1).toDouble();
@@ -420,14 +435,11 @@ class _MeasurementHistoryChartSheetState
         clipData: FlClipData.all(),
         borderData: FlBorderData(show: false),
         extraLinesData: ExtraLinesData(),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: interval,
-          getDrawingHorizontalLine: (_) {
-            return FlLine(color: onSurface.withOpacity(0.08), strokeWidth: 1);
-          },
-        ),
+        // Horizontal grid lines hidden per A20 — the user wants no
+        // vertical axis values to show at all (the Y-axis labels are
+        // already hidden in `titlesData`; the grid lines were the
+        // last remaining hint of a value scale on the vertical axis).
+        gridData: FlGridData(show: false),
         titlesData: FlTitlesData(
           topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -435,7 +447,11 @@ class _MeasurementHistoryChartSheetState
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 28,
+              // Bumped from 28 → 32 so the X-axis date labels have
+              // enough room to render at the bumped 11 pt font
+              // without being clipped by the chart's 220 dp
+              // height (data area = 220 − 32 = 188 dp tall).
+              reservedSize: 32,
               interval: 1,
               getTitlesWidget: (value, _) {
                 final index = value.toInt();
@@ -456,7 +472,7 @@ class _MeasurementHistoryChartSheetState
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: OmniTheme.colors.textSecondary.withOpacity(0.60),
                       // [E] Chart axis — dense instrumentation label; getTitlesWidget has no BuildContext
-                      fontSize: 10,
+                      fontSize: 11,
                     ),
                   ),
                 );

@@ -17,6 +17,8 @@ import '../../state/calendar/calendar_state.dart';
 import '../../state/period/period_state.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_card_header.dart';
+import '../../widgets/layout/omni_surface.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/metric_chooser_dialog.dart';
 import '../../data/models/models.dart';
@@ -89,6 +91,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     super.initState();
     final repository = widget.workoutState.repository;
     _calendarState = CalendarState(repository);
+    // CalendarState.init() is async but its first statement is the
+    // synchronous `_year = now.year` assignment (no `await` before it),
+    // so a fire-and-forget call is sufficient to prime the late
+    // fields. Without this call, tapping "Open Calendar" in the
+    // calendar card throws `LateInitializationError` on the late
+    // `_year` field (Phase 4 review feedback — was A5 in the plan).
+    _calendarState.init();
     _periodState = PeriodState(repository);
     _routineSessionService = RoutineSessionService(repository);
     _summary = widget.workoutState.computeSessionSummary();
@@ -585,14 +594,22 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      _buildHeaderCard(theme),
+                      // The date header (with the modality chip) is
+                      // always rendered — even when the combined
+                      // Duration/Rest Time card is hidden for a
+                      // rolling session. The header acts as a
+                      // day-context reminder; the card body is the
+                      // only part that the rolling branch omits.
+                      _buildSessionInfoHeader(theme),
                       if (!widget.workoutState.isRollingSession) ...[
-                        const SizedBox(height: 16),
-                        _buildStatsCard(theme),
+                        _buildSessionInfoCard(theme),
                       ],
                       ..._buildGroupCards(theme),
+                      const SizedBox(height: 16),
+                      const OmniCardHeader(title: 'SESSION NOTE'),
                       _buildNoteCard(theme),
                       const SizedBox(height: 16),
+                      _buildCalendarHeader(theme),
                       _buildCalendarCard(theme),
                       if (_isLoading)
                         Padding(
@@ -624,78 +641,106 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  Widget _buildHeaderCard(ThemeData theme) {
+  /// Header for the first (combined session info) card. The date+time
+  /// is the title; the modality chip sits in the actions slot on the
+  /// right (per the Phase 2.2 refinement — chip belongs to the first
+  /// card, not the page-level header).
+  Widget _buildSessionInfoHeader(ThemeData theme) {
     final session = widget.workoutState.currentSession;
     final startedAt = session != null
         ? DateTime.fromMillisecondsSinceEpoch(session.startedAtMs)
         : DateTime.now();
-    final modalityLabel = ModalityDisplay.getName(session?.modality);
-    final title = session?.title ?? modalityLabel;
+    return OmniCardHeader(
+      key: const Key('omni_session_info_header'),
+      title: _formatDateTime(startedAt),
+      actions: [_buildModalityChip(theme)],
+    );
+  }
 
-    return _SummaryCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  /// Combined session info card: Duration pill + Rest Time pill.
+  ///
+  /// Replaces the previous two-card layout (header card + stats card)
+  /// per the Phase 2.1 refinement. The page title lives in
+  /// [OmniBackHeader]; the date and modality chip live in
+  /// [_buildSessionInfoHeader] above this card. The card body is
+  /// content-only.
+  Widget _buildSessionInfoCard(ThemeData theme) {
+    return OmniSurface(
+      key: const Key('omni_session_info_card'),
+      padding: const EdgeInsets.all(16),
+      child: Row(
         children: [
-          Text(
-            title,
-            style: theme.textTheme.headlineSmall?.copyWith(letterSpacing: 0.4),
+          Expanded(
+            child: _StatPill(
+              label: 'Duration',
+              value: _formatDuration(_summary.totalDurationMs),
+            ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                _formatDateTime(startedAt),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withOpacity(0.7),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  modalityLabel,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-              ),
-            ],
+          const SizedBox(width: 16),
+          Expanded(
+            child: _StatPill(
+              label: 'Rest Time',
+              value: _formatDurationOrZero(_restTimeMs),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatsCard(ThemeData theme) {
-    final stats = <_StatItem>[
-      _StatItem(
-        label: 'Duration',
-        value: _formatDuration(_summary.totalDurationMs),
+  /// Small modality pill rendered in the top-right of the first card's
+  /// [OmniCardHeader] actions slot (per the Phase 2.2 refinement —
+  /// the chip belongs to the first card, not the page-level header).
+  Widget _buildModalityChip(ThemeData theme) {
+    final session = widget.workoutState.currentSession;
+    final modalityLabel = ModalityDisplay.getName(session?.modality);
+    return Container(
+      key: const Key('omni_session_summary_modality_chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
       ),
-      _StatItem(label: 'Rest Time', value: _formatDurationOrZero(_restTimeMs)),
-    ];
+      child: Text(
+        modalityLabel,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: theme.colorScheme.primary,
+        ),
+      ),
+    );
+  }
 
-    return _SummaryCard(
-      child: Row(
-        children: [
-          Expanded(
-            child: _StatPill(label: stats[0].label, value: stats[0].value),
+  /// Calendar card header: month label on the left, "Open Calendar"
+  /// button on the right. Lives above the calendar [OmniSurface].
+  Widget _buildCalendarHeader(ThemeData theme) {
+    final now = DateTime.now();
+    final monthLabel = '${_monthName(now.month)} ${now.year}';
+    return OmniCardHeader(
+      title: monthLabel,
+      actions: [_buildOpenCalendarButton()],
+    );
+  }
+
+  /// Compact `Open Calendar` button used in the calendar card's
+  /// [OmniCardHeader] actions slot. Extracted so the body composition
+  /// site stays compact and so the button lives outside the card
+  /// (D-2: controls pertinent to a card live in its header).
+  Widget _buildOpenCalendarButton() {
+    return FilledButton.tonalIcon(
+      onPressed: _openCalendarScreen,
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        ),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _StatPill(label: stats[1].label, value: stats[1].value),
-          ),
-        ],
+        ),
       ),
+      icon: const Icon(Icons.open_in_new, size: 16),
+      label: const Text('Open Calendar'),
     );
   }
 
@@ -739,7 +784,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     final prs = _prsByGroup[groupKey] ?? const <PRAchievement>[];
 
-    return _SummaryCard(
+    return OmniSurface(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -855,69 +901,36 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Widget _buildNoteCard(ThemeData theme) {
-    return _SummaryCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Session note', style: theme.textTheme.titleMedium),
-          const SizedBox(height: 8),
-          TextField(
-            textCapitalization: TextCapitalization.sentences,
-            controller: _noteController,
-            onChanged: _handleNoteChanged,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              hintText: 'Leave a note about today\'s session',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ],
+    // Title is rendered by the `OmniCardHeader` above this card (see
+    // the body composition site). The card body is content-only.
+    return OmniSurface(
+      padding: const EdgeInsets.all(16),
+      child: TextField(
+        textCapitalization: TextCapitalization.sentences,
+        controller: _noteController,
+        onChanged: _handleNoteChanged,
+        maxLines: 3,
+        decoration: const InputDecoration(
+          hintText: 'Leave a note about today\'s session',
+          border: OutlineInputBorder(),
+        ),
       ),
     );
   }
 
   Widget _buildCalendarCard(ThemeData theme) {
+    // Month label + "Open Calendar" button live in the
+    // `OmniCardHeader` above this card (see `_buildCalendarHeader`
+    // and the body composition site). The card body is content-only.
     final now = DateTime.now();
-    final monthLabel = '${_monthName(now.month)} ${now.year}';
     final workoutDays = _workoutDays.length;
     final restDays = (_daysInMonth - workoutDays).clamp(0, _daysInMonth);
 
-    return _SummaryCard(
+    return OmniSurface(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  monthLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium,
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.tonalIcon(
-                onPressed: _openCalendarScreen,
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  ),
-                  shape: WidgetStatePropertyAll(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                icon: const Icon(Icons.open_in_new, size: 16),
-                label: const Text('Open Calendar'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           _buildCalendarGrid(theme, now),
           const SizedBox(height: 12),
           Text(
@@ -1063,33 +1076,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       'December',
     ];
     return months[month - 1];
-  }
-}
-
-class _SummaryCard extends StatelessWidget {
-  final Widget child;
-
-  const _SummaryCard({required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: child,
-    );
   }
 }
 
@@ -1251,13 +1237,6 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
       }
     }
   }
-}
-
-class _StatItem {
-  final String label;
-  final String value;
-
-  const _StatItem({required this.label, required this.value});
 }
 
 class _StatPill extends StatelessWidget {

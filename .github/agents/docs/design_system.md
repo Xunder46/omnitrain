@@ -181,6 +181,36 @@ honoured; themes can override slots later without touching the chart.
 
 ---
 
+## Section / Card Headers
+
+Every section eyebrow and per-card title in the app uses the **canonical D-1 typography** — there is one and only one style for these elements. The contract is enforced by the `OmniCardHeader` widget (see `docs/widget_catalog.md`); callers cannot override the style.
+
+| Property | Value | Rationale |
+|----------|-------|-----------|
+| Size | `theme.textTheme.labelSmall` | Small enough to read as a section eyebrow, not a hero title. |
+| Weight | `FontWeight.w600` | Same emphasis tier as the surrounding card content (no louder than the card body). |
+| Letter spacing | `2.0` | The "Labels" track — uppercase or small-caps feel. |
+| Color | `OmniTheme.colors.textMuted` | Quiet, secondary hierarchy; never louder than the card body. |
+| Overflow | `maxLines: 1, overflow: TextOverflow.ellipsis` | Long titles (e.g. month labels, dates) truncate gracefully rather than wrap. |
+
+### Where the canonical header is used
+
+Every section / card header in the app routes through `OmniCardHeader`. The widget enforces the contract above; raw `Text` widgets above outlined cards are **not permitted** (see `docs/global_conventions.md`).
+
+| Screen | Headers |
+|--------|---------|
+| **Settings** | `PREFERENCES`, `SOUNDS & ALERTS`, `WORKOUT`, `APPEARANCE` |
+| **Session Summary** | Date (with the modality chip in actions), `SESSION NOTE` (note card), month label (with `Open Calendar` in actions) |
+| **Daily Nutrition** | `Today` (with `edit_targets_icon` in actions), `Foods I Eat` (with `food_library_manage_pencil` in actions) |
+| **Profile** | One header per measurement definition (label + `+` add button in actions) |
+| **Stats** | `ALL TIME`, `STRENGTH` / `CARDIO` (with the window chip in actions), `NUTRITION` |
+
+### Intentional exceptions (D-10 — sheet / title chrome, not card headers)
+
+The home screen's `HUB` eyebrow and body-centered `TRAIN` title are sheet / title chrome (they sit on top of the gradient or as the page's hero text), not card headers — they intentionally stay on their own typography (`letterSpacing: 3.0` for `TRAIN`, `letterSpacing: 2.0` for `HUB`). The onboarding screen's step label is similarly out of scope.
+
+---
+
 ## Spacing & Layout
 
 | Token | Value | Usage |

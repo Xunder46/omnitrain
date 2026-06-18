@@ -54,7 +54,7 @@ Full-screen cosmic gradient backdrop used on every screen.
 
 **File**: `lib/widgets/layout/omni_back_header.dart`
 
-Standardized back-and-title header used by all secondary screens. Implements `PreferredSizeWidget` so it slots directly into `Scaffold.appBar`.
+Standardized back-and-title header used by all secondary screens. Implements `PreferredSizeWidget` so it slots directly into `Scaffold.appBar`. **Screen-level chrome** — lives above the body and is distinct from `OmniCardHeader` (per-card title, see below).
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -75,11 +75,39 @@ Standardized back-and-title header used by all secondary screens. Implements `Pr
 - `SessionSummaryScreen` uses `actions: [PopupMenuButton]` for the Edit/Save/Discard overflow
 - `SessionOverviewScreen` and `RoutineSetupScreen` use `subtitle` for contextual secondary text
 
+### `OmniCardHeader`
+
+**File**: `lib/widgets/layout/omni_card_header.dart`
+
+Canonical per-card header rendered above an outlined card. Single source of truth for section/card header typography across the app. **Card-level chrome** — distinct from `OmniBackHeader` (screen-level, above the body).
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `title` | `String` | required | Header title (left-aligned) |
+| `actions` | `List<Widget>?` | `null` | Trailing widgets (icon buttons, controls) rendered in a right-aligned cluster. `null` or empty list renders no cluster. |
+| `padding` | `EdgeInsetsGeometry?` | `EdgeInsets.fromLTRB(0, 0, 0, 8)` | Padding around the row. The default leaves an 8 dp gap below the row so the header sits cleanly above the card beneath it. |
+
+**Behavior**:
+- Title typography is the canonical D-1 quartet: `theme.textTheme.labelSmall` + `FontWeight.w600` + `letterSpacing: 2.0` + `color: OmniTheme.colors.textMuted`. The widget enforces this — callers cannot override the style.
+- Title has `maxLines: 1, overflow: TextOverflow.ellipsis` (Phase 2.2 / A8) so long titles truncate gracefully rather than wrap.
+- Layout: `Row(MainAxisAlignment.spaceBetween)` with the title inside `Expanded` (so it shrinks/truncates when actions take space) and the actions cluster as a `Row(mainAxisSize: MainAxisSize.min, children: actions)`. Keys: `Key('omniCardHeader_title')` on the title `Text`; `Key('omniCardHeader_actions')` on the actions cluster `Row`.
+- Presentation-only: no repository or service access, no business logic.
+- Use cases (every section/card header in the app routes through this widget):
+  - **Settings screen** (Phase 1): `PREFERENCES`, `SOUNDS & ALERTS`, `WORKOUT`, `APPEARANCE`.
+  - **Session Summary screen** (Phase 2 / 2.1 / 2.2): the date header above the combined session info card (with the modality chip in actions), the `SESSION NOTE` header above the note card, and the month label header above the calendar card (with the `Open Calendar` button in actions).
+  - **Daily Nutrition screen** (Phase 3): `Today` header (with the `edit_targets_icon` `IconButton` in actions), `Foods I Eat` header (with the `food_library_manage_pencil` `IconButton` in actions).
+  - **Profile screen** (Phase 4): one `OmniCardHeader` per measurement definition (label + the `+` add `OutlinedButton` in actions).
+  - **Stats screen** (Phase 5): `ALL TIME`, `STRENGTH` / `CARDIO` (with the window chip in actions), `NUTRITION`.
+
+**Forbidden**:
+- Raw `Text` widgets above outlined cards are **not permitted** for section/card headers. Any pre-existing per-screen `_SectionHeader` / `_SectionLabel` / in-card `Text(definition.label)` widget has been migrated to this primitive (see `.github/agents/plans/unified-card-and-header-plan.md`).
+- Hard-coded overrides of the title style — the typography is canonical and enforced by the widget.
+
 ### `OmniSurface`
 
 **File**: `lib/widgets/layout/omni_surface.dart`
 
-Base container for all cards and panels. Dark navy with border + shadow.
+Base container for all cards and panels. Dark navy with border + shadow. **Single source of truth for outlined card chrome** — every outlined card in the app routes through this widget.
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -87,7 +115,9 @@ Base container for all cards and panels. Dark navy with border + shadow.
 | `padding` | `EdgeInsets?` | `null` | Optional inner padding |
 | `showShadow` | `bool` | `true` | Deep shadow toggle |
 
-Uses `OmniTheme.colors.surface`, `surfaceBorderRadius`, `OmniTheme.colors.surfaceBorder`, `surfaceBorderWidth`, `deepShadow`.
+**Behavior**:
+- Uses `OmniTheme.colors.surface`, `surfaceBorderRadius`, `OmniTheme.colors.surfaceBorder`, `surfaceBorderWidth`, `deepShadow`. The widget is the only authority for outlined card chrome across the app.
+- No call-site may re-declare border, radius, or shadow for an outlined card. Pre-existing per-screen `_SummaryCard` (Session Summary), raw Flutter `Card()` (Foods I Eat on the Daily Nutrition screen, Phase 3) and the calorie ring card's internal `Card()` (Daily Nutrition "Today" card, A20) have been migrated to this primitive.
 
 ### `OmniBottomCTA`
 
@@ -286,11 +316,17 @@ calories vs the daily target.
 
 **File**: `lib/features/nutrition/widgets/calorie_ring_card.dart`
 
-`Card` wrapper around `CalorieRing` for the top of `NutritionScreen`.
-Hosts the section title ("Today") and a small edit-targets icon button
-in the card's top-right corner. Reads consumed + target data from the
-injected `NutritionState` and rebuilds on every notification. Owns the
-**focus state** that drives the macro-donut tap-to-focus interaction.
+`OmniSurface` wrapper around `CalorieRing` for the top of `NutritionScreen`.
+The "Today" section title and the small edit-targets icon button live
+in an `OmniCardHeader` *above* the card (rendered by `NutritionScreen`,
+not by this widget) — see `.github/agents/plans/unified-card-and-header-plan.md`
+Phase 3. The card body itself renders the chart and the sodium chip
+in an `OmniSurface` so its chrome matches every other outlined card
+in the app (radius 20, 1 px `surfaceBorder`, `deepShadow`).
+
+Reads consumed + target data from the injected `NutritionState` and
+rebuilds on every notification. Owns the **focus state** that drives
+the macro-donut tap-to-focus interaction.
 
 | Prop | Type | Description |
 |---|---|---|
@@ -326,16 +362,19 @@ injected `NutritionState` and rebuilds on every notification. Owns the
   `netCarbs = max(0, todayConsumedCarbs - todayConsumedFiber)`,
   `fiber = todayConsumedFiber`, `fat = todayConsumedFat`.
 - Edit icon (`Icons.tune`, `Key('edit_targets_icon')`, tooltip "Edit
-  targets") lives in the top-right of the card. The icon button has an
-  explicit `shape:` override (`OmniTheme.buttonIconRadius` = 10) to
-  avoid Material 3's default `StadiumBorder`. The icon is **not** part of
-  the focus state — tapping it navigates to the targets editor as before.
+  targets") lives in the `OmniCardHeader` actions slot above the card
+  (rendered by `NutritionScreen`). The icon button has an explicit
+  `shape:` override (`OmniTheme.buttonIconRadius` = 10) to avoid
+  Material 3's default `StadiumBorder`. The icon is **not** part of the
+  focus state — tapping it navigates to the targets editor as before.
 - `ListenableBuilder` over `nutritionState` — every `notifyListeners()`
   (target load/save, consumed-food load, log/delete) rebuilds the ring
   and the donut. The focus survives a rebuild as long as the focused
   section still has non-zero grams (S-013); it clears if the section
   disappears (S-014), but does not flicker because the fallback is a no-op.
 - Pure presentation — no repository access, no business logic.
+- Card chrome is `OmniSurface` with symmetric 16 dp padding (A20); no
+  call-site may re-declare border, radius, or shadow.
 
 ### `MacroDonutChart`
 
@@ -1027,6 +1066,40 @@ returns the private `_cancelledSentinel`; `FilledButton("Delete")`
 returns the picked destination id (which may be `null` for
 Ungrouped). The caller uses the sentinel to distinguish cancel from
 "Ungrouped".
+
+---
+
+## Profile Widgets
+
+### `MeasurementSparkline`
+
+**File**: `lib/features/profile/widgets/measurement_sparkline.dart`
+
+Small history visualization for a single body measurement on the Profile screen. Renders one of three branches based on the entry count read from `ProfileState.getMeasurementHistory`:
+
+- **0 entries** — centered muted text `"No history yet"` at the sparkline's full height.
+- **1 entry** — the same full chart frame as the 2+ branch (Y-axis line, X-axis line, Y-axis scale labels, X-axis date strip) with **a single horizontal line** crossing **a single filled dot** at the entry's value. Both Y-axis labels show the same value (since `minV == maxV`); both X-axis labels show the same date (since `minMs == maxMs`). The line and dot both render at the chart's visual centre via the existing `xForTimestamp` / `yForValue` fallbacks (`timeRange == 0` → data-area mid; `range == 0` → `xAxisLineY / 2`). Replaces the legacy `Divider`-only hairline so the chart frame stays visually stable across the 0/1/2+ branch transitions.
+- **2+ entries** — a compact chart inside a **60 dp** container:
+  - **Axes**: a vertical Y-axis line on the **left** (boundary between the y-axis label column and the data area) and a horizontal X-axis line at the **bottom** of the chart area (boundary between the data area and the x-axis date strip). Both are 1 dp `theme.dividerColor` strokes drawn by the painter inside the same `CustomPaint` as the data line + dots.
+  - **Y-axis scale**: a max value label at top-LEFT and a min value label at bottom-LEFT of the chart area, in a 38 dp wide LEFT column to the left of the Y-axis line. Right-aligned so the rendered text visually anchors to the line. Rendered in `labelSmall` + `textMuted` + 9 pt. Format is the raw numeric value via `toStringAsFixed(1)` — the unit is intentionally **dropped** (the header above names the measurement and the value column shows the unit), so the LEFT column fits at the same font size as the X-axis labels. `overflow: TextOverflow.ellipsis` clips gracefully for edge cases.
+  - **X-axis scale**: a first date label at bottom-left and a last date label at bottom-right via `ChartAxisHelper.formatDateLabel` (`MMM d`, e.g. `Jun 17`). The labels live in the bottom 22 dp of the container; the data + axes live in the top 38 dp.
+  - **Line + dots**: `theme.colorScheme.primary` 1.5 dp stroke line through the points with a 2 dp filled dot at **every** entry. X positioning is **time-based** (each entry's `recordedAtMs` is mapped linearly across the chart width) so two entries months apart sit at the chart's leftmost and rightmost x positions while many entries clustered in time sit close together. Falls back to chart mid when all timestamps are equal.
+
+The whole sparkline area is wrapped in an `InkWell` whose `onTap` opens the existing `MeasurementHistoryChartSheet` for the measurement.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `definition` | `ProfileMeasurementDefinition` | required | Which measurement to read history for (e.g. `ProfileMeasurements.bodyweight`). Drives the entry-fetch and the title-key. |
+| `profileState` | `ProfileState` | required | Source of the measurement history (`getMeasurementHistory`). |
+| `settingsState` | `SettingsState` | required | Injected for symmetry with the surrounding surface chrome. No longer used internally (A18 dropped the unit suffix from the y-axis labels). Reserved for future hooks. |
+| `onTap` | `VoidCallback?` | `null` | Tapping anywhere inside the sparkline area fires this callback. The host wires it to `_showMeasurementHistory(definition)`. |
+
+**Behavior**:
+- Sized at **60 dp tall** (A19; was 56 dp intermediate A18, 38 dp with axes but smaller, 40 dp in A17, 60 dp pre-A17). The chart now **fills** the entire 60 dp card row — the user wants the chart to use the available vertical space rather than sit with breathing room. The host card padding (`EdgeInsets.symmetric(horizontal: 18, vertical: 14)`) wraps the sparkline; total card height stays 88 dp (60 dp chart + 28 dp padding).
+- **Refresh model**: the entry list is loaded asynchronously in `initState` via `profileState.getMeasurementHistory(definition.type)`; the widget subscribes to `profileState` (added in `initState`, removed in `dispose`) and re-fetches on every `notifyListeners`; `didUpdateWidget` also reloads when the `definition.type` changes. The listener is the only reliable way to refresh the chart after a new measurement is added via the log sheet — `didUpdateWidget` does not fire when the parent rebuilds with the same `definition` (the common case after a save).
+- Keys (for testability): `Key('measurement_sparkline')` on the container `SizedBox`; `Key('measurement_sparkline_tap')` on the `InkWell` gesture area; `Key('measurement_sparkline_y_max')` / `Key('measurement_sparkline_y_min')` on the y-axis value `Positioned`s (LEFT column); `Key('measurement_sparkline_x_first')` / `Key('measurement_sparkline_x_last')` on the x-axis date label `Positioned`s (BOTTOM strip).
+- Presentation-only: no repository access of its own (delegates to the injected `ProfileState`), no service access, no business logic. All chart math is local; the painter is a small private class inside the same file. Scale math delegates to the canonical `ChartAxisHelper` and `UnitFormatter` owners (per `docs/global_conventions.md` "Reuse the canonical owner").
+- Host layout (per A16, Phase 4 refinement, updated by A17): the per-measurement card body is a 3-section row `[chart rectangle | current value | + button]`. The chart rectangle occupies the available width (`Expanded`), the value column is a fixed 90 dp wide text centred horizontally (`textAlign: TextAlign.center`, `maxLines: 1`, `overflow: TextOverflow.ellipsis`), and the `+` button is the standard 60 × 60 dp outlined `OutlinedButton`. The `OmniCardHeader` is **title-only — no actions cluster** and **uppercased** (A17: `definitions[index].label.toUpperCase()`, so the rendered eyebrow reads e.g. `BODY WEIGHT` not `Body Weight`). Tapping the chart rectangle opens the existing history sheet; tapping the `+` button opens the existing log sheet. Only the titles (`MEASUREMENTS` / `ADDITIONAL` section eyebrows) were extracted into the header in Phase 4; the card body's column structure stays intact.
 
 ---
 

@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/settings/settings_state.dart';
-import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_card_header.dart';
+import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 
@@ -40,27 +41,23 @@ class SettingsScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
-                const _SectionHeader(title: 'PREFERENCES'),
-                const SizedBox(height: 8),
+                const OmniCardHeader(title: 'PREFERENCES'),
                 _MeasurementsSection(
                   settingsState: settingsState,
                   theme: theme,
                 ),
                 const SizedBox(height: 24),
-                const _SectionHeader(title: 'SOUNDS & ALERTS'),
-                const SizedBox(height: 8),
+                const OmniCardHeader(title: 'SOUNDS & ALERTS'),
                 _SoundsAlertsSection(
                   settingsState: settingsState,
                   timerAlertService: timerAlertService,
                   restNotificationService: restNotificationService,
                 ),
                 const SizedBox(height: 24),
-                const _SectionHeader(title: 'WORKOUT'),
-                const SizedBox(height: 8),
+                const OmniCardHeader(title: 'WORKOUT'),
                 _WorkoutSection(settingsState: settingsState),
                 const SizedBox(height: 24),
-                const _SectionHeader(title: 'APPEARANCE'),
-                const SizedBox(height: 8),
+                const OmniCardHeader(title: 'APPEARANCE'),
                 OmniSurface(
                   padding: const EdgeInsets.all(0),
                   child: Column(
@@ -743,29 +740,6 @@ class _WorkoutSection extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-
-  const _SectionHeader({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Text(
-        title,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: OmniTheme.colors.textMuted,
-          letterSpacing: 2.0,
-          fontWeight: FontWeight.w600,
-        ),
       ),
     );
   }

@@ -5,7 +5,7 @@ Continue the shared-bottom-CTA consistency pass
 (`primary-bottom-cta-anchor-width-plan.md` and
 `add-food-screen-bottom-cta-plan.md`). The `DaySessionListScreen`
 (calendar day details) renders its primary bottom action — the
-"+ Planned Session" button — as an inline `OutlinedButton.icon`
+"+ New Planned Session" button — as an inline `OutlinedButton.icon`
 at the bottom of a `Column`, wrapped in a `Padding + SizedBox`.
 This bypasses the shared `OmniBottomCTA` contract from the
 previous iterations:
@@ -33,7 +33,7 @@ are unchanged.
 - `DaySessionListScreen`
   (`lib/features/calendar/day_session_list_screen.dart`) has a
   `Scaffold.bottomNavigationBar` that renders
-  `OmniBottomCTA(label: '+ Planned Session', onPressed:
+  `OmniBottomCTA(label: '+ New Planned Session', onPressed:
   _addPlanned)` when `_isTodayOrFuture` is true, and `null` for
   past days (read-only).
 - The inline `_AddButton` widget (an `OutlinedButton.icon` at the
@@ -42,7 +42,7 @@ are unchanged.
   `OmniTheme.formBottomCTAClearance` (when `_isTodayOrFuture` is
   true) so the last row is never hidden behind the CTA.
 - Button label, color, and on-press action are preserved
-  verbatim: "+ Planned Session" label, primary fill color,
+  verbatim: "+ New Planned Session" label, primary fill color,
   same callback.
 - No new repository, state, or model changes. Pure UI migration.
 
@@ -51,7 +51,7 @@ are unchanged.
       `Scaffold.bottomNavigationBar` for today and future dates.
 - [ ] For past dates, `Scaffold.bottomNavigationBar` is `null`
       (read-only, no CTA).
-- [ ] The "+ Planned Session" CTA is at the shared width,
+- [ ] The "+ New Planned Session" CTA is at the shared width,
       height, and vertical anchor (via `OmniTheme.bottomCTA*`
       tokens + `SafeArea`).
 - [ ] The `ListView` body has a `bottomContentPadding` of
@@ -60,8 +60,8 @@ are unchanged.
 - [ ] The existing test finders
       (`find.widgetWithIcon(OutlinedButton, Icons.add)`) are
       updated to use the new shared CTA's affordance
-      (`find.widgetWithText(FilledButton, '+ Planned Session')`
-      or `find.text('+ Planned Session')`).
+      (`find.widgetWithText(FilledButton, '+ New Planned Session')`
+      or `find.text('+ New Planned Session')`).
 - [ ] New widget tests assert the shared placement and width on
       `DaySessionListScreen` for today/future dates, and `null`
       `bottomNavigationBar` for past dates.
@@ -76,7 +76,7 @@ are unchanged.
   `OmniBottomCTA` (wrapped in an `AnimatedBuilder` /
   `ListenableBuilder` if needed) with label "Add Planned
   Session" and the shared width / vertical anchor.
-  `find.widgetWithText(FilledButton, '+ Planned Session')`
+  `find.widgetWithText(FilledButton, '+ New Planned Session')`
   returns the CTA.
 - Edge case of: none
 
@@ -85,7 +85,7 @@ are unchanged.
 - Precondition: calendar state initialized
 - Flow: pumpWidget → pumpAndSettle
 - Expected outcome: `Scaffold.bottomNavigationBar` is `null`.
-  No `OmniBottomCTA` is rendered. The "+ Planned Session"
+  No `OmniBottomCTA` is rendered. The "+ New Planned Session"
   label is absent.
 - Edge case of: none
 
@@ -104,7 +104,7 @@ File: `lib/features/calendar/day_session_list_screen.dart`
 - Remove the inline `_AddButton(onTap: () => _addPlanned(context))`
   widget from the `Column` footer.
 - Add `Scaffold.bottomNavigationBar: _isTodayOrFuture ?
-  OmniBottomCTA(label: '+ Planned Session', onPressed: () =>
+  OmniBottomCTA(label: '+ New Planned Session', onPressed: () =>
   _addPlanned(context)) : null`.
 - Update the `ListView`'s bottom padding to
   `EdgeInsets.fromLTRB(16, 8, 16, _isTodayOrFuture ?
@@ -115,8 +115,8 @@ File: `lib/features/calendar/day_session_list_screen.dart`
 File: `test/screen_widget_test.dart`
 - Update the 4 tests that use
   `find.widgetWithIcon(OutlinedButton, Icons.add)` to use
-  `find.widgetWithText(FilledButton, '+ Planned Session')` or
-  `find.text('+ Planned Session')`.
+  `find.widgetWithText(FilledButton, '+ New Planned Session')` or
+  `find.text('+ New Planned Session')`.
 
 #### 3. Add new tests
 File: `test/screen_widget_test.dart`
@@ -134,10 +134,10 @@ File: `test/screen_widget_test.dart`
        `DaySessionListScreen` (S-001, S-002).
 2. [ ] Update the existing 4 test finders that target
        `OutlinedButton + Icons.add` to target the new
-       `FilledButton + '+ Planned Session'`.
+       `FilledButton + '+ New Planned Session'`.
 3. [ ] Migrate the inline `_AddButton` to
        `Scaffold.bottomNavigationBar: OmniBottomCTA(label:
-       '+ Planned Session', onPressed: () => _addPlanned(context))`.
+       '+ New Planned Session', onPressed: () => _addPlanned(context))`.
        Conditional on `_isTodayOrFuture`.
 4. [ ] Update the `ListView`'s bottom padding to
        `OmniTheme.formBottomCTAClearance` when
@@ -163,7 +163,7 @@ Plan filed. Iteration 1 scope: 1 screen (`DaySessionListScreen`)
 gains a `Scaffold.bottomNavigationBar`; 1 inline button removed
 (`_AddButton`); 1 obsolete class deleted (`_AddButton`); 4
 existing test finders updated (`OutlinedButton + Icons.add` →
-`FilledButton + '+ Planned Session'`); 2 new widget tests
+`FilledButton + '+ New Planned Session'`); 2 new widget tests
 added (S-001, S-002). Phase 1 skipped: this iteration is pure UI
 migration, no repository / state / model changes.
 ### Phase 2 Complete ✓

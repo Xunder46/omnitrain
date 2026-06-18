@@ -85,13 +85,13 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
       // today/future dates this routes through the shared
       // `OmniBottomCTA` (see
       // `.github/agents/plans/day-session-list-bottom-cta-plan.md`)
-      // so the "+ Planned Session" button sits at the same width,
+      // so the "+ New Planned Session" button sits at the same width,
       // height, and safe-area-anchored bottom as every other primary
       // bottom CTA in the app. For past dates the screen is
       // read-only and the slot is null.
       bottomNavigationBar: _isTodayOrFuture
           ? OmniBottomCTA(
-              label: '+ Planned Session',
+              label: '+ New Planned Session',
               onPressed: () => _addPlanned(context),
             )
           : null,
@@ -740,7 +740,7 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
               children: [
                 Text(
                   widget.initial == null
-                      ? '+ Planned Session'
+                      ? '+ New Planned Session'
                       : 'Edit Session',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,

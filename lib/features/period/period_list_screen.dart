@@ -72,7 +72,7 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
         ),
       ),
       bottomNavigationBar: OmniBottomCTA(
-        label: '+ Period',
+        label: '+ New Period',
         onPressed: () => _openCreate(context),
       ),
     );

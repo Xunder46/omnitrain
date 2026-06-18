@@ -986,7 +986,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('+ Period'));
+      await tester.tap(find.text('+ New Period'));
       await tester.pumpAndSettle();
 
       expect(find.byType(CreatePeriodScreen), findsOneWidget);

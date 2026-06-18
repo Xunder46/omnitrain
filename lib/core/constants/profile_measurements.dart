@@ -38,7 +38,7 @@ class ProfileMeasurements {
   static const ProfileMeasurementDefinition bodyFatPct =
       ProfileMeasurementDefinition(
         type: 'body_fat_pct',
-        label: 'Body Fat',
+        label: 'BODY FAT',
         unitId: 'unit-pct',
         unitLabel: '%',
       );

@@ -111,7 +111,7 @@ Defines the canonical profile measurement vocabulary and unit mapping shared by 
 
 | Constant | Type Value | Label | Unit ID |
 |----------|------------|-------|---------|
-| `bodyFatPct` | `body_fat_pct` | Body Fat | `unit-pct` |
+| `bodyFatPct` | `body_fat_pct` | BODY FAT | `unit-pct` |
 | `leanMass` | `lean_mass` | Lean Mass | `unit-kg` |
 | `waist` | `waist_cm` | Waist | `unit-cm` |
 | `chest` | `chest_cm` | Chest | `unit-cm` |

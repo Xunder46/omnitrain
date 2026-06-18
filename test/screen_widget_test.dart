@@ -326,7 +326,7 @@ void main() {
       final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
       expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>());
       expect(scaffold.bottomSheet, isNull);
-      expect(find.text('+ Period'), findsOneWidget);
+      expect(find.text('+ New Period'), findsOneWidget);
     });
 
     testWidgets(
@@ -2973,7 +2973,7 @@ void main() {
         await tester.pumpAndSettle();
 
         await tester.tap(
-          find.widgetWithText(FilledButton, '+ Planned Session'),
+          find.widgetWithText(FilledButton, '+ New Planned Session'),
         );
         await tester.pumpAndSettle();
 
@@ -3030,7 +3030,7 @@ void main() {
         await tester.pumpAndSettle();
 
         await tester.tap(
-          find.widgetWithText(FilledButton, '+ Planned Session'),
+          find.widgetWithText(FilledButton, '+ New Planned Session'),
         );
         await tester.pumpAndSettle();
 
@@ -3050,7 +3050,7 @@ void main() {
         final titleText = tester.widget<Text>(
           find.descendant(
             of: find.byType(BottomSheet),
-            matching: find.text('+ Planned Session'),
+            matching: find.text('+ New Planned Session'),
           ),
         );
         expect(titleText.style?.color, tokens.textMuted);
@@ -3096,7 +3096,7 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.tap(
-            find.widgetWithText(FilledButton, '+ Planned Session'),
+            find.widgetWithText(FilledButton, '+ New Planned Session'),
           );
           await tester.pumpAndSettle();
         }
@@ -3198,7 +3198,7 @@ void main() {
         await tester.pumpAndSettle();
 
         await tester.tap(
-          find.widgetWithText(FilledButton, '+ Planned Session'),
+          find.widgetWithText(FilledButton, '+ New Planned Session'),
         );
         await tester.pumpAndSettle();
 
@@ -3596,10 +3596,10 @@ void main() {
         );
         expect(ctaFinder, findsOneWidget);
 
-        // The CTA label is "+ Planned Session" — preserved verbatim
+        // The CTA label is "+ New Planned Session" — preserved verbatim
         // from the previous inline `_AddButton` widget.
         expect(
-          find.widgetWithText(FilledButton, '+ Planned Session'),
+          find.widgetWithText(FilledButton, '+ New Planned Session'),
           findsOneWidget,
         );
 
@@ -3660,9 +3660,9 @@ void main() {
         reason: 'Past dates are read-only and must not render a bottom CTA',
       );
 
-      // The "+ Planned Session" label is absent on past dates.
+      // The "+ New Planned Session" label is absent on past dates.
       expect(
-        find.widgetWithText(FilledButton, '+ Planned Session'),
+        find.widgetWithText(FilledButton, '+ New Planned Session'),
         findsNothing,
       );
 
@@ -4135,7 +4135,10 @@ void main() {
         expect(find.text('DURATION'), findsNothing);
         expect(find.text('REST TIME'), findsNothing);
         expect(find.text('Strength'), findsOneWidget);
-        expect(find.text('Session note'), findsOneWidget);
+        // Phase 2.1: the note title moved to an OmniCardHeader above
+        // the card; it is rendered in the canonical D-1 typography
+        // (uppercase, letter-spacing 2.0).
+        expect(find.text('SESSION NOTE'), findsOneWidget);
         expect(find.text('Open Calendar'), findsOneWidget);
       },
     );
@@ -4386,7 +4389,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final noteTopLeft = tester.getTopLeft(find.text('Session note'));
+      // Phase 2.1: the note title is rendered by an OmniCardHeader
+      // above the card; the calendar's "Open Calendar" button is
+      // rendered in the calendar card's OmniCardHeader's actions slot.
+      final noteTopLeft = tester.getTopLeft(find.text('SESSION NOTE'));
       final calendarTopLeft = tester.getTopLeft(find.text('Open Calendar'));
       expect(noteTopLeft.dy, lessThan(calendarTopLeft.dy));
     });

@@ -288,6 +288,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Column(
             children: [
               Expanded(
+                flex: 15,
                 child: SafeArea(
                   bottom: false,
                   child: Padding(
@@ -401,14 +402,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ),
               ),
-              // Phase 4.1 (D-8) home nutrition strip. Top gap =
-              // 2 × standardGridSpacing (D-8 inherits D-5's
-              // spacing rule; the standardGridSpacing is local
-              // to the tile grid above). The strip background
-              // extends to the physical bottom edge of the
-              // screen (S-056); the strip's own decoration is
-              // outside the SafeArea(top: false), and the
-              // content (label / empty message) sits inside.
+              // Phase 4.1.1 (D-8 follow-up) home nutrition strip.
+              // Top gap = 2 × standardGridSpacing (D-8 inherits
+              // D-5's spacing rule; the standardGridSpacing is
+              // local to the tile grid above). The strip is
+              // wrapped in `Expanded(flex: 1)` so the progress
+              // bar fills the rest of the bottom area (between
+              // the tile-grid bottom + 2 × standardGridSpacing
+              // and the physical bottom edge of the screen).
+              // The tile grid gets `Expanded(flex: 5)` so it
+              // keeps the bulk of the vertical space — the
+              // strip is a substantial but bounded region
+              // (~110 px on a typical iPhone screen), not a
+              // 50/50 share that would cut the tiles in half.
+              // The strip's `Material`/`Ink` decoration lives
+              // outside the inner `SafeArea(top: false)` so the
+              // track background extends to the physical bottom
+              // edge (S-056), and the content (calorie label /
+              // empty message) sits inside.
               //
               // The previous `isCurrent` route gate (S-057) is
               // removed: the data layer's microtask-deferred
@@ -417,25 +428,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               // rendering current values through a push/pop
               // transition.
               SizedBox(height: 16.0 * 2),
-              ListenableBuilder(
-                listenable: widget.nutritionState,
-                builder: (context, _) {
-                  final target = widget.nutritionState.nutritionTarget;
-                  final targetCalories =
-                      (target != null && target.calories > 0)
-                          ? target.calories.round()
-                          : null;
-                  return NutritionStripBar(
-                    consumedCalories:
-                        widget.nutritionState.todayConsumedCalories,
-                    targetCalories: targetCalories,
-                    proteinKcal: widget.nutritionState.todayProteinKcal,
-                    totalCarbsKcal:
-                        widget.nutritionState.todayTotalCarbsKcal,
-                    fatKcal: widget.nutritionState.todayFatKcal,
-                    onTap: _openNutritionScreen,
-                  );
-                },
+              Expanded(
+                flex: 2,
+                child: ListenableBuilder(
+                  listenable: widget.nutritionState,
+                  builder: (context, _) {
+                    final target = widget.nutritionState.nutritionTarget;
+                    final targetCalories =
+                        (target != null && target.calories > 0)
+                            ? target.calories.round()
+                            : null;
+                    return NutritionStripBar(
+                      consumedCalories:
+                          widget.nutritionState.todayConsumedCalories,
+                      targetCalories: targetCalories,
+                      proteinKcal: widget.nutritionState.todayProteinKcal,
+                      totalCarbsKcal:
+                          widget.nutritionState.todayTotalCarbsKcal,
+                      fatKcal: widget.nutritionState.todayFatKcal,
+                      onTap: _openNutritionScreen,
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -476,7 +490,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             builder: (context) => AlertDialog(
               title: const Text('Start New Session?'),
               content: const Text(
-                'Opening a routine will start a new session. Current session will not be saved.',
+                'Opening a routine will start a new session. Current session will be saved.',
               ),
               actions: [
                 TextButton(
@@ -573,7 +587,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         builder: (context) => AlertDialog(
           title: const Text('Start New Session?'),
           content: const Text(
-            'Changing modality will start a new session. Current session will not be saved.',
+            'Changing modality will start a new session. Current session will be saved.',
           ),
           actions: [
             TextButton(
@@ -778,7 +792,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // level instead of covering the logo.
     _maxSheetExtent =
         ((mq.size.height - mq.padding.top - kToolbarHeight) / mq.size.height)
-            .clamp(0.5, 0.9);
+            .clamp(0.5, 0.86);
 
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {

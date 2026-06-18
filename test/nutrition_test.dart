@@ -555,8 +555,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Card title visible (Phase 3 / D-1: "Foods I Eat").
-      expect(find.text('Foods I Eat'), findsOneWidget);
+      // Card title visible (Phase 3 / D-1: "FOODS I EAT" — uppercase
+      // per the canonical section-header convention used in
+      // PREFERENCES, STRENGTH, etc.).
+      expect(find.text('FOODS I EAT'), findsOneWidget);
 
       // Group headers (alphabetical: Browse Proteins, Browse Vegetables;
       // Ungrouped last).

@@ -4,6 +4,8 @@ import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
 import '../../core/navigation/navigation.dart';
+import '../../widgets/layout/omni_card_header.dart';
+import '../../widgets/layout/omni_surface.dart';
 import 'add_food_screen.dart';
 import 'widgets/calorie_ring_card.dart';
 import 'widgets/log_food_row.dart';
@@ -107,19 +109,16 @@ class _NutritionScreenState extends State<NutritionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Calorie ring header with edit icon — moved outside the card (Stats screen style).
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Today',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: OmniTheme.colors.textDominant,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: OmniTheme.titleLetterSpacing,
-                          ),
-                        ),
-                      ),
+                  // Calorie ring header with edit icon — now an
+                  // OmniCardHeader per the unified card-and-header
+                  // plan. The edit icon lives in the actions slot
+                  // (D-2: controls pertinent to a card live in its
+                  // header). The previous `SizedBox(height: 12)` gap
+                  // is replaced by the header's built-in 8 dp bottom
+                  // padding.
+                  OmniCardHeader(
+                    title: 'TODAY',
+                    actions: [
                       IconButton(
                         key: const Key('edit_targets_icon'),
                         icon: Icon(
@@ -132,25 +131,19 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
                   CalorieRingCard(
                     nutritionState: widget.nutritionState,
                     onEditTap: _navigateToTargets,
                   ),
                   const SizedBox(height: 24),
-                  // Food Library header with edit icon — moved outside the card (Stats screen style).
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Foods I Eat',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: OmniTheme.colors.textDominant,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: OmniTheme.titleLetterSpacing,
-                          ),
-                        ),
-                      ),
+                  // Food Library header with edit icon — OmniCardHeader
+                  // above an OmniSurface (the foods card). The food
+                  // library card used to be a raw Flutter `Card()`; it
+                  // now shares the same surface chrome as every other
+                  // outlined card in the app.
+                  OmniCardHeader(
+                    title: 'FOODS I EAT',
+                    actions: [
                       IconButton(
                         key: const Key('food_library_manage_pencil'),
                         icon: Icon(
@@ -163,14 +156,11 @@ class _NutritionScreenState extends State<NutritionScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: _FoodLibraryBrowseSection(
-                        foodLibraryState: widget.foodLibraryState,
-                        nutritionState: widget.nutritionState,
-                      ),
+                  OmniSurface(
+                    padding: const EdgeInsets.all(16),
+                    child: _FoodLibraryBrowseSection(
+                      foodLibraryState: widget.foodLibraryState,
+                      nutritionState: widget.nutritionState,
                     ),
                   ),
                 ],

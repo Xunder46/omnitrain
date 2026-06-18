@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/omni_theme.dart';
 import '../../../state/nutrition_state.dart';
+import '../../../widgets/layout/omni_surface.dart';
 import 'calorie_ring.dart';
 import 'macro_donut_chart.dart';
 
@@ -79,7 +80,6 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
   @override
   Widget build(BuildContext context) {
     final themeColors = OmniTheme.colors;
-    final theme = Theme.of(context);
 
     return ListenableBuilder(
       listenable: widget.nutritionState,
@@ -117,7 +117,8 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
         // disappeared (grams dropped to 0), clear the focus.
         // We don't mutate the index here; we just ignore it for
         // rendering. The next valid tap will replace it.
-        final effectiveFocus = (_focusedSectionIndex != null &&
+        final effectiveFocus =
+            (_focusedSectionIndex != null &&
                 _focusedSectionIndex! < sections.length)
             ? _focusedSectionIndex
             : null;
@@ -162,9 +163,7 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
               // widget skip the percent.
               _ => 0,
             };
-            pct = totalKcal == 0
-                ? 0
-                : (sectionKcal * 100 / totalKcal).round();
+            pct = totalKcal == 0 ? 0 : (sectionKcal * 100 / totalKcal).round();
           }
           final isInformational = s.name == 'Fiber';
           centerOverride = MacroFocusContent(
@@ -178,92 +177,94 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
           centerOverride = null;
         }
 
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Note: Edit targets icon moved to header section outside
-                // the card (in NutritionScreen, alongside "Today" title).
-                // Donut chart (outer) + calorie ring (inner) in a
-                // Stack. The donut is hidden when no macros are
-                // logged — the calorie ring stays visible alone at
-                // its full 160 px size. When the donut IS present,
-                // the ring fades to 0.4 opacity whenever a section
-                // is focused.
-                Center(
-                  child: SizedBox(
-                    width: 280,
-                    height: 280,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        // Inner calorie ring (bottom of the
-                        // stack). Always rendered first so the
-                        // outer macro donut is on top for hit
-                        // testing.
-                        // Pass centerOverride to CalorieRing so it
-                        // hides its internal center content when
-                        // focused (uses AnimatedSwitcher). Only the
-                        // ring itself fades - the center content is
-                        // handled separately below.
-                        CalorieRing(
-                          consumed: consumed.toDouble(),
-                          target: targetCalories,
-                          size: 195,
-                          centerOverride: centerOverride,
-                        ),
-                        // Outer macro donut on top — its
-                        // GestureDetector owns hit testing for
-                        // the whole chart. Taps in the band's
-                        // arc resolve to a section index; taps
-                        // inside the inner radius (the empty
-                        // center, where the calorie ring is)
-                        // resolve to the center sentinel and
-                        // deselect. The ring underneath is
-                        // therefore never the tap target — the
-                        // user only ever interacts with the
-                        // donut.
-                        // Note: The chart uses per-section opacities
-                        // (1.0 focused, 0.4 unfocused) so no
-                        // additional wrapper opacity is needed.
-                        MacroDonutChart(
-                          protein: protein,
-                          netCarbs: netCarbsRaw,
-                          fiber: fiber,
-                          fat: fat,
-                          size: 300,
-                          sectionOpacities: opacities,
-                          onSectionFocusChange: (newIndex) {
-                            // No-op if the index didn't change.
-                            if (newIndex == _focusedSectionIndex) return;
-                            setState(() => _focusedSectionIndex = newIndex);
-                          },
-                        ),
-                      ],
-                    ),
+        return OmniSurface(
+          // Symmetric 16 dp padding to match the "Foods I Eat" card.
+          // The previous `EdgeInsets.fromLTRB(16, 16, 8, 16)` had an
+          // 8 dp right inset to clear the now-removed in-card edit
+          // icon (the icon moved to the `OmniCardHeader` actions slot
+          // above the card; see nutrition_screen.dart).
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Note: Edit targets icon moved to header section outside
+              // the card (in NutritionScreen, alongside "Today" title).
+              // Donut chart (outer) + calorie ring (inner) in a
+              // Stack. The donut is hidden when no macros are
+              // logged — the calorie ring stays visible alone at
+              // its full 160 px size. When the donut IS present,
+              // the ring fades to 0.4 opacity whenever a section
+              // is focused.
+              Center(
+                child: SizedBox(
+                  width: 280,
+                  height: 280,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Inner calorie ring (bottom of the
+                      // stack). Always rendered first so the
+                      // outer macro donut is on top for hit
+                      // testing.
+                      // Pass centerOverride to CalorieRing so it
+                      // hides its internal center content when
+                      // focused (uses AnimatedSwitcher). Only the
+                      // ring itself fades - the center content is
+                      // handled separately below.
+                      CalorieRing(
+                        consumed: consumed.toDouble(),
+                        target: targetCalories,
+                        size: 195,
+                        centerOverride: centerOverride,
+                      ),
+                      // Outer macro donut on top — its
+                      // GestureDetector owns hit testing for
+                      // the whole chart. Taps in the band's
+                      // arc resolve to a section index; taps
+                      // inside the inner radius (the empty
+                      // center, where the calorie ring is)
+                      // resolve to the center sentinel and
+                      // deselect. The ring underneath is
+                      // therefore never the tap target — the
+                      // user only ever interacts with the
+                      // donut.
+                      // Note: The chart uses per-section opacities
+                      // (1.0 focused, 0.4 unfocused) so no
+                      // additional wrapper opacity is needed.
+                      MacroDonutChart(
+                        protein: protein,
+                        netCarbs: netCarbsRaw,
+                        fiber: fiber,
+                        fat: fat,
+                        size: 300,
+                        sectionOpacities: opacities,
+                        onSectionFocusChange: (newIndex) {
+                          // No-op if the index didn't change.
+                          if (newIndex == _focusedSectionIndex) return;
+                          setState(() => _focusedSectionIndex = newIndex);
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                // Sodium daily-total label at bottom left (D-7 / S-043).
-                // Format: "Na 148 mg". Single rounding per D-7;
-                // null source sodium is treated as 0 by the
-                // state's `todayConsumedSodium` getter, so this
-                // line always shows a number (including 0 on
-                // empty days).
-                Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 0, top: 8),
-                    child: _SodiumTotalChip(
-                      sodiumMg: widget
-                          .nutritionState.todayConsumedSodium,
-                      themeColors: themeColors,
-                    ),
+              ),
+              // Sodium daily-total label at bottom left (D-7 / S-043).
+              // Format: "Na 148 mg". Single rounding per D-7;
+              // null source sodium is treated as 0 by the
+              // state's `todayConsumedSodium` getter, so this
+              // line always shows a number (including 0 on
+              // empty days).
+              Align(
+                alignment: Alignment.bottomLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 0, top: 8),
+                  child: _SodiumTotalChip(
+                    sodiumMg: widget.nutritionState.todayConsumedSodium,
+                    themeColors: themeColors,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
@@ -286,10 +287,7 @@ class _SodiumTotalChip extends StatelessWidget {
 
   final OmniThemeColors themeColors;
 
-  const _SodiumTotalChip({
-    required this.sodiumMg,
-    required this.themeColors,
-  });
+  const _SodiumTotalChip({required this.sodiumMg, required this.themeColors});
 
   /// Comma-grouped integer (e.g. 1,250). Negative values get a
   /// leading "-". Mirrors the helper in [CalorieRing] so the two
@@ -320,50 +318,3 @@ class _SodiumTotalChip extends StatelessWidget {
   }
 }
 
-/// Small icon button (the edit-targets affordance). Renders as a plain
-/// `IconButton` with an explicit tooltip for screen readers and a stable
-/// key so tests can find it.
-///
-/// Visual choice: a 40×40 square tinted with the active theme's primary
-/// at 60% opacity — visible against the dark card surface without
-/// competing with the ring itself. Does not use the full
-/// `OmniTheme.buttonIconSize` (60×60) so it does not overpower the
-/// 160 px ring.
-class _EditTargetsIconButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  final OmniThemeColors themeColors;
-
-  const _EditTargetsIconButton({
-    required this.onPressed,
-    required this.themeColors,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      key: const Key('edit_targets_icon'),
-      icon: Icon(
-        Icons.tune,
-        size: 20,
-        color: themeColors.primary,
-      ),
-      tooltip: 'Edit targets',
-      onPressed: onPressed,
-      // 40×40 hit target — comfortably above the 48 dp Material minimum
-      // when paired with the screen's 16 dp card padding.
-      visualDensity: VisualDensity.compact,
-      style: ButtonStyle(
-        // Explicit shape to avoid Material 3's StadiumBorder default.
-        shape: WidgetStateProperty.all(
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
-          ),
-        ),
-        backgroundColor: WidgetStateProperty.all(
-          themeColors.primary.withValues(alpha: 0.12),
-        ),
-        padding: WidgetStateProperty.all(const EdgeInsets.all(8)),
-      ),
-    );
-  }
-}

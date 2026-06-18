@@ -10,8 +10,10 @@ import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
+import 'widgets/measurement_sparkline.dart';
 import 'widgets/profile_avatar_image_stub.dart'
     if (dart.library.io) 'widgets/profile_avatar_image_io.dart';
 
@@ -68,7 +70,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 24),
                 _buildMeasurementSection(
                   theme,
-                  title: 'MEASUREMENTS',
                   definitions: ProfileMeasurements.primary,
                 ),
                 const SizedBox(height: 14),
@@ -189,37 +190,118 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildMeasurementSection(
     ThemeData theme, {
-    String? title,
     required List<ProfileMeasurementDefinition> definitions,
   }) {
+    // Per the unified card-and-header plan (Phase 4): each measurement
+    // owns its own [OmniCardHeader] (title = measurement label) above
+    // an [OmniSurface]. Per the user-driven refinement (A16): only
+    // the section eyebrows (`MEASUREMENTS` / `ADDITIONAL`) were
+    // extracted — the card body's column structure stays intact. The
+    // card body is a 3-section row: `[chart rectangle | current value
+    // | + button]`. Tapping the chart opens the existing history
+    // sheet; tapping the `+` button opens the existing log sheet.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (title != null && title.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 10),
-            child: Text(
-              title,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: OmniTheme.colors.textSecondary.withOpacity(0.7),
-                letterSpacing: 2.0,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
         for (var index = 0; index < definitions.length; index++) ...[
-          _MeasurementRow(
-            definition: definitions[index],
-            latestEntry:
-                widget.profileState.latestMeasurements[definitions[index].type],
-            settingsState: widget.settingsState,
-            onTap: () => _showMeasurementHistory(definitions[index]),
-            onAddTap: () => _showMeasurementLogSheet(definitions[index]),
+          OmniCardHeader(title: definitions[index].label.toUpperCase()),
+          OmniSurface(
+            padding: const EdgeInsets.fromLTRB(5, 12, 12, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: MeasurementSparkline(
+                    definition: definitions[index],
+                    profileState: widget.profileState,
+                    settingsState: widget.settingsState,
+                    onTap: () => _showMeasurementHistory(definitions[index]),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  key: const Key('measurement_value'),
+                  width: 90,
+                  child: Text(
+                    _formatMeasurementValue(
+                      widget.profileState
+                          .latestMeasurements[definitions[index].type],
+                      widget.settingsState,
+                    ),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      color: widget.profileState.latestMeasurements[
+                                  definitions[index].type] !=
+                              null
+                          ? OmniTheme.colors.textDominant
+                          : OmniTheme.colors.textSecondary.withOpacity(0.65),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _buildMeasurementAddButton(
+                  theme: theme,
+                  onPressed: () =>
+                      _showMeasurementLogSheet(definitions[index]),
+                ),
+              ],
+            ),
           ),
           if (index < definitions.length - 1) const SizedBox(height: 12),
         ],
       ],
+    );
+  }
+
+  /// Format the measurement's current value for display in the card
+  /// body's middle section. Extracted from the pre-Phase-4
+  /// `_MeasurementRow` so the chart-rectangle column and the value
+  /// column share the formatting logic.
+  String _formatMeasurementValue(
+    BodyMeasurementEntry? latestEntry,
+    SettingsState settingsState,
+  ) {
+    if (latestEntry == null) return '—';
+    if (latestEntry.unitId == 'unit-kg') {
+      return UnitFormatter.formatWeight(latestEntry.value, settingsState);
+    }
+    final label = ProfileMeasurements.unitLabelFor(latestEntry.unitId);
+    return '${ProfileMeasurements.formatValue(latestEntry.value)} $label';
+  }
+
+  /// 60 × 60 dp outlined icon button used as the "+" affordance in
+  /// the card body of each measurement row (Phase 4 review
+  /// refinement: lives in the card body alongside the chart and value
+  /// columns; per A16, the [OmniCardHeader] is title-only).
+  Widget _buildMeasurementAddButton({
+    required ThemeData theme,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: OmniTheme.buttonIconSize,
+      height: OmniTheme.buttonIconSize,
+      child: OutlinedButton(
+        style: ButtonStyle(
+          side: WidgetStateProperty.all(
+            BorderSide(color: theme.colorScheme.primary),
+          ),
+          foregroundColor: WidgetStateProperty.all(
+            theme.colorScheme.primary,
+          ),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                OmniTheme.buttonIconRadius,
+              ),
+            ),
+          ),
+        ),
+        onPressed: onPressed,
+        child: const Icon(Icons.add),
+      ),
     );
   }
 
@@ -395,114 +477,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _MeasurementRow extends StatelessWidget {
-  final ProfileMeasurementDefinition definition;
-  final BodyMeasurementEntry? latestEntry;
-  final SettingsState settingsState;
-  final VoidCallback onTap;
-  final VoidCallback onAddTap;
-
-  const _MeasurementRow({
-    required this.definition,
-    required this.latestEntry,
-    required this.settingsState,
-    required this.onTap,
-    required this.onAddTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    String valueLabel;
-    if (latestEntry != null) {
-      if (latestEntry!.unitId == 'unit-kg') {
-        valueLabel = UnitFormatter.formatWeight(
-          latestEntry!.value,
-          settingsState,
-        );
-      } else {
-        final label = ProfileMeasurements.unitLabelFor(latestEntry!.unitId);
-        valueLabel =
-            '${ProfileMeasurements.formatValue(latestEntry!.value)} $label';
-      }
-    } else {
-      valueLabel = '—';
-    }
-
-    return OmniSurface(
-      padding: EdgeInsets.zero,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 76),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: Text(
-                      definition.label,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: OmniTheme.colors.textSecondary.withOpacity(0.9),
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 5,
-                    child: Text(
-                      valueLabel,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: latestEntry != null
-                            ? OmniTheme.colors.textDominant
-                            : OmniTheme.colors.textSecondary.withOpacity(0.65),
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                    width: OmniTheme.buttonIconSize,
-                    height: OmniTheme.buttonIconSize,
-                    child: OutlinedButton(
-                      style: ButtonStyle(
-                        side: WidgetStateProperty.all(
-                          BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                        foregroundColor: WidgetStateProperty.all(
-                          Theme.of(context).colorScheme.primary,
-                        ),
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonIconRadius,
-                            ),
-                          ),
-                        ),
-                      ),
-                      onPressed: onAddTap,
-                      child: const Icon(Icons.add),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

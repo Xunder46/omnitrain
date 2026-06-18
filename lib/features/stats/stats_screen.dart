@@ -12,6 +12,7 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_card_header.dart';
 import 'widgets/scrollable_trend_chart.dart';
 
 /// Segmented toggle state for the NUTRITION card. Local widget
@@ -122,12 +123,7 @@ class _StatsScreenState extends State<StatsScreen> {
                     children: _totalSessions == 0
                         ? [_buildEmptyState(context, themeColors)]
                         : [
-                            _buildSectionLabel(
-                              context,
-                              'ALL TIME',
-                              themeColors,
-                            ),
-                            const SizedBox(height: 8),
+                            const OmniCardHeader(title: 'ALL TIME'),
                             _buildAggregateCard(context, themeColors),
                             const SizedBox(height: 24),
                             ..._buildStrengthSection(context, themeColors),
@@ -144,26 +140,12 @@ class _StatsScreenState extends State<StatsScreen> {
 
   // ── Section label ─────────────────────────────────────────────────────────
 
-  Widget _buildSectionLabel(
-    BuildContext context,
-    String label,
-    OmniThemeColors themeColors,
-  ) {
-    return Text(
-      label,
-      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-        fontWeight: FontWeight.w600,
-        letterSpacing: 3.0,
-        color: themeColors.textMuted,
-      ),
-    );
-  }
-
   /// Small inline label that explains which "current window"
   /// decided which exercises appear in this section. Reads as
   /// `· Off-Season Strength Block` (period) or
   /// `· Last 14 training days` (recent-days fallback). Lives
-  /// next to the section label so the readout explains itself.
+  /// in the [OmniCardHeader] actions slot of the section above
+  /// the relevant card so the readout explains itself.
   Widget _buildWindowChip(
     BuildContext context,
     OmniThemeColors themeColors,
@@ -171,6 +153,7 @@ class _StatsScreenState extends State<StatsScreen> {
   ) {
     final theme = Theme.of(context);
     return Text(
+      key: const Key('stats_window_chip'),
       '· ${window.label}',
       style: theme.textTheme.labelSmall?.copyWith(
         color: themeColors.textMuted,
@@ -237,19 +220,13 @@ class _StatsScreenState extends State<StatsScreen> {
   ) {
     final data = _progressData;
     final widgets = <Widget>[
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          _buildSectionLabel(context, 'STRENGTH', themeColors),
-          const SizedBox(width: 10),
+      OmniCardHeader(
+        title: 'STRENGTH',
+        actions: [
           if (data != null)
-            Flexible(
-              child: _buildWindowChip(context, themeColors, data.window),
-            ),
+            _buildWindowChip(context, themeColors, data.window),
         ],
       ),
-      const SizedBox(height: 8),
     ];
 
     if (data == null || data.topLifts.isEmpty) {
@@ -571,19 +548,13 @@ class _StatsScreenState extends State<StatsScreen> {
   ) {
     final data = _progressData;
     final widgets = <Widget>[
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: [
-          _buildSectionLabel(context, 'CARDIO', themeColors),
-          const SizedBox(width: 10),
+      OmniCardHeader(
+        title: 'CARDIO',
+        actions: [
           if (data != null)
-            Flexible(
-              child: _buildWindowChip(context, themeColors, data.window),
-            ),
+            _buildWindowChip(context, themeColors, data.window),
         ],
       ),
-      const SizedBox(height: 8),
     ];
 
     if (data == null || data.topCardio.isEmpty) {
@@ -619,8 +590,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final trend = _progressData?.nutritionTrend ?? const [];
     return [
       const SizedBox(height: 24),
-      _buildSectionLabel(context, 'NUTRITION', themeColors),
-      const SizedBox(height: 8),
+      const OmniCardHeader(title: 'NUTRITION'),
       _buildNutritionCard(context, themeColors, trend),
     ];
   }
