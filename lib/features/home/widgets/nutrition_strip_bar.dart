@@ -85,15 +85,14 @@ class NutritionStripBar extends StatelessWidget {
   final int? targetCalories;
 
   /// Protein calorie contribution. The widget treats the three
-  /// segments as `proteinKcal`, `totalCarbsKcal`, `fatKcal` in
+  /// segments as `proteinKcal`, `netCarbsKcal`, `fatKcal` in
   /// that order.
   final int proteinKcal;
 
-  /// Total-carbs calorie contribution. D-8 carries forward D-5:
-  /// "total-carb calories for blue" — net carbs (carbs - fiber)
-  /// is the donut's keto view per D-4 and is intentionally NOT
-  /// what the strip uses.
-  final int totalCarbsKcal;
+  /// Net-carbs calorie contribution (carbs - fiber, then × 4).
+  /// Uses net carbs for consistency with the donut chart's percentage
+  /// calculation.
+  final int netCarbsKcal;
 
   /// Fat calorie contribution.
   final int fatKcal;
@@ -118,7 +117,7 @@ class NutritionStripBar extends StatelessWidget {
     required this.consumedCalories,
     required this.targetCalories,
     required this.proteinKcal,
-    required this.totalCarbsKcal,
+    required this.netCarbsKcal,
     required this.fatKcal,
     required this.onTap,
     this.emptyMessage = 'Track your nutrition — tap to start',
@@ -160,16 +159,13 @@ class NutritionStripBar extends StatelessWidget {
                   top: false,
                   child: _EmptyStrip(message: emptyMessage),
                 )
-              : SafeArea(
-                  top: false,
-                  child: _FilledStrip(
-                    consumedCalories: consumedCalories,
-                    targetCalories: targetCalories!,
-                    proteinKcal: proteinKcal,
-                    totalCarbsKcal: totalCarbsKcal,
-                    fatKcal: fatKcal,
-                    segmentsOverride: segmentsOverride,
-                  ),
+              : _FilledStrip(
+                  consumedCalories: consumedCalories,
+                  targetCalories: targetCalories!,
+                  proteinKcal: proteinKcal,
+                  netCarbsKcal: netCarbsKcal,
+                  fatKcal: fatKcal,
+                  segmentsOverride: segmentsOverride,
                 ),
         ),
       ),
@@ -210,15 +206,40 @@ class _EmptyStrip extends StatelessWidget {
   }
 }
 
-/// Happy-state full-strip layout: a single region where the
-/// track IS the strip. The fill renders inside the strip; the
-/// calorie label overlays top-left with a contrast scrim and
-/// the chevron-right overlays top-right.
+/// Happy-state strip layout (Phase 4.1.2 follow-up to D-8).
+///
+/// The strip is a `Column` of two regions stacked top-to-bottom
+/// inside the `Material` / `Ink` decoration (which extends to
+/// the physical bottom edge per S-056):
+///
+///  1. **Bar** (top, glued to the top of the strip with no
+///     padding / no outer `Container`): the track + segmented
+///     fill + in-segment `"P 25%"` labels + a chevron-right
+///     navigation indicator (`Icons.chevron_right`, 20 px)
+///     vertically centered at the right edge of the strip.
+///     Height = `NutritionStripBarMetrics.contentHeight` (64 px,
+///     the original D-8 bar height — preserved per "no width /
+///     height changes").
+///
+///  2. **Label gap** (bottom, the small space between the bar
+///     and the physical bottom edge of the screen): the
+///     "calories eaten / calories planned" label sits here
+///     with the dining icon at the very horizontal middle of
+///     the gap and the `"X / Y cal"` text to the right of the
+///     icon. No chevron — the chevron lives in the BAR, not
+///     in the label.
+///
+/// The widget does NOT use a `SafeArea` — the `Material` /
+/// `Ink` decoration extends to the physical bottom edge (S-056),
+/// and the bar's `contentHeight` is the original 64 px. The
+/// label gap height is whatever the `Expanded(flex: 2)` in the
+/// home screen gives the strip minus the bar's 64 px
+/// (typically 34 px on an iPhone X+).
 class _FilledStrip extends StatelessWidget {
   final int consumedCalories;
   final int targetCalories;
   final int proteinKcal;
-  final int totalCarbsKcal;
+  final int netCarbsKcal;
   final int fatKcal;
   final List<StripSegment>? segmentsOverride;
 
@@ -226,7 +247,7 @@ class _FilledStrip extends StatelessWidget {
     required this.consumedCalories,
     required this.targetCalories,
     required this.proteinKcal,
-    required this.totalCarbsKcal,
+    required this.netCarbsKcal,
     required this.fatKcal,
     required this.segmentsOverride,
   });
@@ -242,7 +263,7 @@ class _FilledStrip extends StatelessWidget {
             label: 'P',
           ),
           StripSegment(
-            kcal: totalCarbsKcal,
+            kcal: netCarbsKcal,
             color: themeColors.macroChart.netCarbs,
             label: 'C',
           ),
@@ -253,52 +274,126 @@ class _FilledStrip extends StatelessWidget {
           ),
         ];
 
+    // The strip's total painted height is
+    // `contentHeight` (the bar, 64 px) + the bottom safe-area
+    // inset (the label gap). We give the `Column` an explicit
+    // height so the `Expanded` for the label has a
+    // well-defined size — without an explicit height, the
+    // `Column` would try to fill the `Ink`'s constraints,
+    // which are `infinity` when the parent gives the strip
+    // its natural size (e.g. in widget tests that don't wrap
+    // the strip in an `Expanded`). The `Material` / `Ink`
+    // decoration still extends to the physical bottom edge
+    // per S-056; this explicit height is for the `Column`
+    // inside, not for the outer decoration.
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final stripHeight =
+        NutritionStripBarMetrics.contentHeight + bottomInset;
     return SizedBox(
       key: const Key('nutrition_strip_filled'),
-      height: NutritionStripBarMetrics.contentHeight,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          return Stack(
-            children: [
-              // Layer 1: the track + segmented fill. Paints the
-              // full strip width so the track visibly continues
-              // past the fill to 100% (S-050b).
-              Positioned.fill(
-                child: _SegmentedBar(
-                  segments: segments,
-                  trackColor: themeColors.divider,
-                  consumedCalories: consumedCalories,
-                  targetCalories: targetCalories,
-                  availableWidth: width,
-                ),
-              ),
-              // Layer 2: in-segment labels. Drawn as positioned
-              // `Text` widgets so they survive widget tests
-              // (`find.textContaining('P 25%')` is the canonical
-              // S-050b / S-053 probe). Each label hides itself
-              // when the segment is too narrow (S-053).
-              Positioned.fill(
-                child: _SegmentLabels(
-                  segments: segments,
-                  consumedCalories: consumedCalories,
-                  targetCalories: targetCalories,
-                ),
-              ),
-              // Layer 3: overlay content (calorie label +
-              // chevron-right). The enclosing SafeArea(top:
-              // false) keeps the content above the bottom
-              // home-indicator inset.
-              Positioned.fill(
-                top: 30,
-                child: _OverlayLabel(
-                  consumedCalories: consumedCalories,
-                  targetCalories: targetCalories,
-                ),
-              ),
-            ],
-          );
-        },
+      height: stripHeight,
+      child: Column(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          // ── Top region: the bar, glued to the top of
+          //    the strip. No `Padding`, no `Container`
+          //    wrapper — the bar starts at the very top
+          //    edge of the `Material` / `Ink` decoration.
+          //    The 32-px margin above the bar
+          //    (2 × `standardGridSpacing`) is owned by
+          //    the home screen's `Column`, not by this
+          //    widget.
+          SizedBox(
+            height: NutritionStripBarMetrics.contentHeight,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                // Dark text-shadow so the chevron stays
+                // legible over the colored bar segments
+                // (purple / blue / yellow) AND over the
+                // neutral track (D-8 contrast treatment —
+                // matches the in-segment "P 25%" labels'
+                // shadow recipe).
+                const chevronShadow = [
+                  Shadow(
+                    color: Color(0x8C000000), // black 55%
+                    blurRadius: 4,
+                    offset: Offset(0, 1),
+                  ),
+                ];
+                return Stack(
+                  children: [
+                    // Layer 1: the track + segmented fill.
+                    // Paints the full strip width so the
+                    // track visibly continues past the
+                    // fill to 100% (S-050b).
+                    Positioned.fill(
+                      child: _SegmentedBar(
+                        segments: segments,
+                        trackColor: themeColors.divider,
+                        consumedCalories: consumedCalories,
+                        targetCalories: targetCalories,
+                        availableWidth: width,
+                      ),
+                    ),
+                    // Layer 2: in-segment labels. Drawn as
+                    // positioned `Text` widgets so they
+                    // survive widget tests
+                    // (`find.textContaining('P 25%')` is
+                    // the canonical S-050b / S-053 probe).
+                    // Each label hides itself when the
+                    // segment is too narrow (S-053).
+                    Positioned.fill(
+                      child: _SegmentLabels(
+                        segments: segments,
+                        consumedCalories: consumedCalories,
+                        targetCalories: targetCalories,
+                      ),
+                    ),
+                    // Layer 3: chevron-right navigation
+                    // indicator. Vertically centered in the
+                    // bar, pinned to the right edge of the
+                    // strip. The chevron's x-position is at
+                    // the physical end edge (x = stripWidth)
+                    // — NOT in the label gap below the bar
+                    // (the calorie label stays chevron-free,
+                    // per the "remove the chevron from the
+                    // label" instruction). The shadow keeps
+                    // the icon legible over both the colored
+                    // fill and the neutral track.
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Icon(
+                          Icons.chevron_right,
+                          size: 30,
+                          color: themeColors.textDominant,
+                          shadows: chevronShadow,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          // ── Bottom region: the label gap. The
+          //    `Expanded` fills the remaining height
+          //    after the bar, which is the "small gap
+          //    between [the bar] and the end of the
+          //    screen" — the area where the home
+          //    indicator sits on iPhone X+ (the
+          //    `Material` / `Ink` decoration extends to
+          //    the physical bottom edge per S-056, so
+          //    the label's background is the strip's
+          //    surface color).
+          Expanded(
+            child: _GapLabel(
+              consumedCalories: consumedCalories,
+              targetCalories: targetCalories,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -315,16 +410,26 @@ class _FilledStrip extends StatelessWidget {
   }
 }
 
-/// The calorie-label overlay drawn on top of the bar. Uses a
-/// dark text-shadow so the label is legible over both the
-/// fill and the track (D-8 contrast requirement). A solid
-/// scrim would obscure the segments; a shadow keeps the
-/// segments visible while the text still reads.
-class _OverlayLabel extends StatelessWidget {
+/// The "calories eaten / calories planned" label that lives
+/// in the small gap between the progress bar (above) and the
+/// physical bottom edge of the screen (below).
+///
+/// Layout (Phase 4.1.2 follow-up):
+///   - The label is centered as a group inside the gap:
+///     the dining icon is on the left of the group, an
+///     8-px gap, then the `"X / Y cal"` text.
+///   - No chevron (per the "remove the chevron at all"
+///     instruction).
+///   - The icon sits at the very horizontal middle of the
+///     gap because the whole group is centered and the
+///     group is symmetric around the icon (icon +
+///     spacing + text ≈ same width on each side of the
+///     icon for a typical "X,XXX / Y,YYY cal" string).
+class _GapLabel extends StatelessWidget {
   final int consumedCalories;
   final int targetCalories;
 
-  const _OverlayLabel({
+  const _GapLabel({
     required this.consumedCalories,
     required this.targetCalories,
   });
@@ -332,44 +437,27 @@ class _OverlayLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeColors = OmniTheme.colors;
-    final contrastShadow = [
-      Shadow(
-        color: Colors.black.withValues(alpha: 0.55),
-        blurRadius: 6,
-        offset: const Offset(0, 1),
-      ),
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+    return Center(
       child: Row(
         key: const Key('nutrition_strip_label'),
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             Icons.local_dining_outlined,
             size: 18,
             color: themeColors.textDominant,
-            shadows: contrastShadow,
           ),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '${_FilledStrip._fmt(consumedCalories)} / '
-              '${_FilledStrip._fmt(targetCalories)} cal',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: themeColors.textDominant,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
-                    shadows: contrastShadow,
-                  ),
-            ),
-          ),
-          Icon(
-            Icons.chevron_right,
-            size: 20,
-            color: themeColors.textDominant,
-            shadows: contrastShadow,
+          Text(
+            '${_FilledStrip._fmt(consumedCalories)} / '
+            '${_FilledStrip._fmt(targetCalories)} cal',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: themeColors.textDominant,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                    ),
           ),
         ],
       ),
@@ -455,7 +543,7 @@ class _SegmentLabels extends StatelessWidget {
               child: _SegmentLabel(
                 seg: seg,
                 fraction: seg.kcal / totalKcal,
-                textColor: themeColors.textDominant,
+                textColor: themeColors.macroChart.chartLabelDark,
               ),
             ),
           );
@@ -676,15 +764,23 @@ class _SegmentedFillPainter extends CustomPainter {
 }
 
 /// Design tokens for the strip. The content height is the
-/// strip's full painted height (track + fill + label overlay);
-/// the home screen extends the strip background to the
-/// physical bottom edge via the `Material` / `Ink` decoration
-/// (S-056) without bumping the `contentHeight` itself.
+/// strip's full painted height (the bar fills it; the
+/// "calories eaten / calories planned" label is `Positioned`
+/// at `top: contentHeight` in the strip's bottom-gap area
+/// — it overflows the 64-px content rect into the
+/// `Material` / `Ink` decoration's bottom area, which
+/// extends to the physical bottom edge of the screen via
+/// the S-056 contract). All in-bar measurements
+/// (label-fit budget, chevron depth) derive from
+/// `contentHeight`.
 class NutritionStripBarMetrics {
   /// Full-strip content height per D-8. The default is
   /// tunable but starts at 64 px (the design-system tuning
-  /// mechanic in D-8). All in-strip measurements (label fit,
-  /// chevron depth) derive from this constant.
+  /// mechanic in D-8). The bar fills this height; the
+  /// calorie label is positioned BELOW this height in the
+  /// strip's bottom-gap area (Phase 4.1.2 follow-up — a
+  /// pure realignment of the D-8 overlay, no height /
+  /// width change).
   static const double contentHeight = 64.0;
 
   /// Reserve this much of the trailing segment's right edge

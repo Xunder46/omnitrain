@@ -58,9 +58,9 @@ class OmniTheme {
           surfaceBorder: Color(0x0FFFFFFF),
           macroChart: (
             protein: Color(0xFFEDEDED),
-            netCarbs: Color(0xFF4F8DF7),
+            netCarbs: Color.fromARGB(255, 0, 166, 255),
             fiber: Color(0xFF3FBF67),
-            fat: Color(0xFFE8B420),
+            fat: Color.fromARGB(255, 255, 217, 0),
             chartLabelDark: Color(0xFF0B1424),
           ),
         );

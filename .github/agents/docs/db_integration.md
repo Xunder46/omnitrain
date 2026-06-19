@@ -177,6 +177,45 @@ Storage shape:
 
 Tests: see `test/edge_case_test.dart` (`NutritionTarget (date-keyed) edge cases` group) for the boundary conditions — backward-walk, nearest-ancestor preference, forward-propagation across matching and non-matching future dates, and legacy delegation.
 
+## Daily Water Log
+
+`WorkoutRepository` exposes date-aware water-log APIs alongside the
+nutrition-target methods:
+
+| Method | Behaviour |
+|---|---|
+| `getWaterVolumeForDate(int dateMs)` | Returns the stored milliliter value for [dateMs]. Returns `0` when no row exists — the absence of a row is the same as a 0 ml day, callers never see `null`. |
+| `saveWaterVolumeForDate(int dateMs, int volumeMl)` | Upserts the row for [dateMs]. `volumeMl` is clamped to `>= 0` as a last line of defense against bad inputs. Past dates other than [dateMs] are never touched. |
+
+The row id is deterministic (`'water-<dateMs>'`) so the same day always
+maps to the same storage key in both implementations. The per-glass
+amount is canonical at `kWaterGlassMl = 250` (see
+`lib/core/constants/water_constants.dart`); the on-screen glass count
+is derived at the display boundary (`volumeMl ~/ kWaterGlassMl`),
+never stored. Water has no goal — like macros and sodium, it is
+tracked and stored for the historical record only.
+
+Implementation requirements (both `HiveWorkoutRepository` and `MockWorkoutRepository`):
+- **Storage shape**:
+  - Hive: a dedicated box `water_log` keyed by `dateMs.toString()`
+    with a `Map<String, dynamic>` value matching `WaterLogEntry.toMap()`.
+  - Mock: an in-memory `Map<int, int>` keyed by `dateMs` (just the ml value).
+  - SQLite: the `app_water_log` table is keyed by `date_ms` (`INTEGER
+    UNIQUE`) with `volume_ml INTEGER NOT NULL CHECK (volume_ml >= 0)`;
+    see `scripts/sqlite_schema.sql` for the schema narrative.
+- **Past dates are immutable**: the repository never walks forward and
+  modifies dates earlier than the explicitly-written [dateMs].
+- **Day-rollover semantics**: `NutritionState.rolloverToDate(newDateMs)`
+  clears the in-memory water cache for the new day and reloads it via
+  `getWaterVolumeForDate(newDateMs)`; the prior date's stored ml is
+  untouched.
+
+Tests: see `test/state_test.dart` (`NutritionState daily water log`
+group) for the per-day volume contract — increment / decrement,
+floor at 0, immediate persistence round-trip, date isolation, and the
+extended day-rollover test (the existing `rolloverToDate` test now
+also asserts water behavior).
+
 ## Food Library & Catalog
 
 The nutrition feature supports three independent collections:

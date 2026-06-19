@@ -1358,4 +1358,42 @@ CREATE TABLE app_consumed_food (
 CREATE INDEX IF NOT EXISTS IX_consumed_food_date ON app_consumed_food(date_ms DESC);
 CREATE INDEX IF NOT EXISTS IX_consumed_food_logged ON app_consumed_food(logged_at_ms DESC);
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- app_water_log — Per-day water volume (milliliters).
+-- ─────────────────────────────────────────────────────────────────────────────
+--
+-- One row per calendar day, keyed by `date_ms` (local midnight ms). The
+-- day's water volume is stored as a real volume in milliliters so the
+-- historical record stays unit-clean; the on-screen "glass count" is
+-- derived at the display boundary (`volume_ml / 250`), never stored.
+--
+-- Water has no goal — like macros and sodium, it is tracked and stored
+-- for the historical record only. Each new day starts at 0; logging takes
+-- effect immediately and survives closing and reopening the app on the
+-- same day. Prior days are never modified automatically.
+--
+-- SqliteWorkoutRepository implementation notes:
+--   getWaterVolumeForDate(dateMs):
+--     SELECT volume_ml FROM app_water_log WHERE date_ms = ?;
+--     (returns 0 when no row matches)
+--   saveWaterVolumeForDate(dateMs, volumeMl):
+--     INSERT INTO app_water_log (id, date_ms, volume_ml, created_at_ms, updated_at_ms)
+--       VALUES (?, ?, ?, ?, ?)
+--       ON CONFLICT(date_ms) DO UPDATE SET
+--         volume_ml = excluded.volume_ml,
+--         updated_at_ms = excluded.updated_at_ms;
+--
+-- The `id` column is the deterministic storage key (`'water-<dateMs>'`),
+-- matching WaterLogEntry.idForDate. `volume_ml` is non-negative (the state
+-- layer floors at 0 ml before persisting).
+--
+CREATE TABLE app_water_log (
+  id TEXT NOT NULL PRIMARY KEY,
+  date_ms INTEGER NOT NULL UNIQUE,
+  volume_ml INTEGER NOT NULL CHECK (volume_ml >= 0),
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_water_log_date ON app_water_log(date_ms DESC);
+
 COMMIT;

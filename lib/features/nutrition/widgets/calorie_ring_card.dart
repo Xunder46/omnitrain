@@ -4,10 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/omni_theme.dart';
+import '../../../core/utils/date_utils.dart';
 import '../../../state/nutrition_state.dart';
 import '../../../widgets/layout/omni_surface.dart';
 import 'calorie_ring.dart';
 import 'macro_donut_chart.dart';
+import 'water_tracker_control.dart';
 
 /// A `Card` wrapper around [CalorieRing] for the top of the nutrition
 /// page. Reads consumed + target data from [NutritionState] and
@@ -248,20 +250,35 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
                   ),
                 ),
               ),
-              // Sodium daily-total label at bottom left (D-7 / S-043).
-              // Format: "Na 148 mg". Single rounding per D-7;
-              // null source sodium is treated as 0 by the
-              // state's `todayConsumedSodium` getter, so this
-              // line always shows a number (including 0 on
-              // empty days).
-              Align(
-                alignment: Alignment.bottomLeft,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 0, top: 8),
-                  child: _SodiumTotalChip(
-                    sodiumMg: widget.nutritionState.todayConsumedSodium,
-                    themeColors: themeColors,
-                  ),
+              // Bottom row — sodium chip on the left (D-7 / S-043) and
+              // the water tracker on the right. The two are siblings
+              // in a single spaceBetween row so they horizontally
+              // mirror each other — sodium on the left, water on the
+              // right. The water tracker reads from the same
+              // `nutritionState` via the existing `ListenableBuilder`
+              // so it rebuilds when the day's volume changes.
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _SodiumTotalChip(
+                      sodiumMg: widget.nutritionState.todayConsumedSodium,
+                      themeColors: themeColors,
+                    ),
+                    WaterTrackerControl(
+                      glasses: widget.nutritionState.waterTodayGlasses,
+                      onIncrement: () => widget.nutritionState
+                          .incrementWaterForDate(
+                        OmniDateUtils.todayMidnightMs(),
+                      ),
+                      onDecrement: () => widget.nutritionState
+                          .decrementWaterForDate(
+                        OmniDateUtils.todayMidnightMs(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

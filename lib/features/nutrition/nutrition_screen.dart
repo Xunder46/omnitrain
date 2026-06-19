@@ -29,11 +29,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
   @override
   void initState() {
     super.initState();
-    // Load today's nutrition target, today's consumed foods, and the
-    // food library in parallel. All three are independent — each is
-    // fired and not awaited so the others are not gated on it.
+    // Load today's nutrition target, today's consumed foods, today's
+    // water volume, and the food library in parallel. All four are
+    // independent — each is fired and not awaited so the others are
+    // not gated on it.
     _loadTodayTarget();
     _loadConsumedToday();
+    _loadWaterForToday();
     _loadLibrary();
   }
 
@@ -43,6 +45,10 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   Future<void> _loadConsumedToday() async {
     await widget.nutritionState.loadConsumedToday();
+  }
+
+  Future<void> _loadWaterForToday() async {
+    await widget.nutritionState.loadWaterForToday();
   }
 
   Future<void> _loadLibrary() async {
@@ -57,14 +63,16 @@ class _NutritionScreenState extends State<NutritionScreen> {
       context,
       (context) => NutritionTargetScreen(nutritionState: widget.nutritionState),
     ).then((_) {
-      // Reload targets AND today's consumed log when returning from
-      // the edit screen. The target is what the ring renders; the
-      // consumed log is unaffected by target edits, but loading it
-      // here keeps the reload path symmetric (one source of truth for
-      // "what changed while we were away"). The widget tree will
-      // rebuild through `ListenableBuilder` on each notification.
+      // Reload targets AND today's consumed log AND today's water
+      // volume when returning from the edit screen. The target is
+      // what the ring renders; the consumed log and water volume are
+      // unaffected by target edits, but loading them here keeps the
+      // reload path symmetric (one source of truth for "what changed
+      // while we were away"). The widget tree will rebuild through
+      // `ListenableBuilder` on each notification.
       _loadTodayTarget();
       _loadConsumedToday();
+      _loadWaterForToday();
     });
   }
 

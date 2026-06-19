@@ -562,4 +562,26 @@ abstract class WorkoutRepository {
   /// Used by the state layer as a cache-miss fallback when looking up a
   /// row by [ConsumedFood.sourceFoodId] + [ConsumedFood.dateMs].
   Future<ConsumedFood?> getConsumedFoodById(String id);
+
+  // ─── Daily Water Log ──────────────────────────────────────────────────────
+  // One row per calendar day; the day's volume is stored as a real milliliter
+  // value so the historical record stays unit-clean. The on-screen glass
+  // count is derived at the display boundary, never stored.
+
+  /// Returns the stored water volume in milliliters for [dateMs]
+  /// (local midnight). Returns `0` when no row exists — the absence of a
+  /// row is the same as a 0 ml day, callers never see `null`.
+  ///
+  /// Past dates are never modified implicitly; the per-day row only changes
+  /// when the user explicitly logs a glass on that date.
+  Future<int> getWaterVolumeForDate(int dateMs);
+
+  /// Persist [volumeMl] (clamped to `>= 0`) for [dateMs]. Creates the row
+  /// on first write; overwrites the existing row on subsequent writes.
+  /// Past dates other than [dateMs] are never touched.
+  ///
+  /// The row id is derived from [dateMs] via [WaterLogEntry.idForDate] so
+  /// the same day always maps to the same storage key in both
+  /// implementations.
+  Future<void> saveWaterVolumeForDate(int dateMs, int volumeMl);
 }

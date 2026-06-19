@@ -26,6 +26,7 @@ import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
+import 'package:omnitrain/widgets/layout/omni_surface.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -354,6 +355,165 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // Daily water tracker — bottom-right of the calorie-ring card
+  //
+  // The control mirrors the sodium chip on the left. It's a tap-only
+  // +/− stepper that stores its value as milliliters (kWaterGlassMl
+  // per glass) and never exposes a text-entry field. The displayed
+  // glass count is derived from the stored ml.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('CalorieRingCard — water tracker (bottom-right stepper)', () {
+    /// Render the card with a state whose water cache holds the given
+    /// number of glasses (the convenience derives the ml from
+    /// `kWaterGlassMl`). The state is returned for follow-up calls
+    /// (increment / decrement) that must happen in the same frame
+    /// so the `ListenableBuilder` rebuild sees the new value.
+    Future<NutritionState> pumpRingWithWater(
+      WidgetTester tester, {
+      required int glasses,
+    }) async {
+      final repo = await _freshRepo();
+      final nutrition = NutritionState(repo);
+      await nutrition.loadConsumedToday();
+      await nutrition.loadNutritionTarget();
+      final today = OmniDateUtils.todayMidnightMs();
+      // Seed the repo directly so the cache is hydrated on first
+      // build — mirrors the cold-start flow where the day's water is
+      // loaded once on `initState` and the count comes from the
+      // persisted ml value.
+      await repo.saveWaterVolumeForDate(
+        today,
+        glasses * 250, // kWaterGlassMl
+      );
+      await nutrition.loadWaterForDate(today);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CalorieRingCard(
+              nutritionState: nutrition,
+              onEditTap: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return nutrition;
+    }
+
+    testWidgets(
+      'renders glass icon, "250 ml" annotation, minus + count + plus '
+      '(S-001 / S-008)',
+      (tester) async {
+        await pumpRingWithWater(tester, glasses: 3);
+
+        // The control subtree is present.
+        expect(
+          find.byKey(const Key('water_tracker_control')),
+          findsOneWidget,
+        );
+        // The "250 ml" annotation is on-screen — the user can see the
+        // per-glass amount without interacting.
+        expect(find.text('250 ml'), findsOneWidget);
+        // The count is derived from the stored ml (750 ml → 3).
+        expect(find.text('3'), findsOneWidget);
+        // Plus / minus affordances are present.
+        expect(
+          find.byKey(const Key('water_tracker_plus')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('water_tracker_minus')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'cold start with no water logged → count 0, minus disabled '
+      '(S-001 / S-010)',
+      (tester) async {
+        await pumpRingWithWater(tester, glasses: 0);
+
+        // Count reads 0.
+        expect(find.text('0'), findsOneWidget);
+        // The minus IconButton has `onPressed == null` (disabled).
+        final minusButton = tester.widget<IconButton>(
+          find.byKey(const Key('water_tracker_minus')),
+        );
+        expect(
+          minusButton.onPressed,
+          isNull,
+          reason: 'minus button must be disabled when glasses == 0',
+        );
+        // The plus IconButton is enabled.
+        final plusButton = tester.widget<IconButton>(
+          find.byKey(const Key('water_tracker_plus')),
+        );
+        expect(plusButton.onPressed, isNotNull);
+      },
+    );
+
+    testWidgets(
+      'tapping plus increments the count by exactly 1 glass (S-002)',
+      (tester) async {
+        final nutrition = await pumpRingWithWater(tester, glasses: 2);
+        expect(find.text('2'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('water_tracker_plus')));
+        await tester.pumpAndSettle();
+
+        // The state's cached ml grew by 250 ml.
+        expect(nutrition.waterTodayMl, 750);
+        expect(nutrition.waterTodayGlasses, 3);
+        // The display follows the cache.
+        expect(find.text('3'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping minus decrements the count by exactly 1 glass (S-003)',
+      (tester) async {
+        final nutrition = await pumpRingWithWater(tester, glasses: 2);
+
+        await tester.tap(find.byKey(const Key('water_tracker_minus')));
+        await tester.pumpAndSettle();
+
+        expect(nutrition.waterTodayMl, 250);
+        expect(nutrition.waterTodayGlasses, 1);
+        expect(find.text('1'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'no text field or keyboard is ever invoked (S-009)',
+      (tester) async {
+        await pumpRingWithWater(tester, glasses: 2);
+
+        // No text-entry widgets in the water subtree.
+        final waterFinder = find.byKey(const Key('water_tracker_control'));
+        expect(
+          find.descendant(of: waterFinder, matching: find.byType(TextField)),
+          findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: waterFinder,
+            matching: find.byType(TextFormField),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: waterFinder,
+            matching: find.byType(EditableText),
+          ),
+          findsNothing,
+        );
+      },
+    );
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // S-041 — Focused-macro center: grams + % of consumed calories
   // ═══════════════════════════════════════════════════════════════════════
   group(
@@ -586,12 +746,35 @@ void main() {
       expect(find.text('22C'), findsNothing);
       expect(find.text('50F'), findsNothing);
 
-      // Display-only: no add/log/FAB controls.
-      expect(find.byIcon(Icons.add), findsNothing);
-      expect(find.text('Log'), findsNothing);
-      expect(find.text('Add'), findsNothing);
-      expect(find.text('Edit'), findsNothing);
-      expect(find.byType(FloatingActionButton), findsNothing);
+      // Display-only: no add/log/FAB controls in the **food library
+      // card**. The calorie-ring card now hosts the water tracker,
+      // which carries a single `Icons.add` (+ button) — the assertion
+      // is scoped to the food library's `OmniSurface` so the water
+      // tracker's icon doesn't fail the test.
+      final foodLibraryCard = find.byType(OmniSurface).last;
+      expect(
+        find.descendant(of: foodLibraryCard, matching: find.byIcon(Icons.add)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: foodLibraryCard, matching: find.text('Log')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: foodLibraryCard, matching: find.text('Add')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: foodLibraryCard, matching: find.text('Edit')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: foodLibraryCard,
+          matching: find.byType(FloatingActionButton),
+        ),
+        findsNothing,
+      );
     });
 
     // S-004: Archived items hidden at the screen level. The repository

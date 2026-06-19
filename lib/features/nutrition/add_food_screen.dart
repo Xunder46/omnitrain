@@ -380,7 +380,7 @@ class _FromCatalogTabState extends State<_FromCatalogTab> {
                 key: const Key('catalog_search_field'),
                 controller: _searchController,
                 decoration: InputDecoration(
-                  hintText: 'Search catalog',
+                  hintText: 'Search',
                   prefixIcon: const Icon(Icons.search),
                   isDense: true,
                   border: const OutlineInputBorder(),

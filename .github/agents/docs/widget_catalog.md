@@ -220,7 +220,7 @@ Legacy/alternative tile implementations. May be deprecated stubs — check code 
 
 **File**: `lib/features/home/widgets/nutrition_strip_bar.dart`
 
-Full-height footer bar on the home screen (D-8 / S-050b / S-051..S-057 — supersedes the Phase 4 D-5 two-row layout). Sits below the training-tile grid with top gap = 2 × `standardGridSpacing` and extends to the physical bottom edge of the screen; the strip's `Material`/`Ink` decoration lives outside the inner `SafeArea(top: false)` so the track background reaches the bottom edge while the content (label / empty message) respects the bottom home-indicator inset. The fixed content height is `NutritionStripBarMetrics.contentHeight` (default 64 px, tunable per D-8). Pure presentation — no state access, no business logic, no math. All colors come from `OmniTheme.colors`; per-macro calorie math lives on `NutritionState` (D-4 getters) and is passed in.
+Full-height footer bar on the home screen (D-8 / S-050b / S-051..S-057, plus the Phase 4.1.2 follow-up S-058 — supersedes the Phase 4 D-5 two-row layout). Sits below the training-tile grid with top gap = 2 × `standardGridSpacing` and extends to the physical bottom edge of the screen; the strip's `Material`/`Ink` decoration reaches the bottom edge while the content (bar / label / empty message) sits above the bottom home-indicator inset. The bar height is `NutritionStripBarMetrics.contentHeight` (default 64 px, tunable per D-8) — the bar keeps its original D-8 geometry, glued to the top of the strip with no padding. A chevron-right navigation indicator is vertically centered in the bar at the right edge of the strip (Phase 4.1.2 follow-up). The "calories eaten / calories planned" label sits in the small gap between the bar and the physical bottom edge of the screen (the `Material`/`Ink` decoration area, S-056), vertically centered in the gap. Pure presentation — no state access, no business logic, no math. All colors come from `OmniTheme.colors`; per-macro calorie math lives on `NutritionState` (D-4 getters) and is passed in.
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -239,13 +239,14 @@ Full-height footer bar on the home screen (D-8 / S-050b / S-051..S-057 — super
 - `contentHeight` (default 64 px): the strip's full painted height. All in-strip measurements (label-fit budget, chevron depth) derive from this constant. Tunable per D-8.
 - `chevronReserve` (default 12 px): the trailing segment's right-edge clearance so the in-segment label does not collide with the arrow tip.
 
-**Behavior (D-8)**:
-- **Geometry**: the whole strip IS the bar. The strip is a single full-height region; the surface is the track. The fill (when present) is painted inside the strip; the track visibly continues past the fill to 100% (S-050b).
-- **Empty state** (S-051): when `targetCalories == null || targetCalories <= 0 || consumedCalories <= 0`, renders a single centered inviting message. No bar, no numbers. The surface is still tappable.
-- **Happy state** (S-050b / S-052 / S-053):
-  - Calorie label `"{consumed} / {target} cal"` (comma-grouped thousands) overlays top-left in one line with the chevron-right at top-right. Both carry a dark text-shadow contrast treatment (D-8) so the label is legible over the fill and the track.
-  - Fill width = `min(consumed / target, 1.0) × stripWidth` (S-052). The fill is subdivided P → C → F by calorie contribution (D-4 math, total carbs for blue) with **straight vertical interior segment boundaries**. ONLY the fill's leading (right) edge is chevron-shaped; the chevron is carried by the trailing segment.
-  - Each segment shows `"{M} {pct}%"` inside; the label is measured against the segment pixel width via `TextPainter` (via the same `_SegmentLabel` math) and hidden when it doesn't fit (S-053). The D-8 full-strip content height widens the label-fit budget substantially — the v1 14-px-tall floating-pill failure case (S-050b) cannot recur.
+**Behavior (D-8 + S-058)**:
+- **Geometry**: the strip is a `Column` of two regions inside an explicit-height `SizedBox` (`contentHeight` + `MediaQuery.of(context).padding.bottom`). The top region (`contentHeight` tall) is the bar — the painted track + segmented fill + in-segment labels, glued to the top of the strip with no padding / no outer `Container`. The bottom region is the label gap — the small space between the bar's bottom edge and the physical bottom edge of the screen (the `Material` / `Ink` decoration area, S-056). The track visibly continues past the fill to 100% (S-050b) inside the bar region.
+- **Empty state** (S-051): when `targetCalories == null || targetCalories <= 0 || consumedCalories <= 0`, renders a single centered inviting message in the full content height. No bar, no numbers. The surface is still tappable.
+- **Happy state** (S-050b / S-052 / S-053 / S-058):
+  - Calorie label `"{consumed} / {target} cal"` (comma-grouped thousands) sits in the gap **below** the bar (S-058). The label is a centered `Row` of two children: the dining icon (`Icons.local_dining_outlined`, 18 px) and the text (8-px gap between them). The label is vertically centered in the gap. No chevron in the label (the chevron is inside the bar, not the label, Phase 4.1.2 follow-up).
+  - Fill width = `min(consumed / target, 1.0) × barWidth` (S-052). The fill is subdivided P → C → F by calorie contribution (D-4 math, total carbs for blue) with **straight vertical interior segment boundaries**. ONLY the fill's leading (right) edge is chevron-shaped; the chevron is carried by the trailing segment.
+  - **Chevron-right navigation indicator** (`Icons.chevron_right`, 20 px) sits in the bar at the right edge of the strip, vertically centered (`Alignment.centerRight` inside a `Positioned.fill`). Carries the D-8 dark text-shadow so it stays legible over both the colored fill and the neutral track. The chevron is NOT in the label gap below the bar — it lives INSIDE the bar, at the right edge (Phase 4.1.2 follow-up).
+  - Each segment shows `"{M} {pct}%"` inside; the label is measured against the segment pixel width via `TextPainter` (via the same `_SegmentLabel` math) and hidden when it doesn't fit (S-053). The D-8 bar content height widens the label-fit budget substantially — the v1 14-px-tall floating-pill failure case (S-050b) cannot recur.
 - The widget never picks a color of its own — `OmniTheme.colors.macroChart.{protein,netCarbs,fat}` (where `netCarbs` fills the carbs slot per the D-5 / D-8 spec).
 - Tap on any region calls `onTap`. The empty state does NOT disable the surface.
 - Hairline top border (1 px `surfaceBorder`); NO upward drop shadow over the tile grid.
@@ -320,9 +321,7 @@ calories vs the daily target.
 The "Today" section title and the small edit-targets icon button live
 in an `OmniCardHeader` *above* the card (rendered by `NutritionScreen`,
 not by this widget) — see `.github/agents/plans/unified-card-and-header-plan.md`
-Phase 3. The card body itself renders the chart and the sodium chip
-in an `OmniSurface` so its chrome matches every other outlined card
-in the app (radius 20, 1 px `surfaceBorder`, `deepShadow`).
+Phase 3. The card body itself renders the chart, the sodium chip, and the water tracker in an `OmniSurface` so its chrome matches every other outlined card in the app (radius 20, 1 px `surfaceBorder`, `deepShadow`).
 
 Reads consumed + target data from the injected `NutritionState` and
 rebuilds on every notification. Owns the **focus state** that drives
@@ -368,13 +367,77 @@ the macro-donut tap-to-focus interaction.
   Material 3's default `StadiumBorder`. The icon is **not** part of the
   focus state — tapping it navigates to the targets editor as before.
 - `ListenableBuilder` over `nutritionState` — every `notifyListeners()`
-  (target load/save, consumed-food load, log/delete) rebuilds the ring
-  and the donut. The focus survives a rebuild as long as the focused
+  (target load/save, consumed-food load, water increment / decrement,
+  log/delete) rebuilds the ring, the donut, the sodium chip, and the
+  water tracker. The focus survives a rebuild as long as the focused
   section still has non-zero grams (S-013); it clears if the section
   disappears (S-014), but does not flicker because the fallback is a no-op.
-- Pure presentation — no repository access, no business logic.
+- **Bottom row** is a single `Row(spaceBetween)` with the sodium chip on
+  the left and the `WaterTrackerControl` on the right. The two are
+  siblings so they horizontally mirror each other. Both rebuild via the
+  same `ListenableBuilder`, so each tap on either persists immediately
+  and the ring reflects the new totals on the next frame.
+- Pure presentation — no repository access, no business logic. The
+  water tracker's increment / decrement is wired to
+  `nutritionState.incrementWaterForDate(todayMs)` /
+  `nutritionState.decrementWaterForDate(todayMs)`.
 - Card chrome is `OmniSurface` with symmetric 16 dp padding (A20); no
   call-site may re-declare border, radius, or shadow.
+
+### `WaterTrackerControl`
+
+**File**: `lib/features/nutrition/widgets/water_tracker_control.dart`
+
+Compact, tap-only +/− stepper for the day's water volume. Lives in
+the bottom-right of `CalorieRingCard`, horizontally opposite the
+sodium chip in the bottom-left. The on-screen glass count is
+derived from the stored ml (`volumeMl ~/ kWaterGlassMl`); the icon +
+literal `250 ml` annotation carries the unit so the user can decode
+the per-glass amount at a glance. Water has no goal — the widget
+carries no progress bar, target, or percentage.
+
+Composition (left-to-right):
+1. **Glass icon + `250 ml` annotation** stacked vertically. The icon
+   (`Icons.local_drink_outlined`) sits on top and reads as a tumbler /
+   glass with water; the literal `250 ml` caption sits beneath it so
+   the per-glass amount is decoded at a glance. Muted-text color via
+   `OmniTheme.colors.textMuted`. The annotation is sourced from
+   `kWaterGlassMl` so a future per-glass change propagates here
+   automatically. Vertical stacking keeps the row's total width tight
+   (~22 dp narrower than the horizontal layout) so the control fits
+   alongside the sodium chip on the same card row without crowding.
+2. **Minus `IconButton`** — disabled (`onPressed: null`) at 0 glasses.
+   `Icons.remove`. Disabled state uses `themeColors.textDisabled`; the
+   active state uses `theme.colorScheme.primary`.
+4. **Glass count** — tabular-figures `Text` showing the integer count.
+   `Key('water_tracker_count')`.
+5. **Plus `IconButton`** — enabled. `Icons.add`. `theme.colorScheme.primary`.
+
+| Prop | Type | Description |
+|---|---|---|
+| `glasses` | `int` | Current glass count for the day. Always `>= 0`. The widget does not accept a typed amount — the count is the only signal the parent can pass in. |
+| `onIncrement` | `VoidCallback` | Tap handler for the plus button. The widget does not invoke the state directly; the parent screen owns the persistence wiring. |
+| `onDecrement` | `VoidCallback` | Tap handler for the minus button. The widget also passes `null` to the `IconButton.onPressed` (disabled state) when `glasses <= 0` so the visual and the no-op agree. |
+
+**Behavior**:
+- Pure presentation: no repository access, no business logic, no
+  keyboard / text-entry field. The widget never reads or writes
+  ml; the count is the only input.
+- All buttons follow the explicit `shape:` + `OmniTheme.buttonIconRadius`
+  (10) contract — Material 3's default `StadiumBorder` is never used.
+  Both `IconButton`s are 36×36 with `visualDensity: compact` and
+  `padding: EdgeInsets.zero` so the control fits the calorie-ring
+  card's bottom row without crowding the sodium chip.
+- Colors are theme-derived: `theme.colorScheme.primary` for active
+  state, `themeColors.textDisabled` for the disabled minus, and
+  `themeColors.textMuted` for the icon and `250 ml` label.
+- The glass count uses tabular figures (`FontFeature.tabularFigures()`)
+  so the value does not reflow as the count grows from 1 to 2 to 3
+  digits.
+- The widget is rebuilt by its parent's `ListenableBuilder` —
+  no internal state. Every state change (increment, decrement, load,
+  day rollover) flows through `NutritionState` and the
+  `ListenableBuilder` rebuilds the row with the new `glasses` value.
 
 ### `MacroDonutChart`
 

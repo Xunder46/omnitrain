@@ -3216,6 +3216,199 @@ void main() {
       });
     });
 
+    // ═════════════════════════════════════════════════════════════════════
+    // Daily water log (S-001..S-007 / S-009)
+    //
+    // The day's water is stored as a real volume in milliliters. The
+    // on-screen glass count is derived (`waterTodayMl ~/ kWaterGlassMl`)
+    // and never stored. Increment / decrement always operate on the
+    // canonical ml value; the state never writes a raw glass count.
+    // ═════════════════════════════════════════════════════════════════════
+    group('daily water log', () {
+      test('initial cache is empty; loadWaterForDate fetches from repo',
+          () async {
+        final repo = await _freshRepo();
+        // Pre-seed the repo with 500 ml for today.
+        final today = OmniDateUtils.todayMidnightMs();
+        await repo.saveWaterVolumeForDate(today, 500);
+
+        final state = NutritionState(repo);
+        // Cache is empty until the explicit load call.
+        expect(state.waterTodayMl, 0);
+        expect(state.waterTodayGlasses, 0);
+
+        await state.loadWaterForDate(today);
+        expect(state.waterTodayMl, 500);
+        expect(state.waterTodayGlasses, 2);
+      });
+
+      test('incrementWaterForDate stores +250 ml and notifies', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
+
+        var notifications = 0;
+        state.addListener(() => notifications++);
+
+        await state.incrementWaterForDate(today);
+        expect(state.waterTodayMl, 250);
+        expect(state.waterTodayGlasses, 1);
+        // Repository confirms the persisted value.
+        expect(await repo.getWaterVolumeForDate(today), 250);
+        // The increment emitted a notifyListeners call.
+        expect(notifications, greaterThanOrEqualTo(1));
+      });
+
+      test('decrementWaterForDate stores −250 ml and notifies', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
+        // Seed at 500 ml (2 glasses).
+        await state.incrementWaterForDate(today);
+        await state.incrementWaterForDate(today);
+        expect(state.waterTodayMl, 500);
+
+        var notifications = 0;
+        state.addListener(() => notifications++);
+
+        await state.decrementWaterForDate(today);
+        expect(state.waterTodayMl, 250);
+        expect(state.waterTodayGlasses, 1);
+        expect(await repo.getWaterVolumeForDate(today), 250);
+        expect(notifications, greaterThanOrEqualTo(1));
+      });
+
+      test('decrementWaterForDate at 0 is a no-op (no negative ml)', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
+        // No row exists for today; cache is 0.
+        expect(state.waterTodayMl, 0);
+
+        await state.decrementWaterForDate(today);
+        // Still 0 — no negative leak.
+        expect(state.waterTodayMl, 0);
+        expect(state.waterTodayGlasses, 0);
+        // Repository still reports 0 (no row created by a no-op decrement).
+        expect(await repo.getWaterVolumeForDate(today), 0);
+      });
+
+      test('display derivation: ml → glasses maps cleanly', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
+
+        // 0 ml → 0 glasses.
+        await state.loadWaterForDate(today);
+        expect(state.waterTodayMl, 0);
+        expect(state.waterTodayGlasses, 0);
+
+        // 250 ml → 1 glass.
+        await state.incrementWaterForDate(today);
+        expect(state.waterTodayMl, 250);
+        expect(state.waterTodayGlasses, 1);
+
+        // 500 ml → 2 glasses.
+        await state.incrementWaterForDate(today);
+        expect(state.waterTodayMl, 500);
+        expect(state.waterTodayGlasses, 2);
+
+        // 750 ml → 3 glasses.
+        await state.incrementWaterForDate(today);
+        expect(state.waterTodayMl, 750);
+        expect(state.waterTodayGlasses, 3);
+
+        // 1000 ml → 4 glasses.
+        await state.incrementWaterForDate(today);
+        expect(state.waterTodayMl, 1000);
+        expect(state.waterTodayGlasses, 4);
+      });
+
+      test(
+        'immediate persistence: a fresh NutritionState reads the persisted ml',
+        () async {
+          final repo = await _freshRepo();
+          final writer = NutritionState(repo);
+          final today = OmniDateUtils.todayMidnightMs();
+
+          // Writer taps plus four times (1000 ml).
+          for (var i = 0; i < 4; i++) {
+            await writer.incrementWaterForDate(today);
+          }
+          expect(writer.waterTodayMl, 1000);
+
+          // Brand new state instance against the same repo re-reads
+          // 1000 ml on its first load. Closes the round-trip loop.
+          final reader = NutritionState(repo);
+          expect(reader.waterTodayMl, 0); // cache cold
+          await reader.loadWaterForDate(today);
+          expect(reader.waterTodayMl, 1000);
+          expect(reader.waterTodayGlasses, 4);
+        },
+      );
+
+      test('date isolation: writing day A does not change day B', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final dayA = OmniDateUtils.startOfDayMs(
+          DateTime(2026, 5, 10),
+        );
+        final dayB = OmniDateUtils.startOfDayMs(
+          DateTime(2026, 5, 11),
+        );
+
+        // Day A: +3 glasses (750 ml).
+        for (var i = 0; i < 3; i++) {
+          await state.incrementWaterForDate(dayA);
+        }
+        // Day B: +1 glass (250 ml).
+        await state.incrementWaterForDate(dayB);
+
+        // Per-row isolation: each day reads its own stored ml via a
+        // fresh state (cache is per-day so isolation is guaranteed
+        // regardless of write order).
+        final fresh = NutritionState(repo);
+        await fresh.loadWaterForDate(dayA);
+        expect(fresh.waterTodayMl, 750);
+        expect(fresh.waterTodayGlasses, 3);
+
+        await fresh.loadWaterForDate(dayB);
+        expect(fresh.waterTodayMl, 250);
+        expect(fresh.waterTodayGlasses, 1);
+
+        // Reading day A again still returns 750 (cache + repo both
+        // date-keyed; no cross-talk).
+        await fresh.loadWaterForDate(dayA);
+        expect(fresh.waterTodayMl, 750);
+      });
+
+      test(
+        'rolloverToDate: today\'s water reads 0 after rollover; the prior '
+        'date\'s stored ml is unchanged',
+        () async {
+          final repo = await _freshRepo();
+          final state = NutritionState(repo);
+          // Day A (yesterday): 750 ml logged.
+          final dayA = OmniDateUtils.startOfDayMs(
+            DateTime.now().subtract(const Duration(days: 1)),
+          );
+          for (var i = 0; i < 3; i++) {
+            await state.incrementWaterForDate(dayA);
+          }
+          expect(await repo.getWaterVolumeForDate(dayA), 750);
+
+          // Rollover to today: cache empties, repository re-reads 0.
+          final today = OmniDateUtils.todayMidnightMs();
+          await state.rolloverToDate(today);
+          expect(state.waterTodayMl, 0);
+          expect(state.waterTodayGlasses, 0);
+
+          // The prior date's stored ml is unchanged.
+          expect(await repo.getWaterVolumeForDate(dayA), 750);
+        },
+      );
+    });
+
     // ── Per-macro totals (Phase 1 of the macro-donut-chart plan) ───────
     // `todayConsumedProtein/Carbs/Fat` were pre-existing getters; the
     // macro-donut-chart plan adds `todayConsumedFiber` (the only

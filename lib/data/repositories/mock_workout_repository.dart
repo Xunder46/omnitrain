@@ -1364,6 +1364,32 @@ class MockWorkoutRepository implements WorkoutRepository {
     return _consumedFoods[id];
   }
 
+  // ===== WATER LOG (DAY LOG) =====
+
+  /// Per-day water volume map keyed by `dateMs` (local midnight). Stores
+  /// the volume in milliliters (not a glass count) so the historical
+  /// record stays unit-clean. Absence of a key = 0 ml for that day.
+  final Map<int, int> _waterVolumesByDate = {};
+
+  @override
+  Future<int> getWaterVolumeForDate(int dateMs) async {
+    return _waterVolumesByDate[dateMs] ?? 0;
+  }
+
+  @override
+  Future<void> saveWaterVolumeForDate(int dateMs, int volumeMl) async {
+    // Clamp at 0 — the state layer should already have floored the value,
+    // but the repository is the last line of defense against bad inputs.
+    final clamped = volumeMl < 0 ? 0 : volumeMl;
+    final existing = _waterVolumesByDate[dateMs];
+    if (existing == null) {
+      // First write for this date — use the date as the created timestamp.
+      _waterVolumesByDate[dateMs] = clamped;
+    } else {
+      _waterVolumesByDate[dateMs] = clamped;
+    }
+  }
+
   /// Clears all data (useful for testing)
   void clear() {
     _exercises.clear();
@@ -1396,6 +1422,7 @@ class MockWorkoutRepository implements WorkoutRepository {
     _foods.clear();
     _catalogFoods.clear();
     _consumedFoods.clear();
+    _waterVolumesByDate.clear();
     _initialized = false;
   }
 

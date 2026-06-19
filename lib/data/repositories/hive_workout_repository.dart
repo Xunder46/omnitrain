@@ -106,6 +106,10 @@ class HiveWorkoutRepository implements WorkoutRepository {
   // Day nutrition log box: consumed foods (frozen snapshots)
   late Box<Map> _consumedFoodsBox;
 
+  // Daily water log box: key = dateMs.toString(), value = WaterLogEntry.toMap()
+  // Stores the day's volume in milliliters; absence of a key = 0 ml for the day.
+  late Box<Map> _waterLogBox;
+
   late Box<List> _exerciseMuscleGroupsBox;
   late Box<List> _exerciseEquipmentBox;
   late Box<List> _exerciseTagsBox;
@@ -151,6 +155,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     _foodsBox = await Hive.openBox<Map>('foods');
     _foodCatalogBox = await Hive.openBox<Map>('foods_catalog');
     _consumedFoodsBox = await Hive.openBox<Map>('consumed_foods');
+    _waterLogBox = await Hive.openBox<Map>('water_log');
 
     _roundInstancesBox = await Hive.openBox<Map>('round_instances');
 
@@ -2136,6 +2141,52 @@ class HiveWorkoutRepository implements WorkoutRepository {
     return ConsumedFood.fromMap(_asStringMap(raw));
   }
 
+  // ===== WATER LOG (DAY LOG) =====
+
+  /// Daily water volume map keyed by `dateMs` (local midnight) in milliliters.
+  /// Absence of a key = 0 ml for that day — callers never see `null`.
+  @override
+  Future<int> getWaterVolumeForDate(int dateMs) async {
+    final raw = _waterLogBox.get(dateMs.toString());
+    if (raw == null) return 0;
+    final map = _asStringMap(raw);
+    return (map['volume_ml'] as int?) ?? 0;
+  }
+
+  @override
+  Future<void> saveWaterVolumeForDate(int dateMs, int volumeMl) async {
+    // Clamp at 0 — the state layer should already have floored the value,
+    // but the repository is the last line of defense against bad inputs.
+    final clamped = volumeMl < 0 ? 0 : volumeMl;
+    final key = dateMs.toString();
+    final raw = _waterLogBox.get(key);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (raw == null) {
+      await _waterLogBox.put(
+        key,
+        <String, dynamic>{
+          'id': WaterLogEntry.idForDate(dateMs),
+          'date_ms': dateMs,
+          'volume_ml': clamped,
+          'created_at_ms': now,
+          'updated_at_ms': now,
+        },
+      );
+    } else {
+      final existing = _asStringMap(raw);
+      await _waterLogBox.put(
+        key,
+        <String, dynamic>{
+          'id': WaterLogEntry.idForDate(dateMs),
+          'date_ms': dateMs,
+          'volume_ml': clamped,
+          'created_at_ms': (existing['created_at_ms'] as int?) ?? now,
+          'updated_at_ms': now,
+        },
+      );
+    }
+  }
+
   // ===== UTILITY METHODS =====
 
   Future<void> clear() async {
@@ -2173,6 +2224,7 @@ class HiveWorkoutRepository implements WorkoutRepository {
     await _foodsBox.clear();
     await _foodCatalogBox.clear();
     await _consumedFoodsBox.clear();
+    await _waterLogBox.clear();
     await _metaBox.delete(_seedLoadedKey);
     _initialized = false;
   }

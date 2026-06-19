@@ -136,7 +136,7 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
 ### R-3
 
 - [ ] The Library tab has a `TextField` at the top labeled
-      "Search catalog".
+      "Search".
 - [ ] Typing filters the list by case-insensitive name substring
       in alphabetical order; clearing the field restores the full
       list.

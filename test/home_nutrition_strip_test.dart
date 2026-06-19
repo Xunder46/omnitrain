@@ -191,7 +191,7 @@ Future<void> _pumpStrip(
   required int consumed,
   required int? target,
   required int proteinKcal,
-  required int totalCarbsKcal,
+  required int netCarbsKcal,
   required int fatKcal,
   required VoidCallback onTap,
   double surfaceWidth = 600,
@@ -226,7 +226,7 @@ Future<void> _pumpStrip(
                 consumedCalories: consumed,
                 targetCalories: target,
                 proteinKcal: proteinKcal,
-                totalCarbsKcal: totalCarbsKcal,
+                netCarbsKcal: netCarbsKcal,
                 fatKcal: fatKcal,
                 onTap: onTap,
               ),
@@ -253,7 +253,7 @@ void main() {
         consumed: 1450,
         target: 2200,
         proteinKcal: 600,
-        totalCarbsKcal: 600,
+        netCarbsKcal: 600,
         fatKcal: 250,
         onTap: () {},
       );
@@ -276,7 +276,7 @@ void main() {
         consumed: 1426,
         target: 2000,
         proteinKcal: 642,
-        totalCarbsKcal: 157,
+        netCarbsKcal: 157,
         fatKcal: 627,
         onTap: () {},
       );
@@ -300,7 +300,12 @@ void main() {
         find.byKey(const Key('nutrition_strip_filled')),
       );
       expect(barSize.width, filledSize.width);
-      // The bar height matches the D-8 design token.
+      // The bar height matches the D-8 design token (Phase
+      // 4.1.2 follow-up: the bar is restored to its original
+      // D-8 height; the "calories eaten / calories planned"
+      // label is carved out and moved into a dedicated
+      // `labelHeight` row BELOW the bar — the bar no longer
+      // hosts an overlay label).
       expect(
         barSize.height,
         NutritionStripBarMetrics.contentHeight,
@@ -328,7 +333,7 @@ void main() {
         consumed: 1426,
         target: 2000,
         proteinKcal: 642,
-        totalCarbsKcal: 157,
+        netCarbsKcal: 157,
         fatKcal: 627,
         onTap: () {},
       );
@@ -356,7 +361,7 @@ void main() {
         consumed: 1200,
         target: 2200,
         proteinKcal: 480,
-        totalCarbsKcal: 360,
+        netCarbsKcal: 360,
         fatKcal: 360,
         onTap: () {},
       );
@@ -378,7 +383,7 @@ void main() {
         consumed: 0,
         target: null,
         proteinKcal: 0,
-        totalCarbsKcal: 0,
+        netCarbsKcal: 0,
         fatKcal: 0,
         onTap: () {},
       );
@@ -399,7 +404,7 @@ void main() {
         consumed: 0,
         target: 2000,
         proteinKcal: 0,
-        totalCarbsKcal: 0,
+        netCarbsKcal: 0,
         fatKcal: 0,
         onTap: () {},
       );
@@ -415,7 +420,7 @@ void main() {
         consumed: 0,
         target: null,
         proteinKcal: 0,
-        totalCarbsKcal: 0,
+        netCarbsKcal: 0,
         fatKcal: 0,
         onTap: () {
           tapped = true;
@@ -440,7 +445,7 @@ void main() {
         consumed: 2450,
         target: 2200,
         proteinKcal: 1200,
-        totalCarbsKcal: 800,
+        netCarbsKcal: 800,
         fatKcal: 450,
         onTap: () {},
       );
@@ -472,7 +477,7 @@ void main() {
         consumed: 302,
         target: 302,
         proteinKcal: 2,
-        totalCarbsKcal: 200,
+        netCarbsKcal: 200,
         fatKcal: 100,
         onTap: () {},
       );
@@ -521,7 +526,7 @@ void main() {
               consumedCalories: newDayState.todayConsumedCalories,
               targetCalories: targetCalories,
               proteinKcal: newDayState.todayProteinKcal,
-              totalCarbsKcal: newDayState.todayTotalCarbsKcal,
+              netCarbsKcal: newDayState.todayNetCarbsKcal,
               fatKcal: newDayState.todayFatKcal,
               onTap: () {},
             ),
@@ -626,7 +631,7 @@ void main() {
         consumed: 1200,
         target: 2200,
         proteinKcal: 480,
-        totalCarbsKcal: 360,
+        netCarbsKcal: 360,
         fatKcal: 360,
         onTap: () {},
         surfaceWidth: 600,
@@ -642,30 +647,62 @@ void main() {
       );
       expect(filledFinder, findsOneWidget);
       final filledRect = tester.getRect(filledFinder);
-      // The filled container is 64 px tall; it sits at the
-      // bottom of the visible content area (the area the
-      // SafeArea is allowed to draw into), which is
-      // 800 - 34 = 766. So the filled container's top is at
-      // 766 - 64 = 702, bottom at 766.
+      // The filled container is `contentHeight` (64 px bar)
+      // + the bottom safe-area inset (34 px label gap) =
+      // 98 px (Phase 4.1.2 follow-up — the bar keeps its
+      // original D-8 height, the label lives in the gap
+      // BELOW the bar inside the same filled container).
+      // The container sits at the bottom of the visible
+      // content area: 800 - 98 = 702, bottom at 800.
+      expect(
+        filledRect.height,
+        NutritionStripBarMetrics.contentHeight + 34,
+      );
       expect(filledRect.top, 702);
-      expect(filledRect.bottom, 766);
+      expect(filledRect.bottom, 800);
 
-      // The bar (the painted track+fill) is 64 px tall — the
-      // full content height — and the chevron track extends
-      // the full width.
+      // The bar (the painted track+fill) is the full D-8
+      // `contentHeight` — the bar keeps its original D-8
+      // geometry. The chevron track extends the full width.
       final barFinder = find.byKey(const Key('nutrition_strip_bar'));
       final barRect = tester.getRect(barFinder);
       expect(barRect.height, NutritionStripBarMetrics.contentHeight);
       expect(barRect.width, 600);
+      // The bar starts at the top of the filled container
+      // (glued to the top, no padding).
+      expect(barRect.top, filledRect.top);
 
-      // The label overlay (key `nutrition_strip_label`) is
-      // drawn at the same rect as the filled container; its
-      // visible region respects the SafeArea. We verify the
-      // label itself is laid out within the filled rect.
+      // The label (key `nutrition_strip_label`) sits in the
+      // gap BELOW the bar (Phase 4.1.2 follow-up). The
+      // label is vertically centered in the gap (the
+      // "very middle of the gap"), and the gap spans
+      // from the bar's bottom edge to the filled
+      // container's bottom (the physical bottom edge of
+      // the screen, via the `Material` / `Ink` decoration's
+      // S-056 contract).
       final labelFinder = find.byKey(const Key('nutrition_strip_label'));
       final labelRect = tester.getRect(labelFinder);
-      expect(labelRect.top, greaterThanOrEqualTo(filledRect.top));
-      expect(labelRect.bottom, lessThanOrEqualTo(filledRect.bottom));
+      final gapTop = barRect.bottom;
+      final gapBottom = filledRect.bottom;
+      final gapCenterY = (gapTop + gapBottom) / 2;
+      final labelCenterY = (labelRect.top + labelRect.bottom) / 2;
+      expect(
+        (labelCenterY - gapCenterY).abs(),
+        lessThanOrEqualTo(1),
+        reason:
+            'S-058: the calorie label is vertically centered in the gap '
+            'between the bar and the filled container bottom.',
+      );
+      // The label's top is at or below the bar's bottom
+      // (i.e. the label lives in the gap, not overlaying
+      // the bar).
+      expect(
+        labelRect.top,
+        greaterThanOrEqualTo(barRect.bottom),
+        reason:
+            'S-058: the calorie label sits in the gap below the bar, '
+            'not overlaying it.',
+      );
     });
 
     testWidgets('the bar surface starts at top y == filled.top - i.e. '
@@ -675,7 +712,7 @@ void main() {
         consumed: 1200,
         target: 2200,
         proteinKcal: 480,
-        totalCarbsKcal: 360,
+        netCarbsKcal: 360,
         fatKcal: 360,
         onTap: () {},
         surfaceWidth: 600,
@@ -683,20 +720,30 @@ void main() {
         bottomPadding: 0,
       );
 
-      // No bottom inset → strip sits at the bottom edge.
+      // No bottom inset → strip sits at the bottom edge
+      // with its natural height (64 px bar + 0 px gap =
+      // 64 px, since there's no home-indicator inset on
+      // this surface).
       final filledRect = tester.getRect(
         find.byKey(const Key('nutrition_strip_filled')),
       );
       // 800 - 64 = 736.
       expect(filledRect.top, 736);
       expect(filledRect.bottom, 800);
+      expect(
+        filledRect.height,
+        NutritionStripBarMetrics.contentHeight,
+      );
 
-      // The bar widget itself is 600 × 64.
+      // The bar widget itself is 600 × `contentHeight` — the
+      // original D-8 design height. The bar is glued to
+      // the top of the filled container.
       final barRect = tester.getRect(
         find.byKey(const Key('nutrition_strip_bar')),
       );
       expect(barRect.width, 600);
-      expect(barRect.height, 64);
+      expect(barRect.height, NutritionStripBarMetrics.contentHeight);
+      expect(barRect.top, filledRect.top);
     });
   });
 
@@ -779,6 +826,141 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // S-058 — Calorie label sits in the gap below the bar; the
+  // bar is glued to the top of the strip, the dining icon
+  // sits at the very horizontal middle of the gap, the
+  // "X / Y cal" text sits to the right of the icon, and a
+  // chevron-right is vertically centered in the BAR (not
+  // in the label) at the right edge of the strip (Phase
+  // 4.1.2 follow-up).
+  // ═══════════════════════════════════════════════════════════════════════
+  group('NutritionStripBar — calorie label in the gap below the bar '
+      '(D-8 follow-up / S-058)', () {
+    testWidgets('bar is glued to the top of the strip, label sits in '
+        'the gap below it (icon + "X / Y cal" text, no chevron in the '
+        'label), chevron-right is vertically centered inside the bar at '
+        'the right edge of the strip',
+        (tester) async {
+      await _pumpStrip(
+        tester,
+        consumed: 1450,
+        target: 2200,
+        proteinKcal: 600,
+        netCarbsKcal: 600,
+        fatKcal: 250,
+        onTap: () {},
+        surfaceWidth: 600,
+        surfaceHeight: 800,
+        bottomPadding: 34,
+      );
+
+      // The bar is glued to the top of the strip (no
+      // padding above it) and keeps its original D-8
+      // `contentHeight` (64 px).
+      final barRect = tester.getRect(
+        find.byKey(const Key('nutrition_strip_bar')),
+      );
+      final filledRect = tester.getRect(
+        find.byKey(const Key('nutrition_strip_filled')),
+      );
+      expect(barRect.top, filledRect.top);
+      expect(
+        barRect.height,
+        NutritionStripBarMetrics.contentHeight,
+      );
+
+      // The label is vertically centered inside the gap
+      // (the "very middle of the gap" — gap = the region
+      // between the bar's bottom and the filled
+      // container's bottom).
+      final labelRect = tester.getRect(
+        find.byKey(const Key('nutrition_strip_label')),
+      );
+      final gapTop = barRect.bottom;
+      final gapBottom = filledRect.bottom;
+      final gapCenterY = (gapTop + gapBottom) / 2;
+      final labelCenterY = (labelRect.top + labelRect.bottom) / 2;
+      expect(
+        (labelCenterY - gapCenterY).abs(),
+        lessThanOrEqualTo(1),
+        reason:
+            'S-058: the label is vertically centered in the gap between '
+            'the bar and the filled container bottom.',
+      );
+
+      // The chevron IS in the tree (it's the navigation
+      // indicator at the right edge of the bar).
+      expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+      // The chevron is vertically centered inside the
+      // BAR (not in the label gap below it) and pinned
+      // to the right edge of the strip.
+      final chevronRect = tester.getRect(
+        find.byIcon(Icons.chevron_right),
+      );
+      final barCenterY = (barRect.top + barRect.bottom) / 2;
+      final chevronCenterY =
+          (chevronRect.top + chevronRect.bottom) / 2;
+      expect(
+        (chevronCenterY - barCenterY).abs(),
+        lessThanOrEqualTo(1),
+        reason:
+            'S-058: the chevron is vertically centered inside the bar '
+            '(not in the label gap below it).',
+      );
+      // The chevron's vertical extent is entirely within
+      // the bar's vertical extent (chevron.top >=
+      // bar.top and chevron.bottom <= bar.bottom).
+      expect(chevronRect.top, greaterThanOrEqualTo(barRect.top));
+      expect(chevronRect.bottom, lessThanOrEqualTo(barRect.bottom));
+      // The chevron is at the right edge of the strip
+      // (chevron.right == stripWidth, i.e. 600).
+      expect(chevronRect.right, 600);
+
+      // The dining icon IS in the tree, sitting on the
+      // left of the label group (the label is centered
+      // as a group — icon + 8-px gap + text).
+      expect(find.byIcon(Icons.local_dining_outlined), findsOneWidget);
+
+      // The "X / Y cal" text is present.
+      expect(find.text('1,450 / 2,200 cal'), findsOneWidget);
+    });
+
+    testWidgets('the label sits in the gap below the bar '
+        '(label is below the bar, not overlaying it)',
+        (tester) async {
+      await _pumpStrip(
+        tester,
+        consumed: 1200,
+        target: 2200,
+        proteinKcal: 480,
+        netCarbsKcal: 360,
+        fatKcal: 360,
+        onTap: () {},
+        surfaceWidth: 600,
+        surfaceHeight: 800,
+        bottomPadding: 34,
+      );
+
+      final barRect = tester.getRect(
+        find.byKey(const Key('nutrition_strip_bar')),
+      );
+      final labelRect = tester.getRect(
+        find.byKey(const Key('nutrition_strip_label')),
+      );
+      // S-058: the label's top is at or below the bar's
+      // bottom edge (i.e. the label lives in the gap
+      // below the bar, not overlaying it).
+      expect(
+        labelRect.top,
+        greaterThanOrEqualTo(barRect.bottom),
+        reason:
+            'S-058: the calorie label lives in the gap below the bar, '
+            'not overlaying it.',
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Integration — strip is mounted by HomeScreen and routes on tap
   // ═══════════════════════════════════════════════════════════════════════
   group('HomeScreen — strip integration (widget-level)', () {
@@ -794,7 +976,7 @@ void main() {
         consumed: 0,
         target: null,
         proteinKcal: 0,
-        totalCarbsKcal: 0,
+        netCarbsKcal: 0,
         fatKcal: 0,
         onTap: () => taps++,
       );
@@ -811,12 +993,15 @@ void main() {
         consumed: 1200,
         target: 2200,
         proteinKcal: 480,
-        totalCarbsKcal: 360,
+        netCarbsKcal: 360,
         fatKcal: 360,
         onTap: () => taps++,
       );
-      // Tap the bar (which now spans the full strip).
-      await tester.tap(find.byKey(const Key('nutrition_strip_label')));
+      // Tap the bar (the bar key sits on the full-width
+      // 64-px bar at the top of the strip — the label
+      // row is only ~20 px tall and hard to hit reliably
+      // with `tester.tap`).
+      await tester.tap(find.byKey(const Key('nutrition_strip_bar')));
       await tester.pumpAndSettle();
       expect(taps, 1, reason: 'S-051: happy state is also tappable');
     });

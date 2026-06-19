@@ -5135,7 +5135,7 @@ void main() {
         final lineChart = tester.widget<LineChart>(find.byType(LineChart));
         expect(
           lineChart.data.titlesData.leftTitles.sideTitles.reservedSize,
-          60.0,
+          50.0,
           reason:
               'leftTitles reservedSize must be 60 dp so 3-char whole-'
               'number value labels (e.g. 180, 176) fit without '

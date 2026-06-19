@@ -2113,3 +2113,78 @@ class ConsumedFood {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WaterLogEntry — Per-day water volume in milliliters.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// One row per calendar day, keyed by `dateMs` (local midnight). The day's
+// water volume is stored as a real volume in milliliters so the historical
+// record stays unit-clean — the on-screen "glass count" is derived at the
+// display boundary (`volumeMl ~/ kWaterGlassMl`), not stored. Editing a day's
+// water writes a new `updatedAtMs`; past days are never mutated automatically.
+//
+// Water has no goal — like macros and sodium, it is tracked and stored for the
+// historical record only. Each new day starts at 0; logging takes effect
+// immediately and survives closing and reopening the app on the same day.
+
+class WaterLogEntry {
+  /// Deterministic id (`'water-<dateMs>'`) so the per-day row has a stable
+  /// storage key. Callers never construct a `WaterLogEntry` directly — the
+  /// repository owns the id minting and `NutritionState` writes through it.
+  final String id;
+
+  /// Day key (local midnight ms) this row counts toward.
+  final int dateMs;
+
+  /// Stored volume in milliliters. Always `>= 0`. The state layer floors
+  /// the value at 0 ml when a decrement would otherwise go negative.
+  final int volumeMl;
+
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  const WaterLogEntry({
+    required this.id,
+    required this.dateMs,
+    required this.volumeMl,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  /// Stable per-day id (`'water-<dateMs>'`). Used by both repository
+  /// implementations to derive the storage key from the date.
+  static String idForDate(int dateMs) => 'water-$dateMs';
+
+  factory WaterLogEntry.fromMap(Map<String, dynamic> m) => WaterLogEntry(
+        id: m['id'] as String,
+        dateMs: m['date_ms'] as int,
+        volumeMl: m['volume_ml'] as int,
+        createdAtMs: m['created_at_ms'] as int,
+        updatedAtMs: m['updated_at_ms'] as int,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'date_ms': dateMs,
+        'volume_ml': volumeMl,
+        'created_at_ms': createdAtMs,
+        'updated_at_ms': updatedAtMs,
+      };
+
+  WaterLogEntry copyWith({
+    String? id,
+    int? dateMs,
+    int? volumeMl,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) {
+    return WaterLogEntry(
+      id: id ?? this.id,
+      dateMs: dateMs ?? this.dateMs,
+      volumeMl: volumeMl ?? this.volumeMl,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+    );
+  }
+}

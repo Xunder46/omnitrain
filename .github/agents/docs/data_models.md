@@ -558,6 +558,39 @@ Derived calorie math (`(protein*4 + carbs*4 + fat*9) * (amountConsumed / referen
 rounded) lives on `ConsumedFood` and is unchanged at the field level; no new
 fields were added to the model, this section documents state-side caching only.
 
+### WaterLogEntry
+
+One row per calendar day, keyed by `dateMs` (local midnight). The day's water volume is stored as a real volume in milliliters so the historical record stays unit-clean — the on-screen glass count is derived at the display boundary (`volumeMl ~/ kWaterGlassMl`), not stored.
+
+Water has no goal — like macros and sodium, it is tracked and stored for the historical record only. Each new day starts at 0; logging takes effect immediately and survives closing and reopening the app on the same day. Prior days are never modified automatically.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `String` | Deterministic storage key (`'water-<dateMs>'`), derived via `WaterLogEntry.idForDate(dateMs)`. |
+| `dateMs` | `int` | Day key (local midnight ms) this row counts toward. |
+| `volumeMl` | `int` | Stored volume in milliliters. Always `>= 0` (state layer floors at 0). |
+| `createdAtMs` | `int` | First-write timestamp. |
+| `updatedAtMs` | `int` | Last-write timestamp. Advances on every increment / decrement. |
+
+Methods: `fromMap(Map)`, `toMap()`, `copyWith()`, and the static helper `WaterLogEntry.idForDate(int dateMs)`.
+
+### Daily Water State Cache (`NutritionState`)
+
+`NutritionState` caches the active day's water volume in memory so the bottom-right stepper on the calorie-ring card can rebuild without re-querying the repository on every tap. The cache is single-day (local-time) and is cleared on day rollover.
+
+| Field / method | Type | Description |
+|---|---|---|
+| `waterTodayMl` | `int` | Cached volume in milliliters for the most recently loaded day. `0` until the first explicit load. |
+| `waterTodayGlasses` | `int` | Derived from `waterTodayMl ~/ kWaterGlassMl`. The displayed count is never a volume figure — the icon + `250 ml` annotation carries the unit. |
+| `loadWaterForDate(dateMs)` | `Future<void>` | Reloads the day's stored ml from the repository, updates the cache, and notifies listeners. Idempotent. |
+| `loadWaterForToday()` | `Future<void>` | Convenience wrapper that delegates to `loadWaterForDate(todayMidnightMs)`. Called from `NutritionScreen.initState` alongside the target + consumed loads. |
+| `incrementWaterForDate(dateMs)` | `Future<void>` | Adds `kWaterGlassMl` (250 ml), persists, updates the cache, notifies. |
+| `decrementWaterForDate(dateMs)` | `Future<void>` | Subtracts `kWaterGlassMl` (floors at 0 ml), persists, updates the cache, notifies. A minus at 0 is a no-op (no write, no notification, no spurious row). |
+
+Day rollover (`rolloverToDate(dateMs)`) clears the water cache (`_waterTodayMl = 0`) and reloads it for the new day via `loadWaterForDate(dateMs)`. Prior dates' stored ml are untouched — only the in-memory cache is cleared.
+
+The canonical per-glass amount lives in `kWaterGlassMl` (`lib/core/constants/water_constants.dart`); the model never hard-codes `250` so a future per-glass change propagates to the widget, the state, and the storage layer in lockstep.
+
 ---
 
 ## Relationship Diagram

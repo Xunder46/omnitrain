@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../core/constants/water_constants.dart';
 import '../core/utils/date_utils.dart';
 import '../data/models/models.dart';
 import '../data/repositories/workout_repository.dart';
@@ -44,6 +45,83 @@ class NutritionState extends ChangeNotifier {
         0,
         (sum, c) => sum + c.caloriesConsumed,
       );
+
+  // ─── Daily water log ───────────────────────────────────────────────────
+  // Source of truth for the water tracker on the bottom-right of the
+  // calorie-ring card. Backed by `WorkoutRepository.getWaterVolumeForDate`,
+  // which both implementations (`MockWorkoutRepository` and future
+  // `SqliteWorkoutRepository`) provide. The state caches the result and
+  // notifies listeners on every successful load / write so the count
+  // rebuilds when the day's volume changes.
+  //
+  // The on-screen glass count is derived (`_waterTodayMl ~/ kWaterGlassMl`)
+  // and never stored — the canonical unit is milliliters, so historical
+  // totals stay unit-clean if the per-glass amount ever changes. Water
+  // has no goal (no progress bar, no target); it is tracked and stored
+  // for the historical record only.
+
+  /// Cached water volume for the most recently loaded day, in milliliters.
+  /// `0` until the first explicit load (or rollover) runs.
+  int _waterTodayMl = 0;
+
+  /// Stored water volume for the active day in milliliters.
+  /// Always `>= 0` — the state layer floors decrement at 0 ml.
+  int get waterTodayMl => _waterTodayMl;
+
+  /// Whole glass count derived from the stored ml. Integer division
+  /// (so 250 ml → 1 glass, 750 ml → 3 glasses, 0 ml → 0 glasses).
+  /// The icon + "250 ml" annotation carries the per-glass amount
+  /// so the user can decode the unit at a glance.
+  int get waterTodayGlasses => _waterTodayMl ~/ kWaterGlassMl;
+
+  /// Load the water volume for a specific date from the repository into
+  /// the cache, and notify listeners. Safe to call repeatedly; an empty
+  /// repo returns `0` (no exception, no error state). Past dates are
+  /// stored alongside today — the cache is replaced, not merged.
+  Future<void> loadWaterForDate(int dateMs) async {
+    try {
+      final ml = await _repository.getWaterVolumeForDate(dateMs);
+      _waterTodayMl = ml;
+    } catch (_) {
+      // Leave the previous cache intact; surface a safe 0 default
+      // for the freshly-loaded day so a stale value does not leak.
+      _waterTodayMl = 0;
+    }
+    notifyListeners();
+  }
+
+  /// Convenience: load today's water volume.
+  Future<void> loadWaterForToday() =>
+      loadWaterForDate(OmniDateUtils.todayMidnightMs());
+
+  /// Add one glass (250 ml) to [dateMs] and persist immediately. The
+  /// tap-only control never accepts a typed amount; the per-glass
+  /// amount is fixed by [kWaterGlassMl]. Always succeeds — the
+  /// repository clamps at 0 ml as a final defense and `kWaterGlassMl`
+  /// is always positive, so the resulting volume is always non-negative.
+  Future<void> incrementWaterForDate(int dateMs) async {
+    final current = await _repository.getWaterVolumeForDate(dateMs);
+    final next = current + kWaterGlassMl;
+    await _repository.saveWaterVolumeForDate(dateMs, next);
+    _waterTodayMl = next;
+    notifyListeners();
+  }
+
+  /// Remove one glass (250 ml) from [dateMs] and persist immediately.
+  /// Floors at `0` ml — a minus at 0 ml is a no-op (no negative
+  /// leak, no spurious row, no notification).
+  Future<void> decrementWaterForDate(int dateMs) async {
+    final current = await _repository.getWaterVolumeForDate(dateMs);
+    if (current <= 0) {
+      // Already at zero — no write, no notification. This is the
+      // tap-only no-op the disabled minus button also enforces.
+      return;
+    }
+    final next = current - kWaterGlassMl < 0 ? 0 : current - kWaterGlassMl;
+    await _repository.saveWaterVolumeForDate(dateMs, next);
+    _waterTodayMl = next;
+    notifyListeners();
+  }
 
   /// Load nutrition target for a specific date.
   /// If not found for that date, the repository walks backward to find
@@ -122,8 +200,15 @@ class NutritionState extends ChangeNotifier {
     // yesterday's value.
     _targetsByDate.clear();
     _nutritionTarget = null;
+    // Drop the water cache so yesterday's volume does not leak into
+    // today. The new day's volume (typically 0 ml) is re-read by
+    // `loadWaterForDate(dateMs)` below. Prior dates' stored ml are
+    // untouched in the repository — the rollover only clears the
+    // in-memory cache, not the historical record.
+    _waterTodayMl = 0;
     notifyListeners();
     await loadNutritionTargetForDate(dateMs);
+    await loadWaterForDate(dateMs);
   }
 
   /// Legacy methods for backwards compatibility - delegate to date-aware methods.
@@ -471,6 +556,21 @@ class NutritionState extends ChangeNotifier {
         (sum, c) => sum + c.carbs * c.amountConsumed / c.referenceAmount * 4,
       ).round();
 
+  /// Net-carbs calories today: `(carbs - fiber) × amountConsumed / referenceAmount × 4`.
+  /// Uses the same net-carbs formula as the donut chart for consistent macro percentage
+  /// calculations across the app (home strip bar and nutrition donut chart).
+  int get todayNetCarbsKcal => _consumedToday.fold<double>(
+        0,
+        (sum, c) {
+          final netCarbs = c.carbs - (c.fiber ?? 0);
+          return sum +
+              (netCarbs > 0 ? netCarbs : 0) *
+                  c.amountConsumed /
+                  c.referenceAmount *
+                  4;
+        },
+      ).round();
+
   /// Fat calories today: `fat × amountConsumed / referenceAmount × 9`.
   int get todayFatKcal => _consumedToday.fold<double>(
         0,
@@ -484,8 +584,11 @@ class NutritionState extends ChangeNotifier {
   /// compute segment widths (which is what the per-macro shares are
   /// a percentage of), so the in-strip percentages sum to 100
   /// independently of the headline ring total.
+  ///
+  /// Uses [todayNetCarbsKcal] (net carbs, not total carbs) for consistency
+  /// with the donut chart's percentage calculation.
   int get todayConsumedKcalFromMacros =>
-      todayProteinKcal + todayTotalCarbsKcal + todayFatKcal;
+      todayProteinKcal + todayNetCarbsKcal + todayFatKcal;
 
   /// `consumedToday` sorted by `loggedAtMs` ascending. Returns a new
   /// list (the cache stays in insertion order; this getter is for

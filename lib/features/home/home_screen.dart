@@ -406,20 +406,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               // Top gap = 2 × standardGridSpacing (D-8 inherits
               // D-5's spacing rule; the standardGridSpacing is
               // local to the tile grid above). The strip is
-              // wrapped in `Expanded(flex: 1)` so the progress
+              // wrapped in `Expanded(flex: 2)` so the progress
               // bar fills the rest of the bottom area (between
               // the tile-grid bottom + 2 × standardGridSpacing
               // and the physical bottom edge of the screen).
-              // The tile grid gets `Expanded(flex: 5)` so it
+              // The tile grid gets `Expanded(flex: 15)` so it
               // keeps the bulk of the vertical space — the
               // strip is a substantial but bounded region
-              // (~110 px on a typical iPhone screen), not a
-              // 50/50 share that would cut the tiles in half.
-              // The strip's `Material`/`Ink` decoration lives
-              // outside the inner `SafeArea(top: false)` so the
-              // track background extends to the physical bottom
-              // edge (S-056), and the content (calorie label /
-              // empty message) sits inside.
+              // (~98 px on a typical iPhone screen: 64 px
+              // bar + 34 px bottom safe-area inset label gap),
+              // not a 50/50 share that would cut the tiles in
+              // half. The strip's `Material`/`Ink` decoration
+              // reaches the physical bottom edge (S-056), and
+              // the bar is glued to the top of the strip with
+              // no padding / no outer `Container`.
               //
               // The previous `isCurrent` route gate (S-057) is
               // removed: the data layer's microtask-deferred
@@ -427,6 +427,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               // the gate used to mask, so the strip can keep
               // rendering current values through a push/pop
               // transition.
+              //
+              // Phase 4.1.2 (S-058): the strip's bar keeps
+              // its original D-8 `contentHeight: 64` and the
+              // home screen's `flex: 2` is unchanged. The
+              // change is purely internal to the strip
+              // widget: the bar is glued to the top of the
+              // strip with no padding / no outer `Container`,
+              // a chevron-right navigation indicator is
+              // vertically centered inside the bar at the
+              // right edge, and the "calories eaten /
+              // calories planned" label is dropped into the
+              // gap BELOW the bar (the `Material` / `Ink`
+              // decoration area between the bar's bottom and
+              // the physical bottom edge, S-056). The label
+              // itself stays chevron-free.
               SizedBox(height: 16.0 * 2),
               Expanded(
                 flex: 2,
@@ -443,8 +458,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           widget.nutritionState.todayConsumedCalories,
                       targetCalories: targetCalories,
                       proteinKcal: widget.nutritionState.todayProteinKcal,
-                      totalCarbsKcal:
-                          widget.nutritionState.todayTotalCarbsKcal,
+                      netCarbsKcal:
+                          widget.nutritionState.todayNetCarbsKcal,
                       fatKcal: widget.nutritionState.todayFatKcal,
                       onTap: _openNutritionScreen,
                     );
