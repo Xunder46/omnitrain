@@ -29,11 +29,15 @@ import 'food_thumbnail.dart';
 /// without an image render the muted placeholder thumb (S-002 — the
 /// common case on web, where the image picker is a no-op). The
 /// thumb's tap target is padded to **≥ 48 dp** in both dimensions
-/// (design-system gym-glove rule). The checked state is animated
+/// (design-system gym-glove rule). The unchecked + checked states
+/// mirror each other in shape (2 px thumb border + 16 px corner
+/// badge) so the toggle is always visually obvious, and animate
 /// via `AnimatedContainer` at
 /// `OmniTheme.animationDuration` / `OmniTheme.animationCurve`:
-///   - Logged: 2 px primary border + a corner check badge.
-///   - Unlogged: hairline divider-color border, no badge.
+///   - Logged: 2 px `primary` border + filled `primary` corner
+///     disc with a surface-colored check glyph.
+///   - Unlogged: 2 px `textMuted` border + hollow `textMuted`
+///     corner ring (surface fill, no glyph).
 /// The thumb wraps a `Semantics(checked: ...)` node so screen
 /// readers + tests see a toggle (S-005). Iteration 1 also
 /// condenses the 2×2 macro grid to a single
@@ -435,12 +439,20 @@ class _LogFoodRowState extends State<LogFoodRow> {
 ///     padding the 40×40 [FoodThumbnail] to a comfortable tap
 ///     target.
 ///   - The 40×40 thumbnail is rendered with an `AnimatedContainer`
-///     border that animates between the unselected (hairline
-///     `divider`) and selected (2 px `primary`) states at
-///     [OmniTheme.animationDuration] / [OmniTheme.animationCurve].
-///   - When [isLogged] is `true`, a 16×16 check badge in the
-///     top-right corner fades in (also animated), filled with
-///     `primary` and a white check glyph.
+///     border that animates between the unchecked and checked
+///     states at [OmniTheme.animationDuration] /
+///     [OmniTheme.animationCurve]. The unchecked state uses the
+///     same 2 px outline as the checked state (so the toggle
+///     shape is always visible) but in a muted/grey color
+///     (`textMuted`); the checked state uses `primary`. This
+///     makes the affordance obvious at a glance — every thumb
+///     reads as a paired state of the same control.
+///   - The top-right corner carries a 16×16 circular badge in
+///     both states. Unchecked: a hollow ring (surface fill,
+///     muted border, no glyph) so it reads as "empty / not yet
+///     selected." Checked: a filled `primary` disc with a
+///     surface-colored check glyph. The badge's color, fill,
+///     and border all animate through `AnimatedContainer`.
 ///   - The whole thing is wrapped in a `Semantics(checked: ...)`
 ///     node so screen readers + tests see a toggle (S-005).
 ///   - The `Key('log_food_thumb_<food.id>')` is mounted on the
@@ -461,14 +473,17 @@ class _ThumbToggle extends StatefulWidget {
   /// requires ≥ 48 dp.
   static const double _tapTargetSize = 48.0;
 
-  /// Diameter of the check badge overlay.
+  /// Diameter of the corner badge (always rendered; fills /
+  /// borders change between states).
   static const double _badgeSize = 16.0;
 
-  /// Width of the selected-state border (2 px per S-003).
-  static const double _selectedBorderWidth = 2.0;
+  /// Width of the thumb border. Same in both states so the
+  /// outline always reads as a continuous ring around the
+  /// thumbnail.
+  static const double _thumbBorderWidth = 2.0;
 
-  /// Width of the unselected-state border (hairline).
-  static const double _unselectedBorderWidth = 1.0;
+  /// Width of the corner badge's border. Same in both states.
+  static const double _badgeBorderWidth = 1.5;
 
   const _ThumbToggle({
     required this.food,
@@ -489,10 +504,17 @@ class _ThumbToggleState extends State<_ThumbToggle> {
   Widget build(BuildContext context) {
     final themeColors = OmniTheme.colors;
     final isLogged = widget.isLogged;
-    final borderColor = isLogged ? themeColors.primary : themeColors.divider;
-    final borderWidth = isLogged
-        ? _ThumbToggle._selectedBorderWidth
-        : _ThumbToggle._unselectedBorderWidth;
+    // Unchecked uses the same 2 px outline as the checked state,
+    // but in `textMuted` (the muted/grey tone) so the toggle
+    // shape is always visible. The badge mirrors the same
+    // shape/color split (hollow ring vs. filled disc with a
+    // check) — see the comment block on [_ThumbToggle].
+    final borderColor =
+        isLogged ? themeColors.primary : themeColors.textMuted;
+    final badgeFill =
+        isLogged ? themeColors.primary : themeColors.surface;
+    final badgeBorderColor =
+        isLogged ? themeColors.surface : themeColors.textMuted;
 
     final thumb = AnimatedContainer(
       duration: OmniTheme.animationDuration,
@@ -500,7 +522,10 @@ class _ThumbToggleState extends State<_ThumbToggle> {
       width: _ThumbToggle._thumbSize,
       height: _ThumbToggle._thumbSize,
       decoration: BoxDecoration(
-        border: Border.all(color: borderColor, width: borderWidth),
+        border: Border.all(
+          color: borderColor,
+          width: _ThumbToggle._thumbBorderWidth,
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: ClipRRect(
@@ -551,34 +576,36 @@ class _ThumbToggleState extends State<_ThumbToggle> {
                 curve: OmniTheme.animationCurve,
                 child: thumb,
               ),
-              // Check badge — top-right corner, only visible when
-              // logged. AnimatedOpacity cross-fades the badge
-              // (S-003 / S-004) so the selected-state transition
-              // feels matched to the border animation.
+              // Corner badge — top-right, always present so the
+              // toggle affordance reads as a paired state. The
+              // fill + border + glyph cross-fade through
+              // AnimatedContainer; the unchecked state is a
+              // hollow ring (surface fill, muted border, no
+              // glyph) and the checked state is a filled
+              // primary disc with a surface-colored check.
               Positioned(
                 top: 0,
                 right: 0,
-                child: AnimatedOpacity(
+                child: AnimatedContainer(
                   duration: OmniTheme.animationDuration,
                   curve: OmniTheme.animationCurve,
-                  opacity: isLogged ? 1.0 : 0.0,
-                  child: Container(
-                    width: _ThumbToggle._badgeSize,
-                    height: _ThumbToggle._badgeSize,
-                    decoration: BoxDecoration(
-                      color: themeColors.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: themeColors.surface,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.check,
-                      size: 12,
-                      color: themeColors.surface,
+                  width: _ThumbToggle._badgeSize,
+                  height: _ThumbToggle._badgeSize,
+                  decoration: BoxDecoration(
+                    color: badgeFill,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: badgeBorderColor,
+                      width: _ThumbToggle._badgeBorderWidth,
                     ),
                   ),
+                  child: isLogged
+                      ? Icon(
+                          Icons.check,
+                          size: 12,
+                          color: themeColors.surface,
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ),
             ],
