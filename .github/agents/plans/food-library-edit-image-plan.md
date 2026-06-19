@@ -288,3 +288,112 @@ N/A (1 rule): fitness tests for new fields / methods done in `test/food_library_
 ---
 ⏸️ **PIPELINE COMPLETE** — Implementation and review delivered.
 Ready to merge.
+
+---
+
+## Phase 3.X — "Save on upload" bug fix (EditFoodScreen)
+
+### Bug
+
+`EditFoodScreen` opens from a catalog-row tap. It uses
+`autoSaveOnBlur: true, skipPopOnSave: true` and has **no Save
+button** (the user explicitly removed it). The form's
+`_pickImage` setState'd a local `_imagePath` but never
+triggered `_onSave` because the picker does not change focus.
+The user closes the form via `Navigator.pop` (not focus blur),
+so the food's `imagePath` in the data layer was never updated.
+The photo file was on disk but the food record still had
+`imagePath: null`, so the library and "foods I eat" views
+rendered the placeholder.
+
+### Fix
+
+`FoodForm` now exposes:
+- `handlePickedImage(XFile)` — `@visibleForTesting` seam;
+  production callers go through `_pickImage(ImageSource)` which
+  delegates here after the OS picker returns.
+- `onImageSave` — optional partial-save callback fired after a
+  successful pick in **edit mode** (`initial != null`). The
+  callback receives a `FoodDraft` built from `initial` with only
+  `imagePath` swapped, so concurrent edits to the form's text
+  controllers (a half-typed name) are preserved. Not fired in
+  create mode (the form just stores the image locally and the
+  user saves the whole food via the existing Save button).
+
+`EditFoodScreen` wires `onImageSave` to
+`FoodLibraryState.updateCatalogFood`, so the new `imagePath`
+lands in the data layer immediately. D-7 cleanup (delete the
+previous managed file) is the state method's responsibility
+per INV-3 of `image-persistence-fix-plan.md`; the form does
+not call the service directly.
+
+### Test seams
+
+- `test/food_form_pick_saves_test.dart` (new, 3 tests) —
+  exercises `handlePickedImage` end-to-end:
+  - happy path: persists file + fires `onImageSave` with a
+    partial draft (edit mode)
+  - D-7 round-trip: replacing the photo deletes the previous
+    managed file
+  - negative path: create mode does NOT fire `onImageSave`
+- `test/image_persistence_round_trip_test.dart` (existing, 10
+  tests) — covers the state-level D-7 cleanup, restart
+  persistence, and self-heal behavior.
+
+### Documentation
+
+`docs/widget_catalog.md` updated under the `FoodForm` entry:
+- new `onImageSave` row in the props table
+- new "Save CTA" section replacing the stale "Save button"
+  line (the form no longer renders an inline save button; the
+  host owns the primary CTA via `OmniBottomCTA`)
+- new "Save on upload" bullet under Behavior
+- new "Test seam" paragraph documenting `handlePickedImage`
+
+### Iteration Findings
+
+Code review (this iteration) found:
+- 🔴 CRITICAL: 1 (test file had 3 compile errors + the
+  pre-existing 12 in `image_persistence_round_trip_test.dart`,
+  all 15 resolved by changing the helper's import from
+  `image_storage_service_io.dart` to the public
+  `image_storage_service.dart` re-export)
+- 🟡 WARNING: 1 (redundant `import 'food_draft.dart'` — removed)
+- 💡 SUGGEST: 0
+- 🧪 MISSING: 0
+- 🧪 STALE: 0 (12 pre-existing stale sites in
+  `image_persistence_round_trip_test.dart` were collateral
+  damage of the same import issue; all 12 resolved by the
+  single helper import change)
+
+### Verdict
+
+## Code Review: ✅ APPROVED
+Layers in scope: features (`FoodForm`, `EditFoodScreen`),
+state (existing `updateCatalogFood`), tests (new
+`food_form_pick_saves_test.dart` + helper),
+docs (`widget_catalog.md`).
+Layers skipped: models, repositories, core, widgets (no
+changes).
+
+PASS (5 rules): theme tokens only; effort-kind drives
+analytics (N/A); timestamps are source data; reuse the
+canonical owner (uses existing `ImageStorageService` +
+`FoodLibraryState.updateCatalogFood`); instrument panel, not
+influencer.
+N/A (2 rules): units + canonical storage (no unit changes);
+card chrome via OmniSurface / OmniCardHeader (form scope, no
+card chrome touched).
+FAIL: 0
+
+`flutter test` is green at this iteration close: 104 tests
+pass across the 5 affected test files (food_form_pick_saves,
+image_persistence_round_trip, food_library,
+food_library_state, food_library_edit). 0 fail.
+
+`flutter analyze` on the 5 affected files:
+**No issues found.**
+
+---
+⏸️ **PIPELINE COMPLETE** — Bug fix and doc update delivered.
+Ready to merge.

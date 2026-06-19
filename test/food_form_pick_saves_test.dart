@@ -38,7 +38,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
-import 'package:omnitrain/core/models/food_draft.dart';
+// `FoodDraft` is re-exported by `food_form.dart`
+// (`export '../../../core/models/food_draft.dart' show FoodDraft;`)
+// so an explicit import here would be redundant.
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_form.dart';
@@ -123,7 +125,15 @@ void main() {
         // _pickImage (the image_picker platform channel).
         // ignore: avoid-dynamic
         final formState = tester.state(find.byType(FoodForm)) as dynamic;
-        await formState.handlePickedImage(picked);
+        // The form's handlePickedImage does real file I/O via
+        // ImageStorageService.persistPickedImage. Flutter's
+        // `testWidgets` runs in a fake async zone where real I/O
+        // never completes — wrap the call in `tester.runAsync`
+        // so the file copy actually runs (otherwise the test
+        // hangs for the full 10-minute default timeout).
+        await tester.runAsync(() async {
+          await formState.handlePickedImage(picked);
+        });
         await tester.pumpAndSettle();
 
         // onImageSave was called with a partial draft whose
@@ -168,10 +178,14 @@ void main() {
         );
 
         // Seed: existing food with a first managed image.
-        final firstPath = await _pickAndPersist(
-          imageStorage.service,
-          'first',
-          [1, 1, 1],
+        // The helper does real async I/O (File.copy via the
+        // service); wrap in `tester.runAsync` so it runs in
+        // real async instead of `testWidgets`'s fake async zone.
+        // `tester.runAsync<T>` returns `Future<T?>` in this
+        // Flutter version (errors are nulled out); we assert
+        // non-null with `firstPath!` at each use site below.
+        final firstPath = await tester.runAsync(
+          () => _pickAndPersist(imageStorage.service, 'first', [1, 1, 1]),
         );
         final firstFood = Food(
           id: 'food-pick-replace-1',
@@ -194,7 +208,10 @@ void main() {
         final initial = foodLibraryState.catalogFoods.firstWhere(
           (f) => f.id == 'food-pick-replace-1',
         );
-        expect(File(firstPath).existsSync(), isTrue);
+        // `firstPath` is `String?` (see the comment at its
+        // declaration); the assertion below confirms the file
+        // exists on disk, so `!` is safe.
+        expect(File(firstPath!).existsSync(), isTrue);
 
         // Pick a second image.
         final sourcePath = '${imageStorage.tempDir.path}/second.jpg';
@@ -222,10 +239,17 @@ void main() {
 
         // ignore: avoid-dynamic
         final formState = tester.state(find.byType(FoodForm)) as dynamic;
-        await formState.handlePickedImage(picked);
+        // See the first test for why we wrap in `tester.runAsync`:
+        // handlePickedImage does real file I/O which never
+        // completes in `testWidgets`'s fake async zone.
+        await tester.runAsync(() async {
+          await formState.handlePickedImage(picked);
+        });
         await tester.pumpAndSettle();
 
-        // Old managed file deleted (D-7).
+        // Old managed file deleted (D-7). The analyzer promotes
+        // `firstPath` to non-null at this use site (after the
+        // prior `!` assertion), so no `!` is needed here.
         expect(File(firstPath).existsSync(), isFalse,
             reason: 'previous managed file should be deleted by D-7');
         // New managed file present.
@@ -279,7 +303,12 @@ void main() {
 
         // ignore: avoid-dynamic
         final formState = tester.state(find.byType(FoodForm)) as dynamic;
-        await formState.handlePickedImage(picked);
+        // See the first test for why we wrap in `tester.runAsync`:
+        // handlePickedImage does real file I/O which never
+        // completes in `testWidgets`'s fake async zone.
+        await tester.runAsync(() async {
+          await formState.handlePickedImage(picked);
+        });
         await tester.pumpAndSettle();
 
         expect(onImageSaveCalls, 0,

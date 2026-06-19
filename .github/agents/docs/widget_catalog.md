@@ -989,6 +989,7 @@ value: `null` → create mode, non-null → edit mode.
 | `onSave` | `Future<bool> Function(FoodDraft draft)` | required | Save callback. Returns `true` to pop, `false` to surface a snackbar. |
 | `saveLabel` | `String` | `'Save'` | Primary CTA label. |
 | `showNotesField` | `bool` | `false` | When true, renders a "Notes (optional)" multi-line field. Edit mode only. |
+| `onImageSave` | `Future<bool> Function(FoodDraft draft)?` | `null` | Optional partial-save callback fired after a successful photo pick in **edit mode** (`initial != null`). Wired by `EditFoodScreen` to `FoodLibraryState.updateCatalogFood` so the new `imagePath` lands in the data layer immediately, even on screens that have no Save button. The draft is built from `initial` with only `imagePath` swapped, so concurrent edits to the form's text controllers (a half-typed name, for example) are preserved. **Not fired in create mode** — the image is just stored locally until the user saves the whole food. |
 
 **Form fields (top to bottom)**:
 1. Image picker tile (`FoodFormImageTile`, key `food_form_image_tile`) — square 96×96 with × (clear) and edit (change) overlays; opens a Camera / Gallery bottom sheet on tap; web is a no-op with a snackbar.
@@ -998,19 +999,34 @@ value: `null` → create mode, non-null → edit mode.
 5. Reference amount (`food_form_reference_amount`) + Reference label (`food_form_reference_label`).
 6. Macros (per the reference above) — `Protein (g)` (required), `Carbs (g)` (required), `Fiber (g)` (optional, blank = unset), `Fat (g)` (required), `Sodium (mg)` (optional, blank = unset). All integer-only.
 7. Notes (`food_form_notes`) — when `showNotesField: true`.
-8. Save button (`food_form_save`) — full-width primary CTA, `FilledButton` with the explicit `shape:` + `OmniTheme.buttonBorderRadius` contract.
+
+**Save CTA**: the form does **not** render an inline save button. The host screen owns the primary bottom CTA via the shared `OmniBottomCTA` (see `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`). The host wires the CTA's `onPressed` to `FoodFormController.submit`, which routes through the form's validation + save pipeline — the same pipeline the inline button used to trigger.
 
 **Behavior**:
 - The form owns validation, the image picker, and the
   translation from controllers to a typed `FoodDraft`. The caller
   hands the draft to `FoodLibraryState.createCustomFood` (create)
-  or `FoodLibraryState.updateCustomFood` (edit) — never to the
-  repository directly.
+  or `FoodLibraryState.updateCustomFood` / `updateCatalogFood`
+  (edit) — never to the repository directly.
+- "Save on upload" (edit mode): when `onImageSave` is provided
+  and `initial != null`, the photo pick handler persists the new
+  `imagePath` to the data layer immediately (D-7 cleanup of the
+  previous managed file is the state method's responsibility —
+  the form does not call the service directly). On hosts that
+  have no Save button (`EditFoodScreen` with
+  `autoSaveOnBlur: true`), this is the **only** path that writes
+  the picked photo to the data layer before the user navigates
+  away, so without it the photo would not persist.
 - Fiber is exposed alongside carbs in the macro list, matching
   the `Food.fiber` field on the model. The existing
   `calculateNetCarbs(food)` helper handles the net-carb math.
 - All colors come from `OmniTheme.colors` /
   `ThemeData.colorScheme`. No hardcoded colors.
+
+**Test seam**: `handlePickedImage(XFile)` is `@visibleForTesting`
+on the form's state. Production callers go through the OS picker
+via `_pickImage(ImageSource)`; tests invoke the seam directly to
+bypass the `image_picker` platform channel.
 
 ---
 

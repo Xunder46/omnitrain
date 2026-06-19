@@ -21,7 +21,17 @@
 
 import 'dart:io';
 
-import 'package:omnitrain/core/services/image_storage_service_io.dart';
+// Import the public entry point — not `image_storage_service_io.dart` —
+// so the `ImageStorageService` type matches what `ProfileState` and
+// `FoodLibraryState` see in production. The conditional re-export
+// resolves to the IO variant under the VM test runner (same as the
+// native app build), so the runtime behavior is identical; importing
+// the IO file directly was producing two distinct `ImageStorageService`
+// types to the analyzer and causing `argument_type_not_assignable`
+// errors at every `imageStorage: imageStorage.service` call site
+// (see `food_form_pick_saves_test.dart` and
+// `image_persistence_round_trip_test.dart`).
+import 'package:omnitrain/core/services/image_storage_service.dart';
 
 class TestImageStorage {
   /// The per-test temp directory the service operates in. The

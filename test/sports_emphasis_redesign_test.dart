@@ -264,7 +264,7 @@ void main() {
       await _openSessionDetail(tester, deps.exercise.name);
 
       final periodText = tester.widget<Text>(find.text('PERIOD 1'));
-      expect(periodText.style?.color, colors.textDominant);
+      expect(periodText.style?.color, colors.textSecondary);
 
       final durationEditor = tester.widget<InlineMetricEditor>(
         find.byWidgetPredicate(
@@ -352,7 +352,7 @@ void main() {
       await _openSessionDetail(tester, deps.exercise.name);
 
       final periodText = tester.widget<Text>(find.text('PERIOD 1'));
-      expect(periodText.style?.color, colors.textDominant);
+      expect(periodText.style?.color, colors.textSecondary);
 
       final stoppedText = _statusLineText(
         tester,
@@ -393,7 +393,7 @@ void main() {
       await _openRoutineDetail(tester, deps.exercise.name);
 
       final periodText = tester.widget<Text>(find.text('PERIOD 1'));
-      expect(periodText.style?.color, colors.textDominant);
+      expect(periodText.style?.color, colors.textSecondary);
 
       final durationEditor = tester.widget<InlineMetricEditor>(
         find.byWidgetPredicate(
@@ -461,7 +461,7 @@ void main() {
           ),
         );
         await _openSessionDetail(tester, freeDeps.exercise.name);
-        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textDominant);
+        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textSecondary);
         expect(
           tester
               .widget<InlineMetricEditor>(
@@ -495,7 +495,7 @@ void main() {
           ),
         );
         await _openSessionDetail(tester, routineSessionDeps.exercise.name);
-        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textDominant);
+        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textSecondary);
         expect(
           _statusLineText(
             tester,
@@ -518,7 +518,7 @@ void main() {
           ),
         );
         await _openRoutineDetail(tester, setupDeps.exercise.name);
-        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textDominant);
+        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textSecondary);
         expect(
           tester
               .widget<InlineMetricEditor>(

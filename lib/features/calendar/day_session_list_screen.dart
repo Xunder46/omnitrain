@@ -738,16 +738,25 @@ class _PlannedSessionFormState extends State<_PlannedSessionForm> {
           children: [
             Row(
               children: [
-                Text(
-                  widget.initial == null
-                      ? '+ New Planned Session'
-                      : 'Edit Session',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: themeColors.textMuted,
+                Expanded(
+                  child: Text(
+                    widget.initial == null
+                        ? '+ New Planned Session'
+                        : 'Edit Session',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: themeColors.textMuted,
+                    ),
+                    // Long localized titles can exceed the 360 px
+                    // form width when paired with the trailing
+                    // IconButton; ellipsis keeps the layout
+                    // constrained instead of throwing a
+                    // RenderFlex overflow (26 px was observed on
+                    // a phone-width sheet).
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),

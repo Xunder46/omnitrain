@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/constants/profile_measurements.dart';
-import '../../../core/utils/date_utils.dart';
+import '../../../core/utils/chart_axis_helper.dart';
 import '../../../core/utils/unit_formatter.dart';
 import '../../../data/models/models.dart';
 import '../../../state/profile/profile_state.dart';
@@ -186,7 +186,7 @@ class _MeasurementHistoryChartSheetState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                _formatDate(selectedDate),
+                ChartAxisHelper.formatDateLabel(selectedDate),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: OmniTheme.colors.textSecondary.withOpacity(0.70),
                 ),
@@ -247,7 +247,7 @@ class _MeasurementHistoryChartSheetState
   Future<void> _confirmDelete(int index) async {
     final entry = _entries[index];
     final date = DateTime.fromMillisecondsSinceEpoch(entry.recordedAtMs);
-    final dateLabel = _formatDate(date);
+    final dateLabel = ChartAxisHelper.formatDateLabel(date);
     final valueLabel = entry.unitId == 'unit-kg'
         ? UnitFormatter.formatWeight(entry.value, widget.settingsState)
         : '${ProfileMeasurements.formatValue(entry.value)} '
@@ -468,7 +468,7 @@ class _MeasurementHistoryChartSheetState
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    _formatDate(date),
+                    ChartAxisHelper.formatDateLabel(date),
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: OmniTheme.colors.textSecondary.withOpacity(0.60),
                       // [E] Chart axis — dense instrumentation label; getTitlesWidget has no BuildContext
@@ -509,9 +509,6 @@ class _MeasurementHistoryChartSheetState
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${OmniDateUtils.shortMonthName(date.month)} ${date.day}';
-  }
 }
 
 class _ChartMetrics {
