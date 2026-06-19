@@ -152,6 +152,127 @@ void main() {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // UnitFormatter – height helpers
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('UnitFormatter – height helpers', () {
+    late MockWorkoutRepository repository;
+    late SettingsState settingsCm;
+    late SettingsState settingsFtin;
+
+    setUp(() async {
+      repository = MockWorkoutRepository();
+      await repository.initialize();
+      settingsCm = SettingsState(repository, fakePreferencesService());
+      await settingsCm.initialize();
+      settingsFtin = SettingsState(repository, fakePreferencesService());
+      await settingsFtin.initialize();
+      await settingsFtin.setPreferredHeightUnit('ftin');
+    });
+
+    test('normalizeHeightUnit defaults unknown and null to cm', () {
+      expect(UnitFormatter.normalizeHeightUnit('cm'), 'cm');
+      expect(UnitFormatter.normalizeHeightUnit('ftin'), 'ftin');
+      expect(UnitFormatter.normalizeHeightUnit('FTIN'), 'ftin');
+      expect(UnitFormatter.normalizeHeightUnit('inches'), 'cm');
+      expect(UnitFormatter.normalizeHeightUnit(null), 'cm');
+    });
+
+    test('heightLabel / heightLabelUpper return active unit string', () {
+      expect(UnitFormatter.heightLabel(settingsCm), 'cm');
+      expect(UnitFormatter.heightLabel(settingsFtin), 'ft in');
+      expect(UnitFormatter.heightLabelUpper(settingsCm), 'CM');
+      expect(UnitFormatter.heightLabelUpper(settingsFtin), 'FT IN');
+    });
+
+    test('formatHeight renders centimeters in cm mode with one-decimal policy', () {
+      expect(UnitFormatter.formatHeight(180.0, settingsCm), '180 cm');
+      expect(UnitFormatter.formatHeight(180.34, settingsCm), '180.3 cm');
+      expect(UnitFormatter.formatHeight(180.35, settingsCm), '180.3 cm');
+    });
+
+    test('formatHeight renders compound feet/inches in ftin mode', () {
+      // 180 cm = 70.866 in → rounds to 71 in = 5' 11"
+      expect(UnitFormatter.formatHeight(180.0, settingsFtin), "5' 11\"");
+      // 152.4 cm = 60 in exactly = 5' 0"
+      expect(UnitFormatter.formatHeight(152.4, settingsFtin), "5' 0\"");
+      // 175.5 cm = 69.094 in → rounds to 69 in = 5' 9"
+      expect(UnitFormatter.formatHeight(175.5, settingsFtin), "5' 9\"");
+      // 0 cm = 0' 0"
+      expect(UnitFormatter.formatHeight(0.0, settingsFtin), "0' 0\"");
+    });
+
+    test('formatHeightValue strips the unit suffix', () {
+      expect(UnitFormatter.formatHeightValue(180.0, settingsCm), '180');
+      expect(UnitFormatter.formatHeightValue(180.0, settingsFtin), "5' 11\"");
+    });
+
+    test('cmToFeetInches rounds inches to the nearest whole inch', () {
+      expect(UnitFormatter.cmToFeetInches(0.0), (feet: 0, inches: 0));
+      expect(UnitFormatter.cmToFeetInches(152.4), (feet: 5, inches: 0));
+      expect(UnitFormatter.cmToFeetInches(180.0), (feet: 5, inches: 11));
+      expect(UnitFormatter.cmToFeetInches(180.34), (feet: 5, inches: 11));
+      expect(UnitFormatter.cmToFeetInches(175.5), (feet: 5, inches: 9));
+      // 1 cm ≈ 0.394 in → rounds down to 0.
+      expect(UnitFormatter.cmToFeetInches(1.0), (feet: 0, inches: 0));
+      // 2.54 cm = 1 in exactly.
+      expect(UnitFormatter.cmToFeetInches(2.54), (feet: 0, inches: 1));
+      // 2 cm ≈ 0.787 in → rounds up to 1.
+      expect(UnitFormatter.cmToFeetInches(2.0), (feet: 0, inches: 1));
+    });
+
+    test('feetInchesToCm returns canonical cm', () {
+      expect(UnitFormatter.feetInchesToCm(0, 0), 0.0);
+      expect(UnitFormatter.feetInchesToCm(5, 0), 152.4);
+      expect(UnitFormatter.feetInchesToCm(5, 11), 180.34);
+      expect(UnitFormatter.feetInchesToCm(6, 0), 182.88);
+    });
+
+    test('formatFeetInches is the bare compound helper', () {
+      expect(UnitFormatter.formatFeetInches(5, 11), "5' 11\"");
+      expect(UnitFormatter.formatFeetInches(0, 0), "0' 0\"");
+    });
+
+    test('toCanonicalHeightFeetInches converts feet/inches to cm', () {
+      expect(UnitFormatter.toCanonicalHeightFeetInches(5, 0), 152.4);
+      expect(UnitFormatter.toCanonicalHeightFeetInches(5, 11), 180.34);
+    });
+
+    test(
+      'round-trip: cm entry → ftin display → cm display preserves the original cm',
+      () {
+        // The user's stored value is 180.0 cm (no drift on a pure
+        // display flip — the canonical cm never changes).
+        const canonicalCm = 180.0;
+        final ftinDisplay = UnitFormatter.formatHeight(
+          canonicalCm,
+          settingsFtin,
+        );
+        expect(ftinDisplay, "5' 11\"");
+        // Switch back: the canonical value is unchanged, so the cm
+        // display still reads the same.
+        final cmDisplay = UnitFormatter.formatHeight(
+          canonicalCm,
+          settingsCm,
+        );
+        expect(cmDisplay, '180 cm');
+      },
+    );
+
+    test(
+      'round-trip: ftin entry → stored cm → cm display shows converted cm',
+      () {
+        // User types 5 ft 11 in in ftin mode → stored as 180.34 cm.
+        final storedCm = UnitFormatter.toCanonicalHeightFeetInches(5, 11);
+        expect(storedCm, 180.34);
+        // Switch to cm mode: the stored value is rendered directly.
+        // 180.34 truncates to 180.3 under the existing 1-decimal policy.
+        expect(UnitFormatter.formatHeight(storedCm, settingsCm), '180.3 cm');
+      },
+    );
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // ObservationGrouper
   // ══════════════════════════════════════════════════════════════════════════
 

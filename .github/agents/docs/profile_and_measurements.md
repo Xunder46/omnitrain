@@ -90,10 +90,20 @@ Key behavior:
 
 ### Logging Sheet
 
-- Single numeric input
+- Single numeric input, with one shape exception for height (see below)
 - No note input
 - No date input
 - Save captures timestamp at button press time
+- **Height input shape** branches on the active height unit:
+  - `cm` mode — single `Value (cm)` field; the entered value is stored
+    verbatim as canonical cm.
+  - `ftin` mode — side-by-side `Feet` and `Inches` fields. Inches are
+    bounded to 0–11 as a per-field rule. The pair is converted to
+    canonical cm via `UnitFormatter.toCanonicalHeightFeetInches` before
+    the entry is persisted with `unitId='unit-cm'`.
+  - The physical validation range is the same in either mode: 50–250 cm
+    in cm mode, 20–98 total inches (1 ft 8 in – 8 ft 2 in) in ftin mode.
+    The error message is stated in the active unit.
 
 ### History Sheet (Chart)
 
@@ -103,6 +113,13 @@ Key behavior:
 - Most recent point preselected
 - Dot selection updates animated label strip
 - "Log New Entry" opens log sheet on top of chart sheet (without dismissing chart), then reloads chart data
+- **Height chart** y-axis plots in the active unit:
+  - `cm` mode — canonical cm passthrough; selected-point label reads
+    `180 cm`.
+  - `ftin` mode — total whole inches; selected-point label reads in the
+    natural compound form (e.g. `5 ft 11 in`). Stored heights are never
+    rewritten when the unit toggle flips, so a pre-existing height
+    displays correctly under either unit without migration.
 
 ---
 

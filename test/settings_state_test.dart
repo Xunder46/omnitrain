@@ -161,6 +161,85 @@ void main() {
     expect(reloaded.preferredDistanceUnit, 'miles');
   });
 
+  // ─── Height unit preference — defaults, persistence, normalization ─────
+
+  test('SettingsState defaults preferred height unit to cm', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+
+    final settingsState = SettingsState(repository, fakePreferencesService());
+    await settingsState.initialize();
+
+    expect(settingsState.preferredHeightUnit, 'cm');
+  });
+
+  test(
+    'SettingsState persists and reloads preferred height unit (ftin)',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+
+      final settingsState = SettingsState(repository, fakePreferencesService());
+      await settingsState.initialize();
+      await settingsState.setPreferredHeightUnit('ftin');
+
+      expect(
+        await repository.getPreferenceString('preferred_height_unit'),
+        'ftin',
+      );
+
+      final reloaded = SettingsState(repository, fakePreferencesService());
+      await reloaded.initialize();
+
+      expect(reloaded.preferredHeightUnit, 'ftin');
+    },
+  );
+
+  test(
+    'SettingsState normalizes invalid stored height unit to cm',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+      await repository.setPreferenceString(
+        'preferred_height_unit',
+        'inches',
+      );
+
+      final settingsState = SettingsState(repository, fakePreferencesService());
+      await settingsState.initialize();
+
+      expect(settingsState.preferredHeightUnit, 'cm');
+    },
+  );
+
+  test(
+    'setPreferredHeightUnit normalizes unknown values to cm',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+
+      final settingsState = SettingsState(repository, fakePreferencesService());
+      await settingsState.initialize();
+      await settingsState.setPreferredHeightUnit('something_else');
+
+      expect(settingsState.preferredHeightUnit, 'cm');
+    },
+  );
+
+  test(
+    'setPreferredHeightUnit normalizes FTIN (uppercase) to ftin',
+    () async {
+      final repository = MockWorkoutRepository();
+      await repository.initialize();
+
+      final settingsState = SettingsState(repository, fakePreferencesService());
+      await settingsState.initialize();
+      await settingsState.setPreferredHeightUnit('FTIN');
+
+      expect(settingsState.preferredHeightUnit, 'ftin');
+    },
+  );
+
   test('SettingsState defaults feeling survey to enabled', () async {
     final repository = MockWorkoutRepository();
     await repository.initialize();

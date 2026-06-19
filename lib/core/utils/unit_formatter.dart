@@ -5,6 +5,7 @@ class UnitFormatter {
 
   static const double _kgToLbs = 2.20462;
   static const double _kmToMiles = 0.621371;
+  static const double _cmToInches = 1.0 / 2.54;
 
   static String normalizeWeightUnit(String? unit) {
     return unit?.toLowerCase().trim() == 'lbs' ? 'lbs' : 'kg';
@@ -117,6 +118,121 @@ class UnitFormatter {
       return displayValue / _kmToMiles;
     }
     return displayValue;
+  }
+
+  // ── Height ───────────────────────────────────────────────────────────────
+  //
+  // Canonical storage for height is centimeters. The active
+  // display unit is governed by [SettingsState.preferredHeightUnit]
+  // (`cm` or `ftin`). The conversion helpers are pure functions of
+  // the active unit and the canonical cm value; the profile log
+  // sheet and the chart sheet both call into this single owner so
+  // the display path is shared.
+
+  /// Returns the canonical `'cm'` or `'ftin'` for any input. Unknown
+  /// values normalize to `'cm'` so the rest of the code can rely on
+  /// the two valid keys.
+  static String normalizeHeightUnit(String? unit) {
+    final normalized = unit?.toLowerCase().trim();
+    if (normalized == 'ftin' ||
+        normalized == 'ft_in' ||
+        normalized == 'ft' ||
+        normalized == 'feet_inches' ||
+        normalized == 'imperial') {
+      return 'ftin';
+    }
+    return 'cm';
+  }
+
+  /// Lowercase display label for the active height unit.
+  /// - `cm`  → `'cm'`
+  /// - `ftin` → `'ft in'`
+  static String heightLabel(SettingsState settings) {
+    return heightLabelForUnit(settings.preferredHeightUnit);
+  }
+
+  static String heightLabelForUnit(String? unit) {
+    return normalizeHeightUnit(unit) == 'ftin' ? 'ft in' : 'cm';
+  }
+
+  /// Uppercase display label for the active height unit.
+  static String heightLabelUpper(SettingsState settings) {
+    return heightLabelUpperForUnit(settings.preferredHeightUnit);
+  }
+
+  static String heightLabelUpperForUnit(String? unit) {
+    return heightLabelForUnit(unit).toUpperCase();
+  }
+
+  /// Render a canonical-cm height in the active unit, with the unit
+  /// suffix. In ftin mode the result is the natural compound form
+  /// (e.g. `'5 ft 11 in'`); in cm mode it is the value + ' cm'.
+  static String formatHeight(double cm, SettingsState settings) {
+    if (normalizeHeightUnit(settings.preferredHeightUnit) == 'ftin') {
+      final compound = cmToFeetInches(cm);
+      return formatFeetInches(compound.feet, compound.inches);
+    }
+    return '${_formatNumber(cm)} ${heightLabel(settings)}';
+  }
+
+  /// Same as [formatHeight] but without the unit suffix. In ftin
+  /// mode this returns the compound form (which is self-describing),
+  /// e.g. `'5 ft 11 in'`.
+  static String formatHeightValue(double cm, SettingsState settings) {
+    if (normalizeHeightUnit(settings.preferredHeightUnit) == 'ftin') {
+      final compound = cmToFeetInches(cm);
+      return formatFeetInches(compound.feet, compound.inches);
+    }
+    return _formatNumber(cm);
+  }
+
+  /// Convert a canonical-cm height into the display unit's primary
+  /// numeric form:
+  /// - cm mode → cm (passthrough)
+  /// - ftin mode → total whole inches (e.g. 180 cm → 71)
+  ///
+  /// The chart uses this for the Y-axis plot; the label strip uses
+  /// [formatHeight] for the unit-aware compound rendering.
+  static double convertHeightFromCm(double cm, SettingsState settings) {
+    if (normalizeHeightUnit(settings.preferredHeightUnit) == 'ftin') {
+      final compound = cmToFeetInches(cm);
+      return compound.feet * 12.0 + compound.inches;
+    }
+    return cm;
+  }
+
+  /// Convert a feet/inches pair to canonical cm. The log sheet uses
+  /// this when the user saves in ftin mode; the stored value is
+  /// always cm with `unitId='unit-cm'`.
+  static double toCanonicalHeightFeetInches(
+    int feet,
+    int inches,
+  ) {
+    return feetInchesToCm(feet, inches);
+  }
+
+  /// Convert a canonical-cm height into a whole-foot + whole-inch
+  /// pair. Inches are rounded to the nearest whole inch; the feet
+  /// component is computed from the remainder.
+  static ({int feet, int inches}) cmToFeetInches(double cm) {
+    if (cm <= 0) return (feet: 0, inches: 0);
+    final totalInches = cm * _cmToInches;
+    final rounded = totalInches.round();
+    return (feet: rounded ~/ 12, inches: rounded % 12);
+  }
+
+  /// Convert a feet/inches pair to canonical cm. The output is not
+  /// rounded so the round-trip display exactly preserves the
+  /// entered values.
+  static double feetInchesToCm(int feet, int inches) {
+    return (feet * 12 + inches) * 2.54;
+  }
+
+  /// Render a feet/inches pair as a natural compound string
+  /// (e.g. `'5' 11"'`). Exposed for callers that already have
+  /// the pair on hand.
+  static String formatFeetInches(int feet, int inches) {
+    return "$feet' $inches\"";
   }
 
   static String _formatNumber(double value, {int decimals = 1}) {

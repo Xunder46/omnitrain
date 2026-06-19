@@ -137,10 +137,32 @@ class ProfileMeasurements {
     'lean_mass': (min: 40, max: 440),
   };
 
+  // Imperial (ftin) range for height. The min/max are stored as
+  // total whole inches so the bounds can be compared against the
+  // user's (feet, inches) input via the single linear formula
+  // `feet * 12 + inches`. The bounds map to the same physical
+  // range as the cm [50, 250] window:
+  //   20 in = 1 ft 8 in = 50.8 cm  (just above 50 cm)
+  //   98 in = 8 ft 2 in = 248.92 cm (just under 250 cm)
+  // This keeps the displayed bounds round-trippable in whole
+  // inches so a user can't type a value the chart would re-display
+  // as out-of-range.
+  static const _Range _heightFtinRange = (min: 20, max: 98);
+
   /// Returns the valid [min, max] range for [type] in the unit the user is
   /// currently typing in. [weightUnit] should be
   /// [SettingsState.preferredWeightUnit] (e.g. `'kg'` or `'lbs'`).
-  static _Range validationRangeFor(String type, String weightUnit) {
+  /// [heightUnit] should be [SettingsState.preferredHeightUnit] (e.g.
+  /// `'cm'` or `'ftin'`); it is only consulted when [type] is `'height'`.
+  static _Range validationRangeFor(
+    String type,
+    String weightUnit, {
+    String heightUnit = 'cm',
+  }) {
+    if (type == 'height' &&
+        UnitFormatter.normalizeHeightUnit(heightUnit) == 'ftin') {
+      return _heightFtinRange;
+    }
     final isLbs = UnitFormatter.normalizeWeightUnit(weightUnit) == 'lbs';
     if (isLbs && _lbsRanges.containsKey(type)) {
       return _lbsRanges[type]!;
@@ -150,10 +172,18 @@ class ProfileMeasurements {
 
   /// Returns the display unit label used in validation error messages for
   /// [type]. For weight types, respects the user's [weightUnit] preference.
-  static String validationUnitLabel(String type, String weightUnit) {
+  /// For height, respects the user's [heightUnit] preference.
+  static String validationUnitLabel(
+    String type,
+    String weightUnit, {
+    String heightUnit = 'cm',
+  }) {
     final def = definitionFor(type);
     if (def.unitId == 'unit-kg') {
       return UnitFormatter.weightLabelForUnit(weightUnit);
+    }
+    if (type == 'height') {
+      return UnitFormatter.heightLabelForUnit(heightUnit);
     }
     return def.unitLabel;
   }

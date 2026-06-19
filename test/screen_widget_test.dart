@@ -31,6 +31,7 @@ import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/features/splash/omni_splash_screen.dart';
 import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:omnitrain/core/utils/chart_axis_helper.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
@@ -202,6 +203,8 @@ void main() {
       expect(find.text('100 kg'), findsOneWidget);
       expect(find.text('5 km'), findsOneWidget);
       expect(find.text('Start of Week'), findsOneWidget);
+      // Height unit row lives in the PREFERENCES section.
+      expect(find.text('Height'), findsOneWidget);
 
       await tester.scrollUntilVisible(
         find.text('WORKOUT'),
@@ -1518,41 +1521,40 @@ void main() {
       },
     );
 
-    testWidgets(
-      'Mixed routine: add exercise still shows modality picker',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final repo = await _freshRepo();
-        final workoutState = WorkoutState(repo);
-        final routineState = RoutineState(repo);
-        routineState.setAutosaveEnabled(false);
+    testWidgets('Mixed routine: add exercise still shows modality picker', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      routineState.setAutosaveEnabled(false);
 
-        // focusModality left null (the "Mixed / Not set" default).
-        await routineState.createNewRoutine('Mixed Day');
-        await routineState.saveRoutine();
-        final templateId = routineState.currentTemplate!.id;
+      // focusModality left null (the "Mixed / Not set" default).
+      await routineState.createNewRoutine('Mixed Day');
+      await routineState.saveRoutine();
+      final templateId = routineState.currentTemplate!.id;
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: RoutineSetupScreen(
-              routineState: routineState,
-              workoutState: workoutState,
-              templateId: templateId,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RoutineSetupScreen(
+            routineState: routineState,
+            workoutState: workoutState,
+            templateId: templateId,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.byTooltip('Add exercise to block').first);
-        await tester.pumpAndSettle();
-        await tester.tap(find.byType(ListTile).first);
-        await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Add exercise to block').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(ListTile).first);
+      await tester.pumpAndSettle();
 
-        // Preserved path: the modality picker appears after exercise pick.
-        expect(find.byType(ModalityPickerDialog), findsOneWidget);
-        expect(routineState.currentEfforts, isEmpty);
-      },
-    );
+      // Preserved path: the modality picker appears after exercise pick.
+      expect(find.byType(ModalityPickerDialog), findsOneWidget);
+      expect(routineState.currentEfforts, isEmpty);
+    });
 
     testWidgets(
       'focus-set routine: cancelling picker does not show modality picker',
@@ -4677,6 +4679,487 @@ void main() {
         findsNothing,
       );
     });
+
+    // Height chart label follows the active unit (cm mode by default).
+    testWidgets(
+      'height chart label follows the active unit (cm mode)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'height-cm-entry',
+            measurementType: 'height',
+            value: 180.0,
+            unitId: 'unit-cm',
+            recordedAtMs: 1000,
+          ),
+        );
+        final profileState = ProfileState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+        await profileState.loadProfile();
+        const definition = ProfileMeasurements.height;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MeasurementHistoryChartSheet(
+                profileState: profileState,
+                definition: definition,
+                settingsState: settingsState,
+                onLogNew: () async {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The selected-point label strip reads "180 cm" in cm mode.
+        expect(find.text('180 cm'), findsOneWidget);
+      },
+    );
+
+    // Height chart label follows the active unit (ftin mode).
+    testWidgets(
+      'height chart label follows the active unit (ftin mode)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'height-ftin-entry',
+            measurementType: 'height',
+            value: 180.0,
+            unitId: 'unit-cm',
+            recordedAtMs: 1000,
+          ),
+        );
+        final profileState = ProfileState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+        await settingsState.setPreferredHeightUnit('ftin');
+        await profileState.loadProfile();
+        const definition = ProfileMeasurements.height;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MeasurementHistoryChartSheet(
+                profileState: profileState,
+                definition: definition,
+                settingsState: settingsState,
+                onLogNew: () async {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 180 cm = 70.866 in → 71 in = 5' 11" (compound).
+        expect(find.text("5' 11\""), findsOneWidget);
+        // The bare centimetres value is no longer the label.
+        expect(find.text('180 cm'), findsNothing);
+      },
+    );
+
+    // S-001: Y-axis labels render with the data range's min and max values.
+    // The vertical axis was hidden in A20; the readability fix restores it
+    // so a user can estimate a point's value from the chart alone.
+    testWidgets(
+      'renders Y-axis labels including the data range\'s min and max (S-001)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final baseMs = DateTime.now().millisecondsSinceEpoch;
+        // Seed three bodyweight entries with distinct min/max so the chart
+        // exercises the 2+ entries branch and the Y-axis labels have a real
+        // numeric range to label.
+        final values = [74.0, 80.0, 82.0];
+        final ids = ['bw-low', 'bw-mid', 'bw-high'];
+        final offsetsDays = [60, 30, 0];
+        for (var i = 0; i < values.length; i++) {
+          await repo.saveMeasurementEntry(
+            BodyMeasurementEntry(
+              id: ids[i],
+              measurementType: 'bodyweight',
+              value: values[i],
+              unitId: 'unit-kg',
+              recordedAtMs: baseMs - offsetsDays[i] * 24 * 60 * 60 * 1000,
+            ),
+          );
+        }
+        final profileState = ProfileState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+        await profileState.loadProfile();
+        const definition = ProfileMeasurements.bodyweight;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MeasurementHistoryChartSheet(
+                profileState: profileState,
+                definition: definition,
+                settingsState: settingsState,
+                onLogNew: () async {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Structural assertion: leftTitles must be enabled.
+        final lineChart = tester.widget<LineChart>(find.byType(LineChart));
+        expect(
+          lineChart.data.titlesData.leftTitles.sideTitles.showTitles,
+          isTrue,
+          reason: 'Y-axis labels must be enabled.',
+        );
+
+        // Compute the expected label values using the same
+        // `ChartAxisHelper` the widget uses, then verify the chart
+        // renders labels for both the min and max bound (these are the
+        // labels the user reads for value estimation). The chart
+        // renders whole numbers on the Y-axis (decimals would either
+        // collide with their rounded neighbor or render so close
+        // vertically that they're indistinguishable at 10 pt).
+        final bounds = ChartAxisHelper.computeBounds(values);
+        final minLabel = bounds.min.toStringAsFixed(0);
+        final maxLabel = bounds.max.toStringAsFixed(0);
+
+        // The Y-axis min and max bounds are both rendered as labels.
+        // fl_chart's internal tick computation is implementation-defined,
+        // so we scope the assertion to just the two endpoint labels
+        // (the contract the spec actually requires).
+        expect(
+          find.descendant(
+            of: find.byType(LineChart),
+            matching: find.text(minLabel),
+          ),
+          findsOneWidget,
+          reason:
+              'Y-axis min label "$minLabel" must render inside the LineChart.',
+        );
+        expect(
+          find.descendant(
+            of: find.byType(LineChart),
+            matching: find.text(maxLabel),
+          ),
+          findsOneWidget,
+          reason:
+              'Y-axis max label "$maxLabel" must render inside the LineChart.',
+        );
+      },
+    );
+
+    // S-002: The first and last plotted points are visibly inset from the
+    // chart's horizontal bounds — neither dot touches the chart edge.
+    // Assert via the tap-target centers (the 48×48 GestureDetectors are
+    // placed centered on each rendered dot).
+    testWidgets(
+      'first and last plotted points are inset from the chart\'s horizontal bounds (S-002)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final baseMs = DateTime.now().millisecondsSinceEpoch;
+        // Three entries at distinct times so the chart's time axis is
+        // exercised and the first/last dots sit at the chart's plot-area
+        // extremes.
+        final seeds = [
+          ('bw-1', 74.0, 60),
+          ('bw-2', 80.0, 30),
+          ('bw-3', 82.0, 0),
+        ];
+        for (final s in seeds) {
+          await repo.saveMeasurementEntry(
+            BodyMeasurementEntry(
+              id: s.$1,
+              measurementType: 'bodyweight',
+              value: s.$2,
+              unitId: 'unit-kg',
+              recordedAtMs: baseMs - s.$3 * 24 * 60 * 60 * 1000,
+            ),
+          );
+        }
+        final profileState = ProfileState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+        await profileState.loadProfile();
+        const definition = ProfileMeasurements.bodyweight;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MeasurementHistoryChartSheet(
+                profileState: profileState,
+                definition: definition,
+                settingsState: settingsState,
+                onLogNew: () async {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Locate the LineChart's render rect and the first/last dot tap
+        // targets. Each tap target is a 48×48 GestureDetector centered
+        // on the rendered dot, so its center maps directly to the dot's
+        // x position.
+        final chartRect = tester.getRect(find.byType(LineChart));
+        final firstDotRect = tester.getRect(
+          find.byKey(const ValueKey('chart_dot_0')),
+        );
+        final lastDotRect = tester.getRect(
+          find.byKey(const ValueKey('chart_dot_2')),
+        );
+
+        final firstDotCenterX = (firstDotRect.left + firstDotRect.right) / 2;
+        final lastDotCenterX = (lastDotRect.left + lastDotRect.right) / 2;
+
+        // First dot center must be inset from the chart's left edge —
+        // not flush against it.
+        expect(
+          firstDotCenterX,
+          greaterThan(chartRect.left + 16),
+          reason:
+              'First plotted dot must be inset from the chart\'s left '
+              'edge by more than 16 dp, not flush against it.',
+        );
+
+        // Last dot center must be inset from the chart's right edge.
+        expect(
+          lastDotCenterX,
+          lessThan(chartRect.right - 8),
+          reason:
+              'Last plotted dot must be inset from the chart\'s right '
+              'edge by more than 8 dp, not flush against it.',
+        );
+      },
+    );
+
+    // S-003: The single-entry branch still renders a Y-axis label and
+    // centers the lone dot horizontally (not touching either edge).
+    testWidgets(
+      'single-entry case renders Y-axis label and centers the lone dot (S-003)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'bw-single',
+            measurementType: 'bodyweight',
+            value: 80.0,
+            unitId: 'unit-kg',
+            recordedAtMs: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+        final profileState = ProfileState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+        await profileState.loadProfile();
+        const definition = ProfileMeasurements.bodyweight;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MeasurementHistoryChartSheet(
+                profileState: profileState,
+                definition: definition,
+                settingsState: settingsState,
+                onLogNew: () async {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Y-axis labels still render in the single-entry branch.
+        final lineChart = tester.widget<LineChart>(find.byType(LineChart));
+        expect(
+          lineChart.data.titlesData.leftTitles.sideTitles.showTitles,
+          isTrue,
+          reason: 'Y-axis labels must render in the single-entry branch.',
+        );
+
+        // The single dot is horizontally centered inside the chart's
+        // plot area — its tap target sits closer to the chart's vertical
+        // midline than to either edge.
+        final chartRect = tester.getRect(find.byType(LineChart));
+        final dotRect = tester.getRect(
+          find.byKey(const ValueKey('chart_dot_0')),
+        );
+        final chartCenter = (chartRect.left + chartRect.right) / 2;
+        final dotCenter = (dotRect.left + dotRect.right) / 2;
+        expect(
+          (dotCenter - chartCenter).abs(),
+          lessThan(chartRect.width / 4),
+          reason:
+              'Single-entry dot must be horizontally centered, not touching '
+              'either chart edge.',
+        );
+      },
+    );
+
+    // S-004: The fix applies to every measurement type that opens this
+    // popup, not just body weight. We verify one non-weight type
+    // (height, in cm) so the unit-conversion path is exercised.
+    testWidgets(
+      'Y-axis labels and horizontal inset also apply to height measurements (S-005)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        final baseMs = DateTime.now().millisecondsSinceEpoch;
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'ht-1',
+            measurementType: 'height',
+            value: 178.0,
+            unitId: 'unit-cm',
+            recordedAtMs: baseMs - 60 * 24 * 60 * 60 * 1000,
+          ),
+        );
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'ht-2',
+            measurementType: 'height',
+            value: 181.0,
+            unitId: 'unit-cm',
+            recordedAtMs: baseMs,
+          ),
+        );
+        final profileState = ProfileState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+        await profileState.loadProfile();
+        const definition = ProfileMeasurements.height;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MeasurementHistoryChartSheet(
+                profileState: profileState,
+                definition: definition,
+                settingsState: settingsState,
+                onLogNew: () async {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Y-axis labels enabled.
+        final lineChart = tester.widget<LineChart>(find.byType(LineChart));
+        expect(
+          lineChart.data.titlesData.leftTitles.sideTitles.showTitles,
+          isTrue,
+          reason: 'Y-axis labels must render for height measurements.',
+        );
+
+        // First and last dots are inset from chart edges. Assert via the
+        // tap-target centers (each 48×48 GestureDetector is centered on
+        // the rendered dot).
+        final chartRect = tester.getRect(find.byType(LineChart));
+        final firstDotRect = tester.getRect(
+          find.byKey(const ValueKey('chart_dot_0')),
+        );
+        final lastDotRect = tester.getRect(
+          find.byKey(const ValueKey('chart_dot_1')),
+        );
+        final firstDotCenterX = (firstDotRect.left + firstDotRect.right) / 2;
+        final lastDotCenterX = (lastDotRect.left + lastDotRect.right) / 2;
+        expect(
+          firstDotCenterX,
+          greaterThan(chartRect.left + 16),
+          reason:
+              'First plotted dot must be inset from the chart\'s left edge.',
+        );
+        expect(
+          lastDotCenterX,
+          lessThan(chartRect.right - 8),
+          reason:
+              'Last plotted dot must be inset from the chart\'s right edge.',
+        );
+      },
+    );
+
+    // S-006: The Y-axis reserved strip is wide enough for the
+    // longest whole-number value label the chart ever produces
+    // (3 chars such as `176` for bodyweight in lbs mode, `180`
+    // for height in cm mode). 60 dp is enough headroom at the
+    // 10 pt label font; this regression guard locks the value so
+    // a future "tighten" pass can't push the labels back into
+    // overflow without a deliberate change. Decimals are
+    // intentionally stripped on this axis so a `76.3` and a
+    // `76` tick don't sit so close vertically that they read
+    // as the same value at 10 pt.
+    testWidgets(
+      'leftTitles reservedSize fits 5-char value labels without overflow (S-006)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1000));
+        final repo = await _freshRepo();
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'ht-cm-5char',
+            measurementType: 'height',
+            value: 180.3,
+            unitId: 'unit-cm',
+            recordedAtMs: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+        final profileState = ProfileState(repo);
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+        await profileState.loadProfile();
+        const definition = ProfileMeasurements.height;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MeasurementHistoryChartSheet(
+                profileState: profileState,
+                definition: definition,
+                settingsState: settingsState,
+                onLogNew: () async {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The leftTitles reservedSize is 60 dp — enough for the
+        // longest whole-number label (3 chars at the 10 pt font)
+        // the chart produces. Decimals are intentionally stripped
+        // so a `76.3` and a `76` tick don't sit so close vertically
+        // that they read as the same value.
+        final lineChart = tester.widget<LineChart>(find.byType(LineChart));
+        expect(
+          lineChart.data.titlesData.leftTitles.sideTitles.reservedSize,
+          60.0,
+          reason:
+              'leftTitles reservedSize must be 60 dp so 3-char whole-'
+              'number value labels (e.g. 180, 176) fit without '
+              'overflowing.',
+        );
+        // The chart SizedBox is 440 dp wide and centered
+        // horizontally so it reads as a focused detail-view chart
+        // rather than a full-width data panel.
+        final chartContainer = find
+            .ancestor(
+              of: find.byType(LineChart),
+              matching: find.byType(SizedBox),
+            )
+            .first;
+        final sizedBox = tester.widget<SizedBox>(chartContainer);
+        expect(
+          sizedBox.width,
+          440.0,
+          reason:
+              'Chart container width must be 440 dp — the chart is a '
+              'focused detail view, not a full-width data panel.',
+        );
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -664,6 +664,27 @@ class _MeasurementsSection extends StatelessWidget {
               onChanged: settingsState.setPreferredDistanceUnit,
             ),
           ),
+          _SurfaceDivider(theme: theme),
+          _SettingsRow(
+            label: 'Height',
+            subtitle: 'Used on the profile and in the height log sheet',
+            trailing: _SegmentedToggle(
+              groupValue: UnitFormatter.normalizeHeightUnit(
+                settingsState.preferredHeightUnit,
+              ),
+              options: [
+                _SegmentedOption(
+                  value: 'cm',
+                  label: UnitFormatter.heightLabelForUnit('cm'),
+                ),
+                _SegmentedOption(
+                  value: 'ftin',
+                  label: UnitFormatter.heightLabelForUnit('ftin'),
+                ),
+              ],
+              onChanged: settingsState.setPreferredHeightUnit,
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Container(

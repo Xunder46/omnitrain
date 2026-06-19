@@ -8,6 +8,7 @@ class SettingsState extends ChangeNotifier {
   static const String _themeKey = 'app_theme';
   static const String _preferredWeightUnitKey = 'preferred_weight_unit';
   static const String _preferredDistanceUnitKey = 'preferred_distance_unit';
+  static const String _preferredHeightUnitKey = 'preferred_height_unit';
   static const String _preferredStartOfWeekKey = 'preferred_start_of_week';
   static const String _showFeelingSurveyKey = 'show_feeling_survey';
   static const String _effortTimerSoundKey = 'effort_timer_sound';
@@ -52,6 +53,7 @@ class SettingsState extends ChangeNotifier {
   AppTheme _appTheme = AppTheme.abyssalNeon;
   String _preferredWeightUnit = 'kg';
   String _preferredDistanceUnit = 'km';
+  String _preferredHeightUnit = 'cm';
   String _startOfWeek = 'monday';
   bool _showFeelingSurvey = true;
   String _effortTimerSound = 'boxing_bell';
@@ -63,6 +65,7 @@ class SettingsState extends ChangeNotifier {
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;
   String get preferredDistanceUnit => _preferredDistanceUnit;
+  String get preferredHeightUnit => _preferredHeightUnit;
   String get startOfWeek => _startOfWeek;
   bool get showFeelingSurvey => _showFeelingSurvey;
   String get effortTimerSound => _effortTimerSound;
@@ -110,6 +113,28 @@ class SettingsState extends ChangeNotifier {
     await _repository.setPreferenceString(
       _preferredDistanceUnitKey,
       _preferredDistanceUnit,
+    );
+    notifyListeners();
+  }
+
+  Future<void> setPreferredHeightUnit(String unit) async {
+    // Normalize the raw input against the two accepted values.
+    // Anything that isn't recognized (`cm`, `ftin`, or close
+    // variants) collapses to `cm` so the rest of the codebase can
+    // rely on the two valid keys without re-validating.
+    final normalized = unit.toLowerCase().trim();
+    if (normalized == 'ftin' ||
+        normalized == 'ft_in' ||
+        normalized == 'ft' ||
+        normalized == 'feet_inches' ||
+        normalized == 'imperial') {
+      _preferredHeightUnit = 'ftin';
+    } else {
+      _preferredHeightUnit = 'cm';
+    }
+    await _repository.setPreferenceString(
+      _preferredHeightUnitKey,
+      _preferredHeightUnit,
     );
     notifyListeners();
   }
@@ -195,6 +220,20 @@ class SettingsState extends ChangeNotifier {
             normalizedDistance == 'mi'
         ? 'miles'
         : 'km';
+
+    final savedHeightUnit = await _repository.getPreferenceString(
+      _preferredHeightUnitKey,
+      defaultValue: 'cm',
+    );
+    final normalizedHeight = savedHeightUnit?.toLowerCase().trim();
+    _preferredHeightUnit =
+        normalizedHeight == 'ftin' ||
+            normalizedHeight == 'ft_in' ||
+            normalizedHeight == 'ft' ||
+            normalizedHeight == 'feet_inches' ||
+            normalizedHeight == 'imperial'
+        ? 'ftin'
+        : 'cm';
 
     final savedStartOfWeek = await _repository.getPreferenceString(
       _preferredStartOfWeekKey,

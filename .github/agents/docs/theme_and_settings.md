@@ -5,7 +5,7 @@
 OmniTrain's Settings screen is fully implemented. It owns persisted preferences for:
 
 - calendar display (`Start of Week`)
-- measurement units (`Weight`, `Distance`)
+- measurement units (`Weight`, `Distance`, `Height`)
 - timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`)
 - notification permission copy that covers both rest reminders and effort-expiry alerts
 - workout follow-up (`Feeling Survey`)
@@ -85,6 +85,7 @@ For full palette values and visual rationale, see [Design System](design_system.
 | `appTheme` | `AppTheme` | `abyssalNeon` | `app_theme` |
 | `preferredWeightUnit` | `String` | `kg` | `preferred_weight_unit` |
 | `preferredDistanceUnit` | `String` | `km` | `preferred_distance_unit` |
+| `preferredHeightUnit` | `String` | `cm` | `preferred_height_unit` |
 | `startOfWeek` | `String` | `monday` | `preferred_start_of_week` |
 | `showFeelingSurvey` | `bool` | `true` | `show_feeling_survey` |
 | `effortTimerSound` | `String` | `boxing_bell` | `effort_timer_sound` |
@@ -119,6 +120,7 @@ Valid rest ping intervals:
 | `setAppTheme(theme)` | Persists theme and notifies listeners |
 | `setPreferredWeightUnit(unit)` | Normalizes to `kg` or `lbs` |
 | `setPreferredDistanceUnit(unit)` | Normalizes to `km` or `miles` |
+| `setPreferredHeightUnit(unit)` | Normalizes to `cm` or `ftin` (feet/inches) |
 | `setStartOfWeek(value)` | Normalizes to `monday` or `sunday` |
 | `setShowFeelingSurvey(value)` | Enables/disables the post-workout survey |
 | `setEffortTimerSound(soundId)` | Persists the effort-timer alert sound |
@@ -142,6 +144,14 @@ Rows in the `PREFERENCES` section:
 - `Start of Week`: segmented toggle (`Sun` / `Mon`) used by calendar views
 - `Weight`: segmented toggle (`kg` / `lbs`) used by weight displays and editors
 - `Distance`: segmented toggle (`km` / `mi`) used by cardio and timed exercise displays
+- `Height`: segmented toggle (`cm` / `ft in`) used by the profile card, the
+  height log sheet, and the height history chart. The stored value is
+  always canonical centimeters; switching the toggle never rewrites a
+  saved height. The log sheet's input shape branches on this preference
+  (single `Value (cm)` field in cm mode; side-by-side `Feet` and `Inches`
+  fields in ftin mode, with inches bounded to 0–11). The compound
+  feet/inches form (e.g. `5 ft 11 in`) is rendered in the profile card
+  and the history chart's selected-point label.
 
 Below those rows, a `PREVIEW` card renders example values for both weight and distance using the active unit preferences.
 

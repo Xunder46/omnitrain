@@ -133,26 +133,33 @@ class _MeasurementHistoryChartSheetState
   Widget _buildChart(ThemeData theme) {
     final chartMetrics = _buildChartMetrics(theme);
 
-    // The chart is rendered at a fixed 340 dp width (user-tweaked
-    // from A20's 200 dp) and centered horizontally inside the
-    // sheet so it reads as a focused detail-view chart rather than
-    // a full-width data panel. Vertical axis values (Y-axis labels
-    // + horizontal grid lines that communicate value levels) are
-    // hidden entirely per A20 — only the data line + dots + bottom
-    // X-axis dates remain.
+    // The chart is rendered at a fixed 440 dp width (A20's 200 dp
+    // bumped to 440 dp, then narrowed from 440 dp so the sheet's
+    // own 12 dp horizontal padding becomes a visible breathing
+    // gap on the left of the chart on phone-sized surfaces). It
+    // stays centered horizontally so it reads as a focused
+    // detail-view chart rather than a full-width data panel.
     //
-    // Horizontal padding (16 dp on each side) gives the line
-    // breathing room from the chart's left/right edges so the
-    // start/end dots don't touch the rounded chart bounds. The
-    // X-axis dates (the only axis labels that render) live in the
-    // bottom `reservedSize` strip; their visibility is improved
-    // by reserving 32 dp and bumping the font size to 11 pt.
+    // Y-axis value labels render on the LEFT (via
+    // `leftTitles.reservedSize`, bumped from 50 → 60 dp so labels
+    // like `176.4` or `180.3` no longer overflow the reserved
+    // strip). The empty `rightTitles` reserves additional
+    // horizontal space on the right (no labels shown). Together
+    // these reserved sizes shrink the chart's plot area
+    // symmetrically, so the first and last dots are visibly inset
+    // from the chart's left and right edges and the line no longer
+    // reads as clipped.
+    //
+    // Horizontal padding (40 dp on the right) keeps the LineChart
+    // off the rounded sheet corner. The X-axis dates live in the
+    // bottom `reservedSize` strip; their visibility is improved by
+    // reserving 32 dp and bumping the font size to 11 pt.
     return Center(
       child: SizedBox(
-        width: 340,
+        width: 440,
         height: 220,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          padding: const EdgeInsets.fromLTRB(0, 8, 40, 0),
           child: Stack(
             children: [
               LineChart(chartMetrics.data),
@@ -169,9 +176,7 @@ class _MeasurementHistoryChartSheetState
     final selectedDate = DateTime.fromMillisecondsSinceEpoch(
       selected.recordedAtMs,
     );
-    final valueLabel = selected.unitId == 'unit-kg'
-        ? UnitFormatter.formatWeight(selected.value, widget.settingsState)
-        : '${ProfileMeasurements.formatValue(selected.value)} ${ProfileMeasurements.unitLabelFor(selected.unitId)}';
+    final valueLabel = _formatSelectedValueLabel(selected);
 
     return SizedBox(
       width: double.infinity,
@@ -244,14 +249,44 @@ class _MeasurementHistoryChartSheetState
     );
   }
 
+  // Render the selected point's value with the active unit. Height
+  // is unit-aware (cm or compound feet/inches); weight is unit-aware
+  // (kg or lbs); everything else uses the bare "<value> <unit>"
+  // fallback.
+  String _formatSelectedValueLabel(BodyMeasurementEntry selected) {
+    if (selected.measurementType == 'height') {
+      return UnitFormatter.formatHeight(selected.value, widget.settingsState);
+    }
+    if (selected.unitId == 'unit-kg') {
+      return UnitFormatter.formatWeight(selected.value, widget.settingsState);
+    }
+    return '${ProfileMeasurements.formatValue(selected.value)} '
+        '${ProfileMeasurements.unitLabelFor(selected.unitId)}';
+  }
+
+  // Plot the entry's canonical value in the chart's y-axis unit.
+  // - weight → display-unit (kg/lbs) so the line moves with the
+  //   weight preference toggle.
+  // - height in cm mode → passthrough.
+  // - height in ftin mode → total whole inches (so the y-axis
+  //   shows numeric inches and the selected-point label shows the
+  //   compound feet/inches form).
+  // - everything else → passthrough.
+  double _toChartValue(BodyMeasurementEntry entry) {
+    if (entry.measurementType == 'height') {
+      return UnitFormatter.convertHeightFromCm(entry.value, widget.settingsState);
+    }
+    if (entry.unitId == 'unit-kg') {
+      return UnitFormatter.convertWeight(entry.value, widget.settingsState);
+    }
+    return entry.value;
+  }
+
   Future<void> _confirmDelete(int index) async {
     final entry = _entries[index];
     final date = DateTime.fromMillisecondsSinceEpoch(entry.recordedAtMs);
     final dateLabel = ChartAxisHelper.formatDateLabel(date);
-    final valueLabel = entry.unitId == 'unit-kg'
-        ? UnitFormatter.formatWeight(entry.value, widget.settingsState)
-        : '${ProfileMeasurements.formatValue(entry.value)} '
-              '${ProfileMeasurements.unitLabelFor(entry.unitId)}';
+    final valueLabel = _formatSelectedValueLabel(entry);
 
     if (!mounted) return;
     final theme = Theme.of(context);
@@ -279,9 +314,7 @@ class _MeasurementHistoryChartSheetState
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.all(
-                theme.colorScheme.error,
-              ),
+              backgroundColor: WidgetStateProperty.all(theme.colorScheme.error),
               foregroundColor: WidgetStateProperty.all(
                 theme.colorScheme.onError,
               ),
@@ -308,9 +341,9 @@ class _MeasurementHistoryChartSheetState
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete entry: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to delete entry: $e')));
       return;
     }
     if (!mounted) return;
@@ -347,7 +380,17 @@ class _MeasurementHistoryChartSheetState
     return Positioned.fill(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final plotWidth = constraints.maxWidth;
+          // The chart's plot area is narrower than the LineChart widget
+          // by `leftReserved` + `rightReserved` (the title-side reserved
+          // sizes). Subtract them from the overlay's bounds so tap
+          // targets line up with the rendered dots.
+          final plotLeft = chartMetrics.leftReserved;
+          final plotWidth = max(
+            0.0,
+            constraints.maxWidth -
+                chartMetrics.leftReserved -
+                chartMetrics.rightReserved,
+          );
           final plotHeight = max(0.0, constraints.maxHeight - 28);
           final yRange = max(chartMetrics.yMax - chartMetrics.yMin, 1.0);
 
@@ -357,14 +400,9 @@ class _MeasurementHistoryChartSheetState
                 Builder(
                   builder: (context) {
                     final x = _entries.length == 1
-                        ? plotWidth / 2
-                        : (i / (_entries.length - 1)) * plotWidth;
-                    final displayValue = _entries[i].unitId == 'unit-kg'
-                        ? UnitFormatter.convertWeight(
-                            _entries[i].value,
-                            widget.settingsState,
-                          )
-                        : _entries[i].value;
+                        ? plotLeft + plotWidth / 2
+                        : plotLeft + (i / (_entries.length - 1)) * plotWidth;
+                    final displayValue = _toChartValue(_entries[i]);
                     final yRatio = (displayValue - chartMetrics.yMin) / yRange;
                     final y = (plotHeight - (yRatio * plotHeight)).clamp(
                       0.0,
@@ -401,25 +439,40 @@ class _MeasurementHistoryChartSheetState
     final spots = <FlSpot>[];
 
     for (var i = 0; i < _entries.length; i++) {
-      final displayValue = _entries[i].unitId == 'unit-kg'
-          ? UnitFormatter.convertWeight(_entries[i].value, widget.settingsState)
-          : _entries[i].value;
+      final displayValue = _toChartValue(_entries[i]);
       spots.add(FlSpot(i.toDouble(), displayValue));
     }
 
     final values = _entries
-        .map((entry) {
-          return entry.unitId == 'unit-kg'
-              ? UnitFormatter.convertWeight(entry.value, widget.settingsState)
-              : entry.value;
-        })
+        .map(_toChartValue)
         .toList(growable: false);
-    final minValue = values.reduce(min);
-    final maxValue = values.reduce(max);
-    final range = (maxValue - minValue).abs();
-    final verticalPadding = range < 1 ? 1.0 : range * 0.15;
-    final yMin = minValue - verticalPadding;
-    final yMax = maxValue + verticalPadding;
+
+    // Y-axis bounds: delegate to the canonical `ChartAxisHelper.computeBounds`
+    // so the padded range + nice tick interval are computed in one place.
+    // `readableIntervalForHeight` then shrinks the tick count to fit a
+    // 220 dp chart without overlapping labels.
+    final bounds = ChartAxisHelper.computeBounds(values);
+    final plotHeight = 220.0 - 32.0 - 8.0; // minus bottom + top padding
+    final yInterval = ChartAxisHelper.readableIntervalForHeight(
+      bounds,
+      plotHeight,
+    );
+    final yMin = bounds.min;
+    final yMax = bounds.max;
+
+    // Reserved sizes for the LEFT (Y-axis labels) and RIGHT (no labels,
+    // just breathing room) titles. Together they inset the chart's plot
+    // area so the first/last dots are visibly inside the chart bounds
+    // rather than flush against them.
+    //
+    // `leftReserved = 50 dp` is wide enough for the longest
+    // whole-number Y-axis label (3 chars at 10 pt) without
+    // overflowing. The Y-axis renders whole numbers only — see
+    // the `getTitlesWidget` below — so a `76.3` and a `76` tick
+    // can't sit so close vertically that they read as the same
+    // value at 10 pt.
+    const leftReserved = 50.0;
+    const rightReserved = 30.0;
 
     final minX = _entries.length == 1 ? -0.5 : 0.0;
     final maxX = _entries.length == 1 ? 0.5 : (_entries.length - 1).toDouble();
@@ -427,6 +480,8 @@ class _MeasurementHistoryChartSheetState
     return _ChartMetrics(
       yMin: yMin,
       yMax: yMax,
+      leftReserved: leftReserved,
+      rightReserved: rightReserved,
       data: LineChartData(
         minX: minX,
         maxX: maxX,
@@ -435,15 +490,64 @@ class _MeasurementHistoryChartSheetState
         clipData: FlClipData.all(),
         borderData: FlBorderData(show: false),
         extraLinesData: ExtraLinesData(),
-        // Horizontal grid lines hidden per A20 — the user wants no
-        // vertical axis values to show at all (the Y-axis labels are
-        // already hidden in `titlesData`; the grid lines were the
-        // last remaining hint of a value scale on the vertical axis).
-        gridData: FlGridData(show: false),
+        // Subtle horizontal grid lines at each labeled tick so the
+        // Y-axis values have a visual anchor across the chart area.
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          drawHorizontalLine: true,
+          horizontalInterval: yInterval,
+          getDrawingHorizontalLine: (_) =>
+              FlLine(color: onSurface.withOpacity(0.08), strokeWidth: 1),
+        ),
         titlesData: FlTitlesData(
           topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: leftReserved,
+              interval: yInterval,
+              getTitlesWidget: (value, meta) {
+                // Show only the in-range tick labels; fl_chart may
+                // call us with values outside [yMin, yMax] when
+                // fitting the interval grid.
+                if (value < yMin - 1e-9 || value > yMax + 1e-9) {
+                  return const SizedBox.shrink();
+                }
+                return SideTitleWidget(
+                  meta: meta,
+                  space: 4,
+                  child: Text(
+                    // Whole-number labels only. The chart's Y-axis
+                    // tick interval is rounded to a "nice" step
+                    // (e.g. 1, 2, 5), so a decimal tick (76.3)
+                    // would either render the same as its whole
+                    // neighbor (76) or sit so close vertically that
+                    // the two are indistinguishable at 10 pt. Show
+                    // only the rounded whole number — the user can
+                    // read precise values from the selected-point
+                    // label strip below the chart, which still
+                    // shows one decimal where it matters.
+                    value.toStringAsFixed(0),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: OmniTheme.colors.textSecondary.withOpacity(0.70),
+                      fontSize: 10,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          rightTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: false,
+              // No labels rendered here, but the reserved size still
+              // shrinks the chart's plot area on the right — giving
+              // the data line the requested horizontal breathing
+              // room so the last dot doesn't touch the chart edge.
+              reservedSize: rightReserved,
+            ),
+          ),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -508,17 +612,20 @@ class _MeasurementHistoryChartSheetState
       ),
     );
   }
-
 }
 
 class _ChartMetrics {
   final double yMin;
   final double yMax;
+  final double leftReserved;
+  final double rightReserved;
   final LineChartData data;
 
   const _ChartMetrics({
     required this.yMin,
     required this.yMax,
+    required this.leftReserved,
+    required this.rightReserved,
     required this.data,
   });
 }

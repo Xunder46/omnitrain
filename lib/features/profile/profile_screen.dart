@@ -56,7 +56,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: const OmniBackHeader(title: 'Profile'),
       body: SafeArea(
         child: ListenableBuilder(
-          listenable: widget.profileState,
+          // The card value column is unit-aware (cm vs feet/inches
+          // for height; kg vs lbs for bodyweight), so the screen
+          // rebuilds on either a profile data change or a settings
+          // change to keep the display path live.
+          listenable: Listenable.merge(
+            [widget.profileState, widget.settingsState],
+          ),
           builder: (context, _) {
             final profile = widget.profileState.profile;
             if (widget.profileState.isLoading && profile == null) {
@@ -206,6 +212,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         for (var index = 0; index < definitions.length; index++) ...[
           OmniCardHeader(title: definitions[index].label.toUpperCase()),
           OmniSurface(
+            // Height is the only measurement whose card body has a
+            // dedicated Key so widget tests can scope the unit-aware
+            // display assertions. Other measurements reuse the
+            // shared `measurement_value` key for their value
+            // column.
+            key: definitions[index].type == 'height'
+                ? const Key('profile_height_card')
+                : null,
             padding: const EdgeInsets.fromLTRB(5, 12, 12, 12),
             child: Row(
               children: [
@@ -267,6 +281,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (latestEntry == null) return '—';
     if (latestEntry.unitId == 'unit-kg') {
       return UnitFormatter.formatWeight(latestEntry.value, settingsState);
+    }
+    if (latestEntry.measurementType == 'height') {
+      // Height is the only measurement with a unit-aware compound
+      // display path; the rest use the bare "<value> <unit>" form.
+      return UnitFormatter.formatHeight(latestEntry.value, settingsState);
     }
     final label = ProfileMeasurements.unitLabelFor(latestEntry.unitId);
     return '${ProfileMeasurements.formatValue(latestEntry.value)} $label';
@@ -507,8 +526,21 @@ class _MeasurementLogSheet extends StatefulWidget {
 
 class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
   late final TextEditingController _valueController;
+  // Height in ftin mode presents two separate inputs; the existing
+  // single field above is unused on that path but stays wired up
+  // for the cm/other-measurement path so the rest of the sheet
+  // logic is unchanged.
+  late final TextEditingController _feetController;
+  late final TextEditingController _inchesController;
   bool _isSaving = false;
   String? _valueError;
+
+  bool get _isHeightFtinMode =>
+      widget.definition.type == 'height' &&
+      UnitFormatter.normalizeHeightUnit(
+        widget.settingsState.preferredHeightUnit,
+      ) ==
+          'ftin';
 
   @override
   void initState() {
@@ -523,11 +555,24 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
                 : ProfileMeasurements.formatValue(widget.latestEntry!.value)
           : '',
     );
+    String feetText = '';
+    String inchesText = '';
+    if (widget.latestEntry != null && _isHeightFtinMode) {
+      final compound = UnitFormatter.cmToFeetInches(
+        widget.latestEntry!.value,
+      );
+      feetText = compound.feet.toString();
+      inchesText = compound.inches.toString();
+    }
+    _feetController = TextEditingController(text: feetText);
+    _inchesController = TextEditingController(text: inchesText);
   }
 
   @override
   void dispose() {
     _valueController.dispose();
+    _feetController.dispose();
+    _inchesController.dispose();
     super.dispose();
   }
 
@@ -554,18 +599,21 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                NumericFieldWithDoneBar(
-                  controller: _valueController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                if (_isHeightFtinMode)
+                  _buildFeetInchesInputs()
+                else
+                  NumericFieldWithDoneBar(
+                    controller: _valueController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: widget.definition.unitId == 'unit-kg'
+                          ? 'Value (${UnitFormatter.weightLabel(widget.settingsState)})'
+                          : 'Value (${widget.definition.unitLabel})',
+                      errorText: _valueError,
+                    ),
                   ),
-                  decoration: InputDecoration(
-                    labelText: widget.definition.unitId == 'unit-kg'
-                        ? 'Value (${UnitFormatter.weightLabel(widget.settingsState)})'
-                        : 'Value (${widget.definition.unitLabel})',
-                    errorText: _valueError,
-                  ),
-                ),
                 const SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
@@ -598,7 +646,51 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
     );
   }
 
+  // Side-by-side feet and inches inputs. The inches field is bound
+  // to whole integers 0-11 by the save path's validation.
+  Widget _buildFeetInchesInputs() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: NumericFieldWithDoneBar(
+                controller: _feetController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Feet'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: NumericFieldWithDoneBar(
+                controller: _inchesController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Inches'),
+              ),
+            ),
+          ],
+        ),
+        if (_valueError != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _valueError!,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Future<void> _save() async {
+    if (_isHeightFtinMode) {
+      await _saveHeightFtin();
+      return;
+    }
     final value = double.tryParse(_valueController.text.trim());
     if (value == null) {
       setState(() {
@@ -617,13 +709,16 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
 
     // Per-measurement validation range check.
     final weightUnit = widget.settingsState.preferredWeightUnit;
+    final heightUnit = widget.settingsState.preferredHeightUnit;
     final range = ProfileMeasurements.validationRangeFor(
       widget.definition.type,
       weightUnit,
+      heightUnit: heightUnit,
     );
     final unitLabel = ProfileMeasurements.validationUnitLabel(
       widget.definition.type,
       weightUnit,
+      heightUnit: heightUnit,
     );
     if (value < range.min || value > range.max) {
       final minLabel = range.min == range.min.truncateToDouble()
@@ -655,6 +750,95 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
         widget.definition.type,
         canonicalValue,
         widget.definition.unitId,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save entry: $e')));
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  // Height in ftin mode: read feet and inches separately, validate
+  // both fields and the combined total-inches value, then store the
+  // canonical cm value with `unitId='unit-cm'`. The compound input
+  // ensures the same physical range as the cm path is preserved.
+  Future<void> _saveHeightFtin() async {
+    final feetText = _feetController.text.trim();
+    final inchesText = _inchesController.text.trim();
+    final feet = int.tryParse(feetText);
+    final inches = int.tryParse(inchesText);
+
+    if (feet == null || inches == null) {
+      setState(() {
+        _valueError = 'Enter a valid feet and inches value.';
+      });
+      return;
+    }
+    if (feet < 0 || inches < 0) {
+      setState(() {
+        _valueError = 'Enter a value greater than 0.';
+      });
+      return;
+    }
+    if (inches > 11) {
+      setState(() {
+        _valueError = 'Enter a value between 0 and 11 inches.';
+      });
+      return;
+    }
+
+    final totalInches = feet * 12 + inches;
+    final weightUnit = widget.settingsState.preferredWeightUnit;
+    final heightUnit = widget.settingsState.preferredHeightUnit;
+    final range = ProfileMeasurements.validationRangeFor(
+      'height',
+      weightUnit,
+      heightUnit: heightUnit,
+    );
+    final unitLabel = ProfileMeasurements.validationUnitLabel(
+      'height',
+      weightUnit,
+      heightUnit: heightUnit,
+    );
+    if (totalInches < range.min || totalInches > range.max) {
+      final minLabel = UnitFormatter.formatFeetInches(
+        range.min.toInt() ~/ 12,
+        range.min.toInt() % 12,
+      );
+      final maxLabel = UnitFormatter.formatFeetInches(
+        range.max.toInt() ~/ 12,
+        range.max.toInt() % 12,
+      );
+      setState(() {
+        _valueError =
+            'Enter a value between $minLabel and $maxLabel $unitLabel.';
+      });
+      return;
+    }
+
+    final canonicalCm = UnitFormatter.toCanonicalHeightFeetInches(
+      feet,
+      inches,
+    );
+
+    setState(() {
+      _isSaving = true;
+      _valueError = null;
+    });
+
+    try {
+      await widget.profileState.logMeasurement(
+        'height',
+        canonicalCm,
+        'unit-cm',
       );
     } catch (e) {
       if (!mounted) return;

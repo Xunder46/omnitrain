@@ -116,39 +116,96 @@ void main() {
   // ── S-008: height fixed range ─────────────────────────────────────────────
 
   group('validationRangeFor – height', () {
-    test('returns [50, 250] cm regardless of weight unit', () async {
-      final s = await _settingsKg();
-      final rangeKg = ProfileMeasurements.validationRangeFor(
-        'height',
-        s.preferredWeightUnit,
-      );
-      await s.setPreferredWeightUnit('lbs');
-      final rangeLbs = ProfileMeasurements.validationRangeFor(
-        'height',
-        s.preferredWeightUnit,
-      );
-      expect(rangeKg.min, 50);
-      expect(rangeKg.max, 250);
-      expect(rangeLbs.min, 50);
-      expect(rangeLbs.max, 250);
-    });
-
-    test('49 is below min of 50', () async {
+    test('returns [50, 250] cm in cm mode', () async {
       final s = await _settingsKg();
       final range = ProfileMeasurements.validationRangeFor(
         'height',
         s.preferredWeightUnit,
+        heightUnit: s.preferredHeightUnit,
+      );
+      expect(range.min, 50);
+      expect(range.max, 250);
+    });
+
+    test('returns feet/inches range in ftin mode', () async {
+      final s = await _settingsKg();
+      await s.setPreferredHeightUnit('ftin');
+      final range = ProfileMeasurements.validationRangeFor(
+        'height',
+        s.preferredWeightUnit,
+        heightUnit: s.preferredHeightUnit,
+      );
+      // Total inches: 20 (= 1 ft 8 in = 50.8 cm) to 98 (= 8 ft 2 in
+      // = 248.92 cm). Both round-trip cleanly with the compound
+      // input.
+      expect(range.min, 20);
+      expect(range.max, 98);
+    });
+
+    test('49 is below min of 50 (cm mode)', () async {
+      final s = await _settingsKg();
+      final range = ProfileMeasurements.validationRangeFor(
+        'height',
+        s.preferredWeightUnit,
+        heightUnit: s.preferredHeightUnit,
       );
       expect(49 < range.min, isTrue);
     });
 
-    test('251 is above max of 250', () async {
+    test('251 is above max of 250 (cm mode)', () async {
       final s = await _settingsKg();
       final range = ProfileMeasurements.validationRangeFor(
         'height',
         s.preferredWeightUnit,
+        heightUnit: s.preferredHeightUnit,
       );
       expect(251 > range.max, isTrue);
+    });
+
+    test('0 ft 0 in (0 in) is below min of 1 ft 8 in (20 in, ftin mode)', () async {
+      final s = await _settingsKg();
+      await s.setPreferredHeightUnit('ftin');
+      final range = ProfileMeasurements.validationRangeFor(
+        'height',
+        s.preferredWeightUnit,
+        heightUnit: s.preferredHeightUnit,
+      );
+      // 0 * 12 + 0 = 0 in < 20 in min
+      expect((0 * 12 + 0) < range.min, isTrue);
+    });
+
+    test('9 ft 0 in (108 in) is above max of 8 ft 2 in (98 in, ftin mode)', () async {
+      final s = await _settingsKg();
+      await s.setPreferredHeightUnit('ftin');
+      final range = ProfileMeasurements.validationRangeFor(
+        'height',
+        s.preferredWeightUnit,
+        heightUnit: s.preferredHeightUnit,
+      );
+      // 9 * 12 + 0 = 108 in > 98 in max
+      expect((9 * 12 + 0) > range.max, isTrue);
+    });
+
+    test('1 ft 8 in (20 in) is the lower boundary (ftin mode)', () async {
+      final s = await _settingsKg();
+      await s.setPreferredHeightUnit('ftin');
+      final range = ProfileMeasurements.validationRangeFor(
+        'height',
+        s.preferredWeightUnit,
+        heightUnit: s.preferredHeightUnit,
+      );
+      expect((1 * 12 + 8) >= range.min, isTrue);
+    });
+
+    test('8 ft 2 in (98 in) is the upper boundary (ftin mode)', () async {
+      final s = await _settingsKg();
+      await s.setPreferredHeightUnit('ftin');
+      final range = ProfileMeasurements.validationRangeFor(
+        'height',
+        s.preferredWeightUnit,
+        heightUnit: s.preferredHeightUnit,
+      );
+      expect((8 * 12 + 2) <= range.max, isTrue);
     });
   });
 
@@ -287,14 +344,28 @@ void main() {
       );
     });
 
-    test('height returns "cm"', () async {
+    test('height in cm mode returns "cm"', () async {
       final s = await _settingsKg();
       expect(
         ProfileMeasurements.validationUnitLabel(
           'height',
           s.preferredWeightUnit,
+          heightUnit: s.preferredHeightUnit,
         ),
         'cm',
+      );
+    });
+
+    test('height in ftin mode returns "ft in"', () async {
+      final s = await _settingsKg();
+      await s.setPreferredHeightUnit('ftin');
+      expect(
+        ProfileMeasurements.validationUnitLabel(
+          'height',
+          s.preferredWeightUnit,
+          heightUnit: s.preferredHeightUnit,
+        ),
+        'ft in',
       );
     });
 
