@@ -395,5 +395,343 @@ food_library_state, food_library_edit). 0 fail.
 **No issues found.**
 
 ---
-⏸️ **PIPELINE COMPLETE** — Bug fix and doc update delivered.
-Ready to merge.
+
+## Phase 3.X.2 — "Save on clear" bug fix (EditFoodScreen)
+
+### Bug
+
+The user reports they **cannot delete a photo** from a food
+item in the nutrition feature. Tapping the **× overlay** on the
+`FoodFormImageTile` clears the image from the form's local
+state but never persists `imagePath: null` to the data layer.
+
+`EditFoodScreen` opens a catalog row for edit. It uses
+`autoSaveOnBlur: true, skipPopOnSave: true` and has **no Save
+button** (the user explicitly removed it in the previous
+iteration). The form's `_clearImage` method only does
+`setState(() => _imagePath = null);` — it never triggers
+`_onSave` (the picker does not change focus, and the user
+typically navigates back via the back button rather than
+tapping outside a text field to blur). So the food's
+`imagePath` in the data layer remained the picked path, the
+library and "foods I eat" views kept showing the previous
+photo, and the managed file accumulated on disk.
+
+This is the exact same root cause as the previous "Save on
+upload" iteration, but for the **clear** path. The pick
+path was patched (it fires `onImageSave` with the new path);
+the clear path was overlooked.
+
+### Fix
+
+`FoodForm` now exposes:
+- `clearImage()` — `@visibleForTesting` seam; production
+  callers go through the `FoodFormImageTile` overlay's
+  `onClear` callback which now points at it.
+
+The new `clearImage` method:
+1. `setState(() => _imagePath = null)` — clears local state
+   (unchanged behaviour).
+2. In **edit mode** (`initial != null` and `onImageSave`
+   wired): builds a partial draft from `initial` with
+   `imagePath: null` (reusing `_partialDraftFromInitial`) and
+   fires `onImageSave`. The host (`EditFoodScreen`) wires
+   this to `FoodLibraryState.updateCatalogFood`, whose
+   existing `previousPath != draft.imagePath` branch handles
+   D-7 cleanup of the previous managed file (it calls
+   `svc.deleteIfManaged(previousPath)` when the path changes
+   and the previous path was non-null).
+3. In **create mode** (`initial == null`): does NOT fire
+   `onImageSave`. The image is just unset locally; the user
+   saves the whole food via the existing Save button.
+
+The form does not call the service directly — D-7 cleanup is
+the state method's responsibility, matching the INV-3
+contract from `image-persistence-fix-plan.md`.
+
+### Test seams
+
+- `test/food_form_pick_saves_test.dart` (extended with 2 new
+  tests):
+  - S-X1: clear in edit mode fires `onImageSave` with
+    `imagePath: null`; the food's `imagePath` becomes `null`
+    in the data layer; the previous managed file is deleted
+    (D-7).
+  - S-X2: clear in create mode does NOT fire `onImageSave`.
+- `test/image_persistence_round_trip_test.dart` (unchanged) —
+  the S-7 state-level scenario
+  (`updateCatalogFood(imagePath: null) deletes the previous
+  managed file`) already covers the disk-cleanup path; the
+  new form tests just exercise the form layer that wires the
+  clear overlay to that state method.
+
+### Documentation
+
+`docs/widget_catalog.md` updated under the `FoodForm` entry:
+- The `onImageSave` row now mentions it fires after both a
+  pick **and** a clear (× overlay) in edit mode.
+- New "Save on clear" bullet under Behavior, paralleling the
+  existing "Save on upload" bullet.
+
+### Files Affected
+
+- `lib/features/nutrition/widgets/food_form.dart` — promote
+  `_clearImage` to public `@visibleForTesting Future<void>
+  clearImage()` that fires `onImageSave` with `imagePath:
+  null` in edit mode (mirrors `handlePickedImage`).
+- `test/food_form_pick_saves_test.dart` — add 2 tests (S-X1
+  + S-X2).
+- `docs/widget_catalog.md` — document the "Save on clear"
+  behaviour under the `FoodForm` entry.
+
+### Implementation Steps
+
+1. Promote `_clearImage` to a public
+   `@visibleForTesting Future<void> clearImage()` method on
+   `_FoodFormState`. Update the `FoodFormImageTile.onClear`
+   binding to point at it.
+2. Inside `clearImage`, after `setState(() => _imagePath = null);`,
+   guard `widget.onImageSave != null && widget.initial != null`
+   and fire `onImageSave(_partialDraftFromInitial(null))`. On
+   `false`, surface a `Could not clear photo` snackbar.
+3. Add `test/food_form_pick_saves_test.dart` tests S-X1 +
+   S-X2 (run red first).
+4. Run `flutter test` green.
+5. Update `docs/widget_catalog.md`.
+
+### Acceptance Criteria
+
+- [ ] `clearImage()` on the form fires `onImageSave` with
+      `imagePath: null` in edit mode.
+- [ ] The food's `imagePath` is `null` in the data layer after
+      `clearImage()` in edit mode.
+- [ ] The previous managed file is deleted from disk (D-7).
+- [ ] `clearImage()` does NOT fire `onImageSave` in create
+      mode.
+- [ ] `docs/widget_catalog.md` reflects the new behaviour.
+- [ ] `flutter test` is green; `flutter analyze` on affected
+      files is clean.
+
+### Iteration Findings
+
+Code review (this iteration) found:
+- 🔴 CRITICAL: 0
+- 🟡 WARNING: 0
+- 💡 SUGGEST: 0
+- 🧪 MISSING: 0
+- 🧪 STALE: 0
+
+### Verdict
+
+## Code Review: ✅ APPROVED
+Layers in scope: features (`FoodForm`), tests
+(`food_form_pick_saves_test.dart` extended), docs
+(`widget_catalog.md`).
+Layers skipped: models, repositories, state, core, widgets
+(no changes — `clearImage` reuses the existing
+`FoodLibraryState.updateCatalogFood` for persistence and D-7
+cleanup).
+
+PASS (5 rules): theme tokens only; effort-kind drives
+analytics (N/A); timestamps are source data; reuse the
+canonical owner (reuses existing `ImageStorageService` +
+`FoodLibraryState.updateCatalogFood` + `_partialDraftFromInitial`
+helper); instrument panel, not influencer.
+N/A (3 rules): units + canonical storage (no unit changes);
+card chrome via OmniSurface / OmniCardHeader (form scope, no
+card chrome touched); effort-kind drives analytics (food domain).
+FAIL: 0
+
+`flutter test` is green at this iteration close: **1659 tests
+pass**, 5 skipped, 0 fail (across the full test suite). The 5
+affected test files (food_form_pick_saves,
+image_persistence_round_trip, food_library,
+food_library_state, food_library_edit) report **108 tests
+pass**, 0 fail.
+
+`flutter analyze` on the 5 affected files: 2 pre-existing
+`DropdownButtonFormField.value` deprecation infos
+(`lib/features/nutrition/widgets/food_form.dart:501`, `:522`),
+**no new issues introduced** by this change.
+
+---
+
+## Phase 3.X.3 — Add Food navigation route alignment (TRIVIAL fast-track)
+
+> **Classification**: **TRIVIAL** — no schema change, no new
+> state, no new user-facing behavior. Two navigation calls in
+> `lib/features/nutrition/add_food_screen.dart` use raw
+> `MaterialPageRoute`; route them through `OmniNavigator.push`
+> so the `OmniRoute` `opaque = true` + `OmniGradientBackground`
+> wrapper applies and the slide is a single clean
+> foreground-only transition. Lean plan, no scenario Q&A.
+
+### Overview
+
+`AddFoodScreen` has two forward-navigation steps that bypass
+the app's single standard navigation path:
+
+1. **Opening the new-food entry form** — the `+ New Food` bottom
+   CTA on the Add Food screen calls `_openNewFoodForm`, which
+   uses raw `Navigator.of(context).push(MaterialPageRoute(...))`
+   to push the private `_NewFoodFormScreen`. Because the route
+   is a plain `MaterialPageRoute` (the page is not wrapped in
+   `OmniGradientBackground` and `opaque` defaults to `true` only
+   at the platform level), the outgoing `AddFoodScreen` and the
+   incoming `_NewFoodFormScreen` are both visible during the
+   slide — a momentary "two screens overlapping" frame.
+2. **Opening the legacy library edit screen** — the row-tap path
+   in the My Foods tab for legacy (pre-D-2) library-only
+   customs (`isCatalog = false`) pushes a private
+   `_LegacyLibraryEditScreen` shim via the same raw
+   `MaterialPageRoute`. Same bleed-through symptom.
+
+Every other screen push in the app — including
+`EditFoodScreen.push` (used by the Library tab's catalog row
+tap) — already routes through `OmniNavigator.push`, which
+wraps the destination in `OmniRoute` (`opaque = true` + the
+shared `OmniGradientBackground`). The two raw pushes are the
+last two outliers; bringing them in line is a one-line change
+per call site.
+
+### Requirements
+
+- The `+ New Food` bottom CTA on `AddFoodScreen` pushes the
+  new-food form through `OmniNavigator.push` so the slide
+  matches every other screen transition in the app.
+- Tapping a legacy (pre-D-2) custom food row in the My Foods
+  tab on `AddFoodScreen` pushes the legacy edit shim through
+  `OmniNavigator.push` for the same reason.
+- No other navigation, layout, or behavior changes. The
+  outgoing and incoming screens are otherwise unchanged.
+
+### Acceptance Criteria
+
+- [ ] `_openNewFoodForm` in `lib/features/nutrition/add_food_screen.dart`
+      uses `OmniNavigator.push` instead of
+      `Navigator.of(context).push(MaterialPageRoute(...))`.
+- [ ] `_UserFoodRowState._openEdit`'s legacy branch in
+      `lib/features/nutrition/add_food_screen.dart` uses
+      `OmniNavigator.push` instead of
+      `Navigator.of(context).push(MaterialPageRoute(...))`.
+- [ ] After the two changes, no `MaterialPageRoute` /
+      `PageRouteBuilder` outside `lib/core/navigation/` remains
+      in the Add Food area of the nutrition feature
+      (verified by `grep_search`).
+- [ ] A widget test in `test/screen_widget_test.dart` drives
+      each of the two navigation steps from the production
+      screen tree and asserts the topmost route on the
+      `Navigator` is an `OmniRoute`, not a raw
+      `MaterialPageRoute`.
+- [ ] The existing `test/nutrition_test.dart` "fills the form,
+      saves, and the new food is rendered in the library" test
+      is flagged as a non-coverage reference (it drives the
+      production path but does not assert the route type) and
+      the new screen_widget_test adds the route-type assertion
+      instead of relying on it.
+- [ ] `flutter test` is green; the new tests pass and no
+      previously passing test now fails.
+- [ ] `flutter analyze` on the affected files is clean.
+
+### Scenarios
+
+### S-N1: + New Food bottom CTA opens the new-food form via OmniRoute
+- Trigger: User taps the `+ New Food` bottom CTA on the
+  `AddFoodScreen` (My Foods tab).
+- Precondition: `AddFoodScreen` is the top of the navigator
+  with a fresh repository.
+- Flow: User taps `+ New Food` →
+  `_openNewFoodForm` runs → the navigator pushes a new route.
+- Expected outcome: The topmost route on the `Navigator` is an
+  instance of `OmniRoute` (the app's standard route primitive),
+  not a raw `MaterialPageRoute`. The new-food form is
+  foregrounded without an overlap frame.
+- Edge case of: none.
+
+### S-N2: Legacy library-only custom food row tap opens the legacy edit shim via OmniRoute
+- Trigger: User taps a legacy (pre-D-2) custom food row in the
+  My Foods tab on `AddFoodScreen` (a row with `isCatalog = false`
+  and no matching catalog identity).
+- Precondition: A legacy custom food is in the user's library.
+- Flow: User taps the row → `_openEdit`'s legacy branch runs →
+  the navigator pushes the `_LegacyLibraryEditScreen` shim.
+- Expected outcome: The topmost route on the `Navigator` is an
+  instance of `OmniRoute`, not a raw `MaterialPageRoute`. The
+  legacy edit shim is foregrounded without an overlap frame.
+- Edge case of: none.
+
+### S-N3: Existing nutrition test is non-coverage
+- Trigger: Existing test in `test/nutrition_test.dart` titled
+  "fills the form, saves, and the new food is rendered in the
+  library" taps `+ New Food` and asserts on the new food's
+  persistence.
+- Precondition: The existing test runs.
+- Flow: The test exercises the production path (taps the `+ New
+  Food` button) but only asserts on the saved food; it does NOT
+  assert the route type, so it is **not coverage** for this fix.
+- Expected outcome: This test is flagged in this plan as
+  non-coverage for the navigation alignment; the new
+  screen_widget_test (S-N1) provides the route-type assertion.
+  No new test-only navigation harness is added.
+
+### Iteration 1 — DB Changes
+
+N/A — no model or schema change.
+
+### Iteration 1 — Backend Changes
+
+N/A — no repository or interface change. `WorkoutRepository`,
+`MockWorkoutRepository`, `HiveWorkoutRepository`, and
+`FoodLibraryState` are untouched.
+
+### Iteration 1 — Frontend Changes
+
+- `lib/features/nutrition/add_food_screen.dart`:
+  - Add `import '../../core/navigation/navigation.dart';` (the
+    barrel that re-exports `omni_navigator.dart` and
+    `omni_route.dart`).
+  - Replace
+    `Navigator.of(context).push(MaterialPageRoute(builder: (_) => _NewFoodFormScreen(...)))`
+    inside `_openNewFoodForm` with
+    `OmniNavigator.push<void>(context, (_) => _NewFoodFormScreen(...))`.
+  - Replace
+    `Navigator.of(context).push(MaterialPageRoute(builder: (_) => _LegacyLibraryEditScreen(...)))`
+    inside `_UserFoodRowState._openEdit`'s `else` branch with
+    `OmniNavigator.push<void>(context, (_) => _LegacyLibraryEditScreen(...))`.
+
+### Iteration 1 — Implementation Steps
+
+1. Write the two red tests in
+   `test/screen_widget_test.dart` (S-N1 + S-N2). Each drives
+   the production screen tree, taps the trigger surface, and
+   asserts the topmost route is an `OmniRoute` (not a
+   `MaterialPageRoute`). Run `flutter test` and confirm the
+   tests fail (the route is currently a `MaterialPageRoute`).
+2. Add the navigation import to `add_food_screen.dart`.
+3. Replace the two raw `MaterialPageRoute` pushes with
+   `OmniNavigator.push` calls.
+4. Run the full test suite; confirm the new tests pass and no
+   previously passing test now fails.
+5. `flutter analyze` the affected files.
+6. Update the plan file's `## Progress` checklist.
+
+### Iteration 1 — Files Affected
+
+- `lib/features/nutrition/add_food_screen.dart` — add
+  navigation import; replace two raw `MaterialPageRoute`
+  pushes with `OmniNavigator.push`.
+- `test/screen_widget_test.dart` — add S-N1 and S-N2 widget
+  tests with explicit `OmniRoute` route-type assertions.
+
+### Phase 0 (Iteration 1 — Add Food navigation route alignment) Complete ✓
+
+### Phase 1 (Iteration 1 — Add Food navigation route alignment) Complete ✓
+
+> **N/A — no DB or repository change.** This iteration only
+> changes navigation primitives in
+> `lib/features/nutrition/add_food_screen.dart`. `WorkoutRepository`
+> (interface), `MockWorkoutRepository`,
+> `HiveWorkoutRepository`, `FoodLibraryState`, and the
+> `scripts/sqlite_schema.sql` / `scripts/sqlite_seed.sql`
+> assets are untouched. `docs/data_models.md` and
+> `docs/db_integration.md` are also untouched.

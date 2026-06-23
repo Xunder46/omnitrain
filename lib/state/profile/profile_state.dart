@@ -39,6 +39,12 @@ class ProfileState extends ChangeNotifier {
     return svc;
   }
 
+  /// Nullable accessor for the image storage helper. Used by the
+  /// rendering widgets (`ProfileAvatarImage`) which receive the
+  /// service as an optional parameter and degrade gracefully when
+  /// no service is injected (legacy / test path).
+  ImageStorageService? get imageStorageOrNull => _imageStorage;
+
   UserProfile? _profile;
   bool _isLoading = false;
   String? _error;
@@ -63,13 +69,16 @@ class ProfileState extends ChangeNotifier {
         await _repository.saveProfile(_profile!);
       }
 
-      // Self-heal (D-4): a pre-existing record whose `avatarPath`
-      // points at a file the OS has since deleted (e.g. a stale
-      // `image_picker` cache path from before the persistence fix)
-      // is converged to `null` on first load so the renderer shows
-      // its fallback instead of a broken image, and the data layer
-      // stops carrying an orphan reference.
-      await _selfHealAvatarPath();
+      // Self-heal + re-link (D-4..D-6 + INV-4): resolve the stored
+      // avatar path against the **current** managed directory. If
+      // the file is reachable anywhere on disk under a known
+      // candidate location, normalize the stored reference to the
+      // basename (location-independent) and persist. If the file
+      // is truly absent, clear the field and persist (true
+      // self-heal). The reference is **never** cleared while the
+      // file is still reachable — that is the launch-blocker bug
+      // this rewrite addresses.
+      await _resolveAndNormalizeAvatarPath();
 
       await loadLatestMeasurements(
         ProfileMeasurements.primary.map((definition) => definition.type),
@@ -83,23 +92,43 @@ class ProfileState extends ChangeNotifier {
     }
   }
 
-  /// Load-time self-heal. See [loadProfile]. No-op when no
-  /// service was injected, when the avatar is already null, and
-  /// when the file is actually present. Silent — does not surface
-  /// an error or snackbar.
-  Future<void> _selfHealAvatarPath() async {
+  /// Load-time resolve + normalize. See [loadProfile].
+  ///
+  /// Resolution contract (D-3): the service searches the current
+  /// managed dir, the literal reference path (legacy absolute
+  /// paths), and configured candidate directories (picker temp,
+  /// app support). If a file matching the basename is reachable
+  /// anywhere, the service re-links it into the current managed
+  /// dir and returns the basename. If no candidate has the file,
+  /// the service returns `null`.
+  ///
+  /// Persistence rules (D-4, D-6, INV-4):
+  ///   * No service injected → no-op.
+  ///   * No stored reference → no-op.
+  ///   * Service returns the same value as stored → no write.
+  ///   * Service returns a different basename → persist the
+  ///     normalized reference (one-time migration write). The file
+  ///     is re-linked by the service.
+  ///   * Service returns `null` → persist `avatarPath: null`
+  ///     (true self-heal; file is truly absent on disk).
+  ///
+  /// Silent — does not surface an error or snackbar.
+  Future<void> _resolveAndNormalizeAvatarPath() async {
     final svc = _imageStorage;
-    final path = _profile?.avatarPath;
-    if (svc == null || path == null) return;
-    if (svc.exists(path)) return;
-    final healed = UserProfile(
+    final stored = _profile?.avatarPath;
+    if (svc == null || stored == null) return;
+
+    final resolved = await svc.resolveOrRelink(stored);
+    if (resolved == stored) return;
+
+    final normalized = UserProfile(
       id: _profile!.id,
       displayName: _profile!.displayName,
-      avatarPath: null,
+      avatarPath: resolved,
       createdAtMs: _profile!.createdAtMs,
     );
-    await _repository.saveProfile(healed);
-    _profile = healed;
+    await _repository.saveProfile(normalized);
+    _profile = normalized;
   }
 
   Future<void> loadLatestMeasurements(

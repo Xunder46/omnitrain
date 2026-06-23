@@ -16,9 +16,9 @@
 //     — which already early-return on `kIsWeb` with the existing
 //     user-facing snackbar — never reach the service.
 //
-// See D-1, D-5, D-8 in
-// `.github/agents/plans/image-persistence-fix-plan.md` for the
-// full design contract.
+// See D-1..D-10 in
+// `.github/agents/plans/image-persistence-relocation-fix-plan.md`
+// for the full design contract.
 
 export 'image_storage_service_stub.dart'
     if (dart.library.io) 'image_storage_service_io.dart';

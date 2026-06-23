@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/constants/omni_theme.dart';
+import '../../../core/services/image_storage_service.dart';
 import '../../../core/utils/food_helpers.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
@@ -320,6 +321,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
               _ThumbToggle(
                 food: food,
                 isLogged: isLogged,
+                imageStorage: widget.foodLibraryState.imageStorageOrNull,
                 onTap: () => _toggle(isLogged ? false : true),
               ),
               // ── Food name + macros (takes remaining space) ────────
@@ -463,6 +465,7 @@ class _LogFoodRowState extends State<LogFoodRow> {
 class _ThumbToggle extends StatefulWidget {
   final Food food;
   final bool isLogged;
+  final ImageStorageService? imageStorage;
   final VoidCallback onTap;
 
   /// Diameter of the visible thumbnail (also the badge's parent
@@ -488,6 +491,7 @@ class _ThumbToggle extends StatefulWidget {
   const _ThumbToggle({
     required this.food,
     required this.isLogged,
+    required this.imageStorage,
     required this.onTap,
   });
 
@@ -532,6 +536,7 @@ class _ThumbToggleState extends State<_ThumbToggle> {
         borderRadius: BorderRadius.circular(7),
         child: FoodThumbnail(
           imagePath: widget.food.imagePath,
+          imageStorage: widget.imageStorage,
           size: _ThumbToggle._thumbSize,
           // The thumbnail widget paints its own border for the
           // placeholder (0.2-alpha muted outline) and none when an

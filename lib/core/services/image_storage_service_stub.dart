@@ -7,7 +7,7 @@
 // available (i.e. the web target). Every method throws
 // `UnsupportedError` so that the only callers — which already
 // early-return on `kIsWeb` with the existing user-facing snackbar
-// per D-5 — never reach the service in practice.
+// per D-8 — never reach the service in practice.
 //
 // On web, the existing call-site snackbar text is preserved
 // verbatim:
@@ -16,7 +16,8 @@
 //   "Photo selection works on web, but food photo persistence is
 //    not supported there yet."
 //
-// See D-5 in `.github/agents/plans/image-persistence-fix-plan.md`.
+// See D-8 in
+// `.github/agents/plans/image-persistence-relocation-fix-plan.md`.
 
 import 'package:image_picker/image_picker.dart' show XFile;
 
@@ -30,10 +31,13 @@ Never _unsupported() => throw UnsupportedError(
 /// method throws `UnsupportedError` — see file-level doc.
 class ImageStorageService {
   /// Mirror of `ImageStorageService.fromBaseDirectory` in the IO
-  /// variant. The argument is intentionally unused on web
+  /// variant. The arguments are intentionally unused on web
   /// (the stub throws on every operation).
   // ignore: unused_element_parameter
-  ImageStorageService.fromBaseDirectory(String baseDirectory);
+  ImageStorageService.fromBaseDirectory(
+    String baseDirectory, {
+    List<String>? extraCandidateDirs,
+  });
 
   /// Mirror of `ImageStorageService.create` in the IO variant.
   /// Always throws on web.
@@ -41,11 +45,20 @@ class ImageStorageService {
 
   String get managedDirectoryPath => _unsupported();
 
+  List<String> get candidateDirectories => _unsupported();
+
   bool isManaged(String path) => _unsupported();
 
   bool exists(String path) => _unsupported();
 
-  Future<String?> resolveOrNull(String? path) async => _unsupported();
+  /// Web stub. Always returns `null` (no managed images on web).
+  /// The web path returns the fallback widget before any image
+  /// rendering happens, so this method is never actually exercised
+  /// in the production render path. It exists so the cross-platform
+  /// widget API stays uniform.
+  String? resolvePathSync(String? reference) => null;
+
+  Future<String?> resolveOrRelink(String? reference) async => _unsupported();
 
   Future<String> persistPickedImage(XFile picked) async => _unsupported();
 

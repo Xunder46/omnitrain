@@ -8,20 +8,30 @@
 // `test/image_persistence_round_trip_test.dart` (Phase 2).
 //
 // Scenarios referenced here come from
-// `.github/agents/plans/image-persistence-fix-plan.md`:
+// `.github/agents/plans/image-persistence-relocation-fix-plan.md`:
 //
-//   * S-1 (service-level): persist produces a managed path whose
-//     bytes match the source.
+//   * S-1 (service-level): persist produces a basename-shaped
+//     reference whose bytes match the source.
 //   * S-3 (service-level): deleting a managed file works; deleting
 //     a non-managed file is a no-op (INV-3 + D-3).
 //   * S-9 (service-level): a copy that throws leaves no partial
 //     file at the destination (D-6).
+//   * S-R1..S-R3 (service-level): resolveOrRelink finds a file at
+//     the current managed dir (path 1), the literal reference
+//     path (path 2 — re-link copy verified), or a configured
+//     candidate dir (path 3 — re-link copy verified), and returns
+//     null when no candidate has the file.
 //
 // Additional invariants verified:
 //   * INV-5 — deleteIfManaged swallows "no such file".
-//   * D-3   — isManaged is the sole gate for delete.
-//   * D-4   — exists / resolveOrNull return the right shape for
-//             the load-time self-heal.
+//   * D-1   — persistPickedImage returns the basename, not the
+//             absolute path; the file lives under the managed
+//             directory.
+//   * D-2   — extension preservation (basename keeps the picked
+//             extension, falls back to path extension, then .jpg).
+//   * D-3   — isManaged is the sole gate for absolute-path deletes.
+//   * D-5   — re-link copies the file to the managed dir; the
+//             copy is idempotent (no overwrite on a second call).
 //
 // The IO variant is imported directly (not via the conditional
 // re-export in `image_storage_service.dart`) so the test always
@@ -59,29 +69,40 @@ void main() {
       expect(service.managedDirectoryPath, p.join(tempDir.path, 'omni_images'));
     });
 
-    // ─── S-1 (service-level): persist produces a stable managed file ───────
+    test('candidateDirectories is empty by default (no create() factory)',
+        () {
+      expect(service.candidateDirectories, isEmpty);
+    });
 
-    test('persistPickedImage copies bytes into the managed dir', () async {
-      // Source: a temp file outside the managed dir holding
-      // 1024 bytes of a known sentinel value.
+    // ─── D-1 (cont'd): persist returns the basename ────────────────────────
+
+    test('persistPickedImage returns the basename, NOT the absolute path',
+        () async {
       final sourceBytes = List<int>.filled(1024, 0xAB);
       final sourcePath = p.join(tempDir.path, 'picker_source.jpg');
       File(sourcePath).writeAsBytesSync(sourceBytes);
       final picked = XFile(sourcePath, name: 'picker_source.jpg');
 
-      final persistedPath = await service.persistPickedImage(picked);
+      final persisted = await service.persistPickedImage(picked);
 
-      // Path shape: under managed dir, with a uuid + .jpg extension.
-      expect(p.isWithin(service.managedDirectoryPath, persistedPath), isTrue);
+      // D-1: the reference is a basename — no path separators.
+      expect(p.dirname(persisted), '.',
+          reason: 'persisted reference must be a basename, not a path: '
+              '$persisted');
+      expect(p.extension(persisted), '.jpg');
+
+      // The basename shape is `<uuid-v4>.<ext>`.
       expect(
-        RegExp(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$')
-            .hasMatch(persistedPath),
+        RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$')
+            .hasMatch(persisted),
         isTrue,
-        reason: 'persisted path should end with <uuid>.jpg: $persistedPath',
+        reason: 'persisted basename must be <uuid>.jpg: $persisted',
       );
 
-      // Bytes round-trip exactly.
-      expect(File(persistedPath).readAsBytesSync(), equals(sourceBytes));
+      // The file lives at managedDir + basename; bytes match.
+      final managedPath = p.join(service.managedDirectoryPath, persisted);
+      expect(File(managedPath).existsSync(), isTrue);
+      expect(File(managedPath).readAsBytesSync(), equals(sourceBytes));
     });
 
     // ─── D-2: extension preservation ────────────────────────────────────────
@@ -91,40 +112,33 @@ void main() {
       File(sourcePath).writeAsBytesSync([0xDE, 0xAD, 0xBE, 0xEF]);
       final picked = XFile(sourcePath, name: 'IMG_0001.heic');
 
-      final persistedPath = await service.persistPickedImage(picked);
+      final persisted = await service.persistPickedImage(picked);
 
-      expect(p.extension(persistedPath), '.heic');
-      expect(p.basename(persistedPath), endsWith('.heic'));
+      expect(p.extension(persisted), '.heic');
+      expect(p.basename(persisted), endsWith('.heic'));
     });
 
-    test('persistPickedImage falls back to path extension when name has none', () async {
+    test('persistPickedImage falls back to path extension when name has none',
+        () async {
       final sourcePath = p.join(tempDir.path, 'picker_source.png');
       File(sourcePath).writeAsBytesSync([1, 2, 3]);
-      // Constructed without an explicit `name`, so XFile.name falls
-      // back to basename(path) = 'picker_source.png' which has an
-      // extension. To exercise the name-has-no-extension path we
-      // stub `name` to '' explicitly.
       final picked = XFile(sourcePath);
-      // Confirm our assumption before exercising the service.
-      expect(p.extension(p.basename(picked.name)), '.png');
 
-      final persistedPath = await service.persistPickedImage(picked);
+      final persisted = await service.persistPickedImage(picked);
 
-      expect(p.extension(persistedPath), '.png');
+      expect(p.extension(persisted), '.png');
     });
 
     test('persistPickedImage uses default extension when name and path both lack one',
         () async {
-      // Source: no extension on either path or basename.
       final sourcePath = p.join(tempDir.path, 'picker_source');
       File(sourcePath).writeAsBytesSync([1, 2, 3]);
       final picked = XFile(sourcePath);
       expect(p.extension(p.basename(picked.name)), isEmpty);
 
-      final persistedPath = await service.persistPickedImage(picked);
+      final persisted = await service.persistPickedImage(picked);
 
-      // Service default fallback.
-      expect(p.extension(persistedPath), '.jpg');
+      expect(p.extension(persisted), '.jpg');
     });
 
     // ─── D-3: isManaged ─────────────────────────────────────────────────────
@@ -143,10 +157,181 @@ void main() {
       expect(service.isManaged(''), isFalse);
     });
 
+    test('isManaged returns false for a bare basename (not under any dir)',
+        () {
+      // D-1 basenames are not "under" the managed dir; they ARE the
+      // managed file. `isManaged` is only consulted for the legacy
+      // absolute-path delete gate.
+      expect(service.isManaged('uuid.jpg'), isFalse);
+    });
+
+    // ─── resolveOrRelink: path 1 (managed dir hit) ──────────────────────────
+
+    test(
+      'resolveOrRelink returns the basename when the file exists in the '
+      'current managed dir (path 1)',
+      () async {
+        final basename = await _writeAndGetBasename(service, 'm1', [1, 2, 3]);
+        final resolved = await service.resolveOrRelink(basename);
+        expect(resolved, basename);
+      },
+    );
+
+    test(
+      'resolveOrRelink normalizes a legacy absolute-path reference whose '
+      'file now lives in the current managed dir (path 1)',
+      () async {
+        // Persist a file (basename now lives in the managed dir).
+        final basename = await _writeAndGetBasename(service, 'm1b', [9]);
+        // Construct a legacy absolute-path reference as if pre-fix.
+        final legacyRef = p.join(service.managedDirectoryPath, basename);
+        final resolved = await service.resolveOrRelink(legacyRef);
+        expect(resolved, basename);
+      },
+    );
+
+    // ─── resolveOrRelink: path 2 (literal reference hit, re-link) ───────────
+
+    test(
+      'resolveOrRelink re-links a legacy absolute-path reference whose '
+      'file still exists at the legacy path (path 2: copy into managed dir)',
+      () async {
+        // Simulate: a pre-fix record has an absolute path pointing
+        // at a directory that is NOT the service's current managed
+        // dir, and the file still exists at that legacy location.
+        final legacyBase = Directory.systemTemp
+            .createTempSync('image_storage_legacy_');
+        addTearDown(() {
+          if (legacyBase.existsSync()) legacyBase.deleteSync(recursive: true);
+        });
+        final legacyManagedDir = Directory(p.join(legacyBase.path, 'omni_images'))
+          ..createSync(recursive: true);
+        final legacyBytes = [42, 42, 42];
+        const legacyBasename = 'legacy-uuid.jpg';
+        final legacyPath = p.join(legacyManagedDir.path, legacyBasename);
+        File(legacyPath).writeAsBytesSync(legacyBytes);
+
+        // The current service's managed dir is empty.
+        expect(
+          File(p.join(service.managedDirectoryPath, legacyBasename)).existsSync(),
+          isFalse,
+        );
+
+        final resolved = await service.resolveOrRelink(legacyPath);
+        expect(resolved, legacyBasename,
+            reason: 'must normalize to basename, not the legacy absolute path');
+
+        // Re-link copy verified: the file is now under the current
+        // managed dir with the original bytes.
+        final relinked =
+            File(p.join(service.managedDirectoryPath, legacyBasename));
+        expect(relinked.existsSync(), isTrue);
+        expect(relinked.readAsBytesSync(), equals(legacyBytes));
+
+        // The legacy file is left in place — the resolver copies, it
+        // does not move. Subsequent loads resolve from the managed
+        // dir (path 1) and never re-trigger the legacy search.
+        expect(File(legacyPath).existsSync(), isTrue);
+      },
+    );
+
+    // ─── resolveOrRelink: path 3 (candidate dir hit, re-link) ───────────────
+
+    test(
+      'resolveOrRelink re-links from a configured candidate dir '
+      '(path 3: copy into managed dir)',
+      () async {
+        // Simulate the picker temp / app support dir holding the file.
+        final candidateBase = Directory.systemTemp
+            .createTempSync('image_storage_candidate_');
+        addTearDown(() {
+          if (candidateBase.existsSync()) {
+            candidateBase.deleteSync(recursive: true);
+          }
+        });
+        final candidateBytes = [0xCD, 0xEF];
+        const candidateBasename = 'picked-uuid.png';
+        final candidatePath = p.join(candidateBase.path, candidateBasename);
+        File(candidatePath).writeAsBytesSync(candidateBytes);
+
+        // Re-construct the service with this dir as a candidate.
+        final relocatedService = ImageStorageService.fromBaseDirectory(
+          tempDir.path,
+          extraCandidateDirs: [candidateBase.path],
+        );
+
+        final resolved =
+            await relocatedService.resolveOrRelink(candidateBasename);
+        expect(resolved, candidateBasename);
+
+        // Re-link copy verified.
+        final relinked = File(
+          p.join(relocatedService.managedDirectoryPath, candidateBasename),
+        );
+        expect(relinked.existsSync(), isTrue);
+        expect(relinked.readAsBytesSync(), equals(candidateBytes));
+      },
+    );
+
+    test(
+      'resolveOrRelink re-link copy is idempotent (a second call does not '
+      'overwrite an already-relinked file)',
+      () async {
+        final candidateBase = Directory.systemTemp
+            .createTempSync('image_storage_idem_');
+        addTearDown(() {
+          if (candidateBase.existsSync()) {
+            candidateBase.deleteSync(recursive: true);
+          }
+        });
+        const originalBytes = [0x01, 0x02, 0x03];
+        const modifiedBytes = [0xFF, 0xFF, 0xFF];
+        const basename = 'idem-uuid.jpg';
+        File(p.join(candidateBase.path, basename)).writeAsBytesSync(originalBytes);
+
+        final svc = ImageStorageService.fromBaseDirectory(
+          tempDir.path,
+          extraCandidateDirs: [candidateBase.path],
+        );
+
+        // First call: re-links the file into the managed dir.
+        expect(await svc.resolveOrRelink(basename), basename);
+        final managedPath = p.join(svc.managedDirectoryPath, basename);
+        expect(File(managedPath).readAsBytesSync(), equals(originalBytes));
+
+        // Mutate the candidate file to a different value.
+        File(p.join(candidateBase.path, basename)).writeAsBytesSync(modifiedBytes);
+
+        // Second call: must NOT clobber the already-relinked file.
+        expect(await svc.resolveOrRelink(basename), basename);
+        expect(File(managedPath).readAsBytesSync(), equals(originalBytes));
+      },
+    );
+
+    // ─── resolveOrRelink: miss / null inputs ────────────────────────────────
+
+    test('resolveOrRelink returns null when no candidate has the file',
+        () async {
+      final resolved = await service.resolveOrRelink('does-not-exist.jpg');
+      expect(resolved, isNull);
+    });
+
+    test('resolveOrRelink returns null for null or empty input', () async {
+      expect(await service.resolveOrRelink(null), isNull);
+      expect(await service.resolveOrRelink(''), isNull);
+    });
+
+    test('resolveOrRelink returns null for a literal "." or ".." reference',
+        () async {
+      // Defensive: a basename of '.' or '..' would join the
+      // managed dir back to itself. The resolver must reject.
+      expect(await service.resolveOrRelink('.'), isNull);
+      expect(await service.resolveOrRelink('..'), isNull);
+    });
+
     // ─── S-3 (service-level): deleteIfManaged ───────────────────────────────
 
-    test('deleteIfManaged removes a managed file', () async {
-      // Persist two files; delete the first one.
+    test('deleteIfManaged removes a managed file (absolute path)', () async {
       final firstPath = await _writePickedFile(service, 'first.jpg', [1]);
       final secondPath = await _writePickedFile(service, 'second.jpg', [2]);
 
@@ -156,7 +341,22 @@ void main() {
       expect(File(secondPath).existsSync(), isTrue);
     });
 
-    test('deleteIfManaged does NOT delete a non-managed file (D-3 / INV-3)', () async {
+    test(
+      'deleteIfManaged removes a basename reference by deleting '
+      '<managedDir>/<basename>',
+      () async {
+        final basename = await _writeAndGetBasename(service, 'b1', [7]);
+        final managedPath = p.join(service.managedDirectoryPath, basename);
+        expect(File(managedPath).existsSync(), isTrue);
+
+        await service.deleteIfManaged(basename);
+
+        expect(File(managedPath).existsSync(), isFalse);
+      },
+    );
+
+    test('deleteIfManaged does NOT delete a non-managed absolute path '
+        '(D-3 / INV-3)', () async {
       final externalPath = p.join(tempDir.path, 'outside.jpg');
       File(externalPath).writeAsBytesSync([0xCA, 0xFE]);
 
@@ -173,13 +373,16 @@ void main() {
       await service.deleteIfManaged(null);
       // empty
       await service.deleteIfManaged('');
-      // missing managed file
-      final missingManagedPath = p.join(service.managedDirectoryPath, 'never-existed.jpg');
-      await service.deleteIfManaged(missingManagedPath);
+      // missing managed file (basename form)
+      await service.deleteIfManaged('never-existed.jpg');
+      // missing managed file (absolute path form)
+      await service.deleteIfManaged(
+        p.join(service.managedDirectoryPath, 'never-existed.jpg'),
+      );
       // never throws
     });
 
-    // ─── D-4: exists / resolveOrNull ───────────────────────────────────────
+    // ─── exists ────────────────────────────────────────────────────────────
 
     test('exists returns true for an existing file, false otherwise', () {
       final realPath = p.join(service.managedDirectoryPath, 'real.jpg');
@@ -190,34 +393,46 @@ void main() {
       expect(service.exists(''), isFalse);
     });
 
-    test('resolveOrNull returns the path when the file exists', () async {
-      final realPath = p.join(service.managedDirectoryPath, 'real.jpg');
-      File(realPath).createSync(recursive: true);
+    // ─── resolvePathSync: used by rendering widgets ────────────────────────
 
-      expect(await service.resolveOrNull(realPath), realPath);
-    });
+    group('resolvePathSync (rendering widget fast path)', () {
+      test('returns <managedDir>/<basename> for a basename input', () {
+        const basename = 'uuid-1234.jpg';
+        final resolved = service.resolvePathSync(basename);
+        expect(resolved, p.join(service.managedDirectoryPath, basename));
+      });
 
-    test('resolveOrNull returns null when the file is missing', () async {
-      final ghostPath = p.join(service.managedDirectoryPath, 'ghost.jpg');
-      expect(await service.resolveOrNull(ghostPath), isNull);
-    });
+      test('returns the literal absolute path for an absolute-path input '
+          '(legacy migration window)', () {
+        const legacyPath = '/old/base/omni_images/legacy.jpg';
+        final resolved = service.resolvePathSync(legacyPath);
+        expect(resolved, legacyPath);
+      });
 
-    test('resolveOrNull returns null on null or empty input', () async {
-      expect(await service.resolveOrNull(null), isNull);
-      expect(await service.resolveOrNull(''), isNull);
+      test('returns null for null or empty input', () {
+        expect(service.resolvePathSync(null), isNull);
+        expect(service.resolvePathSync(''), isNull);
+      });
+
+      test('returned basename resolves to a real file on disk', () async {
+        final basename = await _writeAndGetBasename(service, 'rps', [42]);
+        final resolved = service.resolvePathSync(basename);
+        expect(resolved, isNotNull);
+        expect(File(resolved!).existsSync(), isTrue,
+            reason: 'resolvePathSync output must point at the on-disk file '
+                'so Image.file can open it');
+        expect(File(resolved).readAsBytesSync(), [42]);
+      });
     });
 
     // ─── S-9 (service-level): failed copy leaves no partial file ────────────
 
     test('persistPickedImage throws on copy failure and leaves no partial file',
         () async {
-      // Skip on Windows — the chmod-based read-only trick is Unix-only.
       if (!Platform.isMacOS && !Platform.isLinux) {
-        return; // markTestSkipped is not strictly necessary on a single dev env.
+        return; // skip on Windows
       }
 
-      // Pre-create the managed dir, then make it read-only so the
-      // copy cannot write into it.
       final managedDir = Directory(service.managedDirectoryPath);
       managedDir.createSync(recursive: true);
       Process.runSync('chmod', ['0500', managedDir.path]);
@@ -225,7 +440,7 @@ void main() {
         try {
           Process.runSync('chmod', ['0700', managedDir.path]);
         } catch (_) {
-          // Best-effort restore so the standard temp-dir cleanup can proceed.
+          // best-effort restore
         }
       });
 
@@ -233,30 +448,44 @@ void main() {
       File(sourcePath).writeAsBytesSync([1, 2, 3, 4]);
       final picked = XFile(sourcePath, name: 'unwritable_source.jpg');
 
-      // The copy should throw a FileSystemException.
       await expectLater(
         () => service.persistPickedImage(picked),
         throwsA(isA<FileSystemException>()),
       );
 
-      // No partial file was left behind in the managed dir.
       final entries = managedDir.listSync();
-      expect(entries, isEmpty);
+      expect(entries, isEmpty,
+          reason: 'no partial file should remain in the managed dir');
     });
   });
 }
 
-/// Helper that writes a fake source file outside the managed dir
-/// and asks the service to persist it. Returns the persisted path.
+/// Helper: write a synthetic picked file outside the managed dir,
+/// ask the service to persist it, and return the **basename** the
+/// service returned (the new contract — D-1).
+Future<String> _writeAndGetBasename(
+  ImageStorageService service,
+  String tag,
+  List<int> bytes,
+) async {
+  final baseDir = p.dirname(service.managedDirectoryPath);
+  final sourcePath = p.join(baseDir, '$tag.jpg');
+  File(sourcePath).writeAsBytesSync(bytes);
+  return service.persistPickedImage(XFile(sourcePath, name: '$tag.jpg'));
+}
+
+/// Helper: write a synthetic picked file and return the **absolute
+/// path** the file ended up at under the managed dir. Used by the
+/// delete tests that need an absolute-path input to
+/// `deleteIfManaged`.
 Future<String> _writePickedFile(
   ImageStorageService service,
   String filename,
   List<int> bytes,
 ) async {
-  // Write to the service's base dir so the test cleanup can remove
-  // it via the temp-dir teardown.
   final baseDir = p.dirname(service.managedDirectoryPath);
   final sourcePath = p.join(baseDir, filename);
   File(sourcePath).writeAsBytesSync(bytes);
-  return service.persistPickedImage(XFile(sourcePath, name: filename));
+  final basename = await service.persistPickedImage(XFile(sourcePath, name: filename));
+  return p.join(service.managedDirectoryPath, basename);
 }

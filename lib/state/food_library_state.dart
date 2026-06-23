@@ -83,32 +83,52 @@ class FoodLibraryState extends ChangeNotifier {
     return svc;
   }
 
-  /// Load-time self-heal: any cached food whose `imagePath` points
-  /// at a file the OS has since deleted is converged to `null`
-  /// (D-4). The repository row is updated so the next launch is a
-  /// no-op. Per-row failures are logged to [debugPrint] but do not
+  /// Nullable accessor for the image storage helper. Used by the
+  /// rendering widgets (`FoodThumbnail`, `_ImageBody`) which
+  /// receive the service as an optional parameter and degrade
+  /// gracefully when no service is injected (legacy / test path).
+  ImageStorageService? get imageStorageOrNull => _imageStorage;
+
+  /// Load-time resolve + normalize. See [loadFoods] /
+  /// [loadCatalogFoods].
+  ///
+  /// Resolution contract (D-3): the service searches the current
+  /// managed dir, the literal reference path (legacy absolute
+  /// paths), and configured candidate directories (picker temp,
+  /// app support). If a file matching the basename is reachable
+  /// anywhere, the service re-links it into the current managed
+  /// dir and returns the basename. If no candidate has the file,
+  /// the service returns `null`.
+  ///
+  /// Persistence rules (D-4, D-6, INV-4):
+  ///   * No service injected → no-op.
+  ///   * Service returns the same value as stored → no write.
+  ///   * Service returns a different basename → persist the
+  ///     normalized reference (one-time migration write). The file
+  ///     is re-linked by the service.
+  ///   * Service returns `null` → persist `imagePath: null`
+  ///     (true self-heal; file is truly absent on disk).
+  ///
+  /// Per-row failures are logged to [debugPrint] but do not
   /// propagate — the next load will retry them. The load itself
-  /// never throws because of self-heal.
-  Future<void> _selfHealFoodImages() async {
+  /// never throws because of resolve/normalize.
+  Future<void> _resolveAndNormalizeFoodImages() async {
     final svc = _imageStorage;
     if (svc == null) return;
-    final stale = <String, Food>{};
-    for (final food in _foods.values) {
-      final path = food.imagePath;
-      if (path != null && path.isNotEmpty && !svc.exists(path)) {
-        stale[food.id] = food;
-      }
-    }
-    for (final entry in stale.entries) {
-      final healed = entry.value.copyWith(imagePath: null);
+    for (final food in _foods.values.toList()) {
+      final stored = food.imagePath;
+      if (stored == null || stored.isEmpty) continue;
+      final resolved = await svc.resolveOrRelink(stored);
+      if (resolved == stored) continue;
+      final normalized = food.copyWith(imagePath: resolved);
       try {
-        await _repository.updateFood(healed);
-        _foods[entry.key] = healed;
+        await _repository.updateFood(normalized);
+        _foods[normalized.id] = normalized;
       } catch (e) {
         // The state has no general error channel; surface to the
         // debug log and let the next load retry.
         debugPrint(
-          'FoodLibraryState self-heal failed for ${entry.key}: $e',
+          'FoodLibraryState resolve/normalize failed for ${food.id}: $e',
         );
       }
     }
@@ -337,10 +357,12 @@ class FoodLibraryState extends ChangeNotifier {
         includeArchived: includeArchived,
       );
       _foods = {for (final f in foodsList) f.id: f};
-      // D-4: load-time self-heal for stale `imagePath`s. Runs
-      // after the cache is populated so the renderer never
-      // observes a non-null path that points at a gone file.
-      await _selfHealFoodImages();
+      // D-4: load-time resolve + normalize for stale `imagePath`s.
+      // Runs after the cache is populated so the renderer never
+      // observes a non-null path that points at a gone file. Also
+      // re-links legacy absolute-path records to the current
+      // managed dir's basename on first load after the fix.
+      await _resolveAndNormalizeFoodImages();
     } catch (e) {
       _foods = {};
       rethrow;

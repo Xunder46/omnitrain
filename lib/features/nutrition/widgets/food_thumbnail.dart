@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/omni_theme.dart';
+import '../../../core/services/image_storage_service.dart';
 
 // Conditional import: same pattern as `ProfileAvatarImage` in
 // `lib/features/profile/widgets/`. The IO variant uses
@@ -21,9 +22,20 @@ import 'food_thumbnail_stub.dart'
 /// keep the row's text column from reflowing when an image is
 /// added or removed (the slot is always present and the same size).
 class FoodThumbnail extends StatelessWidget {
-  /// Optional local file path to a food photo. `null` or an
-  /// unreadable path falls back to the placeholder.
+  /// Optional stored food photo reference. `null` or an empty
+  /// string falls back to the placeholder. Under the
+  /// post-relocation-fix contract this is a **basename** (D-1 in
+  /// `.github/agents/plans/image-persistence-relocation-fix-plan.md`),
+  /// not an absolute path; the [imageStorage] service resolves it
+  /// to the current managed dir on render.
   final String? imagePath;
+
+  /// Image-storage service used to resolve [imagePath] to an
+  /// absolute path under the current managed directory. Required
+  /// in production (passed by the screen / form from
+  /// `FoodLibraryState.imageStorage`); optional in tests that
+  /// pass an already-resolved absolute path.
+  final ImageStorageService? imageStorage;
 
   /// Diameter in logical pixels.
   final double size;
@@ -35,6 +47,7 @@ class FoodThumbnail extends StatelessWidget {
   const FoodThumbnail({
     super.key,
     required this.imagePath,
+    this.imageStorage,
     this.size = 40,
     this.radius = 8,
   });
@@ -53,7 +66,8 @@ class FoodThumbnail extends StatelessWidget {
     if (kIsWeb) return placeholder;
 
     return FoodThumbnailImage(
-      path: imagePath!,
+      reference: imagePath!,
+      imageStorage: imageStorage,
       size: size,
       radius: radius,
       placeholder: placeholder,

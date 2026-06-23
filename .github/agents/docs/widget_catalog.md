@@ -1052,7 +1052,7 @@ value: `null` → create mode, non-null → edit mode.
 | `onSave` | `Future<bool> Function(FoodDraft draft)` | required | Save callback. Returns `true` to pop, `false` to surface a snackbar. |
 | `saveLabel` | `String` | `'Save'` | Primary CTA label. |
 | `showNotesField` | `bool` | `false` | When true, renders a "Notes (optional)" multi-line field. Edit mode only. |
-| `onImageSave` | `Future<bool> Function(FoodDraft draft)?` | `null` | Optional partial-save callback fired after a successful photo pick in **edit mode** (`initial != null`). Wired by `EditFoodScreen` to `FoodLibraryState.updateCatalogFood` so the new `imagePath` lands in the data layer immediately, even on screens that have no Save button. The draft is built from `initial` with only `imagePath` swapped, so concurrent edits to the form's text controllers (a half-typed name, for example) are preserved. **Not fired in create mode** — the image is just stored locally until the user saves the whole food. |
+| `onImageSave` | `Future<bool> Function(FoodDraft draft)?` | `null` | Optional partial-save callback fired after a successful photo pick **or** after the × (clear) overlay clears the photo in **edit mode** (`initial != null`). Wired by `EditFoodScreen` to `FoodLibraryState.updateCatalogFood` so the new or cleared `imagePath` lands in the data layer immediately, even on screens that have no Save button. The draft is built from `initial` with only `imagePath` swapped, so concurrent edits to the form's text controllers (a half-typed name, for example) are preserved. **Not fired in create mode** — the image is just stored locally until the user saves the whole food. |
 
 **Form fields (top to bottom)**:
 1. Image picker tile (`FoodFormImageTile`, key `food_form_image_tile`) — square 96×96 with × (clear) and edit (change) overlays; opens a Camera / Gallery bottom sheet on tap; web is a no-op with a snackbar.
@@ -1080,16 +1080,25 @@ value: `null` → create mode, non-null → edit mode.
   `autoSaveOnBlur: true`), this is the **only** path that writes
   the picked photo to the data layer before the user navigates
   away, so without it the photo would not persist.
+- "Save on clear" (edit mode): symmetric to "Save on upload".
+  Tapping the × (clear) overlay invokes `clearImage()` which
+  sets `_imagePath = null` locally and fires `onImageSave` with
+  a partial draft (`imagePath: null`). The state method's
+  `previousPath != draft.imagePath` branch handles D-7 cleanup
+  of the previous managed file. **Not fired in create mode**
+  (no source food to partial-save against).
 - Fiber is exposed alongside carbs in the macro list, matching
   the `Food.fiber` field on the model. The existing
   `calculateNetCarbs(food)` helper handles the net-carb math.
 - All colors come from `OmniTheme.colors` /
   `ThemeData.colorScheme`. No hardcoded colors.
 
-**Test seam**: `handlePickedImage(XFile)` is `@visibleForTesting`
-on the form's state. Production callers go through the OS picker
-via `_pickImage(ImageSource)`; tests invoke the seam directly to
-bypass the `image_picker` platform channel.
+**Test seam**: `handlePickedImage(XFile)` and `clearImage()` are
+both `@visibleForTesting` on the form's state. Production callers
+go through the OS picker via `_pickImage(ImageSource)` and the
+× overlay via the `FoodFormImageTile.onClear` callback; tests
+invoke the seams directly to bypass the platform channel and
+overlay tap.
 
 ---
 

@@ -125,7 +125,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: ClipOval(
                     child: profile?.avatarPath != null
                         ? ProfileAvatarImage(
-                            path: profile!.avatarPath!,
+                            reference: profile!.avatarPath!,
+                            imageStorage: widget.profileState.imageStorageOrNull,
                             fallback: _buildAvatarFallback(theme),
                           )
                         : _buildAvatarFallback(theme),

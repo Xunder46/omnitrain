@@ -814,6 +814,7 @@ class _UserFoodRowState extends State<_UserFoodRow> {
             FoodThumbnail(
               key: Key('food_user_thumb_${widget.food.id}'),
               imagePath: widget.food.imagePath,
+              imageStorage: widget.foodLibraryState.imageStorageOrNull,
             ),
             const SizedBox(width: 12),
             // Name + macros
@@ -1093,6 +1094,7 @@ class _CatalogRowState extends State<_CatalogRow> {
             FoodThumbnail(
               key: Key('food_catalog_thumb_${widget.food.id}'),
               imagePath: widget.food.imagePath,
+              imageStorage: widget.foodLibraryState.imageStorageOrNull,
             ),
             const SizedBox(width: 12),
             // ── Name + macros (takes remaining space) ───────────

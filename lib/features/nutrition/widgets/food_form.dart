@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/models/food_draft.dart';
+import '../../../core/services/image_storage_service.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
 // Conditional import: reuses the platform-aware image renderer
@@ -366,8 +367,45 @@ class _FoodFormState extends State<FoodForm> {
     );
   }
 
-  void _clearImage() {
+  /// Clear the current image. In **edit mode** (`initial != null`
+  /// and an [FoodForm.onImageSave] callback is wired), fire the
+  /// callback with a partial draft whose `imagePath` is `null`
+  /// so the data layer immediately sees the cleared path. The
+  /// host (`EditFoodScreen`) wires `onImageSave` to
+  /// `FoodLibraryState.updateCatalogFood`, whose existing
+  /// `previousPath != draft.imagePath` branch handles D-7
+  /// cleanup of the previous managed file (calls
+  /// `svc.deleteIfManaged(previousPath)` when the previous
+  /// path was non-null and the new path is null).
+  ///
+  /// In **create mode** (`initial == null`) the callback is
+  /// **not** fired — the image is just unset locally and the
+  /// user saves the whole food via the existing Save button.
+  ///
+  /// This mirrors [handlePickedImage]'s "save on upload" pattern
+  /// — the same partial-draft logic preserves any in-flight
+  /// edits to the form's text controllers (a half-typed name
+  /// is not clobbered by the clear).
+  ///
+  /// **Production entry point**: the × (clear) overlay on
+  /// [FoodFormImageTile] invokes this via the `onClear`
+  /// callback. Dart's function-type variance lets the
+  /// `Future<void>` return be discarded at the `VoidCallback`
+  /// call site without a wrapper. Tests invoke this directly
+  /// via the `@visibleForTesting` annotation, bypassing the
+  /// overlay tap.
+  @visibleForTesting
+  Future<void> clearImage() async {
     setState(() => _imagePath = null);
+    final onImageSave = widget.onImageSave;
+    if (onImageSave == null || widget.initial == null) return;
+    final partialDraft = _partialDraftFromInitial(null);
+    final ok = await onImageSave(partialDraft);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not clear photo')),
+      );
+    }
   }
 
   // ─── Save ────────────────────────────────────────────────────────────
@@ -436,9 +474,10 @@ class _FoodFormState extends State<FoodForm> {
               FoodFormImageTile(
                 key: const Key('food_form_image_tile'),
                 imagePath: _imagePath,
+                imageStorage: widget.foodLibraryState.imageStorageOrNull,
                 onPickGallery: () => _pickImage(ImageSource.gallery),
                 onPickCamera: () => _pickImage(ImageSource.camera),
-                onClear: _clearImage,
+                onClear: clearImage,
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -683,6 +722,7 @@ class FoodFormImageTile extends StatelessWidget {
   final VoidCallback onPickGallery;
   final VoidCallback onPickCamera;
   final VoidCallback onClear;
+  final ImageStorageService? imageStorage;
   final double size;
 
   const FoodFormImageTile({
@@ -691,6 +731,7 @@ class FoodFormImageTile extends StatelessWidget {
     required this.onPickGallery,
     required this.onPickCamera,
     required this.onClear,
+    this.imageStorage,
     this.size = 96,
   });
 
@@ -705,7 +746,11 @@ class FoodFormImageTile extends StatelessWidget {
           children: [
             Positioned.fill(
               child: hasImage
-                  ? _ImageBody(path: imagePath!, size: size)
+                  ? _ImageBody(
+                      reference: imagePath!,
+                      size: size,
+                      imageStorage: imageStorage,
+                    )
                   : _PlaceholderBody(
                       size: size,
                       onTap: () => _showPickerSheet(context),
@@ -779,10 +824,15 @@ class FoodFormImageTile extends StatelessWidget {
 /// `Image.file` with `errorBuilder`, web stub) — reuses the
 /// conditional import at the top of the file.
 class _ImageBody extends StatelessWidget {
-  final String path;
+  final String reference;
   final double size;
+  final ImageStorageService? imageStorage;
 
-  const _ImageBody({required this.path, required this.size});
+  const _ImageBody({
+    required this.reference,
+    required this.size,
+    this.imageStorage,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -792,7 +842,8 @@ class _ImageBody extends StatelessWidget {
         width: size,
         height: size,
         child: FoodThumbnailImage(
-          path: path,
+          reference: reference,
+          imageStorage: imageStorage,
           size: size,
           radius: 12,
           placeholder: const SizedBox.shrink(),

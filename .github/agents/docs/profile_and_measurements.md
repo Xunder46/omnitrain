@@ -143,27 +143,48 @@ This ensures the images survive app restarts on iOS/Android.
 - **Managed directory**: `<applicationDocumentsDirectory>/omni_images/`
 - **Filename**: `<uuid-v4>.<ext>` where `<ext>` is preserved from the
   picked image (with fallback chain: name → path → `.jpg`)
+- **Reference is a basename**: The string stored in
+  `UserProfile.avatarPath` and `Food.imagePath` is the basename only
+  (e.g. `e8b3…0123.jpg`) — not an absolute path. The reference is
+  **location-independent**: it does not encode the documents
+  directory's current location and therefore survives the OS
+  relocating the app's data during an update or a reinstall.
 - **Path is opaque**: The repository stores the path string but never
-  reads or writes the image file directly
+  reads or writes the image file directly.
 
-### Self-Heal on Load
+### Resolve + Re-link on Load
 
-When loading a profile or food from the repository, if the stored path
-points to a file that no longer exists (e.g., a stale `image_picker`
-cache path from before this fix), the state writes `null` back to the
-record. This ensures the renderer shows its fallback instead of a broken
-image, and the data layer stops carrying orphan references.
+When loading a profile or food, the state calls
+`ImageStorageService.resolveOrRelink(storedReference)`. The service
+searches the **current** managed directory first (the common
+post-relocation case where the data moved with the directory), then
+the literal reference path (legacy absolute paths whose file is
+still on disk), then bounded candidate directories (the picker's
+temp cache and the application support directory). If a matching
+file is reachable anywhere, the service re-links it into the
+current managed directory (a one-time copy) and returns the
+basename. The state persists the normalized basename back to the
+record so subsequent loads hit the fast path.
+
+The reference is **cleared to `null` only when the file is truly,
+verifiably absent** from every candidate location — this prevents
+the launch-blocker regression where a photo whose file is still on
+the device becomes unrecoverable. Pre-fix records whose stored
+reference was an absolute path are migrated to the basename on
+first load after the fix.
 
 ### Delete on Replace/Remove
 
 When the avatar or food photo is replaced or removed:
-1. The state captures the previous path from the loaded record
+1. The state captures the previous basename from the loaded record
 2. The new value is persisted first
-3. The `ImageStorageService.deleteIfManaged(previousPath)` is called
-   to delete the previous managed file
-
-The service only deletes files under its managed directory — this
-protects against accidentally deleting files outside its scope.
+3. The `ImageStorageService.deleteIfManaged(previousBasename)` is
+   called to delete the previous managed file. For a basename
+   input, the service deletes `<managedDir>/<basename>`
+   unconditionally (basenames are by convention managed). For an
+   absolute-path input (legacy migration only), the service
+   applies the `isManaged` gate so non-managed paths are never
+   deleted.
 
 ### Web Behavior
 

@@ -303,8 +303,10 @@ the picked image (with fallback chain: name → path → `.jpg`)
 
 **Storage contract**:
 - The image file is stored in the file system under the managed directory
-- The path string is stored in `avatar_path` (UserProfile) or
-  `image_path` (Food) as an opaque string
+- The string stored in `avatar_path` (UserProfile) or `image_path`
+  (Food) is the **basename** (e.g. `e8b3…0123.jpg`) — not an
+  absolute path. The reference is location-independent and survives
+  OS-driven relocations of the app's documents directory.
 - The repository never reads or writes the image file directly
 - This is the same contract documented in `docs/profile_and_measurements.md`
   — "Avatar Persistence"
@@ -316,14 +318,31 @@ complicates memory management when loading images for display. The
 managed directory approach keeps the SQL schema unchanged and leverages
 platform-native file caching.
 
-**Self-heal**: State classes check file existence on load. If a stored
-path points to a missing file, the state writes `null` back to the
-record so the next launch is a no-op.
+**Resolve + re-link on load**: `ImageStorageService.resolveOrRelink(reference)`
+resolves a stored reference back to a reachable file. The service
+searches the current managed directory first, then the literal
+reference path (legacy absolute paths), then bounded candidate
+directories (picker temp cache, application support directory). If
+a matching file is reachable anywhere, the service re-links it into
+the current managed directory (one-time copy) and returns the
+basename. The state persists the normalized basename back to the
+record on first load after the fix.
 
-**Delete gate**: `ImageStorageService.isManaged(path)` is the sole gate
-for file deletion. The service only deletes files under its managed
-directory — this protects against accidentally deleting files outside
-its scope (legacy paths, user-typed paths, or external intents).
+**Self-heal only on truly-absent files**: The state writes `null`
+back to the record **only when the file is verifiably absent** from
+every candidate location. This prevents the launch-blocker regression
+where a photo whose file is still on the device (but whose absolute
+path is stale) becomes unrecoverable. Pre-fix records with legacy
+absolute paths are migrated to the basename on first load after the
+fix; the reference is never nulled while the file is reachable.
+
+**Delete gate**: `ImageStorageService.isManaged(path)` is the gate
+for absolute-path deletes (legacy migration only). For the modern
+basename contract, the service deletes `<managedDir>/<basename>`
+unconditionally — basenames are by convention managed (they can only
+have been produced by `persistPickedImage`). The service still
+protects against deleting files outside its scope: a non-managed
+absolute path passed to `deleteIfManaged` is a no-op.
 
 ### Storage Shape
 
