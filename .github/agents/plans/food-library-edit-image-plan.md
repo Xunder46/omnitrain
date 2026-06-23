@@ -735,3 +735,188 @@ N/A — no repository or interface change. `WorkoutRepository`,
 > `scripts/sqlite_schema.sql` / `scripts/sqlite_seed.sql`
 > assets are untouched. `docs/data_models.md` and
 > `docs/db_integration.md` are also untouched.
+
+### Phase 2 (Iteration 1 — Add Food navigation route alignment) Complete ✓
+
+> **N/A — no logic or UI change beyond the navigation primitive.**
+> `lib/features/nutrition/add_food_screen.dart` now imports
+> `core/navigation/navigation.dart`; the two raw
+> `MaterialPageRoute` pushes (`_openNewFoodForm` and
+> `_UserFoodRowState._openEdit`'s legacy branch) route through
+> `OmniNavigator.push` so the `OmniRoute` `opaque = true` +
+> `OmniGradientBackground` wrapper applies. No other behavior,
+> layout, or content change. State classes, models, widgets, and
+> core are untouched.
+>
+> **Test coverage**:
+>
+> - `test/screen_widget_test.dart` — two new tests in the
+>   existing "Food library — edit + image + fiber" group:
+>   - S-N1 (`+ New Food bottom CTA pushes the new-food form via
+>     OmniRoute`) — taps `+ New Food`, captures the pushed
+>     `Route` via a `_RouteTypeRecorder` NavigatorObserver, and
+>     asserts it is an `OmniRoute<void>`, not a
+>     `MaterialPageRoute<void>`.
+>   - S-N2 (`Legacy library-only custom food row tap pushes the
+>     legacy edit shim via OmniRoute`) — seeds a legacy
+>     `isCatalog: false` custom via `repo.createFood`, taps its
+>     row in the My Foods tab, captures the pushed `Route` via
+>     the same observer, and asserts it is an `OmniRoute<void>`.
+> - Both tests drive the production code path and assert on the
+>   actual route object pushed by production code. The existing
+>   `test/nutrition_test.dart` "fills the form, saves, and the
+>   new food is rendered in the library" test exercises the same
+>   production path but only asserts on the saved food, not the
+>   route type — it is non-coverage for this fix and is flagged
+>   as such in S-N3 in the plan.
+>
+> **Doc hygiene**:
+>
+> - `docs/route-migration-audit.md` — added an "Addendum — Add
+>   Food navigation alignment" section listing the two newly
+>   aligned call sites (#29 and #30), the reason for the
+>   alignment, the test coverage, and an updated post-migration
+>   grep note that the Hub sheet is tracked separately.
+> - `docs/navigation_and_screens.md` — no change. The
+>   navigation contract is already documented as a code-review
+>   blocker; the existing `AddFoodScreen` description does not
+>   mention raw vs. standard routes and is unaffected.
+> - `docs/widget_catalog.md`, `docs/state_management.md`,
+>   `docs/data_models.md`, `docs/db_integration.md` — no
+>   change. No widget, state method, model field, or repository
+>   method was added or modified in this iteration.
+>
+> **Test run**: `flutter test` on the affected files is green.
+> `screen_widget_test.dart` passes 183 tests (was 181 — the two
+> new S-N1 + S-N2 tests are net new). `nutrition_test.dart`
+> passes 52 tests. `omni_route_test.dart` passes 12 tests. The
+> food-library suite (`food_form_pick_saves_test.dart`,
+> `image_persistence_round_trip_test.dart`,
+> `food_library_test.dart`, `food_library_state_test.dart`,
+> `food_library_edit_test.dart`,
+> `food_library_persistence_test.dart`,
+> `my_foods_unification_test.dart`) passes 126 tests. No
+> previously passing test now fails.
+>
+> **`flutter analyze`** on the affected files: 1 pre-existing
+> deprecation warning at
+> `lib/features/nutrition/add_food_screen.dart:1630`
+> (`DropdownButtonFormField.value` → use `initialValue`); no
+> new issues introduced.
+
+### Phase 3 (Iteration 1 — Add Food navigation route alignment) Complete ✓
+
+#### Layer scoping
+Layers in scope: features (`add_food_screen.dart`), tests
+(`screen_widget_test.dart`), docs (`route-migration-audit.md`).
+Layers skipped: models, repositories, state, core, widgets.
+
+#### Acceptance Criteria verification
+- ✅ `_openNewFoodForm` uses `OmniNavigator.push` (line 131).
+- ✅ `_UserFoodRowState._openEdit` legacy branch uses
+  `OmniNavigator.push` (line 905).
+- ✅ No `MaterialPageRoute` / `PageRouteBuilder` outside
+  `lib/core/navigation/` in the Add Food area (`grep` over
+  `lib/features/nutrition/` returns zero matches).
+- ✅ Widget test asserts the topmost route is `OmniRoute`,
+  not `MaterialPageRoute` (S-N1 and S-N2 in
+  `screen_widget_test.dart`).
+- ✅ Existing `nutrition_test.dart` "fills the form, saves,
+  and the new food is rendered in the library" test flagged
+  as non-coverage (S-N3 in plan); the new tests use a
+  `NavigatorObserver` to assert on the actual pushed `Route`.
+- ✅ `flutter test` green: 1661 tests pass, 5 skipped,
+  0 fail. No previously passing test now fails.
+- ✅ `flutter analyze` on the affected files: 1 pre-existing
+  deprecation warning (line 1630); no new issues.
+
+#### Doc hygiene table
+| Doc | Status |
+|---|---|
+| navigation_and_screens.md | ✅ N/A — contract already documented |
+| route-migration-audit.md | ✅ Updated — addendum with 2 new sites |
+| widget_catalog.md | ✅ N/A — no widget changed |
+| state_management.md | ✅ N/A — no state method changed |
+| data_models.md | ✅ N/A — no model field changed |
+| db_integration.md | ✅ N/A — no repository method changed |
+
+#### Global conventions verification
+PASS (6 rules): units + canonical storage (N/A — no unit
+changes); theme tokens only (N/A — no color changes); card
+chrome (N/A — no card touched); effort-kind drives analytics
+(N/A — no analytics); timestamps are source data (N/A — no
+timestamps); reuse the canonical owner (uses
+`OmniNavigator.push` per the navigation contract in
+`lib/core/navigation/navigation.dart`).
+N/A (1 rule): instrument panel, not influencer — no UI change.
+FAIL: 0
+
+#### Architecture compliance (in-scope layers)
+- **Features**: state via constructor injection ✅; no direct
+  repo/storage ✅; no new business logic ✅; navigation uses
+  the standard `OmniNavigator.push` per the contract ✅.
+- **Tests**: new tests use `MockWorkoutRepository` indirectly
+  via `_freshRepo()` ✅; tests do not mock around the state
+  layer (call state methods via the production screen tree)
+  ✅; widget tests use `pumpWidget` with the real state class
+  injected ✅.
+- **Docs**: `route-migration-audit.md` reflects the
+  post-implementation state ✅.
+
+#### Buttons
+N/A — no button styling was modified in this iteration. The
+two screen pushes are for existing sub-screens
+(`_NewFoodFormScreen` and `_LegacyLibraryEditScreen`); their
+bottom CTAs and form buttons are unchanged.
+
+#### Dead code
+None. The `_RouteTypeRecorder` class is referenced by the
+new tests. No new state, services, screens, or widgets
+introduced.
+
+#### Test coverage
+| File / path | Method | Coverage |
+|---|---|---|
+| `add_food_screen.dart` | `_openNewFoodForm` | S-N1 (production path via `NavigatorObserver`) |
+| `add_food_screen.dart` | `_UserFoodRowState._openEdit` legacy branch | S-N2 (production path via `NavigatorObserver`) |
+
+#### Environment safety
+- No `dart:io` added to shared code ✅
+- No SQLite imports in mock repository ✅
+- State still depends on the repository interface ✅
+- No `Platform.is*` checks added ✅
+- Repository injected at app startup ✅
+
+#### Findings
+- 🔴 CRITICAL: 0
+- 🟡 WARNING:  0
+- 💡 SUGGEST:  0
+- 🧪 MISSING:  0
+- 🧪 STALE:    0
+
+#### Verdict
+
+## Code Review: ✅ APPROVED
+Layers in scope: features, tests, docs
+Layers skipped: models, repositories, state, core, widgets
+PASS (6 rules): units + canonical storage; theme tokens only;
+card chrome (OmniSurface/OmniCardHeader); effort-kind drives
+analytics; timestamps are source data; reuse the canonical
+owner (OmniNavigator)
+N/A (1 rule): instrument panel, not influencer
+FAIL: 0
+
+`flutter test` is green at this iteration close: **1661
+tests pass**, 5 skipped, 0 fail. The 2 new tests in
+`screen_widget_test.dart` (S-N1 and S-N2) bring the file to
+183 tests. No previously passing test now fails.
+
+`flutter analyze` on the affected files: 1 pre-existing
+deprecation warning at
+`lib/features/nutrition/add_food_screen.dart:1630`
+(`DropdownButtonFormField.value` → use `initialValue`); no
+new issues introduced by this change.
+
+---
+⏸️ **PIPELINE COMPLETE** — Add Food navigation route alignment delivered.
+Ready to merge.

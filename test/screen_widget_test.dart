@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/app.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
+import 'package:omnitrain/core/navigation/navigation.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/core/constants/modality.dart';
@@ -7124,6 +7125,198 @@ void main() {
         expect(find.text('Edit Food'), findsOneWidget);
       },
     );
+
+    // ── Navigation route alignment (Add Food) ─────────────────────
+    //
+    // The two Add Food sub-screens pushed from the host — the
+    // new-food entry form (via the `+ New Food` bottom CTA) and
+    // the legacy library edit shim (via a row tap on a
+    // pre-D-2 custom in the My Foods tab) — must route through
+    // `OmniNavigator.push` so the `OmniRoute` `opaque = true` +
+    // `OmniGradientBackground` wrapper applies. Raw
+    // `MaterialPageRoute` pushes leave the outgoing and
+    // incoming screens stacked during the slide (the
+    // "two screens overlapping" frame).
+    //
+    // The two tests below drive the production code path and
+    // capture the actual pushed `Route` via a `NavigatorObserver`
+    // so the assertion is on the route object the production
+    // code pushed — not on a test-only harness. The
+    // `test/nutrition_test.dart` "fills the form, saves, and
+    // the new food is rendered in the library" test exercises
+    // the same production path but only asserts on the saved
+    // food, not the route type, so it is non-coverage for this
+    // alignment (see plan file S-N3).
+
+    testWidgets(
+      '+ New Food bottom CTA pushes the new-food form via OmniRoute (S-N1)',
+      (WidgetTester tester) async {
+        // Tall surface so the full-screen form's bottom CTA is
+        // reachable without scrolling.
+        await tester.binding.setSurfaceSize(const Size(800, 1800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        final nutritionState = NutritionState(repo);
+        await foodLibraryState.loadFoodGroups();
+        await foodLibraryState.loadFoods();
+
+        // Capture every route pushed from this MaterialApp so the
+        // assertion targets the production route object, not a
+        // test-only harness.
+        final observer = _RouteTypeRecorder();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorObservers: [observer],
+            home: AddFoodScreen(
+              foodLibraryState: foodLibraryState,
+              nutritionState: nutritionState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to the My Foods tab so the `+ New Food` bottom
+        // CTA is the active CTA.
+        await tester.tap(find.text('My Foods'));
+        await tester.pumpAndSettle();
+
+        // Tap the `+ New Food` bottom CTA. The production code
+        // path is `_AddFoodScreenState._openNewFoodForm` which
+        // must route through `OmniNavigator.push`.
+        await tester.tap(find.text('+ New Food'));
+        await tester.pumpAndSettle();
+
+        // The new-food form is on the navigator.
+        expect(find.text('New Food'), findsOneWidget);
+
+        // The pushed route is the app's standard `OmniRoute`,
+        // not a raw `MaterialPageRoute`. This is the
+        // production-path assertion for S-N1.
+        expect(
+          observer.lastPushed,
+          isA<OmniRoute<void>>(),
+          reason:
+              '`+ New Food` must route through OmniNavigator.push '
+              'so the OmniRoute opaque + OmniGradientBackground '
+              'wrapper applies (no overlap frame).',
+        );
+        expect(
+          observer.lastPushed,
+          isNot(isA<MaterialPageRoute<void>>()),
+          reason:
+              'raw MaterialPageRoute bypasses the OmniRoute '
+              'wrapper and produces the overlap frame.',
+        );
+      },
+    );
+
+    testWidgets(
+      'Legacy library-only custom food row tap pushes the legacy edit '
+      'shim via OmniRoute (S-N2)',
+      (WidgetTester tester) async {
+        // Tall surface so the full-screen form is reachable
+        // without scrolling.
+        await tester.binding.setSurfaceSize(const Size(800, 1800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        const now = 1700000000000;
+        final repo = await _freshRepo();
+        // Seed a legacy (pre-D-2) library-only custom food
+        // directly via the repository: `isCatalog = false`,
+        // no matching catalog row, so the My Foods tab
+        // surfaces it and the row tap routes through the
+        // legacy edit shim branch.
+        await repo.createFoodGroup(
+          const FoodGroup(
+            id: 'g-legacy',
+            name: 'Legacy',
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+        await repo.createFood(
+          const Food(
+            id: 'f-legacy-custom',
+            name: 'Legacy Custom',
+            unitType: FoodUnitType.grams,
+            groupId: 'g-legacy',
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            protein: 10,
+            carbs: 5,
+            fat: 2,
+            isCatalog: false,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+
+        final foodLibraryState = FoodLibraryState(repo);
+        final nutritionState = NutritionState(repo);
+        await foodLibraryState.loadFoodGroups();
+        await foodLibraryState.loadFoods();
+
+        // Capture every route pushed from this MaterialApp so the
+        // assertion targets the production route object, not a
+        // test-only harness.
+        final observer = _RouteTypeRecorder();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            navigatorObservers: [observer],
+            home: AddFoodScreen(
+              foodLibraryState: foodLibraryState,
+              nutritionState: nutritionState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Switch to the My Foods tab so the legacy custom row is
+        // rendered.
+        await tester.tap(find.text('My Foods'));
+        await tester.pumpAndSettle();
+
+        // The legacy row is rendered (no catalog twin — the
+        // My Foods tab's `catalogIdFor(f) == null` filter keeps
+        // it on the legacy branch).
+        expect(find.text('Legacy Custom'), findsOneWidget);
+
+        // Tap the row surface (not the trailing delete button).
+        // The production code path is
+        // `_UserFoodRowState._openEdit`'s `else` branch (legacy
+        // shim), which must route through `OmniNavigator.push`.
+        await tester.tap(find.text('Legacy Custom'));
+        await tester.pumpAndSettle();
+
+        // The legacy edit shim is on the navigator (it reuses
+        // the Edit Food app bar title).
+        expect(find.text('Edit Food'), findsOneWidget);
+
+        // The pushed route is the app's standard `OmniRoute`,
+        // not a raw `MaterialPageRoute`. This is the
+        // production-path assertion for S-N2.
+        expect(
+          observer.lastPushed,
+          isA<OmniRoute<void>>(),
+          reason:
+              'the legacy edit shim push from the My Foods row '
+              'tap must route through OmniNavigator.push so the '
+              'OmniRoute opaque + OmniGradientBackground wrapper '
+              'applies (no overlap frame).',
+        );
+        expect(
+          observer.lastPushed,
+          isNot(isA<MaterialPageRoute<void>>()),
+          reason:
+              'raw MaterialPageRoute bypasses the OmniRoute '
+              'wrapper and produces the overlap frame.',
+        );
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -7372,4 +7565,20 @@ void main() {
       );
     });
   });
+}
+
+/// Test-only [NavigatorObserver] that records the most recent
+/// route pushed from production code. Used by the Add Food
+/// navigation route-alignment tests in [screen_widget_test.dart]
+/// to assert the production push is an [OmniRoute], not a raw
+/// [MaterialPageRoute]. The class is top-level so the test
+/// groups inside [main] can use it; the production navigation
+/// contract lives in `lib/core/navigation/navigation.dart`.
+class _RouteTypeRecorder extends NavigatorObserver {
+  Route<dynamic>? lastPushed;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    lastPushed = route;
+  }
 }

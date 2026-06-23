@@ -6,6 +6,26 @@
 
 All screen-level navigation in OmniTrain must go through `OmniNavigator`. Callers never construct route objects directly.
 
+## Enforcement
+
+This rule is enforced automatically by
+`test/navigation_contract_enforcement_test.dart`. That test walks
+`lib/` recursively, excludes `lib/core/navigation/` (which legitimately
+defines the standard route primitive), and fails the build if any
+application feature or UI file contains a `MaterialPageRoute(` or
+`PageRouteBuilder(` construction. Test code is excluded because
+`MaterialPageRoute` is used as harness setup in `pumpWidget` scaffolds.
+
+A test failure message names every offending file and points the
+caller at `OmniNavigator` (`lib/core/navigation/omni_navigator.dart`)
+as the required fix.
+
+The historical route-migration audit
+(`.github/agents/docs/route-migration-audit.md`) is preserved as a
+record of the original migration, but is **no longer the enforcement
+mechanism** — the automated test above is. If the audit and the test
+ever disagree, the test wins.
+
 ---
 
 ## Why This Rule Exists

@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../../core/constants/omni_theme.dart';
+import '../../core/navigation/navigation.dart';
+import '../../core/services/routine_session_service.dart';
+import '../../core/services/session_summary_service.dart';
+import '../../core/utils/rest_notification_service.dart';
+import '../../core/utils/timer_alert_service.dart';
 import '../../features/calendar/calendar_screen.dart';
+import '../../features/nutrition/nutrition_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/stats/stats_screen.dart';
-import '../../features/nutrition/nutrition_screen.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
@@ -13,11 +19,6 @@ import '../../state/profile/profile_state.dart';
 import '../../state/routine/routine_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
-import '../../core/services/routine_session_service.dart';
-import '../../core/services/session_summary_service.dart';
-import '../../core/utils/timer_alert_service.dart';
-import '../../core/utils/rest_notification_service.dart';
-import '../../core/constants/omni_theme.dart';
 import '../../widgets/cards/maintenance_tile.dart';
 
 class HubSheet extends StatelessWidget {
@@ -61,8 +62,9 @@ class HubSheet extends StatelessWidget {
         title: 'Calendar',
         icon: Icons.calendar_today,
         onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => CalendarScreen(
+          OmniNavigator.push(
+            context,
+            (_) => CalendarScreen(
               calendarState: calendarState,
               periodState: periodState,
               workoutState: workoutState,
@@ -73,56 +75,60 @@ class HubSheet extends StatelessWidget {
               timerAlertService: timerAlertService,
               restNotificationService: restNotificationService,
             ),
-          ));
+          );
         },
       ),
       _HubItem(
         title: 'Stats',
         icon: Icons.bar_chart,
         onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => StatsScreen(
+          OmniNavigator.push(
+            context,
+            (_) => StatsScreen(
               workoutState: workoutState,
               settingsState: settingsState,
             ),
-          ));
+          );
         },
       ),
       _HubItem(
         title: 'Nutrition',
         icon: Icons.monitor_heart_outlined,
         onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => NutritionScreen(
+          OmniNavigator.push(
+            context,
+            (_) => NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
             ),
-          ));
+          );
         },
       ),
       _HubItem(
         title: 'Profile',
         icon: Icons.person_outline,
         onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => ProfileScreen(
+          OmniNavigator.push(
+            context,
+            (_) => ProfileScreen(
               profileState: profileState,
               settingsState: settingsState,
             ),
-          ));
+          );
         },
       ),
       _HubItem(
         title: 'Settings',
         icon: Icons.settings_outlined,
         onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => SettingsScreen(
+          OmniNavigator.push(
+            context,
+            (_) => SettingsScreen(
               settingsState: settingsState,
               timerAlertService: timerAlertService,
               restNotificationService: restNotificationService,
             ),
-          ));
+          );
         },
       ),
     ];

@@ -541,13 +541,11 @@ class ExerciseListScreen extends StatelessWidget {
   }
   
   void _openDetail(BuildContext context, Exercise exercise) {
-    Navigator.push(
+    OmniNavigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ExerciseDetailScreen(
-          workoutState: workoutState,
-          exerciseId: exercise.id,
-        ),
+      (_) => ExerciseDetailScreen(
+        workoutState: workoutState,
+        exerciseId: exercise.id,
       ),
     );
   }
@@ -577,12 +575,10 @@ class ExerciseListScreen extends StatelessWidget {
   }
   
   void _createNew(BuildContext context) {
-    Navigator.push(
+    OmniNavigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ExerciseFormScreen(
-          workoutState: workoutState,
-        ),
+      (_) => ExerciseFormScreen(
+        workoutState: workoutState,
       ),
     );
   }

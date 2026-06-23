@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/navigation/navigation.dart';
 import '../../core/utils/food_helpers.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
@@ -117,12 +118,18 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
   /// Pushes the full-screen New Food form (shared with the previous
   /// inline `_AddNewFoodButton._openNewFoodForm` method).
+  ///
+  /// Routes through [OmniNavigator.push] so the [OmniRoute]
+  /// `opaque = true` + [OmniGradientBackground] wrapper applies
+  /// — the destination fully occludes this screen during the
+  /// slide, matching every other screen push in the app
+  /// (per the navigation contract in
+  /// `docs/navigation_and_screens.md`).
   void _openNewFoodForm(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _NewFoodFormScreen(
-          foodLibraryState: widget.foodLibraryState,
-        ),
+    OmniNavigator.push<void>(
+      context,
+      (context) => _NewFoodFormScreen(
+        foodLibraryState: widget.foodLibraryState,
       ),
     );
   }
@@ -890,12 +897,15 @@ class _UserFoodRowState extends State<_UserFoodRow> {
         foodLibraryState: widget.foodLibraryState,
       );
     } else {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => _LegacyLibraryEditScreen(
-            food: widget.food,
-            foodLibraryState: widget.foodLibraryState,
-          ),
+      // Legacy library-only custom: route through OmniNavigator.push
+      // so the OmniRoute opaque + OmniGradientBackground wrapper
+      // applies — same standard navigation path as every other
+      // screen push in the app.
+      OmniNavigator.push<void>(
+        context,
+        (context) => _LegacyLibraryEditScreen(
+          food: widget.food,
+          foodLibraryState: widget.foodLibraryState,
         ),
       );
     }
