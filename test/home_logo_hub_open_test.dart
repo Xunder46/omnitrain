@@ -216,31 +216,46 @@ void main() {
       await tester.pumpWidget(MaterialApp(home: screen));
       await tester.pumpAndSettle();
 
-      // The home-screen training grid is a SliverGrid inside the body (the
-      // Hub sheet's maintenance grid is also a GridView, but it's only
-      // mounted when the sheet is open — at rest the tree only contains the
-      // home-body SliverGrid). The logo tile must NOT be a descendant of
-      // that SliverGrid.
-      final sliverGrids = find.byType(SliverGrid);
-      expect(sliverGrids, findsWidgets);
-      expect(
-        find.descendant(of: sliverGrids, matching: find.byType(HomeLogoButton)),
-        findsNothing,
-      );
+      // The home-screen training grid is a non-scrolling layout: a
+      // `Column` of three `Row`s, each row holding two `Expanded`
+      // `EnergyTile`s. The grid is NOT a `SliverGrid` / `GridView`
+      // / `CustomScrollView` (the Train screen never scrolls).
+      // The logo tile must NOT be a descendant of any of those
+      // `Row`s — it lives in the AppBar header.
+      final gridRows = find
+          .descendant(
+            of: find.byType(Column),
+            matching: find.byType(Row),
+          )
+          .evaluate()
+          .where((element) {
+            // Filter to rows that contain at least one
+            // EnergyTile — those are the grid rows.
+            return find
+                .descendant(
+                  of: find.byWidget(element.widget),
+                  matching: find.byType(EnergyTile),
+                )
+                .evaluate()
+                .isNotEmpty;
+          })
+          .map((e) => find.byWidget(e.widget));
+
+      for (final gridRow in gridRows) {
+        expect(
+          find.descendant(of: gridRow, matching: find.byType(HomeLogoButton)),
+          findsNothing,
+          reason: 'The HomeLogoButton must not live inside any '
+              'training-tile row.',
+        );
+      }
 
       // The logo tile IS present in the tree, exactly once, hosted in the
       // AppBar header — not in the training grid.
       expect(find.byType(HomeLogoButton), findsOneWidget);
 
-      // The training grid still contains only EnergyTile widgets (the
-      // training tile type). The exact count matches HomeTiles.all and is
-      // not asserted numerically to keep the test resilient to tile-list
-      // changes.
-      final energyTilesInGrid = find.descendant(
-        of: sliverGrids,
-        matching: find.byType(EnergyTile),
-      );
-      expect(energyTilesInGrid, findsWidgets);
+      // All six training tiles are mounted in the body.
+      expect(find.byType(EnergyTile), findsNWidgets(6));
     });
 
     testWidgets('logo tile has margin from the AppBar edges', (

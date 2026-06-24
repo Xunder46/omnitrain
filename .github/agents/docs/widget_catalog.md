@@ -11,9 +11,9 @@ Note on resume dialog:
 - The cold-start `Unfinished Session` dialog is implemented as a private, screen-local widget in `HomeScreen` (`_ResumeSessionDialog`).
 - It is intentionally not promoted into `lib/widgets/` because it is feature-specific and not reused across screens.
 
-Note on home-screen nutrition strip:
-- The home-screen footer strip is implemented as a screen-local widget in `lib/features/home/widgets/nutrition_strip_bar.dart` (`NutritionStripBar`).
-- It is feature-scoped (only the home screen needs it) but is still presentation-only and theme-reactive. Phase 4.1 (D-8) supersedes the Phase 4 (D-5) two-row layout with a full-strip bar where the surface is the track; the previous placeholder `NutritionStripButton` widget was removed.
+Note on home-screen nutrition summary card:
+- The home-screen gauge card is implemented as a screen-local widget in `lib/features/home/widgets/nutrition_summary_card.dart` (`NutritionSummaryCard`).
+- It is feature-scoped (only the home screen needs it) but is still presentation-only and theme-reactive. Iteration 5 (Phase 5) supersedes the Phase 4.1 (D-8) `NutritionStripBar` (a full-bleed bottom strip with chevron-shaped fill) with a self-contained gauge card that visually belongs to the same instrument-panel family as the training tiles — rounded corners, raised/lit look, hairline border, and inset horizontal margin. The previous Phase 2 placeholder `NutritionStripButton` widget was already removed.
 
 ---
 
@@ -216,40 +216,37 @@ Legacy/alternative tile implementations. May be deprecated stubs — check code 
 
 ## Home Screen Footer
 
-### `NutritionStripBar`
+### `NutritionSummaryCard`
 
-**File**: `lib/features/home/widgets/nutrition_strip_bar.dart`
+**File**: `lib/features/home/widgets/nutrition_summary_card.dart`
 
-Full-height footer bar on the home screen (D-8 / S-050b / S-051..S-057, plus the Phase 4.1.2 follow-up S-058 — supersedes the Phase 4 D-5 two-row layout). Sits below the training-tile grid with top gap = 2 × `standardGridSpacing` and extends to the physical bottom edge of the screen; the strip's `Material`/`Ink` decoration reaches the bottom edge while the content (bar / label / empty message) sits above the bottom home-indicator inset. The bar height is `NutritionStripBarMetrics.contentHeight` (default 64 px, tunable per D-8) — the bar keeps its original D-8 geometry, glued to the top of the strip with no padding. A chevron-right navigation indicator is vertically centered in the bar at the right edge of the strip (Phase 4.1.2 follow-up). The "calories eaten / calories planned" label sits in the small gap between the bar and the physical bottom edge of the screen (the `Material`/`Ink` decoration area, S-056), vertically centered in the gap. Pure presentation — no state access, no business logic, no math. All colors come from `OmniTheme.colors`; per-macro calorie math lives on `NutritionState` (D-4 getters) and is passed in.
+Self-contained gauge card on the home screen (Iteration 5 / S-100..S-106 — supersedes the Phase 4.1 `NutritionStripBar` full-bleed bottom strip). Sits BELOW the training-tile grid with top gap = 2 × `standardGridSpacing` and is INSET from the screen edges (16 px horizontal padding, matching the tile grid's side margin) — NOT a full-bleed rectangle. The card chrome matches the training-tile visual family: 20 px `OmniTheme.surfaceBorderRadius`, `OmniTheme.surfaceBorder` hairline border, `OmniTheme.deepShadow` lift. Pure presentation — no state access, no business logic, no math. All colors come from `OmniTheme.colors`; per-macro calorie math lives on `NutritionState` (D-4 getters) and is passed in.
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `consumedCalories` | `int` | required | Today's consumed calories (already rounded by the caller) |
 | `targetCalories` | `int?` | required | Today's calorie target, or `null` for "no goal" |
 | `proteinKcal` | `int` | required | Protein calorie contribution (D-4: `protein × 4`) |
-| `totalCarbsKcal` | `int` | required | Total-carbs calorie contribution (D-8 inherits D-5: "total-carb calories for blue", not net carbs) |
+| `carbsKcal` | `int` | required | Net-carbs calorie contribution (`carbs - fiber`, then × 4 — matches the donut chart's percentage calculation) |
 | `fatKcal` | `int` | required | Fat calorie contribution (D-4: `fat × 9`) |
-| `onTap` | `VoidCallback` | required | Tap handler — the strip is always tappable (S-051) |
-| `emptyMessage` | `String` | `'Track your nutrition — tap to start'` | Copy for the empty state |
-| `segmentsOverride` | `List<StripSegment>?` | `null` | Optional pre-built segment list. The default constructs Protein / Carbs / Fat segments in that order with `OmniTheme.colors.macroChart.<slot>` colors. Tests use this to inject custom labels or colors. |
+| `onTap` | `VoidCallback` | required | Tap handler — the card is always tappable (S-104). The ENTIRE card body is one tap target; the chevron is a visual cue only. |
 
-**Public helper class** `StripSegment` carries a per-macro segment: `kcal` (calorie contribution), `color` (from the macro chart palette), and `label` (the prefix rendered inside the segment, e.g. `"P"`).
-
-**Design tokens** — `NutritionStripBarMetrics`:
-- `contentHeight` (default 64 px): the strip's full painted height. All in-strip measurements (label-fit budget, chevron depth) derive from this constant. Tunable per D-8.
-- `chevronReserve` (default 12 px): the trailing segment's right-edge clearance so the in-segment label does not collide with the arrow tip.
-
-**Behavior (D-8 + S-058)**:
-- **Geometry**: the strip is a `Column` of two regions inside an explicit-height `SizedBox` (`contentHeight` + `MediaQuery.of(context).padding.bottom`). The top region (`contentHeight` tall) is the bar — the painted track + segmented fill + in-segment labels, glued to the top of the strip with no padding / no outer `Container`. The bottom region is the label gap — the small space between the bar's bottom edge and the physical bottom edge of the screen (the `Material` / `Ink` decoration area, S-056). The track visibly continues past the fill to 100% (S-050b) inside the bar region.
-- **Empty state** (S-051): when `targetCalories == null || targetCalories <= 0 || consumedCalories <= 0`, renders a single centered inviting message in the full content height. No bar, no numbers. The surface is still tappable.
-- **Happy state** (S-050b / S-052 / S-053 / S-058):
-  - Calorie label `"{consumed} / {target} cal"` (comma-grouped thousands) sits in the gap **below** the bar (S-058). The label is a centered `Row` of two children: the dining icon (`Icons.local_dining_outlined`, 18 px) and the text (8-px gap between them). The label is vertically centered in the gap. No chevron in the label (the chevron is inside the bar, not the label, Phase 4.1.2 follow-up).
-  - Fill width = `min(consumed / target, 1.0) × barWidth` (S-052). The fill is subdivided P → C → F by calorie contribution (D-4 math, total carbs for blue) with **straight vertical interior segment boundaries**. ONLY the fill's leading (right) edge is chevron-shaped; the chevron is carried by the trailing segment.
-  - **Chevron-right navigation indicator** (`Icons.chevron_right`, 20 px) sits in the bar at the right edge of the strip, vertically centered (`Alignment.centerRight` inside a `Positioned.fill`). Carries the D-8 dark text-shadow so it stays legible over both the colored fill and the neutral track. The chevron is NOT in the label gap below the bar — it lives INSIDE the bar, at the right edge (Phase 4.1.2 follow-up).
-  - Each segment shows `"{M} {pct}%"` inside; the label is measured against the segment pixel width via `TextPainter` (via the same `_SegmentLabel` math) and hidden when it doesn't fit (S-053). The D-8 bar content height widens the label-fit budget substantially — the v1 14-px-tall floating-pill failure case (S-050b) cannot recur.
-- The widget never picks a color of its own — `OmniTheme.colors.macroChart.{protein,netCarbs,fat}` (where `netCarbs` fills the carbs slot per the D-5 / D-8 spec).
-- Tap on any region calls `onTap`. The empty state does NOT disable the surface.
-- Hairline top border (1 px `surfaceBorder`); NO upward drop shadow over the tile grid.
+**Behavior (S-100..S-106)**:
+- **Geometry**: the card is a `Column` of three regions inside a `Material` + `InkWell` + `Ink` with rounded-corner `BoxDecoration` chrome. The three regions:
+  1. **Headline row** (`Key('nutrition_card_headline')`): small `Icons.local_dining_outlined` (18 px, `textDominant`) + 8-px gap + the headline `Text` `"{consumed} / {target} CAL"` (comma-grouped thousands) — the LARGEST, BRIGHTEST text on the card (`theme.textTheme.headlineSmall` + `FontWeight.w800` + `textDominant`) + 8-px gap + `Icons.chevron_right` (22 px, `textDominant`) at the right edge. The headline is the only element that earns white emphasis.
+  2. **Gauge row** (`Key('nutrition_card_gauge')`): a `Stack` of two layers — the `track` (full-width `divider`-colored pill, 12 px tall, `Key('nutrition_card_gauge_track')`) and the `fill` (a clipped `Row` of three macro `Container`s with `Key('nutrition_card_gauge_segment_0'..'2')`). The fill width = `clamp(consumed / target, 0, 1) × trackWidth` (S-102); the segments are sized as a share of CONSUMED calories (S-103), so they live INSIDE the fill, not across the full bar.
+  3. **Caption row** (`Key('nutrition_card_caption')`): a `spaceBetween` `Row` of three `(colorMarker, "M N%")` groups with keys `nutrition_card_caption_protein` / `_carbs` / `_fat`. The caption percentages are the macro's share of CONSUMED calories (S-103). The empty state renders DASHES (`—`), NOT `0%` (S-104).
+- **Tap target** (S-101): the ENTIRE card is wrapped in a single `InkWell(onTap: onTap)`. Tapping ANY region of the card (headline text, gauge track, fill, caption row, chevron) fires `onTap`. The empty state is still tappable.
+- **Empty state** (S-104): when `consumedCalories <= 0` OR `targetCalories` is null / `<= 0`:
+  - Headline renders `"0 / {target ?? "—"} CAL"` in `textDominant` (NOT a warning tone — there is no data to warn about).
+  - Gauge fill is not rendered (zero width / absent).
+  - Caption row renders DASHES (`—`) for each macro, NOT `0%`. We do not imply a real split when there is no data.
+- **Over-budget state** (S-105): when `consumedCalories > targetCalories > 0`:
+  - Headline text color switches to `Theme.of(context).colorScheme.error` (the theme's restrained warning tone — no celebration, no alarm).
+  - Gauge fill clamps to 100% of the track width (no overflow past `trackWidth`).
+  - Caption percentages still render with real values (the data is real, not absent).
+- The widget never picks a color of its own — `OmniTheme.colors.stripMacros.{protein,carbs,fat}` for the macro markers and fill segments (a MUTED palette tuned per theme — terracotta / steel-blue / amber; deliberately NOT the saturated `macroChart` palette), `OmniTheme.colors.divider` for the gauge track, `OmniTheme.colors.surface` for the card fill, `OmniTheme.surfaceBorder` + `OmniTheme.surfaceBorderWidth` for the hairline border, and `OmniTheme.deepShadow` for the raised shadow.
+- The card's outer `Padding(EdgeInsets.symmetric(horizontal: 16))` provides the screen-edge inset (matching the tile grid's side margin). The home screen owns the top gap (2 × `standardGridSpacing`) and the bottom safe-area clearance.
 
 ---
 

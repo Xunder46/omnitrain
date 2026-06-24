@@ -350,7 +350,7 @@ List<MacroSection> computeMacroSections({
   final gapRad = gapDegrees * math.pi / 180.0;
 
   final raw = <_RawSection>[
-    _RawSection('Net Carbs', math.max(0, netCarbs), palette.netCarbs),
+    _RawSection('Net Carbs', math.max(0, netCarbs), palette.carbs),
     _RawSection('Fiber', math.max(0, fiber), palette.fiber),
     _RawSection('Fat', math.max(0, fat), palette.fat),
     _RawSection('Protein', math.max(0, protein), palette.protein),

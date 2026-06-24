@@ -20,7 +20,7 @@ import '../calendar/calendar_screen.dart';
 import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
-import 'widgets/nutrition_strip_bar.dart';
+import 'widgets/nutrition_summary_card.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import '../../widgets/common/home_logo_button.dart';
@@ -285,42 +285,105 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       body: Stack(
         children: [
-          Column(
-            children: [
-              Expanded(
-                flex: 15,
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16.0, 5.0, 16.0, 0.0),
-                    child: Column(
-                      children: [
-                        Text(
-                          'TRAIN',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 2.0,
-                                color: OmniTheme.colors.textDominant,
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black.withOpacity(0.5),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                        ),
-                        const SizedBox(height: 20),
-                        // Grid view with training modalities
-                        Expanded(
-                          child: ListenableBuilder(
-                            listenable: widget.workoutState,
-                            builder: (context, child) {
-                              const standardGridSpacing = 16.0;
-                              const utilitySectionGap =
-                                  standardGridSpacing * 1;
+          SafeArea(
+            bottom: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const standardGridSpacing = 16.0;
+                const minTileSide = 56.0;
+                const titleToGridGap = 20.0;
+                const gridToCardGap = 16.0;
+                const outerPaddingTop = 5.0;
+                const outerPaddingBottom = 12.0;
 
+                // The TRAIN title and the summary card
+                // both scale with the active `textScaler`
+                // (MyApp clamps it to 1.1–1.6; tests may
+                // use 1.0). We read the active scale
+                // here so the shrink-to-fit math stays
+                // accurate across accessibility settings.
+                final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+                final titleHeight = 30.0 * textScale;
+                // Measured card natural total height at
+                // `textScaler = 1.0` is 112 px (the card
+                // has no internal slack to compress, per
+                // its design contract — see the
+                // `NutritionSummaryCard` doc).
+                const cardNaturalHeight = 112.0;
+                final cardHeight = cardNaturalHeight * textScale;
+
+                // Natural square tile side from the
+                // available content width.
+                final naturalTileSide =
+                    (constraints.maxWidth - standardGridSpacing) / 2;
+                final naturalGridHeight =
+                    naturalTileSide * 3 + standardGridSpacing * 2;
+
+                // Total content height at natural sizes.
+                final totalNatural = titleHeight +
+                    titleToGridGap +
+                    naturalGridHeight +
+                    gridToCardGap +
+                    cardHeight +
+                    outerPaddingTop +
+                    outerPaddingBottom;
+
+                // If the natural content is too tall, compress
+                // the tiles proportionally. The card always
+                // renders at its natural height (it's the
+                // "peer" element below the grid).
+                final available = constraints.maxHeight;
+                double tileSide = naturalTileSide;
+                if (totalNatural > available && available > 0) {
+                  final overflow = totalNatural - available;
+                  final compressedSide = naturalTileSide - (overflow / 3);
+                  tileSide = compressedSide < minTileSide
+                      ? minTileSide
+                      : compressedSide;
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding:
+                          const EdgeInsets.fromLTRB(16.0, 5.0, 16.0, 0.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'TRAIN',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 2.0,
+                                  color: OmniTheme.colors.textDominant,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black.withOpacity(0.5),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                          ),
+                          const SizedBox(height: titleToGridGap),
+                          // Non-scrolling training-tile grid.
+                          // Three rows of two square tiles each
+                          // (2 + 2 + 2 = 6), with a 16 px gap
+                          // between rows. The tile side is
+                          // computed above from both the
+                          // available width and the available
+                          // height — on short screens the tiles
+                          // compress so the grid + card + gaps
+                          // always fit at once (no scroll, no
+                          // clip, no overlap).
+                          ListenableBuilder(
+                            listenable: widget.workoutState,
+                            builder: (context, _) {
                               final session =
                                   widget.workoutState.currentSession;
                               final isRoutineSession =
@@ -328,145 +391,104 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               final hasActiveSession =
                                   widget.workoutState.hasActiveSession;
 
-                              final tiles = HomeTiles.all
-                                  .map((tile) {
-                                    final isActive =
-                                        hasActiveSession &&
-                                        (tile.key == 'my_routines'
-                                            ? isRoutineSession
-                                            : tile.modality == null
+                              final tiles = HomeTiles.all.map((tile) {
+                                final isActive = hasActiveSession &&
+                                    (tile.key == 'my_routines'
+                                        ? isRoutineSession
+                                        : tile.modality == null
                                             ? session?.modality == null &&
-                                                  !isRoutineSession
+                                                !isRoutineSession
                                             : session?.modality ==
-                                                  tile.modality);
+                                                tile.modality);
 
-                                    return EnergyTile(
-                                      title: tile.label,
-                                      icon: tile.iconData,
-                                      iconWidget: tile.iconWidget,
-                                      accentColor: tile.accentColor,
-                                      isSecondary: tile.isSecondary,
-                                      isActive: isActive,
-                                      onTap: () => _handleTileTap(
-                                        context,
-                                        tile,
-                                        isActive,
+                                return EnergyTile(
+                                  title: tile.label,
+                                  icon: tile.iconData,
+                                  iconWidget: tile.iconWidget,
+                                  accentColor: tile.accentColor,
+                                  isSecondary: tile.isSecondary,
+                                  isActive: isActive,
+                                  onTap: () => _handleTileTap(
+                                    context,
+                                    tile,
+                                    isActive,
+                                  ),
+                                );
+                              }).toList(growable: false);
+
+                              Widget rowOf(int start, int end) {
+                                return Row(
+                                  children: [
+                                    for (var i = start;
+                                        i < end;
+                                        i++) ...[
+                                      if (i > start)
+                                        const SizedBox(
+                                            width: standardGridSpacing),
+                                      Expanded(
+                                        child: SizedBox(
+                                          height: tileSide,
+                                          child: tiles[i],
+                                        ),
                                       ),
-                                    );
-                                  })
-                                  .toList(growable: false);
+                                    ],
+                                  ],
+                                );
+                              }
 
-                              return CustomScrollView(
-                                slivers: [
-                                  SliverGrid(
-                                    gridDelegate:
-                                        const SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: 2,
-                                          mainAxisSpacing: standardGridSpacing,
-                                          crossAxisSpacing:
-                                              standardGridSpacing,
-                                          childAspectRatio: 1.0,
-                                        ),
-                                    delegate: SliverChildBuilderDelegate((
-                                      context,
-                                      index,
-                                    ) {
-                                      return tiles[index];
-                                    }, childCount: 4),
-                                  ),
-                                  const SliverToBoxAdapter(
-                                    child: SizedBox(height: utilitySectionGap),
-                                  ),
-                                  SliverGrid(
-                                    gridDelegate:
-                                        const SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: 2,
-                                          crossAxisSpacing:
-                                              standardGridSpacing,
-                                          childAspectRatio: 1.0,
-                                        ),
-                                    delegate: SliverChildBuilderDelegate((
-                                      context,
-                                      index,
-                                    ) {
-                                      return tiles[index + 4];
-                                    }, childCount: 2),
-                                  ),
+                              return Column(
+                                children: [
+                                  rowOf(0, 2),
+                                  const SizedBox(
+                                      height: standardGridSpacing),
+                                  rowOf(2, 4),
+                                  const SizedBox(
+                                      height: standardGridSpacing),
+                                  rowOf(4, 6),
                                 ],
                               );
                             },
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-              ),
-              // Phase 4.1.1 (D-8 follow-up) home nutrition strip.
-              // Top gap = 2 × standardGridSpacing (D-8 inherits
-              // D-5's spacing rule; the standardGridSpacing is
-              // local to the tile grid above). The strip is
-              // wrapped in `Expanded(flex: 2)` so the progress
-              // bar fills the rest of the bottom area (between
-              // the tile-grid bottom + 2 × standardGridSpacing
-              // and the physical bottom edge of the screen).
-              // The tile grid gets `Expanded(flex: 15)` so it
-              // keeps the bulk of the vertical space — the
-              // strip is a substantial but bounded region
-              // (~98 px on a typical iPhone screen: 64 px
-              // bar + 34 px bottom safe-area inset label gap),
-              // not a 50/50 share that would cut the tiles in
-              // half. The strip's `Material`/`Ink` decoration
-              // reaches the physical bottom edge (S-056), and
-              // the bar is glued to the top of the strip with
-              // no padding / no outer `Container`.
-              //
-              // The previous `isCurrent` route gate (S-057) is
-              // removed: the data layer's microtask-deferred
-              // notify avoids the build-during-build race that
-              // the gate used to mask, so the strip can keep
-              // rendering current values through a push/pop
-              // transition.
-              //
-              // Phase 4.1.2 (S-058): the strip's bar keeps
-              // its original D-8 `contentHeight: 64` and the
-              // home screen's `flex: 2` is unchanged. The
-              // change is purely internal to the strip
-              // widget: the bar is glued to the top of the
-              // strip with no padding / no outer `Container`,
-              // a chevron-right navigation indicator is
-              // vertically centered inside the bar at the
-              // right edge, and the "calories eaten /
-              // calories planned" label is dropped into the
-              // gap BELOW the bar (the `Material` / `Ink`
-              // decoration area between the bar's bottom and
-              // the physical bottom edge, S-056). The label
-              // itself stays chevron-free.
-              SizedBox(height: 16.0 * 2),
-              Expanded(
-                flex: 2,
-                child: ListenableBuilder(
-                  listenable: widget.nutritionState,
-                  builder: (context, _) {
-                    final target = widget.nutritionState.nutritionTarget;
-                    final targetCalories =
-                        (target != null && target.calories > 0)
-                            ? target.calories.round()
-                            : null;
-                    return NutritionStripBar(
-                      consumedCalories:
-                          widget.nutritionState.todayConsumedCalories,
-                      targetCalories: targetCalories,
-                      proteinKcal: widget.nutritionState.todayProteinKcal,
-                      netCarbsKcal:
-                          widget.nutritionState.todayNetCarbsKcal,
-                      fatKcal: widget.nutritionState.todayFatKcal,
-                      onTap: _openNutritionScreen,
-                    );
-                  },
-                ),
-              ),
-            ],
+                    const SizedBox(height: gridToCardGap),
+                    // Peer calorie summary card. Sits below
+                    // the grid in the body `Column` — NOT
+                    // pinned to the bottom of the screen and
+                    // NOT wrapped in its own `Expanded`. The
+                    // card's own outer
+                    // `Padding(symmetric(horizontal: 16))`
+                    // aligns its left/right edges with the
+                    // training-tile grid's left/right edges
+                    // (both 16 px from the screen edge).
+                    ListenableBuilder(
+                      listenable: widget.nutritionState,
+                      builder: (context, _) {
+                        final target =
+                            widget.nutritionState.nutritionTarget;
+                        final targetCalories =
+                            (target != null && target.calories > 0)
+                                ? target.calories.round()
+                                : null;
+                        return NutritionSummaryCard(
+                          consumedCalories:
+                              widget.nutritionState.todayConsumedCalories,
+                          targetCalories: targetCalories,
+                          proteinKcal:
+                              widget.nutritionState.todayProteinKcal,
+                          carbsKcal:
+                              widget.nutritionState.todayNetCarbsKcal,
+                          fatKcal: widget.nutritionState.todayFatKcal,
+                          onTap: _openNutritionScreen,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                );
+              },
+            ),
           ),
           _buildMaintenanceSheet(context),
         ],

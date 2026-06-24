@@ -634,7 +634,7 @@ class _StatsScreenState extends State<StatsScreen> {
                         ),
                         _buildLegendItem(
                           theme,
-                          macroColors.netCarbs,
+                          macroColors.carbs,
                           'Carbs (g)',
                           themeColors,
                         ),
@@ -671,7 +671,7 @@ class _StatsScreenState extends State<StatsScreen> {
                         ),
                         _buildLegendItem(
                           theme,
-                          macroColors.netCarbs,
+                          macroColors.carbs,
                           'Carbs (g)',
                           themeColors,
                         ),
@@ -981,7 +981,7 @@ class _StatsScreenState extends State<StatsScreen> {
                   LineChartBarData(
                     spots:
                         List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
-                    color: macroColors.netCarbs,
+                    color: macroColors.carbs,
                     isCurved: true,
                     curveSmoothness: 0.3,
                     barWidth: 2,
@@ -1139,10 +1139,9 @@ class _StatsScreenState extends State<StatsScreen> {
             lineBarsData: [
               // NOTE: the carbs line plots **total** carbs grams
               // (not net carbs), matching the home strip's "total
-              // carbs for blue" semantics. The color slot is
-              // named `netCarbs` because the donut reuses it.
+              // carbs for blue" semantics.
               series(values: proteinValues, color: macroColors.protein),
-              series(values: carbsValues, color: macroColors.netCarbs),
+              series(values: carbsValues, color: macroColors.carbs),
               series(values: fatValues, color: macroColors.fat),
             ],
           ),

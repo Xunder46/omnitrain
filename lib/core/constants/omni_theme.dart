@@ -5,9 +5,9 @@ enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, voidPulse, crimsonDojo, m
 /// Themed palette for the macro-distribution donut chart. Slots map 1:1
 /// to the four sections drawn by `MacroDonutChart`:
 ///   - `protein`  — high-contrast near-white
-///   - `netCarbs`  — saturated blue (net = carbs − fiber)
-///   - `fiber`     — saturated green
-///   - `fat`       — saturated amber/yellow
+///   - `carbs`    — saturated blue (net = carbs − fiber)
+///   - `fiber`    — saturated green
+///   - `fat`      — saturated amber/yellow
 ///   - `chartLabelDark` — dark text color used for in-band labels
 ///     when the section color is light (estimated via
 ///     `ThemeData.estimateBrightnessForColor`). The light counterpart
@@ -15,10 +15,25 @@ enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, voidPulse, crimsonDojo, m
 ///     contract does not duplicate it here).
 typedef MacroChartPalette = ({
   Color protein,
-  Color netCarbs,
+  Color carbs,
   Color fiber,
   Color fat,
   Color chartLabelDark,
+});
+
+/// Muted palette for the home-screen nutrition summary card
+/// (Iteration 5). Distinct from the saturated [MacroChartPalette]
+/// above — the card lives next to a raised tile grid on a dark
+/// surface, so the bars need to read as "lit panel on dark"
+/// rather than as a status light. The three slots are intentionally
+/// desaturated: a muted terracotta for protein, a muted steel-blue
+/// for carbs, and a muted amber for fat. Values are tuned per
+/// theme so each tone clears against its respective `surface`
+/// while staying restrained (no bright/saturated primaries).
+typedef StripMacroPalette = ({
+  Color protein,
+  Color carbs,
+  Color fat,
 });
 
 typedef OmniThemeColors = ({
@@ -34,12 +49,20 @@ typedef OmniThemeColors = ({
   Color divider,
   Color surfaceBorder,
   MacroChartPalette macroChart,
+  StripMacroPalette stripMacros,
 });
 
 /// Core theme constants for OMNITRAIN biomechanical training system
 /// Centralized color palette and design tokens
 class OmniTheme {
   static AppTheme activeTheme = AppTheme.abyssalNeon;
+
+  // Unified macro palette colors (abyssalNeon stripMacros base values)
+  // Applied to both macroChart and stripMacros across all themes
+  static const Color _baseProtein = Color.fromARGB(255, 188, 188, 188);
+  static const Color _baseCarbs = Color.fromARGB(255, 102, 172, 186);
+  static const Color _baseFiber = Color.fromARGB(255, 87, 167, 112);
+  static const Color _baseFat = Color.fromARGB(255, 201, 191, 99);
 
   static OmniThemeColors colorsForTheme(AppTheme theme) {
     switch (theme) {
@@ -57,11 +80,16 @@ class OmniTheme {
           divider: Color(0xFF1F2937),
           surfaceBorder: Color(0x0FFFFFFF),
           macroChart: (
-            protein: Color(0xFFEDEDED),
-            netCarbs: Color.fromARGB(255, 0, 166, 255),
-            fiber: Color(0xFF3FBF67),
-            fat: Color.fromARGB(255, 255, 217, 0),
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fiber: _baseFiber,
+            fat: _baseFat,
             chartLabelDark: Color(0xFF0B1424),
+          ),
+          stripMacros: (
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fat: _baseFat,
           ),
         );
       case AppTheme.forgeEmber:
@@ -78,11 +106,16 @@ class OmniTheme {
           divider: Color(0xFF2A1C10),
           surfaceBorder: Color(0x0DFFFFFF),
           macroChart: (
-            protein: Color(0xFFEDE3D2),
-            netCarbs: Color(0xFF5BA8F2),
-            fiber: Color(0xFF54C97A),
-            fat: Color(0xFFF2C84B),
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fiber: _baseFiber,
+            fat: _baseFat,
             chartLabelDark: Color(0xFF1A0B05),
+          ),
+          stripMacros: (
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fat: _baseFat,
           ),
         );
       case AppTheme.obsidianVolt:
@@ -99,11 +132,16 @@ class OmniTheme {
           divider: Color(0xFF1F1F1F),
           surfaceBorder: Color(0x12FFFFFF),
           macroChart: (
-            protein: Color(0xFFEDEDED),
-            netCarbs: Color(0xFF4F8DF7),
-            fiber: Color(0xFF3FBF67),
-            fat: Color(0xFFE8B420),
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fiber: _baseFiber,
+            fat: _baseFat,
             chartLabelDark: Color(0xFF0B0B0B),
+          ),
+          stripMacros: (
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fat: _baseFat,
           ),
         );
       case AppTheme.voidPulse:
@@ -120,11 +158,16 @@ class OmniTheme {
           divider: Color(0xFF1A1230),
           surfaceBorder: Color(0x0FFFFFFF),
           macroChart: (
-            protein: Color(0xFFEDEAFA),
-            netCarbs: Color(0xFF6E94F2),
-            fiber: Color(0xFF5BC982),
-            fat: Color(0xFFE8B420),
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fiber: _baseFiber,
+            fat: _baseFat,
             chartLabelDark: Color(0xFF0A071A),
+          ),
+          stripMacros: (
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fat: _baseFat,
           ),
         );
       case AppTheme.crimsonDojo:
@@ -141,11 +184,16 @@ class OmniTheme {
           divider: Color(0xFF2A0F0C),
           surfaceBorder: Color(0x0DFFFFFF),
           macroChart: (
-            protein: Color(0xFFEDE3DE),
-            netCarbs: Color(0xFF5BA8F2),
-            fiber: Color(0xFF54C97A),
-            fat: Color(0xFFF2C84B),
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fiber: _baseFiber,
+            fat: _baseFat,
             chartLabelDark: Color(0xFF1A0606),
+          ),
+          stripMacros: (
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fat: _baseFat,
           ),
         );
       case AppTheme.malachiteCore:
@@ -162,11 +210,16 @@ class OmniTheme {
           divider: Color(0xFF172A18),
           surfaceBorder: Color(0x0DFFFFFF),
           macroChart: (
-            protein: Color(0xFFEDEDE7),
-            netCarbs: Color(0xFF4F8DF7),
-            fiber: Color(0xFF3FBF67),
-            fat: Color(0xFFE8B420),
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fiber: _baseFiber,
+            fat: _baseFat,
             chartLabelDark: Color(0xFF0C0F0A),
+          ),
+          stripMacros: (
+            protein: _baseProtein,
+            carbs: _baseCarbs,
+            fat: _baseFat,
           ),
         );
     }

@@ -91,8 +91,8 @@ class NutritionTrendPoint {
   /// Σ `(carbs × amountConsumed / referenceAmount)` for the day,
   /// accumulated as double and rounded once. Uses **total** carbs
   /// grams (not net carbs) so the line colour slot — which is
-  /// `macroChart.netCarbs` because the donut reuses it — still
-  /// matches the home strip's "total carbs for blue" semantics.
+  /// `macroChart.carbs` — still matches the home strip's "total
+  /// carbs for blue" semantics.
   final int carbs;
 
   /// Σ `(fat × amountConsumed / referenceAmount)` for the day,
