@@ -41,7 +41,7 @@ Future<FoodLibraryState> _loadedState(MockWorkoutRepository repo) async {
   return state;
 }
 
-FoodDraft _trailMixDraft({String? groupId, String? name, int? protein, String? notes}) => FoodDraft(
+FoodDraft _trailMixDraft({String? groupId, String? name, double? protein, String? notes}) => FoodDraft(
       name: name ?? 'My Trail Mix',
       groupId: groupId,
       unitType: FoodUnitType.grams,
@@ -58,9 +58,9 @@ FoodDraft _trailMixDraft({String? groupId, String? name, int? protein, String? n
 
 FoodDraft _quickDraft({
   required String name,
-  int protein = 5,
-  int carbs = 5,
-  int fat = 5,
+  double protein = 5,
+  double carbs = 5,
+  double fat = 5,
   FoodUnitType unitType = FoodUnitType.grams,
   double referenceAmount = 100.0,
   String referenceLabel = 'g',

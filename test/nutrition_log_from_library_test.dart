@@ -41,11 +41,12 @@ Future<MockWorkoutRepository> _freshRepo() async {
 }
 
 /// Grams-type library food: 100 g, 31P / 0C / 3F = 151 kcal.
+/// Macros are `double` to match the [Food] model.
 Food _chicken({
   String id = 'food-chicken',
-  int protein = 31,
-  int carbs = 0,
-  int fat = 3,
+  double protein = 31,
+  double carbs = 0,
+  double fat = 3,
   String? groupId,
 }) {
   return Food(

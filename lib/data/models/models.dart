@@ -1763,11 +1763,11 @@ class Food {
   /// Catalog foods are read-only; library foods are user-editable.
   final bool isCatalog;
 
-  final int protein;
-  final int carbs;
-  final int? fiber;
-  final int fat;
-  final int? sodium;
+  final double protein;
+  final double carbs;
+  final double? fiber;
+  final double fat;
+  final double? sodium;
   final bool isArchived;
   final String? notes;
 
@@ -1814,11 +1814,18 @@ class Food {
   /// Helper: true if this is a user-owned library food
   bool get isLibraryFood => !isCatalog;
 
-  /// Computed calorie value: protein * 4 + carbs * 4 + fat * 9
-  int get calories => protein * 4 + carbs * 4 + fat * 9;
+  /// Computed calorie value: protein * 4 + carbs * 4 + fat * 9.
+  /// Macros are stored as `double` to support fractional grams
+  /// (e.g. `0.5` g of fat); the calorie count is rounded to `int`
+  /// at the display boundary because the UI shows whole kcal.
+  int get calories =>
+      (protein * 4 + carbs * 4 + fat * 9).round();
 
-  /// Computed net carbs: carbs - (fiber ?? 0)
-  int get netCarbs => carbs - (fiber ?? 0);
+  /// Computed net carbs: carbs - (fiber ?? 0).
+  /// Rounded to `int` for parity with the existing
+  /// `todayConsumedNetCarbsRaw` chart math (which always emits
+  /// int grams for the donut).
+  int get netCarbs => (carbs - (fiber ?? 0)).round();
 
   factory Food.fromMap(Map<String, dynamic> m) {
     // Handle legacy rows: if new fields are missing, fall back to serving fields
@@ -1838,11 +1845,16 @@ class Food {
           ? (m['reference_label'] as String?) ?? 'g'
           : (m['serving_unit'] as String?) ?? 'g',
       isCatalog: hasNewFields ? (m['is_catalog'] as int?) == 1 : false,
-      protein: m['protein'] as int,
-      carbs: m['carbs'] as int,
-      fiber: m['fiber'] as int?,
-      fat: m['fat'] as int,
-      sodium: m['sodium'] as int?,
+      // Macros are widened to `double` to support fractional
+      // grams; the cast below accepts both legacy `INTEGER` rows
+      // (where `m['protein']` is an `int`) and the new `REAL`
+      // rows (where it is a `double`), so the change is
+      // back-compatible without a row migration.
+      protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
+      carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
+      fiber: (m['fiber'] as num?)?.toDouble(),
+      fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
+      sodium: (m['sodium'] as num?)?.toDouble(),
       isArchived: (m['is_archived'] as int?) == 1,
       notes: m['notes'] as String?,
       imagePath: m['image_path'] as String?,
@@ -1879,11 +1891,11 @@ class Food {
     double? referenceAmount,
     String? referenceLabel,
     bool? isCatalog,
-    int? protein,
-    int? carbs,
-    int? fiber,
-    int? fat,
-    int? sodium,
+    double? protein,
+    double? carbs,
+    double? fiber,
+    double? fat,
+    double? sodium,
     bool? isArchived,
     String? notes,
     Object? imagePath = _foodCopyWithUnset,
@@ -1943,16 +1955,18 @@ class ConsumedFood {
   // Source reference — nullable if the original food was deleted
   final String? sourceFoodId;
 
-  // Frozen food snapshot
+  // Frozen food snapshot. Macros are stored as `double` to
+  // support fractional grams; see `Food` for the rationale and
+  // the `fromMap` back-compat pattern.
   final String name;
   final FoodUnitType unitType;
   final double referenceAmount;
   final String referenceLabel;
-  final int protein;
-  final int carbs;
-  final int? fiber;
-  final int fat;
-  final int? sodium;
+  final double protein;
+  final double carbs;
+  final double? fiber;
+  final double fat;
+  final double? sodium;
 
   // How much was consumed (in the food's reference unit)
   final double amountConsumed;
@@ -2022,11 +2036,14 @@ class ConsumedFood {
     unitType: FoodUnitType.fromString(m['unit_type'] as String?),
     referenceAmount: ((m['reference_amount'] as num?) ?? 100.0).toDouble(),
     referenceLabel: (m['reference_label'] as String?) ?? 'g',
-    protein: m['protein'] as int,
-    carbs: m['carbs'] as int,
-    fiber: m['fiber'] as int?,
-    fat: m['fat'] as int,
-    sodium: m['sodium'] as int?,
+    // Macros are widened to `double` for fractional grams; the
+    // cast below accepts both legacy `INTEGER` rows and the new
+    // `REAL` rows. See `Food.fromMap` for the rationale.
+    protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
+    carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
+    fiber: (m['fiber'] as num?)?.toDouble(),
+    fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
+    sodium: (m['sodium'] as num?)?.toDouble(),
     amountConsumed: ((m['amount_consumed'] as num?) ?? 1.0).toDouble(),
     groupIdSnapshot: m['group_id_snapshot'] as String?,
     groupNameSnapshot: m['group_name_snapshot'] as String?,
@@ -2072,11 +2089,11 @@ class ConsumedFood {
     FoodUnitType? unitType,
     double? referenceAmount,
     String? referenceLabel,
-    int? protein,
-    int? carbs,
-    int? fiber,
-    int? fat,
-    int? sodium,
+    double? protein,
+    double? carbs,
+    double? fiber,
+    double? fat,
+    double? sodium,
     double? amountConsumed,
     String? groupIdSnapshot,
     String? groupNameSnapshot,

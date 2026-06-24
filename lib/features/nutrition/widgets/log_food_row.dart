@@ -309,9 +309,13 @@ class _LogFoodRowState extends State<LogFoodRow> {
       builder: (context, _) {
         final isLogged = widget.nutritionState.isFoodLoggedToday(food.id);
         // Single-line macro string (S-007). Format parity with
-        // `AddFoodScreen`'s catalog rows.
+        // `AddFoodScreen`'s catalog rows. `formatGrams` keeps the
+        // no-suffix display for whole-number macros (`21.0 -> 21`)
+        // while allowing fractional grams like `0.5` to render
+        // with a decimal. See `formatGrams` in food_helpers.dart
+        // for the rationale.
         final macroText =
-            '$cal cal · ${food.protein}P · ${food.carbs}C · ${food.fat}F';
+            '$cal cal · ${formatGrams(food.protein)}P · ${formatGrams(food.carbs)}C · ${formatGrams(food.fat)}F';
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4.0),
           child: Row(

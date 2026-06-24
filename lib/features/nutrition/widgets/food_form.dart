@@ -179,6 +179,10 @@ class FoodFormController {
 
 class _FoodFormState extends State<FoodForm> {
   final _formKey = GlobalKey<FormState>();
+  // Form-level focus node: when `autoSaveOnBlur` is on, blurring
+  // the form (tapping outside any field) triggers an auto-save.
+  // Distinct from the per-field focus nodes below, which exist
+  // solely to select-all on focus for fast overwrite.
   final _focusNode = FocusNode();
   late final TextEditingController _name;
   late final TextEditingController _referenceAmount;
@@ -189,6 +193,21 @@ class _FoodFormState extends State<FoodForm> {
   late final TextEditingController _fat;
   late final TextEditingController _sodium;
   late final TextEditingController _notes;
+  // Per-field focus nodes. Each one selects the field's text on
+  // focus so the user can retype a value without first clearing
+  // it (e.g. tapping into a pre-filled `4` g of fat and typing
+  // `0.5` overwrites `4` rather than appending). Each node is
+  // created in `initState`, wired to `_selectAll` on focus, and
+  // disposed in `dispose`.
+  final _nameFocus = FocusNode();
+  final _referenceAmountFocus = FocusNode();
+  final _referenceLabelFocus = FocusNode();
+  final _proteinFocus = FocusNode();
+  final _carbsFocus = FocusNode();
+  final _fiberFocus = FocusNode();
+  final _fatFocus = FocusNode();
+  final _sodiumFocus = FocusNode();
+  final _notesFocus = FocusNode();
   final ImagePicker _imagePicker = ImagePicker();
 
   /// Local copy of the image path. Decoupled from `widget.initial`
@@ -214,6 +233,24 @@ class _FoodFormState extends State<FoodForm> {
       _focusNode.addListener(_onFocusChange);
     }
 
+    // Wire per-field focus nodes to select-all on focus. A field
+    // with no text is a no-op (the selection is collapsed to
+    // start, length 0). The listeners are added here and removed
+    // in `dispose` to avoid leaks on rebuild.
+    _nameFocus.addListener(() => _selectAllOnFocus(_nameFocus, _name));
+    _referenceAmountFocus.addListener(
+      () => _selectAllOnFocus(_referenceAmountFocus, _referenceAmount),
+    );
+    _referenceLabelFocus.addListener(
+      () => _selectAllOnFocus(_referenceLabelFocus, _referenceLabel),
+    );
+    _proteinFocus.addListener(() => _selectAllOnFocus(_proteinFocus, _protein));
+    _carbsFocus.addListener(() => _selectAllOnFocus(_carbsFocus, _carbs));
+    _fiberFocus.addListener(() => _selectAllOnFocus(_fiberFocus, _fiber));
+    _fatFocus.addListener(() => _selectAllOnFocus(_fatFocus, _fat));
+    _sodiumFocus.addListener(() => _selectAllOnFocus(_sodiumFocus, _sodium));
+    _notesFocus.addListener(() => _selectAllOnFocus(_notesFocus, _notes));
+
     final initial = widget.initial;
     _name = TextEditingController(text: initial?.name ?? '');
     _referenceAmount = TextEditingController(
@@ -222,14 +259,19 @@ class _FoodFormState extends State<FoodForm> {
     _referenceLabel = TextEditingController(
       text: initial?.referenceLabel ?? 'g',
     );
-    _protein = TextEditingController(text: (initial?.protein ?? 0).toString());
-    _carbs = TextEditingController(text: (initial?.carbs ?? 0).toString());
-    _fiber = TextEditingController(
-      text: (initial?.fiber ?? 0).toString(),
+    // Macros are stored as `double`; `(initial?.protein ?? 0).toString()`
+    // would fail to compile with an `int`-vs-`double` mismatch in
+    // the `?? 0` branch, so use `0.0` (double literal) explicitly.
+    // The string form keeps trailing-zero display as the user typed
+    // it because we only render `toString()` of the underlying value.
+    _protein = TextEditingController(
+      text: (initial?.protein ?? 0.0).toString(),
     );
-    _fat = TextEditingController(text: (initial?.fat ?? 0).toString());
+    _carbs = TextEditingController(text: (initial?.carbs ?? 0.0).toString());
+    _fiber = TextEditingController(text: (initial?.fiber ?? 0.0).toString());
+    _fat = TextEditingController(text: (initial?.fat ?? 0.0).toString());
     _sodium = TextEditingController(
-      text: (initial?.sodium ?? 0).toString(),
+      text: (initial?.sodium ?? 0.0).toString(),
     );
     _notes = TextEditingController(text: initial?.notes ?? '');
     _unitType = initial?.unitType ?? FoodUnitType.grams;
@@ -240,6 +282,15 @@ class _FoodFormState extends State<FoodForm> {
   @override
   void dispose() {
     widget.controller?.detach();
+    _nameFocus.dispose();
+    _referenceAmountFocus.dispose();
+    _referenceLabelFocus.dispose();
+    _proteinFocus.dispose();
+    _carbsFocus.dispose();
+    _fiberFocus.dispose();
+    _fatFocus.dispose();
+    _sodiumFocus.dispose();
+    _notesFocus.dispose();
     _name.dispose();
     _referenceAmount.dispose();
     _referenceLabel.dispose();
@@ -252,6 +303,25 @@ class _FoodFormState extends State<FoodForm> {
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     super.dispose();
+  }
+
+  /// Select-all handler for a per-field focus node. Runs on every
+  /// focus change; the only effectful branch is the focus-gained
+  /// path. The selection is set with `TextSelection(baseOffset: 0,
+  /// extentOffset: text.length)` so a fresh tap on a pre-filled
+  /// field (e.g. `4` g of fat) highlights the entire value, letting
+  /// the user overwrite it by typing. Empty fields short-circuit
+  /// to avoid setting a selection that crosses an empty range
+  /// (Flutter's selection model tolerates it, but skipping the
+  /// assignment keeps the cursor behavior predictable).
+  void _selectAllOnFocus(FocusNode node, TextEditingController controller) {
+    if (!node.hasFocus) return;
+    final text = controller.text;
+    if (text.isEmpty) return;
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: text.length,
+    );
   }
 
   // ─── Focus handler for auto-save ────────────────────────────────────
@@ -421,17 +491,21 @@ class _FoodFormState extends State<FoodForm> {
     try {
       final fiberRaw = _fiber.text.trim();
       final sodiumRaw = _sodium.text.trim();
+      // Macros are stored as `double` (Food / FoodDraft) so the
+      // user can enter fractional grams (e.g. `0.5` g of fat).
+      // Optional fields (fiber, sodium) keep their nullable
+      // contract: empty string -> null, otherwise `double.parse`.
       final draft = FoodDraft(
         name: _name.text.trim(),
         groupId: _groupId,
         unitType: _unitType,
         referenceAmount: double.parse(_referenceAmount.text.trim()),
         referenceLabel: _referenceLabel.text.trim(),
-        protein: int.parse(_protein.text.trim()),
-        carbs: int.parse(_carbs.text.trim()),
-        fiber: fiberRaw.isEmpty ? null : int.parse(fiberRaw),
-        fat: int.parse(_fat.text.trim()),
-        sodium: sodiumRaw.isEmpty ? null : int.parse(sodiumRaw),
+        protein: double.parse(_protein.text.trim()),
+        carbs: double.parse(_carbs.text.trim()),
+        fiber: fiberRaw.isEmpty ? null : double.parse(fiberRaw),
+        fat: double.parse(_fat.text.trim()),
+        sodium: sodiumRaw.isEmpty ? null : double.parse(sodiumRaw),
         notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
         imagePath: _imagePath,
       );
@@ -483,6 +557,7 @@ class _FoodFormState extends State<FoodForm> {
               TextFormField(
                 key: const Key('food_form_name'),
                 controller: _name,
+                focusNode: _nameFocus,
                 decoration: const InputDecoration(
                   labelText: 'Name',
                   border: OutlineInputBorder(),
@@ -559,6 +634,7 @@ class _FoodFormState extends State<FoodForm> {
                     child: TextFormField(
                       key: const Key('food_form_reference_amount'),
                       controller: _referenceAmount,
+                      focusNode: _referenceAmountFocus,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
@@ -579,6 +655,7 @@ class _FoodFormState extends State<FoodForm> {
                     child: TextFormField(
                       key: const Key('food_form_reference_label'),
                       controller: _referenceLabel,
+                      focusNode: _referenceLabelFocus,
                       decoration: const InputDecoration(
                         labelText: 'Reference label',
                         border: OutlineInputBorder(),
@@ -604,6 +681,7 @@ class _FoodFormState extends State<FoodForm> {
               _macroField(
                 key: const Key('food_form_protein'),
                 controller: _protein,
+                focusNode: _proteinFocus,
                 label: 'Protein (g)',
                 required: true,
               ),
@@ -611,6 +689,7 @@ class _FoodFormState extends State<FoodForm> {
               _macroField(
                 key: const Key('food_form_carbs'),
                 controller: _carbs,
+                focusNode: _carbsFocus,
                 label: 'Carbs (g)',
                 required: true,
               ),
@@ -618,6 +697,7 @@ class _FoodFormState extends State<FoodForm> {
               _macroField(
                 key: const Key('food_form_fiber'),
                 controller: _fiber,
+                focusNode: _fiberFocus,
                 label: 'Fiber (g)',
                 required: false,
               ),
@@ -625,6 +705,7 @@ class _FoodFormState extends State<FoodForm> {
               _macroField(
                 key: const Key('food_form_fat'),
                 controller: _fat,
+                focusNode: _fatFocus,
                 label: 'Fat (g)',
                 required: true,
               ),
@@ -632,6 +713,7 @@ class _FoodFormState extends State<FoodForm> {
               _macroField(
                 key: const Key('food_form_sodium'),
                 controller: _sodium,
+                focusNode: _sodiumFocus,
                 label: 'Sodium (mg)',
                 required: false,
               ),
@@ -640,6 +722,7 @@ class _FoodFormState extends State<FoodForm> {
                 TextFormField(
                   key: const Key('food_form_notes'),
                   controller: _notes,
+                  focusNode: _notesFocus,
                   minLines: 1,
                   maxLines: 3,
                   decoration: const InputDecoration(
@@ -663,20 +746,32 @@ class _FoodFormState extends State<FoodForm> {
     );
   }
 
-  /// Macro text field with integer-only input. Required fields
-  /// reject empty input; optional fields allow empty (treated as
-  /// "unset", persisted as `null` on the model).
+  /// Macro text field with decimal input. Required fields reject
+  /// empty input; optional fields allow empty (treated as "unset",
+  /// persisted as `null` on the model).
+  ///
+  /// Accepts the same `^\d*\.?\d*$` pattern as the reference-amount
+  /// field (one optional decimal point, digits on either side).
+  /// This widens the prior `digitsOnly` contract that rejected
+  /// `0.5` and `1.25`, so the user can store fractional grams
+  /// like `0.5` g of fat. The validator uses `double.tryParse`
+  /// to accept both `12` and `0.5`, surfacing `"Must be a number"`
+  /// for any other input.
   Widget _macroField({
     required Key key,
     required TextEditingController controller,
+    required FocusNode focusNode,
     required String label,
     required bool required,
   }) {
     return TextFormField(
       key: key,
       controller: controller,
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      focusNode: focusNode,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
+      ],
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),
@@ -686,8 +781,8 @@ class _FoodFormState extends State<FoodForm> {
         if (trimmed.isEmpty) {
           return required ? 'Required' : null;
         }
-        if (int.tryParse(trimmed) == null) {
-          return 'Must be a whole number';
+        if (double.tryParse(trimmed) == null) {
+          return 'Must be a number';
         }
         return null;
       },

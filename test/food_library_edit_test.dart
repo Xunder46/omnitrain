@@ -15,10 +15,10 @@ Food _libraryFood({
   String id = 'food-edit-1',
   String name = 'Edit Me',
   String? groupId,
-  int protein = 10,
-  int carbs = 20,
-  int? fiber = 0,
-  int fat = 5,
+  double protein = 10,
+  double carbs = 20,
+  double? fiber = 0,
+  double fat = 5,
   String? imagePath,
   FoodUnitType unitType = FoodUnitType.grams,
   double referenceAmount = 100,
@@ -295,10 +295,10 @@ void main() {
   Food catalogFood({
     String id = 'catalog-edit-1',
     String name = 'Catalog Food',
-    int protein = 10,
-    int carbs = 20,
-    int? fiber = 0,
-    int fat = 5,
+    double protein = 10,
+    double carbs = 20,
+    double? fiber = 0,
+    double fat = 5,
     String? imagePath,
   }) {
     return Food(
@@ -320,10 +320,10 @@ void main() {
 
   FoodDraft catalogDraft({
     String name = 'Catalog Food',
-    int protein = 10,
-    int carbs = 20,
-    int? fiber = 0,
-    int fat = 5,
+    double protein = 10,
+    double carbs = 20,
+    double? fiber = 0,
+    double fat = 5,
     String? imagePath,
   }) {
     return FoodDraft(

@@ -22,11 +22,11 @@ class FoodDraft {
   final FoodUnitType unitType;
   final double referenceAmount;
   final String referenceLabel;
-  final int protein;
-  final int carbs;
-  final int? fiber;
-  final int fat;
-  final int? sodium;
+  final double protein;
+  final double carbs;
+  final double? fiber;
+  final double fat;
+  final double? sodium;
   final String? notes;
   final String? imagePath;
 

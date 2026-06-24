@@ -42,13 +42,14 @@ class _PathProviderChannel {
   }
 }
 
-/// Helper to create a library food for testing.
+/// Helper to create a library food for testing. Macros are `double`
+/// to match the [Food] model.
 Food _testFood({
   String id = 'food-test-1',
   String name = 'Test Chicken',
-  int protein = 31,
-  int carbs = 0,
-  int fat = 3,
+  double protein = 31,
+  double carbs = 0,
+  double fat = 3,
 }) {
   return Food(
     id: id,

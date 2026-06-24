@@ -25,13 +25,15 @@ Future<MockWorkoutRepository> _freshRepoCleanConsumed() async {
   return repo;
 }
 
-/// Helper to create a library food for testing.
+/// Helper to create a library food for testing. Macros are `double`
+/// to match the [Food] model (S-001 / S-002 — see
+/// `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`).
 Food _testFood({
   String id = 'food-test-1',
   String name = 'Test Food',
-  int protein = 10,
-  int carbs = 20,
-  int fat = 5,
+  double protein = 10,
+  double carbs = 20,
+  double fat = 5,
 }) {
   return Food(
     id: id,
@@ -48,15 +50,16 @@ Food _testFood({
   );
 }
 
-/// Helper to create a ConsumedFood snapshot for testing.
+/// Helper to create a ConsumedFood snapshot for testing. Macros
+/// are `double` to match the [ConsumedFood] model.
 ConsumedFood _testConsumedFood({
   String id = 'consumed-1',
   required String sourceFoodId,
   required int dateMs,
   String name = 'Snapshot Food',
-  int protein = 10,
-  int carbs = 20,
-  int fat = 5,
+  double protein = 10,
+  double carbs = 20,
+  double fat = 5,
 }) {
   return ConsumedFood(
     id: id,

@@ -1012,7 +1012,7 @@ void main() {
     // Use the fat-only path: 1 g fat = 9 cal. Pick fatGrams so that
     // 9*fatGrams is as close to `calories` as possible.
     final fatGrams = (calories / 9).round();
-    final actual = fatGrams * 9;
+    final actual = (fatGrams * 9).round();
     await repo.createConsumedFood(
       ConsumedFood(
         id: id,
@@ -1025,7 +1025,7 @@ void main() {
         referenceLabel: 'g',
         protein: 0,
         carbs: 0,
-        fat: fatGrams,
+        fat: fatGrams.toDouble(),
         // amountConsumed = 100g of a per-100g food ⇒ 1x scaling so
         // `caloriesConsumed = 9*fatGrams` (matches the legacy test
         // contract that predates the spec's amount-is-in-own-unit rule).

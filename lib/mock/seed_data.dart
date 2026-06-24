@@ -5431,10 +5431,10 @@ class SeedData {
       required FoodUnitType unitType,
       required double referenceAmount,
       required String referenceLabel,
-      required int protein,
-      required int carbs,
-      required int? fiber,
-      required int fat,
+      required double protein,
+      required double carbs,
+      required double? fiber,
+      required double fat,
       required double amountConsumed,
       String? sourceFoodId,
       String? groupIdSnapshot,
@@ -5735,7 +5735,7 @@ class SeedData {
     // intentionally empty to exercise the skip-empty behavior.
     // Macros vary day-to-day so the three macro lines and the
     // calorie line show visible movement across history.
-    final olderDayMeals = <int, List<({String name, String sourceFoodId, String groupId, String groupName, int protein, int carbs, int? fiber, int fat, double amountConsumed, double referenceAmount, String referenceLabel, FoodUnitType unitType})>>{
+    final olderDayMeals = <int, List<({String name, String sourceFoodId, String groupId, String groupName, double protein, double carbs, double? fiber, double fat, double amountConsumed, double referenceAmount, String referenceLabel, FoodUnitType unitType})>>{
       // 10: 100 g ground_beef + 1 tbsp olive oil (high-fat day)
       10: [
         (

@@ -634,14 +634,15 @@ Future<String> _pickAndPersist(
 
 /// Build a minimal library [Food] for the round-trip test. Defaults
 /// match the standard `_libraryFood` helpers in the existing
-/// food-library tests.
+/// food-library tests. Macros are `double` to match the [Food]
+/// model.
 Food _libraryFood({
   String id = 'food-rt-1',
   String name = 'Test Food',
-  int protein = 10,
-  int carbs = 0,
-  int? fiber = 0,
-  int fat = 1,
+  double protein = 10,
+  double carbs = 0,
+  double? fiber = 0,
+  double fat = 1,
   String? imagePath,
   FoodUnitType unitType = FoodUnitType.grams,
   double referenceAmount = 100,

@@ -272,6 +272,24 @@ equivalent SQL block for the future `SqliteWorkoutRepository`
 importer is documented in `scripts/sqlite_schema.sql` under
 "FOOD CATEGORY → GROUP_ID MIGRATION (June 2026)".
 
+### Macro columns: `INTEGER` → `REAL` widening (v1.5)
+
+The bundled v1 schema declared `protein` / `carbs` / `fiber` /
+`fat` / `sodium` as `INTEGER` on the `app_food`, `app_food_catalog`,
+and `app_consumed_food` tables. The v1.5 form lets the user type
+fractional grams (e.g. `0.5` g of fat), so the corresponding
+columns in `scripts/sqlite_schema.sql` are now `REAL` (nullable
+columns stay nullable). The change is back-compatible at read
+time:
+
+- `Food.fromMap` and `ConsumedFood.fromMap` use the
+  `((m['k'] as num?) ?? 0.0).toDouble()` pattern, which accepts
+  both legacy `INTEGER` rows and new `REAL` rows.
+- No row migration is required; the existing rows continue to
+  read back with the same value (now as `double`).
+- See [food-form-decimals-and-autofocus-plan.md](../plans/food-form-decimals-and-autofocus-plan.md)
+  for the full rationale and the back-compat pattern.
+
 ### Repository APIs
 
 | Method | Description |

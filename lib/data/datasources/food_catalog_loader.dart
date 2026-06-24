@@ -54,18 +54,23 @@ class FoodCatalogLoader {
     final referenceLabel = map['referenceLabel'] as String;
     final protein = (map['protein'] as num?)?.toDouble() ?? 0;
     final carbs = (map['carbs'] as num?)?.toDouble() ?? 0;
-    final fiber = (map['fiber'] as num?)?.toInt();
+    final fiber = (map['fiber'] as num?)?.toDouble();
     final fat = (map['fat'] as num?)?.toDouble() ?? 0;
-    final sodium = (map['sodium_mg'] as num?)?.toInt();
+    final sodium = (map['sodium_mg'] as num?)?.toDouble();
 
     // Validate unit type
     final unitType = unitTypeStr == 'count'
         ? FoodUnitType.count
         : FoodUnitType.grams;
 
-    // Macro values are stored as ints on Food. We use the provided values
-    // directly (rounded) for protein/carbs/fat. Calories are computed, not
-    // stored, so the `calories` field in the JSON is informational only.
+    // Macro values are stored as `double` on Food (S-001 — see
+    // `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`).
+    // The catalog JSON's `protein` / `carbs` / `fat` values are integers
+    // in the bundled v1 dataset; we pass them through without
+    // rounding so the underlying precision is preserved if a future
+    // catalog revision ships fractional grams. Calories are computed,
+    // not stored, so the `calories` field in the JSON is
+    // informational only.
     final now = DateTime.now().millisecondsSinceEpoch;
 
     // Resolve the catalog's human-readable category ("Proteins", "Dairy", …)
@@ -82,10 +87,10 @@ class FoodCatalogLoader {
       referenceAmount: referenceAmount,
       referenceLabel: referenceLabel,
       isCatalog: true,
-      protein: protein.round(),
-      carbs: carbs.round(),
+      protein: protein,
+      carbs: carbs,
       fiber: fiber,
-      fat: fat.round(),
+      fat: fat,
       sodium: sodium,
       isArchived: false,
       // Catalog rows no longer carry their category in notes; the

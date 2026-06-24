@@ -62,15 +62,25 @@ String _renderFood(Map<String, dynamic> f) {
   final unitType = (f['unitType'] as String) == 'count' ? 'count' : 'grams';
   final referenceAmount = (f['referenceAmount'] as num).toString();
   final referenceLabel = f['referenceLabel'] as String;
-  final protein = _formatNum(f['protein'] as num?, asInt: true);
-  final carbs = _formatNum(f['carbs'] as num?, asInt: true);
+  // Macros are `double` on `Food` (S-001 — see
+  // `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`).
+  // The bundled JSON's macro values are integers in the v1 dataset
+  // but may be fractional in future revisions; we preserve the
+  // source precision here so the loader / seed parity test
+  // (`food_catalog_load_test.dart`) does not lose information
+  // across regenerations. `_formatNum` without `asInt` keeps the
+  // `.0`-free spelling for whole-valued doubles (e.g. `31` rather
+  // than `31.0`) and renders fractions with their decimal
+  // (e.g. `3.6`).
+  final protein = _formatNum(f['protein'] as num?);
+  final carbs = _formatNum(f['carbs'] as num?);
   final fiber = f['fiber'] == null
       ? 'null'
-      : (f['fiber'] as num).round().toString();
-  final fat = _formatNum(f['fat'] as num?, asInt: true);
+      : _formatNum(f['fiber'] as num);
+  final fat = _formatNum(f['fat'] as num?);
   final sodium = f['sodium_mg'] == null
       ? 'null'
-      : (f['sodium_mg'] as num).round().toString();
+      : _formatNum(f['sodium_mg'] as num);
 
   final buf = StringBuffer();
   buf.writeln('      const Food(');

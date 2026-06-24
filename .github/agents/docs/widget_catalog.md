@@ -1057,7 +1057,7 @@ value: `null` → create mode, non-null → edit mode.
 3. Category (`food_form_group`) — `DropdownButtonFormField<String?>` of the active groups + an "Ungrouped" `null` entry.
 4. Unit type (`food_form_unit_type`) — `DropdownButtonFormField<FoodUnitType>` of `count` / `grams`. Swapping units pre-fills sensible defaults for the reference amount + label.
 5. Reference amount (`food_form_reference_amount`) + Reference label (`food_form_reference_label`).
-6. Macros (per the reference above) — `Protein (g)` (required), `Carbs (g)` (required), `Fiber (g)` (optional, blank = unset), `Fat (g)` (required), `Sodium (mg)` (optional, blank = unset). All integer-only.
+6. Macros (per the reference above) — `Protein (g)` (required), `Carbs (g)` (required), `Fiber (g)` (optional, blank = unset), `Fat (g)` (required), `Sodium (mg)` (optional, blank = unset). All accept **decimal** input (e.g. `0.5`, `1.25`) via the `^\d*\.?\d*$` regex filter, mirroring the reference-amount field. Macros are stored as `double` on `Food` / `FoodDraft` so fractional grams persist (S-001).
 7. Notes (`food_form_notes`) — when `showNotesField: true`.
 
 **Save CTA**: the form does **not** render an inline save button. The host screen owns the primary bottom CTA via the shared `OmniBottomCTA` (see `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`). The host wires the CTA's `onPressed` to `FoodFormController.submit`, which routes through the form's validation + save pipeline — the same pipeline the inline button used to trigger.
@@ -1087,6 +1087,17 @@ value: `null` → create mode, non-null → edit mode.
 - Fiber is exposed alongside carbs in the macro list, matching
   the `Food.fiber` field on the model. The existing
   `calculateNetCarbs(food)` helper handles the net-carb math.
+- **Auto-select on focus** (S-004..S-006): every `TextFormField`
+  on the form (name, reference amount, reference label, all five
+  macros, notes) has a per-field `FocusNode` wired to a
+  `_selectAllOnFocus` handler. Tapping a pre-filled field
+  highlights the entire value via
+  `controller.selection = TextSelection(baseOffset: 0,
+  extentOffset: controller.text.length)`, so the user can
+  retype a value without first clearing it. Empty fields are a
+  no-op (no select-all across an empty range). The handler is
+  separate from the form-level `FocusNode` that drives
+  `autoSaveOnBlur`; the two co-exist without conflict.
 - All colors come from `OmniTheme.colors` /
   `ThemeData.colorScheme`. No hardcoded colors.
 

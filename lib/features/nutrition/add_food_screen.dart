@@ -480,11 +480,14 @@ class _FoodIdentity {
   final FoodUnitType unitType;
   final double referenceAmount;
   final String referenceLabel;
-  final int protein;
-  final int carbs;
-  final int? fiber;
-  final int fat;
-  final int? sodium;
+  // Macros mirror `Food`'s `double` field types. `_FoodIdentity` is
+  // a pure snapshot used for catalog-vs-library identity matching;
+  // see `FoodLibraryState._matchesIdentity` for the matching rule.
+  final double protein;
+  final double carbs;
+  final double? fiber;
+  final double fat;
+  final double? sodium;
 
   const _FoodIdentity({
     required this.nameLower,
@@ -805,8 +808,12 @@ class _UserFoodRowState extends State<_UserFoodRow> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cal = calculateCalories(widget.food);
+    // `formatGrams` keeps the no-suffix display for whole-number
+    // macros (e.g. `21.0 -> 21`) and renders fractional grams with
+    // their decimal (e.g. `0.5 -> 0.5`). See `formatGrams` in
+    // food_helpers.dart for the rationale.
     final macroText =
-        '$cal cal · ${widget.food.protein}P · ${widget.food.carbs}C · ${widget.food.fat}F';
+        '$cal cal · ${formatGrams(widget.food.protein)}P · ${formatGrams(widget.food.carbs)}C · ${formatGrams(widget.food.fat)}F';
 
     // D-2 / S-034: tapping the row surface (thumbnail, name, macro
     // text, or padding) opens the Edit Food screen. The trailing
@@ -1081,8 +1088,12 @@ class _CatalogRowState extends State<_CatalogRow> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cal = calculateCalories(widget.food);
+    // `formatGrams` keeps the no-suffix display for whole-number
+    // macros (e.g. `21.0 -> 21`) and renders fractional grams with
+    // their decimal (e.g. `0.5 -> 0.5`). See `formatGrams` in
+    // food_helpers.dart for the rationale.
     final macroText =
-        '$cal cal · ${widget.food.protein}P · ${widget.food.carbs}C · ${widget.food.fat}F';
+        '$cal cal · ${formatGrams(widget.food.protein)}P · ${formatGrams(widget.food.carbs)}C · ${formatGrams(widget.food.fat)}F';
 
     // libraryIdFor walks the user's library cache (O(n) over
     // user-owned foods). The list rebuilds under a ListenableBuilder

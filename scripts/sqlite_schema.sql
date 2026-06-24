@@ -1186,11 +1186,19 @@ CREATE TABLE app_food (
   reference_amount REAL NOT NULL,
   reference_label TEXT NOT NULL,
   is_catalog INTEGER NOT NULL DEFAULT 0,
-  protein INTEGER NOT NULL,
-  carbs INTEGER NOT NULL,
-  fiber INTEGER,
-  fat INTEGER NOT NULL,
-  sodium INTEGER,
+  -- Macros (protein, carbs, fat) are stored as `REAL` (not
+  -- `INTEGER`) so the form can persist fractional grams like
+  -- `0.5` g of fat. The column has no `CHECK` constraint, so
+  -- legacy rows with integer values continue to read back
+  -- correctly: the repository's `Food.fromMap` casts via
+  -- `((m['k'] as num?) ?? 0.0).toDouble()` which accepts both
+  -- `int` and `double` values from the same column. No row
+  -- migration is required.
+  protein REAL NOT NULL,
+  carbs REAL NOT NULL,
+  fiber REAL,
+  fat REAL NOT NULL,
+  sodium REAL,
   is_archived INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   image_path TEXT,
@@ -1250,11 +1258,15 @@ CREATE TABLE app_food_catalog (
   unit_type TEXT NOT NULL CHECK (unit_type IN ('count','grams')),
   reference_amount REAL NOT NULL,
   reference_label TEXT NOT NULL,
-  protein INTEGER NOT NULL,
-  carbs INTEGER NOT NULL,
-  fiber INTEGER,
-  fat INTEGER NOT NULL,
-  sodium INTEGER,
+  -- Macros: see `app_food.protein` for the REAL + back-compat
+  -- rationale. `INTEGER` rows from a legacy install are still
+  -- readable through `Food.fromMap`'s `((m['k'] as num?) ?? 0.0)
+  -- .toDouble()` cast.
+  protein REAL NOT NULL,
+  carbs REAL NOT NULL,
+  fiber REAL,
+  fat REAL NOT NULL,
+  sodium REAL,
   is_archived INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   image_path TEXT,
@@ -1340,11 +1352,15 @@ CREATE TABLE app_consumed_food (
   unit_type TEXT NOT NULL CHECK (unit_type IN ('count','grams')),
   reference_amount REAL NOT NULL,
   reference_label TEXT NOT NULL,
-  protein INTEGER NOT NULL,
-  carbs INTEGER NOT NULL,
-  fiber INTEGER,
-  fat INTEGER NOT NULL,
-  sodium INTEGER,
+  -- Frozen-snapshot macros. `REAL` is the column type so the
+  -- log-time snapshot can capture fractional grams; the legacy
+  -- `INTEGER` rows are still readable through the
+  -- `ConsumedFood.fromMap` num-cast pattern.
+  protein REAL NOT NULL,
+  carbs REAL NOT NULL,
+  fiber REAL,
+  fat REAL NOT NULL,
+  sodium REAL,
   amount_consumed REAL NOT NULL,
   group_id_snapshot TEXT,
   group_name_snapshot TEXT,

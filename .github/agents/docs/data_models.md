@@ -434,11 +434,11 @@ A food item with macronutrient metadata. Foods exist in two collections:
 | `referenceAmount` | `double` | Quantity the macros are expressed per (e.g., 100.0 for "per 100 g") |
 | `referenceLabel` | `String` | Display unit (e.g., "g", "egg", "tbsp") |
 | `isCatalog` | `bool` | `true` = bundled catalog, `false` = user library |
-| `protein` | `int` | Grams of protein per reference amount |
-| `carbs` | `int` | Grams of carbs per reference amount |
-| `fiber` | `int?` | Optional grams of fiber |
-| `fat` | `int` | Grams of fat per reference amount |
-| `sodium` | `int?` | Optional milligrams of sodium |
+| `protein` | `double` | Grams of protein per reference amount. `double` (S-001 — see [food-form-decimals-and-autofocus-plan.md](../plans/food-form-decimals-and-autofocus-plan.md)) so the food form can persist fractional grams like `0.5`. Display sites that want whole-gram rendering go through `formatGrams()` in `lib/core/utils/food_helpers.dart`. |
+| `carbs` | `double` | Grams of carbs per reference amount. `double` for the same fractional-gram reason as `protein`. |
+| `fiber` | `double?` | Optional grams of fiber. `double` for parity. |
+| `fat` | `double` | Grams of fat per reference amount. `double` for the same reason as `protein` — the v1.5 form lets the user type `0.5` g of fat. |
+| `sodium` | `double?` | Optional milligrams of sodium. `double` for parity. |
 | `isArchived` | `bool` | Soft-delete flag |
 | `notes` | `String?` | **Info** — optional free-form user notes. **Not** used to carry the catalog's category label; the category is stored on `groupId` instead. Catalog rows are seeded with `notes = null`; user-typed notes live on library rows. |
 | `imagePath` | `String?` | Optional native-first local file path to a food photo. Mirrors the `UserProfile.avatarPath` contract: the path is opaque to the repository and only the OS / user can keep the file alive. Web has no persistent file API, so the picker is a no-op there and the field stays `null`. Legacy rows (pre-image) deserialize to `null`. |
@@ -446,8 +446,8 @@ A food item with macronutrient metadata. Foods exist in two collections:
 | `updatedAtMs` | `int` | Last update timestamp |
 
 Derived getters:
-- `calories`: computed as `protein * 4 + carbs * 4 + fat * 9`
-- `netCarbs`: computed as `carbs - (fiber ?? 0)`
+- `calories`: computed as `(protein * 4 + carbs * 4 + fat * 9).round()` — the macro math is now `double`-precision (so `0.5 g` of fat survives storage), then rounded to `int` at the display boundary because the calorie UI shows whole kcal.
+- `netCarbs`: computed as `(carbs - (fiber ?? 0)).round()` — same display-boundary rationale.
 - `isCatalogFood`: `true` when `isCatalog == true`
 - `isLibraryFood`: `true` when `isCatalog == false`
 
@@ -497,11 +497,11 @@ A frozen snapshot of a logged food for a specific day. Stores complete state at 
 | `unitType` | `FoodUnitType` | **FROZEN** unit type |
 | `referenceAmount` | `double` | **FROZEN** reference amount |
 | `referenceLabel` | `String` | **FROZEN** reference label |
-| `protein` | `int` | **FROZEN** protein per reference |
-| `carbs` | `int` | **FROZEN** carbs per reference |
-| `fiber` | `int?` | **FROZEN** fiber (nullable) |
-| `fat` | `int` | **FROZEN** fat per reference |
-| `sodium` | `int?` | **FROZEN** sodium (nullable) |
+| `protein` | `double` | **FROZEN** protein per reference. `double` so the log-time snapshot can capture fractional grams like `0.5` (S-001). |
+| `carbs` | `double` | **FROZEN** carbs per reference. `double` for parity. |
+| `fiber` | `double?` | **FROZEN** fiber (nullable). `double` for parity. |
+| `fat` | `double` | **FROZEN** fat per reference. `double` for parity. |
+| `sodium` | `double?` | **FROZEN** sodium (nullable). `double` for parity. |
 | `amountConsumed` | `double` | Amount consumed in the food's own unit (g for grams-type foods, count for count-type foods) |
 | `groupIdSnapshot` | `String?` | **FROZEN** group ID |
 | `groupNameSnapshot` | `String?` | **FROZEN** group name |
