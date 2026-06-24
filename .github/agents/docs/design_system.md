@@ -228,6 +228,34 @@ The home screen's `HUB` eyebrow and body-centered `TRAIN` title are sheet / titl
 4. Vertical scrolling preferred — horizontal swipe only for carousel/peek patterns
 5. Information density scales with screen size, never with complexity
 
+### Large-screen content column (tablet / iPad / large unfolded foldable)
+
+One app-wide layout rule, applied automatically by
+`OmniGradientBackground` (see the [Widget Catalog](widget_catalog.md)
+"OmniGradientBackground" entry). Screens do not opt in or out; the
+behavior is consistent across every screen.
+
+- **Phone-class widths** (≤ `OmniTheme.kColumnMinActivationWidth` =
+  500 dp, includes every phone and a foldable in folded state): the
+  centered column is **inert**. Content fills the surface edge to
+  edge. Phones are byte-for-byte identical to today.
+- **Tablet-class widths** (> 500 dp, includes every tablet and a
+  large unfolded foldable): content sits in a horizontally centered
+  column of `OmniTheme.kColumnMaxWidth` = 480 dp, with equal empty
+  margins on both sides. The column is a hard cap — it does not
+  grow with the surface.
+- **Vertical sizes are unchanged at every width.** The gradient,
+  the radial highlight, and the noise overlay continue to fill the
+  full surface. Only the `child`'s horizontal extent is capped.
+- **No split layouts, no text-scaling changes, no orientation
+  handling, no user-facing toggle.** The only behavior is one
+  centered column.
+- Implementation lives in a single place
+  (`lib/widgets/layout/omni_gradient_background.dart`); every
+  screen-level route wraps its page in `OmniGradientBackground` per
+  the navigation contract, so the cap reaches every screen with no
+  per-screen logic.
+
 ---
 
 ## Depth & Shadow System

@@ -38,7 +38,10 @@ lib/widgets/
 
 **File**: `lib/widgets/layout/omni_gradient_background.dart`
 
-Full-screen cosmic gradient backdrop used on every screen.
+Full-screen cosmic gradient backdrop used on every screen. **Also the
+single source of truth for the app-wide large-screen content column
+cap** — see the [Design System](design_system.md) "Large-screen
+content column" rule.
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -49,6 +52,35 @@ Full-screen cosmic gradient backdrop used on every screen.
 1. Vertical linear gradient (`backgroundGradientTop` → `backgroundGradientBottom`)
 2. Optional radial white highlight (10% opacity)
 3. Optional film-grain noise overlay (`NoiseOverlayPainter`) — controlled by `OmniTheme.enableBackgroundNoise`
+4. The `child`, wrapped automatically in a centered column on large screens (see below)
+
+**Large-screen content column (built-in)**:
+
+The `child` is wrapped in a `Center` + `ConstrainedBox(maxWidth:
+OmniTheme.kColumnMaxWidth)` when the surface is at least
+`OmniTheme.kColumnMinActivationWidth` dp wide. Below the threshold
+the child passes through unchanged. This is the **only** place the
+app's centered-column behavior is implemented, and every screen
+reaches it for free because every screen-level route wraps its page
+in `OmniGradientBackground` (per the navigation contract), and the
+home / onboarding surfaces are wrapped in the gradient inside
+`MaterialApp.builder` in `app.dart`.
+
+- **Phone-class widths** (≤ 500 dp, includes every phone and a
+  foldable in folded state): cap is fully inert. `child` fills the
+  surface.
+- **Tablet-class widths** (> 500 dp, includes every tablet and a
+  large unfolded foldable): `child` sits in a centered column of
+  `OmniTheme.kColumnMaxWidth` (480) dp, with equal empty margins on
+  both sides. The column is a hard cap — it does not grow with the
+  surface.
+- **Vertical sizes are unchanged at every width** — the gradient
+  `Container` and the radial highlight / noise overlays continue to
+  fill the full surface; only the `child`'s horizontal extent is
+  capped.
+
+Per-screen opt-outs are not supported. The cap is a single global
+behavior; the design system is intentionally phone-shaped.
 
 ### `OmniBackHeader`
 

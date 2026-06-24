@@ -259,6 +259,11 @@ See [Design System](design_system.md) for the full token reference. Key categori
 - Animation (press scale, durations, curves)
 - Shadows (deep shadow, glow shadow)
 - Button dimensions (primary height, utility radius, icon size)
+- Large-screen content column (`kColumnMaxWidth`,
+  `kColumnMinActivationWidth`) — see the
+  [Design System](design_system.md) "Large-screen content column"
+  rule. Used by `OmniGradientBackground` to cap the content
+  column on tablets and large unfolded foldables.
 
 ---
 

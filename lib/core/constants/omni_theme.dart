@@ -414,6 +414,37 @@ class OmniTheme {
   static const double kRestOverlayToCTAGap = 80.0;
 
   // ═══════════════════════════════════════════════════════════
+  // LARGE-SCREEN CONTENT COLUMN
+  // ═══════════════════════════════════════════════════════════
+
+  /// Maximum width of the centered content column on large-screen
+  /// devices (tablets, iPads, large unfolded foldables). Below the
+  /// activation threshold the content fills the surface with zero
+  /// added side margins; above the threshold the content sits in a
+  /// column of [kColumnMaxWidth] dp, horizontally centered, with
+  /// equal empty margins on the left and right.
+  ///
+  /// Tuned to roughly match a large phone (iPhone 16 Pro Max ≈
+  /// 430 dp + breathing room), keeping related information visually
+  /// close and the dense instrument-panel feel intact on big
+  /// screens. The width is a hard cap: it does not grow toward the
+  /// screen edges as the surface gets wider.
+  static const double kColumnMaxWidth = 480.0;
+
+  /// Minimum surface width at which the centered content column
+  /// activates. Any surface below this threshold (every phone class
+  /// — including the largest phones at ~430 dp) renders content
+  /// full-bleed with no added margins, preserving the existing phone
+  /// layout exactly. A foldable in folded (phone-width) state is
+  /// below the threshold; an unfolded large foldable or any tablet
+  /// is above it.
+  ///
+  /// Set just above the largest phone width so the cap is fully
+  /// inert on phones. Tuned with a small buffer so a future phone
+  /// size bump (e.g. 440–460 dp) still does not activate the cap.
+  static const double kColumnMinActivationWidth = 500.0;
+
+  // ═══════════════════════════════════════════════════════════
   // TEXT SCALE CLAMP
   // ═══════════════════════════════════════════════════════════
 

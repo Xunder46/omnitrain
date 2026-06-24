@@ -43,6 +43,7 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
+import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
@@ -51,6 +52,7 @@ import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/fake_preferences_service.dart';
+import 'helpers/test_content_column.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -72,10 +74,12 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
-            home: Scaffold(
-              bottomNavigationBar: OmniBottomCTA(
-                label: 'Continue',
-                onPressed: () {},
+            home: OmniGradientBackground(
+              child: Scaffold(
+                bottomNavigationBar: OmniBottomCTA(
+                  label: 'Continue',
+                  onPressed: () {},
+                ),
               ),
             ),
           ),
@@ -124,10 +128,21 @@ void main() {
         );
 
         // Width rule: the button's render box is inset by
-        //   OmniTheme.bottomCTAHorizontalPadding on each side.
-        final expectedLeft = OmniTheme.bottomCTAHorizontalPadding;
+        //   OmniTheme.bottomCTAHorizontalPadding on each side from
+        //   the **centered content column's** edges, not the
+        //   surface's. On a phone-class surface the column fills
+        //   the surface and the assertion is identical to the
+        //   pre-large-screen contract; on a tablet-class surface
+        //   the column is narrower than the surface and the
+        //   assertion still holds because it is measured from the
+        //   column.
+        final column = contentColumnRectFor(surface.width);
+        final expectedLeft =
+            column.left + OmniTheme.bottomCTAHorizontalPadding;
         final expectedRight =
-            surface.width - OmniTheme.bottomCTAHorizontalPadding;
+            column.left +
+            column.width -
+            OmniTheme.bottomCTAHorizontalPadding;
         expect(buttonBox.left, closeTo(expectedLeft, 0.5));
         expect(buttonBox.right, closeTo(expectedRight, 0.5));
       },
@@ -344,8 +359,15 @@ void main() {
         final repo = await _freshRepo();
         final periodState = PeriodState(repo);
 
+        // Production pushes this screen via OmniRoute, which wraps
+        // it in OmniGradientBackground — we mirror that here so
+        // the large-screen content column cap is exercised.
         await tester.pumpWidget(
-          MaterialApp(home: PeriodListScreen(periodState: periodState)),
+          MaterialApp(
+            home: OmniGradientBackground(
+              child: PeriodListScreen(periodState: periodState),
+            ),
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -359,16 +381,21 @@ void main() {
           ),
         );
         // Shared horizontal margin: the button's left edge is inset
-        // by OmniTheme.bottomCTAHorizontalPadding from the screen
-        // edge, and its right edge is mirrored.
-        expect(
-          buttonRect.left,
-          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
-        expect(
-          buttonRect.right,
-          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
+        // by OmniTheme.bottomCTAHorizontalPadding from the
+        // **centered content column's** edges, not the surface's.
+        // On a phone-class surface the column fills the surface and
+        // the assertion matches the pre-large-screen contract; on
+        // a tablet-class surface the column is narrower and the
+        // assertion still holds.
+        final column = contentColumnRectFor(surface.width);
+        final expectedLeft =
+            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedRight =
+            column.left +
+            column.width -
+            OmniTheme.bottomCTAHorizontalPadding;
+        expect(buttonRect.left, closeTo(expectedLeft, 0.5));
+        expect(buttonRect.right, closeTo(expectedRight, 0.5));
         // Shared height.
         expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
         // Shared vertical anchor: button bottom is offset above the
@@ -3562,17 +3589,22 @@ void main() {
         // Future date — primary bottom CTA must be visible.
         final futureDate = DateTime(2099, 12, 31);
 
+        // Production pushes this screen via OmniRoute, which wraps
+        // it in OmniGradientBackground — we mirror that here so
+        // the large-screen content column cap is exercised.
         await tester.pumpWidget(
           MaterialApp(
-            home: DaySessionListScreen(
-              date: futureDate,
-              calendarState: calendarState,
-              routineState: routineState,
-              workoutState: workoutState,
-              routineSessionService: routineSessionService,
-              sessionSummaryService: sessionSummaryService,
-              settingsState: SettingsState(repo, fakePreferencesService()),
-              timerAlertService: FakeTimerAlertService(),
+            home: OmniGradientBackground(
+              child: DaySessionListScreen(
+                date: futureDate,
+                calendarState: calendarState,
+                routineState: routineState,
+                workoutState: workoutState,
+                routineSessionService: routineSessionService,
+                sessionSummaryService: sessionSummaryService,
+                settingsState: SettingsState(repo, fakePreferencesService()),
+                timerAlertService: FakeTimerAlertService(),
+              ),
             ),
           ),
         );
@@ -3606,18 +3638,22 @@ void main() {
           findsOneWidget,
         );
 
-        // The CTA sits at the shared width and vertical anchor.
+        // The CTA sits at the shared width and vertical anchor,
+        // measured from the **centered content column's** edges
+        // (not the surface's) so the assertion holds on both
+        // phone- and tablet-class surfaces.
         final buttonRect = tester.getRect(
           find.descendant(of: ctaFinder, matching: find.byType(FilledButton)),
         );
-        expect(
-          buttonRect.left,
-          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
-        expect(
-          buttonRect.right,
-          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
+        final column = contentColumnRectFor(surface.width);
+        final expectedLeft =
+            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedRight =
+            column.left +
+            column.width -
+            OmniTheme.bottomCTAHorizontalPadding;
+        expect(buttonRect.left, closeTo(expectedLeft, 0.5));
+        expect(buttonRect.right, closeTo(expectedRight, 0.5));
         expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
         final expectedBottom =
             surface.height -
@@ -7564,6 +7600,380 @@ void main() {
         reason: 'rest chip must clear the Log Set button on the detail view',
       );
     });
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Large-screen content column
+  // ══════════════════════════════════════════════════════════════════════
+
+  group('Large-screen content column', () {
+    testWidgets(
+      'S-001: phone-class surface — column is inert, content fills the width',
+      (WidgetTester tester) async {
+        // 400 × 800 = typical large phone (e.g. iPhone 13/14). Below
+        // `kColumnMinActivationWidth` the centered column must be
+        // fully inert.
+        const surface = Size(400, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: OmniGradientBackground(
+              child: Scaffold(
+                appBar: AppBar(title: const Text('Phone')),
+                body: const Center(child: Text('Body')),
+                bottomNavigationBar: OmniBottomCTA(
+                  label: 'Log Set',
+                  onPressed: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The Scaffold (and therefore the CTA) fills the surface
+        // width: the button's left edge sits at the shared horizontal
+        // padding from the screen edge, and its right edge sits at
+        // `surface.width - bottomCTAHorizontalPadding`. There is no
+        // extra side margin.
+        final buttonRect = tester.getRect(
+          find.descendant(
+            of: find.byType(OmniBottomCTA),
+            matching: find.byType(FilledButton),
+          ),
+        );
+        expect(
+          buttonRect.left,
+          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
+          reason:
+              'on a phone-class surface the CTA must be inset only by '
+              'bottomCTAHorizontalPadding from the screen edge',
+        );
+        expect(
+          buttonRect.right,
+          closeTo(
+            surface.width - OmniTheme.bottomCTAHorizontalPadding,
+            0.5,
+          ),
+          reason:
+              'on a phone-class surface the CTA must reach to '
+              '`surface.width - bottomCTAHorizontalPadding`',
+        );
+        // Sanity check: the button is exactly `surface.width -
+        // 2 × padding` wide. The cap is fully inert on this surface.
+        expect(
+          buttonRect.width,
+          closeTo(
+            surface.width - 2 * OmniTheme.bottomCTAHorizontalPadding,
+            0.5,
+          ),
+          reason: 'on a phone-class surface the CTA must fill the width',
+        );
+      },
+    );
+
+    testWidgets(
+      'S-002: phone-class surface — column CTA still spans the full width',
+      (WidgetTester tester) async {
+        // 360 × 780 = a smaller / foldable-folded phone-class surface.
+        // The cap must be fully inert here too.
+        const surface = Size(360, 780);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: OmniGradientBackground(
+              child: Scaffold(
+                bottomNavigationBar: OmniBottomCTA(
+                  label: 'Finish Workout',
+                  onPressed: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final buttonRect = tester.getRect(find.byType(FilledButton));
+        expect(
+          buttonRect.left,
+          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
+        );
+        expect(
+          buttonRect.right,
+          closeTo(
+            surface.width - OmniTheme.bottomCTAHorizontalPadding,
+            0.5,
+          ),
+        );
+        expect(
+          buttonRect.width,
+          surface.width - 2 * OmniTheme.bottomCTAHorizontalPadding,
+          reason: 'CTA width on a phone is surface.width minus 2× padding',
+        );
+      },
+    );
+
+    testWidgets(
+      'S-003: tablet-class surface — content sits in a centered column with margins',
+      (WidgetTester tester) async {
+        // 1024 × 1366 = iPad Pro 12.9 landscape, the canonical
+        // "largest supported tablet" target. The cap must engage:
+        // the Scaffold (and therefore the CTA) sits in a column of
+        // `kColumnMaxWidth` dp centered in the surface, with
+        // non-zero equal side margins.
+        const surface = Size(1024, 1366);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: OmniGradientBackground(
+              child: Scaffold(
+                appBar: AppBar(title: const Text('Tablet')),
+                body: const Center(child: Text('Body')),
+                bottomNavigationBar: OmniBottomCTA(
+                  label: 'Log Set',
+                  onPressed: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The Scaffold's render box is the centered column.
+        final scaffoldRect = tester.getRect(find.byType(Scaffold));
+        expect(
+          scaffoldRect.width,
+          closeTo(OmniTheme.kColumnMaxWidth, 0.5),
+          reason:
+              'on a tablet-class surface the Scaffold must occupy a '
+              'column of `kColumnMaxWidth` dp',
+        );
+        // Equal side margins, both non-zero.
+        final leftMargin = scaffoldRect.left;
+        final rightMargin = surface.width - scaffoldRect.right;
+        expect(
+          leftMargin,
+          closeTo(rightMargin, 0.5),
+          reason: 'centered column must have equal side margins',
+        );
+        expect(
+          leftMargin,
+          greaterThan(0.0),
+          reason: 'centered column must not touch either screen edge',
+        );
+        // And the column must be measurably narrower than the
+        // surface — the cap is engaged.
+        expect(
+          scaffoldRect.width,
+          lessThan(surface.width),
+          reason: 'content column must be narrower than the surface',
+        );
+        // The body content sits within the centered column.
+        final bodyFinder = find.text('Body');
+        expect(bodyFinder, findsOneWidget);
+        final bodyRect = tester.getRect(bodyFinder);
+        expect(
+          bodyRect.left,
+          greaterThanOrEqualTo(scaffoldRect.left),
+          reason: 'body content must sit inside the centered column',
+        );
+        expect(
+          bodyRect.right,
+          lessThanOrEqualTo(scaffoldRect.right),
+        );
+      },
+    );
+
+    testWidgets(
+      'S-004: tablet-class surface — bottom CTA is centered and capped',
+      (WidgetTester tester) async {
+        const surface = Size(1024, 1366);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: OmniGradientBackground(
+              child: Scaffold(
+                bottomNavigationBar: OmniBottomCTA(
+                  label: 'Finish Workout',
+                  onPressed: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The button's left edge is inset from the screen edge by
+        //   (columnLeftMargin) + (columnPadding)
+        // = ((surface.width - kColumnMaxWidth) / 2)
+        //   + bottomCTAHorizontalPadding,
+        // and its right edge is mirrored.
+        final column = contentColumnRectFor(surface.width);
+        final expectedLeft =
+            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedRight =
+            column.left +
+            column.width -
+            OmniTheme.bottomCTAHorizontalPadding;
+        final buttonRect = tester.getRect(
+          find.descendant(
+            of: find.byType(OmniBottomCTA),
+            matching: find.byType(FilledButton),
+          ),
+        );
+        expect(buttonRect.left, closeTo(expectedLeft, 0.5));
+        expect(buttonRect.right, closeTo(expectedRight, 0.5));
+        // The button does not reach either screen edge.
+        expect(
+          buttonRect.left,
+          greaterThan(0.0),
+          reason: 'CTA must not touch the left screen edge on a tablet',
+        );
+        expect(
+          buttonRect.right,
+          lessThan(surface.width),
+          reason: 'CTA must not touch the right screen edge on a tablet',
+        );
+        // The side margins are non-zero and equal — the CTA is
+        // centered within the surface.
+        final leftMargin = buttonRect.left;
+        final rightMargin = surface.width - buttonRect.right;
+        expect(
+          leftMargin,
+          closeTo(rightMargin, 0.5),
+          reason: 'CTA side margins must be equal on a tablet',
+        );
+        expect(leftMargin, greaterThan(0.0));
+        // Heights are unchanged.
+        expect(
+          buttonRect.height,
+          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
+        );
+        // Vertical anchor is unchanged — the button clears the
+        // device safe area by `bottomCTAVerticalBottomPadding`.
+        final expectedBottom =
+            surface.height -
+            tester.view.padding.bottom / tester.view.devicePixelRatio -
+            OmniTheme.bottomCTAVerticalBottomPadding;
+        expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
+      },
+    );
+
+    testWidgets(
+      'S-005: tablet-class surface — column does not grow with the surface',
+      (WidgetTester tester) async {
+        // Two different tablet-class surfaces — landscape and
+        // portrait. The column width must be the same in both; only
+        // the side margins grow.
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        for (final surface in const [
+          Size(1024, 1366), // iPad Pro 12.9 landscape
+          Size(1366, 1024), // iPad Pro 12.9 portrait
+        ]) {
+          await tester.binding.setSurfaceSize(surface);
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: OmniGradientBackground(
+                child: Scaffold(
+                  body: const Center(child: Text('Body')),
+                  bottomNavigationBar: OmniBottomCTA(
+                    label: 'Log Set',
+                    onPressed: () {},
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final scaffoldRect = tester.getRect(find.byType(Scaffold));
+          expect(
+            scaffoldRect.width,
+            closeTo(OmniTheme.kColumnMaxWidth, 0.5),
+            reason:
+                'content column must stay at kColumnMaxWidth on a '
+                '$surface surface (must not grow with the surface)',
+          );
+          // And it is measurably narrower than the surface.
+          expect(
+            scaffoldRect.width,
+            lessThan(surface.width),
+            reason:
+                'content column must be narrower than the surface '
+                'on $surface',
+          );
+        }
+      },
+    );
+
+    testWidgets(
+      'S-006: threshold is exactly kColumnMinActivationWidth',
+      (WidgetTester tester) async {
+        // 500 dp is the activation threshold itself — the cap must
+        // engage (the column width is `kColumnMaxWidth`).
+        // 499 dp is one dp below the threshold — the cap must be
+        // fully inert (the column fills the surface).
+        for (final entry in const <({double width, bool shouldCap})>[
+          (width: 499, shouldCap: false),
+          (width: 500, shouldCap: true),
+        ]) {
+          final surface = Size(entry.width, 800);
+          await tester.binding.setSurfaceSize(surface);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: OmniGradientBackground(
+                child: Scaffold(
+                  bottomNavigationBar: OmniBottomCTA(
+                    label: 'Log Set',
+                    onPressed: () {},
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          final buttonRect = tester.getRect(find.byType(FilledButton));
+          if (entry.shouldCap) {
+            // Cap engaged: button is narrower than the surface.
+            expect(
+              buttonRect.width,
+              closeTo(
+                OmniTheme.kColumnMaxWidth -
+                    2 * OmniTheme.bottomCTAHorizontalPadding,
+                0.5,
+              ),
+              reason:
+                  'at ${entry.width} dp wide the cap must engage and the '
+                  'CTA must be inset within the centered column',
+            );
+          } else {
+            // Cap inert: button fills the surface.
+            expect(
+              buttonRect.width,
+              closeTo(
+                surface.width - 2 * OmniTheme.bottomCTAHorizontalPadding,
+                0.5,
+              ),
+              reason:
+                  'at ${entry.width} dp wide the cap must be inert and '
+                  'the CTA must fill the available width',
+            );
+          }
+        }
+      },
+    );
   });
 }
 

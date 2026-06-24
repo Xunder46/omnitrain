@@ -26,7 +26,10 @@ import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
+import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
+
+import 'helpers/test_content_column.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -154,8 +157,15 @@ void main() {
         final repo = await _freshRepo();
         final state = NutritionState(repo);
 
+        // Production pushes this screen via OmniRoute, which wraps
+        // it in OmniGradientBackground — we mirror that here so
+        // the large-screen content column cap is exercised.
         await tester.pumpWidget(
-          MaterialApp(home: NutritionTargetScreen(nutritionState: state)),
+          MaterialApp(
+            home: OmniGradientBackground(
+              child: NutritionTargetScreen(nutritionState: state),
+            ),
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -175,14 +185,19 @@ void main() {
             matching: find.byType(FilledButton),
           ),
         );
-        expect(
-          buttonRect.left,
-          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
-        expect(
-          buttonRect.right,
-          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
+        // Shared horizontal margin, measured from the **centered
+        // content column's** edges (not the surface's) so the
+        // assertion holds on both phone- and tablet-class
+        // surfaces.
+        final column = contentColumnRectFor(surface.width);
+        final expectedLeft =
+            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedRight =
+            column.left +
+            column.width -
+            OmniTheme.bottomCTAHorizontalPadding;
+        expect(buttonRect.left, closeTo(expectedLeft, 0.5));
+        expect(buttonRect.right, closeTo(expectedRight, 0.5));
         expect(
           buttonRect.height,
           closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
@@ -2697,9 +2712,11 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
-            home: AddFoodScreen(
-              foodLibraryState: foodLib,
-              nutritionState: nutrition,
+            home: OmniGradientBackground(
+              child: AddFoodScreen(
+                foodLibraryState: foodLib,
+                nutritionState: nutrition,
+              ),
             ),
           ),
         );
@@ -2732,21 +2749,25 @@ void main() {
         // The "+ New Food" label is rendered by the CTA.
         expect(find.text('+ New Food'), findsOneWidget);
 
-        // The CTA sits at the shared width and vertical anchor.
+        // The CTA sits at the shared width and vertical anchor,
+        // measured from the **centered content column's** edges
+        // (not the surface's) so the assertion holds on both
+        // phone- and tablet-class surfaces.
         final buttonRect = tester.getRect(
           find.descendant(
             of: ctaFinder,
             matching: find.byType(FilledButton),
           ),
         );
-        expect(
-          buttonRect.left,
-          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
-        expect(
-          buttonRect.right,
-          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
+        final column = contentColumnRectFor(surface.width);
+        final expectedLeft =
+            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedRight =
+            column.left +
+            column.width -
+            OmniTheme.bottomCTAHorizontalPadding;
+        expect(buttonRect.left, closeTo(expectedLeft, 0.5));
+        expect(buttonRect.right, closeTo(expectedRight, 0.5));
         expect(
           buttonRect.height,
           closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
@@ -2775,9 +2796,11 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
-            home: AddFoodScreen(
-              foodLibraryState: foodLib,
-              nutritionState: nutrition,
+            home: OmniGradientBackground(
+              child: AddFoodScreen(
+                foodLibraryState: foodLib,
+                nutritionState: nutrition,
+              ),
             ),
           ),
         );
@@ -2812,21 +2835,25 @@ void main() {
         final newCategoryKey = find.byKey(const Key('new_category_button'));
         expect(newCategoryKey, findsOneWidget);
 
-        // The CTA sits at the shared width and vertical anchor.
+        // The CTA sits at the shared width and vertical anchor,
+        // measured from the **centered content column's** edges
+        // (not the surface's) so the assertion holds on both
+        // phone- and tablet-class surfaces.
         final buttonRect = tester.getRect(
           find.descendant(
             of: ctaFinder,
             matching: find.byType(FilledButton),
           ),
         );
-        expect(
-          buttonRect.left,
-          closeTo(OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
-        expect(
-          buttonRect.right,
-          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
-        );
+        final column = contentColumnRectFor(surface.width);
+        final expectedLeft =
+            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedRight =
+            column.left +
+            column.width -
+            OmniTheme.bottomCTAHorizontalPadding;
+        expect(buttonRect.left, closeTo(expectedLeft, 0.5));
+        expect(buttonRect.right, closeTo(expectedRight, 0.5));
         expect(
           buttonRect.height,
           closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
