@@ -17,7 +17,7 @@ import '../../../widgets/layout/omni_surface.dart';
 /// visual cue only.
 ///
 /// Priority of information on the card (S-100):
-///   1. The **calorie figure** (`"{consumed} / {target} CAL"`) is
+///   1. The **calorie figure** (`"{consumed} / {target} Cal"`) is
 ///      the headline — the largest, brightest text on the card.
 ///   2. A **single horizontal gauge** below the figure: fill
 ///      length = `consumed / target` (capped at 100%), subdivided
@@ -46,7 +46,7 @@ import '../../../widgets/layout/omni_surface.dart';
 ///
 /// Required states:
 ///   - **Empty** (S-104): `consumedCalories == 0`. The figure
-///     shows `"0 / {target} CAL"`, the gauge fill has zero
+///     shows `"0 / {target} Cal"`, the gauge fill has zero
 ///     width, and the caption row renders DASHES (`—`) for each
 ///     macro — NOT `0%`. We do not imply a real split when
 ///     there is no data. The card is still tappable.
@@ -187,7 +187,7 @@ class NutritionSummaryCard extends StatelessWidget {
 }
 
 /// Headline row (S-100, S-104, S-105): small dining icon, the
-/// `{consumed} / {target} CAL` text (the brightest, largest
+/// `{consumed} / {target} Cal` text (the brightest, largest
 /// text on the card), spacer, chevron-right navigation cue.
 ///
 /// Color rules:
@@ -261,7 +261,7 @@ class _Headline extends StatelessWidget {
   static String _formatHeadline(int consumed, int? target) {
     final consumedStr = _fmt(consumed);
     final targetStr = target == null ? '—' : _fmt(target);
-    return '$consumedStr / $targetStr CAL';
+    return '$consumedStr / $targetStr Cal';
   }
 
   static String _fmt(int v) {

@@ -233,12 +233,12 @@ Self-contained gauge card on the home screen (Iteration 5 / S-100..S-106 — sup
 
 **Behavior (S-100..S-106)**:
 - **Geometry**: the card is a `Column` of three regions inside a `Material` + `InkWell` + `Ink` with rounded-corner `BoxDecoration` chrome. The three regions:
-  1. **Headline row** (`Key('nutrition_card_headline')`): small `Icons.local_dining_outlined` (18 px, `textDominant`) + 8-px gap + the headline `Text` `"{consumed} / {target} CAL"` (comma-grouped thousands) — the LARGEST, BRIGHTEST text on the card (`theme.textTheme.headlineSmall` + `FontWeight.w800` + `textDominant`) + 8-px gap + `Icons.chevron_right` (22 px, `textDominant`) at the right edge. The headline is the only element that earns white emphasis.
+  1. **Headline row** (`Key('nutrition_card_headline')`): small `Icons.local_dining_outlined` (18 px, `textDominant`) + 8-px gap + the headline `Text` `"{consumed} / {target} Cal"` (comma-grouped thousands) — the LARGEST, BRIGHTEST text on the card (`theme.textTheme.headlineSmall` + `FontWeight.w800` + `textDominant`) + 8-px gap + `Icons.chevron_right` (22 px, `textDominant`) at the right edge. The headline is the only element that earns white emphasis.
   2. **Gauge row** (`Key('nutrition_card_gauge')`): a `Stack` of two layers — the `track` (full-width `divider`-colored pill, 12 px tall, `Key('nutrition_card_gauge_track')`) and the `fill` (a clipped `Row` of three macro `Container`s with `Key('nutrition_card_gauge_segment_0'..'2')`). The fill width = `clamp(consumed / target, 0, 1) × trackWidth` (S-102); the segments are sized as a share of CONSUMED calories (S-103), so they live INSIDE the fill, not across the full bar.
   3. **Caption row** (`Key('nutrition_card_caption')`): a `spaceBetween` `Row` of three `(colorMarker, "M N%")` groups with keys `nutrition_card_caption_protein` / `_carbs` / `_fat`. The caption percentages are the macro's share of CONSUMED calories (S-103). The empty state renders DASHES (`—`), NOT `0%` (S-104).
 - **Tap target** (S-101): the ENTIRE card is wrapped in a single `InkWell(onTap: onTap)`. Tapping ANY region of the card (headline text, gauge track, fill, caption row, chevron) fires `onTap`. The empty state is still tappable.
 - **Empty state** (S-104): when `consumedCalories <= 0` OR `targetCalories` is null / `<= 0`:
-  - Headline renders `"0 / {target ?? "—"} CAL"` in `textDominant` (NOT a warning tone — there is no data to warn about).
+  - Headline renders `"0 / {target ?? "—"} Cal"` in `textDominant` (NOT a warning tone — there is no data to warn about).
   - Gauge fill is not rendered (zero width / absent).
   - Caption row renders DASHES (`—`) for each macro, NOT `0%`. We do not imply a real split when there is no data.
 - **Over-budget state** (S-105): when `consumedCalories > targetCalories > 0`:

@@ -238,7 +238,7 @@ self-contained gauge card that:
   full-bleed, NOT square corners, NOT pure-white).
 - Treats the ENTIRE card as one tap target into the nutrition
   feature — the chevron is only a visual cue.
-- Uses the calorie figure (`"{consumed} / {target} CAL"`) as the
+- Uses the calorie figure (`"{consumed} / {target} Cal"`) as the
   HEADLINE (largest, brightest text on the card).
 - Renders ONE horizontal gauge below the figure: fill length =
   consumed / goal, segments inside the fill = protein / carbs /
@@ -267,7 +267,7 @@ self-contained gauge card that:
   / steel-blue / amber) is added; values are defined per theme.
 - Card chrome matches the training-tile visual family: 20 px
   radius, hairline border, soft shadow lift.
-- Empty state (nothing logged) renders calorie figure `"0 / {target} CAL"`,
+- Empty state (nothing logged) renders calorie figure `"0 / {target} Cal"`,
   empty gauge, and dashes `—` in the captions (NOT `0%`).
 - Over-budget state renders gauge at 100%, calorie figure in
   warning tone (`theme.colorScheme.error`), captions show the
@@ -286,7 +286,7 @@ self-contained gauge card that:
 - [ ] The unfilled remainder is visibly distinct as remaining budget, with a subtle marker at the goal point.
 - [ ] The caption row shows protein, carb, and fat percentages with matching color markers; percentages agree with the segment proportions.
 - [ ] No element uses pure white as a fill; the three macro colors are muted (terracotta / steel-blue / amber) and clearly distinct.
-- [ ] With nothing logged: gauge is empty, figure shows `0 / {target} CAL`, captions show dashes — not `0%`, not a broken bar.
+- [ ] With nothing logged: gauge is empty, figure shows `0 / {target} Cal`, captions show dashes — not `0%`, not a broken bar.
 - [ ] With consumed > goal: gauge full, figure in warning tone, no overflow.
 - [ ] The training tiles above the card are unchanged and remain fully on screen.
 
@@ -298,7 +298,7 @@ self-contained gauge card that:
 - Flow:
   1. `HomeScreen.build` mounts `NutritionSummaryCard` with the consumed/target/macro kcals from `NutritionState`.
   2. Card renders inside its inset margin (16 px each side, NOT full-bleed).
-  3. Top row: cross icon + headline text `"643 / 2,000 CAL"` (the headline is the largest text on the card) + chevron-right at the right edge.
+  3. Top row: cross icon + headline text `"643 / 2,000 Cal"` (the headline is the largest text on the card) + chevron-right at the right edge.
   4. Middle row: horizontal gauge — the `track` is the full width, the `fill` is `643 / 2000 ≈ 32.2%` of the track, subdivided by macro kcal share of consumed.
   5. Bottom row: caption row with three `(colorMarker, percentage)` entries for protein / carbs / fat.
 - Expected outcome: Card has rounded corners and raised shadow; headline is the brightest/largest text; gauge fill is roughly 32% of the track width; the three macro segment widths sum to the fill width; the three caption percentages sum to `100 ±1` (rounding).
@@ -338,7 +338,7 @@ self-contained gauge card that:
 - Flow:
   1. Card receives `consumedCalories=0`.
   2. Card renders empty branch.
-- Expected outcome: Calorie figure shows `"0 / 2,000 CAL"` (or `"0 / 2,000 CAL"` when target set) — does NOT show the goal as a number-only figure. The gauge is empty (no fill width). The caption row renders DASHES (`—`), NOT `0%`. The card is still tappable. The card chrome (rounded corners, raised look, inset margins) is unchanged.
+- Expected outcome: Calorie figure shows `"0 / 2,000 Cal"` (or `"0 / 2,000 Cal"` when target set) — does NOT show the goal as a number-only figure. The gauge is empty (no fill width). The caption row renders DASHES (`—`), NOT `0%`. The card is still tappable. The card chrome (rounded corners, raised look, inset margins) is unchanged.
 - Edge case of: S-100.
 
 #### S-105: Over-budget state — consumed > goal
@@ -453,7 +453,7 @@ Build (happy state):
      the mockup; dining icon is already in the project icon set
      and was used in the prior strip)
    - 8-px `SizedBox`
-   - Center: headline `Text('${consumed} / ${target} CAL')` with
+   - Center: headline `Text('${consumed} / ${target} Cal')` with
      `theme.textTheme.headlineSmall` + `FontWeight.w800` +
      `themeColors.textDominant` (the brightest text on the card;
      hero emphasis)
@@ -480,7 +480,7 @@ Build (happy state):
    - Percentage text uses `tabularFigures()` so digits don't reflow.
 
 Empty state (S-104, when `consumedCalories == 0`):
-- Same chrome, same headline format `"0 / ${target ?? 0} CAL"`,
+- Same chrome, same headline format `"0 / ${target ?? 0} Cal"`,
   but the figure text is `themeColors.textMuted` (not the hero
   emphasis tone), and the gauge area renders the empty track
   only (no fill `Layer 2`). The caption row shows DASHES
@@ -547,7 +547,7 @@ Test contents:
 - `group('NutritionSummaryCard — happy state (S-100)')`:
   - Pump with `consumed=643`, `target=2000`, macro kcals
     `(270, 211, 162)` (sum = 643; P/C/F = 42 / 33 / 25).
-  - Expect headline `Text('643 / 2,000 CAL')` to find one widget.
+  - Expect headline `Text('643 / 2,000 Cal')` to find one widget.
   - Expect `find.byKey(Key('nutrition_card_headline'))` finds one.
   - Expect caption row to show `P 42%`, `C 33%`, `F 25%`.
 - `group('NutritionSummaryCard — body tap opens nutrition (S-101)')`:
@@ -572,7 +572,7 @@ Test contents:
     smaller than `1/3` of the fill).
 - `group('NutritionSummaryCard — empty state (S-104)')`:
   - Pump with `consumed=0`.
-  - Expect headline `'0 / 2,000 CAL'` (the figure DOES render
+  - Expect headline `'0 / 2,000 Cal'` (the figure DOES render
     — it's the empty state, not a missing-card state).
   - Expect gauge fill `RenderBox` width == 0 (or fill widget
     absent — implementation choice).
@@ -689,7 +689,7 @@ new palette slot is wired into all six themes.
   `Container`s sized as a share of CONSUMED calories
   (S-103). Caption row is a `spaceBetween` `Row` of three
   `(colorMarker, "M N%")` groups. Empty state (S-104)
-  renders `"0 / {target} CAL"` with dashes in the caption
+  renders `"0 / {target} Cal"` with dashes in the caption
   row. Over-budget state (S-105) switches the headline
   text color to `colorScheme.error` and clamps the fill
   at 100% of the track.

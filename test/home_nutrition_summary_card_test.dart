@@ -199,7 +199,7 @@ void main() {
   // S-100 — Happy state
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — happy state (S-100)', () {
-    testWidgets('renders the headline "consumed / target CAL" with '
+    testWidgets('renders the headline "consumed / target Cal" with '
         'comma-grouped thousands', (tester) async {
       await _pumpCard(
         tester,
@@ -217,7 +217,7 @@ void main() {
         find.byKey(const Key('nutrition_card_headline_text')),
         findsOneWidget,
       );
-      expect(find.text('643 / 2,000 CAL'), findsOneWidget);
+      expect(find.text('643 / 2,000 Cal'), findsOneWidget);
     });
 
     testWidgets('the card is rendered with rounded corners and is NOT '
@@ -552,7 +552,7 @@ void main() {
   // S-104 — Empty state: nothing logged
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — empty state (S-104)', () {
-    testWidgets('calorie figure shows "0 / 2,000 CAL" (not blank)',
+    testWidgets('calorie figure shows "0 / 2,000 Cal" (not blank)',
         (tester) async {
       await _pumpCard(
         tester,
@@ -566,7 +566,7 @@ void main() {
 
       // The figure DOES render — it just reads 0 against the
       // target. The card is tappable, not invisible.
-      expect(find.text('0 / 2,000 CAL'), findsOneWidget);
+      expect(find.text('0 / 2,000 Cal'), findsOneWidget);
     });
 
     testWidgets('gauge is empty (no fill width) when nothing is logged',
@@ -805,7 +805,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Cold start with a target but no logs: still empty.
-      expect(find.text('0 / 2,000 CAL'), findsOneWidget);
+      expect(find.text('0 / 2,000 Cal'), findsOneWidget);
 
       // Log a food — the card should rebuild with the new
       // consumed value.
@@ -816,7 +816,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 151 kcal × 2 = 302 consumed.
-      expect(find.text('302 / 2,000 CAL'), findsOneWidget);
+      expect(find.text('302 / 2,000 Cal'), findsOneWidget);
     });
   });
 }
