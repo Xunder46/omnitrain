@@ -150,7 +150,7 @@ class _NutritionScreenState extends State<NutritionScreen> {
                   // now shares the same surface chrome as every other
                   // outlined card in the app.
                   OmniCardHeader(
-                    title: 'FOODS I EAT',
+                    title: 'Foods I Eat',
                     actions: [
                       IconButton(
                         key: const Key('food_library_manage_pencil'),

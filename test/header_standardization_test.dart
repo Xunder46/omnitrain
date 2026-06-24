@@ -1414,11 +1414,11 @@ void main() {
         expect(todayTitle.style?.fontWeight, FontWeight.w600);
         expect(todayTitle.style?.color, OmniTheme.colors.textMuted);
 
-        // The "FOODS I EAT" header's title.
+        // The "Foods I Eat" header's title.
         final foodsTitle = tester.widget<Text>(
           find.descendant(
             of: find.byType(OmniCardHeader),
-            matching: find.text('FOODS I EAT'),
+            matching: find.text('Foods I Eat'),
           ),
         );
         expect(foodsTitle.style?.letterSpacing, 2.0);
@@ -1501,7 +1501,7 @@ void main() {
       // `edit_targets_icon` action. The "Foods I Eat" header
       // follows the calorie ring card. Walk the headers in render
       // order and confirm: the first header's title is 'TODAY',
-      // the second is 'FOODS I EAT'. The screen source passes
+      // the second is 'Foods I Eat'. The screen source passes
       // uppercase titles per the canonical section-header
       // convention (mirrors PREFERENCES, STRENGTH, etc.).
       final headers = tester
@@ -1521,7 +1521,7 @@ void main() {
           matching: find.byKey(const Key('omniCardHeader_title')),
         ),
       );
-      expect(secondHeaderTitle.data, 'FOODS I EAT');
+      expect(secondHeaderTitle.data, 'Foods I Eat');
     });
   });
 
