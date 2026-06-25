@@ -5,6 +5,7 @@ import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
+import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -32,6 +33,7 @@ class OmniSplashScreen extends StatefulWidget {
   final SettingsState settingsState;
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
+  final NutritionPrimerState nutritionPrimerState;
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
   final Duration duration;
@@ -49,6 +51,7 @@ class OmniSplashScreen extends StatefulWidget {
     required this.settingsState,
     required this.nutritionState,
     required this.foodLibraryState,
+    required this.nutritionPrimerState,
     required this.timerAlertService,
     RestNotificationService? restNotificationService,
     this.duration = OmniTheme.splashDuration,
@@ -100,6 +103,7 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
             restNotificationService: widget.restNotificationService,
             nutritionState: widget.nutritionState,
             foodLibraryState: widget.foodLibraryState,
+            nutritionPrimerState: widget.nutritionPrimerState,
           ),
         );
       }

@@ -337,6 +337,30 @@ Persisted — survives app restart via `WorkoutRepository.getPreferenceBool` / `
 
 ---
 
+### `NutritionPrimerState`
+
+**File**: `lib/state/nutrition/nutrition_primer_state.dart`
+**Depends on**: `WorkoutRepository`
+
+Tracks the once-per-install "primer seen" flag for the Daily Nutrition page primer sheet (see `docs/widget_catalog.md` → `NutritionPrimerSheet`). The primer auto-shows on the first-ever tap of the home nutrition strip and explains the "curate once / check daily / rollup" model in three short blocks. The seen-flag is persisted via `WorkoutRepository.setPreferenceBool` so it survives a full app close + relaunch.
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `_seen` | `bool` | `true` once the user has dismissed the auto-shown primer (or the persisted flag is set on cold start). Defaults to `false` (safer than assuming "seen" on a missed hydration). |
+
+| Method | Purpose |
+|--------|--------|
+| `init()` | `async` — reads `'primer_seen_nutrition'` from repository preferences on startup. Hydration failure falls back to `_seen = false` so the user sees the primer at least once. |
+| `shouldShowPrimer` | Getter — returns `!_seen`. The home strip's tap handler consults this to decide whether to show the primer. |
+| `hasSeen` | Getter — returns `_seen`. |
+| `markSeen()` | Idempotent: sets `_seen = true`, persists via `repository.setPreferenceBool('primer_seen_nutrition', true)`, notifies listeners. The header "?" control on the nutrition page never calls this — it reopens the primer without mutating the seen state. |
+
+Persisted — survives app restart via `WorkoutRepository.getPreferenceBool` / `setPreferenceBool` backed by the Hive `meta` box.
+
+**Important**: the seen-flag is NOT modelled on `HomeState._maintenanceHintSeen` even though the patterns look similar. The maintenance hint is in-memory only; the nutrition primer MUST survive a relaunch, so the wrong-pattern guard test (`S-006` in `.github/agents/plans/nutrition-page-primer-plan.md`) asserts on the persisted value to catch a regression that drops persistence.
+
+---
+
 ### `ProfileState`
 
 **File**: `lib/state/profile/profile_state.dart`

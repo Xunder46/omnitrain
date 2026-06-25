@@ -30,6 +30,7 @@ import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/widgets/layout/omni_surface.dart';
 
 import 'helpers/test_content_column.dart';
+import 'helpers/test_nutrition_primer_state.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -218,6 +219,7 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
       final state = NutritionState(repo);
       final foodLibraryState = FoodLibraryState(repo);
 
@@ -226,7 +228,7 @@ void main() {
           home: NutritionScreen(
             nutritionState: state,
             foodLibraryState: foodLibraryState,
-          ),
+            nutritionPrimerState: primer,),
         ),
       );
       // Let initState's loads (target + consumed + library) resolve.
@@ -627,6 +629,7 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
       const now = 1700000000000;
 
       // Two named groups, one ungrouped food. Names are deliberately
@@ -725,7 +728,7 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutritionState,
             foodLibraryState: foodLibraryState,
-          ),
+            nutritionPrimerState: primer,),
         ),
       );
       await tester.pumpAndSettle();
@@ -800,6 +803,7 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
       const now = 1700000000000;
 
       await repo.createFoodGroup(
@@ -864,7 +868,7 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutritionState,
             foodLibraryState: foodLibraryState,
-          ),
+            nutritionPrimerState: primer,),
         ),
       );
       await tester.pumpAndSettle();
@@ -894,6 +898,7 @@ void main() {
       'shows muted "No foods in library" line when library is empty',
       (tester) async {
         final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
         // MockWorkoutRepository now seeds 9 default food groups on
         // initialize. Archive them so the empty-library state is real
         // (groups.isEmpty && foods.isEmpty) and the muted line renders.
@@ -911,7 +916,7 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-            ),
+              nutritionPrimerState: primer,),
           ),
         );
         await tester.pumpAndSettle();
@@ -1195,6 +1200,7 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
       final nutritionState = NutritionState(repo);
       final foodLibraryState = FoodLibraryState(repo);
 
@@ -1206,7 +1212,7 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutritionState,
             foodLibraryState: foodLibraryState,
-          ),
+            nutritionPrimerState: primer,),
         ),
       );
       // Allow initState's loads to resolve.
@@ -1335,6 +1341,7 @@ void main() {
       'renders a pencil icon on the Food Library card header, no bottom CTA',
       (tester) async {
         final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
         final nutritionState = NutritionState(repo);
         final foodLibraryState = FoodLibraryState(repo);
         await foodLibraryState.loadFoodGroups();
@@ -1345,7 +1352,7 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-            ),
+              nutritionPrimerState: primer,),
           ),
         );
         await tester.pumpAndSettle();
@@ -1370,6 +1377,7 @@ void main() {
       'tapping a catalog food adds it to the library and stays on the screen',
       (tester) async {
         final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
         final nutritionState = NutritionState(repo);
         final foodLibraryState = FoodLibraryState(repo);
         await foodLibraryState.loadFoodGroups();
@@ -1399,7 +1407,7 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-            ),
+              nutritionPrimerState: primer,),
           ),
         );
         await tester.pumpAndSettle();
@@ -1470,6 +1478,7 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
         final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
         const now = 1700000000000;
         await repo.createFoodGroup(
           const FoodGroup(
@@ -1490,7 +1499,7 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-            ),
+              nutritionPrimerState: primer,),
           ),
         );
         await tester.pumpAndSettle();
@@ -1569,6 +1578,7 @@ void main() {
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
         final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
         final nutritionState = NutritionState(repo);
         final foodLibraryState = FoodLibraryState(repo);
         await foodLibraryState.loadFoodGroups();
@@ -1579,7 +1589,7 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-            ),
+              nutritionPrimerState: primer,),
           ),
         );
         await tester.pumpAndSettle();
@@ -1624,6 +1634,7 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
       const now = 1700000000000;
 
       await repo.createFoodGroup(
@@ -1679,7 +1690,7 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutritionState,
             foodLibraryState: foodLibraryState,
-          ),
+            nutritionPrimerState: primer,),
         ),
       );
       await tester.pumpAndSettle();
@@ -2010,6 +2021,7 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
       const now = 1700000000000;
       await repo.createFoodGroup(
         const FoodGroup(
@@ -2048,7 +2060,7 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutrition,
             foodLibraryState: foodLib,
-          ),
+            nutritionPrimerState: primer,),
         ),
       );
       await tester.pumpAndSettle();

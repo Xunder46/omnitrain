@@ -15,6 +15,7 @@ import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
+import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
@@ -38,6 +39,7 @@ class OnboardingScreen extends StatefulWidget {
   final RestNotificationService restNotificationService;
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
+  final NutritionPrimerState nutritionPrimerState;
 
   OnboardingScreen({
     super.key,
@@ -54,6 +56,7 @@ class OnboardingScreen extends StatefulWidget {
     required this.timerAlertService,
     required this.nutritionState,
     required this.foodLibraryState,
+    required this.nutritionPrimerState,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -97,6 +100,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         timerAlertService: widget.timerAlertService,
         nutritionState: widget.nutritionState,
         foodLibraryState: widget.foodLibraryState,
+        nutritionPrimerState: widget.nutritionPrimerState,
         restNotificationService: widget.restNotificationService,
       ),
     );

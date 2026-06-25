@@ -37,6 +37,7 @@ import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/nutrition/nutrition_primer_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -51,6 +52,7 @@ import 'package:omnitrain/widgets/pickers/metric_chooser_dialog.dart';
 import 'package:omnitrain/widgets/pickers/modality_picker_dialog.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/test_nutrition_primer_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/test_content_column.dart';
 
@@ -1852,6 +1854,7 @@ void main() {
       await profileState.loadProfile();
       final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
+      final nutritionPrimerState = await buildNutritionPrimerState(repo);
 
       return HomeScreen(
         workoutState: workoutState,
@@ -1866,6 +1869,7 @@ void main() {
         timerAlertService: FakeTimerAlertService(),
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
+        nutritionPrimerState: nutritionPrimerState,
       );
     }
 
@@ -1940,6 +1944,7 @@ void main() {
       await profileState.loadProfile();
       final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
+      final nutritionPrimerState = await buildNutritionPrimerState(repo);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1956,6 +1961,7 @@ void main() {
             timerAlertService: FakeTimerAlertService(),
             nutritionState: NutritionState(repo),
             foodLibraryState: FoodLibraryState(repo),
+            nutritionPrimerState: nutritionPrimerState,
           ),
         ),
       );
@@ -1988,6 +1994,7 @@ void main() {
       await profileState.loadProfile();
       final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
+      final nutritionPrimerState = await buildNutritionPrimerState(repo);
 
       await workoutState.createNewSession(isRolling: true);
       final exercises = await repo.getExercises();
@@ -2008,6 +2015,7 @@ void main() {
             timerAlertService: FakeTimerAlertService(),
             nutritionState: NutritionState(repo),
             foodLibraryState: FoodLibraryState(repo),
+            nutritionPrimerState: nutritionPrimerState,
           ),
         ),
       );
@@ -2045,6 +2053,7 @@ void main() {
         await profileState.loadProfile();
         final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
+        final nutritionPrimerState = await buildNutritionPrimerState(repo);
 
         await workoutState.createNewSession(isRolling: true);
         final exercises = await repo.getExercises();
@@ -2065,6 +2074,7 @@ void main() {
               timerAlertService: FakeTimerAlertService(),
               nutritionState: NutritionState(repo),
               foodLibraryState: FoodLibraryState(repo),
+              nutritionPrimerState: nutritionPrimerState,
             ),
           ),
         );
@@ -2110,6 +2120,7 @@ void main() {
         PeriodState periodState,
         ProfileState profileState,
         SettingsState settingsState,
+        NutritionPrimerState nutritionPrimerState,
       })
     >
     buildOnboardingDeps() async {
@@ -2139,6 +2150,7 @@ void main() {
         periodState: periodState,
         profileState: profileState,
         settingsState: settingsState,
+        nutritionPrimerState: await buildNutritionPrimerState(repo),
       );
     }
 
@@ -2154,6 +2166,7 @@ void main() {
         PeriodState periodState,
         ProfileState profileState,
         SettingsState settingsState,
+        NutritionPrimerState nutritionPrimerState,
       })
       deps,
     ) {
@@ -2172,6 +2185,7 @@ void main() {
           timerAlertService: FakeTimerAlertService(),
           nutritionState: NutritionState(deps.repo),
           foodLibraryState: FoodLibraryState(deps.repo),
+          nutritionPrimerState: deps.nutritionPrimerState,
         ),
       );
     }
@@ -2301,6 +2315,7 @@ void main() {
           timerAlertService: FakeTimerAlertService(),
           nutritionState: NutritionState(deps.repo),
           foodLibraryState: FoodLibraryState(deps.repo),
+          nutritionPrimerState: deps.nutritionPrimerState,
         ),
       );
       await tester.pumpAndSettle();
@@ -4460,6 +4475,7 @@ void main() {
       final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
 
+      final nutritionPrimerState = await buildNutritionPrimerState(repo);
       return OmniSplashScreen(
         workoutState: workoutState,
         homeState: homeState,
@@ -4472,6 +4488,7 @@ void main() {
         settingsState: settingsState,
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
+        nutritionPrimerState: nutritionPrimerState,
         timerAlertService: FakeTimerAlertService(),
         // Use a very short duration so no navigation fires during the test
         duration: const Duration(milliseconds: 1),

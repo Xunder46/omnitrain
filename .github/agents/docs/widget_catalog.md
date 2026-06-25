@@ -185,6 +185,42 @@ Shared full-width bottom call-to-action used by screens with a single persistent
 
 ---
 
+## Nutrition Primitives
+
+### `NutritionPrimerSheet`
+
+**File**: `lib/features/nutrition/widgets/nutrition_primer_sheet.dart`
+
+One-shot orientation sheet for the Daily Nutrition page. The page inverts the usual food-logging model and packs several unfamiliar ideas onto one screen (curate a "Foods I Eat" list once from the global library, check foods off daily with adjustable per-food portions, watch the day roll up into a calories/macros ring + water + sodium), so a brief primer helps a first-time user understand the model. The sheet is single-pane (no carousel, no `PageView`, no Next/Back navigation, no pointers anchored to on-screen widgets) and presents exactly three labeled blocks:
+
+1. **YOUR LIST, BUILT ONCE** — describes the curated "Foods I Eat" list and the pencil edit control on the page.
+2. **CHECK TO LOG, SET THE AMOUNT** — describes daily check-off logging and the per-food portion amount.
+3. **YOUR DAY, AT A GLANCE** — describes the rollup: calories vs target, protein/carb/fat split, water, sodium.
+
+The sheet does NOT cover target editing, category management, or water-stepper instructions — those are discoverable and out of scope.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `onDismiss` | `VoidCallback?` | `null` | Optional callback fired on dismiss (e.g. for the host to mark the seen state or push the next screen). If `null`, dismissal just closes the sheet. |
+
+**Behavior**:
+- Rendered inside `showModalBottomSheet(isScrollControlled: true, ...)` — the host screen owns the show/dismiss lifecycle.
+- Single `FilledButton` "Got it" CTA, full width, height `OmniTheme.buttonPrimaryHeight`, `shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius))` — no Material 3 `StadiumBorder`. Color from `theme.colorScheme.primary`.
+- The three blocks use a section header `OmniCardHeader` (or the canonical D-1 typography) per the global section-header contract.
+- The "Got it" CTA fires `Navigator.of(context).pop()` and then `onDismiss?.call()`. The seen-state mutation lives in the host screen (`HomeScreen._openNutritionScreen` calls `nutritionPrimerState.markSeen()` AFTER the sheet pops), NOT inside the sheet — the sheet is presentation-only.
+- The header "?" control on `NutritionScreen` uses the same widget but passes an `onDismiss` that does NOT call `markSeen()` — the seen state is preserved across reopens.
+
+**Auto-show contract**:
+- The home strip's first-ever tap opens this sheet over the home screen via `showModalBottomSheet`. On dismiss, the host calls `NutritionPrimerState.markSeen()` and then pushes `NutritionScreen`.
+- The header "?" on `NutritionScreen` opens the same sheet at any time. The seen state is NOT mutated.
+
+**Test keys** (used by `test/nutrition_primer_test.dart`):
+- `nutrition_primer_block_curate`, `nutrition_primer_block_check`, `nutrition_primer_block_rollup` — the three labeled blocks.
+- `nutrition_primer_dismiss` — the "Got it" CTA.
+- `nutrition_primer_help` — the "?" icon button in the nutrition page header.
+
+---
+
 ## Home Screen Cards
 
 ### `EnergyTile`

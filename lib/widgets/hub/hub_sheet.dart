@@ -14,6 +14,7 @@ import '../../features/stats/stats_screen.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
+import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../state/period/period_state.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -33,6 +34,7 @@ class HubSheet extends StatelessWidget {
   final RoutineState routineState;
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
+  final NutritionPrimerState nutritionPrimerState;
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
 
@@ -49,6 +51,7 @@ class HubSheet extends StatelessWidget {
     required this.routineState,
     required this.nutritionState,
     required this.foodLibraryState,
+    required this.nutritionPrimerState,
     required this.routineSessionService,
     required this.sessionSummaryService,
   });
@@ -100,6 +103,7 @@ class HubSheet extends StatelessWidget {
             (_) => NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
+              nutritionPrimerState: nutritionPrimerState,
             ),
           );
         },

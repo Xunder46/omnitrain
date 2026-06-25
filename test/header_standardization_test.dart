@@ -30,6 +30,7 @@ import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/nutrition/nutrition_primer_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -41,6 +42,7 @@ import 'package:omnitrain/widgets/layout/omni_surface.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/fake_preferences_service.dart';
+import 'helpers/test_nutrition_primer_state.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -1306,11 +1308,13 @@ void main() {
     await nutrition.loadConsumedToday();
     await foodLib.loadFoodGroups();
     await foodLib.loadFoods();
+    final primer = await buildNutritionPrimerState(repo);
     await tester.pumpWidget(
       MaterialApp(
         home: NutritionScreen(
           nutritionState: nutrition,
           foodLibraryState: foodLib,
+          nutritionPrimerState: primer,
         ),
       ),
     );

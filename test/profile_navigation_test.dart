@@ -18,7 +18,7 @@ import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/widgets/common/interactive_logo.dart';
 import 'package:provider/provider.dart';
 import 'helpers/fake_timer_alert_service.dart';
-import 'helpers/fake_preferences_service.dart';
+import 'helpers/test_nutrition_primer_state.dart';
 
 void main() {
   // TODO: Re-enable once HomeScreen is migrated from `HomeLogoButton` to
@@ -77,8 +77,7 @@ void main() {
             profileState: profileState,
             settingsState: settingsState,
             nutritionState: nutritionState,
-            foodLibraryState: FoodLibraryState(repository),
-            timerAlertService: FakeTimerAlertService(),
+            foodLibraryState: FoodLibraryState(repository),              nutritionPrimerState: await buildNutritionPrimerState(repository),            timerAlertService: FakeTimerAlertService(),
           ),
         ),
       ),

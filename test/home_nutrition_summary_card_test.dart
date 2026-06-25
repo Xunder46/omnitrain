@@ -57,6 +57,7 @@ import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/test_nutrition_primer_state.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -125,6 +126,7 @@ Future<HomeScreen> _buildHomeScreen(MockWorkoutRepository repo) async {
   await settingsState.initialize();
   final nutritionState = NutritionState(repo);
   final foodLibraryState = FoodLibraryState(repo);
+  final nutritionPrimerState = await buildNutritionPrimerState(repo);
 
   return HomeScreen(
     workoutState: workoutState,
@@ -139,6 +141,7 @@ Future<HomeScreen> _buildHomeScreen(MockWorkoutRepository repo) async {
     timerAlertService: FakeTimerAlertService(),
     nutritionState: nutritionState,
     foodLibraryState: foodLibraryState,
+    nutritionPrimerState: nutritionPrimerState,
   );
 }
 

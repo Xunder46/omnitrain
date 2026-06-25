@@ -180,14 +180,17 @@ main.dart
   → SettingsState(repository)     ← persisted app theme + weight/distance unit preferences via repository preferences
   → NutritionState(repository)
   → FoodLibraryState(repository)   ← groups + foods cache, powers the Food Library browse card on `NutritionScreen`
+  → NutritionPrimerState(repository) ← once-per-install seen flag for the Daily Nutrition primer sheet; persisted via `primer_seen_nutrition`
   → TimerAlertService()
   → RestNotificationService()
   → RoutineSessionService(repository)
   → SessionSummaryService(repository)
-  → MyApp(..., nutritionState: nutritionState, foodLibraryState: foodLibraryState)
-    → HomeScreen(..., nutritionState: nutritionState, foodLibraryState: foodLibraryState)
-      → (passes relevant subset to child screens; `NutritionScreen` requires both)
+  → MyApp(..., nutritionState: nutritionState, foodLibraryState: foodLibraryState, nutritionPrimerState: nutritionPrimerState)
+    → HomeScreen(..., nutritionState: nutritionState, foodLibraryState: foodLibraryState, nutritionPrimerState: nutritionPrimerState)
+      → (passes relevant subset to child screens; `NutritionScreen` requires nutritionState + foodLibraryState + nutritionPrimerState)
 ```
+
+The Daily Nutrition primer (see `widget_catalog.md` → `NutritionPrimerSheet`) auto-shows on the first-ever tap of the home nutrition strip via a `showModalBottomSheet` over the home screen; dismissal flips `NutritionPrimerState.shouldShowPrimer` to `false` and pushes `NutritionScreen`. The header "?" on `NutritionScreen` reopens the same sheet at any time without mutating the seen state.
 
 ### Key Injection Rules
 - State classes depend only on `WorkoutRepository` interface (never concrete implementations)

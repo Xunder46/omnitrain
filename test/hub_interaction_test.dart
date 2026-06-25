@@ -11,6 +11,7 @@ import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/nutrition/nutrition_primer_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -23,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/fake_preferences_service.dart';
+import 'helpers/test_nutrition_primer_state.dart';
 
 /// Test-only [NavigatorObserver] that records the most recent
 /// route pushed from production code. Used by the HubSheet
@@ -73,6 +75,7 @@ void main() {
     });
 
     Future<void> pumpHomeScreen(WidgetTester tester) async {
+      final nutritionPrimerState = await buildNutritionPrimerState(repository);
       await tester.pumpWidget(
         MultiProvider(
           providers: [
@@ -92,6 +95,7 @@ void main() {
               timerAlertService: FakeTimerAlertService(),
               nutritionState: NutritionState(repository),
               foodLibraryState: FoodLibraryState(repository),
+              nutritionPrimerState: nutritionPrimerState,
             ),
           ),
         ),
@@ -162,6 +166,7 @@ void main() {
       WidgetTester tester,
       _RouteTypeRecorder observer,
     ) async {
+      final nutritionPrimerState = await buildNutritionPrimerState(repository);
       await tester.pumpWidget(
         MaterialApp(
           navigatorObservers: [observer],
@@ -178,6 +183,7 @@ void main() {
               routineState: routineState,
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
+              nutritionPrimerState: nutritionPrimerState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
             ),

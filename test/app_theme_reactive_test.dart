@@ -9,6 +9,7 @@ import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
+import 'package:omnitrain/state/nutrition/nutrition_primer_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -16,6 +17,7 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/test_nutrition_primer_state.dart';
 
 void main() {
   test('Abyssal Neon uses neon cyan primary with white CTA text', () {
@@ -56,6 +58,7 @@ void main() {
     final sessionSummaryService = SessionSummaryService(repository);
     final nutritionState = NutritionState(repository);
     final foodLibraryState = FoodLibraryState(repository);
+    final nutritionPrimerState = await buildNutritionPrimerState(repository);
 
     await tester.pumpWidget(
       MyApp(
@@ -73,6 +76,7 @@ void main() {
         timerAlertService: FakeTimerAlertService(),
         nutritionState: nutritionState,
         foodLibraryState: foodLibraryState,
+        nutritionPrimerState: nutritionPrimerState,
       ),
     );
 

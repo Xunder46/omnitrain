@@ -16,6 +16,7 @@ import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
+import 'state/nutrition/nutrition_primer_state.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/utils/rest_notification_service.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -95,6 +96,11 @@ void main() async {
       repository,
       imageStorage: imageStorageService,
     );
+    // One-shot Daily Nutrition primer state. Hydrated eagerly
+    // so the first home-strip tap consults the persisted
+    // seen-flag from frame 1 (no flicker of the auto-show).
+    final nutritionPrimerState = NutritionPrimerState(repository);
+    await nutritionPrimerState.init();
     final timerAlertService = TimerAlertService();
     await timerAlertService.initialize();
     final restNotificationService = RestNotificationService();
@@ -119,6 +125,7 @@ void main() async {
         settingsState: settingsState,
         nutritionState: nutritionState,
         foodLibraryState: foodLibraryState,
+        nutritionPrimerState: nutritionPrimerState,
         timerAlertService: timerAlertService,
         restNotificationService: restNotificationService,
       ),

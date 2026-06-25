@@ -19,6 +19,8 @@ import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/widgets/common/home_logo_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'helpers/test_nutrition_primer_state.dart';
+
 class FakeTimerAlertService extends TimerAlertService {
   // No-op stubs for test injection. The base class does not declare these
   // methods directly (they are exercised through other service contracts), so
@@ -58,6 +60,7 @@ Future<HomeScreen> buildHomeScreen(MockWorkoutRepository repo) async {
   await preferencesService.init();
   final settingsState = SettingsState(repo, preferencesService);
   await settingsState.initialize();
+  final nutritionPrimerState = await buildNutritionPrimerState(repo);
 
   return HomeScreen(
     workoutState: workoutState,
@@ -72,6 +75,7 @@ Future<HomeScreen> buildHomeScreen(MockWorkoutRepository repo) async {
     timerAlertService: FakeTimerAlertService(),
     nutritionState: NutritionState(repo),
     foodLibraryState: FoodLibraryState(repo),
+    nutritionPrimerState: nutritionPrimerState,
   );
 }
 

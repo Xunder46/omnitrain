@@ -32,6 +32,7 @@ import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/features/exercise/exercise_picker_screen.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
 import 'helpers/fake_timer_alert_service.dart';
+import 'helpers/test_nutrition_primer_state.dart';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ void main() {
       await profileState.loadProfile();
       final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
+      final nutritionPrimerState = await buildNutritionPrimerState(repo);
 
       final screen = HomeScreen(
         workoutState: workoutState,
@@ -104,6 +106,7 @@ void main() {
         timerAlertService: FakeTimerAlertService(),
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
+        nutritionPrimerState: nutritionPrimerState,
       );
 
       return (
@@ -127,6 +130,7 @@ void main() {
       await profileState.loadProfile();
       final settingsState = SettingsState(repo, _fakePrefs());
       await settingsState.initialize();
+      final nutritionPrimerState = await buildNutritionPrimerState(repo);
 
       return HomeScreen(
         workoutState: workoutState,
@@ -141,6 +145,7 @@ void main() {
         timerAlertService: FakeTimerAlertService(),
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
+        nutritionPrimerState: nutritionPrimerState,
       );
     }
 

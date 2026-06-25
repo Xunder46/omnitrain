@@ -3,22 +3,26 @@ import '../../core/constants/omni_theme.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
+import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../core/navigation/navigation.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
 import 'add_food_screen.dart';
 import 'widgets/calorie_ring_card.dart';
 import 'widgets/log_food_row.dart';
+import 'widgets/nutrition_primer_sheet.dart';
 import 'nutrition_target_screen.dart';
 
 class NutritionScreen extends StatefulWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
+  final NutritionPrimerState nutritionPrimerState;
 
   const NutritionScreen({
     super.key,
     required this.nutritionState,
     required this.foodLibraryState,
+    required this.nutritionPrimerState,
   });
 
   @override
@@ -93,11 +97,54 @@ class _NutritionScreenState extends State<NutritionScreen> {
     );
   }
 
+  /// Reopen the one-shot primer sheet at any time. The seen state is
+  /// NOT mutated — the primer can be reopened as many times as the
+  /// user wants (it just won't auto-show on the next home-strip tap
+  /// unless the seen flag is still false). Sheet host: this method.
+  Future<void> _reopenPrimer() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: NutritionPrimerSheet(
+            // onDismiss intentionally null — reopening never marks
+            // seen, so the next home-strip tap can still auto-show
+            // if the seen flag is still false. The header "?" is the
+            // way to read the primer without committing.
+            onDismiss: null,
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Daily Nutrition')),
+      appBar: AppBar(
+        title: const Text('Daily Nutrition'),
+        // Persistent "?" control — visible at all times so the user
+        // can reopen the primer at any moment. The icon button does
+        // not mutate the seen state; it just shows the sheet.
+        actions: [
+          IconButton(
+            key: const Key('nutrition_primer_help'),
+            icon: Icon(
+              Icons.help_outline,
+              size: 22,
+              color: theme.colorScheme.primary,
+            ),
+            tooltip: 'About Daily Nutrition',
+            onPressed: _reopenPrimer,
+          ),
+        ],
+      ),
       // The bottom "Manage Food Library" CTA was removed: it pushed the
       // last foods of the long library list off-screen. The new
       // affordance is a pencil icon in the top-right of the Food
