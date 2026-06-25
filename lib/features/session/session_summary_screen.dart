@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/constants/modality_colors.dart';
 import '../../core/services/session_summary_service.dart';
@@ -37,6 +38,24 @@ class SessionSummaryScreen extends StatefulWidget {
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
 
+  /// True when this summary was reached from the calendar / day-list
+  /// flow (i.e. viewing a historical session). Drives:
+  ///   • The calendar grid to show the session's month, not today.
+  ///   • "Open Calendar" to pop back (one route) instead of pushing a
+  ///     fresh `CalendarScreen`.
+  ///   • "Discard" to pop back to the originating calendar or day
+  ///     list (after deleting the session) instead of `popUntil(isFirst)`.
+  ///
+  /// `false` (default) preserves the post-workout flow: the summary
+  /// was reached via `pushReplacement` from `WorkoutSessionScreen`,
+  /// and Discard / Open Calendar behave as before.
+  final bool openedFromCalendar;
+
+  /// The `CalendarState` that originated this summary. Required when
+  /// [openedFromCalendar] is true so Discard can refresh the calendar
+  /// after deleting the session.
+  final CalendarState? originatingCalendarState;
+
   SessionSummaryScreen({
     super.key,
     required this.workoutState,
@@ -46,6 +65,8 @@ class SessionSummaryScreen extends StatefulWidget {
     required this.settingsState,
     required this.timerAlertService,
     RestNotificationService? restNotificationService,
+    this.openedFromCalendar = false,
+    this.originatingCalendarState,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
 
@@ -70,6 +91,33 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   late final CalendarState _calendarState;
   late final PeriodState _periodState;
   late final RoutineSessionService _routineSessionService;
+
+  /// The month the embedded calendar grid is currently displaying.
+  /// For a historical summary this is the session's start month; for a
+  /// post-workout summary it is the current month.
+  DateTime get _viewMonth {
+    final ms = widget.workoutState.currentSession?.startedAtMs;
+    if (ms != null) {
+      final d = OmniDateUtils.fromMs(ms);
+      return DateTime(d.year, d.month, 1);
+    }
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, 1);
+  }
+
+  /// The day-of-month to highlight as "today" in the embedded grid.
+  /// For a historical summary this is the session's day-of-month; for a
+  /// post-workout summary it is the current day-of-month.
+  int get _viewTodayDay {
+    final ms = widget.workoutState.currentSession?.startedAtMs;
+    if (ms != null) return OmniDateUtils.fromMs(ms).day;
+    return DateTime.now().day;
+  }
+
+  /// True when the summary was reached from the calendar flow (so the
+  /// embedded calendar shows a historical month and Discard / Open
+  /// Calendar should navigate back, not exit to the hub).
+  bool get _isHistoricalView => widget.openedFromCalendar;
 
   List<SessionTemplateExercise> _draftExercises = [];
 
@@ -155,13 +203,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Future<void> _loadCalendarData() async {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    final monthEnd = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-    _daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    // The displayed month is anchored to the loaded session's start
+    // date so a historical session shows its own month (not today's).
+    final monthAnchor = _viewMonth;
+    final monthEnd = DateTime(
+      monthAnchor.year,
+      monthAnchor.month + 1,
+      0,
+      23,
+      59,
+      59,
+    );
+    _daysInMonth = DateTime(monthAnchor.year, monthAnchor.month + 1, 0).day;
 
     final sessions = await widget.workoutState.getSessionsByDateRange(
-      monthStart.millisecondsSinceEpoch,
+      monthAnchor.millisecondsSinceEpoch,
       monthEnd.millisecondsSinceEpoch,
     );
 
@@ -227,8 +283,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Discard session?'),
-        content: const Text(
-          'This will remove all session data and return to Home.',
+        content: Text(
+          _isHistoricalView
+              ? 'This will permanently delete this session from your history '
+                  'and return to the previous screen.'
+              : 'This will remove all session data and return to Home.',
         ),
         actions: [
           TextButton(
@@ -279,8 +338,22 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     if (!mounted) return;
 
-    Navigator.pop(context);
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    Navigator.pop(context); // close the loading spinner
+
+    if (_isHistoricalView) {
+      // Refresh the originating calendar so the deleted session
+      // disappears from the grid, then pop back to where the user
+      // came from (calendar or day list).
+      try {
+        await (widget.originatingCalendarState ?? _calendarState).refresh();
+      } catch (_) {
+        // Calendar refresh is best-effort; the user is already
+        // navigating back, so a failure here shouldn't block that.
+      }
+      Navigator.pop(context);
+    } else {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   Future<void> _finishAndSaveSession() async {
@@ -292,16 +365,26 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
-    await widget.workoutState.endSession();
-    final completedSessionId = widget.workoutState.currentSession?.id;
-    if (completedSessionId != null && widget.onSessionSaved != null) {
-      await widget.onSessionSaved!(completedSessionId);
+    if (!_isHistoricalView) {
+      await widget.workoutState.endSession();
+      final completedSessionId = widget.workoutState.currentSession?.id;
+      if (completedSessionId != null && widget.onSessionSaved != null) {
+        await widget.onSessionSaved!(completedSessionId);
+      }
     }
     widget.workoutState.clearSession();
 
     if (!mounted) return;
 
-    Navigator.pop(context);
+    Navigator.pop(context); // close the loading spinner
+
+    if (_isHistoricalView) {
+      // The session is already in the repository — there's nothing to
+      // save. Pop back to the originating calendar or day list.
+      Navigator.pop(context);
+      return;
+    }
+
     Navigator.of(context).popUntil((route) => route.isFirst);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -331,6 +414,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Future<void> _openCalendarScreen() async {
+    if (_isHistoricalView) {
+      // Reached via the calendar flow → behave like the system back
+      // button. Popping returns the user to the originating calendar
+      // or day list instead of stacking a fresh `CalendarScreen` on
+      // top of the summary.
+      Navigator.pop(context);
+      return;
+    }
     await OmniNavigator.push(
       context,
       (_) => CalendarScreen(
@@ -713,8 +804,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Calendar card header: month label on the left, "Open Calendar"
   /// button on the right. Lives above the calendar [OmniSurface].
   Widget _buildCalendarHeader(ThemeData theme) {
-    final now = DateTime.now();
-    final monthLabel = '${_monthName(now.month)} ${now.year}';
+    // Use the historical session's month when viewing one, so the
+    // header label matches the grid below it.
+    final monthLabel =
+        '${_monthName(_viewMonth.month)} ${_viewMonth.year}';
     return OmniCardHeader(
       title: monthLabel,
       actions: [_buildOpenCalendarButton()],
@@ -922,7 +1015,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     // Month label + "Open Calendar" button live in the
     // `OmniCardHeader` above this card (see `_buildCalendarHeader`
     // and the body composition site). The card body is content-only.
-    final now = DateTime.now();
     final workoutDays = _workoutDays.length;
     final restDays = (_daysInMonth - workoutDays).clamp(0, _daysInMonth);
 
@@ -931,7 +1023,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildCalendarGrid(theme, now),
+          _buildCalendarGrid(theme),
           const SizedBox(height: 12),
           Text(
             '$workoutDays workout days / $restDays rest days',
@@ -944,9 +1036,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  Widget _buildCalendarGrid(ThemeData theme, DateTime now) {
+  Widget _buildCalendarGrid(ThemeData theme) {
+    // The grid renders the session's start month for historical
+    // summaries and the current month for post-workout summaries.
+    final viewMonth = _viewMonth;
     final startOfWeek = widget.settingsState.startOfWeek;
-    final firstDay = DateTime(now.year, now.month, 1);
+    final firstDay = DateTime(viewMonth.year, viewMonth.month, 1);
     // Dart weekday: 1=Mon … 7=Sun
     final int leadingBlanks = startOfWeek == 'sunday'
         ? firstDay.weekday %
@@ -957,7 +1052,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     final rows = (totalSlots / 7).ceil();
 
     final cells = <Widget>[];
-    final today = DateTime.now().day;
+    final todayDay = _viewTodayDay;
 
     for (int i = 0; i < rows * 7; i++) {
       final dayNumber = i - leadingBlanks + 1;
@@ -967,7 +1062,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       }
 
       final isWorkout = _workoutDays.contains(dayNumber);
-      final isToday = dayNumber == today;
+      final isToday = dayNumber == todayDay;
 
       cells.add(
         Container(

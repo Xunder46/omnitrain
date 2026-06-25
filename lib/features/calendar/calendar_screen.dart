@@ -211,6 +211,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             settingsState: widget.settingsState,
             timerAlertService: widget.timerAlertService,
             restNotificationService: widget.restNotificationService,
+            openedFromCalendar: true,
+            originatingCalendarState: widget.calendarState,
           ),
         );
       }

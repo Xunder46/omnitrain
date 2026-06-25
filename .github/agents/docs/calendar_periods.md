@@ -90,12 +90,34 @@ Planned session form behavior (Add + Edit):
 - Existing form logic remains unchanged: only one mode is active and mode-specific fields swap in-place.
 
 Tap behavior:
-- Tap completed entry -> opens `SessionSummaryScreen`
+- Tap completed entry -> opens `SessionSummaryScreen` (with `openedFromCalendar: true`)
 - Tap planned entry -> starts workout:
   - Routine-linked planned session -> routine build flow
   - Modality-only planned session -> free/modality workout flow
 
 When workout is saved from summary, the originating `PlannedSession` is marked completed and linked via `linkedSessionId`.
+
+#### Historical-session summary behavior
+
+When a `SessionSummaryScreen` is opened from the calendar flow (either
+from the day-list row tap on a completed entry, or from a single-entry
+past-day cell on the month grid), the screen is constructed with
+`openedFromCalendar: true` and the originating `CalendarState`. This
+unlocks three pieces of historical-aware behavior:
+
+1. The embedded calendar card (the monthly grid + "workout days / rest
+   days" totals) renders the **session's start month**, not today.
+   Highlighting (the "today" border) follows the session's
+   day-of-month.
+2. The "Open Calendar" header button acts like the system back button:
+   one `Navigator.pop()` returns to the day list (and a subsequent back
+   to the calendar), instead of stacking a fresh `CalendarScreen` on
+   top of the summary.
+3. The overflow-menu "Discard" action permanently deletes the
+   historical session from the repository and pops back to the
+   originating day list (calendar state is refreshed so the deleted
+   indicator disappears from the grid). The confirmation dialog copy
+   reflects the destructive + "return to previous screen" semantics.
 
 ### 5. Periods
 

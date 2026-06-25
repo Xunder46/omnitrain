@@ -122,7 +122,18 @@ Inputs:
 - WorkoutState
 - RoutineState
 - SessionSummaryService
+- SettingsState, TimerAlertService, RestNotificationService
 - optional onSessionSaved callback
+- optional `openedFromCalendar: bool` (default `false`)
+- optional `originatingCalendarState: CalendarState` (used to refresh
+  the month grid after Discard when `openedFromCalendar == true`)
+
+Two entry points feed this screen:
+
+| Entry | `openedFromCalendar` | Behaviour |
+|-------|----------------------|-----------|
+| `WorkoutSessionScreen` finish → `pushReplacement` (post-workout) | `false` (default) | Calendar card renders today's month; "Open Calendar" pushes a fresh `CalendarScreen`; "Done" ends + clears + `popUntil(isFirst)`; "Discard" deletes + `popUntil(isFirst)`. |
+| `CalendarScreen` past-day tap with a single completed entry, or `DaySessionListScreen` completed-row tap (historical) | `true` | Calendar card renders the **session's month**; "Open Calendar" pops back like the system back button; "Done" just clears in-memory state and pops back; "Discard" permanently deletes the historical session and pops back to the originating calendar or day list (the originating `CalendarState.refresh()` is awaited so the deleted indicator disappears from the grid). |
 
 Summary data loaded on entry:
 
