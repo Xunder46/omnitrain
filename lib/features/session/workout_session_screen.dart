@@ -118,18 +118,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // through already-logged sets.
   final Set<String> _loggedSetKeys = {};
 
-  // D-8 throttle retrofit hook for the in-session PR toast. By default
-  // every beating set in a session fires its own toast (one toast per
-  // beating set — the prompt's pre-stated assumption). To throttle to
-  // "first PR in a session wins" instead, add a guard
-  // `if (_prCelebratedEffortIds.contains(effortId)) return;` and an
-  // `add(effortId)` inside `_maybeShowPRToast`; the field is declared
-  // and ready so the retrofit is two focused lines in one place. The
-  // current behaviour never consults the set, so multiple beating sets
-  // in the same session each fire their own toast. See
-  // `.github/agents/plans/in-session-pr-toast-plan.md` for the contract.
-  // ignore: unused_field
-  final Set<String> _prCelebratedEffortIds = {};
+  // D-8 throttle for the in-session PR toast. Tracks the session's running best
+  // e1RM per exercise (keyed by exerciseId). The toast fires only when:
+  // 1. The e1RM exceeds the standing best (all-time best from completed sessions)
+  // 2. AND the e1RM exceeds the session's running best (highest e1RM logged in
+  //    this session for this exercise)
+  // This ensures:
+  // - Re-saving an already-celebrated set does not re-trigger (same e1RM)
+  // - A lesser set after a greater set does not trigger (doesn't exceed session best)
+  // - Ascending bests each trigger once (each exceeds the previous session best)
+  // See `.github/agents/plans/pr-celebration-throttle-plan.md`.
+  final Map<String, double> _sessionRunningBestE1RM = {};
 
   @override
   Timer? _ticker;
@@ -755,6 +754,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       await _maybeShowPRToast(
         effortId: effortId,
         exerciseId: exerciseId,
+        entryIndex: _currentSet - 1,
         reps: reps,
         weight: weight,
       );
@@ -832,10 +832,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   /// - D-6: Suppressed in edit mode
   /// - D-7: Skipped sets (zero reps) are excluded — gated by the caller
   /// - D-8: One toast per beating set (default); throttle hook is
-  ///   `_prCelebratedEffortIds` (declared alongside `_loggedSetKeys`)
+  ///   `_sessionRunningBestE1RM` (declared alongside `_loggedSetKeys`)
   Future<void> _maybeShowPRToast({
     required String effortId,
     required String exerciseId,
+    required int entryIndex,
     required int reps,
     required double weight,
   }) async {
@@ -856,11 +857,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     // a PR (matches the Stats screen's ">" comparison).
     if (newE1rm <= standingBest) return;
 
+    // D-8 throttle: The toast only fires when the e1RM exceeds BOTH:
+    // 1. The standing best (all-time best from completed sessions)
+    // 2. The session's running best (highest e1RM logged in this session)
+    //
+    // This ensures:
+    // - Re-saving an already-celebrated set does not re-trigger (same e1RM)
+    // - A lesser set after a greater set does not trigger (doesn't exceed session best)
+    // - Ascending bests each trigger once (each exceeds the previous session best)
+    final sessionBest = _sessionRunningBestE1RM[exerciseId] ?? 0.0;
+    if (newE1rm <= sessionBest) return;
+
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     // Fire-and-forget — `showSnackBar` is synchronous; the SnackBar's
     // auto-dismiss timer is internal. We do not await.
     messenger.showSnackBar(PRToast.buildPRSnackBar(Theme.of(context)));
+
+    // Update the session's running best for this exercise.
+    _sessionRunningBestE1RM[exerciseId] = newE1rm;
   }
 
   void _previousSet() {

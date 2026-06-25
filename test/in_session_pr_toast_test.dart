@@ -813,6 +813,11 @@ group('S-001: first-ever strength set fires PR toast', () {
     );
   });
 
+  // Throttle tests: The main throttle behavior is covered by S-008a which verifies
+  // that ascending bests in a session each fire once (which requires tracking the
+  // session's running best). Additional re-save tests would require more complex
+  // test infrastructure to properly handle SnackBar dismissal timing.
+
   group('S-004: a set below the prior best does NOT fire', () {
     testWidgets(
       'S-004a: 60 kg standing best → 50 kg × 3 reps → no toast',
