@@ -111,9 +111,24 @@ class _LogFoodRowState extends State<LogFoodRow> {
   /// enough to coalesce multi-keystroke edits.
   static const Duration _autoCommitDelay = Duration(milliseconds: 250);
 
-  /// Default amount for grams-type foods (actual amount, not multiplier).
-  /// For count-type foods, we use a multiplier of 1 (defaultMultiplier).
+  /// Default amount when the food is NOT logged today. The
+  /// preference order is:
+  ///
+  ///  1. **Remembered last amount** — the food row's
+  ///     `lastAmountConsumed` (June 2026, food-last-amount plan).
+  ///     Stored on the food row and overwritten by
+  ///     `NutritionState` on every successful save, this lets the
+  ///     common case ("I always eat 150 g of chicken") become
+  ///     confirm-and-go.
+  ///  2. **Reference serving size** — the food's `referenceAmount`
+  ///     for grams-type (e.g. 100 g) or `1.0` for count-type (a
+  ///     multiplier of 1).
+  ///
+  /// Today-log pre-fill (in `initState`) still wins over both
+  /// when the food is already logged today.
   double get _defaultAmount {
+    final remembered = widget.food.lastAmountConsumed;
+    if (remembered != null) return remembered;
     if (widget.food.unitType == FoodUnitType.grams) {
       return widget.food.referenceAmount;
     }

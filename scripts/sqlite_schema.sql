@@ -1207,6 +1207,19 @@ CREATE TABLE app_food (
   is_archived INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   image_path TEXT,
+  -- last_amount_consumed: remembered "last amount" the user logged
+  -- for this food, in the food's own unit (grams for grams-type,
+  -- count for count-type). Nullable: NULL when the food has never
+  -- been logged. Drives the LogFoodRow pre-fill (June 2026, food-
+  -- last-amount plan) so the user does not have to retype the
+  -- same portion every day. Overwritten on every successful save
+  -- through NutritionState; never mutated by an unsaved UI edit.
+  -- Stored on the food row (not on app_consumed_food) so a
+  -- remove-then-re-add via addCatalogFoodToLibrary (catalogId
+  -- linkage) reuses the same library food and therefore the same
+  -- remembered amount. Back-compat: legacy rows that lack this
+  -- column read back as NULL via Food.fromMap.
+  last_amount_consumed REAL,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   FOREIGN KEY(group_id) REFERENCES app_food_group(id)

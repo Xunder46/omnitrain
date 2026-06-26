@@ -1271,5 +1271,64 @@ void main() {
       expect(restored.fiber, 5);
       expect(restored.carbs, 20);
     });
+
+    // ── lastAmountConsumed (food-last-amount-plan) ───────────────────────
+    // Single remembered "last amount" per food (June 2026). Stored on
+    // the Food row in the food's own unit; null when the food has
+    // never been logged. Drives the LogFoodRow pre-fill so the user
+    // doesn't have to re-type the same portion every day.
+
+    test('lastAmountConsumed round-trips through fromMap/toMap', () {
+      final obj = baseFood().copyWith(lastAmountConsumed: 150.0);
+      final map = obj.toMap();
+      expect(map['last_amount_consumed'], 150.0);
+
+      final restored = Food.fromMap(map);
+      expect(restored.lastAmountConsumed, 150.0);
+    });
+
+    test('lastAmountConsumed null round-trips as null', () {
+      final obj = baseFood();
+      final map = obj.toMap();
+      expect(map['last_amount_consumed'], isNull);
+
+      final restored = Food.fromMap(map);
+      expect(restored.lastAmountConsumed, isNull);
+    });
+
+    test(
+      'fromMap handles missing last_amount_consumed as null (legacy row)',
+      () {
+        final map = <String, dynamic>{
+          'id': 'food-1',
+          'name': 'Chicken breast, skinless',
+          'unit_type': 'grams',
+          'reference_amount': 100,
+          'reference_label': 'g',
+          'is_catalog': 0,
+          'protein': 31,
+          'carbs': 0,
+          'fiber': 0,
+          'fat': 4,
+          'is_archived': 0,
+          'created_at_ms': 1700000000000,
+          'updated_at_ms': 1700000000000,
+        };
+        final restored = Food.fromMap(map);
+        expect(restored.lastAmountConsumed, isNull);
+      },
+    );
+
+    test('copyWith without lastAmountConsumed preserves existing value', () {
+      final set = baseFood().copyWith(lastAmountConsumed: 150.0);
+      final unchanged = set.copyWith(name: 'Renamed');
+      expect(unchanged.lastAmountConsumed, 150.0);
+      expect(unchanged.name, 'Renamed');
+    });
+
+    test('copyWith sets lastAmountConsumed to a new value', () {
+      final obj = baseFood().copyWith(lastAmountConsumed: 200.0);
+      expect(obj.lastAmountConsumed, 200.0);
+    });
   });
 }

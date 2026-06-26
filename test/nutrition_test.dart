@@ -2085,6 +2085,219 @@ void main() {
         reason: 'S-006: no divider after the last row',
       );
     });
+
+    // ── lastAmountConsumed pre-fill (food-last-amount-plan) ────────────
+    // LogFoodRow reads `food.lastAmountConsumed` when the food is
+    // NOT logged today, so a previously-logged portion is sticky
+    // across days. Today-log pre-fill still wins over the stored
+    // value. Editing in an unlogged row never mutates the stored
+    // value (only a successful `logConsumedFoodAt` does).
+    testWidgets(
+      'S-001: amount pre-fills from lastAmountConsumed when not logged today',
+      (tester) async {
+        final repo = await _freshRepo();
+        final nutrition = NutritionState(repo);
+        final foodLib = FoodLibraryState(repo);
+        await nutrition.loadConsumedToday();
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+
+        // Per-100 g food with a remembered lastAmountConsumed = 150.
+        // The food is NOT logged today.
+        await repo.createFood(const Food(
+          id: 'f-last-amount',
+          name: 'Chicken (last amount)',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100.0,
+          referenceLabel: '100 g',
+          protein: 31,
+          carbs: 0,
+          fat: 3,
+          lastAmountConsumed: 150.0,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        ));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LogFoodRow(
+                food: (await repo.getFoodById('f-last-amount'))!,
+                nutritionState: nutrition,
+                foodLibraryState: foodLib,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Amount input shows the remembered last amount, NOT the
+        // 100 g reference default.
+        final tf = tester.widget<TextField>(
+          find.byKey(const Key('log_food_amount_f-last-amount')),
+        );
+        expect(tf.controller!.text, '150');
+      },
+    );
+
+    testWidgets(
+      'S-002: amount pre-fills from referenceAmount when lastAmountConsumed '
+      'is null',
+      (tester) async {
+        final repo = await _freshRepo();
+        final nutrition = NutritionState(repo);
+        final foodLib = FoodLibraryState(repo);
+        await nutrition.loadConsumedToday();
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+
+        // Per-100 g food, never logged → lastAmountConsumed = null.
+        await repo.createFood(const Food(
+          id: 'f-default-amount',
+          name: 'Chicken (never logged)',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100.0,
+          referenceLabel: '100 g',
+          protein: 31,
+          carbs: 0,
+          fat: 3,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        ));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LogFoodRow(
+                food: (await repo.getFoodById('f-default-amount'))!,
+                nutritionState: nutrition,
+                foodLibraryState: foodLib,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Falls back to the food's reference serving size (100 g).
+        final tf = tester.widget<TextField>(
+          find.byKey(const Key('log_food_amount_f-default-amount')),
+        );
+        expect(tf.controller!.text, '100');
+      },
+    );
+
+    testWidgets(
+      'S-004: editing the pre-filled value in an unlogged row does NOT '
+      'mutate lastAmountConsumed on the food row',
+      (tester) async {
+        final repo = await _freshRepo();
+        final nutrition = NutritionState(repo);
+        final foodLib = FoodLibraryState(repo);
+        await nutrition.loadConsumedToday();
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+
+        await repo.createFood(const Food(
+          id: 'f-edit-unsaved',
+          name: 'Chicken (unsaved edit)',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100.0,
+          referenceLabel: '100 g',
+          protein: 31,
+          carbs: 0,
+          fat: 3,
+          lastAmountConsumed: 150.0,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        ));
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LogFoodRow(
+                food: (await repo.getFoodById('f-edit-unsaved'))!,
+                nutritionState: nutrition,
+                foodLibraryState: foodLib,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Type 300 into the amount input. The food is NOT logged
+        // today, so this is purely a UI edit — no save.
+        final amountKey = const Key('log_food_amount_f-edit-unsaved');
+        await tester.enterText(find.byKey(amountKey), '300');
+        await tester.pump();
+        // Pump well past the auto-commit debounce window (250 ms in
+        // production); the auto-commit is gated on
+        // `isFoodLoggedToday`, which is false here, so nothing
+        // fires.
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pumpAndSettle();
+
+        // Food row's lastAmountConsumed is unchanged.
+        final foodAfter = await repo.getFoodById('f-edit-unsaved');
+        expect(foodAfter!.lastAmountConsumed, 150.0,
+            reason: 'S-004: unsaved edit must not mutate the stored value');
+
+        // No ConsumedFood row was created.
+        expect(nutrition.consumedToday, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'S-005: today-log pre-fill wins over lastAmountConsumed',
+      (tester) async {
+        final repo = await _freshRepo();
+        final nutrition = NutritionState(repo);
+        final foodLib = FoodLibraryState(repo);
+        await nutrition.loadConsumedToday();
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+
+        // Pre-seed food with a remembered amount = 150 (yesterday's
+        // log).
+        await repo.createFood(const Food(
+          id: 'f-today-wins',
+          name: 'Chicken (today wins)',
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100.0,
+          referenceLabel: '100 g',
+          protein: 31,
+          carbs: 0,
+          fat: 3,
+          lastAmountConsumed: 150.0,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        ));
+        final food = (await repo.getFoodById('f-today-wins'))!;
+
+        // Log today at 200 via the state (this also updates
+        // lastAmountConsumed → 200).
+        await nutrition.logConsumedFoodAt(food, 200.0);
+
+        // Pump the row.
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LogFoodRow(
+                food: food,
+                nutritionState: nutrition,
+                foodLibraryState: foodLib,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Pre-fill is 200 (today's value), not 150 (yesterday's).
+        final tf = tester.widget<TextField>(
+          find.byKey(const Key('log_food_amount_f-today-wins')),
+        );
+        expect(tf.controller!.text, '200');
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

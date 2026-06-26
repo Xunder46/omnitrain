@@ -343,6 +343,15 @@ class NutritionState extends ChangeNotifier {
         ..._consumedToday,
         entry.copyWith(id: id),
       ];
+      // Write-through: update the food row's `lastAmountConsumed`
+      // so the next time the user opens Foods I Eat, this row
+      // pre-fills with the amount they just logged (June 2026,
+      // food-last-amount plan). Best-effort: a transient
+      // `updateFood` failure does not roll back the ConsumedFood
+      // write (which is the source of truth for today's log) and
+      // does not block returning the new id. The user can retry
+      // the log; a future load will pick up the value.
+      await _writeThroughLastAmount(food, amountConsumed);
       notifyListeners();
       return id;
     } catch (_) {
@@ -438,6 +447,9 @@ class NutritionState extends ChangeNotifier {
       _consumedToday = _consumedToday
           .map((c) => c.id == existing.id ? updated : c)
           .toList();
+      // Write-through: same contract as `logConsumedFood` (June
+      // 2026, food-last-amount plan). Best-effort.
+      await _writeThroughLastAmount(food, amount);
       notifyListeners();
       return existing.id;
     }
@@ -455,6 +467,37 @@ class NutritionState extends ChangeNotifier {
     final existing = findLoggedTodayForFood(foodId);
     if (existing == null) return false;
     return deleteConsumedFood(existing.id);
+  }
+
+  // ─── food lastAmountConsumed write-through (food-last-amount-plan) ──
+  // A successful `logConsumedFoodAt` / `logConsumedFood` call must also
+  // stamp the saved amount onto the source food's
+  // `lastAmountConsumed` field so the next `LogFoodRow` pre-fill can
+  // read it (S-001 / S-003). The `ConsumedFood` row is the source of
+  // truth for today's totals and is written first; this write-through
+  // is best-effort — a transient `updateFood` failure must not roll
+  // back the day's log or block the call from returning the new id.
+
+  /// Write [amount] onto [food]'s `lastAmountConsumed` field via
+  /// the existing `updateFood` repository method. Best-effort: a
+  /// thrown exception (e.g. a transient storage error) is logged
+  /// to the debug channel but never rethrown. The caller is the
+  /// only path that invokes this method.
+  Future<void> _writeThroughLastAmount(Food food, double amount) async {
+    try {
+      final updated = food.copyWith(
+        lastAmountConsumed: amount,
+        updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      await _repository.updateFood(updated);
+    } catch (e) {
+      // Best-effort: never roll back the day's log. The user can
+      // re-log the food; the next load will pick up the value.
+      debugPrint(
+        'NutritionState: lastAmountConsumed write-through failed '
+        'for ${food.id}: $e',
+      );
+    }
   }
 
   // ─── Derived totals (cache-only) ──────────────────────────────────────

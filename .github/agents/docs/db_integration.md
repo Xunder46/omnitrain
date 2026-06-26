@@ -290,6 +290,39 @@ time:
 - See [food-form-decimals-and-autofocus-plan.md](../plans/food-form-decimals-and-autofocus-plan.md)
   for the full rationale and the back-compat pattern.
 
+### `last_amount_consumed` column on `app_food` (June 2026)
+
+The `app_food` table gained a nullable `last_amount_consumed REAL`
+column to back the `LogFoodRow` amount pre-fill
+(`food-last-amount-plan.md`). The column:
+
+- Stores the remembered "last amount" the user logged for the
+  food, in the food's own unit (grams for `grams`-type foods,
+  count-multiplier for `count`-type foods).
+- Is `NULL` when the food has never been logged. Legacy rows
+  (pre-feature) deserialize to `null` via `Food.fromMap`'s
+  `(m['last_amount_consumed'] as num?)?.toDouble()` pattern.
+- Is overwritten by `NutritionState` on every successful
+  `logConsumedFoodAt` / `logConsumedFood` call. The state
+  write-through uses `updateFood(food.copyWith(lastAmountConsumed:
+  amount, updatedAtMs: now))` — no new repository methods.
+- Survives remove-then-re-add of a catalog copy because the
+  `catalogId` linkage (per `food-durable-identity-plan.md`)
+  reuses the existing library food row instead of creating a new
+  one.
+- Is never mutated by an unsaved UI edit on `LogFoodRow` —
+  typing in the amount input on an unlogged row updates the
+  in-memory `TextEditingController` only; the food row is
+  written only when the user explicitly commits (tapping the
+  thumb, debounced auto-commit, etc.).
+
+No new Hive box, no new repository method, no new index. The
+existing `IX_food_*` indexes (on `is_archived`, `group_id`,
+`is_catalog`, `catalog_id`) already cover every query path
+that touches `last_amount_consumed` (which is none — the field
+is read via the `getFoodById` primary-key path, written via
+the existing `updateFood`).
+
 ### Repository APIs
 
 | Method | Description |

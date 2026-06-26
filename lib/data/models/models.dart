@@ -1783,6 +1783,26 @@ class Food {
   /// the file alive. Web has no persistent file API, so the picker
   /// is a no-op there and the field stays `null`.
   final String? imagePath;
+
+  /// Remembered "last amount" the user logged for this food, in the
+  /// food's own unit (grams for grams-type, count-multiplier for
+  /// count-type — see [NutritionState.logConsumedFoodAt] for the
+  /// own-unit contract). `null` when the food has never been logged.
+  ///
+  /// Drives the `LogFoodRow` pre-fill (June 2026, food-last-amount
+  /// plan): when the food is not logged today, the amount input is
+  /// pre-filled with this value so the user does not have to retype
+  /// the same portion every day. When null, the input falls back to
+  /// the food's [referenceAmount] (for grams-type) or `1.0`
+  /// (count-type). Overwritten on every successful save through
+  /// `NutritionState`; never mutated by an unsaved UI edit.
+  ///
+  /// Stored on the food row (not on `ConsumedFood`) so a remove-then-
+  /// re-add via `addCatalogFoodToLibrary` (with `catalogId`
+  /// linkage, per `food-durable-identity-plan.md`) reuses the same
+  /// library food and therefore the same remembered amount.
+  final double? lastAmountConsumed;
+
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -1811,6 +1831,7 @@ class Food {
     this.isArchived = false,
     this.notes,
     this.imagePath,
+    this.lastAmountConsumed,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
@@ -1866,6 +1887,8 @@ class Food {
       isArchived: (m['is_archived'] as int?) == 1,
       notes: m['notes'] as String?,
       imagePath: m['image_path'] as String?,
+      // Remembered last amount. Missing key → null (legacy rows).
+      lastAmountConsumed: (m['last_amount_consumed'] as num?)?.toDouble(),
       createdAtMs: m['created_at_ms'] as int,
       updatedAtMs: m['updated_at_ms'] as int,
     );
@@ -1888,6 +1911,7 @@ class Food {
     'is_archived': isArchived ? 1 : 0,
     'notes': notes,
     'image_path': imagePath,
+    'last_amount_consumed': lastAmountConsumed,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
   };
@@ -1909,6 +1933,7 @@ class Food {
     bool? isArchived,
     String? notes,
     Object? imagePath = _foodCopyWithUnset,
+    Object? lastAmountConsumed = _foodCopyWithUnset,
     int? createdAtMs,
     int? updatedAtMs,
   }) {
@@ -1935,6 +1960,9 @@ class Food {
       imagePath: identical(imagePath, _foodCopyWithUnset)
           ? this.imagePath
           : imagePath as String?,
+      lastAmountConsumed: identical(lastAmountConsumed, _foodCopyWithUnset)
+          ? this.lastAmountConsumed
+          : lastAmountConsumed as double?,
       createdAtMs: createdAtMs ?? this.createdAtMs,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
     );

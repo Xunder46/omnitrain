@@ -442,6 +442,7 @@ A food item with macronutrient metadata. Foods exist in two collections:
 | `isArchived` | `bool` | Soft-delete flag |
 | `notes` | `String?` | **Info** — optional free-form user notes. **Not** used to carry the catalog's category label; the category is stored on `groupId` instead. Catalog rows are seeded with `notes = null`; user-typed notes live on library rows. |
 | `imagePath` | `String?` | Optional native-first local file path to a food photo. Mirrors the `UserProfile.avatarPath` contract: the path is opaque to the repository and only the OS / user can keep the file alive. Web has no persistent file API, so the picker is a no-op there and the field stays `null`. Legacy rows (pre-image) deserialize to `null`. |
+| `lastAmountConsumed` | `double?` | Remembered "last amount" the user logged for this food, in the food's own unit (grams for `grams`-type, count for `count`-type). `null` when the food has never been logged. Drives the `LogFoodRow` pre-fill (June 2026, `food-last-amount-plan.md`): when the food is not logged today, the amount input is pre-filled with this value so the user does not have to retype the same portion every day. Overwritten on every successful `NutritionState.logConsumedFoodAt`; never mutated by an unsaved UI edit. Stored on the food row (not on `ConsumedFood`) so a remove-then-re-add via `addCatalogFoodToLibrary` (with `catalogId` linkage, per `food-durable-identity-plan.md`) reuses the same library food and therefore the same remembered amount. Legacy rows (pre-feature) deserialize to `null`. |
 | `createdAtMs` | `int` | Creation timestamp |
 | `updatedAtMs` | `int` | Last update timestamp |
 
@@ -455,7 +456,7 @@ Legacy compatibility: `servingSize` and `servingUnit` are deprecated getters tha
 
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
 
-> **Note:** `copyWith()` uses a private sentinel for the two nullable fields — `groupId` and `imagePath` — so callers can clear them (`copyWith(groupId: null)` / `copyWith(imagePath: null)`) without losing the previous value. This is what the Categories tab's group-reassignment path relies on when it moves foods to "Ungrouped" (`groupId = null`), and what the Edit Food screen relies on when the user clears the image tile (`imagePath = null`). The file on disk is left intact in both cases — it is the user's responsibility.
+> **Note:** `copyWith()` uses a private sentinel for the nullable fields — `groupId`, `imagePath`, and `lastAmountConsumed` — so callers can clear them (`copyWith(groupId: null)` / `copyWith(imagePath: null)` / `copyWith(lastAmountConsumed: null)`) without losing the previous value. This is what the Categories tab's group-reassignment path relies on when it moves foods to "Ungrouped" (`groupId = null`), what the Edit Food screen relies on when the user clears the image tile (`imagePath = null`), and what `NutritionState` relies on when it never writes `null` to `lastAmountConsumed` (the field is only ever set to a positive `double`, never cleared). The file on disk is left intact in all cases — it is the user's responsibility.
 
 #### Catalog `category` → `groupId` resolution
 

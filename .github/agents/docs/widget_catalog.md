@@ -1030,6 +1030,16 @@ auto-commits the new amount to the day log (debounced ~250 ms).
 Validation: amount must be `> 0`; an invalid amount makes the thumb
 tap a no-op and renders an inline error.
 
+**Pre-fill priority (food-last-amount-plan, June 2026)** — when the
+food is not logged today, the amount input is pre-filled in this
+order: (1) `food.lastAmountConsumed` (the user's last saved portion
+for this food, in its own unit) — null when the food has never been
+logged; (2) `food.referenceAmount` for grams-type (e.g. 100 g); (3)
+`1.0` for count-type (the default multiplier). When the food IS
+logged today, the existing `findLoggedTodayForFood` lookup wins and
+the pre-fill is the day's `amountConsumed` value (today's value
+overrides any remembered yesterday's value).
+
 **Iteration 1 (single-line macros — S-007)** replaced the 2×2 macro
 grid with a single `Text` line in the format
 `"<cal> cal · <P>P · <C>C · <F>F"` (e.g. `"90 cal · 0P · 0C · 10F"`)
