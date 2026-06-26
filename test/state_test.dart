@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/workout_constants.dart';
+import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/models/routine_session_manifest.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -1863,6 +1864,208 @@ void main() {
             reason:
                 'S-003: second entry must inherit extra-weight from previousValues',
           );
+        },
+      );
+    });
+
+    // ── Exercise set/round/drill previousValues carry-forward ────────────
+    // (June 2026, exercise-set-last-value-plan). Pins the
+    // storage-layer contract that the `_addSet` caller in
+    // `workout_session_screen.dart` relies on: every key the
+    // caller passes in `previousValues` must propagate into the
+    // freshly-created observation / round instance. This is the
+    // same machinery that drives the pre-existing timed-extra-
+    // weight carry-forward (S-003 above); this group expands the
+    // contract to the other effort kinds.
+    group('exercise previousValues carry-forward (per effort kind)', () {
+      test(
+        'set: addEntry carries reps + weight forward into the new observation',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'resistance_lifting');
+
+          final exercises = await repo.getExercises();
+          final liftExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('load'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            liftExercise,
+            effortKindOverride: 'set',
+          );
+          // entry 0: defaults (reps=10, weight=0.0).
+          // User overrides to 12 reps × 80 kg.
+          await state.updateEntryValue(effortId, 0, 'reps', 12);
+          await state.updateEntryValue(effortId, 0, 'weight', 80.0);
+
+          // entry 1: caller passes previousValues from the prior
+          // set's summary view. The state layer must round-trip
+          // these into the new observation rows verbatim.
+          await state.addEntry(
+            effortId,
+            previousValues: {'reps': 12, 'weight': 80.0},
+          );
+
+          final observations = await repo.getEffortObservations(effortId);
+          // Find the entry-1 reps + weight observations.
+          final repsObs1 = observations.firstWhere(
+            (o) =>
+                o.metricId == MetricIds.reps && o.id.endsWith('-1-reps'),
+          );
+          final weightObs1 = observations.firstWhere(
+            (o) =>
+                o.metricId == MetricIds.weight && o.id.endsWith('-1-weight'),
+          );
+          expect(repsObs1.valueInt, 12);
+          expect(weightObs1.valueReal, 80.0);
+        },
+      );
+
+      test(
+        'set (no-load exercise): addEntry carries reps + extra-weight forward',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'resistance_lifting');
+
+          final exercises = await repo.getExercises();
+          final bodyweightExercise = exercises.firstWhere(
+            (e) =>
+                e.capabilities.contains('sets') &&
+                !e.capabilities.contains('load'),
+            orElse: () => exercises.firstWhere(
+              (e) => !e.capabilities.contains('load'),
+              orElse: () => exercises.first,
+            ),
+          );
+          final effortId = await state.addExerciseToSession(
+            bodyweightExercise,
+            effortKindOverride: 'set',
+          );
+          // entry 0: 15 reps, -10 kg extra-weight (band-assist).
+          await state.updateEntryValue(effortId, 0, 'reps', 15);
+          await state.updateEntryValue(effortId, 0, 'extra-weight', -10.0);
+
+          // entry 1: caller passes previousValues for both.
+          await state.addEntry(
+            effortId,
+            previousValues: {'reps': 15, 'extra-weight': -10.0},
+          );
+
+          final observations = await repo.getEffortObservations(effortId);
+          final repsObs1 = observations.firstWhere(
+            (o) =>
+                o.metricId == MetricIds.reps && o.id.endsWith('-1-reps'),
+          );
+          final ewObs1 = observations.firstWhere(
+            (o) =>
+                o.metricId == MetricIds.extraWeight &&
+                o.id.endsWith('-1-extra-weight'),
+          );
+          expect(repsObs1.valueInt, 15);
+          expect(ewObs1.valueReal, -10.0);
+        },
+      );
+
+      test(
+        'round: addEntry carries round-duration forward into the new round',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'sports');
+
+          final exercises = await repo.getExercises();
+          final roundExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('rounds'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            roundExercise,
+            effortKindOverride: 'round',
+          );
+          // round 0: default 180s planned. User changes to 240s.
+          await state.updateEntryValue(effortId, 0, 'round-duration', 240);
+
+          // round 1: caller passes previousValues for the duration.
+          await state.addEntry(
+            effortId,
+            previousValues: {'round-duration': 240},
+          );
+
+          final rounds = state.getRoundsForEffort(effortId);
+          expect(rounds, hasLength(2));
+          expect(rounds[1].plannedDurationSecs, 240);
+        },
+      );
+
+      test(
+        'drill: addEntry carries extra-weight forward into the new drill',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'isometric_stretching');
+
+          final exercises = await repo.getExercises();
+          final drillExercise = exercises.firstWhere(
+            (e) => e.id.contains('plank') || e.id.contains('wall'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            drillExercise,
+            effortKindOverride: 'drill',
+          );
+          // drill 0: 30s, +5 kg extra-weight.
+          await state.updateEntryValue(effortId, 0, 'extra-weight', 5.0);
+
+          // drill 1: caller passes previousValues.
+          await state.addEntry(
+            effortId,
+            previousValues: {'extra-weight': 5.0},
+          );
+
+          final observations = await repo.getEffortObservations(effortId);
+          final ewObs1 = observations.firstWhere(
+            (o) =>
+                o.metricId == MetricIds.extraWeight &&
+                o.id.endsWith('-1-extra-weight'),
+          );
+          expect(ewObs1.valueReal, 5.0);
+        },
+      );
+
+      test(
+        'regression: previousValues for set on entry 0 uses app-wide defaults',
+        () async {
+          // No prior entries → addEntry with empty previousValues
+          // must fall back to the existing defaults (reps=10,
+          // weight=0.0). This pins the "fresh exercise" contract
+          // that the carry-forward feature must not break.
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession(modality: 'resistance_lifting');
+
+          final exercises = await repo.getExercises();
+          final liftExercise = exercises.firstWhere(
+            (e) => e.capabilities.contains('load'),
+            orElse: () => exercises.first,
+          );
+          final effortId = await state.addExerciseToSession(
+            liftExercise,
+            effortKindOverride: 'set',
+          );
+
+          final observations = await repo.getEffortObservations(effortId);
+          final repsObs0 = observations.firstWhere(
+            (o) =>
+                o.metricId == MetricIds.reps && o.id.endsWith('-0-reps'),
+          );
+          final weightObs0 = observations.firstWhere(
+            (o) =>
+                o.metricId == MetricIds.weight && o.id.endsWith('-0-weight'),
+          );
+          expect(repsObs0.valueInt, 10);
+          expect(weightObs0.valueReal, 0.0);
         },
       );
     });

@@ -322,6 +322,7 @@ class SessionSummaryBuilder {
           'exerciseId': effort.exerciseId,
           'name': exerciseName,
           'effortKind': effort.effortKind,
+          'capabilities': exercise?.capabilities ?? const <String>[],
           'executionOrder': effort.orderIndex,
           'topLevelOrderIndex': effort.topLevelOrderIndex ?? effort.orderIndex,
           'blockOrderIndex': effort.blockOrderIndex,

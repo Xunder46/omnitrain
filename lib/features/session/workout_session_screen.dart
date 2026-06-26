@@ -990,25 +990,43 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final exercise = _exercises[_currentExerciseIndex];
     final effortId = exercise['id'] as String;
     final effortKind = exercise['effortKind'] as String? ?? 'set';
-    final entries =
+    final cachedEntries =
         exercise['entries'] as List<Map<String, dynamic>>? ?? const [];
+    final hasLoad = (exercise['capabilities'] as List?)?.contains('load') ??
+        false;
 
-    if (entries.length >= WorkoutConstants.maxEntriesPerEffort) return;
+    if (cachedEntries.length >= WorkoutConstants.maxEntriesPerEffort) return;
 
     _isStructuralOp = true;
     try {
       // Mark structural change so the discard-confirmation fires on Back.
       if (widget.editMode) _hasStructuralChanges = true;
 
-      // For timed efforts, carry the last entry's extra-weight forward so the
-      // new interval is pre-filled with the same load (S-003).
-      Map<String, dynamic>? previousValues;
-      if (effortKind == 'timed' && entries.isNotEmpty) {
-        final lastWeight = entries.last['extra-weight'] as double?;
-        if (lastWeight != null) {
-          previousValues = {'extra-weight': lastWeight};
-        }
-      }
+      // Source-of-truth read for the prior entry's values: pull
+      // fresh from the state layer (not the screen's cached
+      // `_exercises`, which is only refreshed on explicit
+      // `_loadExercises()` calls). The state layer is kept in sync
+      // by every successful `updateEntryValue` → repository write,
+      // so this reads whatever the user has typed so far in the
+      // current session.
+      final liveEntries = widget.workoutState
+          .getExercisesWithEntries()
+          .firstWhere((e) => e['id'] == effortId)['entries']
+          as List;
+      final lastEntry = liveEntries.isEmpty
+          ? null
+          : liveEntries.last as Map<String, dynamic>;
+
+      // Build the `previousValues` map from the last entry's values
+      // so the new set/interval/round/drill pre-fills with the
+      // user's prior values (June 2026, exercise-set-last-value-
+      // plan). One map per effort kind — only keys the state layer
+      // accepts for that kind are included. When there is no prior
+      // entry (the freshly-added-exercise case), no map is passed
+      // and the state layer's app-wide defaults apply.
+      final previousValues = lastEntry == null
+          ? null
+          : _buildPreviousValues(lastEntry, effortKind, hasLoad);
 
       await widget.workoutState.addEntry(
         effortId,
@@ -1018,6 +1036,67 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     } finally {
       _isStructuralOp = false;
     }
+  }
+
+  /// Build the `previousValues` map for the new entry from the prior
+  /// entry's stored values. Pure function — no side effects, no
+  /// repository calls. Returns `null` when no carry-forward key is
+  /// available (e.g. the prior entry has no values for any of the
+  /// supported metrics), which lets the state layer fall back to its
+  /// app-wide defaults.
+  ///
+  /// Per-effort-kind contract:
+  ///
+  ///  * `set`: `reps` (int), `weight` (double); `extra-weight`
+  ///    (double) is also carried when the exercise lacks `load`
+  ///    capability (parity with `SessionCore.addEntry`, which
+  ///    creates an `extra-weight` observation in that case).
+  ///  * `round`: `round-duration` (int seconds).
+  ///  * `timed`: `extra-weight` (double).
+  ///  * `drill`: `extra-weight` (double).
+  ///
+  /// Unknown / missing keys on the prior entry are silently skipped;
+  /// the state layer's `(previousValues?['k'] as T?) ?? default`
+  /// pattern then falls back to the app-wide default for that key.
+  Map<String, dynamic>? _buildPreviousValues(
+    Map<String, dynamic> lastEntry,
+    String effortKind,
+    bool hasLoad,
+  ) {
+    final values = <String, dynamic>{};
+
+    void putInt(String key) {
+      final v = lastEntry[key];
+      if (v is int) values[key] = v;
+    }
+
+    void putDouble(String key) {
+      final v = lastEntry[key];
+      if (v is double) values[key] = v;
+    }
+
+    switch (effortKind) {
+      case 'set':
+        putInt('reps');
+        putDouble('weight');
+        if (!hasLoad) {
+          putDouble('extra-weight');
+        }
+        break;
+      case 'round':
+        final v = lastEntry['round-duration'];
+        if (v is int) values['round-duration'] = v;
+        break;
+      case 'timed':
+      case 'drill':
+        putDouble('extra-weight');
+        break;
+      default:
+        putInt('reps');
+        putDouble('weight');
+    }
+
+    return values.isEmpty ? null : values;
   }
 
   Future<void> _deleteCurrentSet() async {
