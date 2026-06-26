@@ -340,10 +340,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               builder: (context, constraints) {
                 const standardGridSpacing = 16.0;
                 const minTileSide = 56.0;
-                const titleToGridGap = 20.0;
-                const gridToCardGap = 16.0;
-                const outerPaddingTop = 5.0;
-                const outerPaddingBottom = 12.0;
+                const titleToGridGap = 15.0;
+                const gridToCardGap = 22.0;
+                const outerPaddingTop = 10.0;
+                const outerPaddingBottom = 6.0;
 
                 // The TRAIN title and the summary card
                 // both scale with the active `textScaler`
@@ -396,7 +396,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   children: [
                     Padding(
                       padding:
-                          const EdgeInsets.fromLTRB(16.0, 5.0, 16.0, 0.0),
+                          const EdgeInsets.fromLTRB(16.0, 0, 16.0, 0.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [

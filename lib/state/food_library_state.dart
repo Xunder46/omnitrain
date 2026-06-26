@@ -530,12 +530,26 @@ class FoodLibraryState extends ChangeNotifier {
   /// Returns `null` for:
   ///   * unknown catalog ids (no row in [_catalogFoods]),
   ///   * no matching non-archived, user-owned library row.
+  ///
+  /// Uses durable catalogId linkage when available, falls back to
+  /// value-based matching for legacy data without catalogId.
   String? libraryIdFor(String catalogFoodId) {
+    // First, try durable catalogId lookup
+    for (final f in _foods.values) {
+      if (f.isCatalog) continue;
+      if (f.isArchived) continue;
+      if (f.catalogId == catalogFoodId) {
+        return f.id;
+      }
+    }
+    // Fall back to legacy value-based matching for data without catalogId
     final catalog = _catalogFoods[catalogFoodId];
     if (catalog == null) return null;
     for (final f in _foods.values) {
       if (f.isCatalog) continue;
       if (f.isArchived) continue;
+      // Skip if already has catalogId (already matched above)
+      if (f.catalogId != null) continue;
       if (!_matchesIdentity(catalog, f)) continue;
       return f.id;
     }
@@ -553,11 +567,8 @@ class FoodLibraryState extends ChangeNotifier {
   /// Foods tab. A true legacy library-only custom (no catalog
   /// identity twin, even by data) returns `null` and is surfaced.
   ///
-  /// The single identity rule lives in [_matchesIdentity] and is
-  /// shared with [libraryIdFor] — both lookups are inverses and
-  /// must stay in lockstep. If the rule ever needs to expand
-  /// (e.g. per-locale normalization), update it there once and
-  /// both lookups follow.
+  /// Uses durable catalogId when available, falls back to legacy
+  /// value-based matching for data without catalogId.
   ///
   /// Cold-cache: if [_catalogFoods] is empty (catalog never
   /// loaded), this returns `null` for every row — the same
@@ -568,6 +579,14 @@ class FoodLibraryState extends ChangeNotifier {
   /// rows in the bundled seed). Mirrors the existing
   /// [libraryIdFor] O(m) over the user library.
   String? catalogIdFor(Food libraryFood) {
+    // First, try durable catalogId lookup
+    if (libraryFood.catalogId != null) {
+      // Verify the catalog still exists
+      if (_catalogFoods.containsKey(libraryFood.catalogId)) {
+        return libraryFood.catalogId;
+      }
+    }
+    // Fall back to legacy value-based matching
     for (final catalog in _catalogFoods.values) {
       if (catalog.isArchived) continue;
       if (!_matchesIdentity(catalog, libraryFood)) continue;
@@ -577,7 +596,8 @@ class FoodLibraryState extends ChangeNotifier {
   }
 
   /// Pure field-by-field identity check used by [isInLibrary] and
-  /// [libraryIdFor]. Pulled out so the rule lives in one place.
+  /// [libraryIdFor]. Only used for legacy fallback when catalogId
+  /// is not available. Pulled out so the rule lives in one place.
   static bool _matchesIdentity(Food a, Food b) {
     if (a.unitType != b.unitType) return false;
     if (a.referenceAmount != b.referenceAmount) return false;
@@ -588,6 +608,86 @@ class FoodLibraryState extends ChangeNotifier {
     if (a.fiber != b.fiber) return false;
     if (a.sodium != b.sodium) return false;
     return a.name.toLowerCase() == b.name.toLowerCase();
+  }
+
+  /// Propagates catalog food edits to all linked library foods.
+  /// Called after [updateCatalogFood] saves the catalog change.
+  ///
+  /// This ensures that when a user edits a catalog food (name, macros,
+  /// image, etc.), the linked "Foods I Eat" entries automatically
+  /// reflect the updated values.
+  ///
+  /// Uses durable `catalogId` linkage first, then falls back to
+  /// identity matching against [oldCatalogFood] (the values BEFORE
+  /// the edit) for legacy library foods (those without `catalogId`
+  /// set). When a legacy library food is found via identity match, it
+  /// is upgraded to use `catalogId` so future propagations work
+  /// without identity matching.
+  Future<void> _propagateCatalogEditToLinkedFoods(
+    String catalogFoodId,
+    Food oldCatalogFood,
+    Food updatedCatalogFood,
+  ) async {
+    // Find all library foods linked to this catalog via catalogId
+    final linkedFoodIds = <String>[];
+    final legacyMatches = <Food>[];
+
+    for (final f in _foods.values) {
+      if (f.isCatalog) continue;
+      if (f.catalogId == catalogFoodId) {
+        linkedFoodIds.add(f.id);
+      } else if (f.catalogId == null) {
+        // Legacy library food without catalogId - try identity match
+        // against the OLD catalog values (before the edit), since
+        // the library food still has those old values.
+        if (_matchesIdentity(oldCatalogFood, f)) {
+          legacyMatches.add(f);
+        }
+      }
+    }
+
+    if (linkedFoodIds.isEmpty && legacyMatches.isEmpty) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Update durable-linked library foods
+    for (final libId in linkedFoodIds) {
+      final libFood = _foods[libId];
+      if (libFood == null) continue;
+
+      // Create updated library food with catalog's current values
+      // but preserve the library food's own id, catalogId, and timestamps
+      final updatedLibFood = updatedCatalogFood.copyWith(
+        id: libFood.id,
+        catalogId: libFood.catalogId,
+        isCatalog: false,
+        groupId: libFood.groupId,
+        createdAtMs: libFood.createdAtMs,
+        updatedAtMs: now,
+      );
+
+      // Persist and update cache
+      await _repository.updateFood(updatedLibFood);
+      _foods[libId] = updatedLibFood;
+    }
+
+    // Upgrade and update legacy library foods (found via identity match)
+    for (final legacyFood in legacyMatches) {
+      final upgradedLibFood = updatedCatalogFood.copyWith(
+        id: legacyFood.id,
+        catalogId: catalogFoodId, // Upgrade to durable linkage
+        isCatalog: false,
+        groupId: legacyFood.groupId,
+        createdAtMs: legacyFood.createdAtMs,
+        updatedAtMs: now,
+      );
+
+      // Persist and update cache
+      await _repository.updateFood(upgradedLibFood);
+      _foods[legacyFood.id] = upgradedLibFood;
+    }
+
+    notifyListeners();
   }
 
   /// Search foods by name (case-insensitive substring match).
@@ -635,15 +735,37 @@ class FoodLibraryState extends ChangeNotifier {
 
   /// Copy a catalog food into the user's library.
   ///
-  /// Returns the new library food's id. The new row has `isCatalog =
-  /// false`, a fresh id, and all other fields copied from the catalog
-  /// source. The catalog itself is not modified. Throws if the catalog
-  /// id is unknown.
+  /// Returns the library food's id. If the food is already in the
+  /// user's library (linked via catalogId), returns the existing id
+  /// instead of creating a duplicate. If a legacy library food (without
+  /// catalogId set) is found via value matching, it is upgraded with
+  /// the catalogId so future edits propagate correctly. The new row
+  /// has `isCatalog = false`, a fresh id, and all other fields copied
+  /// from the catalog source. The catalog itself is not modified.
+  /// Throws if the catalog id is unknown.
   ///
   /// The new library food is inserted into the [_foods] cache and
   /// listeners are notified so the browse card on the nutrition page
   /// picks it up immediately.
   Future<String> addCatalogFoodToLibrary(String catalogFoodId) async {
+    // First check if there's already a linked library food for this catalog
+    final existingId = libraryIdFor(catalogFoodId);
+    if (existingId != null) {
+      // Check if the existing food has catalogId set; if not (legacy
+      // data), upgrade it so future propagation works correctly.
+      final existing = _foods[existingId];
+      if (existing != null && existing.catalogId == null) {
+        final upgraded = existing.copyWith(
+          catalogId: catalogFoodId,
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        );
+        await _repository.updateFood(upgraded);
+        _foods[existingId] = upgraded;
+        notifyListeners();
+      }
+      return existingId;
+    }
+
     final newId = await _repository.addCatalogFoodToLibrary(catalogFoodId);
     // Pull the freshly-inserted library row back through the cache
     // path so the in-memory state matches the persisted state. A
@@ -724,33 +846,13 @@ class FoodLibraryState extends ChangeNotifier {
     await _repository.updateCatalogFood(updated);
     _catalogFoods[existing.id] = updated;
 
-    // Also sync any user library copies that match this catalog food by identity.
-    // When the global catalog is edited, user's personal copies should get the new values.
-    // Match against the ORIGINAL catalog food (before update), then apply the NEW values.
-    for (final userFood in _foods.values) {
-      if (userFood.isCatalog) continue; // Skip catalog foods
-      if (userFood.isArchived) continue; // Skip archived user foods
-      if (!_matchesIdentity(existing, userFood)) continue;
-
-      // Update the user library copy with the new catalog values
-      final syncedUserFood = userFood.copyWith(
-        name: updated.name,
-        groupId: updated.groupId,
-        unitType: updated.unitType,
-        referenceAmount: updated.referenceAmount,
-        referenceLabel: updated.referenceLabel,
-        protein: updated.protein,
-        carbs: updated.carbs,
-        fiber: updated.fiber,
-        fat: updated.fat,
-        sodium: updated.sodium,
-        notes: updated.notes,
-        imagePath: updated.imagePath,
-        updatedAtMs: now,
-      );
-      await _repository.updateFood(syncedUserFood);
-      _foods[syncedUserFood.id] = syncedUserFood;
-    }
+    // Propagate catalog edits to all linked library foods using durable
+    // catalogId linkage. This ensures edits to the catalog automatically
+    // update linked "Foods I Eat" entries. We pass `existing` (the old
+    // catalog food values) so the legacy identity-match fallback can
+    // identify library foods that were previously value-linked to the
+    // catalog before this edit.
+    await _propagateCatalogEditToLinkedFoods(existing.id, existing, updated);
 
     notifyListeners();
   }
@@ -984,6 +1086,7 @@ class FoodLibraryState extends ChangeNotifier {
       referenceAmount: referenceAmount,
       referenceLabel: referenceLabel,
       isCatalog: false,
+      catalogId: existing.catalogId, // Preserve catalogId if linked to catalog
       protein: protein,
       carbs: carbs,
       fiber: fiber,

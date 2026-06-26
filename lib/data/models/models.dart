@@ -1763,6 +1763,12 @@ class Food {
   /// Catalog foods are read-only; library foods are user-editable.
   final bool isCatalog;
 
+  /// The ID of the catalog food this library food is linked to.
+  /// Only populated for non-catalog (user-owned) foods that were copied
+  /// from a catalog entry. This provides a durable identity link that
+  /// survives edits to name, macros, or other fields.
+  final String? catalogId;
+
   final double protein;
   final double carbs;
   final double? fiber;
@@ -1796,6 +1802,7 @@ class Food {
     required this.referenceAmount,
     required this.referenceLabel,
     this.isCatalog = false,
+    this.catalogId,
     required this.protein,
     required this.carbs,
     this.fiber,
@@ -1845,6 +1852,7 @@ class Food {
           ? (m['reference_label'] as String?) ?? 'g'
           : (m['serving_unit'] as String?) ?? 'g',
       isCatalog: hasNewFields ? (m['is_catalog'] as int?) == 1 : false,
+      catalogId: m['catalog_id'] as String?,
       // Macros are widened to `double` to support fractional
       // grams; the cast below accepts both legacy `INTEGER` rows
       // (where `m['protein']` is an `int`) and the new `REAL`
@@ -1871,6 +1879,7 @@ class Food {
     'reference_amount': referenceAmount,
     'reference_label': referenceLabel,
     'is_catalog': isCatalog ? 1 : 0,
+    'catalog_id': catalogId,
     'protein': protein,
     'carbs': carbs,
     'fiber': fiber,
@@ -1891,6 +1900,7 @@ class Food {
     double? referenceAmount,
     String? referenceLabel,
     bool? isCatalog,
+    Object? catalogId = _foodCopyWithUnset,
     double? protein,
     double? carbs,
     double? fiber,
@@ -1912,6 +1922,9 @@ class Food {
       referenceAmount: referenceAmount ?? this.referenceAmount,
       referenceLabel: referenceLabel ?? this.referenceLabel,
       isCatalog: isCatalog ?? this.isCatalog,
+      catalogId: identical(catalogId, _foodCopyWithUnset)
+          ? this.catalogId
+          : catalogId as String?,
       protein: protein ?? this.protein,
       carbs: carbs ?? this.carbs,
       fiber: fiber ?? this.fiber,

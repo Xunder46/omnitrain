@@ -96,10 +96,9 @@ class NutritionPrimerSheet extends StatelessWidget {
             key: Key('nutrition_primer_block_curate'),
             label: 'YOUR LIST, BUILT ONCE',
             body:
-                'You add foods from the library into "Foods I Eat," and '
-                'they stay (grouped by category) until you remove them. '
-                'You manage that list from the edit control on the page; '
-                'you don\'t re-add foods each day.',
+                'Add foods from the library into "Foods I Eat" once. '
+                'They stay, grouped by category, until you remove them. '
+                'Manage the list anytime from the edit control.',
           ),
           const SizedBox(height: 16),
           // Block 2: daily check-off with adjustable portion.
@@ -107,20 +106,17 @@ class NutritionPrimerSheet extends StatelessWidget {
             key: Key('nutrition_primer_block_check'),
             label: 'CHECK TO LOG, SET THE AMOUNT',
             body:
-                'Each day you check off what you ate to count it toward '
-                'today. The amount is adjustable per food (the default '
-                'portion isn\'t always what you had), so checking a food '
-                'is not strictly all-or-nothing.',
+                'Each day, check off what you ate to count it toward today. '
+                'Adjust the amount per food — the portion is yours to set, not fixed.',
           ),
           const SizedBox(height: 16),
           // Block 3: rollup — calories, macros, water, sodium.
           const _PrimerBlock(
             key: Key('nutrition_primer_block_rollup'),
-            label: 'YOUR DAY, AT A GLANCE',
+            label: 'TODAY AND OVER TIME',
             body:
-                'Everything you check rolls up into the ring: calories '
-                'against your daily target plus your protein, carb, and '
-                'fat split, with water and sodium tracked alongside.',
+                'Check-offs roll into the donut chart, '
+                'and your stats screen tracks your nutrition trends across days and weeks.',
           ),
           const SizedBox(height: 24),
           // Single primary action — explicit shape, theme token, no

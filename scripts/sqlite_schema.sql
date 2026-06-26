@@ -1186,6 +1186,11 @@ CREATE TABLE app_food (
   reference_amount REAL NOT NULL,
   reference_label TEXT NOT NULL,
   is_catalog INTEGER NOT NULL DEFAULT 0,
+  -- catalog_id: durable link to source catalog food. Only populated
+  -- for non-catalog (is_catalog=0) foods that were copied from the
+  -- catalog. This enables durable identity across edits - the library
+  -- food stays linked to its catalog source even when name/macros change.
+  catalog_id TEXT,
   -- Macros (protein, carbs, fat) are stored as `REAL` (not
   -- `INTEGER`) so the form can persist fractional grams like
   -- `0.5` g of fat. The column has no `CHECK` constraint, so
@@ -1209,6 +1214,7 @@ CREATE TABLE app_food (
 CREATE INDEX IF NOT EXISTS IX_food_archived ON app_food(is_archived);
 CREATE INDEX IF NOT EXISTS IX_food_group_id ON app_food(group_id);
 CREATE INDEX IF NOT EXISTS IX_food_catalog ON app_food(is_catalog);
+CREATE INDEX IF NOT EXISTS IX_food_catalog_id ON app_food(catalog_id);
 
 -- FOOD CATALOG (June 2026)
 -- =========================
@@ -1247,9 +1253,10 @@ CREATE INDEX IF NOT EXISTS IX_food_catalog ON app_food(is_catalog);
 --       notes=?, updated_at_ms=? WHERE id = ?;
 --   addCatalogFoodToLibrary(catalogFoodId):
 --     INSERT INTO app_food SELECT * FROM app_food_catalog WHERE id = ?;
---     UPDATE app_food SET id = ?, is_catalog = 0 WHERE id = ?;
+--     UPDATE app_food SET id = ?, is_catalog = 0, catalog_id = ? WHERE id = ?;
 --     -- copyWith() carries group_id across by default, so the
 --     -- catalog's resolved group_id propagates to the library row.
+--     -- catalog_id stores the source catalog food's id for durable linkage.
 --
 CREATE TABLE app_food_catalog (
   id TEXT NOT NULL PRIMARY KEY,

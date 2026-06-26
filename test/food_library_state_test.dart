@@ -4,6 +4,7 @@ import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/mock/seed_data.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/core/utils/food_helpers.dart';
+import 'package:omnitrain/core/models/food_draft.dart';
 
 Future<MockWorkoutRepository> _freshRepo() async {
   final repo = MockWorkoutRepository();
@@ -1261,6 +1262,196 @@ void main() {
         await state.removeFood(libId);
         expect(state.libraryIdFor('test-catalog-chicken-id'), isNull);
       });
+    });
+
+    // ─── Catalog Edit Propagation (D-3) ─────────────────────────────────
+    //
+    // When a user edits a catalog food, the linked library food should
+    // automatically reflect the updated values (calories, name, image,
+    // etc.). This is the core durable-identity behavior: edits to the
+    // catalog source propagate to the user's "Foods I Eat" entry.
+    group('catalog edit propagation', () {
+      const catalogSource = Food(
+        id: 'catalog-edit-test-id',
+        name: 'Test Food',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100.0,
+        referenceLabel: 'g',
+        isCatalog: true,
+        protein: 20,
+        carbs: 30,
+        fat: 5,
+        createdAtMs: 100,
+        updatedAtMs: 100,
+      );
+
+      test(
+        'editing catalog food propagates to library food with catalogId',
+        () async {
+          final repo = await _freshRepo();
+          final state = FoodLibraryState(repo);
+          await repo.seedCatalogFood(catalogSource);
+          await state.loadCatalogFoods();
+
+          // Add to library - this creates a library food with catalogId set
+          final libId = await state.addCatalogFoodToLibrary(
+            'catalog-edit-test-id',
+          );
+          final originalLibFood = state.foods.firstWhere(
+            (f) => f.id == libId,
+          );
+          expect(originalLibFood.catalogId, 'catalog-edit-test-id');
+
+          // Edit the catalog food
+          final draft = FoodDraft(
+            name: 'Renamed Food',
+            groupId: null,
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100.0,
+            referenceLabel: 'g',
+            protein: 25,
+            carbs: 35,
+            fiber: null,
+            fat: 8,
+            sodium: null,
+            notes: null,
+            imagePath: null,
+          );
+          await state.updateCatalogFood(catalogSource, draft);
+
+          // Verify library food was updated with new values
+          final updatedLibFood = state.foods.firstWhere(
+            (f) => f.id == libId,
+          );
+          expect(updatedLibFood.name, 'Renamed Food');
+          expect(updatedLibFood.protein, 25);
+          expect(updatedLibFood.carbs, 35);
+          expect(updatedLibFood.fat, 8);
+          // catalogId should still be set (durable linkage preserved)
+          expect(updatedLibFood.catalogId, 'catalog-edit-test-id');
+        },
+      );
+
+      test(
+        'editing catalog food propagates to legacy library food via identity match',
+        () async {
+          final repo = await _freshRepo();
+          final state = FoodLibraryState(repo);
+          await repo.seedCatalogFood(catalogSource);
+          await state.loadCatalogFoods();
+
+          // Simulate legacy data: create a library food WITHOUT catalogId
+          // but with values matching the catalog
+          final legacyFood = Food(
+            id: 'legacy-lib-id',
+            name: 'Test Food',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100.0,
+            referenceLabel: 'g',
+            isCatalog: false,
+            // No catalogId - simulating legacy data
+            protein: 20,
+            carbs: 30,
+            fat: 5,
+            createdAtMs: 100,
+            updatedAtMs: 100,
+          );
+          await repo.createFood(legacyFood);
+          await state.loadFoods();
+
+          // Edit the catalog food
+          final draft = FoodDraft(
+            name: 'Updated Food Name',
+            groupId: null,
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100.0,
+            referenceLabel: 'g',
+            protein: 22,
+            carbs: 33,
+            fiber: null,
+            fat: 6,
+            sodium: null,
+            notes: null,
+            imagePath: null,
+          );
+          await state.updateCatalogFood(catalogSource, draft);
+
+          // Verify legacy library food was updated with new values
+          final updatedLegacyFood = state.foods.firstWhere(
+            (f) => f.id == 'legacy-lib-id',
+          );
+          expect(updatedLegacyFood.name, 'Updated Food Name');
+          expect(updatedLegacyFood.protein, 22);
+          expect(updatedLegacyFood.carbs, 33);
+          expect(updatedLegacyFood.fat, 6);
+          // catalogId should now be set (upgraded from legacy)
+          expect(updatedLegacyFood.catalogId, 'catalog-edit-test-id');
+        },
+      );
+
+      test(
+        'addCatalogFoodToLibrary does not create duplicate for already-linked food',
+        () async {
+          final repo = await _freshRepo();
+          final state = FoodLibraryState(repo);
+          await repo.seedCatalogFood(catalogSource);
+          await state.loadCatalogFoods();
+
+          // Add to library first time
+          final libId1 = await state.addCatalogFoodToLibrary(
+            'catalog-edit-test-id',
+          );
+          expect(state.foods.length, 1);
+
+          // Try to add again - should not create duplicate
+          final libId2 = await state.addCatalogFoodToLibrary(
+            'catalog-edit-test-id',
+          );
+          expect(libId2, libId1);
+          expect(state.foods.length, 1);
+        },
+      );
+
+      test(
+        'addCatalogFoodToLibrary upgrades legacy library food with catalogId',
+        () async {
+          final repo = await _freshRepo();
+          final state = FoodLibraryState(repo);
+          await repo.seedCatalogFood(catalogSource);
+          await state.loadCatalogFoods();
+
+          // Create legacy library food without catalogId
+          final legacyFood = Food(
+            id: 'legacy-food-1',
+            name: 'Test Food',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100.0,
+            referenceLabel: 'g',
+            isCatalog: false,
+            protein: 20,
+            carbs: 30,
+            fat: 5,
+            createdAtMs: 100,
+            updatedAtMs: 100,
+          );
+          await repo.createFood(legacyFood);
+          await state.loadFoods();
+
+          // Add catalog to library - should upgrade legacy food
+          final libId = await state.addCatalogFoodToLibrary(
+            'catalog-edit-test-id',
+          );
+          expect(libId, 'legacy-food-1');
+
+          // Verify the legacy food now has catalogId
+          final upgradedFood = state.foods.firstWhere(
+            (f) => f.id == 'legacy-food-1',
+          );
+          expect(upgradedFood.catalogId, 'catalog-edit-test-id');
+          // Should not create new food
+          expect(state.foods.length, 1);
+        },
+      );
     });
   });
 

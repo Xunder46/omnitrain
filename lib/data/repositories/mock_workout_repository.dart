@@ -1298,12 +1298,14 @@ class MockWorkoutRepository implements WorkoutRepository {
     final now = DateTime.now().millisecondsSinceEpoch;
     final newId = 'food-$now-${DateTime.now().microsecond}';
 
-    // Create a library copy with isCatalog = false
+    // Create a library copy with isCatalog = false and catalogId set
+    // to create a durable link back to the source catalog food.
     // copyWith() carries groupId across by default, so the catalog's
     // resolved group_id propagates to the library row.
     final libraryFood = catalogFood.copyWith(
       id: newId,
       isCatalog: false,
+      catalogId: catalogFoodId,
       createdAtMs: now,
       updatedAtMs: now,
     );
