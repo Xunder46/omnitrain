@@ -796,6 +796,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             settingsState: widget.settingsState,
             timerAlertService: widget.timerAlertService,
             restNotificationService: widget.restNotificationService,
+            profileState: widget.profileState,
           ),
         ),
       ),

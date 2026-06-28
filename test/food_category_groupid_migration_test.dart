@@ -23,9 +23,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/hive_workout_repository.dart';
-import 'package:omnitrain/mock/seed_data.dart';
 
 class _PathProviderChannel {
   static const MethodChannel _channel = MethodChannel(

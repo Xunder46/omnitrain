@@ -11,19 +11,16 @@ import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
-import 'package:omnitrain/state/nutrition/nutrition_primer_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
-import 'package:omnitrain/widgets/common/interactive_logo.dart';
 import 'package:omnitrain/widgets/hub/hub_sheet.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
-import 'helpers/fake_preferences_service.dart';
 import 'helpers/test_nutrition_primer_state.dart';
 
 /// Test-only [NavigatorObserver] that records the most recent

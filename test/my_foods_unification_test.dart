@@ -574,7 +574,7 @@ void main() {
   /// macro line. To avoid coupling to row internals, we just
   /// return every `Text` string on the screen and filter for
   /// the known food names declared by the test fixture.
-  List<String> _collectMyFoodsRowNames(WidgetTester tester) {
+  List<String> collectMyFoodsRowNames(WidgetTester tester) {
     final candidates = <String>[];
     for (final element in find.byType(Text).evaluate()) {
       final data = (element.widget as Text).data;
@@ -656,7 +656,7 @@ void main() {
         await tester.tap(find.text('My Foods'));
         await tester.pumpAndSettle();
 
-        final renderedNames = _collectMyFoodsRowNames(tester);
+        final renderedNames = collectMyFoodsRowNames(tester);
 
         // ─── Assertions ────────────────────────────────────────
         // The two bundled foods and their library copies are all

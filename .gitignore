@@ -70,3 +70,6 @@ macos/Runner.xcworkspace/
 /docs/copilot-agents/
 
 /.claude/settings.local.json
+
+# Generated agent grounding bundle (not for version control)
+/omnitrain-grounding.tsource

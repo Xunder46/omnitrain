@@ -181,7 +181,7 @@ void main() {
   // windowed-selection tests below to anchor seeded sessions
   // inside the current-state window (rather than 2024 dates
   // that fall outside it).
-  DateTime _daysAgo(int n) {
+  DateTime daysAgo(int n) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     return today.subtract(Duration(days: n));
@@ -189,15 +189,15 @@ void main() {
 
   // Creates a training period that covers today (default) and an
   // optional explicit range. Anchored to local midnight.
-  Future<TrainingPeriod> _seedActivePeriod(
+  Future<TrainingPeriod> seedActivePeriod(
     MockWorkoutRepository repo, {
     required String id,
     required String name,
     DateTime? startDay,
     DateTime? endDay,
   }) async {
-    final start = startDay ?? _daysAgo(7);
-    final end = endDay ?? _daysAgo(-7);
+    final start = startDay ?? daysAgo(7);
+    final end = endDay ?? daysAgo(-7);
     final startMs = DateTime(
       start.year,
       start.month,
@@ -368,7 +368,7 @@ void main() {
         // Reseed relative to "now" so the sessions fall inside
         // the current-state window (the recent-training-days
         // window's 14-day capacity).
-        await _seedSession(repo, id: 'sess-$i', day: _daysAgo(i));
+        await _seedSession(repo, id: 'sess-$i', day: daysAgo(i));
         await _addSetEffort(
           repo,
           sessionId: 'sess-$i',
@@ -399,7 +399,7 @@ void main() {
       // CEx0: 3 days (anchored to "now" so the sessions land
       // inside the current-state window).
       for (var i = 0; i < 3; i++) {
-        await _seedSession(repo, id: 'c0-$i', day: _daysAgo(i));
+        await _seedSession(repo, id: 'c0-$i', day: daysAgo(i));
         await _addTimedEffort(
           repo,
           sessionId: 'c0-$i',
@@ -410,7 +410,7 @@ void main() {
 
       // CEx1: 3 days (tied with CEx0; uses the next 3 days)
       for (var i = 0; i < 3; i++) {
-        await _seedSession(repo, id: 'c1-$i', day: _daysAgo(3 + i));
+        await _seedSession(repo, id: 'c1-$i', day: daysAgo(3 + i));
         await _addTimedEffort(
           repo,
           sessionId: 'c1-$i',
@@ -420,7 +420,7 @@ void main() {
       }
 
       // CEx2: 1 day
-      await _seedSession(repo, id: 'c2-0', day: _daysAgo(7));
+      await _seedSession(repo, id: 'c2-0', day: daysAgo(7));
       await _addTimedEffort(
         repo,
         sessionId: 'c2-0',
@@ -521,7 +521,7 @@ void main() {
         Exercise(id: 'ex-dl', name: 'Deadlift', createdAtMs: 1000, updatedAtMs: 1000),
       );
 
-      await _seedSession(repo, id: 's-null', day: _daysAgo(0), modality: null);
+      await _seedSession(repo, id: 's-null', day: daysAgo(0), modality: null);
       await _addSetEffort(
         repo,
         sessionId: 's-null',
@@ -544,7 +544,7 @@ void main() {
       await _seedSession(
         repo,
         id: 's-lift',
-        day: _daysAgo(0),
+        day: daysAgo(0),
         modality: 'resistance_lifting',
       );
       await _addTimedEffort(
@@ -575,7 +575,7 @@ void main() {
       await _seedSession(
         repo,
         id: 's-drill',
-        day: _daysAgo(0),
+        day: daysAgo(0),
         modality: 'resistance_lifting',
       );
 
@@ -922,7 +922,7 @@ void main() {
   // Frozen-snapshot test helper. Macros are per the food's
   // reference (per 100 g or per 1 serving); the service scales
   // them by amountConsumed/referenceAmount and rounds once per day.
-  Future<void> _seedConsumedFood(
+  Future<void> seedConsumedFood(
     MockWorkoutRepository repo, {
     required String id,
     required DateTime day,
@@ -968,7 +968,7 @@ void main() {
     );
   }
 
-  DateTime _dayAt(int daysAgo) {
+  DateTime dayAt(int daysAgo) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     return today.subtract(Duration(days: daysAgo));
@@ -1000,10 +1000,10 @@ void main() {
       'S-004: exactly 1 logged day in window → single NutritionTrendPoint',
       () async {
         final repo = await cleanRepo();
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-1',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'Chicken breast',
           protein: 31,
           carbs: 0,
@@ -1015,9 +1015,9 @@ void main() {
         expect(data.nutritionTrend, hasLength(1));
         final p = data.nutritionTrend.first;
         // Date is local midnight (date components only).
-        expect(p.date.year, _dayAt(0).year);
-        expect(p.date.month, _dayAt(0).month);
-        expect(p.date.day, _dayAt(0).day);
+        expect(p.date.year, dayAt(0).year);
+        expect(p.date.month, dayAt(0).month);
+        expect(p.date.day, dayAt(0).day);
         // Protein: 31 × (150/100) = 46.5 → rounds to 47 (rounds half-up).
         // Same arithmetic for carbs (0) and fat (4 × 1.5 = 6).
         expect(p.protein, 47);
@@ -1037,10 +1037,10 @@ void main() {
       () async {
         final repo = await cleanRepo();
         // Day 0: 150 g chicken (31/0/4 100 g) → protein 47, fat 6.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-d0',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'Chicken breast',
           protein: 31,
           carbs: 0,
@@ -1048,10 +1048,10 @@ void main() {
           amountConsumed: 150,
         );
         // Day 3: 200 g greek_yogurt (10/4/0 100 g) → protein 20, carbs 8.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-d3a',
-          day: _dayAt(3),
+          day: dayAt(3),
           name: 'Greek yogurt',
           protein: 10,
           carbs: 4,
@@ -1062,10 +1062,10 @@ void main() {
         // Day 3 protein sum: 20 + 4 = 24.
         // Day 3 carbs sum: 8 + 3 = 11.
         // Day 3 fat sum: 0 + 8 = 8.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-d3b',
-          day: _dayAt(3),
+          day: dayAt(3),
           name: 'Peanut butter',
           unitType: FoodUnitType.count,
           referenceAmount: 1,
@@ -1077,10 +1077,10 @@ void main() {
         );
         // Day 7: 120 g oats (13/67/7 100 g) → protein 16, carbs 80, fat 8.
         // (13*1.2=15.6 → 16; 67*1.2=80.4 → 80; 7*1.2=8.4 → 8)
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-d7',
-          day: _dayAt(7),
+          day: dayAt(7),
           name: 'Oats',
           protein: 13,
           carbs: 67,
@@ -1134,10 +1134,10 @@ void main() {
     test('window bound: rows older than 10 days are excluded', () async {
       final repo = await cleanRepo();
       // 11 days ago — must NOT be included.
-      await _seedConsumedFood(
+      await seedConsumedFood(
         repo,
         id: 'cf-old',
-        day: _dayAt(11),
+        day: dayAt(11),
         name: 'Old row',
         protein: 31,
         carbs: 0,
@@ -1145,10 +1145,10 @@ void main() {
         amountConsumed: 100,
       );
       // Today — included.
-      await _seedConsumedFood(
+      await seedConsumedFood(
         repo,
         id: 'cf-today',
-        day: _dayAt(0),
+        day: dayAt(0),
         name: 'Today row',
         protein: 10,
         carbs: 4,
@@ -1161,7 +1161,7 @@ void main() {
       final trend = await StatsProgressService(repo)
           .computeNutritionTrend(days: 10);
       expect(trend, hasLength(1));
-      expect(trend.first.date.day, _dayAt(0).day);
+      expect(trend.first.date.day, dayAt(0).day);
     });
 
     test(
@@ -1169,20 +1169,20 @@ void main() {
       () async {
         final repo = await cleanRepo();
         // Day 0 + Day 4 (skipping 1, 2, 3).
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-a',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'A',
           protein: 10,
           carbs: 5,
           fat: 2,
           amountConsumed: 100,
         );
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-b',
-          day: _dayAt(4),
+          day: dayAt(4),
           name: 'B',
           protein: 8,
           carbs: 12,
@@ -1208,20 +1208,20 @@ void main() {
         // per-row (e.g. 0.45 g each). Sum-then-round: 0.9 → 1.
         // Each row: protein 30, amountConsumed 1, referenceAmount 100
         // → 30 * (1/100) = 0.3 g.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-r1',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'Tiny 1',
           protein: 30,
           carbs: 0,
           fat: 0,
           amountConsumed: 1,
         );
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-r2',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'Tiny 2',
           protein: 30,
           carbs: 0,
@@ -1229,10 +1229,10 @@ void main() {
           amountConsumed: 1,
         );
         // Three rows of 0.3 g each = 0.9 g → rounds to 1.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-r3',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'Tiny 3',
           protein: 30,
           carbs: 0,
@@ -1255,10 +1255,10 @@ void main() {
         // 100 g of a food with 20 g carbs (fiber=2 → net = 18). The
         // strip uses total carbs (20), so the line value here must
         // also be 20, not 18.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-fiber',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'Whole wheat bread',
           protein: 4,
           carbs: 20,
@@ -1288,20 +1288,20 @@ void main() {
         await _clearSeededFoods(repo);
         // Seed rows on day 0 and day 25 (well outside the old 10-day
         // cap) — both must be returned.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-fh-0',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'Today',
           protein: 31,
           carbs: 0,
           fat: 4,
           amountConsumed: 100,
         );
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-fh-25',
-          day: _dayAt(25),
+          day: dayAt(25),
           name: 'Old',
           protein: 10,
           carbs: 5,
@@ -1325,20 +1325,20 @@ void main() {
       () async {
         final repo = await _freshRepo();
         await _clearSeededFoods(repo);
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-cap-0',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'Today',
           protein: 10,
           carbs: 0,
           fat: 0,
           amountConsumed: 100,
         );
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-cap-15',
-          day: _dayAt(15),
+          day: dayAt(15),
           name: 'Out of window',
           protein: 10,
           carbs: 0,
@@ -1349,7 +1349,7 @@ void main() {
         final trend = await StatsProgressService(repo)
             .computeNutritionTrend(days: 10);
         expect(trend, hasLength(1));
-        expect(trend.first.date.day, _dayAt(0).day);
+        expect(trend.first.date.day, dayAt(0).day);
       },
     );
 
@@ -1359,20 +1359,20 @@ void main() {
         final repo = await _freshRepo();
         await _clearSeededFoods(repo);
         // Day 0: two rows → round-once aggregation.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-fh-r1',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'A',
           protein: 30,
           carbs: 0,
           fat: 0,
           amountConsumed: 1,
         );
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-fh-r2',
-          day: _dayAt(0),
+          day: dayAt(0),
           name: 'B',
           protein: 30,
           carbs: 0,
@@ -1380,10 +1380,10 @@ void main() {
           amountConsumed: 1,
         );
         // Day 7: one row.
-        await _seedConsumedFood(
+        await seedConsumedFood(
           repo,
           id: 'cf-fh-r3',
-          day: _dayAt(7),
+          day: dayAt(7),
           name: 'C',
           protein: 50,
           carbs: 0,
@@ -1473,7 +1473,7 @@ void main() {
           await _seedSession(
             repo,
             id: 's-filler-$i',
-            day: _daysAgo(i),
+            day: daysAgo(i),
           );
           await _addSetEffort(
             repo,
@@ -1490,7 +1490,7 @@ void main() {
           await _seedSession(
             repo,
             id: 's-old-$i',
-            day: _daysAgo(15 + i),
+            day: daysAgo(15 + i),
           );
           await _addSetEffort(
             repo,
@@ -1504,7 +1504,7 @@ void main() {
         await _seedSession(
           repo,
           id: 's-now-0',
-          day: _daysAgo(0),
+          day: daysAgo(0),
         );
         await _addSetEffort(
           repo,
@@ -1545,12 +1545,12 @@ void main() {
       'the period started',
       () async {
         final repo = await _freshRepo();
-        await _seedActivePeriod(
+        await seedActivePeriod(
           repo,
           id: 'p1',
           name: 'Off-Season Block',
-          startDay: _daysAgo(7),
-          endDay: _daysAgo(-7),
+          startDay: daysAgo(7),
+          endDay: daysAgo(-7),
         );
 
         await repo.createExercise(
@@ -1574,7 +1574,7 @@ void main() {
         await _seedSession(
           repo,
           id: 's-inside-0',
-          day: _daysAgo(2),
+          day: daysAgo(2),
         );
         await _addSetEffort(
           repo,
@@ -1588,7 +1588,7 @@ void main() {
           await _seedSession(
             repo,
             id: 's-before-$i',
-            day: _daysAgo(20 + i),
+            day: daysAgo(20 + i),
           );
           await _addSetEffort(
             repo,
@@ -1624,12 +1624,12 @@ void main() {
         final repo = await _freshRepo();
         // Period covers today but is FUTURE-only, so the seeded
         // session (which is in the past) cannot qualify.
-        await _seedActivePeriod(
+        await seedActivePeriod(
           repo,
           id: 'p-empty',
           name: 'EmptyBlock',
-          startDay: _daysAgo(0),
-          endDay: _daysAgo(-7),
+          startDay: daysAgo(0),
+          endDay: daysAgo(-7),
         );
         await repo.createExercise(
           Exercise(
@@ -1642,7 +1642,7 @@ void main() {
         // A single training day in the past, well outside the
         // future-only period. The period has no qualifying
         // sessions, so the recent-training-days window is used.
-        await _seedSession(repo, id: 's-r-0', day: _daysAgo(2));
+        await _seedSession(repo, id: 's-r-0', day: daysAgo(2));
         await _addSetEffort(
           repo,
           sessionId: 's-r-0',
@@ -1685,7 +1685,7 @@ void main() {
           await _seedSession(
             repo,
             id: 's-eg-$offset',
-            day: _daysAgo(offset),
+            day: daysAgo(offset),
           );
           await _addSetEffort(
             repo,
@@ -1736,7 +1736,7 @@ void main() {
           ),
         );
         // A training day well outside the recent-days window.
-        await _seedSession(repo, id: 's-l-old', day: _daysAgo(45));
+        await _seedSession(repo, id: 's-l-old', day: daysAgo(45));
         await _addSetEffort(
           repo,
           sessionId: 's-l-old',
@@ -1744,7 +1744,7 @@ void main() {
           sets: [(80.0, 5)],
         );
         // A training day inside the recent-days window.
-        await _seedSession(repo, id: 's-l-new', day: _daysAgo(0));
+        await _seedSession(repo, id: 's-l-new', day: daysAgo(0));
         await _addSetEffort(
           repo,
           sessionId: 's-l-new',
@@ -1785,7 +1785,7 @@ void main() {
         );
         // Big lift 45 days ago (outside recent window). This is the
         // all-time high.
-        await _seedSession(repo, id: 's-pr-old', day: _daysAgo(45));
+        await _seedSession(repo, id: 's-pr-old', day: daysAgo(45));
         await _addSetEffort(
           repo,
           sessionId: 's-pr-old',
@@ -1795,7 +1795,7 @@ void main() {
         // Smaller lift today (inside recent window). Selection will
         // pick this lift, but PRs should still record the lifetime
         // high set 45 days ago.
-        await _seedSession(repo, id: 's-pr-new', day: _daysAgo(0));
+        await _seedSession(repo, id: 's-pr-new', day: daysAgo(0));
         await _addSetEffort(
           repo,
           sessionId: 's-pr-new',
@@ -1819,7 +1819,7 @@ void main() {
         // not today.
         expect(
           pr.date,
-          _daysAgo(45),
+          daysAgo(45),
           reason: 'PR date is the all-time high day, regardless of window',
         );
       },
@@ -1830,12 +1830,12 @@ void main() {
       'computation (a period active for one section is active for both)',
       () async {
         final repo = await _freshRepo();
-        await _seedActivePeriod(
+        await seedActivePeriod(
           repo,
           id: 'p-shared',
           name: 'SharedBlock',
-          startDay: _daysAgo(7),
-          endDay: _daysAgo(-7),
+          startDay: daysAgo(7),
+          endDay: daysAgo(-7),
         );
         await repo.createExercise(
           Exercise(
@@ -1855,7 +1855,7 @@ void main() {
         );
 
         // Strength session inside the period.
-        await _seedSession(repo, id: 's-str', day: _daysAgo(2));
+        await _seedSession(repo, id: 's-str', day: daysAgo(2));
         await _addSetEffort(
           repo,
           sessionId: 's-str',
@@ -1863,7 +1863,7 @@ void main() {
           sets: [(80.0, 5)],
         );
         // Cardio session inside the period.
-        await _seedSession(repo, id: 's-card', day: _daysAgo(1));
+        await _seedSession(repo, id: 's-card', day: daysAgo(1));
         await _addTimedEffort(
           repo,
           sessionId: 's-card',
@@ -1889,14 +1889,14 @@ void main() {
           ),
         );
         for (var i = 0; i < 3; i++) {
-          await _seedSession(repo, id: 's-str-old-$i', day: _daysAgo(20 + i));
+          await _seedSession(repo, id: 's-str-old-$i', day: daysAgo(20 + i));
           await _addSetEffort(
             repo,
             sessionId: 's-str-old-$i',
             exerciseId: 'ex-str-old',
             sets: [(80.0, 5)],
           );
-          await _seedSession(repo, id: 's-card-old-$i', day: _daysAgo(20 + i));
+          await _seedSession(repo, id: 's-card-old-$i', day: daysAgo(20 + i));
           await _addTimedEffort(
             repo,
             sessionId: 's-card-old-$i',
@@ -1949,7 +1949,7 @@ void main() {
         // (no set or timed). The window resolves, the day is
         // inside it, but no exercise qualifies for Strength or
         // Cardio. The screen renders its existing empty states.
-        await _seedSession(repo, id: 's-drill', day: _daysAgo(1));
+        await _seedSession(repo, id: 's-drill', day: daysAgo(1));
         final segId = 'seg-s-drill-ex-drill';
         await repo.createSegment(
           SessionSegment(
@@ -1992,12 +1992,12 @@ void main() {
       () async {
         final repo = await _freshRepo();
         // Period that ended two weeks ago.
-        await _seedActivePeriod(
+        await seedActivePeriod(
           repo,
           id: 'p-past',
           name: 'PastBlock',
-          startDay: _daysAgo(60),
-          endDay: _daysAgo(15),
+          startDay: daysAgo(60),
+          endDay: daysAgo(15),
         );
         await repo.createExercise(
           Exercise(
@@ -2007,7 +2007,7 @@ void main() {
             updatedAtMs: 1000,
           ),
         );
-        await _seedSession(repo, id: 's-rec', day: _daysAgo(1));
+        await _seedSession(repo, id: 's-rec', day: daysAgo(1));
         await _addSetEffort(
           repo,
           sessionId: 's-rec',

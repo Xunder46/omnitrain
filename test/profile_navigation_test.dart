@@ -41,7 +41,7 @@ void main() {
   // Original test body kept below for reference. Uncomment when the TODO
   // above is resolved.
   // ignore: unused_element
-  Future<void> _disabledBody(WidgetTester tester) async {
+  Future<void> disabledBody(WidgetTester tester) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
     final preferencesService = PreferencesServiceImpl();

@@ -573,7 +573,7 @@ class _FoodFormState extends State<FoodForm> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
                 key: const Key('food_form_group'),
-                value: _groupId,
+                initialValue: _groupId,
                 decoration: const InputDecoration(
                   labelText: 'Category',
                   border: OutlineInputBorder(),
@@ -594,7 +594,7 @@ class _FoodFormState extends State<FoodForm> {
               const SizedBox(height: 12),
               DropdownButtonFormField<FoodUnitType>(
                 key: const Key('food_form_unit_type'),
-                value: _unitType,
+                initialValue: _unitType,
                 decoration: const InputDecoration(
                   labelText: 'Unit type',
                   border: OutlineInputBorder(),

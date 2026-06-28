@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
@@ -12,18 +13,82 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   final SettingsState settingsState;
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
+  final ProfileState? profileState;
+  final double? userHeightCm; // For testing - directly pass height value
 
   SettingsScreen({
     super.key,
     required this.settingsState,
     required this.timerAlertService,
     RestNotificationService? restNotificationService,
+    this.profileState,
+    this.userHeightCm,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  double? _userHeightCm;
+  bool _isLoadingHeight = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHeight();
+  }
+
+  Future<void> _loadHeight() async {
+    // If height is provided directly (for testing), use it
+    if (widget.userHeightCm != null) {
+      if (mounted) {
+        setState(() {
+          _userHeightCm = widget.userHeightCm;
+          _isLoadingHeight = false;
+        });
+      }
+      return;
+    }
+
+    final profileState = widget.profileState;
+    if (profileState != null) {
+      try {
+        // Load height measurement directly from the repository to ensure
+        // we always get the latest value, regardless of cached state.
+        final heightEntry = await profileState.getMeasurementHistory('height');
+        double? heightCm;
+        if (heightEntry.isNotEmpty) {
+          // Sort by date descending and take the most recent
+          heightEntry.sort((a, b) => b.recordedAtMs.compareTo(a.recordedAtMs));
+          heightCm = heightEntry.first.value;
+        }
+        if (mounted) {
+          setState(() {
+            _userHeightCm = heightCm;
+            _isLoadingHeight = false;
+          });
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _isLoadingHeight = false;
+          });
+        }
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isLoadingHeight = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,26 +101,27 @@ class SettingsScreen extends StatelessWidget {
       appBar: const OmniBackHeader(title: 'Settings'),
       body: SafeArea(
         child: ListenableBuilder(
-          listenable: settingsState,
+          listenable: widget.settingsState,
           builder: (context, child) {
             return ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
                 const OmniCardHeader(title: 'PREFERENCES'),
                 _MeasurementsSection(
-                  settingsState: settingsState,
+                  settingsState: widget.settingsState,
                   theme: theme,
+                  userHeightCm: _isLoadingHeight ? null : _userHeightCm,
                 ),
                 const SizedBox(height: 24),
                 const OmniCardHeader(title: 'SOUNDS & ALERTS'),
                 _SoundsAlertsSection(
-                  settingsState: settingsState,
-                  timerAlertService: timerAlertService,
-                  restNotificationService: restNotificationService,
+                  settingsState: widget.settingsState,
+                  timerAlertService: widget.timerAlertService,
+                  restNotificationService: widget.restNotificationService,
                 ),
                 const SizedBox(height: 24),
                 const OmniCardHeader(title: 'WORKOUT'),
-                _WorkoutSection(settingsState: settingsState),
+                _WorkoutSection(settingsState: widget.settingsState),
                 const SizedBox(height: 24),
                 const OmniCardHeader(title: 'APPEARANCE'),
                 OmniSurface(
@@ -90,11 +156,11 @@ class SettingsScreen extends StatelessWidget {
                             return const SizedBox.shrink();
                           }
                           final appTheme = AppTheme.values[index];
-                          final isSelected = settingsState.appTheme == appTheme;
+                          final isSelected = widget.settingsState.appTheme == appTheme;
 
                           return GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => settingsState.setAppTheme(appTheme),
+                            onTap: () => widget.settingsState.setAppTheme(appTheme),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 180),
                               curve: Curves.easeInOut,
@@ -595,10 +661,12 @@ class _IntervalPickerSheet extends StatelessWidget {
 class _MeasurementsSection extends StatelessWidget {
   final SettingsState settingsState;
   final ThemeData theme;
+  final double? userHeightCm;
 
   const _MeasurementsSection({
     required this.settingsState,
     required this.theme,
+    this.userHeightCm,
   });
 
   @override
@@ -717,7 +785,7 @@ class _MeasurementsSection extends StatelessWidget {
                           theme: theme,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 6),
                       Expanded(
                         child: _PreviewValue(
                           icon: Icons.straighten,
@@ -725,6 +793,19 @@ class _MeasurementsSection extends StatelessWidget {
                             5.0,
                             settingsState,
                           ),
+                          theme: theme,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _PreviewValue(
+                          icon: Icons.height,
+                          value: userHeightCm != null
+                              ? UnitFormatter.formatHeight(
+                                  userHeightCm!,
+                                  settingsState,
+                                )
+                              : '—',
                           theme: theme,
                         ),
                       ),
@@ -919,18 +1000,20 @@ class _PreviewValue extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
           icon,
-          size: 14,
+          size: 13,
           color: theme.colorScheme.primary.withValues(alpha: 0.7),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 4),
         Flexible(
           child: Text(
             value,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
+            maxLines: 1,
+            style: theme.textTheme.bodySmall?.copyWith(
               color: OmniTheme.colors.textDominant,
               fontWeight: FontWeight.w500,
             ),

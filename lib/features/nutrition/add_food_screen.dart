@@ -1638,7 +1638,7 @@ class _DeleteCategoryDialogState extends State<_DeleteCategoryDialog> {
           const SizedBox(height: 12),
           DropdownButtonFormField<String?>(
             key: const Key('delete_category_destination'),
-            value: _destination,
+            initialValue: _destination,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Destination',

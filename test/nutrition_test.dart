@@ -1007,7 +1007,7 @@ void main() {
   /// Comma-grouped integer (e.g. 2,350). Mirrors the format the
   /// production widget uses so tests can compare against the rendered
   /// text exactly.
-  String _formatThousands(int value) {
+  String formatThousands(int value) {
     final negative = value < 0;
     final digits = value.abs().toString();
     final buf = StringBuffer();
@@ -1023,7 +1023,7 @@ void main() {
   /// resolve to (the `4P + 4C + 9F` macro model does not always divide
   /// evenly into the requested number; tests should assert on the
   /// returned value to avoid coupling to integer-division rounding).
-  Future<int> _seedConsumedForToday(
+  Future<int> seedConsumedForToday(
     MockWorkoutRepository repo, {
     required String id,
     required int calories,
@@ -1067,7 +1067,7 @@ void main() {
       final nutritionState = NutritionState(repo);
       // Set a target of 2000 kcal and seed one consumed food.
       await nutritionState.saveNutritionTarget(NutritionTarget(calories: 2000));
-      final cal1 = await _seedConsumedForToday(repo, id: 'c-1', calories: 700);
+      final cal1 = await seedConsumedForToday(repo, id: 'c-1', calories: 700);
       await nutritionState.loadConsumedToday();
 
       await tester.pumpWidget(
@@ -1087,7 +1087,7 @@ void main() {
       // contains the edit icon.
       // Center text shows consumed / target (calories formatted with
       // thousands grouping).
-      final cal1Str = _formatThousands(cal1);
+      final cal1Str = formatThousands(cal1);
       expect(
         find.text('$cal1Str / 2,000 kcal'),
         findsOneWidget,
@@ -1103,7 +1103,7 @@ void main() {
       await nutritionState.saveNutritionTarget(NutritionTarget(calories: 2000));
 
       // Start with the first consumed food.
-      final cal1 = await _seedConsumedForToday(repo, id: 'c-1', calories: 350);
+      final cal1 = await seedConsumedForToday(repo, id: 'c-1', calories: 350);
       await nutritionState.loadConsumedToday();
 
       await tester.pumpWidget(
@@ -1118,19 +1118,19 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text('${_formatThousands(cal1)} / 2,000 kcal'),
+        find.text('${formatThousands(cal1)} / 2,000 kcal'),
         findsOneWidget,
       );
 
       // Add a second consumed food and refresh the cache.
-      final cal2 = await _seedConsumedForToday(repo, id: 'c-2', calories: 200);
+      final cal2 = await seedConsumedForToday(repo, id: 'c-2', calories: 200);
       await nutritionState.loadConsumedToday();
       await tester.pumpAndSettle();
 
       // The ring has updated to reflect the new total.
       final total = cal1 + cal2;
       expect(
-        find.text('${_formatThousands(total)} / 2,000 kcal'),
+        find.text('${formatThousands(total)} / 2,000 kcal'),
         findsOneWidget,
         reason:
             'Ring should reflect the sum of the two consumed-food '
@@ -1144,7 +1144,7 @@ void main() {
       final repo = await _freshRepo();
       final nutritionState = NutritionState(repo);
       // No target saved → target stays null.
-      final cal = await _seedConsumedForToday(repo, id: 'c-1', calories: 300);
+      final cal = await seedConsumedForToday(repo, id: 'c-1', calories: 300);
       await nutritionState.loadConsumedToday();
 
       await tester.pumpWidget(
@@ -1161,7 +1161,7 @@ void main() {
 
       // The center shows the consumed total alone (no "/ 2,000").
       expect(
-        find.text('${_formatThousands(cal)} kcal'),
+        find.text('${formatThousands(cal)} kcal'),
         findsOneWidget,
         reason: 'Consumed-only mode must show "<n> kcal" without a goal',
       );
@@ -1241,7 +1241,7 @@ void main() {
 
       // Seed a 2,007-kcal log against a 2,000 target → over by 7.
       // 2,007 = 223 g fat × 9 cal/g.
-      final cal = await _seedConsumedForToday(
+      final cal = await seedConsumedForToday(
         repo,
         id: 'c-over',
         calories: 2007,
@@ -1269,7 +1269,7 @@ void main() {
 
       // Center shows the real total over the target (not clamped).
       expect(
-        find.text('${_formatThousands(cal)} / 2,000 kcal'),
+        find.text('${formatThousands(cal)} / 2,000 kcal'),
         findsOneWidget,
         reason:
             'Over-target ring must still show the real consumed '
@@ -1293,7 +1293,7 @@ void main() {
       await nutritionState.saveNutritionTarget(NutritionTarget(calories: 2000));
 
       // Start with a logged food.
-      final cal = await _seedConsumedForToday(repo, id: 'c-1', calories: 500);
+      final cal = await seedConsumedForToday(repo, id: 'c-1', calories: 500);
       await nutritionState.loadConsumedToday();
 
       await tester.pumpWidget(
@@ -1308,7 +1308,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text('${_formatThousands(cal)} / 2,000 kcal'),
+        find.text('${formatThousands(cal)} / 2,000 kcal'),
         findsOneWidget,
         reason: 'Pre-rollover: ring should show the consumed total',
       );
@@ -2318,7 +2318,7 @@ void main() {
 
   group('ManageFoodLibrary – add/remove toggle', () {
     /// Pin a single catalog food and return the seeded id.
-    Future<String> _seedSingleCatalog(MockWorkoutRepository repo) async {
+    Future<String> seedSingleCatalog(MockWorkoutRepository repo) async {
       const catalogSource = Food(
         id: 'toggle-catalog-chicken',
         name: 'Chicken (toggle test)',
@@ -2338,7 +2338,7 @@ void main() {
 
     /// Pump the AddFoodScreen for the Library tab.
     Future<({NutritionState nutrition, FoodLibraryState foodLib})>
-    _pumpCatalogTab(WidgetTester tester, {MockWorkoutRepository? repo}) async {
+    pumpCatalogTab(WidgetTester tester, {MockWorkoutRepository? repo}) async {
       final r = repo ?? await _freshRepo();
       final nutrition = NutritionState(r);
       final foodLib = FoodLibraryState(r);
@@ -2366,8 +2366,8 @@ void main() {
 
     testWidgets('renders Add button on a fresh catalog row', (tester) async {
       final repo = await _freshRepo();
-      final catalogId = await _seedSingleCatalog(repo);
-      await _pumpCatalogTab(tester, repo: repo);
+      final catalogId = await seedSingleCatalog(repo);
+      await pumpCatalogTab(tester, repo: repo);
 
       // The catalog row is visible.
       expect(
@@ -2386,8 +2386,8 @@ void main() {
       'Remove (no pop)',
       (tester) async {
         final repo = await _freshRepo();
-        final catalogId = await _seedSingleCatalog(repo);
-        final states = await _pumpCatalogTab(tester, repo: repo);
+        final catalogId = await seedSingleCatalog(repo);
+        final states = await pumpCatalogTab(tester, repo: repo);
 
         await tester.tap(find.byKey(Key('add_catalog_food_$catalogId')));
         await tester.pumpAndSettle();
@@ -2419,8 +2419,8 @@ void main() {
       'back to Add',
       (tester) async {
         final repo = await _freshRepo();
-        final catalogId = await _seedSingleCatalog(repo);
-        final states = await _pumpCatalogTab(tester, repo: repo);
+        final catalogId = await seedSingleCatalog(repo);
+        final states = await pumpCatalogTab(tester, repo: repo);
 
         // Add it.
         await tester.tap(find.byKey(Key('add_catalog_food_$catalogId')));
@@ -2448,8 +2448,8 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
-      final catalogId = await _seedSingleCatalog(repo);
-      final states = await _pumpCatalogTab(tester, repo: repo);
+      final catalogId = await seedSingleCatalog(repo);
+      final states = await pumpCatalogTab(tester, repo: repo);
 
       final addKey = Key('add_catalog_food_$catalogId');
       final removeKey = Key('remove_catalog_food_$catalogId');
@@ -2484,12 +2484,12 @@ void main() {
       tester,
     ) async {
       final repo = await _freshRepo();
-      final catalogId = await _seedSingleCatalog(repo);
+      final catalogId = await seedSingleCatalog(repo);
       // Pre-add the food to the library and pre-log it for today.
       // We drive the state directly to avoid coupling to the Add row
       // — the focus here is the Remove path's interaction with
       // today's log.
-      final states = await _pumpCatalogTab(tester, repo: repo);
+      final states = await pumpCatalogTab(tester, repo: repo);
       final libId = await states.foodLib.addCatalogFoodToLibrary(catalogId);
       await states.foodLib.loadFoods();
       final libFood = states.foodLib.foods.firstWhere((f) => f.id == libId);
@@ -2753,7 +2753,7 @@ void main() {
   // Ungrouped row, and a "+ New Category" affordance.
 
   group('AddFoodScreen — Categories tab', () {
-    Future<void> _switchToCategoriesTab(WidgetTester tester) async {
+    Future<void> switchToCategoriesTab(WidgetTester tester) async {
       // The third tab is "Categories".
       await tester.tap(find.text('Categories'));
       await tester.pumpAndSettle();
@@ -2795,7 +2795,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await _switchToCategoriesTab(tester);
+      await switchToCategoriesTab(tester);
 
       // Both groups have editable name fields.
       expect(find.byKey(Key('category_name_$proteinsId')), findsOneWidget);
@@ -2822,7 +2822,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await _switchToCategoriesTab(tester);
+      await switchToCategoriesTab(tester);
 
       // Initially no category rows.
       final beforeCategoryRows = find.byType(TextField).evaluate().length;
@@ -2874,7 +2874,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await _switchToCategoriesTab(tester);
+      await switchToCategoriesTab(tester);
 
       await tester.tap(find.byKey(Key('category_delete_$groupId')));
       await tester.pumpAndSettle();

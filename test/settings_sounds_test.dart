@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
+import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 
 import 'helpers/fake_rest_notification_service.dart';
@@ -330,6 +332,180 @@ void main() {
 
         expect(restService.hasPermissionCallCount, initialHasPermissionCalls);
         expect(find.text('Disabled - tap to open Settings'), findsOneWidget);
+      },
+    );
+  });
+
+  group('HEIGHT PREVIEW in PREFERENCES section', () {
+    testWidgets('shows height placeholder when userHeightCm is null', (
+      WidgetTester tester,
+    ) async {
+      final settings = await makeSettings();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
+            userHeightCm: null,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Height preview should show placeholder when no height is set
+      expect(find.text('—'), findsOneWidget);
+    });
+
+    testWidgets('displays height in centimeters when cm unit selected', (
+      WidgetTester tester,
+    ) async {
+      final settings = await makeSettings();
+      await settings.setPreferredHeightUnit('cm');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
+            userHeightCm: 180.0,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Height should display in cm
+      expect(find.text('180 cm'), findsOneWidget);
+    });
+
+    testWidgets('displays height in feet/inches when ftin unit selected', (
+      WidgetTester tester,
+    ) async {
+      final settings = await makeSettings();
+      await settings.setPreferredHeightUnit('ftin');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
+            userHeightCm: 180.0,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Height should display in ft/in format
+      expect(find.text("5' 11\""), findsOneWidget);
+    });
+
+    testWidgets('updates height preview when unit is changed', (
+      WidgetTester tester,
+    ) async {
+      final settings = await makeSettings();
+      // Start with cm unit
+      await settings.setPreferredHeightUnit('cm');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
+            userHeightCm: 175.0,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Should show cm first
+      expect(find.text('175 cm'), findsOneWidget);
+
+      // Change to ft/in
+      await settings.setPreferredHeightUnit('ftin');
+      await tester.pumpAndSettle();
+
+      // Should update to feet/inches
+      expect(find.text("5' 9\""), findsOneWidget);
+    });
+  });
+
+  group('HEIGHT PREVIEW wired through ProfileState', () {
+    // Regression: when SettingsScreen is opened via the home-screen
+    // maintenance tile (or any path that builds it without the test
+    // helper `userHeightCm` parameter), the preview must still load
+    // the height from `ProfileState.getMeasurementHistory('height')`.
+    // The previous wiring omitted `profileState` on this path,
+    // leaving the preview showing the `—` placeholder even when a
+    // height measurement existed in the repository.
+    testWidgets(
+      'loads height from ProfileState when no userHeightCm is passed',
+      (WidgetTester tester) async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        // Persist a height measurement so the repo has data.
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'h-bug-regression',
+            measurementType: 'height',
+            value: 181,
+            unitId: 'unit-cm',
+            recordedAtMs: 2000,
+          ),
+        );
+
+        // Note: deliberately NOT calling profileState.loadProfile()
+        // — this mirrors the production path where the user opens
+        // Settings before ever opening Profile, so the in-memory
+        // _latestMeasurements cache is empty.
+        final profileState = ProfileState(repo);
+        final settings = SettingsState(repo, fakePreferencesService());
+        await settings.initialize();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              settingsState: settings,
+              timerAlertService: FakeTimerAlertService(),
+              restNotificationService: FakeRestNotificationService(),
+              profileState: profileState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The preview must read through the repository, not the
+        // empty in-memory cache.
+        expect(find.text('181 cm'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'shows height placeholder when no measurement exists',
+      (WidgetTester tester) async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        final profileState = ProfileState(repo);
+        final settings = SettingsState(repo, fakePreferencesService());
+        await settings.initialize();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              settingsState: settings,
+              timerAlertService: FakeTimerAlertService(),
+              restNotificationService: FakeRestNotificationService(),
+              profileState: profileState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // No height logged: placeholder is the canonical "—".
+        expect(find.text('—'), findsOneWidget);
       },
     );
   });

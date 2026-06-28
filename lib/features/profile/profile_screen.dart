@@ -112,8 +112,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 button: true,
                 label: 'Edit avatar',
                 child: Container(
-                  width: 120,
-                  height: 120,
+                  width: 200,
+                  height: 200,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: theme.colorScheme.surface.withOpacity(0.4),
@@ -134,7 +134,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             Material(
               color: Colors.transparent,
               child: InkWell(
@@ -147,7 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
-                      vertical: 8,
+                      vertical: 12,
                     ),
                     child: Column(
                       children: [

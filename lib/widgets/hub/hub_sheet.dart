@@ -131,6 +131,7 @@ class HubSheet extends StatelessWidget {
               settingsState: settingsState,
               timerAlertService: timerAlertService,
               restNotificationService: restNotificationService,
+              profileState: profileState,
             ),
           );
         },

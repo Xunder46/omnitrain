@@ -2107,6 +2107,49 @@ void main() {
       expect(find.text('Confirm Discard'), findsNothing);
       expect(find.textContaining('sets logged'), findsNothing);
     });
+
+    // Regression test for the bug where the home-screen maintenance
+    // tile path into SettingsScreen did not pass `profileState`,
+    // leaving the height preview showing the `—` placeholder even
+    // when a height measurement existed in the repository. The fix
+    // adds `profileState: widget.profileState` to the SettingsScreen
+    // construction in `home_screen.dart`.
+    testWidgets(
+      'Settings maintenance tile height preview reads from profileState',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(500, 1400));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        // Persist a height measurement so the repo has data.
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'h-home-tile-regression',
+            measurementType: 'height',
+            value: 181,
+            unitId: 'unit-cm',
+            recordedAtMs: 2000,
+          ),
+        );
+
+        final screen = await buildHomeScreen(repo);
+        await tester.pumpWidget(MaterialApp(home: screen));
+        await tester.pumpAndSettle();
+
+        // The maintenance grid is inside the Hub sheet. Open the
+        // sheet by tapping the logo first.
+        await tester.tap(find.byType(Image));
+        await tester.pumpAndSettle();
+
+        // Tap the Settings maintenance tile.
+        await tester.tap(find.text('Settings'));
+        await tester.pumpAndSettle();
+
+        // The settings screen must show the user's height in cm,
+        // not the `—` placeholder.
+        expect(find.text('181 cm'), findsOneWidget);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
