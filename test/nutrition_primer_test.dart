@@ -149,7 +149,7 @@ void main() {
       // The three labeled blocks are present.
       expect(find.text('YOUR LIST, BUILT ONCE'), findsOneWidget);
       expect(find.text('CHECK TO LOG, SET THE AMOUNT'), findsOneWidget);
-      expect(find.text('YOUR DAY, AT A GLANCE'), findsOneWidget);
+      expect(find.text('TODAY AND OVER TIME'), findsOneWidget);
 
       // The dismiss CTA is present and is a FilledButton.
       expect(
@@ -177,7 +177,7 @@ void main() {
         findsWidgets,
       );
       expect(
-        find.textContaining('calories', findRichText: true),
+        find.textContaining('donut chart', findRichText: true),
         findsWidgets,
       );
 
@@ -214,7 +214,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('YOUR LIST, BUILT ONCE'), findsOneWidget);
       expect(find.text('CHECK TO LOG, SET THE AMOUNT'), findsOneWidget);
-      expect(find.text('YOUR DAY, AT A GLANCE'), findsOneWidget);
+      expect(find.text('TODAY AND OVER TIME'), findsOneWidget);
     });
   });
 
@@ -290,7 +290,7 @@ void main() {
         // The primer's three blocks must NOT be present.
         expect(find.text('YOUR LIST, BUILT ONCE'), findsNothing);
         expect(find.text('CHECK TO LOG, SET THE AMOUNT'), findsNothing);
-        expect(find.text('YOUR DAY, AT A GLANCE'), findsNothing);
+        expect(find.text('TODAY AND OVER TIME'), findsNothing);
 
         // The nutrition page itself IS pushed — auto-show does not
         // gate navigation (S-005).
@@ -324,7 +324,7 @@ void main() {
       // The primer's three blocks render.
       expect(find.text('YOUR LIST, BUILT ONCE'), findsOneWidget);
       expect(find.text('CHECK TO LOG, SET THE AMOUNT'), findsOneWidget);
-      expect(find.text('YOUR DAY, AT A GLANCE'), findsOneWidget);
+      expect(find.text('TODAY AND OVER TIME'), findsOneWidget);
 
       // Dismiss the primer.
       await tester.tap(find.byKey(const Key('nutrition_primer_dismiss')));

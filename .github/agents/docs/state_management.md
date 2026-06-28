@@ -502,8 +502,8 @@ Manages the user's food library: food groups and food items with macronutrient m
 | `updateFood(Food food)` | Updates an existing food and persists changes |
 | `archiveFood(String id)` | Archives (soft-deletes) a food by setting `isArchived = true` |
 | `removeFood(String id)` | Hard-deletes a food from the library; no-op for unknown ids; no-op for catalog foods; does not throw |
-| `isInLibrary(String catalogFoodId)` | Returns `true` iff a non-archived, user-owned library row matches the catalog source by name + reference + macros identity. Thin wrapper over [libraryIdFor](#libraryidfor) — does the same lookup, returns a boolean. |
-| `libraryIdFor(String catalogFoodId)` | Returns the matching library row's id (or `null`) using the same name + reference + macros identity rule. UI callers that need to call `removeFood` / `unlogFoodToday` against the matching row use this; `isInLibrary` is the boolean wrapper. |
+| `isInLibrary(String catalogFoodId)` | Returns `true` iff a non-archived, user-owned library row matches the catalog source by the durable `catalogId` linkage. Falls back to name + reference + macros identity only for legacy rows that pre-date the `catalogId` field. Thin wrapper over [libraryIdFor](#libraryidfor) — does the same lookup, returns a boolean. |
+| `libraryIdFor(String catalogFoodId)` | Returns the matching library row's id (or `null`) using the durable `catalogId` linkage first, with a value-based (name + reference + macros) match as a legacy fallback only. UI callers that need to call `removeFood` / `unlogFoodToday` against the matching row use this; `isInLibrary` is the boolean wrapper. |
 | `getFoodById(String id)` | Retrieves a food from cache or repository; returns null if not found |
 | `searchFoods(String query, {includeArchived})` | Case-insensitive substring search; queries repository, does not cache results |
 

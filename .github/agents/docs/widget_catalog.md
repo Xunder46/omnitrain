@@ -195,7 +195,7 @@ One-shot orientation sheet for the Daily Nutrition page. The page inverts the us
 
 1. **YOUR LIST, BUILT ONCE** — describes the curated "Foods I Eat" list and the pencil edit control on the page.
 2. **CHECK TO LOG, SET THE AMOUNT** — describes daily check-off logging and the per-food portion amount.
-3. **YOUR DAY, AT A GLANCE** — describes the rollup: calories vs target, protein/carb/fat split, water, sodium.
+3. **TODAY AND OVER TIME** — describes the rollup: calories vs target, protein/carb/fat split, water, sodium.
 
 The sheet does NOT cover target editing, category management, or water-stepper instructions — those are discoverable and out of scope.
 
