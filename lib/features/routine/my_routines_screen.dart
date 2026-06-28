@@ -10,6 +10,7 @@ import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import 'routine_setup_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/layout/omni_bottom_cta.dart';
 import '../session/workout_session_screen.dart';
 
 /// Screen displaying list of saved workout routines
@@ -53,10 +54,15 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: const OmniBackHeader(title: 'My Routines'),
-      floatingActionButton: FloatingActionButton(
+      // Primary bottom CTA — the shared `OmniBottomCTA` is the single
+      // source of truth for full-width, safe-area-anchored primary actions
+      // (see `.github/agents/docs/widget_catalog.md` — `OmniBottomCTA`).
+      // Replaces the legacy `FloatingActionButton` so the routines screen
+      // matches the unified bottom-CTA pattern used elsewhere (calendar
+      // day list, food library, etc.).
+      bottomNavigationBar: OmniBottomCTA(
+        label: '+ New Routine',
         onPressed: () => _createNewRoutine(context),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        child: Icon(Icons.add),
       ),
       body: SafeArea(
         child: ListenableBuilder(
@@ -116,7 +122,17 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
             }
 
             return ListView.builder(
-              padding: EdgeInsets.all(16),
+              // Bottom inset reserves clearance for the host's shared
+              // `OmniBottomCTA` (same contract as the calendar day list
+              // — see `OmniTheme.formBottomCTAClearance`). Without this,
+              // the last routine card would sit under the CTA on long
+              // lists.
+              padding: const EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                OmniTheme.formBottomCTAClearance,
+              ),
               itemCount: routines.length,
               itemBuilder: (context, index) {
                 final routine = routines[index];

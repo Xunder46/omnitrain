@@ -34,7 +34,7 @@ If the user has an active routine session (intent = `'routine'`), tapping the My
 
 ### 2. Creating a Routine
 ```
-MyRoutinesScreen → Tap FAB (+)
+MyRoutinesScreen → Tap "+ New Routine" (shared primary bottom CTA)
   → RoutineSetupScreen (new routine, no name)
     → Enter routine name
     → Optionally set "Focus Modality" (Resistance, Cardio, Sports, Isometric)
@@ -320,7 +320,7 @@ HomeScreen
   - Each card shows: exercise icon, routine name, creation date (relative: "today", "3 days ago")
   - Tap card → starts routine as session
   - ⋮ menu → Edit or Delete
-- **FAB**: (+) button to create a new routine
+- **Primary bottom CTA**: `OmniBottomCTA(label: '+ New Routine', ...)` anchored via `Scaffold.bottomNavigationBar` — the shared full-width, safe-area-anchored footer action (see [widget_catalog.md → OmniBottomCTA](widget_catalog.md)). The list's bottom padding uses `OmniTheme.formBottomCTAClearance` so the last routine card clears the CTA. Replaces the legacy `FloatingActionButton` so the routines screen matches the unified bottom-CTA pattern used by the calendar day list, food library, etc.
 - **Active session indicator**: If current session is a routine session (`intent == 'routine'`), the My Routines home tile glows active
 
 ### RoutineSetupScreen (`lib/features/routine/routine_setup_screen.dart`)

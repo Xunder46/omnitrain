@@ -661,7 +661,9 @@ void main() {
       expect(find.text('No Routines Yet'), findsOneWidget);
     });
 
-    testWidgets('shows FAB to create routine', (WidgetTester tester) async {
+    testWidgets('shows unified "+ New Routine" bottom CTA', (
+      WidgetTester tester,
+    ) async {
       final repo = await _freshRepo();
       final routineState = RoutineState(repo);
       final routineSessionService = RoutineSessionService(repo);
@@ -680,8 +682,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(FloatingActionButton), findsOneWidget);
-      expect(find.byIcon(Icons.add), findsOneWidget);
+      // S-001: unified footer button rendered with the "+ New Routine" label.
+      expect(find.widgetWithText(FilledButton, '+ New Routine'), findsOneWidget);
+      // S-001: the old FAB is gone — the routines screen now uses the shared
+      // primary bottom CTA pattern.
+      expect(find.byType(FloatingActionButton), findsNothing);
     });
 
     testWidgets('shows routine when data exists', (WidgetTester tester) async {

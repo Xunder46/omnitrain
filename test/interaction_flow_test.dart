@@ -835,7 +835,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('MyRoutinesScreen interactions', () {
-    testWidgets('tapping FAB navigates to RoutineSetupScreen', (
+    testWidgets('tapping "+ New Routine" CTA navigates to RoutineSetupScreen', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -858,7 +858,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(FloatingActionButton));
+      // S-002: tap the unified footer CTA.
+      await tester.tap(find.widgetWithText(FilledButton, '+ New Routine'));
       // Use pump + ignoreExceptions for the setState-during-build warning from
       // RoutineState.createNewRoutine notifying during RoutineSetupScreen.initState
       await tester.pump();
