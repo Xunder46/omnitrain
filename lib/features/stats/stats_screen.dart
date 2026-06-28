@@ -13,6 +13,7 @@ import '../../state/workout/workout_state.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
+import '../../widgets/chart/edge_aware_date_label.dart';
 import 'widgets/scrollable_trend_chart.dart';
 
 /// Segmented toggle state for the NUTRITION card. Local widget
@@ -36,12 +37,7 @@ class StatsScreen extends StatefulWidget {
 }
 
 class _StatsScreenState extends State<StatsScreen> {
-  static const double _kTrendChartHeight = 120;
-  static const double _kYAxisReservedSize = 78;
-  static const double _kTopAxisHeadroom = 12;
   static const double _kBottomAxisReservedSize = 20;
-  static const double _kChartLeftShift = 16;
-  static const double _kChartRightInset = 8;
 
   bool _isLoading = true;
   int _totalSessions = 0;
@@ -342,130 +338,101 @@ class _StatsScreenState extends State<StatsScreen> {
   }) {
     final values = points.map((p) => p.value).toList();
     final bounds = ChartAxisHelper.computeBounds(values);
-    final yInterval = ChartAxisHelper.readableIntervalForHeight(
-      bounds,
-      _kTrendChartHeight,
-    );
 
     final spots = List.generate(
       points.length,
       (i) => FlSpot(i.toDouble(), points[i].value),
     );
 
-    return _buildInsetChart(
-      LineChart(
-        LineChartData(
-          minX: 0,
-          maxX: (points.length - 1).toDouble(),
-          minY: bounds.min,
-          maxY: bounds.max,
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipItems: (spots) => spots
-                  .map(
-                    (s) => LineTooltipItem(
-                      '${s.y.toStringAsFixed(1)} $label',
-                      TextStyle(
-                        fontSize: 11,
-                        color: OmniTheme.colors.textDominant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          titlesData: FlTitlesData(
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: false,
-                reservedSize: _kTopAxisHeadroom,
-              ),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: _kYAxisReservedSize,
-                interval: yInterval,
-                getTitlesWidget: (value, meta) => SideTitleWidget(
-                  meta: meta,
-                  space: 4,
-                  child: Text(
-                    ChartAxisHelper.formatYAxisValue(value, label),
-                    style: TextStyle(fontSize: 9, color: themeColors.textMuted),
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.clip,
-                  ),
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: label,
+      pointCount: points.length,
+      chartBuilder: (plotWidth) {
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (points.length - 1).toDouble(),
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: const LineTouchData(enabled: false),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: 0,
                 ),
               ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: _kBottomAxisReservedSize,
-                interval: 1,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.round();
-                  if (idx < 0 || idx >= points.length) {
-                    return const SizedBox.shrink();
-                  }
-                  if (!ChartAxisHelper.shouldShowDateLabel(
-                    idx,
-                    points.length,
-                  )) {
-                    return const SizedBox.shrink();
-                  }
-                  return SideTitleWidget(
-                    meta: meta,
-                    space: 4,
-                    child: Text(
-                      ChartAxisHelper.formatDateLabel(points[idx].date),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.round();
+                    if (idx < 0 || idx >= points.length) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!ChartAxisHelper.shouldShowDateLabel(
+                      idx,
+                      points.length,
+                    )) {
+                      return const SizedBox.shrink();
+                    }
+                    return buildEdgeAwareDateLabel(
+                      meta: meta,
+                      text: ChartAxisHelper.formatDateLabel(points[idx].date),
                       style: TextStyle(
                         fontSize: 9,
                         color: themeColors.textMuted,
                       ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            getDrawingHorizontalLine: (_) =>
-                FlLine(color: themeColors.divider, strokeWidth: 1),
-          ),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              color: themeColors.primary,
-              isCurved: true,
-              curveSmoothness: 0.3,
-              barWidth: 2,
-              isStrokeCapRound: true,
-              dotData: FlDotData(
-                show: true,
-                getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                  radius: 3,
-                  color: themeColors.primary,
-                  strokeWidth: 1.5,
-                  strokeColor: themeColors.surface,
+                      isFirst: idx == 0,
+                      isLast: idx == points.length - 1,
+                    );
+                  },
                 ),
               ),
-              belowBarData: BarAreaData(
-                show: true,
-                color: themeColors.primary.withAlpha(25),
-              ),
             ),
-          ],
-        ),
-      ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: themeColors.divider, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: spots,
+                color: themeColors.primary,
+                isCurved: true,
+                curveSmoothness: 0.3,
+                barWidth: 2,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                    radius: 3,
+                    color: themeColors.primary,
+                    strokeWidth: 1.5,
+                    strokeColor: themeColors.surface,
+                  ),
+                ),
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: themeColors.primary.withAlpha(25),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -610,7 +577,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final theme = Theme.of(context);
     final macroColors = themeColors.macroChart;
     return OmniSurface(
-      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -772,27 +739,12 @@ class _StatsScreenState extends State<StatsScreen> {
             maxX: (trend.length - 1).toDouble(),
             minY: bounds.min,
             maxY: bounds.max,
-            lineTouchData: LineTouchData(
-              touchTooltipData: LineTouchTooltipData(
-                getTooltipItems: (spots) => spots
-                    .map(
-                      (s) => LineTooltipItem(
-                        '${s.y.toStringAsFixed(0)} kcal',
-                        TextStyle(
-                          fontSize: 11,
-                          color: OmniTheme.colors.textDominant,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
+            lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: false,
-                  reservedSize: _kTopAxisHeadroom,
+                  reservedSize: 0,
                 ),
               ),
               rightTitles: const AxisTitles(
@@ -817,16 +769,15 @@ class _StatsScreenState extends State<StatsScreen> {
                     )) {
                       return const SizedBox.shrink();
                     }
-                    return SideTitleWidget(
+                    return buildEdgeAwareDateLabel(
                       meta: meta,
-                      space: 4,
-                      child: Text(
-                        ChartAxisHelper.formatDateLabel(trend[idx].date),
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: themeColors.textMuted,
-                        ),
+                      text: ChartAxisHelper.formatDateLabel(trend[idx].date),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: themeColors.textMuted,
                       ),
+                      isFirst: idx == 0,
+                      isLast: idx == trend.length - 1,
                     );
                   },
                 ),
@@ -896,7 +847,7 @@ class _StatsScreenState extends State<StatsScreen> {
               topTitles: const AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: false,
-                  reservedSize: _kTopAxisHeadroom,
+                  reservedSize: 0,
                 ),
               ),
               rightTitles: const AxisTitles(
@@ -912,19 +863,18 @@ class _StatsScreenState extends State<StatsScreen> {
                   interval: 1,
                   getTitlesWidget: (value, meta) {
                     if (value == 0 || value == (emptyPointCount - 1).toDouble()) {
-                      return SideTitleWidget(
+                      return buildEdgeAwareDateLabel(
                         meta: meta,
-                        space: 4,
-                        child: Text(
-                          ChartAxisHelper.formatDateLabel(
-                            DateTime.now()
-                                .subtract(Duration(days: ((emptyPointCount - 1) - value).toInt())),
-                          ),
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: themeColors.textMuted,
-                          ),
+                        text: ChartAxisHelper.formatDateLabel(
+                          DateTime.now()
+                              .subtract(Duration(days: ((emptyPointCount - 1) - value).toInt())),
                         ),
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: themeColors.textMuted,
+                        ),
+                        isFirst: value == 0,
+                        isLast: value == (emptyPointCount - 1).toDouble(),
                       );
                     }
                     return const SizedBox.shrink();
@@ -1069,27 +1019,12 @@ class _StatsScreenState extends State<StatsScreen> {
             maxX: (trend.length - 1).toDouble(),
             minY: bounds.min,
             maxY: bounds.max,
-            lineTouchData: LineTouchData(
-              touchTooltipData: LineTouchTooltipData(
-                getTooltipItems: (spots) => spots
-                    .map(
-                      (s) => LineTooltipItem(
-                        '${s.y.toStringAsFixed(0)} g',
-                        TextStyle(
-                          fontSize: 11,
-                          color: OmniTheme.colors.textDominant,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
+            lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: false,
-                  reservedSize: _kTopAxisHeadroom,
+                  reservedSize: 0,
                 ),
               ),
               rightTitles: const AxisTitles(
@@ -1114,16 +1049,15 @@ class _StatsScreenState extends State<StatsScreen> {
                     )) {
                       return const SizedBox.shrink();
                     }
-                    return SideTitleWidget(
+                    return buildEdgeAwareDateLabel(
                       meta: meta,
-                      space: 4,
-                      child: Text(
-                        ChartAxisHelper.formatDateLabel(trend[idx].date),
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: themeColors.textMuted,
-                        ),
+                      text: ChartAxisHelper.formatDateLabel(trend[idx].date),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: themeColors.textMuted,
                       ),
+                      isFirst: idx == 0,
+                      isLast: idx == trend.length - 1,
                     );
                   },
                 ),
@@ -1303,10 +1237,6 @@ class _StatsScreenState extends State<StatsScreen> {
     if (pacePoints.isEmpty) return const SizedBox.shrink();
 
     final bounds = ChartAxisHelper.computeBounds(paceValues);
-    final yInterval = ChartAxisHelper.readableIntervalForHeight(
-      bounds,
-      _kTrendChartHeight,
-    );
     final unitLabel = 's/$distUnit';
 
     final distanceValues = distanceByIndex.values.toList();
@@ -1328,129 +1258,73 @@ class _StatsScreenState extends State<StatsScreen> {
       }
     }
 
-    return _buildInsetChart(
-      LineChart(
-        LineChartData(
-          minX: 0,
-          maxX: (points.length - 1).toDouble(),
-          minY: bounds.min,
-          maxY: bounds.max,
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipItems: (spots) => spots.map((s) {
-                final tooltipStyle = TextStyle(
-                  fontSize: 11,
-                  color: OmniTheme.colors.textDominant,
-                  fontWeight: FontWeight.w600,
-                );
-
-                if (s.barIndex == 1 && distanceScale != null) {
-                  final displayDistance = distanceScale.toSource(s.y);
-                  return LineTooltipItem(
-                    '${displayDistance.toStringAsFixed(2)} $distUnit',
-                    tooltipStyle,
-                  );
-                }
-
-                return LineTooltipItem(
-                  '${s.y.toStringAsFixed(0)} $unitLabel',
-                  tooltipStyle,
-                );
-              }).toList(),
-            ),
-          ),
-          titlesData: FlTitlesData(
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: false,
-                reservedSize: _kTopAxisHeadroom,
-              ),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: _kYAxisReservedSize,
-                interval: yInterval,
-                getTitlesWidget: (value, meta) => SideTitleWidget(
-                  meta: meta,
-                  space: 4,
-                  child: Text(
-                    ChartAxisHelper.formatYAxisValue(value, unitLabel),
-                    style: TextStyle(fontSize: 9, color: themeColors.textMuted),
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.clip,
-                  ),
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: unitLabel,
+      pointCount: points.length,
+      chartBuilder: (plotWidth) {
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (points.length - 1).toDouble(),
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: const LineTouchData(enabled: false),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: 0,
                 ),
               ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: _kBottomAxisReservedSize,
-                interval: 1,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.round();
-                  if (idx < 0 || idx >= points.length) {
-                    return const SizedBox.shrink();
-                  }
-                  if (!ChartAxisHelper.shouldShowDateLabel(
-                    idx,
-                    points.length,
-                  )) {
-                    return const SizedBox.shrink();
-                  }
-                  return SideTitleWidget(
-                    meta: meta,
-                    space: 4,
-                    child: Text(
-                      ChartAxisHelper.formatDateLabel(points[idx].date),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.round();
+                    if (idx < 0 || idx >= points.length) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!ChartAxisHelper.shouldShowDateLabel(
+                      idx,
+                      points.length,
+                    )) {
+                      return const SizedBox.shrink();
+                    }
+                    return buildEdgeAwareDateLabel(
+                      meta: meta,
+                      text: ChartAxisHelper.formatDateLabel(points[idx].date),
                       style: TextStyle(
                         fontSize: 9,
                         color: themeColors.textMuted,
                       ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            getDrawingHorizontalLine: (_) =>
-                FlLine(color: themeColors.divider, strokeWidth: 1),
-          ),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: pacePoints,
-              color: themeColors.secondary,
-              isCurved: true,
-              curveSmoothness: 0.3,
-              barWidth: 2,
-              isStrokeCapRound: true,
-              dotData: FlDotData(
-                show: true,
-                getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                  radius: 3,
-                  color: themeColors.secondary,
-                  strokeWidth: 1.5,
-                  strokeColor: themeColors.surface,
+                      isFirst: idx == 0,
+                      isLast: idx == points.length - 1,
+                    );
+                  },
                 ),
               ),
-              belowBarData: BarAreaData(
-                show: true,
-                color: themeColors.secondary.withAlpha(25),
-              ),
             ),
-            if (distancePoints.isNotEmpty)
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: themeColors.divider, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
               LineChartBarData(
-                spots: distancePoints,
-                color: themeColors.primary,
+                spots: pacePoints,
+                color: themeColors.secondary,
                 isCurved: true,
                 curveSmoothness: 0.3,
                 barWidth: 2,
@@ -1459,16 +1333,39 @@ class _StatsScreenState extends State<StatsScreen> {
                   show: true,
                   getDotPainter: (p, x, data, i) => FlDotCirclePainter(
                     radius: 3,
-                    color: themeColors.primary,
+                    color: themeColors.secondary,
                     strokeWidth: 1.5,
                     strokeColor: themeColors.surface,
                   ),
                 ),
-                belowBarData: BarAreaData(show: false),
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: themeColors.secondary.withAlpha(25),
+                ),
               ),
-          ],
-        ),
-      ),
+              if (distancePoints.isNotEmpty)
+                LineChartBarData(
+                  spots: distancePoints,
+                  color: themeColors.primary,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                      radius: 3,
+                      color: themeColors.primary,
+                      strokeWidth: 1.5,
+                      strokeColor: themeColors.surface,
+                    ),
+                  ),
+                  belowBarData: BarAreaData(show: false),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1511,135 +1408,96 @@ class _StatsScreenState extends State<StatsScreen> {
     );
 
     final bounds = ChartAxisHelper.computeBounds(durationValues);
-    final yInterval = ChartAxisHelper.readableIntervalForHeight(
-      bounds,
-      _kTrendChartHeight,
-    );
 
-    return _buildInsetChart(
-      LineChart(
-        LineChartData(
-          minX: 0,
-          maxX: (points.length - 1).toDouble(),
-          minY: bounds.min,
-          maxY: bounds.max,
-          lineTouchData: LineTouchData(
-            touchTooltipData: LineTouchTooltipData(
-              getTooltipItems: (spots) => spots
-                  .map(
-                    (s) => LineTooltipItem(
-                      '${s.y.toStringAsFixed(0)} min',
-                      TextStyle(
-                        fontSize: 11,
-                        color: OmniTheme.colors.textDominant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          titlesData: FlTitlesData(
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: false,
-                reservedSize: _kTopAxisHeadroom,
-              ),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: _kYAxisReservedSize,
-                interval: yInterval,
-                getTitlesWidget: (value, meta) => SideTitleWidget(
-                  meta: meta,
-                  space: 4,
-                  child: Text(
-                    ChartAxisHelper.formatYAxisValue(value, 'min'),
-                    style: TextStyle(fontSize: 9, color: themeColors.textMuted),
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.clip,
-                  ),
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: 'min',
+      pointCount: points.length,
+      chartBuilder: (plotWidth) {
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (points.length - 1).toDouble(),
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: const LineTouchData(enabled: false),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: 0,
                 ),
               ),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: _kBottomAxisReservedSize,
-                interval: 1,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.round();
-                  if (idx < 0 || idx >= points.length) {
-                    return const SizedBox.shrink();
-                  }
-                  if (!ChartAxisHelper.shouldShowDateLabel(
-                    idx,
-                    points.length,
-                  )) {
-                    return const SizedBox.shrink();
-                  }
-                  return SideTitleWidget(
-                    meta: meta,
-                    space: 4,
-                    child: Text(
-                      ChartAxisHelper.formatDateLabel(points[idx].date),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.round();
+                    if (idx < 0 || idx >= points.length) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!ChartAxisHelper.shouldShowDateLabel(
+                      idx,
+                      points.length,
+                    )) {
+                      return const SizedBox.shrink();
+                    }
+                    return buildEdgeAwareDateLabel(
+                      meta: meta,
+                      text: ChartAxisHelper.formatDateLabel(points[idx].date),
                       style: TextStyle(
                         fontSize: 9,
                         color: themeColors.textMuted,
                       ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          gridData: FlGridData(
-            show: true,
-            drawVerticalLine: false,
-            getDrawingHorizontalLine: (_) =>
-                FlLine(color: themeColors.divider, strokeWidth: 1),
-          ),
-          borderData: FlBorderData(show: false),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              color: themeColors.secondary,
-              isCurved: true,
-              curveSmoothness: 0.3,
-              barWidth: 2,
-              isStrokeCapRound: true,
-              dotData: FlDotData(
-                show: true,
-                getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                  radius: 3,
-                  color: themeColors.secondary,
-                  strokeWidth: 1.5,
-                  strokeColor: themeColors.surface,
+                      isFirst: idx == 0,
+                      isLast: idx == points.length - 1,
+                    );
+                  },
                 ),
               ),
-              belowBarData: BarAreaData(
-                show: true,
-                color: themeColors.secondary.withAlpha(25),
-              ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInsetChart(Widget chart) {
-    return Transform.translate(
-      offset: const Offset(-_kChartLeftShift, 0),
-      child: Padding(
-        padding: const EdgeInsets.only(right: _kChartRightInset),
-        child: SizedBox(height: _kTrendChartHeight, child: chart),
-      ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: themeColors.divider, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: spots,
+                color: themeColors.secondary,
+                isCurved: true,
+                curveSmoothness: 0.3,
+                barWidth: 2,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                    radius: 3,
+                    color: themeColors.secondary,
+                    strokeWidth: 1.5,
+                    strokeColor: themeColors.surface,
+                  ),
+                ),
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: themeColors.secondary.withAlpha(25),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

@@ -22,8 +22,8 @@ class ChartAxisHelper {
   ChartAxisHelper._();
 
   // Shared readability defaults for short mobile charts.
-  static const int kMaxYAxisTickCount = 4;
-  static const double kMinYAxisLabelSpacing = 24.0;
+  static const int kMaxYAxisTickCount = 5;
+  static const double kMinYAxisLabelSpacing = 22.0;
 
   /// Compute padded axis bounds from a list of data values.
   ///
@@ -49,7 +49,11 @@ class ChartAxisHelper {
     // The +1.0 floor prevents a zero range when all values are identical.
     final paddedMax = maxVal + range * paddingFraction + 1.0;
 
-    final rawInterval = (paddedMax - paddedMin) / 3.0;
+    // Divisor of 4.0 yields 5 evenly-spaced ticks (min, +1, +2, +3,
+    // max) when the range is divisible. Combined with the
+    // [kMaxYAxisTickCount] = 5 cap downstream, this gives up to 5
+    // labels on the y-axis.
+    final rawInterval = (paddedMax - paddedMin) / 4.0;
     final niceInterval = _niceNumber(rawInterval);
 
     return ChartAxisBounds(
@@ -118,19 +122,36 @@ class ChartAxisHelper {
   }
 
   /// Whether index [idx] (0-based) in a series of [total] should carry a date
-  /// label. Always shows first and last; for series > 4 also shows two
-  /// evenly-spaced intermediate indices. Never returns more than 4 trues.
+  /// label. Always shows the first. For series > 7 (the scrollable
+  /// threshold matching [kScrollableTrendMaxVisiblePoints]) shows
+  /// every 3rd index so labels stay evenly spaced, and adds the
+  /// last point only when it sits ≥ 2 indices past the nearest
+  /// multiple-of-3 (so adjacent dates like "Jun 25" / "Jun 26"
+  /// never collide). The visible viewport (always the last 8
+  /// points when the chart opens scrolled to the newest value)
+  /// reliably carries 3 evenly-spaced labels.
   static bool shouldShowDateLabel(int idx, int total) {
     if (total <= 0) return false;
-    if (total <= 4) return true;
+    if (total <= 7) return true;
 
-    // Always show first and last.
-    if (idx == 0 || idx == total - 1) return true;
+    // Always show first.
+    if (idx == 0) return true;
 
-    // Two intermediate indices at 1/3 and 2/3 of the range.
-    final mid1 = total ~/ 3;
-    final mid2 = (2 * total) ~/ 3;
-    return idx == mid1 || idx == mid2;
+    // Scrollable series: label every 3rd index. With a 8-point
+    // visible viewport this yields 2-3 labels in view, all
+    // separated by ≥ 2 indices so adjacent date strings (e.g.
+    // "Jun 25" / "Jun 26") never sit on top of each other.
+    if (idx % 3 == 0) return true;
+
+    // Show the last point only when it's at least 2 indices
+    // past the nearest multiple-of-3 label. (total - 1) % 3 == 2
+    // means the last is 2 after a multiple of 3, so the gap is
+    // exactly 2 indices (visually clean). If the last is 0 or 1
+    // past a multiple of 3, it's already covered or would
+    // collide, so we skip it.
+    if (idx == total - 1 && (total - 1) % 3 == 2) return true;
+
+    return false;
   }
 
   // ── Private ───────────────────────────────────────────────────────────────

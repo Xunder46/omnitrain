@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
@@ -8,6 +6,8 @@ import '../../../core/constants/profile_measurements.dart';
 import '../../../core/utils/chart_axis_helper.dart';
 import '../../../core/utils/unit_formatter.dart';
 import '../../../data/models/models.dart';
+import '../../stats/widgets/scrollable_trend_chart.dart';
+import '../../../widgets/chart/edge_aware_date_label.dart';
 import '../../../state/profile/profile_state.dart';
 import '../../../state/settings/settings_state.dart';
 
@@ -34,6 +34,10 @@ class _MeasurementHistoryChartSheetState
     extends State<MeasurementHistoryChartSheet> {
   List<BodyMeasurementEntry> _entries = [];
   bool _isLoading = true;
+  // Strip is locked to the most recent entry (D-2). The per-point
+  // tap-to-select affordance was removed along with the fl_chart
+  // tooltip popup; the only remaining interaction is long-press
+  // to delete, which targets this index.
   int _selectedIndex = 0;
 
   @override
@@ -130,43 +134,176 @@ class _MeasurementHistoryChartSheetState
     );
   }
 
+  // Chart layout:
+  //
+  //   ┌──────────────┬────────────────────────────────────┐
+  //   │ pinned       │  horizontal scroll view             │
+  //   │ y-axis       │  ┌──────────────────────────────┐  │
+  //   │ labels       │  │  LineChart (leftTitles off)  │  │
+  //   │ (whole #s)   │  │  · · ─ · ·                   │  │
+  //   │              │  │  date  date  date  date     │  │
+  //   └──────────────┴────────────────────────────────────┘
+  //                 ▲ long-press anywhere → delete most recent
+  //
+  // The wrapper provides the pinned y-axis column (whole numbers
+  // via formatYAxisValue with an empty unit) and the horizontal
+  // scroll viewport. The inner LineChart disables fl_chart's own
+  // leftTitles so the labels don't render twice. The per-point
+  // GestureDetector overlay that used to drive the tap-to-select
+  // strip is gone; a single chart-area GestureDetector handles
+  // long-press to delete the most recent entry.
   Widget _buildChart(ThemeData theme) {
-    final chartMetrics = _buildChartMetrics(theme);
+    final values = _entries.map(_toChartValue).toList(growable: false);
+    final bounds = ChartAxisHelper.computeBounds(values);
+    final primary = theme.colorScheme.primary;
+    final onSurface = theme.colorScheme.onSurface;
 
-    // The chart is rendered at a fixed 440 dp width (A20's 200 dp
-    // bumped to 440 dp, then narrowed from 440 dp so the sheet's
-    // own 12 dp horizontal padding becomes a visible breathing
-    // gap on the left of the chart on phone-sized surfaces). It
-    // stays centered horizontally so it reads as a focused
-    // detail-view chart rather than a full-width data panel.
-    //
-    // Y-axis value labels render on the LEFT (via
-    // `leftTitles.reservedSize`, bumped from 50 → 60 dp so labels
-    // like `176.4` or `180.3` no longer overflow the reserved
-    // strip). The empty `rightTitles` reserves additional
-    // horizontal space on the right (no labels shown). Together
-    // these reserved sizes shrink the chart's plot area
-    // symmetrically, so the first and last dots are visibly inset
-    // from the chart's left and right edges and the line no longer
-    // reads as clipped.
-    //
-    // Horizontal padding (40 dp on the right) keeps the LineChart
-    // off the rounded sheet corner. The X-axis dates live in the
-    // bottom `reservedSize` strip; their visibility is improved by
-    // reserving 32 dp and bumping the font size to 11 pt.
-    return Center(
-      child: SizedBox(
-        width: 440,
-        height: 220,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(0, 8, 40, 0),
-          child: Stack(
-            children: [
-              LineChart(chartMetrics.data),
-              _buildDotTapTargets(chartMetrics),
-            ],
-          ),
-        ),
+    return GestureDetector(
+      key: const ValueKey('measurement_chart_area'),
+      behavior: HitTestBehavior.opaque,
+      onLongPress: () => _confirmDelete(_selectedIndex),
+      child: ScrollableTrendChart(
+        themeColors: OmniTheme.colors,
+        bounds: bounds,
+        // Pass the active unit so the pinned y-axis labels read
+        // "62 lbs" / "180 cm" instead of bare "62" / "180".
+        // Matches the on-card stats chart style and lets the
+        // user read the y-axis scale without cross-referencing
+        // the strip below. Unit comes from the same source as
+        // the strip label (preferred unit for height/weight,
+        // measurement's stored unit for everything else) so
+        // the two surfaces never disagree.
+        unitLabel: _chartUnitLabel(),
+        pointCount: _entries.length,
+        chartBuilder: (plotWidth) {
+          final spots = <FlSpot>[];
+          for (var i = 0; i < _entries.length; i++) {
+            spots.add(FlSpot(i.toDouble(), _toChartValue(_entries[i])));
+          }
+          // Data points sit at the exact integer indices. The
+          // shared `buildEdgeAwareDateLabel` helper shifts the
+          // first and last x-axis labels by ±22 dp so they don't
+          // collide with the pinned y-axis column on the left
+          // or overflow the right card border — no plot
+          // padding (minX/maxX extension) needed.
+          final minX = _entries.length == 1 ? -0.5 : 0.0;
+          final maxX = _entries.length == 1
+              ? 0.5
+              : (_entries.length - 1).toDouble();
+
+          return LineChart(
+            LineChartData(
+              minX: minX,
+              maxX: maxX,
+              minY: bounds.min,
+              maxY: bounds.max,
+              clipData: FlClipData.all(),
+              borderData: FlBorderData(show: false),
+              // No popup on tap (D-4). The chart area's
+              // GestureDetector handles the only remaining
+              // interaction (long-press to delete).
+              lineTouchData: const LineTouchData(enabled: false),
+              // No top headroom (D-5). The wrapper's pinned
+              // y-axis column already accounts for the label
+              // strip; we don't need fl_chart to reserve any
+              // top space.
+              titlesData: FlTitlesData(
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: false,
+                    reservedSize: 0,
+                  ),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                // Pinned column on the left renders the y-axis
+                // labels. The wrapper owns that space; the
+                // inner chart renders no left labels of its own.
+                leftTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 22,
+                    interval: 1,
+                    getTitlesWidget: (value, meta) {
+                      // Reject any non-integer value. fl_chart
+                      // can call the callback with values outside
+                      // the integer grid (e.g. during padding
+                      // animations) and we only want one label
+                      // per data-point index.
+                      if (value != value.truncateToDouble()) {
+                        return const SizedBox.shrink();
+                      }
+                      final index = value.toInt();
+                      if (index < 0 || index >= _entries.length) {
+                        return const SizedBox.shrink();
+                      }
+                      if (!ChartAxisHelper.shouldShowDateLabel(
+                        index,
+                        _entries.length,
+                      )) {
+                        return const SizedBox.shrink();
+                      }
+                      // Edge-aware label: same widget, same style,
+                      // same horizontal shift as the on-card stats
+                      // charts. The shared helper lives at
+                      // `lib/widgets/chart/edge_aware_date_label.dart`
+                      // and is used by both surfaces so they
+                      // speak the same visual language.
+                      return buildEdgeAwareDateLabel(
+                        meta: meta,
+                        text: ChartAxisHelper.formatDateLabel(
+                          DateTime.fromMillisecondsSinceEpoch(
+                            _entries[index].recordedAtMs,
+                          ),
+                        ),
+                        style: theme.textTheme.labelSmall!.copyWith(
+                          color: OmniTheme.colors.textMuted,
+                          fontSize: 9,
+                        ),
+                        isFirst: index == 0,
+                        isLast: index == _entries.length - 1,
+                      );
+                    },
+                  ),
+                ),
+              ),
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                getDrawingHorizontalLine: (_) =>
+                    FlLine(color: onSurface.withOpacity(0.08), strokeWidth: 1),
+              ),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  color: primary.withOpacity(0.70),
+                  barWidth: 2,
+                  isCurved: false,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (_, _, _, index) {
+                      final isSelected = index == _selectedIndex;
+                      return FlDotCirclePainter(
+                        radius: isSelected ? 6.5 : 5.0,
+                        color: isSelected ? onSurface : primary,
+                        strokeColor: isSelected ? primary : onSurface,
+                        strokeWidth: isSelected ? 2.0 : 1.5,
+                      );
+                    },
+                  ),
+                  belowBarData: BarAreaData(
+                    show: _entries.length >= 2,
+                    color: primary.withOpacity(0.10),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -185,6 +322,10 @@ class _MeasurementHistoryChartSheetState
         switchInCurve: OmniTheme.animationCurve,
         switchOutCurve: OmniTheme.animationCurve,
         child: Center(
+          // The strip is locked to the most recent entry (D-2),
+          // so the key never changes after load — the
+          // AnimatedSwitcher stays put instead of animating on
+          // every rebuild.
           key: ValueKey(_selectedIndex),
           child: Wrap(
             spacing: 8,
@@ -238,9 +379,12 @@ class _MeasurementHistoryChartSheetState
   }
 
   Widget _buildHintText(ThemeData theme) {
+    // D-9: the "Tap a point to view" half of the previous hint
+    // described a removed affordance. The only remaining touch
+    // interaction is long-press to delete.
     return Center(
       child: Text(
-        'Tap a point to view \u00b7 Long-press to delete',
+        'Long-press to delete',
         textAlign: TextAlign.center,
         style: theme.textTheme.bodySmall?.copyWith(
           color: OmniTheme.colors.textSecondary.withOpacity(0.55),
@@ -280,6 +424,29 @@ class _MeasurementHistoryChartSheetState
       return UnitFormatter.convertWeight(entry.value, widget.settingsState);
     }
     return entry.value;
+  }
+
+  // Short unit label for the pinned y-axis column. Matches the
+  // unit the strip below shows (so "180 cm" axis ↔ "180 cm"
+  // strip; "176.4 lbs" axis ↔ "176.4 lbs" strip), keeping the
+  // y-axis and the strip in sync. The strip uses a richer
+  // formatter (compound feet/inches for height in ftin mode);
+  // the y-axis only needs the bare unit so the labels stay
+  // compact.
+  String _chartUnitLabel() {
+    final type = widget.definition.type;
+    if (type == 'height') {
+      return widget.settingsState.preferredHeightUnit == 'ftin' ? 'in' : 'cm';
+    }
+    if (type == 'bodyweight') {
+      return widget.settingsState.preferredWeightUnit == 'kg' ? 'kg' : 'lbs';
+    }
+    // Other measurements: read the unit from the first entry
+    // (all entries in a single sheet share the same unitId).
+    if (_entries.isNotEmpty) {
+      return ProfileMeasurements.unitLabelFor(_entries.first.unitId);
+    }
+    return '';
   }
 
   Future<void> _confirmDelete(int index) async {
@@ -368,264 +535,14 @@ class _MeasurementHistoryChartSheetState
     );
     if (!mounted) return;
 
-    final orderedEntries = entries.take(10).toList().reversed.toList();
+    // D-7: load the full history (was capped at 10). Older
+    // entries are reachable by horizontal scroll on the chart
+    // wrapper.
+    final orderedEntries = entries.toList().reversed.toList();
     setState(() {
       _entries = orderedEntries;
       _selectedIndex = orderedEntries.isEmpty ? 0 : orderedEntries.length - 1;
       _isLoading = false;
     });
   }
-
-  Widget _buildDotTapTargets(_ChartMetrics chartMetrics) {
-    return Positioned.fill(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // The chart's plot area is narrower than the LineChart widget
-          // by `leftReserved` + `rightReserved` (the title-side reserved
-          // sizes). Subtract them from the overlay's bounds so tap
-          // targets line up with the rendered dots.
-          final plotLeft = chartMetrics.leftReserved;
-          final plotWidth = max(
-            0.0,
-            constraints.maxWidth -
-                chartMetrics.leftReserved -
-                chartMetrics.rightReserved,
-          );
-          final plotHeight = max(0.0, constraints.maxHeight - 28);
-          final yRange = max(chartMetrics.yMax - chartMetrics.yMin, 1.0);
-
-          return Stack(
-            children: [
-              for (var i = 0; i < _entries.length; i++)
-                Builder(
-                  builder: (context) {
-                    final x = _entries.length == 1
-                        ? plotLeft + plotWidth / 2
-                        : plotLeft + (i / (_entries.length - 1)) * plotWidth;
-                    final displayValue = _toChartValue(_entries[i]);
-                    final yRatio = (displayValue - chartMetrics.yMin) / yRange;
-                    final y = (plotHeight - (yRatio * plotHeight)).clamp(
-                      0.0,
-                      plotHeight,
-                    );
-
-                    return Positioned(
-                      left: x - 24,
-                      top: y - 24,
-                      child: GestureDetector(
-                        key: ValueKey('chart_dot_$i'),
-                        behavior: HitTestBehavior.translucent,
-                        onTap: () {
-                          setState(() {
-                            _selectedIndex = i;
-                          });
-                        },
-                        onLongPress: () => _confirmDelete(i),
-                        child: const SizedBox(width: 48, height: 48),
-                      ),
-                    );
-                  },
-                ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  _ChartMetrics _buildChartMetrics(ThemeData theme) {
-    final primary = theme.colorScheme.primary;
-    final onSurface = theme.colorScheme.onSurface;
-    final spots = <FlSpot>[];
-
-    for (var i = 0; i < _entries.length; i++) {
-      final displayValue = _toChartValue(_entries[i]);
-      spots.add(FlSpot(i.toDouble(), displayValue));
-    }
-
-    final values = _entries
-        .map(_toChartValue)
-        .toList(growable: false);
-
-    // Y-axis bounds: delegate to the canonical `ChartAxisHelper.computeBounds`
-    // so the padded range + nice tick interval are computed in one place.
-    // `readableIntervalForHeight` then shrinks the tick count to fit a
-    // 220 dp chart without overlapping labels.
-    final bounds = ChartAxisHelper.computeBounds(values);
-    final plotHeight = 220.0 - 32.0 - 8.0; // minus bottom + top padding
-    final yInterval = ChartAxisHelper.readableIntervalForHeight(
-      bounds,
-      plotHeight,
-    );
-    final yMin = bounds.min;
-    final yMax = bounds.max;
-
-    // Reserved sizes for the LEFT (Y-axis labels) and RIGHT (no labels,
-    // just breathing room) titles. Together they inset the chart's plot
-    // area so the first/last dots are visibly inside the chart bounds
-    // rather than flush against them.
-    //
-    // `leftReserved = 50 dp` is wide enough for the longest
-    // whole-number Y-axis label (3 chars at 10 pt) without
-    // overflowing. The Y-axis renders whole numbers only — see
-    // the `getTitlesWidget` below — so a `76.3` and a `76` tick
-    // can't sit so close vertically that they read as the same
-    // value at 10 pt.
-    const leftReserved = 50.0;
-    const rightReserved = 30.0;
-
-    final minX = _entries.length == 1 ? -0.5 : 0.0;
-    final maxX = _entries.length == 1 ? 0.5 : (_entries.length - 1).toDouble();
-
-    return _ChartMetrics(
-      yMin: yMin,
-      yMax: yMax,
-      leftReserved: leftReserved,
-      rightReserved: rightReserved,
-      data: LineChartData(
-        minX: minX,
-        maxX: maxX,
-        minY: yMin,
-        maxY: yMax,
-        clipData: FlClipData.all(),
-        borderData: FlBorderData(show: false),
-        extraLinesData: ExtraLinesData(),
-        // Subtle horizontal grid lines at each labeled tick so the
-        // Y-axis values have a visual anchor across the chart area.
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          drawHorizontalLine: true,
-          horizontalInterval: yInterval,
-          getDrawingHorizontalLine: (_) =>
-              FlLine(color: onSurface.withOpacity(0.08), strokeWidth: 1),
-        ),
-        titlesData: FlTitlesData(
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: leftReserved,
-              interval: yInterval,
-              getTitlesWidget: (value, meta) {
-                // Show only the in-range tick labels; fl_chart may
-                // call us with values outside [yMin, yMax] when
-                // fitting the interval grid.
-                if (value < yMin - 1e-9 || value > yMax + 1e-9) {
-                  return const SizedBox.shrink();
-                }
-                return SideTitleWidget(
-                  meta: meta,
-                  space: 4,
-                  child: Text(
-                    // Whole-number labels only. The chart's Y-axis
-                    // tick interval is rounded to a "nice" step
-                    // (e.g. 1, 2, 5), so a decimal tick (76.3)
-                    // would either render the same as its whole
-                    // neighbor (76) or sit so close vertically that
-                    // the two are indistinguishable at 10 pt. Show
-                    // only the rounded whole number — the user can
-                    // read precise values from the selected-point
-                    // label strip below the chart, which still
-                    // shows one decimal where it matters.
-                    value.toStringAsFixed(0),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: OmniTheme.colors.textSecondary.withOpacity(0.70),
-                      fontSize: 10,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          rightTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: false,
-              // No labels rendered here, but the reserved size still
-              // shrinks the chart's plot area on the right — giving
-              // the data line the requested horizontal breathing
-              // room so the last dot doesn't touch the chart edge.
-              reservedSize: rightReserved,
-            ),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              // Bumped from 28 → 32 so the X-axis date labels have
-              // enough room to render at the bumped 11 pt font
-              // without being clipped by the chart's 220 dp
-              // height (data area = 220 − 32 = 188 dp tall).
-              reservedSize: 32,
-              interval: 1,
-              getTitlesWidget: (value, _) {
-                final index = value.toInt();
-                if (index < 0 || index >= _entries.length) {
-                  return const SizedBox.shrink();
-                }
-                if (_entries.length > 6 && index.isOdd) {
-                  return const SizedBox.shrink();
-                }
-
-                final date = DateTime.fromMillisecondsSinceEpoch(
-                  _entries[index].recordedAtMs,
-                );
-                return Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    ChartAxisHelper.formatDateLabel(date),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: OmniTheme.colors.textSecondary.withOpacity(0.60),
-                      // [E] Chart axis — dense instrumentation label; getTitlesWidget has no BuildContext
-                      fontSize: 11,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-        lineTouchData: LineTouchData(enabled: false),
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            color: primary.withOpacity(0.70),
-            barWidth: 2,
-            isCurved: false,
-            dotData: FlDotData(
-              show: true,
-              getDotPainter: (_, _, _, index) {
-                final isSelected = index == _selectedIndex;
-                return FlDotCirclePainter(
-                  radius: isSelected ? 6.5 : 5.0,
-                  color: isSelected ? onSurface : primary,
-                  strokeColor: isSelected ? primary : onSurface,
-                  strokeWidth: isSelected ? 2.0 : 1.5,
-                );
-              },
-            ),
-            belowBarData: BarAreaData(
-              show: _entries.length >= 2,
-              color: primary.withOpacity(0.10),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ChartMetrics {
-  final double yMin;
-  final double yMax;
-  final double leftReserved;
-  final double rightReserved;
-  final LineChartData data;
-
-  const _ChartMetrics({
-    required this.yMin,
-    required this.yMax,
-    required this.leftReserved,
-    required this.rightReserved,
-    required this.data,
-  });
 }

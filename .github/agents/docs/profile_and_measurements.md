@@ -9,7 +9,7 @@ Primary capabilities:
 - Primary measurements: bodyweight, height
 - Additional measurements: body fat %, lean mass, waist, chest, hips, thigh, arm
 - Measurement logging with save-time timestamps
-- Chart-based measurement history (last 10 entries)
+- Chart-based measurement history (full history, scrollable)
 
 ---
 
@@ -107,19 +107,40 @@ Key behavior:
 
 ### History Sheet (Chart)
 
-- Uses `fl_chart` line chart
-- Loads and displays at most 10 entries
-- Oldest to newest on X-axis
-- Most recent point preselected
-- Dot selection updates animated label strip
-- "Log New Entry" opens log sheet on top of chart sheet (without dismissing chart), then reloads chart data
+- Renders inside the shared `ScrollableTrendChart` wrapper (pinned
+  y-axis column on the left, horizontally scrollable plot on the
+  right — same primitive used by the stats screen).
+- Loads the **full** history (no `take(10)` cap). The chart shows
+  the 8 most recent days by default and older days are reachable
+  by horizontal scroll.
+- Opens scrolled to the most recent entry (the `ScrollController`
+  jumps to `maxScrollExtent` on first layout). Data is never
+  reversed; the scroll position is what brings the latest day
+  into view.
+- Y-axis label column is pinned (does not scroll with the plot)
+  and renders whole numbers via `ChartAxisHelper.computeBounds`
+  (no unit suffix — the value is already in the strip below).
+- Tapping the chart is a no-op (no fl_chart tooltip popup). The
+  only remaining touch affordance is **long-press to delete**,
+  served by a single chart-area `GestureDetector`; the dialog
+  targets the most recent entry (the strip is locked to it, so
+  the user can never lose track of what they're about to delete).
+- Below-chart value strip shows the most recent entry by
+  default. There is no tap-to-select affordance — the strip
+  stays anchored to the newest day for the lifetime of the
+  sheet so the user always knows which entry long-press will
+  remove.
+- Hint text: `Long-press to delete`.
+- "Log New Entry" opens log sheet on top of chart sheet (without
+  dismissing chart), then reloads chart data.
 - **Height chart** y-axis plots in the active unit:
-  - `cm` mode — canonical cm passthrough; selected-point label reads
+  - `cm` mode — canonical cm passthrough; strip label reads
     `180 cm`.
-  - `ftin` mode — total whole inches; selected-point label reads in the
-    natural compound form (e.g. `5 ft 11 in`). Stored heights are never
-    rewritten when the unit toggle flips, so a pre-existing height
-    displays correctly under either unit without migration.
+  - `ftin` mode — total whole inches; strip label reads in the
+    natural compound form (e.g. `5 ft 11 in`). Stored heights
+    are never rewritten when the unit toggle flips, so a
+    pre-existing height displays correctly under either unit
+    without migration.
 
 ---
 

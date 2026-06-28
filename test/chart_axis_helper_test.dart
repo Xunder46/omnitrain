@@ -111,7 +111,7 @@ void main() {
     test('max tick count for 120px chart stays within readable cap', () {
       final maxTicks = ChartAxisHelper.maxYAxisTickCountForHeight(120);
       expect(maxTicks, lessThanOrEqualTo(ChartAxisHelper.kMaxYAxisTickCount));
-      expect(maxTicks, lessThanOrEqualTo(4));
+      expect(maxTicks, lessThanOrEqualTo(5));
       expect(maxTicks, greaterThanOrEqualTo(2));
     });
 
@@ -120,7 +120,7 @@ void main() {
       final interval = ChartAxisHelper.readableIntervalForHeight(bounds, 120);
       final estimatedTicks = ((bounds.max - bounds.min) / interval).floor() + 1;
 
-      expect(estimatedTicks, lessThanOrEqualTo(4));
+      expect(estimatedTicks, lessThanOrEqualTo(5));
       expect(interval, greaterThan(0));
     });
   });
@@ -202,42 +202,121 @@ void main() {
       expect(ChartAxisHelper.shouldShowDateLabel(9, 10), isTrue);
     });
 
-    test('total=10: two intermediate indices at 1/3 and 2/3 are true', () {
-      // 10 ~/ 3 = 3,  2*10 ~/ 3 = 6
-      expect(ChartAxisHelper.shouldShowDateLabel(3, 10), isTrue);
-      expect(ChartAxisHelper.shouldShowDateLabel(6, 10), isTrue);
+    test('total=10: every 3rd index is labelled (0, 3, 6, 9)', () {
+      for (final idx in [0, 3, 6, 9]) {
+        expect(ChartAxisHelper.shouldShowDateLabel(idx, 10), isTrue,
+            reason: 'idx $idx should be labelled (every 3rd rule)');
+      }
     });
 
-    test('total=10: other indices (1, 2, 4, 5, 7, 8) return false', () {
+    test('total=10: non-multiple-of-3 indices return false', () {
       for (final idx in [1, 2, 4, 5, 7, 8]) {
         expect(
           ChartAxisHelper.shouldShowDateLabel(idx, 10),
           isFalse,
-          reason: 'index $idx should not be labelled in a 10-point series',
+          reason:
+              'index $idx is not a multiple of 3 and not first/last, so it should not be labelled',
         );
       }
     });
 
-    test('total=5: at most 4 true values', () {
-      var trueCount = 0;
-      for (var i = 0; i < 5; i++) {
-        if (ChartAxisHelper.shouldShowDateLabel(i, 5)) trueCount++;
+    test('total ≤ 7: every index is labelled (chart is not scrollable)', () {
+      for (final total in [1, 2, 3, 4, 5, 6, 7]) {
+        for (var i = 0; i < total; i++) {
+          expect(ChartAxisHelper.shouldShowDateLabel(i, total), isTrue,
+              reason: 'idx $i should be labelled for short series total=$total');
+        }
       }
-      expect(trueCount, lessThanOrEqualTo(4));
     });
 
-    test('always shows first and last for any total ≥ 2', () {
-      for (final total in [2, 5, 10, 20, 50]) {
+    test('scrollable series (total ≥ 8): every 3rd index + first + (last '
+        'only if ≥ 2 past the last multiple of 3)', () {
+      for (final total in [8, 10, 11, 12, 14, 15, 20, 30, 50]) {
+        var trueCount = 0;
+        for (var i = 0; i < total; i++) {
+          if (ChartAxisHelper.shouldShowDateLabel(i, total)) trueCount++;
+        }
+        // Predicted set: every multiple of 3, plus first (0,
+        // already covered if it's a multiple of 3), plus last
+        // (total-1) only when (total - 1) % 3 == 2.
+        final expected = <int>{};
+        for (var i = 0; i < total; i += 3) {
+          expected.add(i);
+        }
+        if ((total - 1) % 3 == 2) {
+          expected.add(total - 1);
+        }
+        expect(trueCount, expected.length,
+            reason:
+                'total=$total should produce ${expected.length} labels '
+                '(multiples of 3 + last when ≥ 2 past the last multiple of 3); '
+                'got $trueCount');
+      }
+    });
+
+    test('scrollable series (total ≥ 8): at least 3 labels in the visible '
+        'viewport (last 8 points) with no two adjacent', () {
+      // The visible view of a scrollable chart is the last 8
+      // points when it opens scrolled to the newest. The chart
+      // must show at least 3 date labels inside that window
+      // and consecutive labels must be ≥ 2 indices apart so
+      // adjacent dates don't sit on top of each other.
+      for (final total in [8, 10, 12, 14, 17, 20, 25, 30, 50, 100]) {
+        final viewStart = (total - 8).clamp(0, total - 1);
+        final visible = <int>[];
+        for (var i = viewStart; i < total; i++) {
+          if (ChartAxisHelper.shouldShowDateLabel(i, total)) {
+            visible.add(i);
+          }
+        }
+        expect(visible.length, greaterThanOrEqualTo(3),
+            reason:
+                'total=$total should show ≥3 labels in the last 8 points '
+                '(idx $viewStart..${total - 1}); got ${visible.length}');
+        // Verify no two adjacent labels (≥ 2 indices apart).
+        for (var j = 1; j < visible.length; j++) {
+          expect(visible[j] - visible[j - 1], greaterThanOrEqualTo(2),
+              reason:
+                  'consecutive labels at ${visible[j - 1]} and ${visible[j]} would '
+                  'collide visually for total=$total');
+        }
+      }
+    });
+
+    test('always shows first for any total ≥ 1', () {
+      for (final total in [1, 5, 8, 10, 20, 50]) {
         expect(
           ChartAxisHelper.shouldShowDateLabel(0, total),
           isTrue,
           reason: 'first idx for total=$total',
         );
-        expect(
-          ChartAxisHelper.shouldShowDateLabel(total - 1, total),
-          isTrue,
-          reason: 'last idx for total=$total',
-        );
+      }
+    });
+
+    test('shows last only when not adjacent to a multiple-of-3 label', () {
+      // (total - 1) % 3 == 0 → last is itself a multiple of 3
+      // (already labelled).
+      // (total - 1) % 3 == 1 → last is 1 after a multiple of 3
+      // (would collide, so it is NOT labelled).
+      // (total - 1) % 3 == 2 → last is 2 after a multiple of 3
+      // (clean gap, so it IS labelled).
+      for (final total in [10, 13, 16]) {
+        // (total - 1) % 3 == 0
+        expect(ChartAxisHelper.shouldShowDateLabel(total - 1, total), isTrue,
+            reason: 'last is a multiple of 3 for total=$total');
+      }
+      for (final total in [8, 11, 14, 17]) {
+        // (total - 1) % 3 == 1
+        expect(ChartAxisHelper.shouldShowDateLabel(total - 1, total), isFalse,
+            reason:
+                'last is 1 after a multiple of 3 for total=$total; should be '
+                'skipped to avoid collision');
+      }
+      for (final total in [12, 15, 18]) {
+        // (total - 1) % 3 == 2
+        expect(ChartAxisHelper.shouldShowDateLabel(total - 1, total), isTrue,
+            reason: 'last is 2 after a multiple of 3 for total=$total; '
+                'clean gap so it is labelled');
       }
     });
   });

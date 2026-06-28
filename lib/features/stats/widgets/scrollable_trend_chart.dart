@@ -4,27 +4,28 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/omni_theme.dart';
 import '../../../core/utils/chart_axis_helper.dart';
 
-/// Fixed per-point horizontal slot inside the scrollable plot.
-/// A point is plotted at i * [perPointWidth] inside the plot's
-/// intrinsic width; the scroll view's viewport then clips to a
-/// portion of that. 48 gives each point a date label + a touch
-/// target without crowding; for sparse data the wrapper clamps
-/// to the viewport so the chart still fills the card.
-const double kScrollableTrendPerPointWidth = 48.0;
+/// Default number of data points visible in the scrollable plot
+/// before horizontal scroll engages. The plot width is
+/// `max(viewportWidth, pointCount × perPointWidth)` where
+/// `perPointWidth = max(28, viewportWidth / maxVisiblePoints)` —
+/// so `maxVisiblePoints` points always fit on screen for any
+/// viewport wider than `28 × maxVisiblePoints`. When `pointCount`
+/// exceeds `maxVisiblePoints`, the inner width grows past the
+/// viewport and the chart becomes drag-scrollable.
+const int kScrollableTrendMaxVisiblePoints = 8;
 
-/// Minimum number of points before the chart stops growing with
-/// the data. The wrapper's plot width is
-/// `max(viewportWidth, points * perPointWidth)` — so the scroll
-/// only engages when the natural width exceeds the card. For
-/// sparse data (≤ ~6 points at the default 48 px), the chart
-/// fills the card cleanly with no horizontal scroll.
-const int kScrollableTrendMinPointsForScroll = 8;
+/// Minimum per-point horizontal slot width inside the scrollable
+/// plot. Ensures date labels stay legible on narrow phones: even
+/// when `viewportWidth / maxVisiblePoints` would otherwise be
+/// smaller (e.g. a 120 dp viewport with 8 visible points →
+/// 7 dp each), the wrapper floors the slot at 28 dp.
+const double kScrollableTrendMinPerPointWidth = 28.0;
 
 /// A horizontally scrollable trend chart with a pinned y-axis
 /// label column. Replaces the fixed-width rendering for every
 /// stats chart on [StatsScreen] (strength e1RM, strength volume,
 /// cardio pace, cardio duration, nutrition calories, nutrition
-/// macros).
+/// macros) and the profile measurement history sheet.
 ///
 /// ## Layout
 ///
@@ -60,20 +61,21 @@ const int kScrollableTrendMinPointsForScroll = 8;
 ///
 /// ## Sparse-data clamp
 ///
-/// When `points * perPointWidth ≤ viewport` the wrapper passes
+/// When `pointCount ≤ maxVisiblePoints` the wrapper passes
 /// `physics: NeverScrollableScrollPhysics()` to the inner scroll
 /// view and constrains the plot width to the viewport — the
-/// chart fills the card with no scroll. When `points` exceeds
-/// [kScrollableTrendMinPointsForScroll] at the default
-/// [kScrollableTrendPerPointWidth], the inner width grows past
-/// the viewport and the chart becomes drag-scrollable.
+/// chart fills the card with no scroll. When `pointCount` exceeds
+/// [maxVisiblePoints], the inner width grows past the viewport
+/// (per-point width × pointCount) and the chart becomes
+/// drag-scrollable.
 ///
-/// ## Tooltips
+/// ## No popups
 ///
-/// `lineTouchData` on the inner `LineChart` is preserved. Tapping
-/// a point shows the on-card tooltip as before. There is no
-/// GestureDetector, modal, or sheet — the only interaction is
-/// the on-card tap and the horizontal drag.
+/// The wrapper itself does not enable `lineTouchData` — callers
+/// pass the inner [LineChart] with whatever touch behavior they
+/// want. Stats-screen callers pass `LineTouchData(enabled: false)`
+/// (the on-card popup was removed in this iteration; exact values
+/// are read from the pinned y-axis labels).
 class ScrollableTrendChart extends StatefulWidget {
   /// Theme colors used to render the pinned y-axis labels. The
   /// screen passes this in so the wrapper stays reactive to
@@ -90,8 +92,8 @@ class ScrollableTrendChart extends StatefulWidget {
   final String unitLabel;
 
   /// Number of points being plotted. Used to compute the
-  /// intrinsic plot width (`points * perPointWidth`) and to
-  /// decide whether the scroll engages.
+  /// intrinsic plot width and to decide whether the scroll
+  /// engages.
   final int pointCount;
 
   /// Builder for the inner `LineChart` (with `leftTitles`
@@ -99,11 +101,12 @@ class ScrollableTrendChart extends StatefulWidget {
   /// pins the plot to the resolved width × [height].
   final Widget Function(double plotWidth) chartBuilder;
 
-  /// Per-point horizontal slot width. Defaults to
-  /// [kScrollableTrendPerPointWidth]. A non-default value lets
-  /// the screen pass a larger width for sparse multi-line
-  /// charts where the legend is wider than the labels.
-  final double perPointWidth;
+  /// Maximum number of data points visible in the plot at once
+  /// before horizontal scroll engages. The per-point slot width
+  /// is derived as `max(28, viewportWidth / maxVisiblePoints)` so
+  /// the chart scales to the available card width. Defaults to
+  /// [kScrollableTrendMaxVisiblePoints] (8).
+  final int maxVisiblePoints;
 
   /// Optional override for the chart height. Defaults to
   /// [kScrollableTrendChartHeight].
@@ -116,7 +119,7 @@ class ScrollableTrendChart extends StatefulWidget {
     required this.unitLabel,
     required this.pointCount,
     required this.chartBuilder,
-    this.perPointWidth = kScrollableTrendPerPointWidth,
+    this.maxVisiblePoints = kScrollableTrendMaxVisiblePoints,
     this.height = kScrollableTrendChartHeight,
   });
 
@@ -131,24 +134,65 @@ const double kScrollableTrendChartHeight = 120.0;
 
 class _ScrollableTrendChartState extends State<ScrollableTrendChart> {
   final ScrollController _controller = ScrollController();
+  // Track whether we've already jumped to the newest point so
+  // we don't fight the user's drag (e.g. if they scroll back
+  // manually, we don't yank the view to the right again).
+  bool _hasJumpedToNewest = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // The newest-first jump is scheduled after the first frame
+    // because the controller's position is only attached once
+    // the inner SingleChildScrollView builds, and the position's
+    // viewport/content dimensions are computed during the first
+    // layout pass. addPostFrameCallback fires after that pass.
+    WidgetsBinding.instance.addPostFrameCallback(_jumpToNewestIfReady);
+  }
+
+  @override
+  void didUpdateWidget(covariant ScrollableTrendChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the dataset changed (e.g. more points added), allow the
+    // jump-once behavior to fire again on the next frame so the
+    // user always opens the chart looking at the newest point
+    // even after the data shifts.
+    if (oldWidget.pointCount != widget.pointCount) {
+      _hasJumpedToNewest = false;
+      WidgetsBinding.instance.addPostFrameCallback(_jumpToNewestIfReady);
+    }
+  }
+
+  /// Jump the controller to its newest point (right edge) when
+  /// the position has valid content dimensions. Idempotent — a
+  /// `_hasJumpedToNewest` flag prevents fighting user drags.
+  void _jumpToNewestIfReady(Duration _) {
+    if (!mounted) return;
+    if (_hasJumpedToNewest) return;
+    if (!_controller.hasClients) {
+      // Controller not attached yet — try again next frame.
+      WidgetsBinding.instance.addPostFrameCallback(_jumpToNewestIfReady);
+      return;
+    }
+    final position = _controller.position;
+    if (!position.hasContentDimensions) {
+      // Layout still computing dimensions — try again next frame.
+      WidgetsBinding.instance.addPostFrameCallback(_jumpToNewestIfReady);
+      return;
+    }
+    if (position.maxScrollExtent <= 0) {
+      // Nothing to scroll to (sparse data fits viewport) — done.
+      _hasJumpedToNewest = true;
+      return;
+    }
+    _controller.jumpTo(position.maxScrollExtent);
+    _hasJumpedToNewest = true;
+  }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
-  }
-
-  /// Jump to the newest point (right edge) on the first frame
-  /// after layout. We schedule this for the *next* frame so the
-  /// scroll view has already computed its `maxScrollExtent`.
-  void _maybeJumpToNewest() {
-    if (!_controller.hasClients) return;
-    if (!_controller.position.hasContentDimensions) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (!_controller.hasClients) return;
-      _controller.jumpTo(_controller.position.maxScrollExtent);
-    });
   }
 
   @override
@@ -178,22 +222,24 @@ class _ScrollableTrendChartState extends State<ScrollableTrendChart> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final viewportWidth = constraints.maxWidth;
+              // Per-point slot width is derived from the viewport
+              // and the configured maxVisiblePoints so the chart
+              // shows exactly [maxVisiblePoints] points at a time
+              // when pointCount exceeds it. Floor at
+              // kScrollableTrendMinPerPointWidth so date labels
+              // stay legible on narrow viewports.
+              final perPointWidth = viewportWidth <= 0
+                  ? kScrollableTrendMinPerPointWidth
+                  : (viewportWidth / widget.maxVisiblePoints)
+                      .clamp(kScrollableTrendMinPerPointWidth, double.infinity);
               // Plot width is at least the viewport, so sparse
               // data fills the card; it grows with the data so
               // dense data scrolls.
-              final naturalWidth =
-                  widget.pointCount * widget.perPointWidth;
+              final naturalWidth = widget.pointCount * perPointWidth;
               final plotWidth = naturalWidth > viewportWidth
                   ? naturalWidth
                   : viewportWidth;
-              final scrollable = naturalWidth > viewportWidth;
-
-              if (scrollable) {
-                // Schedule the newest-first jump for after the
-                // first layout pass so the scroll position is
-                // valid.
-                _maybeJumpToNewest();
-              }
+              final scrollable = widget.pointCount > widget.maxVisiblePoints;
 
               return SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -261,7 +307,13 @@ class _PinnedYAxis extends StatelessWidget {
             // values visually align with the gridlines.
             padding: const EdgeInsets.only(right: 4),
             child: Text(
-              ChartAxisHelper.formatYAxisValue(v, unitLabel),
+              // Trim the trailing space `formatYAxisValue`
+              // always inserts between value and unit. Stats
+              // charts pass a real unit ("62 lbs"); the
+              // measurement sheet passes an empty unit and
+              // would otherwise render "76 " with a dangling
+              // space.
+              ChartAxisHelper.formatYAxisValue(v, unitLabel).trimRight(),
               style: TextStyle(
                 fontSize: 9,
                 color: themeColors.textMuted,

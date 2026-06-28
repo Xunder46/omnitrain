@@ -173,16 +173,28 @@ that combines:
   stay aligned with the plot as it scrolls.
 - A **horizontally scrollable plot** on the right, where `fl_chart`'s
   own `leftTitles` is hidden (the pinned column replaces it).
-- A **fixed per-point width** of 48 px (`kScrollableTrendPerPointWidth`).
-  The plot's intrinsic width is
-  `max(viewportWidth, points × perPointWidth)` — so sparse data fills
+- A **dynamic per-point slot width** of
+  `viewportWidth / maxVisiblePoints` (default `maxVisiblePoints = 8`,
+  floored at `kScrollableTrendMinPerPointWidth = 28 dp` for
+  readability on narrow phones). The plot's intrinsic width is
+  `max(viewportWidth, points × perPointWidth)` — sparse data fills
   the card with no scroll, dense data scrolls.
 - A `ScrollController` that **jumps to `maxScrollExtent`** after first
   layout so the card opens scrolled to the newest point on the right.
   `reverse: true` was rejected because it would also flip the plot's
-  content direction.
-- On-card `lineTouchData` tooltips preserved (tap a point → value).
-  No GestureDetector, modal, or sheet widget.
+  content direction. The jump reschedules itself on every post-frame
+  pass until the controller has content dimensions, so the wrapper
+  works regardless of layout timing in tests.
+- **No on-card popups.** `lineTouchData` is disabled on every stats
+  chart — exact values are read from the pinned y-axis labels and
+  (for nutrition) the on-card legend. No GestureDetector, modal, or
+  sheet widget.
+- **No top headroom.** `topTitles.sideTitles.reservedSize` is `0`
+  everywhere; the chart no longer reserves space above the plot for
+  a popup-tooltip that no longer exists. The highest data point is
+  still fully visible because `ChartAxisHelper.computeBounds` pads
+  above the max by `range × 0.15 + 1.0` (≥ 2 dp on any range ≥ 7,
+  ≥ 3 dp on any range ≥ 13).
 
 ### Nested scrolling
 
@@ -341,8 +353,8 @@ final data = await StatsProgressService(
 
 ---
 
-**Document Version**: 2.2
-**Last Updated**: June 2026
+**Document Version**: 2.3
+**Last Updated**: June 25, 2026
 
 
 ---

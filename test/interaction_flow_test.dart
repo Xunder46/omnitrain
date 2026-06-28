@@ -1577,8 +1577,13 @@ void main() {
 
       await pumpSheet(tester, profileState, settingsState);
 
-      // Long-press the GestureDetector tap target covering the dot.
-      await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
+      // Long-press the chart area to open the delete dialog.
+      // The strip is locked to the most recent entry (D-2), so
+      // the dialog targets that entry regardless of where the
+      // user long-presses.
+      await tester.longPress(
+        find.byKey(const ValueKey('measurement_chart_area')),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Delete entry?'), findsOneWidget);
@@ -1607,7 +1612,9 @@ void main() {
 
       await pumpSheet(tester, profileState, settingsState);
 
-      await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
+      await tester.longPress(
+        find.byKey(const ValueKey('measurement_chart_area')),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Cancel'));
@@ -1615,7 +1622,7 @@ void main() {
 
       // Chart still present (hint text visible = entries still there)
       expect(
-        find.text('Tap a point to view · Long-press to delete'),
+        find.text('Long-press to delete'),
         findsOneWidget,
       );
       // Entry still in repo
@@ -1654,8 +1661,12 @@ void main() {
 
       await pumpSheet(tester, profileState, settingsState);
 
-      // Long-press the first dot (index 0 of the ordered entry list).
-      await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
+      // Long-press anywhere in the chart area to delete the most
+      // recent entry (del-keep-2, since the entries are sorted
+      // newest-first).
+      await tester.longPress(
+        find.byKey(const ValueKey('measurement_chart_area')),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Delete'));
@@ -1663,7 +1674,7 @@ void main() {
 
       // One entry remains — hint text still visible.
       expect(
-        find.text('Tap a point to view · Long-press to delete'),
+        find.text('Long-press to delete'),
         findsOneWidget,
       );
       final history = await profileState.getMeasurementHistory('bodyweight');
@@ -1691,7 +1702,9 @@ void main() {
 
       await pumpSheet(tester, profileState, settingsState);
 
-      await tester.longPress(find.byKey(const ValueKey('chart_dot_0')));
+      await tester.longPress(
+        find.byKey(const ValueKey('measurement_chart_area')),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Delete'));
@@ -1700,7 +1713,7 @@ void main() {
       // Empty state shown, hint text gone.
       expect(find.text('No entries yet'), findsOneWidget);
       expect(
-        find.text('Tap a point to view · Long-press to delete'),
+        find.text('Long-press to delete'),
         findsNothing,
       );
 
@@ -1708,8 +1721,10 @@ void main() {
       expect(find.text('Log New Entry'), findsOneWidget);
     });
 
-    // S-015: tap-to-select is preserved (does NOT open dialog)
-    testWidgets('tap on chart dot does not open dialog', (
+    // S-015: tap on the chart does NOT open any dialog (the
+    // tap-to-select affordance was removed; the only touch
+    // interaction is long-press to delete).
+    testWidgets('tap on chart does not open dialog', (
       WidgetTester tester,
     ) async {
       final repo = await _freshRepo();
@@ -1729,7 +1744,9 @@ void main() {
 
       await pumpSheet(tester, profileState, settingsState);
 
-      await tester.tap(find.byKey(const ValueKey('chart_dot_0')));
+      await tester.tap(
+        find.byKey(const ValueKey('measurement_chart_area')),
+      );
       await tester.pumpAndSettle();
 
       // No dialog should have opened.
