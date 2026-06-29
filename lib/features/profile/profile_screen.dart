@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/constants/omni_theme.dart';
 import '../../core/constants/profile_measurements.dart';
+import '../../core/navigation/omni_navigator.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../state/profile/profile_state.dart';
@@ -12,6 +13,7 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
+import 'widgets/avatar_crop_sheet.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
 import 'widgets/measurement_sparkline.dart';
 import 'widgets/profile_avatar_image_stub.dart'
@@ -39,9 +41,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await widget.profileState.loadProfile();
-      await widget.profileState.loadLatestMeasurements(
-        ProfileMeasurements.additional.map((definition) => definition.type),
-      );
+      // Height left the charted column (it now lives in the identity
+      // area) so the charted-column load only pulls `additional`.
+      // Height still needs to be loaded into the latest-measurements
+      // cache so the identity area can read it without an extra
+      // round-trip — load it explicitly here.
+      await widget.profileState.loadLatestMeasurements(<String>{
+        ...ProfileMeasurements.additional.map((d) => d.type),
+        'height',
+      });
     });
   }
 
@@ -60,9 +68,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // for height; kg vs lbs for bodyweight), so the screen
           // rebuilds on either a profile data change or a settings
           // change to keep the display path live.
-          listenable: Listenable.merge(
-            [widget.profileState, widget.settingsState],
-          ),
+          listenable: Listenable.merge([
+            widget.profileState,
+            widget.settingsState,
+          ]),
           builder: (context, _) {
             final profile = widget.profileState.profile;
             if (widget.profileState.isLoading && profile == null) {
@@ -74,11 +83,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 _buildIdentitySection(theme, profile),
                 const SizedBox(height: 24),
-                _buildMeasurementSection(
-                  theme,
-                  definitions: ProfileMeasurements.primary,
-                ),
-                const SizedBox(height: 14),
+                // Single charted column. The cleanup pass dropped the
+                // primary/additional split: height moved into the
+                // identity area, bodyweight moved to the top of the
+                // composition-first ordering, and lean mass renders
+                // a read-only computed row alongside the manual ones.
                 _buildMeasurementSection(
                   theme,
                   definitions: ProfileMeasurements.additional,
@@ -101,89 +110,154 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildIdentitySection(ThemeData theme, UserProfile? profile) {
-    return OmniSurface(
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: _showAvatarOptions,
-              child: Semantics(
-                button: true,
-                label: 'Edit avatar',
-                child: Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: theme.colorScheme.surface.withOpacity(0.4),
-                    border: Border.all(
-                      color: OmniTheme.colors.surfaceBorder,
-                      width: OmniTheme.surfaceBorderWidth,
-                    ),
-                  ),
-                  child: ClipOval(
-                    child: profile?.avatarPath != null
-                        ? ProfileAvatarImage(
-                            reference: profile!.avatarPath!,
-                            imageStorage: widget.profileState.imageStorageOrNull,
-                            fallback: _buildAvatarFallback(theme),
-                          )
-                        : _buildAvatarFallback(theme),
-                  ),
+    // Compact horizontal header — avatar on the left, name + height
+    // stacked on the right, vertically centered against the avatar.
+    // No [OmniSurface] chrome around the block: the gradient shows
+    // through behind it, recovering vertical space for the charted
+    // measurement cards below. The avatar stays at its current
+    // 200 × 200 size (floor: 180) — gaining space by shrinking the
+    // avatar is explicitly out of scope.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        GestureDetector(
+          onTap: _showAvatarOptions,
+          child: Semantics(
+            button: true,
+            label: 'Edit avatar',
+            child: Container(
+              key: const Key('profile_identity_avatar'),
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.surface.withOpacity(0.4),
+                border: Border.all(
+                  color: OmniTheme.colors.surfaceBorder,
+                  width: OmniTheme.surfaceBorderWidth,
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _showDisplayNameDialog,
-                borderRadius: BorderRadius.circular(
-                  OmniTheme.buttonUtilityRadius,
-                ),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          profile?.displayName?.trim().isNotEmpty == true
-                              ? profile!.displayName!
-                              : 'Add your name',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color:
-                                profile?.displayName?.trim().isNotEmpty == true
-                                ? OmniTheme.colors.textDominant
-                                : OmniTheme.colors.textSecondary.withOpacity(0.7),
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                        if (profile?.displayName?.trim().isNotEmpty !=
-                            true) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            'Tap to edit',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: OmniTheme.colors.textSecondary.withOpacity(0.7),
-                              letterSpacing: 2.0,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
+              child: ClipOval(
+                child: profile?.avatarPath != null
+                    ? ProfileAvatarImage(
+                        reference: profile!.avatarPath!,
+                        imageStorage: widget.profileState.imageStorageOrNull,
+                        fallback: _buildAvatarFallback(theme),
+                      )
+                    : _buildAvatarFallback(theme),
               ),
             ),
-          ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildIdentityNameRow(theme, profile),
+              const SizedBox(height: 2),
+              _buildIdentityHeightRow(theme),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Name tap target in the identity area. The whole row opens the
+  /// existing name editor dialog (unchanged behavior). Iteration 2:
+  /// dropped `ConstrainedBox(minHeight: 48)` + vertical padding so the
+  /// InkWell wraps the text tightly, and bumped typography from
+  /// `headlineSmall` to `headlineMedium` so the right column holds its
+  /// own against the avatar visually.
+  Widget _buildIdentityNameRow(ThemeData theme, UserProfile? profile) {
+    final hasName = profile?.displayName?.trim().isNotEmpty == true;
+    final nameText = hasName ? profile!.displayName!.trim() : 'Add your name';
+    final words = nameText.split(' ');
+    final textColor = hasName
+        ? OmniTheme.colors.textDominant
+        : OmniTheme.colors.textSecondary.withOpacity(0.7);
+
+    // Use a fixed base font size
+    const baseFontSize = 24.0;
+    const maxCharsPerLine = 6.0;
+
+    // Calculate font size based on the longest word so all words are consistent
+    final longestWordLength = words.map((w) => w.length).reduce((a, b) => a > b ? a : b);
+    final fontSize = longestWordLength <= maxCharsPerLine
+        ? baseFontSize
+        : (baseFontSize * maxCharsPerLine / longestWordLength).clamp(14.0, baseFontSize);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showDisplayNameDialog,
+        borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: words.map((word) {
+              return Text(
+                word,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                  color: textColor,
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Compact, tappable height line rendered as a secondary subtitle
+  /// under the name in the identity area. Height is effectively a
+  /// constant — charting it over time is a flat line — so it lives
+  /// in the identity area as an editable value, left-aligned with
+  /// the name. The whole line is one tap target (key
+  /// `profile_identity_height_value`); tapping opens [_HeightDialog],
+  /// which writes through the existing
+  /// `BodyMeasurementEntry(type='height')` repository path so the
+  /// Settings height preview keeps working without migration.
+  ///
+  /// No leading icon: the prior [Icons.height] arrow cue read as a
+  /// resize/sort control. The line is already tappable; an icon
+  /// added nothing.
+  ///
+  /// Iteration 2: dropped `ConstrainedBox(minHeight: 36)` + vertical
+  /// padding so the InkWell wraps the text tightly, matching the
+  /// name row's tight layout. Together with the 2 dp gap in the
+  /// parent column, name + height read as a single stacked pair.
+  Widget _buildIdentityHeightRow(ThemeData theme) {
+    final heightCm = widget.profileState.latestHeightCm;
+    final hasHeight = heightCm != null;
+    final display = hasHeight
+        ? UnitFormatter.formatHeight(heightCm, widget.settingsState)
+        : 'Add height';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: const Key('profile_identity_height_value'),
+        onTap: _showHeightDialog,
+        borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            display,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: hasHeight
+                  ? OmniTheme.colors.textSecondary
+                  : OmniTheme.colors.textSecondary.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.2,
+            ),
+          ),
         ),
       ),
     );
@@ -207,67 +281,154 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // card body is a 3-section row: `[chart rectangle | current value
     // | + button]`. Tapping the chart opens the existing history
     // sheet; tapping the `+` button opens the existing log sheet.
+    //
+    // Cleanup-pass carve-out: `lean_mass` renders a read-only
+    // computed row (label + value, no chart sparkline, no `+`).
+    // The card chrome (header + surface) is unchanged; only the
+    // card body's contents differ. Every other row keeps its
+    // original chart + value + add-button row geometry.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (var index = 0; index < definitions.length; index++) ...[
           OmniCardHeader(title: definitions[index].label.toUpperCase()),
-          OmniSurface(
-            // Height is the only measurement whose card body has a
-            // dedicated Key so widget tests can scope the unit-aware
-            // display assertions. Other measurements reuse the
-            // shared `measurement_value` key for their value
-            // column.
-            key: definitions[index].type == 'height'
-                ? const Key('profile_height_card')
-                : null,
-            padding: const EdgeInsets.fromLTRB(5, 12, 12, 12),
-            child: Row(
+          if (definitions[index].type == 'lean_mass')
+            _buildLeanMassCard(theme)
+          else
+            OmniSurface(
+              // Bodyweight is the only manual-log measurement whose
+              // card body has a dedicated Key in this pass — the
+              // cleanup re-keyed the formerly-height card (height
+              // left the column) so widget tests can scope their
+              // assertions to a stable identifier. Lean Mass has
+              // its own dedicated card (see `_buildLeanMassCard`).
+              key: definitions[index].type == 'bodyweight'
+                  ? const Key('profile_bodyweight_card')
+                  : null,
+              padding: const EdgeInsets.fromLTRB(5, 12, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: MeasurementSparkline(
+                      definition: definitions[index],
+                      profileState: widget.profileState,
+                      settingsState: widget.settingsState,
+                      onTap: () => _showMeasurementHistory(definitions[index]),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    key: const Key('measurement_value'),
+                    width: 90,
+                    child: Text(
+                      _formatMeasurementValue(
+                        widget
+                            .profileState
+                            .latestMeasurements[definitions[index].type],
+                        widget.settingsState,
+                      ),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color:
+                            widget
+                                    .profileState
+                                    .latestMeasurements[definitions[index]
+                                    .type] !=
+                                null
+                            ? OmniTheme.colors.textDominant
+                            : OmniTheme.colors.textSecondary.withOpacity(0.65),
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _buildMeasurementAddButton(
+                    theme: theme,
+                    onPressed: () =>
+                        _showMeasurementLogSheet(definitions[index]),
+                  ),
+                ],
+              ),
+            ),
+          if (index < definitions.length - 1) const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+
+  /// Lean Mass card — read-only computed value, no manual log
+  /// button, no sparkline. Three independently-typed fields that
+  /// are mathematically linked (body weight, body fat %, lean mass)
+  /// will inevitably contradict each other, so the cleanup pass
+  /// derives lean mass from the other two and removes the manual
+  /// entry path entirely. The card chrome (header + surface + row
+  /// height) matches its peers so the column stays visually
+  /// uniform — only the card body's contents differ.
+  Widget _buildLeanMassCard(ThemeData theme) {
+    final computedKg = widget.profileState.computedLeanMassKg;
+    final hasValue = computedKg != null;
+    final display = hasValue
+        ? UnitFormatter.formatWeight(computedKg, widget.settingsState)
+        : '—';
+    return OmniSurface(
+      key: const Key('profile_lean_mass_card'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Expanded(
-                  child: MeasurementSparkline(
-                    definition: definitions[index],
-                    profileState: widget.profileState,
-                    settingsState: widget.settingsState,
-                    onTap: () => _showMeasurementHistory(definitions[index]),
+                Text(
+                  'Computed',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: OmniTheme.colors.textMuted,
+                    letterSpacing: 1.5,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  key: const Key('measurement_value'),
-                  width: 90,
-                  child: Text(
-                    _formatMeasurementValue(
-                      widget.profileState
-                          .latestMeasurements[definitions[index].type],
-                      widget.settingsState,
-                    ),
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: widget.profileState.latestMeasurements[
-                                  definitions[index].type] !=
-                              null
-                          ? OmniTheme.colors.textDominant
-                          : OmniTheme.colors.textSecondary.withOpacity(0.65),
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 4),
+                // Derivation formula. No `maxLines` / `overflow`
+                // constraint — the formula wraps onto additional
+                // lines as needed so the full expression displays
+                // (a half-shown formula like "Body weight × (1 …"
+                // reads as broken).
+                Text(
+                  'Body weight × \n(1 − body fat)',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: OmniTheme.colors.textMuted,
                   ),
-                ),
-                const SizedBox(width: 12),
-                _buildMeasurementAddButton(
-                  theme: theme,
-                  onPressed: () =>
-                      _showMeasurementLogSheet(definitions[index]),
                 ),
               ],
             ),
           ),
-          if (index < definitions.length - 1) const SizedBox(height: 12),
+          const SizedBox(width: 12),
+          SizedBox(
+            key: const Key('measurement_value'),
+            width: 90,
+            child: Text(
+              display,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: hasValue
+                    ? OmniTheme.colors.textDominant
+                    : OmniTheme.colors.textSecondary.withOpacity(0.65),
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // Spacer sized to match the manual-log card's right-edge
+          // + button so the value column lines up across rows.
+          const SizedBox(width: OmniTheme.buttonIconSize + 12),
         ],
-      ],
+      ),
     );
   }
 
@@ -308,14 +469,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           side: WidgetStateProperty.all(
             BorderSide(color: theme.colorScheme.primary),
           ),
-          foregroundColor: WidgetStateProperty.all(
-            theme.colorScheme.primary,
-          ),
+          foregroundColor: WidgetStateProperty.all(theme.colorScheme.primary),
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                OmniTheme.buttonIconRadius,
-              ),
+              borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
             ),
           ),
         ),
@@ -391,17 +548,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         return;
       }
-      // D-1..D-9: copy the picked file into the managed directory
-      // before saving to the data layer. The picked file lives in
-      // a temporary cache the OS may purge, so we replace it with
-      // a stable app-owned path. On failure, no state mutation
-      // happens (D-6: partial files are cleaned up by the service).
-      final persistedPath = await widget.profileState.imageStorage
-          .persistPickedImage(pickedImage);
-      await widget.profileState.updateAvatarPath(persistedPath);
+      await handlePickedImage(pickedImage);
     } catch (e) {
       _showMessage('Failed to update avatar: $e');
     }
+  }
+
+  /// Read a picked `XFile`'s bytes, route them through the avatar
+  /// crop step, and on confirm persist the cropped PNG bytes
+  /// through the existing [ProfileState.updateAvatarPath] path.
+  ///
+  /// Split out of [_pickAvatar] for two reasons:
+  ///   * It mirrors [FoodForm.handlePickedImage] so tests can
+  ///     bypass the `image_picker` platform channel by invoking
+  ///     this entry point directly with a real `XFile`.
+  ///   * It centralises the read → crop → persist pipeline so
+  ///     both camera and gallery picks share one implementation.
+  ///     The picker only differs in [ImageSource] — the bytes
+  ///     flow the same way from there.
+  ///
+  /// **Cancel**: if the user dismisses the crop sheet, no file is
+  /// written under the managed directory and
+  /// `state.profile.avatarPath` is untouched. The picker temp
+  /// file lives outside the managed dir and is left to the OS to
+  /// purge (it is never copied in).
+  @visibleForTesting
+  Future<void> handlePickedImage(XFile picked) async {
+    final bytes = await picked.readAsBytes();
+    await handlePickedBytes(bytes);
+  }
+
+  /// Push the [AvatarCropSheet] for already-read bytes. On
+  /// confirm, the cropped PNG bytes are persisted through the
+  /// existing [ProfileState.updateAvatarPath] path.
+  ///
+  /// Split from [handlePickedImage] so tests can:
+  ///   1. Read the picked bytes themselves via
+  ///      `tester.runAsync(() => picked.readAsBytes())`.
+  ///   2. Call this method with the resulting [Uint8List].
+  /// This avoids awaiting the read inside the test's `runAsync`
+  /// block (the read is real I/O; the navigator push is async
+  /// over the test zone's pump cycle).
+  @visibleForTesting
+  Future<void> handlePickedBytes(Uint8List bytes) async {
+    final cropped = await _showCropSheet(bytes);
+    if (cropped == null) return; // user cancelled
+    await handleCroppedBytes(cropped);
+  }
+
+  /// Persist already-cropped bytes through the existing
+  /// [ProfileState.updateAvatarPath] path. Split out of
+  /// [handlePickedImage] / [handlePickedBytes] so tests can
+  /// bypass both the picker and the crop sheet (e.g. for
+  /// service-level wiring assertions — see
+  /// `test/avatar_crop_test.dart`).
+  @visibleForTesting
+  Future<void> handleCroppedBytes(Uint8List bytes) async {
+    final persistedPath = await widget.profileState.imageStorage
+        .persistImageBytes(bytes);
+    await widget.profileState.updateAvatarPath(persistedPath);
+  }
+
+  /// Push the [AvatarCropSheet] as a full-screen dialog. Returns
+  /// the captured PNG bytes on confirm, or `null` on cancel.
+  ///
+  /// Routed through `OmniNavigator.push(..., fullscreenDialog:
+  /// true)` rather than a raw `MaterialPageRoute` so the route
+  /// fully occludes the underlying ProfileScreen during the
+  /// transition (avoids the bleed-through that happens when
+  /// every Scaffold is transparent and `opaque == false`). This
+  /// is the same pattern every other modal screen in the app
+  /// uses — see `.github/agents/docs/navigation_and_screens.md`
+  /// and `lib/core/navigation/omni_route.dart`.
+  Future<Uint8List?> _showCropSheet(Uint8List bytes) {
+    return OmniNavigator.push<Uint8List>(
+      context,
+      (_) => AvatarCropSheet(imageBytes: bytes),
+      fullscreenDialog: true,
+    );
   }
 
   Future<void> _showDisplayNameDialog() async {
@@ -460,6 +684,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await widget.profileState.updateDisplayName(value);
     } catch (e) {
       _showMessage('Failed to update name: $e');
+    }
+  }
+
+  /// Identity-area height editor. Mirrors the cm/ftin input shape
+  /// of the existing height log sheet so the same canonical cm
+  /// storage path is used — but as a compact dialog (no full
+  /// bottom sheet, no chart sparkline, no `Log` header chrome)
+  /// because height is no longer a charted measurement.
+  Future<void> _showHeightDialog() async {
+    final latestCm = widget.profileState.latestHeightCm;
+    final saved = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) {
+        return _HeightDialog(
+          settingsState: widget.settingsState,
+          initialCm: latestCm,
+        );
+      },
+    );
+    if (saved == null) return;
+    try {
+      await widget.profileState.updateHeight(saved);
+    } catch (e) {
+      _showMessage('Failed to update height: $e');
     }
   }
 
@@ -539,8 +787,8 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
   bool get _isHeightFtinMode =>
       widget.definition.type == 'height' &&
       UnitFormatter.normalizeHeightUnit(
-        widget.settingsState.preferredHeightUnit,
-      ) ==
+            widget.settingsState.preferredHeightUnit,
+          ) ==
           'ftin';
 
   @override
@@ -559,9 +807,7 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
     String feetText = '';
     String inchesText = '';
     if (widget.latestEntry != null && _isHeightFtinMode) {
-      final compound = UnitFormatter.cmToFeetInches(
-        widget.latestEntry!.value,
-      );
+      final compound = UnitFormatter.cmToFeetInches(widget.latestEntry!.value);
       feetText = compound.feet.toString();
       inchesText = compound.inches.toString();
     }
@@ -825,10 +1071,7 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
       return;
     }
 
-    final canonicalCm = UnitFormatter.toCanonicalHeightFeetInches(
-      feet,
-      inches,
-    );
+    final canonicalCm = UnitFormatter.toCanonicalHeightFeetInches(feet, inches);
 
     setState(() {
       _isSaving = true;
@@ -908,6 +1151,214 @@ class _SheetOption extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Identity-area height editor. Mirrors the cm/ftin input shape
+/// of the height log sheet (see [_MeasurementLogSheet]) so the
+/// same canonical cm storage path is used — but as a compact
+/// dialog instead of a full bottom sheet because height is no
+/// longer a charted measurement. Returns the canonical-cm value
+/// via `Navigator.pop` on Save; returns null on Cancel or on a
+/// validation failure (the dialog stays open with an inline
+/// error in that case).
+class _HeightDialog extends StatefulWidget {
+  final SettingsState settingsState;
+  final double? initialCm;
+
+  const _HeightDialog({required this.settingsState, this.initialCm});
+
+  @override
+  State<_HeightDialog> createState() => _HeightDialogState();
+}
+
+class _HeightDialogState extends State<_HeightDialog> {
+  late final TextEditingController _valueController;
+  late final TextEditingController _feetController;
+  late final TextEditingController _inchesController;
+  String? _valueError;
+
+  bool get _isFtinMode =>
+      UnitFormatter.normalizeHeightUnit(
+        widget.settingsState.preferredHeightUnit,
+      ) ==
+      'ftin';
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialCm;
+    if (initial != null && _isFtinMode) {
+      final compound = UnitFormatter.cmToFeetInches(initial);
+      _feetController = TextEditingController(text: '${compound.feet}');
+      _inchesController = TextEditingController(text: '${compound.inches}');
+      _valueController = TextEditingController();
+    } else {
+      _valueController = TextEditingController(
+        text: initial != null ? ProfileMeasurements.formatValue(initial) : '',
+      );
+      _feetController = TextEditingController();
+      _inchesController = TextEditingController();
+    }
+  }
+
+  @override
+  void dispose() {
+    _valueController.dispose();
+    _feetController.dispose();
+    _inchesController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final weightUnit = widget.settingsState.preferredWeightUnit;
+    final heightUnit = widget.settingsState.preferredHeightUnit;
+    if (_isFtinMode) {
+      final feet = int.tryParse(_feetController.text.trim());
+      final inches = int.tryParse(_inchesController.text.trim());
+      if (feet == null || inches == null) {
+        setState(() {
+          _valueError = 'Enter a valid feet and inches value.';
+        });
+        return;
+      }
+      if (feet < 0 || inches < 0) {
+        setState(() {
+          _valueError = 'Enter a value greater than 0.';
+        });
+        return;
+      }
+      if (inches > 11) {
+        setState(() {
+          _valueError = 'Enter a value between 0 and 11 inches.';
+        });
+        return;
+      }
+      final totalInches = feet * 12 + inches;
+      final range = ProfileMeasurements.validationRangeFor(
+        'height',
+        weightUnit,
+        heightUnit: heightUnit,
+      );
+      if (totalInches < range.min || totalInches > range.max) {
+        setState(() {
+          _valueError = 'Enter a height within the allowed range.';
+        });
+        return;
+      }
+      Navigator.of(
+        context,
+      ).pop(UnitFormatter.toCanonicalHeightFeetInches(feet, inches));
+      return;
+    }
+    final value = double.tryParse(_valueController.text.trim());
+    if (value == null) {
+      setState(() {
+        _valueError = 'Enter a valid number.';
+      });
+      return;
+    }
+    if (value <= 0) {
+      setState(() {
+        _valueError = 'Enter a value greater than 0.';
+      });
+      return;
+    }
+    final range = ProfileMeasurements.validationRangeFor(
+      'height',
+      weightUnit,
+      heightUnit: heightUnit,
+    );
+    if (value < range.min || value > range.max) {
+      setState(() {
+        _valueError = 'Enter a height within the allowed range.';
+      });
+      return;
+    }
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = _isFtinMode ? 'Feet' : 'Value (cm)';
+    return AlertDialog(
+      title: const Text('Edit Height'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_isFtinMode)
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _feetController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Feet'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _inchesController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Inches'),
+                  ),
+                ),
+              ],
+            )
+          else
+            TextField(
+              key: const Key('height_dialog_value_field'),
+              controller: _valueController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: label,
+                errorText: _valueError,
+              ),
+            ),
+          if (_isFtinMode && _valueError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _valueError!,
+              style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          style: ButtonStyle(
+            shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  OmniTheme.buttonUtilityRadius,
+                ),
+              ),
+            ),
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: ButtonStyle(
+            shape: WidgetStateProperty.all(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  OmniTheme.buttonUtilityRadius,
+                ),
+              ),
+            ),
+          ),
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

@@ -56,6 +56,45 @@ class ProfileState extends ChangeNotifier {
   Map<String, BodyMeasurementEntry?> get latestMeasurements =>
       Map.unmodifiable(_latestMeasurements);
 
+  // ── Convenience accessors for the cleaned-up Profile screen ─────────────
+  //
+  // These are pure derivations of `_latestMeasurements` — no extra
+  // load, no extra state. The chart path used to read
+  // `latestMeasurements[type]` directly; the cleanup pass exposes
+  // these named getters so callers don't have to know the storage
+  // string for each measurement.
+
+  /// Latest height in canonical centimeters, or `null` if the user
+  /// has never logged one. Height is no longer a charted card — it
+  /// lives in the identity area — but it still routes through the
+  /// same `BodyMeasurementEntry` repository.
+  double? get latestHeightCm => _latestMeasurements['height']?.value;
+
+  /// Latest body weight in canonical kilograms.
+  double? get latestBodyWeightKg =>
+      _latestMeasurements['bodyweight']?.value;
+
+  /// Latest body fat percentage (canonical unit is `unit-pct`).
+  double? get latestBodyFatPct =>
+      _latestMeasurements['body_fat_pct']?.value;
+
+  /// Computed lean mass in canonical kilograms:
+  ///
+  ///     lean_mass_kg = body_weight_kg × (1 - body_fat_pct / 100)
+  ///
+  /// Returns `null` if either input is missing — the UI renders an
+  /// em-dash in that case (the user hasn't logged one of the two
+  /// required inputs yet). Lean mass is intentionally NOT a stored
+  /// value: three independently-typed fields that are
+  /// mathematically linked will inevitably contradict each other,
+  /// so we derive this one from the other two.
+  double? get computedLeanMassKg {
+    final weight = latestBodyWeightKg;
+    final bodyFat = latestBodyFatPct;
+    if (weight == null || bodyFat == null) return null;
+    return weight * (1 - bodyFat / 100);
+  }
+
   Future<void> loadProfile() async {
     _isLoading = true;
     _error = null;
@@ -80,8 +119,11 @@ class ProfileState extends ChangeNotifier {
       // this rewrite addresses.
       await _resolveAndNormalizeAvatarPath();
 
+      // Cleanup pass: load the charted column (`additional` — which no
+      // longer contains height). Height is loaded separately by the
+      // screen's initState so the identity area can read it.
       await loadLatestMeasurements(
-        ProfileMeasurements.primary.map((definition) => definition.type),
+        ProfileMeasurements.additional.map((definition) => definition.type),
         notify: false,
       );
     } catch (e) {
@@ -209,6 +251,17 @@ class ProfileState extends ChangeNotifier {
 
   Future<List<BodyMeasurementEntry>> getMeasurementHistory(String type) {
     return _repository.getMeasurementHistory(type);
+  }
+
+  /// Persist the user's height. The chart-card path used to call
+  /// [logMeasurement] for height; the cleanup pass routes the
+  /// identity-area height editor through the same write path
+  /// (`type='height'`, `unitId='unit-cm'`, canonical cm) so the
+  /// repository contract doesn't change. The Settings height
+  /// preview keeps working unchanged because it also reads
+  /// `type='height'` entries.
+  Future<void> updateHeight(double cmCanonical) async {
+    await logMeasurement('height', cmCanonical, 'unit-cm');
   }
 
   Future<void> deleteMeasurementEntry(

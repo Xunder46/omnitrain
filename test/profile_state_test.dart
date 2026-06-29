@@ -5,7 +5,7 @@ import 'package:omnitrain/data/models/models.dart';
 
 void main() {
   test(
-    'ProfileState creates default profile and loads primary measurements',
+    'ProfileState creates default profile and loads latest measurements',
     () async {
       final repository = MockWorkoutRepository();
       await repository.initialize();
@@ -31,11 +31,16 @@ void main() {
 
       final profileState = ProfileState(repository);
       await profileState.loadProfile();
+      // Cleanup pass: height lives in the identity area now, so the
+      // caller has to load it explicitly (the screen does this in
+      // its initState). The charted-column load is the call below.
+      await profileState.loadLatestMeasurements(['height']);
 
       expect(profileState.profile, isNotNull);
       expect(profileState.profile!.id, 'local-user');
       expect(profileState.latestMeasurements['bodyweight']?.value, 79.5);
       expect(profileState.latestMeasurements['height']?.value, 181);
+      expect(profileState.latestHeightCm, 181);
     },
   );
 

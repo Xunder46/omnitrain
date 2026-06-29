@@ -6,8 +6,9 @@ The Profile feature is now an implemented maintenance route, not a placeholder.
 
 Primary capabilities:
 - Local single-user profile (`local-user`) with display name and avatar path
-- Primary measurements: bodyweight, height
-- Additional measurements: body fat %, lean mass, waist, chest, hips, thigh, arm
+- Identity-area editable height (compact value rendered under the display name, edited via a single tap; not charted)
+- Charted measurements: body weight, body fat %, waist, lean mass (read-only, computed), hips, thigh, chest, arm
+- Lean mass is computed from latest body weight × (1 − body fat %/100); the manual log path is removed but historical entries are preserved
 - Measurement logging with save-time timestamps
 - Chart-based measurement history (full history, scrollable)
 
@@ -28,6 +29,7 @@ Primary capabilities:
 - `lib/features/profile/widgets/measurement_history_chart_sheet.dart`
 - `lib/features/profile/widgets/profile_avatar_image_io.dart`
 - `lib/features/profile/widgets/profile_avatar_image_stub.dart`
+- `lib/features/profile/widgets/avatar_crop_sheet.dart`
 - `lib/state/profile/profile_state.dart`
 - `lib/core/constants/profile_measurements.dart`
 
@@ -63,8 +65,15 @@ Both `HiveWorkoutRepository` and `MockWorkoutRepository` implement these methods
 Key behavior:
 - `loadProfile()` loads from repository, or creates/saves default `UserProfile(id: 'local-user')`
 - `updateDisplayName()` and `updateAvatarPath()` persist immutable profile updates
+- `updateHeight(double cmCanonical)` writes a `BodyMeasurementEntry(type='height', unitId='unit-cm')` through the same `logMeasurement` path the chart card used to use. The Settings height preview keeps working unchanged because it reads the same `type='height'` entries.
 - `logMeasurement()` writes `BodyMeasurementEntry` with UUID and defaults `recordedAtMs` to save time when omitted
 - `deleteMeasurementEntry()` updates latest measurement cache immediately after delete
+
+Convenience getters (all are pure derivations of `_latestMeasurements` — no extra state):
+- `latestHeightCm` → `double?` (canonical cm)
+- `latestBodyWeightKg` → `double?` (canonical kg)
+- `latestBodyFatPct` → `double?`
+- `computedLeanMassKg` → `double?` derived as `latestBodyWeightKg × (1 - latestBodyFatPct / 100)`; `null` when either input is missing. Lean mass is no longer a stored value.
 
 ---
 
@@ -72,29 +81,42 @@ Key behavior:
 
 ### Identity Section
 
-- Uses `OmniGradientBackground` + `OmniSurface`
-- Avatar tap opens bottom sheet actions: Take Photo, Choose from Gallery, Remove Photo
-- Remove action is disabled when no avatar path exists
-- Display name is editable via dialog
+- Sits on top of `OmniGradientBackground` as a compact horizontal header — there is no `OmniSurface` card chrome wrapping the identity block; the gradient shows through behind it.
+- Layout: a single `Row` with `CrossAxisAlignment.center`:
+  - **Left** — the avatar (200 × 200 circular, hairline border). Tap opens the avatar bottom sheet (Take Photo, Choose from Gallery, Remove Photo). Remove is disabled when no avatar path is set.
+  - **Right** — a `Column` (`mainAxisAlignment: center`, `crossAxisAlignment: start`) anchored at the avatar's mid-height, with a consistent gutter beside the avatar. The two lines are stacked as a tight pair (2 dp inter-row gap, no oversized tap-target chrome):
+    - **Name** (top line, `headlineMedium`, `FontWeight.w700`, `textDominant`). Tapping opens the existing name editor dialog. `headlineMedium` gives the right column visual heft against the 200 dp avatar so the pair reads as deliberate rather than the avatar-plus-drifting-text.
+    - **Height** (second line, `bodyMedium`, `textSecondary` — quieter than the name). The whole line is one tap target (key `profile_identity_height_value`); tapping it opens `_HeightDialog` (cm/ftin input shape, same path as before).
+- Height renders as a left-aligned subtitle under the name — not a centered standalone control — and has no leading icon (the prior `Icons.height` arrow cue was removed because it read as a resize/sort control; the entire row is already tappable).
+- Both lines are wrapped in `Material > InkWell > Padding(horizontal: 12) > Text` with no `ConstrainedBox(minHeight: …)` and no vertical padding — the InkWell wraps the text tightly so the name and height read as a single stacked pair rather than two disconnected lines. Horizontal padding (12 dp) is kept so the tap area still extends left/right of the text glyphs.
+- The horizontal layout collapses the block to roughly the avatar's vertical envelope, recovering space below for the charted measurement cards.
 
 ### Measurement Sections
 
-- Primary section label: `MEASUREMENTS`
-- Additional measurements render directly below primary (no toggle and no extra section label)
+- Single charted column sourced from `ProfileMeasurements.additional`, top-to-bottom:
+  Body Weight, Body Fat %, Waist, Lean Mass, Hips, Thigh, Chest, Arm
 - Each row has:
-  - measurement label
-  - current value or em dash
-  - outlined add button
-- Row tap opens chart history sheet
+  - measurement label (uppercased via `OmniCardHeader`)
+  - current value or em dash (key `measurement_value`)
+  - outlined add button (except Lean Mass — see below)
+- Row tap (chart area) opens chart history sheet
 - Add button opens log sheet
+- **Lean Mass** renders as a read-only computed row:
+  - Card chrome (header + surface) matches its peers
+  - Card body shows a `Computed` label on the left + the calculated value on the right
+  - No `+` button, no tappable sparkline — no manual entry path
+  - Value derives from `ProfileState.computedLeanMassKg = latestBodyWeightKg × (1 − latestBodyFatPct / 100)`
+  - When either input is missing, the value reads `—` (em dash), not a number
+  - Derivation formula (`Body weight × (1 − body fat)`) wraps onto additional lines as needed so the full expression always displays — never a mid-expression `…` truncation. The formula `Text` has no `maxLines: 1` / `TextOverflow.ellipsis` constraint.
+  - Pre-existing `lean_mass` `BodyMeasurementEntry` rows are preserved in the repository but are not used as the display source
 
 ### Logging Sheet
 
-- Single numeric input, with one shape exception for height (see below)
+- Single numeric input (used by all charted measurements except Lean Mass — see the computed-row contract above; the charted measurements retain their manual log path)
 - No note input
 - No date input
 - Save captures timestamp at button press time
-- **Height input shape** branches on the active height unit:
+- **Height input shape** lives in the identity-area editor dialog (no longer a bottom sheet). It branches on the active height unit:
   - `cm` mode — single `Value (cm)` field; the entered value is stored
     verbatim as canonical cm.
   - `ftin` mode — side-by-side `Feet` and `Inches` fields. Inches are
@@ -141,6 +163,87 @@ Key behavior:
     are never rewritten when the unit toggle flips, so a
     pre-existing height displays correctly under either unit
     without migration.
+
+---
+
+## Avatar Crop Step
+
+After the user picks a photo from the camera or gallery, a square
+crop step with a circular preview overlay appears before the
+avatar is saved. The crop step exists because the avatar displays
+as a circle (`ClipOval`) and an off-center subject in the raw pick
+gets clipped badly — the user has no control over framing without
+this step.
+
+**Where it sits in the flow.** `ProfileScreen._pickAvatar` calls
+`ImagePicker.pickImage(source: ...)`. On native, the picked bytes
+are routed through `AvatarCropSheet` (full-screen dialog, pushed
+via `OmniNavigator.push(..., fullscreenDialog: true)`); the
+sheet's confirm writes the cropped region via
+`ImageStorageService.persistImageBytes` and then
+`ProfileState.updateAvatarPath(basename)`. On web the existing
+`kIsWeb` early-return shows the existing snackbar; the crop step
+is not reached (web persistence is intentionally out of scope).
+
+The `OmniNavigator.push` route is mandatory — see the navigation
+contract in `docs/navigation_and_screens.md`. `OmniRoute` wraps
+the destination in `OmniGradientBackground` and exposes
+`opaque => true`, which is what prevents the underlying screen
+from bleeding through during the slide-up transition. A raw
+`MaterialPageRoute` does not have either property, and the avatar
+crop step's `Scaffold` is transparent — using `MaterialPageRoute`
+causes the ProfileScreen below to be visible mid-transition.
+
+**Crop UI.** `lib/features/profile/widgets/avatar_crop_sheet.dart`:
+- Square viewport via `AspectRatio(aspectRatio: 1.0)` with
+  `RepaintBoundary` → `InteractiveViewer` (`minScale: 1.0`,
+  `maxScale: 4.0`) → `Image.memory(bytes, fit: BoxFit.contain)`.
+  The user can pinch-zoom and drag to reposition.
+- A circular dim scrim above the viewport shows what the avatar
+  will look like inside the circle (matches the avatar's
+  `ClipOval` display). Built with a `CustomPainter` using
+  `Path.fillType = evenOdd` so the circle's interior is left
+  transparent and the image shows through.
+- Bottom CTA row: `OutlinedButton` Cancel + `FilledButton` Use
+  Photo, both with explicit `shape:` overrides using
+  `OmniTheme.buttonBorderRadius` per the global convention.
+- Hint text: "Pinch & drag to position".
+
+**Output shape.** The stored avatar is a **square PNG** (encoded
+via `RepaintBoundary.toImage(pixelRatio: 3.0, format:
+ImageByteFormat.png)` then `image.toByteData(format:
+ImageByteFormat.png)`). The circular scrim is a preview aid only;
+the persisted file matches the full viewport. This keeps the
+`UserProfile.avatarPath` shape square (the existing
+`ClipOval` display still applies at render time) and avoids
+introducing a transparent-margin avatar format that the rest of
+the app does not render.
+
+**Capture pipeline.** On Use Photo, the viewport's
+`RenderRepaintBoundary` is rendered to a `ui.Image` via
+`toImage(pixelRatio: 3.0)` — a 3× scale produces a ~1000+ px
+output from a 360 dp viewport, plenty for an avatar shown at
+any reasonable size on a phone-class display. The image is
+re-encoded as PNG via `image.toByteData(format:
+ImageByteFormat.png)` — the `ImageByteFormat` codecs are built
+into Flutter, so no new image-encoding dependency is added.
+
+**Cancel** pops with `null`; the picker temp file lives outside
+the managed dir and is never copied in. The existing avatar
+is untouched.
+
+**No new dependencies.** The crop step is built from
+`InteractiveViewer`, `RepaintBoundary`, and `Image.memory` —
+all in Flutter's core widget set. No plugin channel, no platform
+code.
+
+**Persistence integration.** The cropped PNG bytes are
+persisted via `ImageStorageService.persistImageBytes(bytes,
+extension: '.png')` which writes them to
+`<managedDir>/<uuid-v4>.png` and returns the basename. The
+existing `ProfileState.updateAvatarPath(basename)` then takes over
+the rest of the flow (delete previous file via D-7, save new
+profile row, notify listeners).
 
 ---
 

@@ -391,9 +391,23 @@ fix; the reference is never nulled while the file is reachable.
 for absolute-path deletes (legacy migration only). For the modern
 basename contract, the service deletes `<managedDir>/<basename>`
 unconditionally — basenames are by convention managed (they can only
-have been produced by `persistPickedImage`). The service still
-protects against deleting files outside its scope: a non-managed
-absolute path passed to `deleteIfManaged` is a no-op.
+have been produced by `persistPickedImage` or
+`persistImageBytes`). The service still protects against deleting
+files outside its scope: a non-managed absolute path passed to
+`deleteIfManaged` is a no-op.
+
+**Bytes-shaped input for the avatar crop step**:
+`ImageStorageService.persistImageBytes(Uint8List bytes, {String
+extension = '.png'})` writes an already-decoded byte buffer to the
+managed directory and returns the basename. Used by the avatar
+crop step, which captures the framed region via
+`RepaintBoundary.toImage(pixelRatio: 3.0, format:
+ImageByteFormat.png)` and ends up with a `Uint8List` rather than a
+path on disk. Mirrors the persistence contract of
+`persistPickedImage(XFile)` (basename + managed-dir copy + D-6
+cleanup of partial files on write failure). The web stub throws
+`UnsupportedError` like the other methods — the call site already
+early-returns on `kIsWeb` with the user-facing snackbar.
 
 ### Storage Shape
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/profile_measurements.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/profile/profile_screen.dart';
@@ -9,9 +10,8 @@ import 'package:omnitrain/state/settings/settings_state.dart';
 import 'helpers/fake_preferences_service.dart';
 
 void main() {
-  testWidgets('all measurement log sheets hide note input and date input', (
-    tester,
-  ) async {
+  testWidgets('all charted-measurement log sheets hide note and date input',
+      (tester) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
 
@@ -29,7 +29,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Body Weight add button (first primary measurement)
+    // Body Weight add button (first charted measurement — the
+    // cleanup pass moved bodyweight from primary to the top of the
+    // charted column and dropped height out of the column
+    // entirely).
     await tester.tap(find.byIcon(Icons.add).first);
     await tester.pumpAndSettle();
 
@@ -40,23 +43,16 @@ void main() {
     Navigator.of(tester.element(find.byType(ProfileScreen))).pop();
     await tester.pumpAndSettle();
 
-    // Height add button (second primary measurement)
-    await tester.tap(find.byIcon(Icons.add).at(1));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Log Height'), findsOneWidget);
-    expect(find.text('DATE'), findsNothing);
-    expect(find.text('Note (optional)'), findsNothing);
-
-    Navigator.of(tester.element(find.byType(ProfileScreen))).pop();
-    await tester.pumpAndSettle();
-
-    // Scroll down to make additional measurements visible
+    // Scroll down to make the additional charted measurements
+    // visible. The first additional card is BODY FAT.
     await tester.drag(find.byType(ListView), const Offset(0, -300));
     await tester.pumpAndSettle();
 
-    // Third add button (first additional measurement - BODY FAT)
-    await tester.tap(find.byIcon(Icons.add).first);
+    // Second add button (first additional charted measurement after
+    // Body Weight — Body Fat). Lean Mass has no add button
+    // (read-only computed row), so the second `Icons.add` lands
+    // squarely on Body Fat's button.
+    await tester.tap(find.byIcon(Icons.add).at(1));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Log '), findsOneWidget);
@@ -167,10 +163,18 @@ void main() {
   });
 
   // ─── Height unit preference — display and entry ─────────────────────────
+//
+// Cleanup pass: height lives in the identity area, not in a chart
+// card. The "value column" tests below assert that the identity
+// area renders the canonical height in the active unit. The
+// "log sheet" tests were rewritten to drive the new
+// identity-area editor dialog (`_HeightDialog`) — the cm / ftin
+// input shape is preserved (the dialog is the cm/ftin-aware
+// input) but the trigger is tapping the identity-area height
+// value rather than a chart-card `+` button.
 
-  testWidgets('height value column reflects cm mode (default)', (
-    tester,
-  ) async {
+  testWidgets('identity area reflects cm mode (default) for stored height',
+      (tester) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
     await repository.saveMeasurementEntry(
@@ -197,20 +201,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The height card's value column (key `measurement_value`)
-    // shows the value text. Both bodyweight and height cards have
-    // this key, so find the height one via the descendant
-    // relationship to the surrounding card.
+    // The identity area's height value is keyed
+    // `profile_identity_height_value`. The text reads "180 cm" in
+    // default cm mode.
     expect(
       find.descendant(
-        of: find.byKey(const Key('profile_height_card')),
+        of: find.byKey(const Key('profile_identity_height_value')),
         matching: find.text('180 cm'),
       ),
       findsOneWidget,
     );
   });
 
-  testWidgets('height value column reflects ftin mode', (tester) async {
+  testWidgets('identity area reflects ftin mode for stored height', (
+    tester,
+  ) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
     await repository.saveMeasurementEntry(
@@ -241,16 +246,15 @@ void main() {
     // 180 cm = 70.866 in → rounds to 71 in = 5' 11".
     expect(
       find.descendant(
-        of: find.byKey(const Key('profile_height_card')),
+        of: find.byKey(const Key('profile_identity_height_value')),
         matching: find.text("5' 11\""),
       ),
       findsOneWidget,
     );
   });
 
-  testWidgets('height log sheet presents single cm field in cm mode', (
-    tester,
-  ) async {
+  testWidgets('identity-area height dialog presents single cm field in cm mode',
+      (tester) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
     await repository.saveMeasurementEntry(
@@ -277,12 +281,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The height card is the second primary measurement; tap its
-    // add button. The first `Icons.add` is on the bodyweight card.
-    await tester.tap(find.byIcon(Icons.add).at(1));
+    // Tap the identity-area height value.
+    await tester.tap(find.byKey(const Key('profile_identity_height_value')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Log Height'), findsOneWidget);
+    expect(find.text('Edit Height'), findsOneWidget);
     expect(find.text('Value (cm)'), findsOneWidget);
     // No feet/inches labels in cm mode.
     expect(find.text('Feet'), findsNothing);
@@ -301,9 +304,8 @@ void main() {
     expect(history.first.value, 180.0);
   });
 
-  testWidgets('height log sheet presents feet/inches fields in ftin mode', (
-    tester,
-  ) async {
+  testWidgets('identity-area height dialog presents feet/inches fields in ftin mode',
+      (tester) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
     await repository.saveMeasurementEntry(
@@ -331,11 +333,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The height card is the second primary measurement.
-    await tester.tap(find.byIcon(Icons.add).at(1));
+    // Tap the identity-area height value.
+    await tester.tap(find.byKey(const Key('profile_identity_height_value')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Log Height'), findsOneWidget);
+    expect(find.text('Edit Height'), findsOneWidget);
     expect(find.text('Feet'), findsOneWidget);
     expect(find.text('Inches'), findsOneWidget);
     // The single cm field is NOT present in ftin mode.
@@ -351,9 +353,8 @@ void main() {
     expect(inchesField.controller?.text, '11');
   });
 
-  testWidgets('height log sheet rejects inches above 11 in ftin mode', (
-    tester,
-  ) async {
+  testWidgets('identity-area height dialog rejects inches above 11 in ftin mode',
+      (tester) async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
     final profileState = ProfileState(repository);
@@ -371,7 +372,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add).at(1));
+    await tester.tap(find.byKey(const Key('profile_identity_height_value')));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextField);
@@ -382,7 +383,7 @@ void main() {
 
     // Validation error expressed in the active unit. Inches are
     // bounded to 0-11 as a per-field rule, so the error names the
-    // field directly.
+    // field directly. The dialog stays open.
     expect(
       find.textContaining('0 and 11 inches'),
       findsOneWidget,
@@ -393,7 +394,7 @@ void main() {
   });
 
   testWidgets(
-    'height log sheet round-trips cm mode (no drift across unit toggle)',
+    'identity-area height round-trips cm mode (no drift across unit toggle)',
     (tester) async {
       final repository = MockWorkoutRepository();
       await repository.initialize();
@@ -411,8 +412,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Save 180 cm.
-      await tester.tap(find.byIcon(Icons.add).at(1));
+      // Save 180 cm via the identity-area editor.
+      await tester.tap(find.byKey(const Key('profile_identity_height_value')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).first, '180');
       await tester.tap(find.text('Save'));
@@ -422,10 +423,10 @@ void main() {
       await settingsState.setPreferredHeightUnit('ftin');
       await tester.pumpAndSettle();
 
-      // Profile card value reads in compound ftin.
+      // Identity area reads in compound ftin.
       expect(
         find.descendant(
-          of: find.byKey(const Key('profile_height_card')),
+          of: find.byKey(const Key('profile_identity_height_value')),
           matching: find.text("5' 11\""),
         ),
         findsOneWidget,
@@ -438,10 +439,413 @@ void main() {
       // Original value preserved exactly (no drift).
       expect(
         find.descendant(
-          of: find.byKey(const Key('profile_height_card')),
+          of: find.byKey(const Key('profile_identity_height_value')),
           matching: find.text('180 cm'),
         ),
         findsOneWidget,
+      );
+    },
+  );
+
+  // ─── Horizontal identity header (S-004) ──────────────────────────────
+  //
+  // S-004: tapping the name opens the name editor; tapping the height
+  // opens the height editor. Both tap targets are wired to their
+  // existing dialog paths and persist via the existing repository
+  // methods.
+
+  group('S-004: horizontal identity header — name and height tap targets',
+      () {
+    testWidgets(
+      'tapping the name opens the Edit Name dialog with the current value',
+      (tester) async {
+        final repository = MockWorkoutRepository();
+        await repository.initialize();
+        await repository.saveProfile(
+          UserProfile(
+            id: 'local-user',
+            displayName: 'Iris',
+            createdAtMs: 1000,
+          ),
+        );
+        final profileState = ProfileState(repository);
+        await profileState.loadProfile();
+        final settingsState = SettingsState(repository, fakePreferencesService());
+        await settingsState.initialize();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ProfileScreen(
+              profileState: profileState,
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The name tap target is a plain InkWell in the identity
+        // header. Tap on the name text directly — that's the visible
+        // surface of the name tap target.
+        await tester.tap(find.text('Iris'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Edit Name'), findsOneWidget);
+        final valueField = tester.widget<TextField>(find.byType(TextField).first);
+        expect(valueField.controller?.text, 'Iris');
+      },
+    );
+
+    testWidgets(
+      'tapping the height line opens the Edit Height dialog and persists '
+      'via the existing height path',
+      (tester) async {
+        final repository = MockWorkoutRepository();
+        await repository.initialize();
+        await repository.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: 'profile-h-header-tap',
+            measurementType: 'height',
+            value: 180.0,
+            unitId: 'unit-cm',
+            recordedAtMs: 1000,
+          ),
+        );
+        await repository.saveProfile(
+          UserProfile(
+            id: 'local-user',
+            displayName: 'Iris',
+            createdAtMs: 1000,
+          ),
+        );
+        final profileState = ProfileState(repository);
+        await profileState.loadProfile();
+        await profileState.loadLatestMeasurements(
+          <String>{
+            ...ProfileMeasurements.additional.map((d) => d.type),
+            'height',
+          },
+        );
+        final settingsState = SettingsState(repository, fakePreferencesService());
+        await settingsState.initialize();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ProfileScreen(
+              profileState: profileState,
+              settingsState: settingsState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tap the height line (the existing key still wraps the height
+        // tap target — preserved from the previous layout).
+        await tester.tap(find.byKey(const Key('profile_identity_height_value')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Edit Height'), findsOneWidget);
+        expect(find.text('Value (cm)'), findsOneWidget);
+
+        // Save 182 cm; the existing `BodyMeasurementEntry(type='height')`
+        // path persists it and the identity area re-renders.
+        await tester.enterText(find.byType(TextField).first, '182');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('profile_identity_height_value')),
+            matching: find.text('182 cm'),
+          ),
+          findsOneWidget,
+        );
+        final history = await profileState.getMeasurementHistory('height');
+        expect(history.first.unitId, 'unit-cm');
+        expect(history.first.value, closeTo(182.0, 0.0001));
+      },
+    );
+  });
+
+  // ─── Iteration 3 — header height subtitle respects the height unit ────
+  //
+  // The horizontal header was rebuilt in Iterations 1/2. The
+  // implementation already calls
+  //   UnitFormatter.formatHeight(heightCm, widget.settingsState)
+  // and the screen rebuilds on settingsState changes via
+  //   Listenable.merge([widget.profileState, widget.settingsState]).
+  //
+  // These tests make the unit-aware behavior explicit against the
+  // new horizontal-header layout (the prior `profile-cleanup` plan
+  // added equivalent tests for the prior vertical-hero layout —
+  // those still pass, but the user wants explicit coverage for the
+  // new subtitle).
+
+  group(
+    'S-201: identity header height subtitle is unit-aware (cm vs ftin)',
+    () {
+      testWidgets(
+        'cm mode: subtitle renders with the cm suffix',
+        (tester) async {
+          final repository = MockWorkoutRepository();
+          await repository.initialize();
+          await repository.saveMeasurementEntry(
+            BodyMeasurementEntry(
+              id: 'iter3-h-cm',
+              measurementType: 'height',
+              value: 180.0,
+              unitId: 'unit-cm',
+              recordedAtMs: 1000,
+            ),
+          );
+          final profileState = ProfileState(repository);
+          await profileState.loadProfile();
+          await profileState.loadLatestMeasurements(
+            <String>{
+              ...ProfileMeasurements.additional.map((d) => d.type),
+              'height',
+            },
+          );
+          final settingsState =
+              SettingsState(repository, fakePreferencesService());
+          await settingsState.initialize();
+          // Default unit is `cm` — assert the subtitle reads "180 cm".
+          await tester.pumpWidget(
+            MaterialApp(
+              home: ProfileScreen(
+                profileState: profileState,
+                settingsState: settingsState,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('profile_identity_height_value')),
+              matching: find.text('180 cm'),
+            ),
+            findsOneWidget,
+            reason:
+                'header height subtitle must read "180 cm" when the '
+                'height unit setting is cm',
+          );
+          // The "cm" suffix must NOT be hardcoded — verify it is the
+          // formatted output of the active unit, not a literal.
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('profile_identity_height_value')),
+              matching: find.text('180'),
+            ),
+            findsNothing,
+            reason:
+                'subtitle must include the unit suffix; a bare "180" '
+                'would mean a hardcoded value that ignored the unit',
+          );
+        },
+      );
+
+      testWidgets(
+        'ftin mode: subtitle renders in compound feet/inches',
+        (tester) async {
+          final repository = MockWorkoutRepository();
+          await repository.initialize();
+          await repository.saveMeasurementEntry(
+            BodyMeasurementEntry(
+              id: 'iter3-h-ftin',
+              measurementType: 'height',
+              value: 180.0,
+              unitId: 'unit-cm',
+              recordedAtMs: 1000,
+            ),
+          );
+          final profileState = ProfileState(repository);
+          await profileState.loadProfile();
+          await profileState.loadLatestMeasurements(
+            <String>{
+              ...ProfileMeasurements.additional.map((d) => d.type),
+              'height',
+            },
+          );
+          final settingsState =
+              SettingsState(repository, fakePreferencesService());
+          await settingsState.initialize();
+          await settingsState.setPreferredHeightUnit('ftin');
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: ProfileScreen(
+                profileState: profileState,
+                settingsState: settingsState,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // 180 cm = 5 ft 11 in (rounded).
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('profile_identity_height_value')),
+              matching: find.text("5' 11\""),
+            ),
+            findsOneWidget,
+            reason:
+                'header height subtitle must read "5\' 11\"" when the '
+                'height unit setting is ftin',
+          );
+          // The cm suffix must NOT appear when ftin is selected.
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('profile_identity_height_value')),
+              matching: find.textContaining('cm'),
+            ),
+            findsNothing,
+            reason:
+                'subtitle must drop the "cm" suffix when the active '
+                'unit is ftin',
+          );
+        },
+      );
+    },
+  );
+
+  group(
+    'S-202: identity header height subtitle re-renders live on unit toggle',
+    () {
+      testWidgets(
+        'toggling ftin → cm updates the subtitle without leaving the screen',
+        (tester) async {
+          final repository = MockWorkoutRepository();
+          await repository.initialize();
+          await repository.saveMeasurementEntry(
+            BodyMeasurementEntry(
+              id: 'iter3-h-live-ftin-cm',
+              measurementType: 'height',
+              value: 180.0,
+              unitId: 'unit-cm',
+              recordedAtMs: 1000,
+            ),
+          );
+          final profileState = ProfileState(repository);
+          await profileState.loadProfile();
+          await profileState.loadLatestMeasurements(
+            <String>{
+              ...ProfileMeasurements.additional.map((d) => d.type),
+              'height',
+            },
+          );
+          final settingsState =
+              SettingsState(repository, fakePreferencesService());
+          await settingsState.initialize();
+          await settingsState.setPreferredHeightUnit('ftin');
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: ProfileScreen(
+                profileState: profileState,
+                settingsState: settingsState,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Initial render in ftin.
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('profile_identity_height_value')),
+              matching: find.text("5' 11\""),
+            ),
+            findsOneWidget,
+          );
+
+          // Toggle to cm. The same screen instance rebuilds; the
+          // subtitle must update in place (no navigation, no remount).
+          await settingsState.setPreferredHeightUnit('cm');
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byType(ProfileScreen),
+            findsOneWidget,
+            reason: 'screen must remain mounted while the unit toggles',
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('profile_identity_height_value')),
+              matching: find.text('180 cm'),
+            ),
+            findsOneWidget,
+            reason:
+                'subtitle must re-render to cm form immediately after '
+                'the unit setting changes',
+          );
+        },
+      );
+
+      testWidgets(
+        'toggling cm → ftin updates the subtitle without leaving the screen',
+        (tester) async {
+          final repository = MockWorkoutRepository();
+          await repository.initialize();
+          await repository.saveMeasurementEntry(
+            BodyMeasurementEntry(
+              id: 'iter3-h-live-cm-ftin',
+              measurementType: 'height',
+              value: 180.0,
+              unitId: 'unit-cm',
+              recordedAtMs: 1000,
+            ),
+          );
+          final profileState = ProfileState(repository);
+          await profileState.loadProfile();
+          await profileState.loadLatestMeasurements(
+            <String>{
+              ...ProfileMeasurements.additional.map((d) => d.type),
+              'height',
+            },
+          );
+          final settingsState =
+              SettingsState(repository, fakePreferencesService());
+          await settingsState.initialize();
+          // Default cm unit at start.
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: ProfileScreen(
+                profileState: profileState,
+                settingsState: settingsState,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          // Initial render in cm.
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('profile_identity_height_value')),
+              matching: find.text('180 cm'),
+            ),
+            findsOneWidget,
+          );
+
+          // Toggle to ftin. The same screen instance rebuilds.
+          await settingsState.setPreferredHeightUnit('ftin');
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byType(ProfileScreen),
+            findsOneWidget,
+            reason: 'screen must remain mounted while the unit toggles',
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('profile_identity_height_value')),
+              matching: find.text("5' 11\""),
+            ),
+            findsOneWidget,
+            reason:
+                'subtitle must re-render to ftin form immediately after '
+                'the unit setting changes',
+          );
+        },
       );
     },
   );

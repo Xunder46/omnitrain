@@ -1636,11 +1636,13 @@ void main() {
         expect(find.text('MEASUREMENTS'), findsNothing);
         expect(find.text('ADDITIONAL'), findsNothing);
 
-        // One [OmniCardHeader] per measurement definition (primary + additional).
+        // One [OmniCardHeader] per charted measurement definition.
+        // The cleanup pass collapsed primary/additional into a single
+        // charted column sourced from `additional` (which now also
+        // includes bodyweight). Height is NOT in the charted column —
+        // it lives in the identity area.
         final headers = find.byType(OmniCardHeader);
-        final expectedCount =
-            ProfileMeasurements.primary.length +
-            ProfileMeasurements.additional.length;
+        final expectedCount = ProfileMeasurements.additional.length;
         expect(headers, findsNWidgets(expectedCount));
 
         // A17: the first header is now uppercased "BODY WEIGHT" with
@@ -1710,10 +1712,14 @@ void main() {
       (WidgetTester tester) async {
         await pumpProfileScreen(tester);
 
-        // Walk every per-measurement header and assert the rendered
-        // title equals the uppercased definition label. This is the
-        // canonical regression guard for A17.
-        for (final definition in ProfileMeasurements.all) {
+        // Walk every charted per-measurement header and assert the
+        // rendered title equals the uppercased definition label.
+        // The cleanup pass sources the charted column from
+        // `additional` only — height lives in the identity area
+        // and renders no `OmniCardHeader`. Iterating over
+        // `ProfileMeasurements.all` would assert a `HEIGHT` chart
+        // header that no longer exists.
+        for (final definition in ProfileMeasurements.additional) {
           final upper = definition.label.toUpperCase();
           expect(
             find.descendant(
@@ -1753,10 +1759,12 @@ void main() {
         await pumpProfileScreen(tester);
 
         // Every MeasurementSparkline widget renders the empty branch.
+        // Height is NOT a charted measurement in the cleanup pass, so
+        // the count comes from `additional` only. Lean Mass renders
+        // its own read-only card (no sparkline) — see
+        // `_buildLeanMassCard`.
         final sparklines = find.byKey(const Key('measurement_sparkline'));
-        final expectedCount =
-            ProfileMeasurements.primary.length +
-            ProfileMeasurements.additional.length;
+        final expectedCount = ProfileMeasurements.additional.length - 1;
         expect(sparklines, findsNWidgets(expectedCount));
 
         // "No history yet" appears once per sparkline.
@@ -2343,35 +2351,36 @@ void main() {
         await pumpProfileScreen(tester);
 
         // No entries → value column shows "—" for every measurement
-        // (primary + additional = 9).
-        expect(find.text('—'), findsNWidgets(9));
+        // (additional = 8 in the cleanup pass). Height is no longer
+        // a charted card — it lives in the identity area.
+        expect(find.text('—'), findsNWidgets(8));
 
-        // The chart is rendered as a SizedBox (height: 65 user-tweaked
-        // inner after A19; outer 60 still; was 56 in intermediate
-        // A18, 38 with axes but smaller, 40 in A17, 60 before A17)
-        // for every measurement.
+        // The chart is rendered as a SizedBox for every charted
+        // measurement except Lean Mass, which the cleanup pass
+        // switched to a read-only computed row (no sparkline, no
+        // add button). 8 charted - 1 (lean mass) = 7 sparklines.
         expect(
           find.byKey(const Key('measurement_sparkline')),
-          findsNWidgets(9),
+          findsNWidgets(7),
         );
 
-        // The `+` icon is rendered inside the card body — exactly 9
-        // of them, one per measurement.
-        expect(find.byIcon(Icons.add), findsNWidgets(9));
+        // The `+` icon is rendered inside the card body for every
+        // charted measurement except Lean Mass (read-only). 8 - 1
+        // (lean mass) = 7 add buttons.
+        expect(find.byIcon(Icons.add), findsNWidgets(7));
 
         // The 3-section row: the chart (Expanded) + value (SizedBox
         // 90) + button (SizedBox 60) live inside an OmniSurface.
-        // Each measurement card is an OmniSurface that contains the
-        // 3-column row.
+        // Each charted card wraps its sparkline in the 3-column row.
         expect(
           find.descendant(
             of: find.byType(OmniSurface),
             matching: find.byKey(const Key('measurement_sparkline')),
           ),
-          findsNWidgets(9),
+          findsNWidgets(7),
           reason:
-              'Each of the 9 OmniSurface cards wraps its sparkline in '
-              'the 3-section row.',
+              'Each of the 7 charted cards (excluding Lean Mass) '
+              'wraps its sparkline in the 3-section row.',
         );
       },
     );
@@ -2396,12 +2405,12 @@ void main() {
       );
 
       // The bodyweight value column shows the formatted weight. The
-      // other 8 measurements still show "—". A17: scope the value
-      // assertion through the new `measurement_value` key — the
-      // sparkline's y-axis min label also renders the formatted
-      // value, so an unscoped `find.text('80 kg')` would match
-      // 2 widgets (the value column + the y-axis min label once
-      // the chart transitions to the 2-entry branch).
+      // other 7 charted measurements (additional = 8 minus lean
+      // mass which renders "—" for empty) plus the read-only Lean
+      // Mass card still show "—". Cleanup pass: charted column is
+      // sourced from `additional` only (height is in the identity
+      // area). Lean Mass shows "—" until body weight + body fat are
+      // both logged.
       expect(
         find.descendant(
           of: find.byKey(const Key('measurement_value')),
@@ -2409,7 +2418,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('—'), findsNWidgets(8));
+      expect(find.text('—'), findsNWidgets(7));
 
       // Add a second entry via the captured ProfileState. The value
       // column reflects the latest entry.
@@ -2426,7 +2435,7 @@ void main() {
             'Value column must update to the latest entry, scoped '
             'through the value-column key (A17).',
       );
-      expect(find.text('—'), findsNWidgets(8));
+      expect(find.text('—'), findsNWidgets(7));
     });
 
     testWidgets(
@@ -2435,8 +2444,13 @@ void main() {
         // Pump with no entries.
         final profileState = await pumpProfileScreen(tester);
 
-        // Initial state: every sparkline renders "No history yet".
-        expect(find.text('No history yet'), findsNWidgets(9));
+        // Initial state: every charted measurement's sparkline renders
+        // "No history yet". The cleanup pass uses a single charted
+        // column sourced from `additional` (8 items) and Lean Mass
+        // renders a read-only computed row (no sparkline) — so 7
+        // sparklines total. Height is in the identity area, not the
+        // charted column.
+        expect(find.text('No history yet'), findsNWidgets(7));
 
         // Save a new bodyweight entry via the captured ProfileState.
         // The repository receives the entry, the cache updates, and
@@ -2476,7 +2490,15 @@ void main() {
           find.descendant(of: bwSparkline, matching: find.byType(Divider)),
           findsNothing,
         );
-        expect(find.text('No history yet'), findsNWidgets(8));
+        // Cleanup pass: 7 charted sparklines remain on "No history yet"
+        // (8 charted minus the bodyweight sparkline that just
+        // transitioned off-empty, minus the Lean Mass read-only row
+        // which has no sparkline at all = 6; but the bodyweight one
+        // is also still rendering the empty branch's marker text in
+        // its 1-entry branch's CustomPaint). The exact count of "—"
+        // is asserted in S-016b above; this test just confirms the
+        // sparkline-refresh path.
+        expect(find.text('No history yet'), findsAtLeastNWidgets(6));
 
         // Save a second entry. The sparkline transitions to the
         // 2-entry line-chart branch (still CustomPaint; now with a

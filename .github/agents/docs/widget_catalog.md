@@ -185,6 +185,67 @@ Shared full-width bottom call-to-action used by screens with a single persistent
 
 ---
 
+## Profile Primitives
+
+### `AvatarCropSheet`
+
+**File**: `lib/features/profile/widgets/avatar_crop_sheet.dart`
+
+Full-screen avatar crop step pushed between the photo picker and the
+avatar save in `ProfileScreen`. Square viewport with a circular dim
+scrim overlay matching the avatar's `ClipOval` display, so the user
+can pinch-zoom and drag the picked photo to frame the subject
+before committing.
+
+| Prop | Type | Description |
+|---|---|---|
+| `imageBytes` | `Uint8List` | Encoded image bytes (JPEG, PNG, HEIC — anything `Image.memory` decodes). Read once at construction. |
+
+**Behavior**:
+- Square viewport via `AspectRatio(aspectRatio: 1.0)` capped at
+  `min(screenW - 32, 360)`. Wrapped in a `RepaintBoundary` whose
+  `key` is `@visibleForTesting` so tests can drive the capture
+  pipeline.
+- `InteractiveViewer` (`minScale: 1.0`, `maxScale: 4.0`) lets the
+  user pan / zoom inside the square. A `TransformationController`
+  is exposed via `@visibleForTesting` so tests can drive a
+  deliberately off-center / zoomed crop.
+- A circular dim scrim (`CustomPainter` using `Path.fillType =
+  evenOdd`) shows what the avatar will look like inside the
+  circle. `IgnorePointer`d so it never blocks the
+  `InteractiveViewer` underneath.
+- Bottom CTA row: `OutlinedButton` Cancel + `FilledButton` Use
+  Photo, both with explicit `shape:` overrides using
+  `OmniTheme.buttonBorderRadius` per the global convention. Use
+  Photo is full-width with the standard
+  `OmniTheme.buttonPrimaryHeight` height; Cancel is full-width
+  with the same height. The Use Photo button shows a
+  `CircularProgressIndicator` while the capture is in flight
+  (`_isSaving = true`) and is disabled to prevent double-tap.
+- On Use Photo: `RepaintBoundary.toImage(pixelRatio: 3.0)` →
+  `image.toByteData(format: ui.ImageByteFormat.png)` →
+  `Navigator.pop(context, bytes)`. Cancel pops with `null`.
+- Capture pipeline runs in the test zone's fake async clock;
+  tests wrap the tap in `tester.runAsync` + `pumpAndSettle` to
+  let the render pipeline complete the frame.
+- No new dependencies. The crop step is built from
+  `InteractiveViewer`, `RepaintBoundary`, and `Image.memory` —
+  all in Flutter's core widget set. No plugin channel, no
+  platform code. The `ImageByteFormat.png` encoder is built
+  into Flutter; no new image-encoding dependency is added.
+- Pure presentation — no repository access, no business logic.
+  The picker → crop → save wiring is owned by `ProfileScreen`.
+- Pushed via `OmniNavigator.push(..., fullscreenDialog: true)` —
+  **not** a raw `MaterialPageRoute`. The `OmniRoute` wraps the
+  page in `OmniGradientBackground` and exposes `opaque => true`,
+  which is what prevents the underlying ProfileScreen from
+  bleeding through during the slide-up transition. (A raw
+  `MaterialPageRoute` would expose a transparent Scaffold behind
+  it during the transition — see the navigation contract in
+  `docs/navigation_and_screens.md`.)
+
+---
+
 ## Nutrition Primitives
 
 ### `NutritionPrimerSheet`

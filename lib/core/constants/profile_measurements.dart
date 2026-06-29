@@ -89,31 +89,33 @@ class ProfileMeasurements {
     unitLabel: 'cm',
   );
 
-  static const List<ProfileMeasurementDefinition> primary = [
-    bodyweight,
-    height,
-  ];
-
+  // Charted measurement list rendered top-to-bottom on the Profile
+  // screen. Height is intentionally NOT in this list — height is a
+  // constant (charting it is a flat line) and lives as a compact
+  // editable value in the identity area instead. Lean Mass is here
+  // for layout, but the screen renders its row in a read-only,
+  // computed mode (derived from latest bodyweight × body fat %).
   static const List<ProfileMeasurementDefinition> additional = [
+    bodyweight,
     bodyFatPct,
-    leanMass,
     waist,
-    chest,
+    leanMass,
     hips,
     thigh,
+    chest,
     arm,
   ];
 
   static const List<ProfileMeasurementDefinition> all = [
     bodyweight,
-    height,
     bodyFatPct,
-    leanMass,
     waist,
-    chest,
+    leanMass,
     hips,
     thigh,
+    chest,
     arm,
+    height,
   ];
 
   // ── Validation ranges ────────────────────────────────────────────────────

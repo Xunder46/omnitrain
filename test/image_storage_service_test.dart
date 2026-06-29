@@ -39,6 +39,7 @@
 // platform the runner is on.
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
@@ -456,6 +457,103 @@ void main() {
       final entries = managedDir.listSync();
       expect(entries, isEmpty,
           reason: 'no partial file should remain in the managed dir');
+    });
+
+    // ─── persistImageBytes: bytes-shaped input for the avatar crop step ─────
+
+    group('persistImageBytes (avatar crop step)', () {
+      test(
+        'writes the bytes under the managed dir and returns a UUID-v4 '
+        'basename with the given extension',
+        () async {
+          final bytes = Uint8List.fromList([0xDE, 0xAD, 0xBE, 0xEF, 0x42]);
+          final basename = await service.persistImageBytes(bytes);
+
+          // D-1: the reference is a basename — no path separators.
+          expect(p.dirname(basename), '.');
+          expect(p.extension(basename), '.png',
+              reason: 'default extension must be .png');
+          expect(
+            RegExp(
+              r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$',
+            ).hasMatch(basename),
+            isTrue,
+            reason: 'basename must be <uuid-v4>.png',
+          );
+
+          // The file lives at managedDir + basename; bytes match.
+          final managedPath = p.join(service.managedDirectoryPath, basename);
+          expect(File(managedPath).existsSync(), isTrue);
+          expect(File(managedPath).readAsBytesSync(), equals(bytes));
+        },
+      );
+
+      test('respects a custom extension argument', () async {
+        final basename = await service.persistImageBytes(
+          Uint8List.fromList([1, 2, 3]),
+          extension: '.jpg',
+        );
+        expect(p.extension(basename), '.jpg');
+        expect(
+          File(p.join(service.managedDirectoryPath, basename)).existsSync(),
+          isTrue,
+        );
+      });
+
+      test(
+        'throws and leaves no partial file when the managed dir is '
+        'unwritable (D-6 contract)',
+        () async {
+          if (!Platform.isMacOS && !Platform.isLinux) {
+            return; // skip on Windows
+          }
+          final managedDir = Directory(service.managedDirectoryPath);
+          managedDir.createSync(recursive: true);
+          Process.runSync('chmod', ['0500', managedDir.path]);
+          addTearDown(() {
+            try {
+              Process.runSync('chmod', ['0700', managedDir.path]);
+            } catch (_) {
+              // best-effort restore
+            }
+          });
+
+          await expectLater(
+            () => service.persistImageBytes(
+              Uint8List.fromList([1, 2, 3]),
+            ),
+            throwsA(anything),
+          );
+
+          final entries = managedDir.listSync();
+          expect(entries, isEmpty,
+              reason: 'no partial file should remain after a failed write');
+        },
+      );
+
+      test(
+        'two consecutive writes produce distinct basenames '
+        '(UUID-v4 uniqueness)',
+        () async {
+          final a = await service.persistImageBytes(Uint8List.fromList([1]));
+          final b = await service.persistImageBytes(Uint8List.fromList([1]));
+          expect(a, isNot(equals(b)));
+        },
+      );
+
+      test('extension must start with a dot (asserted contract)', () async {
+        // The assert fires inside the service — surfaced as an
+        // AssertionError. The test documents the contract; the
+        // contract is also asserted at the call site (the avatar
+        // crop step always passes a leading-dot extension).
+        await expectLater(
+          () => service.persistImageBytes(
+            Uint8List.fromList([1]),
+            extension: 'png',
+          ),
+          throwsA(isA<AssertionError>()),
+        );
+      });
     });
   });
 }

@@ -560,17 +560,62 @@ class _MacroDonutPainter extends CustomPainter {
       // Skip fully-transparent sections to keep the donut quiet
       // when one macro is focused.
       if (opacity <= 0.0) continue;
+      final arcRect = Rect.fromCircle(center: center, radius: radius);
+
+      // Drop shadow under the band — a blurred dark copy drawn
+      // at the same arc, slightly offset down/right so the donut
+      // reads as a raised ring instead of a flat decal. The
+      // shadow inherits the section's focus opacity so dimmed
+      // (unfocused) sections don't suddenly cast a strong shadow.
+      final shadowPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.butt
+        ..color = Colors.black.withValues(alpha: 0.7 * opacity)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30);
+      canvas.save();
+      canvas.translate(0, 5);
+      canvas.drawArc(
+        arcRect,
+        s.startAngleRadians,
+        s.sweepAngleRadians,
+        false,
+        shadowPaint,
+      );
+      canvas.restore();
+
       final paint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.butt
         ..color = s.color.withValues(alpha: opacity);
       canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
+        arcRect,
         s.startAngleRadians,
         s.sweepAngleRadians,
         false,
         paint,
+      );
+
+      // Inner-rim highlight along the band's top inner edge — a
+      // thin, slightly translucent white arc just inside the band.
+      // Reads as light catching the rim of a raised ring,
+      // reinforcing the 3D feel without overpowering the section
+      // color.
+      final highlightPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.butt
+        ..color = Colors.white.withValues(alpha: 0.35 * opacity);
+      canvas.drawArc(
+        Rect.fromCircle(
+          center: center,
+          radius: radius - strokeWidth / 2 + 1,
+        ),
+        s.startAngleRadians,
+        s.sweepAngleRadians,
+        false,
+        highlightPaint,
       );
 
       // In-band label: skip when the section is too narrow (the

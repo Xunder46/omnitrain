@@ -19,6 +19,8 @@
 // See D-8 in
 // `.github/agents/plans/image-persistence-relocation-fix-plan.md`.
 
+import 'dart:typed_data';
+
 import 'package:image_picker/image_picker.dart' show XFile;
 
 Never _unsupported() => throw UnsupportedError(
@@ -61,6 +63,15 @@ class ImageStorageService {
   Future<String?> resolveOrRelink(String? reference) async => _unsupported();
 
   Future<String> persistPickedImage(XFile picked) async => _unsupported();
+
+  /// Mirror of `ImageStorageService.persistImageBytes` in the IO
+  /// variant. Always throws on web — the call site already
+  /// early-returns on `kIsWeb` with the user-facing snackbar.
+  Future<String> persistImageBytes(
+    Uint8List bytes, {
+    String extension = '.png',
+  }) async =>
+      _unsupported();
 
   Future<void> deleteIfManaged(String? path) async => _unsupported();
 }

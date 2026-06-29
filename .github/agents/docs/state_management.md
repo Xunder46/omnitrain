@@ -399,7 +399,7 @@ Manages profile identity and body-measurement flows used by `ProfileScreen`.
 
 | Method | Purpose |
 |--------|---------|
-| `loadProfile()` | Loads profile; creates and saves `local-user` if missing; loads primary latest measurements |
+| `loadProfile()` | Loads profile; creates and saves `local-user` if missing; loads latest measurements for the charted column (`ProfileMeasurements.additional`) |
 | `loadLatestMeasurements(types, {notify})` | Bulk refresh for selected types |
 | `updateDisplayName(name)` | Trims and persists display name (`null` when blank) |
 | `updateAvatarPath(path)` | Persists avatar path or clears it |

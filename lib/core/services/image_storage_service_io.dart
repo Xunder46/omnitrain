@@ -28,6 +28,7 @@
 // `.github/agents/plans/image-persistence-relocation-fix-plan.md`.
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:path/path.dart' as p;
@@ -183,6 +184,60 @@ class ImageStorageService {
       // Best-effort cleanup of a partial destination so we never
       // leave 0-byte orphans. Swallow secondary errors — the
       // primary failure is the one the caller needs to see.
+      if (await dest.exists()) {
+        try {
+          await dest.delete();
+        } catch (_) {
+          // Ignore — primary error is rethrown below.
+        }
+      }
+      rethrow;
+    }
+  }
+
+  /// Writes [bytes] to the managed directory and returns the
+  /// **basename** `<uuid-v4><extension>` (NOT an absolute path —
+  /// see D-1).
+  ///
+  /// Mirrors the persistence contract of [persistPickedImage] but
+  /// accepts already-decoded bytes rather than an [XFile] — used
+  /// by the avatar crop step, which captures the framed region
+  /// via `RepaintBoundary.toImage` and ends up with a
+  /// `Uint8List` (typically re-encoded PNG via
+  /// `ImageByteFormat.png`) rather than a path on disk.
+  ///
+  /// [extension] is the file extension appended to the UUID-v4
+  /// basename — typically `.png` for a `RepaintBoundary.toImage`
+  /// capture, but callers may pass `.jpg` if they have already
+  /// re-encoded to JPEG. The extension must start with a `.`;
+  /// defaults to `.png`.
+  ///
+  /// If the write throws (disk full, permission denied) the
+  /// partially-written destination is removed before the
+  /// exception is rethrown (D-6 — no partial files left behind
+  /// on disk). The [bytes] buffer is not mutated by this
+  /// method.
+  Future<String> persistImageBytes(
+    Uint8List bytes, {
+    String extension = '.png',
+  }) async {
+    assert(
+      extension.startsWith('.'),
+      'extension must start with "." — got "$extension"',
+    );
+    await _ensureManagedDir();
+
+    final filename = '${_uuid.v4()}$extension';
+    final destination = p.join(_managedDir, filename);
+    final dest = File(destination);
+
+    try {
+      await dest.writeAsBytes(bytes, flush: true);
+      return filename;
+    } catch (e) {
+      // Best-effort cleanup of a partial destination so we never
+      // leave 0-byte orphans. Mirrors [persistPickedImage]'s
+      // D-6 contract.
       if (await dest.exists()) {
         try {
           await dest.delete();
