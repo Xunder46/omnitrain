@@ -189,42 +189,43 @@ class InlineMetricEditor extends StatefulWidget {
 
 **Challenge**: Multiple exercises with multiple sets, each potentially with independent timers.
 
-**Solution**: Two parallel timer strategies depending on effort kind.
+**Solution**: All effort timers are **wall-clock derived from persisted records**; the only `Stopwatch` / `Timer.periodic` in the session screen is a 1-Hz UI repaint driver. There is no `Stopwatch`-based elapsed counter in the active source.
 
-#### Stopwatch-Based Timers (set / timed / drill efforts)
-Keyed by `effortId-entryIndex`:
+> **Note on prior implementations:** Earlier drafts of this file described "Stopwatch-Based Timers (set / timed / drill efforts)" with a `_effortStopwatches` field. That implementation no longer exists in the source. The current `set` effort has no timer at all (reps + weight are scroller inputs persisted on every `updateEntryValue`); `timed` and `drill` elapsed time is derived from `TimedInstance` wall-clock records; `round` elapsed time is derived from `RoundInstance` wall-clock records. A single `_ticker = Timer.periodic(1 s)` drives UI repaints; it never computes elapsed time itself.
+
+#### Effort kinds and their timer model
+
+| Effort kind | Has a running timer? | Source of truth for elapsed time | Persisted record |
+|---|---|---|---|
+| `set` | No — reps + weight are scroller inputs | n/a (no clock) | `EffortObservation` rows written on every `updateEntryValue` |
+| `timed` | Yes (start / pause / resume from the timer display) | Wall-clock derived from `TimedInstance.startedAtMs` − `pausedAtMs` − `totalPausedDurationMs` | `TimedInstance` row |
+| `drill` | Yes (same UX as `timed`) | Wall-clock derived from `TimedInstance` (same formula as `timed`) | `TimedInstance` row |
+| `round` | Yes (start / pause / resume from the timer display) | Wall-clock derived from `RoundInstance` timestamps via the `elapsedMs` getter | `RoundInstance` row |
+
+#### Per-tick UI state (timer mixin)
+
+The session-screen timer mixin (`WorkoutSessionTimerMixin` in
+`lib/features/session/workout_session_timer_mixin.dart`) owns the per-effort UI state, all keyed by `effortId-entryIndex`:
+
 ```dart
-final Map<String, Timer?> _effortTimers = {};          // Active periodic timers
-final Map<String, Stopwatch> _effortStopwatches = {};  // Elapsed time trackers
+final Map<String, Timer?> _effortTimers = {};          // Active periodic ticks (UI repaint drivers)
 final Map<String, bool> _effortRunning = {};           // Running state flags
-final Map<String, int> _effortElapsed = {};            // Elapsed seconds (UI display)
-final Map<String, int> _effortElapsedBase = {};        // Base time (for pause/resume offset)
+final Map<String, int> _effortElapsed = {};            // Elapsed seconds (UI display cache)
+final Map<String, bool> _effortAlerted = {};           // Expiry alert already fired
+final Map<String, int> _effortTargetDuration = {};     // Countdown / expiry check
 ```
 
-**Stopwatch Timer Lifecycle**:
-1. **Start**: Create stopwatch, start periodic timer, set `_effortRunning[key] = true`
-2. **Pause**: Stop stopwatch, cancel timer, persist elapsed time to repository
-3. **Resume**: Store current elapsed as new base, reset stopwatch, restart timer
-4. **Log Set**: Persist final value, stop timer, reset stopwatch
+`_effortElapsed` is **derived on each tick** by reading the relevant persisted record (`TimedInstance.elapsedMs` or `RoundInstance.elapsedMs`) — it is a display cache, not a source of truth. The mixin never holds a `Stopwatch`.
 
-#### Wall-Clock Timers (round efforts only)
-Keyed by `effortId-entryIndex` (same key convention as all other timers).
+#### Wall-Clock Timer Lifecycle (`timed` / `drill` / `round`)
 
-Round elapsed time is **not** tracked in UI maps. It is derived on-demand from `RoundInstance` timestamp fields persisted in the repository:
+1. **Start**: persist `startedAtMs = now` (or resume from `pausedAtMs` / `totalPausedDurationMs`); start a `Timer.periodic(1 s)` to drive UI repaints; set `_effortRunning[key] = true`.
+2. **Pause**: persist `pausedAtMs = now`; cancel the periodic tick; clear `_effortRunning[key]`.
+3. **Resume**: fold `pausedAtMs` into `totalPausedDurationMs`; clear `pausedAtMs`; restart the periodic tick.
+4. **Log / Finish**: persist the final value; cancel the tick; clear `_effortRunning[key]`. The persisted timestamps stay so the final elapsed is reproducible on reload.
+5. **Round specifics**: `completeRound` (natural countdown) vs `endRoundEarly` (user-ended) both write `finishedAtMs`; `elapsedMs` returns `actualDurationSecs * 1000` for the `finished` state.
 
-```dart
-// Elapsed formula (implemented as RoundInstance.elapsedMs getter):
-// - active:      now - startedAtMs - totalPausedDurationMs
-// - paused:      pausedAtMs - startedAtMs - totalPausedDurationMs  (frozen)
-// - finished:    actualDurationSecs * 1000
-// - notStarted:  0
-final elapsedMs = round.elapsedMs;
-final elapsedSecs = (elapsedMs / 1000).toInt();
-```
-
-The UI tick timer reads `round.elapsedMs` on each 1-second tick (`_onEffortTick`) and updates `_effortElapsed[timerKey]` for display only. No separate round-specific UI maps exist.
-
-**Why wall-clock?** If the OS suspends the app mid-round, a `Stopwatch` stops counting but epoch time keeps advancing. On resume, `now - startedAtMs - totalPausedDurationMs` correctly reflects real-world elapsed time, preventing the timer from appearing frozen.
+The 1-Hz `_ticker` reads the persisted record on each tick and repaints; it never owns elapsed time. App suspension, foreground return, and reload all derive the same elapsed from the persisted timestamps.
 
 **Round State Machine**:
 Round lifecycle is enforced by `RoundState` enum in `RoundInstance`:
@@ -708,3 +709,8 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 - [exercise_ranking.md](.github/agents/docs/exercise_ranking.md) — Exercise picker sorting algorithm
 - [create_new_exercise.md](.github/agents/docs/create_new_exercise.md) — Create custom exercises from the picker
 - [my_routines.md](.github/agents/docs/my_routines.md) — Reusable workout template system
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

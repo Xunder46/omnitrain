@@ -133,7 +133,7 @@ Valid rest ping intervals:
 
 **File**: `lib/features/settings/settings_screen.dart`
 
-Entry path: `HomeScreen` → Maintenance sheet → `SettingsScreen`
+Entry path: `HomeScreen` → Maintenance sheet → `SettingsScreen` (also reachable from the home-screen Hub sheet)
 
 The screen is organized into four surfaced sections plus a low-emphasis version footer.
 
@@ -174,9 +174,7 @@ Behavior notes:
 
 Rows in the `WORKOUT` section:
 
-- `Feeling Survey`: toggle for whether the session summary flow asks how the workout felt after finishing
-
-This setting is on by default.
+- `Feeling Survey` (`showFeelingSurvey`, default `true`, preference key `show_feeling_survey`): toggle for whether the post-workout `SessionSummaryScreen` shows the 1–5 feeling prompt after the first frame. The sheet is non-dismissible (`isDismissible: false, enableDrag: false`); the user picks a value before the sheet closes. Toggling the setting OFF suppresses the sheet globally — the survey is post-workout only and does not surface from any other screen (e.g. it does not fire when the summary is reached via the calendar historical flow, and there is no in-session feeling prompt). See [Session Summary → Feeling Survey Capture](session_summary.md#feeling-survey-capture) for the full behaviour.
 
 ### 4. Appearance
 
@@ -220,3 +218,8 @@ The Settings screen no longer includes account-management rows such as sign-in, 
 
 **Document Version**: 2.0
 **Last Updated**: May 17, 2026
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

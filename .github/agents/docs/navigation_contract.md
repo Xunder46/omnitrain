@@ -114,3 +114,8 @@ All such concerns belong in `lib/core/navigation/omni_navigator.dart`. No call s
 ## Relation to the Gradient Architecture
 
 The bleed-through fix ("No screen transition produces a flash of mismatched background") is part of the gradient window-layer plan. This navigation contract is the resolution of that criterion. The app-level `OmniGradientBackground` in `app.dart` `builder:` is **not** removed; it continues to cover system insets and any uncovered window area behind the Navigator.
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

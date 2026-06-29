@@ -1,5 +1,13 @@
 # Route Migration Audit
 
+> **HISTORY — DO NOT TREAT AS CURRENT STATE.**
+> This document is the historical record of the original `centralized-route-system` migration (May–June 2026). It is preserved here for the audit trail only.
+> The navigation contract is now enforced by the automated test `test/navigation_contract_enforcement_test.dart`. If this audit and the automated test ever disagree, the test wins.
+> **Current source of truth:** [`.github/agents/docs/navigation_contract.md`](../navigation_contract.md).
+> **Last reconciled against source:** 2026-06-29 (no claim in this audit was modified; the audit is read-only history).
+
+---
+
 Centralized route system migration completed for the `centralized-route-system` feature.
 Post-migration grep for `MaterialPageRoute` and `PageRouteBuilder` in `lib/features/` and `lib/widgets/` returns **zero results** (including the Hub sheet — see addendum below).
 

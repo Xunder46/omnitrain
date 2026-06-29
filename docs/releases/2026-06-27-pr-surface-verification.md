@@ -1,5 +1,12 @@
 # Personal-Record Surface Verification — June 27, 2026
 
+> **HISTORY — DO NOT TREAT AS CURRENT STATE.**
+> This is a single-purpose read-only verification report produced on 2026-06-27. It documents the PR-definition divergence between the in-workout celebration, the Stats screen, and the post-workout Session Summary, and is preserved for the audit trail.
+> **The PR-definition divergence it describes is real and unresolved** at the time of this pass — the report's brief was "do NOT change it", and no behavior change has been made since. The canonical "single source of truth" for the in-workout toast and the Stats screen is `StatsProgressService.epley1RM(...)` + `StatsProgressService.getAllTimeBestE1RM(...)`; the Session Summary's `computePRs` continues to use raw weight per `WorkoutRepository.getPersonalRecordCandidates(metricId: MetricIds.weight)`. See [`.github/agents/docs/stats_screen.md`](../.github/agents/docs/stats_screen.md) for the current Stats surface.
+> **Last reconciled against source:** 2026-06-29 (snapshot frozen; the divergence is still real; no claim in this report was modified).
+
+---
+
 > **Scope:** Read-only verification. No source, repository, or test code was
 > modified for this report. No definition was changed. Per the brief, choosing
 > the personal-record (PR) definition is a product call, not a cleanup task.

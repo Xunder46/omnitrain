@@ -52,10 +52,20 @@ import 'package:flutter/rendering.dart';
 import '../../../core/constants/omni_theme.dart';
 import '../../../widgets/layout/omni_back_header.dart';
 
-/// Avatar crop step. Push via `Navigator.push<Uint8List?>`
-/// (`MaterialPageRoute(fullscreenDialog: true)`). The returned
-/// future completes with the captured PNG bytes on confirm, or
-/// `null` on cancel.
+/// Avatar crop step. Pushed via `OmniNavigator.push<Uint8List?>(
+///   context, (_) => AvatarCropSheet(...),
+///   fullscreenDialog: true,
+/// )` — the navigation contract requires every screen-level push
+/// to go through `OmniNavigator` so the route is wrapped in
+/// `OmniRoute` (`opaque = true` + `OmniGradientBackground`) and
+/// the underlying `ProfileScreen` does not bleed through during
+/// the slide-up transition. A raw `Navigator.push` + raw route
+/// would leave the `Scaffold`'s transparent background exposed.
+/// See `docs/navigation_and_screens.md` ("Navigation Contract")
+/// and `docs/navigation_contract.md` for the full rationale.
+///
+/// The returned future completes with the captured PNG bytes on
+/// confirm, or `null` on cancel.
 class AvatarCropSheet extends StatefulWidget {
   /// Encoded image bytes (JPEG, PNG, HEIC — anything `Image.memory`
   /// decodes). Read once at construction; the widget does not

@@ -346,17 +346,17 @@ WorkoutTemplate (routine)
 
 Used by the post-workout summary screen (not persisted):
 
-| Class | File | Purpose |
-|-------|------|---------|
-| `SessionSummary` | `lib/core/models/session_summary.dart` | Computed session stats |
-| `SessionGroupMetrics` | same | Per-group summary card metrics (count + effort time or volume) |
-| `ExerciseSummary` | same | Per-exercise stats |
-| `PRAchievement` | same | New personal records |
-| `GroupDelta` | same | Per-group comparison chip data vs previous session |
-| `VolumeComparison` | same | Delta vs previous session |
-| `SessionTemplateDraft` | same | Draft for save-as-routine |
-| `SessionTemplateExercise` | same | Exercise entry in draft |
-| `TemplateTargetDraft` | same | Target entry in draft |
+| Class | File | Purpose | Status |
+|-------|------|---------|--------|
+| `SessionSummary` | `lib/core/models/session_summary.dart` | Computed session stats | **Active** — read by the summary screen |
+| `SessionGroupMetrics` | same | Per-group summary card metrics (count + effort time or volume) | **Active** — drives the group cards |
+| `ExerciseSummary` | same | Per-exercise stats | **Active** — used by the summary service |
+| `PRAchievement` | same | New personal records | **Active** — inline PR rows on the group cards (raw-weight definition; the in-workout toast + Stats screen use a different Epley e1RM definition per [PR-surface verification, June 27 2026](https://example.invalid/2026-06-27-pr-surface-verification)) |
+| `GroupDelta` | same | Per-group comparison chip data vs previous session | **Active** — the per-group progress chip on each group card |
+| `VolumeComparison` | same | Delta vs previous session | **Retained in model, not rendered.** The earlier standalone volume-comparison surface on the summary was removed; progress feedback now lives as per-group `GroupDelta` chips (see [Session Summary](session_summary.md)). The model class is preserved because the summary service still constructs one internally and tests pin the type. |
+| `SessionTemplateDraft` | same | Draft for save-as-routine | **Active** — the "Save as Routine" flow |
+| `SessionTemplateExercise` | same | Exercise entry in draft | **Active** — paired with the draft |
+| `TemplateTargetDraft` | same | Target entry in draft | **Active** — paired with the draft |
 
 Notable current `SessionSummary` fields consumed by UI include `totalRounds`, `totalRoundDurationMs`, `totalCardioDurationMs`, and `totalDrillDurationMs`.
 
@@ -640,3 +640,8 @@ MetricDefinition ←── UnitModel
 
 **Document Version**: 1.4
 **Last Updated**: June 5, 2026
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

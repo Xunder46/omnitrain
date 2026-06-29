@@ -14,6 +14,24 @@ Current hierarchy:
 
 The screen keeps existing summary navigation actions (edit, save as routine, discard) and the bottom Done action.
 
+### Feeling Survey Capture
+
+After the first frame, when `sessionFeeling == null` AND `SettingsState.showFeelingSurvey == true`, the summary shows a non-dismissible modal bottom sheet (`_FeelingSheetContent`) with a 1–5 prompt:
+
+- **Range:** 1 (Rough) → 5 (Great); colour-mapped via `feelingColor(feeling, context)` in `lib/core/utils/session_feeling_utils.dart`.
+- **Sheet mechanics:** `showModalBottomSheet` with `isDismissible: false, enableDrag: false` — the user must pick a value (or skip via the explicit close affordance) before the sheet dismisses. Selection writes through `WorkoutState.updateSessionFeeling(sessionId, feeling)` which persists `TrainingSession.sessionFeeling` (nullable `int`) and updates the in-memory session.
+- **Idempotent:** `_hasShownFeelingSheet` guards against re-show on rebuilds; the persistence path skips when `session.sessionFeeling != null`.
+- **Toggle:** the `Show Feeling Survey` switch in `Settings → WORKOUT` (default `true`, preference key `show_feeling_survey`, see [Theme & Settings](theme_and_settings.md)) disables the sheet for the whole post-workout flow.
+
+#### Where the feeling survey does and does NOT surface today
+
+- **Surfaces:** Post-workout `SessionSummaryScreen` only (when reached via the post-workout flow — i.e. `openedFromCalendar == false`).
+- **Does NOT surface:**
+  - The historical summary opened from the calendar (`openedFromCalendar: true`) does not trigger the sheet; the historical session is for review / discard only and has no feeling capture moment.
+  - There is no in-session feeling prompt; the survey is post-workout only.
+  - The sheet does not fire when the user opens the summary as part of the discard / "Unsaved changes" guard.
+- **Toggling `showFeelingSurvey = false`** suppresses the sheet globally; the `sessionFeeling` field can still be set elsewhere (e.g. directly via the repository) but no in-app UI surfaces the prompt when the toggle is off.
+
 ---
 
 ## User Workflow
@@ -185,7 +203,7 @@ Key classes:
 - ExerciseSummary
 - PRAchievement
 - GroupDelta
-- VolumeComparison
+- VolumeComparison — **retained in the model, not rendered in the active layout.** The earlier standalone volume-comparison surface on the summary was removed; progress feedback now lives as per-group `GroupDelta` chips on each modality group card (see "Group Cards" above). The class is preserved because the summary service still constructs one internally and the type is pinned by tests.
 - SessionTemplateDraft
 - SessionTemplateExercise
 - TemplateTargetDraft
@@ -240,3 +258,8 @@ Flow:
 
 Document Version: 1.3
 Last Updated: April 13, 2026
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

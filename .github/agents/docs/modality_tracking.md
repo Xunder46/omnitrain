@@ -599,3 +599,8 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 - [Data Models](data_models.md) — Full model reference
 - [Constants Reference](constants_reference.md) — All constant definitions
 - [My Routines](my_routines.md) - Reusable workout template system
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

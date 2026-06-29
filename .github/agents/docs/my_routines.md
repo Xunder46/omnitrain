@@ -522,3 +522,8 @@ The My Routines tile glows active when the current session's `intent == 'routine
 **Document Version**: 1.1
 **Last Updated**: February 15, 2026
 **Author**: Automated documentation generated from codebase analysis
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

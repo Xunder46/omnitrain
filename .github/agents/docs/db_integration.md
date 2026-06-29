@@ -565,3 +565,8 @@ The same seam applies in `TimerManager` (for round/timed instance writes) and `E
 
 **Document Version**: 1.5
 **Last Updated**: May 31, 2026
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

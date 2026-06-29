@@ -1,5 +1,8 @@
 # OmniTrain Documentation Index
 
+> **Doc freshness:** This index and every doc linked below were re-derived from the `lib/` source tree on **2026-06-29**. The current-state docs in this folder are not hand-maintained — they are derived from source. Every current-state doc carries a `Last reconciled against source: 2026-06-29` stamp at the bottom. Past-snapshot / superseded docs live under [`.github/agents/docs/history/`](history/) with a `HISTORY` banner so they cannot be mistaken for current state.
+> **When the source disagrees with this index, the source wins.** This pass corrects this index to match the product as it actually exists today; future drift should be caught at the same boundary.
+
 ## What This Is
 
 This documentation describes the architecture, features, and conventions of OmniTrain — a universal fitness tracking Flutter app. It is written for **AI pair programming agents and human developers** to understand the codebase quickly and make safe changes.
@@ -40,17 +43,18 @@ This documentation describes the architecture, features, and conventions of Omni
 | [Create New Exercise](create_new_exercise.md) | Modality-aware custom exercise creation and editing |
 | [My Routines](my_routines.md) | Reusable workout template system — CRUD, template-to-session conversion, UI |
 | [Calendar & Periods](calendar_periods.md) | Month calendar planning, day-session management, and non-overlapping training periods |
-| [Session Summary](session_summary.md) | Post-workout analytics — PRs, volume comparison, save-as-routine |
+| [Session Summary](session_summary.md) | Post-workout analytics — per-group comparison vs the previous session, inline PRs, feeling-survey capture, save-as-routine. (The earlier standalone "volume comparison" surface was removed; progress is shown as per-group delta chips.) |
 | [Profile & Measurements](profile_and_measurements.md) | Profile identity, avatar flow, body measurement logging, and history chart behavior |
 | [Theme & Settings](theme_and_settings.md) | Theme system, measurement/calendar preferences, timer alerts, workout toggles, and Settings screen behavior |
 | [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, and inline start-sheet guidance |
-| [Stats Screen](stats_screen.md) | All-time session aggregates, streak, 30-day activity bar chart, rest averages by modality |
+| [Stats Screen](stats_screen.md) | All-time aggregates (Sessions / Time / Streak), scrollable Strength e1RM and volume trends, scrollable Cardio pace + distance (or duration) trends, all-time Recent PRs, and a full-history NUTRITION card with a Calories / Macros segmented toggle. Each section's top-N exercise list is selected from a "current-state window" (active training period or last 14 training days) while the trend charts themselves use the selected exercise's full history. |
 
 ### Release & Operations
-| Document | Description |
-|----------|-------------|
-| [iOS TestFlight Release Checklist](../../../docs/releases/ios-testflight.md) | Release workflow, archive/upload steps, and pre-release checks |
-| [May 2026 Plan Review](../../../docs/releases/2026-05-plan-review.md) | Summary of the implementation plans reviewed for Apr 17-May 17, 2026 and the docs they affected |
+| Document | Description | Status |
+|----------|-------------|--------|
+| [iOS TestFlight Release Checklist](../../../docs/releases/ios-testflight.md) | Release workflow, archive/upload steps, and pre-release checks | **Current — operational** |
+| [May 2026 Plan Review](../../../docs/releases/2026-05-plan-review.md) | Summary of the implementation plans reviewed for Apr 17-May 17, 2026 and the docs they affected | **History snapshot** (frozen window) |
+| [PR-Surface Verification — June 27, 2026](../../../docs/releases/2026-06-27-pr-surface-verification.md) | Read-only verification of the personal-record definition divergence across the in-workout toast, Stats screen, and Session Summary. The divergence it documents is real and unresolved. | **History report** (single-purpose) |
 
 ### Architecture & Technical
 | Document | Description |
@@ -62,6 +66,7 @@ This documentation describes the architecture, features, and conventions of Omni
 | [DB Integration](db_integration.md) | Database setup, schema, seed data, dual-backend strategy |
 | [Widget Catalog](widget_catalog.md) | Reusable UI components — layout primitives, tiles, pickers, metric editors |
 | [Rest Tracking](rest_tracking.md) | Wall-clock rest tracking architecture, EntryRest model, DB-backed rest records between sets |
+| [Navigation Contract](navigation_contract.md) | The single source of truth for screen-level navigation. Enforced by `test/navigation_contract_enforcement_test.dart`; raw `MaterialPageRoute` / `PageRouteBuilder` outside `lib/core/navigation/` is a build break. The historical migration audit lives under [history/route-migration-audit.md](history/route-migration-audit.md). |
 
 ---
 
@@ -176,5 +181,15 @@ Profile measurement rules implemented in code:
 - Look for hardcoded colors (should use `theme.colorScheme`)
 
 ---
+2026-06-29 (full re-derivation against source; see top of file)
 
+---
+
+## History
+
+Documents that describe a past snapshot, a superseded design, or a single-purpose report live under [`.github/agents/docs/history/`](history/) with a `HISTORY` banner so they cannot be mistaken for the current state of the product. The history folder is read-only and is not refreshed when the product changes.
+
+Current contents:
+
+- [`history/route-migration-audit.md`](history/route-migration-audit.md) — the original `centralized-route-system` migration audit (May–June 2026). Superseded as the enforcement mechanism by [`test/navigation_contract_enforcement_test.dart`](../../../test/navigation_contract_enforcement_test.dart); the test wins on disagreement.
 **Last Updated**: May 22, 2026

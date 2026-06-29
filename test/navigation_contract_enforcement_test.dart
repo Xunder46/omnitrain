@@ -50,15 +50,27 @@ void main() {
 
           final content = await entity.readAsString();
 
+          // Strip comments so doc comments cannot trip the matcher.
+          // The contract (per the file-level comment above) is that
+          // bare type references in doc comments must not be flagged;
+          // strip them here so the matcher actually enforces the
+          // contract it claims to enforce. A `//` line comment runs to
+          // the next newline; a `/* … */` block comment can span lines
+          // and must be stripped before line-by-line processing.
+          var stripped = content.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
+          stripped = stripped.split('\n').map((line) {
+            final i = line.indexOf('//');
+            return i < 0 ? line : line.substring(0, i);
+          }).join('\n');
+
           // Match construction sites only — the open paren after the type
-          // name. Bare type references in doc comments (e.g.
-          // "raw MaterialPageRoute / PageRouteBuilder outside this module")
-          // and `isA<MaterialPageRoute<...>>` checks do not contain `(`
-          // immediately after the type name, so they are not flagged.
-          if (content.contains('MaterialPageRoute(')) {
+          // name. Bare type references in code (e.g. an `isA<...>()` check)
+          // do not contain `(` immediately after the type name, so they
+          // are not flagged. Doc comments are stripped above.
+          if (stripped.contains('MaterialPageRoute(')) {
             violations.add('${entity.path}: MaterialPageRoute(');
           }
-          if (content.contains('PageRouteBuilder(')) {
+          if (stripped.contains('PageRouteBuilder(')) {
             violations.add('${entity.path}: PageRouteBuilder(');
           }
         }

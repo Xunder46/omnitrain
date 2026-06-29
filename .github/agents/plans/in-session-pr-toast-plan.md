@@ -1,10 +1,12 @@
 # Feature: In-Session Personal-Record Toast
 
-> **Status**: Iteration 1 active
-> **Next handoff**: @dba (Phase 1 — source-of-truth e1RM helper on `StatsProgressService`)
-> **Binding conventions**: [docs/global_conventions.md](../docs/global_conventions.md) (units, theme tokens, effort-kind drives analytics, timestamps are source data, reuse the canonical owner, instrument panel not influencer); [docs/stats_screen.md](../docs/stats_screen.md) (Stats PR definition); [docs/session_summary.md](../docs/session_summary.md) (existing `computePRs` is the **weight-only** path and must NOT be reused — see D-4).
+> **Status**: SHIPPED. Implementation landed in `lib/widgets/session/pr_toast.dart` + `lib/features/session/workout_session_screen.dart` (`_maybeShowPRToast` in `_logSet`); structural-guard test S-009 enforces parity between the in-session check and the Stats screen's PR detection.
+> **Plan is preserved here as the spec / decision ledger** (D-1 through D-15 + scenarios). Note that some implementation details have evolved since the original D-9 / D-10 / D-12 numbers were pinned: source has `duration: 4.0 s` ✓ (matches), `margin: EdgeInsets.only(bottom: 150, ...)` (D-10 originally specified `top: 100`), `fontSize: 18` (D-12 originally specified 28). The widget-catalog doc entry for `PRToast` records the current source as binding; this plan is the historical spec.
+> **Next handoff**: none — feature is complete. Open a new plan if the PR definition is ever revisited (the PR-surface verification report dated 2026-06-27 flags an unresolved divergence between the Stats screen's Epley e1RM definition and the Session Summary's raw-weight PR definition; resolving that is a product call).
 >
-> **Spec**: The Copilot prompt delivered with this plan (see "Copilot Prompt (verbatim from requester)" below) is the binding product spec. The Decision Ledger pins all behavior that two reasonable implementers could resolve differently.
+> **Binding conventions** (still in force for the shipped implementation): [docs/global_conventions.md](../docs/global_conventions.md) (units, theme tokens, effort-kind drives analytics, timestamps are source data, reuse the canonical owner, instrument panel not influencer); [docs/stats_screen.md](../docs/stats_screen.md) (Stats PR definition); [docs/session_summary.md](../docs/session_summary.md) (existing `computePRs` is the **weight-only** path and must NOT be reused — see D-4).
+>
+> **Spec**: The Copilot prompt delivered with this plan (see "Copilot Prompt (verbatim from requester)" below) is the original binding product spec. The Decision Ledger pins the behavior decisions that drove the implementation.
 
 ---
 

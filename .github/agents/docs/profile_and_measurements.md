@@ -16,9 +16,10 @@ Primary capabilities:
 
 ## Entry Points
 
-- `HomeScreen` maintenance sheet:
+- `HomeScreen` maintenance sheet (and the home-screen Hub sheet surfaced from the logo tap):
   - Profile tile pushes `ProfileScreen`
-  - Stats/Settings still route to placeholder
+  - Stats tile pushes `StatsScreen` (all-time aggregates, scrollable strength + cardio trends, Recent PRs, NUTRITION card — see [Stats Screen](stats_screen.md))
+  - Settings tile pushes `SettingsScreen` (preferences, sounds & alerts, Feeling Survey toggle, theme grid, version footer — see [Theme & Settings](theme_and_settings.md))
 - `ProfileScreen` depends on `ProfileState` via constructor injection
 
 ---
@@ -347,3 +348,8 @@ These cover repository sorting/latest behavior, state bootstrapping and mutation
 
 **Document Version**: 1.0
 **Last Updated**: March 15, 2026
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

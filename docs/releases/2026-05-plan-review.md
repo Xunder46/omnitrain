@@ -1,5 +1,12 @@
 # May 2026 Plan Review
 
+> **HISTORY — DO NOT TREAT AS CURRENT STATE.**
+> This is a single-window release roundup (the implementation plans reviewed between **2026-04-17 and 2026-05-17**). It is preserved as a snapshot of what landed in that window.
+> **It is not a source-of-truth architecture document** and it is not refreshed as the product evolves. For current behavior, follow the linked feature docs in `.github/agents/docs/`; every current-state doc there carries a `Last reconciled against source: 2026-06-29` stamp.
+> **Last reconciled against source:** 2026-06-29 (snapshot frozen; no claim in this window was modified).
+
+---
+
 This document summarizes the implementation plans reviewed for the window **2026-04-17 through 2026-05-17** and records the user-facing or operator-facing changes that landed in the app.
 
 It is a release-style roundup, not a source-of-truth architecture document. For deeper behavior details, follow the linked feature docs.

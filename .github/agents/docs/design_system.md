@@ -477,3 +477,8 @@ GestureDetector (press tracking)
 
 1. **Dual color definitions** — `OmniTheme` surface/text colors diverge slightly from Material `buildTheme()` values. Custom widgets use `OmniTheme` directly; Material components use the theme. These should be unified.
 2. **Hardcoded icon sizes** — 70px tile icon, 40% core percentage. Should become `OmniTheme` tokens.
+
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
