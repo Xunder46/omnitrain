@@ -1,7 +1,7 @@
 # Feature: Disable Feeling Survey Setting
 
 ## Overview
-Add a setting to the Settings page that allows users to disable the "How did it feel?" post-workout survey sheet that automatically appears after finishing a workout.
+Add a setting to the Settings page that allows users to disable the "HOW DID IT FEEL?" post-workout survey sheet that automatically appears after finishing a workout.
 
 ## Requirements
 - A toggle in Settings that controls whether the feeling survey is shown after a session

@@ -3184,6 +3184,515 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(Tooltip), findsNothing);
     });
+
+    // ── Feeling trend (HOW DID IT FEEL card) ──────────────────────────────────────
+    // The HOW DID IT FEEL card surfaces the post-session feeling as a
+    // trend inside the same scrollable area as Strength / Cardio /
+    // NUTRITION. The tests below guard against the antipatterns
+    // flagged in the spec: no feeling scalar in the ALL TIME
+    // stat row, no feeling-only chart for an all-non-strength
+    // user, no fabricated flat line at zero when the window has
+    // no feeling data.
+
+    Future<void> seedFeelingSession(
+      MockWorkoutRepository repo, {
+      required String id,
+      required DateTime start,
+      required Duration duration,
+      int? feeling,
+      String? modality,
+    }) async {
+      final startMs = start.millisecondsSinceEpoch;
+      final endMs = start.add(duration).millisecondsSinceEpoch;
+      await repo.createSession(
+        TrainingSession(
+          id: id,
+          ownerUserId: 'user-1',
+          modality: modality,
+          startedAtMs: startMs,
+          endedAtMs: endMs,
+          sessionFeeling: feeling,
+          createdAtMs: startMs,
+          updatedAtMs: endMs,
+        ),
+      );
+    }
+
+    testWidgets(
+      'S-005 guard: no feeling scalar / pill / tile appears in the '
+      'ALL TIME summary stat row',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1200));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        await seedFeelingSession(
+          repo,
+          id: 'f-1',
+          start: now.subtract(const Duration(days: 1)),
+          duration: const Duration(minutes: 30),
+          feeling: 4,
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        // The ALL TIME row renders inside the first OmniSurface
+        // (the aggregate card). It must NOT contain any "Feeling"
+        // label, no "average feeling" scalar, no pill of any kind
+        // referencing feeling.
+        final aggregateCard = find.byType(OmniSurface).first;
+        expect(
+          find.descendant(of: aggregateCard, matching: find.text('HOW DID IT FEEL')),
+          findsNothing,
+          reason: 'HOW DID IT FEEL label must not appear in the ALL TIME row',
+        );
+        expect(
+          find.descendant(
+            of: aggregateCard,
+            matching: find.textContaining('feeling', findRichText: true),
+          ),
+          findsNothing,
+          reason: 'no "feeling" word anywhere in the ALL TIME row',
+        );
+        // The three canonical pills are still present and unchanged.
+        expect(
+          find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: aggregateCard, matching: find.text('TIME')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: aggregateCard, matching: find.text('STREAK')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'feeling trend chart renders inside an OmniSurface — never a pill '
+      'or tile in place of a chart',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1200));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        await seedFeelingSession(
+          repo,
+          id: 'f-1',
+          start: now.subtract(const Duration(days: 2)),
+          duration: const Duration(minutes: 30),
+          feeling: 3,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'f-2',
+          start: now.subtract(const Duration(days: 1)),
+          duration: const Duration(minutes: 30),
+          feeling: 4,
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        // HOW DID IT FEEL header exists.
+        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
+        // The feeling chart card is rendered inside an OmniSurface
+        // — not as a pill / tile / compact stat. The card holds
+        // the chart only; signature check is the pinned y-axis
+        // tick "5" being present.
+        expect(
+          find.descendant(
+            of: find.byType(OmniSurface),
+            matching: find.byType(LineChart),
+          ),
+          findsAtLeastNWidgets(1),
+        );
+        // The chart line itself exists, with LineTouchData
+        // disabled — consistent with the other Stats charts.
+        final lineCharts = tester.widgetList<LineChart>(find.byType(LineChart));
+        expect(lineCharts, isNotEmpty);
+        for (final chart in lineCharts) {
+          expect(chart.data.lineTouchData.enabled, isFalse);
+        }
+      },
+    );
+
+    testWidgets(
+      'all-non-strength dataset (runs and rolls only) renders a populated '
+      'feeling trend — universality guard',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1400));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        // 3 cardio/sports sessions with feelings; no set efforts
+        // anywhere → topLifts is empty → the feeling trend must
+        // still render and not be blank or gated.
+        await seedFeelingSession(
+          repo,
+          id: 'run-1',
+          start: now.subtract(const Duration(days: 3)),
+          duration: const Duration(minutes: 30),
+          feeling: 4,
+          modality: Modality.cardioEndurance,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'roll-1',
+          start: now.subtract(const Duration(days: 2)),
+          duration: const Duration(minutes: 45),
+          feeling: 3,
+          modality: Modality.sports,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'run-2',
+          start: now.subtract(const Duration(days: 1)),
+          duration: const Duration(minutes: 30),
+          feeling: 5,
+          modality: Modality.cardioEndurance,
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        // HOW DID IT FEEL header is present, the chart is rendered.
+        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
+        // The card itself has no in-card title (the HOW DID IT FEEL
+        // section header above the card is the title); the card
+        // contains only the chart. Verify by asserting the
+        // pinned y-axis tick "5" is present — that's the
+        // chart's signature.
+        expect(find.text('5'), findsAtLeastNWidgets(1));
+        // Empty-state card must NOT be shown for a populated trend.
+        expect(
+          find.text('No feeling logged in this window yet'),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'empty window — explicit empty state renders, not a chart, not a '
+      'flat line at zero',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1200));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        // Sessions exist, but none has a feeling logged.
+        await seedFeelingSession(
+          repo,
+          id: 'no-feel-1',
+          start: now.subtract(const Duration(days: 2)),
+          duration: const Duration(minutes: 30),
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'no-feel-2',
+          start: now.subtract(const Duration(days: 1)),
+          duration: const Duration(minutes: 30),
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        // HOW DID IT FEEL header is still present so the section is not
+        // silently dropped, but no chart is rendered — the empty
+        // state card is shown.
+        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
+        expect(
+          find.text('No feeling logged in this window yet'),
+          findsOneWidget,
+        );
+        // The feeling card's "Post-session feeling" label is NOT
+        // rendered when the trend is empty — only the empty-state
+        // card is shown.
+        expect(find.text('Post-session feeling'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'no-sessions global guard: HOW DID IT FEEL section is not rendered '
+      'when the repository has zero sessions',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 900));
+        final repo = await _freshRepo();
+
+        await pumpStatsScreen(tester, repo);
+
+        // The global empty-state card renders; HOW DID IT FEEL (and any
+        // other section header) is hidden.
+        expect(find.text('No sessions yet'), findsOneWidget);
+        expect(find.text('HOW DID IT FEEL'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'omitted sessions are not rendered as dips in the feeling chart',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1400));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        // Day-0: feeling 3. Day-1: no feeling. Day-2: feeling 5.
+        // The chart must contain 2 spots (3 and 5) and the middle
+        // day must not appear as an interpolated dip.
+        await seedFeelingSession(
+          repo,
+          id: 'dip-0',
+          start: now.subtract(const Duration(days: 2)),
+          duration: const Duration(minutes: 30),
+          feeling: 3,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'dip-1',
+          start: now.subtract(const Duration(days: 1)),
+          duration: const Duration(minutes: 30),
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'dip-2',
+          start: now.subtract(const Duration(hours: 6)),
+          duration: const Duration(minutes: 30),
+          feeling: 5,
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        // The feeling chart exists. Count the spots on the
+        // feeling line — they must be exactly 2 (the two with
+        // feelings), not 3 with a fabricated middle point.
+        final feelingSpots = tester
+            .widgetList<LineChart>(find.byType(LineChart))
+            .expand((c) => c.data.lineBarsData)
+            .expand((bar) => bar.spots)
+            .where((spot) => spot.y >= 1 && spot.y <= 5)
+            .toList();
+        // Exactly 2 spots on the feeling series.
+        expect(feelingSpots, hasLength(2));
+        // Values are 3 and 5 — no 0 or fabricated middle value.
+        final feelingYs = feelingSpots.map((s) => s.y).toList()..sort();
+        expect(feelingYs, [3.0, 5.0]);
+      },
+    );
+
+    testWidgets(
+      'feeling chart y-axis has exactly 5 integer ticks (1..5) and no '
+      'unit-suffix on the labels',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1400));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        await seedFeelingSession(
+          repo,
+          id: 'axis-1',
+          start: now.subtract(const Duration(days: 2)),
+          duration: const Duration(minutes: 30),
+          feeling: 3,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'axis-2',
+          start: now.subtract(const Duration(days: 1)),
+          duration: const Duration(minutes: 30),
+          feeling: 4,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'axis-3',
+          start: now.subtract(const Duration(hours: 6)),
+          duration: const Duration(minutes: 30),
+          feeling: 5,
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        // The feeling LineChart has minY=1, maxY=5, interval=1.
+        final feelingCharts = tester
+            .widgetList<LineChart>(find.byType(LineChart))
+            .where(
+              (c) => c.data.minY == 1.0 && c.data.maxY == 5.0,
+            )
+            .toList();
+        expect(
+          feelingCharts,
+          hasLength(1),
+          reason: 'exactly one chart must be pinned to the 1..5 range',
+        );
+
+        // The pinned y-axis labels are the 5 integers 1..5, with
+        // no "feeling" suffix. Inspect the rendered text widgets
+        // inside the scrollable trend chart wrapper. The
+        // pinned-axis labels are direct `Text` children of
+        // `ScrollableTrendChart`, NOT inside the chart's inner
+        // `LineChart` — so we look at Text widgets that are
+        // descendants of `ScrollableTrendChart` but NOT
+        // descendants of `LineChart`. The "Post-session feeling"
+        // card title lives outside the chart wrapper and is
+        // therefore correctly excluded from this assertion.
+        final pinnedAxisTexts = tester
+            .widgetList<Text>(
+              find.descendant(
+                of: find.byType(ScrollableTrendChart),
+                matching: find.byType(Text),
+              ),
+            )
+            .map((w) => w.data)
+            .where((s) => s != null)
+            .toSet();
+        // Exactly the 5 integer tick labels appear on the pinned
+        // y-axis column.
+        for (final tick in ['1', '2', '3', '4', '5']) {
+          expect(pinnedAxisTexts, contains(tick),
+              reason: 'tick "$tick" must appear on the pinned y-axis');
+        }
+        // No "feeling" word on any pinned-axis label (the chart
+        // was wired with `unitLabel: ''`).
+        final feelingLabels = pinnedAxisTexts
+            .where((s) => s != null && s.contains('feeling'))
+            .toList();
+        expect(feelingLabels, isEmpty,
+            reason: 'no pinned y-axis label may include the word '
+                '"feeling"');
+      },
+    );
+
+    testWidgets(
+      'feeling line is visible (barWidth >= 4, dot radius >= 6, straight '
+      'segments, no area fill) and its color matches '
+      'feelingColor(latestFeeling) — same palette as the post-workout '
+      'survey tile when tapped',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1400));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        // Three consecutive sessions with feelings so the line
+        // has at least one segment to render.
+        await seedFeelingSession(
+          repo,
+          id: 'vis-1',
+          start: now.subtract(const Duration(days: 3)),
+          duration: const Duration(minutes: 30),
+          feeling: 3,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'vis-2',
+          start: now.subtract(const Duration(days: 2)),
+          duration: const Duration(minutes: 30),
+          feeling: 4,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'vis-3',
+          start: now.subtract(const Duration(hours: 6)),
+          duration: const Duration(minutes: 30),
+          feeling: 4,
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        // Locate the feeling LineChart (minY=1, maxY=5).
+        final feelingCharts = tester
+            .widgetList<LineChart>(find.byType(LineChart))
+            .where(
+              (c) => c.data.minY == 1.0 && c.data.maxY == 5.0,
+            )
+            .toList();
+        expect(feelingCharts, hasLength(1));
+        final chart = feelingCharts.first;
+        expect(chart.data.lineBarsData, hasLength(1));
+        final bar = chart.data.lineBarsData.first;
+        // Visibility: line is thick enough to read on a phone.
+        expect(bar.barWidth, greaterThanOrEqualTo(4.0),
+            reason: 'line must be at least 4dp wide so it is '
+                'visibly rendered on the dark theme');
+        // Visibility: dots are large enough to mark each point.
+        final dotPainter = bar.dotData.getDotPainter;
+        final painter = dotPainter(
+          bar.spots.first,
+          0,
+          bar,
+          0,
+        ) as FlDotCirclePainter;
+        expect(painter.radius, greaterThanOrEqualTo(6.0),
+            reason: 'dots must be at least 6dp radius so each '
+                'data point is visible');
+        // Visibility: segments are straight, not curved. Curved
+        // segments with sparse data can smear the line.
+        expect(bar.isCurved, isFalse,
+            reason: 'line must use straight segments so it '
+                'reads unambiguously on a 120dp-tall chart');
+        // Visibility: no area fill — the tinted region under
+        // the line was washing it out on the dark theme.
+        expect(bar.belowBarData.show, isFalse,
+            reason: 'area fill must be off so the line is not '
+                'washed out by the tinted region underneath');
+        // Visibility: a soft glow shadow in the line color is
+        // applied so the line definitively reads against any
+        // theme background. The shadow must NOT be the
+        // default `Colors.transparent` — that produces a
+        // visible-but-flat 6dp stroke that can disappear next
+        // to a horizontal gridline. The shadow's alpha is
+        // also pinned (≥ 0.4) so the glow is not too dim to
+        // contribute contrast.
+        expect(bar.shadow.color.a, greaterThanOrEqualTo(0.4),
+            reason: 'line must carry a soft glow shadow so it '
+                'is not flattened by adjacent gridlines');
+        expect(bar.shadow.blurRadius, greaterThan(0),
+            reason: 'line shadow must have a positive blur '
+                'radius to actually glow');
+
+        // Color: the bar color is `feelingColor(latestFeeling)`
+        // — the same color the post-workout survey tile takes
+        // when the corresponding number is tapped. Latest
+        // feeling here is 4 → Colors.green.
+        expect(bar.color, Colors.green,
+            reason: 'line color must match feelingColor(4) — the '
+                'color the survey tile turns when "4" is tapped');
+
+        // Dots use the same color.
+        expect(painter.color, Colors.green,
+            reason: 'dot color must match the line color, which '
+                'is feelingColor(latestFeeling)');
+      },
+    );
+
+    testWidgets(
+      'feeling card has no in-card title (the HOW DID IT FEEL section header '
+      'above the card is the only label)',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1400));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+        await seedFeelingSession(
+          repo,
+          id: 'no-title-1',
+          start: now.subtract(const Duration(days: 2)),
+          duration: const Duration(minutes: 30),
+          feeling: 4,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'no-title-2',
+          start: now.subtract(const Duration(hours: 6)),
+          duration: const Duration(minutes: 30),
+          feeling: 5,
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        // HOW DID IT FEEL section header exists.
+        expect(find.text('HOW DID IT FEEL'), findsOneWidget);
+        // The in-card "Post-session feeling" title and the
+        // "1 = Rough · 5 = Great" caption must NOT exist —
+        // they were noise that pushed the chart down and
+        // crowded the card without adding information that
+        // isn't already encoded in the y-axis labels and the
+        // line color.
+        expect(find.text('Post-session feeling'), findsNothing);
+        expect(find.text('1 = Rough · 5 = Great'), findsNothing);
+        // The chart is still rendered (signature: pinned y-axis
+        // tick "5" is present).
+        expect(find.text('5'), findsAtLeastNWidgets(1));
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

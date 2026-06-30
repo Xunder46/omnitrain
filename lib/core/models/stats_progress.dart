@@ -69,6 +69,22 @@ class StatsPR {
   });
 }
 
+/// A single chronological data point in the Stats-screen feeling
+/// trend. The feeling value is the post-session self-report captured
+/// by the session summary sheet (1–5; 1 = Rough, 5 = Great). Only
+/// sessions that have a recorded feeling produce a point — sessions
+/// without a feeling are omitted from the series entirely (no
+/// zero-fill, no synthetic flat line).
+class FeelingTrendPoint {
+  /// Local-midnight `DateTime` for the day this point represents.
+  final DateTime date;
+
+  /// Post-session feeling, 1..5 inclusive.
+  final int feeling;
+
+  const FeelingTrendPoint({required this.date, required this.feeling});
+}
+
 /// A single chronological data point in the Stats-screen nutrition
 /// trend (NUTRITION card).
 ///
@@ -125,6 +141,14 @@ class StatsProgressData {
   /// window; the card hides itself in that case.
   final List<NutritionTrendPoint> nutritionTrend;
 
+  /// Per-session feeling trend for the HOW DID IT FEEL card on the Stats
+  /// screen, sorted ascending by date. Only completed sessions that
+  /// have a recorded `sessionFeeling` (1..5) appear; sessions without
+  /// a feeling are omitted entirely (no zero-fill). Empty list = no
+  /// feeling logged in the current window; the card renders an
+  /// explicit empty state in that case.
+  final List<FeelingTrendPoint> feelingTrend;
+
   /// The "current window" that decided which exercises were eligible
   /// for [topLifts] and [topCardio]. The window is a date range plus
   /// a human-readable label so the UI can explain its selection.
@@ -138,6 +162,7 @@ class StatsProgressData {
     required this.topCardio,
     required this.recentPRs,
     this.nutritionTrend = const [],
+    this.feelingTrend = const [],
     required this.window,
   });
 

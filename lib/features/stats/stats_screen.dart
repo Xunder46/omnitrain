@@ -6,6 +6,7 @@ import '../../core/models/stats_progress.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../core/utils/chart_axis_helper.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/session_feeling_utils.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/calendar/calendar_state.dart';
 import '../../state/settings/settings_state.dart';
@@ -125,6 +126,7 @@ class _StatsScreenState extends State<StatsScreen> {
                             ..._buildStrengthSection(context, themeColors),
                             const SizedBox(height: 24),
                             ..._buildCardioSection(context, themeColors),
+                            ..._buildFeelingSection(context, themeColors),
                             ..._buildNutritionSection(context, themeColors),
                           ],
                   ),
@@ -541,6 +543,202 @@ class _StatsScreenState extends State<StatsScreen> {
     }
 
     return widgets;
+  }
+
+  // ── Feeling section ───────────────────────────────────────────────────────
+
+  /// The HOW DID IT FEEL section surfaces the post-session feeling
+  /// (1..5) as a trend so the user can read its drift against
+  /// the training-time trend on the same time window. Universal
+  /// across modalities — built from `TrainingSession.sessionFeeling`
+  /// only, never gated on strength / cardio / effort data.
+  ///
+  /// Deliberate non-features:
+  ///   - No stat tile, no average-feeling scalar, no Feeling pill
+  ///     in the ALL TIME row.
+  ///   - No rest / deload / recovery suggestion.
+  ///   - Sessions without a feeling are omitted (no zero-fill,
+  ///     no interpolated dip).
+  ///   - When zero sessions in the window have a feeling, an
+  ///     explicit empty state renders — not a chart, not a flat
+  ///     line at zero.
+  List<Widget> _buildFeelingSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final data = _progressData;
+    final trend = data?.feelingTrend ?? const <FeelingTrendPoint>[];
+    final widgets = <Widget>[
+      const SizedBox(height: 24),
+      OmniCardHeader(
+        title: 'HOW DID IT FEEL',
+        actions: [
+          if (data != null)
+            _buildWindowChip(context, themeColors, data.window),
+        ],
+      ),
+    ];
+
+    // Empty-state path: sessions exist but none in the window
+    // have a feeling logged. Render an explicit message rather
+    // than a chart that would either be blank or fabricate a
+    // misleading flat line at the floor.
+    if (trend.isEmpty) {
+      widgets.add(
+        _buildSectionEmptyState(
+          context,
+          themeColors,
+          'No feeling logged in this window yet',
+        ),
+      );
+      return widgets;
+    }
+
+    widgets.add(_buildFeelingCard(context, themeColors, trend));
+    return widgets;
+  }
+
+  Widget _buildFeelingCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    List<FeelingTrendPoint> trend,
+  ) {
+    // Fixed 1..5 semantic range with integer ticks (1, 2, 3, 4,
+    // 5). Feeling is ordinal, not continuous — never let the
+    // y-axis auto-scale to a flat line at a single value (which
+    // would read as zero context), never let it stretch below
+    // 1 or above 5, and never pad above the max with a 6th tick.
+    // The pinned y-axis labels are bare integers (no unit
+    // suffix).
+    const feelingBounds = ChartAxisBounds(min: 1, max: 5, interval: 1);
+
+    // The line color matches the post-workout feeling-survey
+    // tile's **selected** color — `_buildFeelingTile` paints
+    // the tapped tile with `feelingColor(feeling, context)` as
+    // both fill and border. Using the same palette here means
+    // the line reads as "this is the same number you tapped
+    // after your last session" — no new vocabulary, no extra
+    // tile, no stat number. The day-session-list border tint
+    // shares the same `feelingColor()` helper so the three
+    // surfaces (chart line, survey-tile fill, history-row
+    // left border) stay in lockstep.
+    final lineColor = feelingColor(trend.last.feeling, context);
+    final spots = List.generate(
+      trend.length,
+      (i) => FlSpot(i.toDouble(), trend[i].feeling.toDouble()),
+    );
+
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      child: ScrollableTrendChart(
+            themeColors: themeColors,
+            bounds: feelingBounds,
+            unitLabel: '',
+            pointCount: trend.length,
+            chartBuilder: (plotWidth) {
+              return LineChart(
+                LineChartData(
+                  minX: 0,
+                  maxX: (trend.length - 1).toDouble(),
+                  minY: feelingBounds.min,
+                  maxY: feelingBounds.max,
+                  lineTouchData: const LineTouchData(enabled: false),
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: false,
+                        reservedSize: 0,
+                      ),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: _kBottomAxisReservedSize,
+                        interval: 1,
+                        getTitlesWidget: (value, meta) {
+                          final idx = value.round();
+                          if (idx < 0 || idx >= trend.length) {
+                            return const SizedBox.shrink();
+                          }
+                          if (!ChartAxisHelper.shouldShowDateLabel(
+                            idx,
+                            trend.length,
+                          )) {
+                            return const SizedBox.shrink();
+                          }
+                          return buildEdgeAwareDateLabel(
+                            meta: meta,
+                            text: ChartAxisHelper.formatDateLabel(
+                              trend[idx].date,
+                            ),
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: themeColors.textMuted,
+                            ),
+                            isFirst: idx == 0,
+                            isLast: idx == trend.length - 1,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    getDrawingHorizontalLine: (_) => FlLine(
+                      color: themeColors.divider,
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      color: lineColor,
+                      // Straight segments (no curve) so the line
+                      // reads unambiguously on a 120dp-tall
+                      // chart. Curved segments with sparse data
+                      // can pull control points off-grid and
+                      // render the line as a smear.
+                      isCurved: false,
+                      // 6dp line + 8dp dots. A soft glow shadow in
+                      // the line color makes the line definitively
+                      // visible against any theme background — the
+                      // bare stroke alone could read as too thin
+                      // when the line crosses gridlines or sits
+                      // near the chart's top/bottom. The shadow
+                      // uses the same `lineColor` so it never
+                      // introduces a second color into the visual
+                      // language; the survey-tile-fill / history-
+                      // row-border palette contract still holds.
+                      barWidth: 6,
+                      isStrokeCapRound: true,
+                      shadow: Shadow(
+                        color: lineColor.withValues(alpha: 0.55),
+                        blurRadius: 6,
+                      ),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                          radius: 8,
+                          color: lineColor,
+                          strokeWidth: 2,
+                          strokeColor: themeColors.surface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+    );
   }
 
   // ── Nutrition section (last 10-day kcal + macros trend) ──────────────────
