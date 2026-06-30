@@ -91,7 +91,28 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
     return latest;
   }
 
-  bool _hasGlobalRestToDisplay() => _getMostRecentOpenRestKey() != null;
+  /// Shared rest-overlay visibility rule used by EVERY [WorkoutSessionScreen]
+  /// surface (list view + detail view, standard + rolling).
+  ///
+  /// The chip is visible iff a rest period is open **and** no effort is
+  /// currently active anywhere in the session (session-wide check). Routing
+  /// both surfaces through this helper guarantees the list view and the
+  /// detail view can never disagree about whether to show a counting rest
+  /// timer while an effort is running.
+  ///
+  /// Edits the rest-tracking helper when changing this rule; see
+  /// `.github/agents/docs/rest_tracking.md`.
+  bool _shouldShowRestOverlay() {
+    if (widget.editMode) return false;
+    if (_getMostRecentOpenRestKey() == null) return false;
+    // Session-wide "any effort active" check. As soon as one timer is
+    // ticking, no surface should show a counting rest chip — even if the
+    // open rest belongs to a different effort (cross-effort scenario).
+    for (final entry in _effortRunning.entries) {
+      if (entry.value == true) return false;
+    }
+    return true;
+  }
 
   String _formatGlobalRestElapsed() {
     final restKey = _getMostRecentOpenRestKey();
@@ -112,8 +133,9 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
         final hasImage = exercise.imageAssetPath != null;
         final hasSteps =
             exercise.howToSteps != null && exercise.howToSteps!.isNotEmpty;
-        final isBilateral =
-            exercise.capabilities.contains(ExerciseCapability.bilateral);
+        final isBilateral = exercise.capabilities.contains(
+          ExerciseCapability.bilateral,
+        );
 
         return Container(
           decoration: BoxDecoration(
@@ -714,9 +736,8 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          textStyle: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         onPressed: widget.onDismiss,
                         child: const Text('Got it!'),

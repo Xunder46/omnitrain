@@ -33,7 +33,11 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
           const SizedBox(height: 4),
           Row(
             children: [
-              Icon(Icons.timer, size: 16, color: OmniTheme.colors.textSecondary),
+              Icon(
+                Icons.timer,
+                size: 16,
+                color: OmniTheme.colors.textSecondary,
+              ),
               const SizedBox(width: 8),
               Text(
                 _elapsedFormatted,
@@ -369,7 +373,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ],
             ),
           ),
-          if (!widget.editMode && _hasGlobalRestToDisplay())
+          if (_shouldShowRestOverlay())
             Positioned(
               left: 0,
               right: 0,
@@ -495,7 +499,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ],
             ),
           ),
-          if (!widget.editMode && _hasGlobalRestToDisplay())
+          if (_shouldShowRestOverlay())
             Positioned(
               left: 0,
               right: 0,
@@ -715,9 +719,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                         Expanded(
                           child: SingleChildScrollView(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 16,
-                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -760,13 +762,12 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 ],
               ),
             ),
-            // Rest timer overlay in lower half (hide in edit mode or when exercise timer is running).
-            // Uses the global helper so the overlay persists after crossing an exercise
-            // boundary (the open rest lives under the previous exercise's effortId).
-            if (!widget.editMode &&
-                _hasGlobalRestToDisplay() &&
-                !(_effortRunning['${exercise['id']}-${_currentSet - 1}'] ??
-                    false))
+            // Rest timer overlay in lower half. Visibility is governed by the
+            // shared _shouldShowRestOverlay() helper (covers edit-mode, running
+            // effort, and cross-effort rest scenarios in one rule). The overlay
+            // persists after crossing an exercise boundary because the helper
+            // looks at the session-wide most-recent open rest.
+            if (_shouldShowRestOverlay())
               Positioned(
                 left: 0,
                 right: 0,

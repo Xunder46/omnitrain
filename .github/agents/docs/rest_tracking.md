@@ -129,7 +129,7 @@ Next set _logSet() called
   → recordRestStart(effortId, nextEntryIndex)   // opens new rest
 
 Effort timer started (timed / drill / round)
-  → recordRestEnd(effortId, entryIndex)         // closes rest on timer start
+  → closeAllOpenRests(effortId)                // closes every open rest for that effort
 
 Session ends via endSession()
   → persistOpenRests(endedAtMs)                 // closes any still-open rest at session end
@@ -160,14 +160,37 @@ String _restFormatted = '00:00';
 |-------|--------|
 | Set logged (`_logSet`) | `unawaited(workoutState.recordRestStart(effortId, nextEntryIndex))` |
 | Next set begins (`_logSet`) | `unawaited(workoutState.recordRestEnd(effortId, currentEntryIndex))` |
-| Timed/drill timer started | `unawaited(workoutState.recordRestEnd(effortId, entryIndex))` |
-| Round started (notStarted → active) | `unawaited(workoutState.recordRestEnd(effortId, entryIndex))` |
+| Timed/drill timer started | `unawaited(workoutState.closeAllOpenRests(effortId))` |
+| Round started (notStarted → active) | `unawaited(workoutState.closeAllOpenRests(effortId))` |
 
 All calls use the existing `unawaited()` fire-and-forget pattern used throughout the screen.
 
 ### Overlay Display
 
-Rest overlay visibility is driven by `workoutState.hasRestRecord(effortId, entryIndex)`.
+The rest overlay chip is rendered on **every** surface by `_buildRestOverlayChip`
+inside `lib/features/session/workout_session_list_view.dart` (rolling list view,
+standard list view, detail view). Visibility is governed by the single helper
+`_shouldShowRestOverlay()` defined on `_SessionGlobalTimerExt` in
+`lib/features/session/workout_session_global_timer.dart`:
+
+```dart
+// Session-wide visibility rule shared by every rest-chip Positioned(...) site.
+bool _shouldShowRestOverlay() {
+  if (widget.editMode) return false;
+  if (_getMostRecentOpenRestKey() == null) return false;
+  // Any effort active in the session hides the chip.
+  for (final entry in _effortRunning.entries) {
+    if (entry.value == true) return false;
+  }
+  return true;
+}
+```
+
+Both the **list view** (session-detail) and the **detail view** (per-exercise)
+route through this helper, so the two surfaces can never disagree about whether
+to show a counting rest timer. Even a cross-effort rest (a rest open for
+exercise A's entry while a timer is running on exercise B) is hidden on every
+surface while that timer is active.
 
 Elapsed time is rendered by:
 
