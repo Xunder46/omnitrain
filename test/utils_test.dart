@@ -1,11 +1,14 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/effort_defaults.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/constants/modality_config.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/utils/date_utils.dart';
 import 'package:omnitrain/core/utils/exercise_helpers.dart';
 import 'package:omnitrain/core/utils/observation_grouper.dart';
 import 'package:omnitrain/core/utils/rest_ping_utils.dart';
+import 'package:omnitrain/core/utils/session_feeling_utils.dart';
 import 'package:omnitrain/core/utils/unit_formatter.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -1265,5 +1268,77 @@ void main() {
         isFalse,
       );
     });
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // feelingColor — DRY + #5 primary-active fix
+  //
+  // Contract:
+  //   • feelingColor is pure-data: it takes (int, OmniThemeColors)
+  //     and returns the color for that rating from those tokens.
+  //     No BuildContext, no Theme.of(context) indirection.
+  //   • Rating 5 must equal themeColors.primary for every theme —
+  //     the same saturated accent every chart, button, and the
+  //     history-row accent already use. Rating 5 must not pull
+  //     from a second, indirect path (the old
+  //     `Theme.of(context).primaryColor` path was a DRY violation
+  //     and could read as transparent against the surface on some
+  //     themes).
+  // ─────────────────────────────────────────────────────────────────
+
+  group('feelingColor', () {
+    test(
+      'S-001: rating 5 equals themeColors.primary for every AppTheme '
+      '— single source of truth, no Theme.of(context) indirection',
+      () {
+        for (final t in AppTheme.values) {
+          final themeColors = OmniTheme.colorsForTheme(t);
+          expect(
+            feelingColor(5, themeColors),
+            themeColors.primary,
+            reason: 'rating 5 must equal themeColors.primary '
+                'on theme "$t" so the accent token has one source '
+                'and reads as the same accent every chart, button, '
+                'and history-row accent already use',
+          );
+        }
+      },
+    );
+
+    test(
+      'S-002: feelingColor is theme-pure — the same themeColors '
+      'yields the same color regardless of any BuildContext. '
+      'No `Theme.of(context)` indirection survives in the helper.',
+      () {
+        final themeColors = OmniTheme.colors;
+        // Call twice and confirm the result is identical. If the
+        // helper still secretly consulted Theme.of(context), calling
+        // it inside vs outside a widget tree would diverge.
+        final fromBareCall = feelingColor(5, themeColors);
+        final fromBareCallAgain = feelingColor(5, themeColors);
+        expect(fromBareCall, fromBareCallAgain);
+        expect(fromBareCall, themeColors.primary);
+
+        // Every other rating must also be deterministic from the
+        // theme tokens (today they are Material defaults; this
+        // guards against accidental regression to a context read).
+        expect(feelingColor(1, themeColors), feelingColor(1, themeColors));
+        expect(feelingColor(4, themeColors), Colors.green);
+      },
+    );
+
+    test(
+      'ratings 1..4 keep their established Material palette — only '
+      'rating 5 changed (it now equals themeColors.primary instead '
+      'of Theme.of(context).primaryColor)',
+      () {
+        final themeColors = OmniTheme.colors;
+        expect(feelingColor(1, themeColors), Colors.red);
+        expect(feelingColor(2, themeColors), Colors.orange);
+        expect(feelingColor(3, themeColors), Colors.yellow[700]);
+        expect(feelingColor(4, themeColors), Colors.green);
+        expect(feelingColor(5, themeColors), themeColors.primary);
+      },
+    );
   });
 }

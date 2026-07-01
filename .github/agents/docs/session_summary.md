@@ -18,7 +18,7 @@ The screen keeps existing summary navigation actions (edit, save as routine, dis
 
 After the first frame, when `sessionFeeling == null` AND `SettingsState.showFeelingSurvey == true`, the summary shows a non-dismissible modal bottom sheet (`_FeelingSheetContent`) with a 1–5 prompt:
 
-- **Range:** 1 (Rough) → 5 (Great); colour-mapped via `feelingColor(feeling, context)` in `lib/core/utils/session_feeling_utils.dart`.
+- **Range:** 1 (Rough) → 5 (Great); colour-mapped via `feelingColor(feeling, themeColors)` in `lib/core/utils/session_feeling_utils.dart`.
 - **Sheet mechanics:** `showModalBottomSheet` with `isDismissible: false, enableDrag: false` — the user must pick a value (or skip via the explicit close affordance) before the sheet dismisses. Selection writes through `WorkoutState.updateSessionFeeling(sessionId, feeling)` which persists `TrainingSession.sessionFeeling` (nullable `int`) and updates the in-memory session.
 - **Idempotent:** `_hasShownFeelingSheet` guards against re-show on rebuilds; the persistence path skips when `session.sessionFeeling != null`.
 - **Toggle:** the `Show Feeling Survey` switch in `Settings → WORKOUT` (default `true`, preference key `show_feeling_survey`, see [Theme & Settings](theme_and_settings.md)) disables the sheet for the whole post-workout flow.

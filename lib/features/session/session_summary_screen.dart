@@ -1192,7 +1192,6 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
-    final accentColor = ModalityColors.forModality(widget.modality);
     final displayName = ModalityDisplay.getName(widget.modality);
     final subtitle = '$displayName · Today';
 
@@ -1248,7 +1247,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
           Row(
             children: [
               for (int i = 1; i <= 5; i++) ...[
-                Expanded(child: _buildFeelingTile(i, accentColor)),
+                Expanded(child: _buildFeelingTile(i)),
                 if (i < 5) const SizedBox(width: 10),
               ],
             ],
@@ -1282,10 +1281,11 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
     );
   }
 
-  Widget _buildFeelingTile(int number, Color accentColor) {
+  Widget _buildFeelingTile(int number) {
     final theme = Theme.of(context);
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
     final isSelected = _selectedFeeling == number;
-    final tileColor = feelingColor(number, context);
+    final tileColor = feelingColor(number, themeColors);
 
     return GestureDetector(
       onTap: () => _selectFeeling(number),

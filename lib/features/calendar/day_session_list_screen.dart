@@ -497,7 +497,7 @@ class _SessionRow extends StatelessWidget {
         : themeColors.textMuted;
     final feeling = entry.session?.sessionFeeling;
     final leftBorderColor = feeling != null
-        ? feelingColor(feeling, context)
+        ? feelingColor(feeling, themeColors)
         : null;
 
     return GestureDetector(

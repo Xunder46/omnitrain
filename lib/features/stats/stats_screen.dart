@@ -612,17 +612,32 @@ class _StatsScreenState extends State<StatsScreen> {
     // suffix).
     const feelingBounds = ChartAxisBounds(min: 1, max: 5, interval: 1);
 
-    // The line color matches the post-workout feeling-survey
-    // tile's **selected** color — `_buildFeelingTile` paints
-    // the tapped tile with `feelingColor(feeling, context)` as
-    // both fill and border. Using the same palette here means
-    // the line reads as "this is the same number you tapped
-    // after your last session" — no new vocabulary, no extra
-    // tile, no stat number. The day-session-list border tint
-    // shares the same `feelingColor()` helper so the three
-    // surfaces (chart line, survey-tile fill, history-row
-    // left border) stay in lockstep.
-    final lineColor = feelingColor(trend.last.feeling, context);
+    // The connecting line is ONE fixed color — `themeColors.primary`
+    // — independent of any session's rating. Every other chart on
+    // the screen already uses this single-color convention, and it
+    // guarantees the line is always legible against the chart
+    // background regardless of which rating was most recently
+    // logged. (Previously this took `feelingColor(latest, context)`,
+    // which made the line vanish when the latest rating mapped to a
+    // color close to the background — e.g. feeling=5 resolved to
+    // `Theme.of(context).primaryColor`, which on some themes is
+    // the same hue as the chart background.)
+    //
+    // The points carry the meaning instead. Each point is painted in
+    // its own session's feeling color via `feelingColor(...)` — the
+    // same shared source the post-workout survey tile and the
+    // day-session-list border already use. Three surfaces, one
+    // palette source, no extra tile, no stat number.
+    //
+    // Each point also keeps the surface-color halo stroke so it
+    // stays visible when its feeling color is close to the
+    // background or sits exactly on a horizontal gridline — a flat
+    // series still reads as a row of distinct points.
+    final lineColor = themeColors.primary;
+    final pointColors = List<Color>.generate(
+      trend.length,
+      (i) => feelingColor(trend[i].feeling, themeColors),
+    );
     final spots = List.generate(
       trend.length,
       (i) => FlSpot(i.toDouble(), trend[i].feeling.toDouble()),
@@ -707,29 +722,25 @@ class _StatsScreenState extends State<StatsScreen> {
                       // can pull control points off-grid and
                       // render the line as a smear.
                       isCurved: false,
-                      // 6dp line + 8dp dots. A soft glow shadow in
-                      // the line color makes the line definitively
-                      // visible against any theme background — the
-                      // bare stroke alone could read as too thin
-                      // when the line crosses gridlines or sits
-                      // near the chart's top/bottom. The shadow
-                      // uses the same `lineColor` so it never
-                      // introduces a second color into the visual
-                      // language; the survey-tile-fill / history-
-                      // row-border palette contract still holds.
-                      barWidth: 6,
+                      // 2dp line + 3dp dots — the same conventions every other
+                      // chart on this screen (e1RM, volume, cardio
+                      // pace + distance, cardio duration, nutrition
+                      // calories, nutrition macros) already uses.
+                      // Heavier weights and a glow shadow were tried
+                      // here earlier but made the feeling chart
+                      // visually louder than every other trend on
+                      // the screen; the standard 2dp / 3dp / 1.5dp
+                      // triple reads correctly against the chart
+                      // background on every theme without any
+                      // extra contrast tooling.
+                      barWidth: 2,
                       isStrokeCapRound: true,
-                      shadow: Shadow(
-                        color: lineColor.withValues(alpha: 0.55),
-                        blurRadius: 6,
-                      ),
                       dotData: FlDotData(
                         show: true,
                         getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                          radius: 8,
-                          color: lineColor,
-                          strokeWidth: 2,
-                          strokeColor: themeColors.surface,
+                          radius: 3,
+                          color: pointColors[i],
+                          strokeWidth: 1.5,
                         ),
                       ),
                     ),

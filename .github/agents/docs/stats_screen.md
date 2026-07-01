@@ -129,14 +129,24 @@ same time window. The HOW DID IT FEEL card never tells the user to rest.
   feeling is ordinal, not continuous, so no padding above 5 (which
   would produce a misleading 6th tick) and no zero-baseline below 1.
   Renders inside the same `ScrollableTrendChart` wrapper as the other
-  on-card charts with `LineTouchData.enabled = false` and the line
-  color picked from `feelingColor(latestFeeling, context)` so the visual
-  language matches the day-session-list border tint. Y-axis labels are
-  bare integers (no unit suffix). The card itself carries no in-card
-  title — the `HOW DID IT FEEL` section header above it is the only label —
-  and the chart renders with straight segments (`isCurved: false`),
-  a 5dp line, and 7dp dots, with no area fill so the line sits clean
-  against the chart background on the dark theme.
+  on-card charts with `LineTouchData.enabled = false`. The connecting
+  line is one fixed color (`themeColors.primary`) — the same single-
+  color convention every other chart on the screen already uses — so
+  the line is always legible regardless of which rating was most
+  recently logged. Each point is painted in its own session's feeling
+  color via `feelingColor(feeling, themeColors)`, the same shared helper
+  the post-session survey tile and the day-session-list border tint
+  already use; the three surfaces stay in lockstep from one palette
+  source. Y-axis labels are bare integers (no unit suffix). The card
+  itself carries no in-card title — the `HOW DID IT FEEL` section
+  header above it is the only label. The chart renders with the
+  **same width conventions every other chart on the screen already
+  uses**: a 2dp line (`barWidth: 2`), 3dp-radius dots (`radius: 3`),
+  1.5dp dot stroke (`strokeWidth: 1.5`), no glow shadow, no halo
+  ring, straight segments (`isCurved: false`), and no area fill —
+  so the feeling chart reads at the same visual weight as the
+  e1RM, volume, cardio, and nutrition charts and never looks
+  louder than the trends around it.
 - **Empty state** — when the resolved window contains zero sessions with
   a recorded feeling, an explicit empty-state card renders
   ("No feeling logged in this window yet"). Not a chart, not a flat line
@@ -152,6 +162,10 @@ same time window. The HOW DID IT FEEL card never tells the user to rest.
   row. The summary stat grid remains Sessions / Time / Streak only.
 - No rest / deload / recovery suggestion, banner, nudge, or call-to-action.
 - No changes to the day-session-list feeling border tint; that stays as-is.
+- The connecting line never takes its color from any session's rating.
+  Only the points carry rating color. The line is `themeColors.primary`
+  — a single fixed color that stays clearly legible on every theme
+  background.
 
 ### NUTRITION
 A **full-history** nutrition trend computed from every logged `ConsumedFood`

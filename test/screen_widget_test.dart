@@ -34,6 +34,7 @@ import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/features/stats/widgets/scrollable_trend_chart.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:omnitrain/core/utils/chart_axis_helper.dart';
+import 'package:omnitrain/core/utils/session_feeling_utils.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
@@ -3554,10 +3555,12 @@ void main() {
     );
 
     testWidgets(
-      'feeling line is visible (barWidth >= 4, dot radius >= 6, straight '
-      'segments, no area fill) and its color matches '
-      'feelingColor(latestFeeling) — same palette as the post-workout '
-      'survey tile when tapped',
+      'feeling chart width parity — barWidth == 2, dot radius == 3, dot '
+      'strokeWidth == 1.5 (the same conventions every other chart on the '
+      'screen already uses), straight segments, no area fill, no glow '
+      'shadow, no halo. Line color is the fixed themeColors.primary; '
+      'dots carry each session\'s feeling color via the shared '
+      'feelingColor helper.',
       (WidgetTester tester) async {
         await tester.binding.setSurfaceSize(const Size(400, 1400));
         final repo = await _freshRepo();
@@ -3599,11 +3602,15 @@ void main() {
         final chart = feelingCharts.first;
         expect(chart.data.lineBarsData, hasLength(1));
         final bar = chart.data.lineBarsData.first;
-        // Visibility: line is thick enough to read on a phone.
-        expect(bar.barWidth, greaterThanOrEqualTo(4.0),
-            reason: 'line must be at least 4dp wide so it is '
-                'visibly rendered on the dark theme');
-        // Visibility: dots are large enough to mark each point.
+
+        // Width parity — the feeling chart must use the same
+        // barWidth / dot radius / dot strokeWidth as every other
+        // chart on the screen (e1RM, volume, cardio, nutrition
+        // calories, nutrition macros). Heavier weights are no
+        // longer permitted; this locks the convention.
+        expect(bar.barWidth, 2.0,
+            reason: 'line width must match the other charts on '
+                'the screen (barWidth: 2.0)');
         final dotPainter = bar.dotData.getDotPainter;
         final painter = dotPainter(
           bar.spots.first,
@@ -3611,46 +3618,303 @@ void main() {
           bar,
           0,
         ) as FlDotCirclePainter;
-        expect(painter.radius, greaterThanOrEqualTo(6.0),
-            reason: 'dots must be at least 6dp radius so each '
-                'data point is visible');
-        // Visibility: segments are straight, not curved. Curved
-        // segments with sparse data can smear the line.
+        expect(painter.radius, 3.0,
+            reason: 'dot radius must match the other charts on '
+                'the screen (radius: 3.0)');
+        expect(painter.strokeWidth, 1.5,
+            reason: 'dot stroke width must match the other charts '
+                'on the screen (strokeWidth: 1.5)');
+        // No halo stroke — other charts use a plain dot with the
+        // default transparent strokeColor.
+        expect(painter.strokeColor, isNot(OmniTheme.colors.surface),
+            reason: 'dot must not carry a halo ring in the surface '
+                'color — that was added to compensate for a heavier '
+                'dot weight and is no longer needed; matches the '
+                'plain-dot convention used by every other chart on '
+                'the screen');
+
+        // No glow shadow — every other chart on the screen has a
+        // plain (no-shadow) line; the feeling chart must too.
+        expect(bar.shadow.blurRadius, 0,
+            reason: 'line must not carry a glow shadow — that was '
+                'added to compensate for a heavier line weight; '
+                'every other chart on the screen renders a plain '
+                '2dp stroke');
+        expect(bar.shadow.color.a, 0.0,
+            reason: 'line shadow must be a no-op (transparent) so '
+                'the 2dp stroke is not visually muddied');
+
+        // Shape parity — straight segments, no area fill. These
+        // were already conventions on the feeling chart; lock
+        // them so a future change can't drift.
         expect(bar.isCurved, isFalse,
             reason: 'line must use straight segments so it '
                 'reads unambiguously on a 120dp-tall chart');
-        // Visibility: no area fill — the tinted region under
-        // the line was washing it out on the dark theme.
         expect(bar.belowBarData.show, isFalse,
             reason: 'area fill must be off so the line is not '
                 'washed out by the tinted region underneath');
-        // Visibility: a soft glow shadow in the line color is
-        // applied so the line definitively reads against any
-        // theme background. The shadow must NOT be the
-        // default `Colors.transparent` — that produces a
-        // visible-but-flat 6dp stroke that can disappear next
-        // to a horizontal gridline. The shadow's alpha is
-        // also pinned (≥ 0.4) so the glow is not too dim to
-        // contribute contrast.
-        expect(bar.shadow.color.a, greaterThanOrEqualTo(0.4),
-            reason: 'line must carry a soft glow shadow so it '
-                'is not flattened by adjacent gridlines');
-        expect(bar.shadow.blurRadius, greaterThan(0),
-            reason: 'line shadow must have a positive blur '
-                'radius to actually glow');
 
-        // Color: the bar color is `feelingColor(latestFeeling)`
-        // — the same color the post-workout survey tile takes
-        // when the corresponding number is tapped. Latest
-        // feeling here is 4 → Colors.green.
-        expect(bar.color, Colors.green,
-            reason: 'line color must match feelingColor(4) — the '
-                'color the survey tile turns when "4" is tapped');
+        // Color: the connecting line is ONE fixed color
+        // (`themeColors.primary`), independent of any session's
+        // rating. Previously the line took `feelingColor(...)`,
+        // which made the line vanish when the latest rating
+        // mapped to a color close to the background. The points
+        // carry the meaning instead — each painted in its own
+        // session's feeling color via the shared
+        // `feelingColor(feeling, themeColors)` helper.
+        expect(bar.color, OmniTheme.colors.primary,
+            reason: 'line color must be themeColors.primary — '
+                'a single fixed color that never changes with '
+                'any session\'s rating');
+        // The line color is NOT a feeling color (the old buggy
+        // behavior): when the latest rating is 4, the line must
+        // NOT be Colors.green.
+        expect(bar.color, isNot(Colors.green),
+            reason: 'line color must not inherit a feeling '
+                'color — that was the visibility bug');
 
-        // Dots use the same color.
-        expect(painter.color, Colors.green,
-            reason: 'dot color must match the line color, which '
-                'is feelingColor(latestFeeling)');
+        // The most-recent dot is the latest session's feeling
+        // color (4 → Colors.green), NOT the line color.
+        final latestFeeling =
+            bar.spots.last.y.round();
+        final latestPainter = bar.dotData.getDotPainter(
+          bar.spots.last,
+          0,
+          bar,
+          bar.spots.length - 1,
+        ) as FlDotCirclePainter;
+        expect(latestPainter.color, feelingColor(latestFeeling, OmniTheme.colors),
+            reason: 'dot color must match feelingColor($latestFeeling) — '
+                'the same source the survey tile and history-row '
+                'accent use for that rating');
+      },
+    );
+
+    // ─────────────────────────────────────────────────────────────────
+    // Feeling-trend color-visibility guards (regression suite for the
+    // bug where the line inherited a rating's color and vanished when
+    // the rating mapped to a low-contrast theme color).
+    //
+    // Contract being locked in here:
+    //   1. The connecting line is ONE fixed color (themeColors.primary),
+    //      independent of any session's rating.
+    //   2. Each point is painted in its OWN session's feeling color,
+    //      sourced from the shared `feelingColor(feeling, themeColors)`
+    //      helper (the same source as the survey tile and the history-
+    //      row accent).
+    //   3. A flat series (every session rated the same) still renders
+    //      every point individually with a halo stroke so it can be
+    //      distinguished from a horizontal gridline.
+    // ─────────────────────────────────────────────────────────────────
+
+    LineChartBarData _feelingBar(WidgetTester tester) {
+      final feelingCharts = tester
+          .widgetList<LineChart>(find.byType(LineChart))
+          .where((c) => c.data.minY == 1.0 && c.data.maxY == 5.0)
+          .toList();
+      expect(feelingCharts, hasLength(1),
+          reason: 'exactly one LineChart with the feeling-trend '
+              'y-axis (1..5) must be rendered');
+      expect(feelingCharts.first.data.lineBarsData, hasLength(1));
+      return feelingCharts.first.data.lineBarsData.first;
+    }
+
+    testWidgets(
+      'S-001 (regression guard): the connecting line color is FIXED — it '
+      'does not change when the latest session rating changes. Regression '
+      'guard for the bug where the line inherited a rating color and '
+      'vanished on some themes.',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1400));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+
+        // Series A: latest feeling is 1 (Colors.red in the bug).
+        // Series B: latest feeling is 4 (Colors.green in the bug).
+        // Both must produce the SAME line color.
+        await seedFeelingSession(
+          repo,
+          id: 'lc-1a',
+          start: now.subtract(const Duration(days: 3)),
+          duration: const Duration(minutes: 30),
+          feeling: 3,
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'lc-1b',
+          start: now.subtract(const Duration(hours: 6)),
+          duration: const Duration(minutes: 30),
+          feeling: 1,
+        );
+
+        await pumpStatsScreen(tester, repo);
+        final lineA = _feelingBar(tester).color;
+
+        // Build a fresh repo + settings for series B so the screen
+        // re-renders from scratch — same shape, different latest rating.
+        final repoB = await _freshRepo();
+        await seedFeelingSession(
+          repoB,
+          id: 'lc-4a',
+          start: now.subtract(const Duration(days: 3)),
+          duration: const Duration(minutes: 30),
+          feeling: 3,
+        );
+        await seedFeelingSession(
+          repoB,
+          id: 'lc-4b',
+          start: now.subtract(const Duration(hours: 6)),
+          duration: const Duration(minutes: 30),
+          feeling: 4,
+        );
+        await pumpStatsScreen(tester, repoB);
+        final lineB = _feelingBar(tester).color;
+
+        // The bug: lineA would equal Colors.red, lineB would equal
+        // Colors.green — i.e. the line color would vary with the
+        // latest rating. The fix: both equal `OmniTheme.colors.primary`.
+        expect(lineA, OmniTheme.colors.primary,
+            reason: 'line color must equal themeColors.primary '
+                'even when the latest rating is 1 (the old code '
+                'painted it Colors.red)');
+        expect(lineB, OmniTheme.colors.primary,
+            reason: 'line color must equal themeColors.primary '
+                'even when the latest rating is 4 (the old code '
+                'painted it Colors.green)');
+        expect(lineA, lineB,
+            reason: 'line color must be identical across series '
+                'with different latest ratings — this is the '
+                'regression guard for the visibility bug');
+      },
+    );
+
+    testWidgets(
+      'S-002: each point on the trend is colored by its own session\'s '
+      'feeling, sourced from the shared feelingColor helper. A mixed '
+      'series (1, 3, 4) renders three differently-colored points.',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1400));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+
+        // Three sessions, three distinct hardcoded feeling colors so
+        // the test is independent of Theme.of(context).
+        await seedFeelingSession(
+          repo,
+          id: 'pc-1',
+          start: now.subtract(const Duration(days: 3)),
+          duration: const Duration(minutes: 30),
+          feeling: 1, // Colors.red
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'pc-3',
+          start: now.subtract(const Duration(days: 2)),
+          duration: const Duration(minutes: 30),
+          feeling: 3, // Colors.yellow[700]
+        );
+        await seedFeelingSession(
+          repo,
+          id: 'pc-4',
+          start: now.subtract(const Duration(hours: 6)),
+          duration: const Duration(minutes: 30),
+          feeling: 4, // Colors.green
+        );
+
+        await pumpStatsScreen(tester, repo);
+
+        final bar = _feelingBar(tester);
+        expect(bar.spots, hasLength(3));
+
+        // Each point's color must equal feelingColor(spot.y.round())
+        // — the same shared source the survey tile and the history-
+        // row accent draw from.
+        for (var i = 0; i < bar.spots.length; i++) {
+          final feeling = bar.spots[i].y.round();
+          final expected = feelingColor(feeling, OmniTheme.colors);
+          final painter = bar.dotData.getDotPainter(
+            bar.spots[i],
+            0,
+            bar,
+            i,
+          ) as FlDotCirclePainter;
+          expect(painter.color, expected,
+              reason: 'point $i (feeling=$feeling) must be painted '
+                  'in feelingColor($feeling) — the same source the '
+                  'survey tile and history-row accent use');
+        }
+      },
+    );
+
+    testWidgets(
+      'S-003: flat-series visibility — when every session in the window '
+      'shares one rating, every point is rendered individually and the '
+      'line remains the fixed theme primary (not the feeling color) so '
+      'the chart never collapses a flat series into a single dot.',
+      (WidgetTester tester) async {
+        await tester.binding.setSurfaceSize(const Size(400, 1400));
+        final repo = await _freshRepo();
+        final now = DateTime.now();
+
+        // Five sessions, all rated 4. The dot fill is Colors.green;
+        // the line must be theme primary so the connecting line stays
+        // distinguishable from the dots and from a horizontal gridline.
+        for (var i = 0; i < 5; i++) {
+          await seedFeelingSession(
+            repo,
+            id: 'flat-$i',
+            start: now.subtract(Duration(hours: 6 + i * 18)),
+            duration: const Duration(minutes: 30),
+            feeling: 4,
+          );
+        }
+
+        await pumpStatsScreen(tester, repo);
+
+        final bar = _feelingBar(tester);
+
+        // Every point is rendered — the chart never collapses a flat
+        // series into a single dot.
+        expect(bar.spots, hasLength(5));
+
+        // The line is the FIXED theme primary, not the feeling color.
+        // On the default test theme (abyssalNeon) the primary is cyan,
+        // which is clearly distinct from Colors.green (the feeling-4
+        // color) so the line is not visually merged with the dots.
+        expect(bar.color, OmniTheme.colors.primary,
+            reason: 'line color must stay fixed at themeColors.primary '
+                'even when every dot is the same feeling color');
+        expect(bar.color, isNot(Colors.green),
+            reason: 'line color must not equal the feeling color '
+                'on a flat series — that was the old buggy behavior');
+
+        // Every point renders individually with the chart's
+        // standard dot conventions (radius 3, strokeWidth 1.5) and
+        // is filled in the session's feeling color via the shared
+        // helper. No halo ring — that was the convention under the
+        // old heavier dot weight and is no longer needed now that
+        // the dot matches every other chart on the screen.
+        for (var i = 0; i < bar.spots.length; i++) {
+          final painter = bar.dotData.getDotPainter(
+            bar.spots[i],
+            0,
+            bar,
+            i,
+          ) as FlDotCirclePainter;
+          expect(painter.radius, 3.0,
+              reason: 'point $i must use the standard dot radius '
+                  '(3.0) shared with every other chart on the '
+                  'screen');
+          expect(painter.strokeWidth, 1.5,
+              reason: 'point $i must use the standard dot stroke '
+                  'width (1.5) shared with every other chart on '
+                  'the screen');
+          // Dot fill is the session's own feeling color.
+          expect(painter.color, feelingColor(4, OmniTheme.colors),
+              reason: 'point $i fill must equal feelingColor(4) — '
+                  'the same color the survey tile and the history-'
+                  'row accent use for rating 4');
+        }
       },
     );
 
