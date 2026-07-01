@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../state/nutrition_state.dart';
 import '../../data/models/models.dart';
+import '../../widgets/inputs/select_all_on_focus.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 
 /// Screen for setting today's daily calorie target.
@@ -131,60 +132,64 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
-                child: TextFormField(
-                  key: const Key('calories_field'),
+                child: SelectAllOnFocus(
                   controller: _caloriesController,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Calories',
-                    hintText: '—',
-                    labelStyle: TextStyle(
-                      fontSize: 16,
-                      color: OmniTheme.colors.textMuted,
-                    ),
-                    hintStyle: TextStyle(
-                      fontSize: 24,
+                  builder: (context, focusNode) => TextFormField(
+                    key: const Key('calories_field'),
+                    controller: _caloriesController,
+                    focusNode: focusNode,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 36,
                       fontWeight: FontWeight.bold,
-                      color: OmniTheme.colors.textMuted,
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 24,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: OmniTheme.colors.surfaceBorder,
-                        width: 2,
+                    decoration: InputDecoration(
+                      labelText: 'Calories',
+                      hintText: '—',
+                      labelStyle: TextStyle(
+                        fontSize: 16,
+                        color: OmniTheme.colors.textMuted,
+                      ),
+                      hintStyle: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: OmniTheme.colors.textMuted,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 24,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: OmniTheme.colors.surfaceBorder,
+                          width: 2,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: OmniTheme.colors.primary,
+                          width: 2,
+                        ),
                       ),
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: OmniTheme.colors.primary,
-                        width: 2,
-                      ),
-                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) return null;
+                      final parsed = double.tryParse(value);
+                      if (parsed == null) {
+                        return 'Please enter a valid number';
+                      }
+                      if (parsed < 0) {
+                        return 'Please enter a non-negative number';
+                      }
+                      return null;
+                    },
                   ),
-                  keyboardType: TextInputType.number,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return null;
-                    final parsed = double.tryParse(value);
-                    if (parsed == null) {
-                      return 'Please enter a valid number';
-                    }
-                    if (parsed < 0) {
-                      return 'Please enter a non-negative number';
-                    }
-                    return null;
-                  },
                 ),
               ),
               const SizedBox(height: 8),

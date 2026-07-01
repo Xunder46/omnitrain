@@ -13,6 +13,7 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
+import '../../widgets/inputs/select_all_on_focus.dart';
 import 'widgets/avatar_crop_sheet.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
 import 'widgets/measurement_sparkline.dart';
@@ -1293,33 +1294,45 @@ class _HeightDialogState extends State<_HeightDialog> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
+                  child: SelectAllOnFocus(
                     controller: _feetController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Feet'),
+                    builder: (context, focusNode) => TextField(
+                      controller: _feetController,
+                      focusNode: focusNode,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Feet'),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextField(
+                  child: SelectAllOnFocus(
                     controller: _inchesController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Inches'),
+                    builder: (context, focusNode) => TextField(
+                      controller: _inchesController,
+                      focusNode: focusNode,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Inches'),
+                    ),
                   ),
                 ),
               ],
             )
           else
-            TextField(
-              key: const Key('height_dialog_value_field'),
+            SelectAllOnFocus(
               controller: _valueController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: label,
-                errorText: _valueError,
+              builder: (context, focusNode) => TextField(
+                key: const Key('height_dialog_value_field'),
+                controller: _valueController,
+                focusNode: focusNode,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: label,
+                  errorText: _valueError,
+                ),
               ),
             ),
           if (_isFtinMode && _valueError != null) ...[

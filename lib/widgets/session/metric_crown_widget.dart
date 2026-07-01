@@ -356,15 +356,10 @@ class _MetricEditDialogState extends State<_MetricEditDialog> {
     _controller = TextEditingController(
       text: _formatCurrentValue(widget.metricType, widget.currentValue),
     );
-    // Select all text after the first frame so the user can overwrite immediately.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _controller.selection = TextSelection(
-          baseOffset: 0,
-          extentOffset: _controller.text.length,
-        );
-      }
-    });
+    // Select-all on focus is handled by `NumericFieldWithDoneBar`'s
+    // built-in `selectAllOnFocus: true` default (the wrapper creates
+    // a `SelectAllOnFocusNode` internally when it owns the focus
+    // node). No local one-shot select-all is needed here.
   }
 
   @override

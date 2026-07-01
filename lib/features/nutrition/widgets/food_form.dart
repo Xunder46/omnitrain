@@ -9,6 +9,7 @@ import '../../../core/models/food_draft.dart';
 import '../../../core/services/image_storage_service.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
+import '../../../widgets/inputs/select_all_on_focus.dart';
 // Conditional import: reuses the platform-aware image renderer
 // from the `FoodThumbnail` widget.
 import 'food_thumbnail_stub.dart'
@@ -193,12 +194,14 @@ class _FoodFormState extends State<FoodForm> {
   late final TextEditingController _fat;
   late final TextEditingController _sodium;
   late final TextEditingController _notes;
-  // Per-field focus nodes. Each one selects the field's text on
-  // focus so the user can retype a value without first clearing
-  // it (e.g. tapping into a pre-filled `4` g of fat and typing
-  // `0.5` overwrites `4` rather than appending). Each node is
-  // created in `initState`, wired to `_selectAll` on focus, and
-  // disposed in `dispose`.
+  // Per-field focus nodes. Numeric value fields and the short
+  // unit label (reference label) are wired to select-all on focus
+  // so the user can retype a value without first clearing it
+  // (e.g. tapping into a pre-filled `4` g of fat and typing
+  // `0.5` overwrites `4` rather than appending). The free-text
+  // name field and the multi-line notes field are NOT wired to
+  // select-all — those are free-text fields where selecting
+  // everything on focus would get in the way of editing in place.
   final _nameFocus = FocusNode();
   final _referenceAmountFocus = FocusNode();
   final _referenceLabelFocus = FocusNode();
@@ -209,6 +212,11 @@ class _FoodFormState extends State<FoodForm> {
   final _sodiumFocus = FocusNode();
   final _notesFocus = FocusNode();
   final ImagePicker _imagePicker = ImagePicker();
+
+  /// Detachers returned by `bindSelectAllOnFocus` for each per-field
+  /// focus node. `dispose` iterates this list to remove the listeners
+  /// before disposing the focus nodes themselves.
+  final List<VoidCallback> _selectAllDetachers = [];
 
   /// Local copy of the image path. Decoupled from `widget.initial`
   /// so the user can clear the image mid-edit without losing the
@@ -232,24 +240,6 @@ class _FoodFormState extends State<FoodForm> {
     if (widget.autoSaveOnBlur) {
       _focusNode.addListener(_onFocusChange);
     }
-
-    // Wire per-field focus nodes to select-all on focus. A field
-    // with no text is a no-op (the selection is collapsed to
-    // start, length 0). The listeners are added here and removed
-    // in `dispose` to avoid leaks on rebuild.
-    _nameFocus.addListener(() => _selectAllOnFocus(_nameFocus, _name));
-    _referenceAmountFocus.addListener(
-      () => _selectAllOnFocus(_referenceAmountFocus, _referenceAmount),
-    );
-    _referenceLabelFocus.addListener(
-      () => _selectAllOnFocus(_referenceLabelFocus, _referenceLabel),
-    );
-    _proteinFocus.addListener(() => _selectAllOnFocus(_proteinFocus, _protein));
-    _carbsFocus.addListener(() => _selectAllOnFocus(_carbsFocus, _carbs));
-    _fiberFocus.addListener(() => _selectAllOnFocus(_fiberFocus, _fiber));
-    _fatFocus.addListener(() => _selectAllOnFocus(_fatFocus, _fat));
-    _sodiumFocus.addListener(() => _selectAllOnFocus(_sodiumFocus, _sodium));
-    _notesFocus.addListener(() => _selectAllOnFocus(_notesFocus, _notes));
 
     final initial = widget.initial;
     _name = TextEditingController(text: initial?.name ?? '');
@@ -277,11 +267,46 @@ class _FoodFormState extends State<FoodForm> {
     _unitType = initial?.unitType ?? FoodUnitType.grams;
     _groupId = initial?.groupId;
     _imagePath = initial?.imagePath;
+
+    // Wire numeric and short-value focus nodes to select-all on
+    // focus via the shared `bindSelectAllOnFocus` helper (the same
+    // primitive the `SelectAllOnFocus` wrapper and
+    // `SelectAllOnFocusNode` class are built on). Each binding
+    // returns a `VoidCallback` that detaches the listener; we
+    // collect them so `dispose` can remove the listeners before
+    // the focus nodes are disposed.
+    //
+    // The free-text name field and the multi-line notes field are
+    // intentionally NOT in this list — they keep default
+    // cursor-placement behavior so the user can position the
+    // cursor freely inside free-form text.
+    _selectAllDetachers.addAll([
+      bindSelectAllOnFocus(
+        focusNode: _referenceAmountFocus,
+        controller: _referenceAmount,
+      ),
+      bindSelectAllOnFocus(
+        focusNode: _referenceLabelFocus,
+        controller: _referenceLabel,
+      ),
+      bindSelectAllOnFocus(
+        focusNode: _proteinFocus,
+        controller: _protein,
+      ),
+      bindSelectAllOnFocus(focusNode: _carbsFocus, controller: _carbs),
+      bindSelectAllOnFocus(focusNode: _fiberFocus, controller: _fiber),
+      bindSelectAllOnFocus(focusNode: _fatFocus, controller: _fat),
+      bindSelectAllOnFocus(focusNode: _sodiumFocus, controller: _sodium),
+    ]);
   }
 
   @override
   void dispose() {
     widget.controller?.detach();
+    for (final detach in _selectAllDetachers) {
+      detach();
+    }
+    _selectAllDetachers.clear();
     _nameFocus.dispose();
     _referenceAmountFocus.dispose();
     _referenceLabelFocus.dispose();
@@ -303,25 +328,6 @@ class _FoodFormState extends State<FoodForm> {
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     super.dispose();
-  }
-
-  /// Select-all handler for a per-field focus node. Runs on every
-  /// focus change; the only effectful branch is the focus-gained
-  /// path. The selection is set with `TextSelection(baseOffset: 0,
-  /// extentOffset: text.length)` so a fresh tap on a pre-filled
-  /// field (e.g. `4` g of fat) highlights the entire value, letting
-  /// the user overwrite it by typing. Empty fields short-circuit
-  /// to avoid setting a selection that crosses an empty range
-  /// (Flutter's selection model tolerates it, but skipping the
-  /// assignment keeps the cursor behavior predictable).
-  void _selectAllOnFocus(FocusNode node, TextEditingController controller) {
-    if (!node.hasFocus) return;
-    final text = controller.text;
-    if (text.isEmpty) return;
-    controller.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: text.length,
-    );
   }
 
   // ─── Focus handler for auto-save ────────────────────────────────────

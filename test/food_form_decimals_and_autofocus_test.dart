@@ -453,8 +453,17 @@ void main() {
     );
 
     testWidgets(
-      'focusing a pre-filled name field selects all text (S-006)',
+      'focusing a pre-filled name field does NOT select all text (S-006)',
       (WidgetTester tester) async {
+        // The food form's name field is a free-text label field,
+        // not a value-entry field. Per the value-entry
+        // select-on-focus contract, free-text fields (names,
+        // descriptions, multi-line notes) keep the default
+        // cursor-placement behavior so the user can position the
+        // cursor freely to edit in place. The select-all behavior
+        // applies to numeric value fields and short value labels
+        // (reference amount, reference label, macros) — not to
+        // the food name.
         await tester.binding.setSurfaceSize(_formSurface);
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -500,13 +509,12 @@ void main() {
         );
         final controller = field.controller!;
         expect(controller.text, 'Eggs');
+        // Free-text name field: selection stays collapsed, the
+        // user can position the cursor freely inside the name.
         expect(
-          controller.selection,
-          TextSelection(
-            baseOffset: 0,
-            extentOffset: controller.text.length,
-          ),
-          reason: 'pre-filled name should be fully selected on focus',
+          controller.selection.isCollapsed,
+          isTrue,
+          reason: 'free-text name field should NOT auto-select on focus',
         );
       },
     );

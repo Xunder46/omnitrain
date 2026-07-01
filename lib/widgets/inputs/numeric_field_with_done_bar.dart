@@ -1,11 +1,20 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import 'select_all_on_focus.dart';
 
 /// A TextField wrapper that displays a "Done" accessory bar above the numeric keyboard.
 ///
 /// The Done bar appears only when this field is focused and contains a button that
 /// dismisses the keyboard and unfocuses the field. The Done bar does not appear on web.
+///
+/// By default the wrapper also selects the full current contents on focus
+/// (see [selectAllOnFocus]). This is the right behavior for value-entry
+/// fields (weight, reps, durations, logged amounts, body measurements,
+/// height) where the user's intent on focus is to overwrite the existing
+/// value in one tap. Pass `selectAllOnFocus: false` to disable per
+/// instance — the caller is then responsible for the field's selection
+/// behavior.
 ///
 /// This widget passes through all TextField properties and behavior unchanged.
 class NumericFieldWithDoneBar extends StatefulWidget {
@@ -24,6 +33,14 @@ class NumericFieldWithDoneBar extends StatefulWidget {
   final bool? enabled;
   final TextCapitalization textCapitalization;
 
+  /// When true (default) and this wrapper creates its own internal
+  /// [FocusNode] (i.e. the caller did not pass one in), the wrapper
+  /// selects the full contents of [controller] on focus gain. The
+  /// behavior is skipped when an external [focusNode] is provided —
+  /// the caller's node is used as-is and the caller is responsible
+  /// for any selection behavior on it.
+  final bool selectAllOnFocus;
+
   const NumericFieldWithDoneBar({
     super.key,
     this.controller,
@@ -40,6 +57,7 @@ class NumericFieldWithDoneBar extends StatefulWidget {
     this.minLines,
     this.enabled,
     this.textCapitalization = TextCapitalization.none,
+    this.selectAllOnFocus = true,
   });
 
   @override
@@ -55,7 +73,21 @@ class _NumericFieldWithDoneBarState extends State<NumericFieldWithDoneBar> {
   void initState() {
     super.initState();
     if (widget.focusNode == null) {
-      _internalFocusNode = FocusNode();
+      // When we own the focus node, use a SelectAllOnFocusNode so
+      // the wrapper's value-entry contract (select-all on focus) is
+      // honored for the common case where the caller did not pass a
+      // controller-aware focus node. We need a controller to bind
+      // the select-all listener; if the caller did not provide one,
+      // we fall back to a plain FocusNode and the caller can
+      // opt-in via `selectAllOnFocus: false` plus their own
+      // SelectAllOnFocus / SelectAllOnFocusNode.
+      if (widget.selectAllOnFocus && widget.controller != null) {
+        _internalFocusNode = SelectAllOnFocusNode(
+          selectAllController: widget.controller!,
+        );
+      } else {
+        _internalFocusNode = FocusNode();
+      }
     }
     _effectiveFocusNode = widget.focusNode ?? _internalFocusNode!;
 
@@ -65,6 +97,9 @@ class _NumericFieldWithDoneBarState extends State<NumericFieldWithDoneBar> {
   @override
   void dispose() {
     _effectiveFocusNode.removeListener(_handleFocusChange);
+    // SelectAllOnFocusNode detaches its own listener on dispose,
+    // so disposing the underlying FocusNode is sufficient for both
+    // the select-all variant and the plain FocusNode fallback.
     _internalFocusNode?.dispose();
     _doneBarEntry?.remove();
     _doneBarEntry = null;

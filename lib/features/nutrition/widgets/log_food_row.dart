@@ -10,6 +10,7 @@ import '../../../core/utils/food_helpers.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
 import '../../../state/nutrition_state.dart';
+import '../../../widgets/inputs/select_all_on_focus.dart';
 import 'food_thumbnail.dart';
 
 /// A single food-library row that doubles as the "log a food as consumed"
@@ -379,35 +380,39 @@ class _LogFoodRowState extends State<LogFoodRow> {
                 children: [
                   SizedBox(
                     width: 73,
-                    child: TextField(
-                      key: Key('log_food_amount_${food.id}'),
+                    child: SelectAllOnFocus(
                       controller: _amountController,
-                      textAlign: TextAlign.right,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                        signed: false,
-                      ),
-                      inputFormatters: [_AmountInputFormatter()],
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: themeColors.textDominant,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
+                      builder: (context, focusNode) => TextField(
+                        key: Key('log_food_amount_${food.id}'),
+                        controller: _amountController,
+                        focusNode: focusNode,
+                        textAlign: TextAlign.right,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: false,
                         ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(
-                            OmniTheme.buttonUtilityRadius,
+                        inputFormatters: [_AmountInputFormatter()],
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: themeColors.textDominant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
                           ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              OmniTheme.buttonUtilityRadius,
+                            ),
+                          ),
+                          errorText: _amountError,
+                          errorMaxLines: 2,
                         ),
-                        errorText: _amountError,
-                        errorMaxLines: 2,
+                        onSubmitted: (_) => _recommitIfLogged(),
+                        onEditingComplete: _recommitIfLogged,
                       ),
-                      onSubmitted: (_) => _recommitIfLogged(),
-                      onEditingComplete: _recommitIfLogged,
                     ),
                   ),
                   const SizedBox(height: 4),

@@ -23,6 +23,7 @@ Note on home-screen nutrition summary card:
 lib/widgets/
 ├── buttons/              # (empty — reserved for future button components)
 ├── cards/                # Tile and card components for the home screen
+├── inputs/               # Reusable input field wrappers (select-all, done bar)
 ├── layout/               # Foundational layout primitives
 ├── logo/                 # Brand elements (Zen Halo)
 ├── models/               # Presentation-layer data classes
@@ -182,6 +183,57 @@ Shared full-width bottom call-to-action used by screens with a single persistent
 **File**: `lib/widgets/layout/noise_overlay_painter.dart`
 
 `CustomPainter` that renders a subtle film-grain texture over the gradient background. Creates a premium aesthetic without being distracting.
+
+---
+
+## Input Primitives
+
+### `SelectAllOnFocus`
+
+**File**: `lib/widgets/inputs/select_all_on_focus.dart`
+
+Widget wrapper that selects the entire current contents of a `TextEditingController` whenever the wrapped field gains focus. The user can still tap to place the cursor manually after the initial focus — select-all is a one-shot focus event, not a permanent override, so any subsequent tap inside the field moves the cursor to the tapped position via Flutter's standard selection model.
+
+Use this for **value-entry fields** (weight, reps, durations, logged amounts, body measurements, height, calories target) where the user's intent on focus is to overwrite the existing value in one tap. Do NOT use this for multi-line or free-text fields (notes, names, descriptions, search) — selecting everything on focus would be a nuisance and would break the user's ability to position the cursor freely.
+
+| Prop | Type | Description |
+|---|---|---|
+| `controller` | `TextEditingController` | required — the controller whose text gets selected on focus |
+| `builder` | `Widget Function(BuildContext, FocusNode)` | required — builds the wrapped field, receiving the focus node the wrapper has wired up |
+| `focusNode` | `FocusNode?` | optional — external focus node to use instead of the wrapper's internal one. Pass when the caller already owns a `FocusNode` (e.g. a form with multiple named nodes). |
+
+**Companion exports** (in the same file):
+- `SelectAllOnFocusNode` — a `FocusNode` subclass that selects the full text of an associated `TextEditingController` on every focus gain. Drop-in replacement for `FocusNode` for callers that already own a `FocusNode` (e.g. the `FoodForm` state's 10 named focus nodes). Detaches its listener on `dispose`.
+- `bindSelectAllOnFocus` — function form for callers that want to attach the listener manually (e.g. when the focus node is created internally inside a larger widget). Returns a `VoidCallback` that detaches the listener.
+
+**Behavior**:
+- Selection is set in a post-frame callback after focus is gained, so Flutter's focus machinery has time to settle before the selection is overridden. The post-frame callback re-checks both `focusNode.hasFocus` and the current controller text length to handle the case where the text was mutated between the focus event and the frame boundary (e.g. by a programmatic assignment or `tester.enterText`).
+- The selection is re-applied on every focus gain, not just the first one — so re-focusing a field after blur still highlights the value.
+- Empty values are a no-op (Flutter's selection model tolerates an empty range, but skipping the assignment keeps cursor behavior predictable for empty fields).
+- Internal `FocusNode` is disposed in `dispose`; the listener is detached in `dispose` (for the wrapper) or in the `SelectAllOnFocusNode.dispose` override.
+
+### `NumericFieldWithDoneBar`
+
+**File**: `lib/widgets/inputs/numeric_field_with_done_bar.dart`
+
+`TextField` wrapper that displays a themed "Done" accessory bar above the numeric keyboard, dismisses the keyboard on Done tap, and (by default) selects the full current contents on focus. The Done bar does not appear on web.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `controller` | `TextEditingController?` | `null` | The field's controller |
+| `focusNode` | `FocusNode?` | `null` | The field's focus node. When `null`, the wrapper creates an internal `SelectAllOnFocusNode` (if `selectAllOnFocus: true` and a `controller` is provided) or a plain `FocusNode` (if either is missing). |
+| `keyboardType` | `TextInputType` | `TextInputType.number` | Forwarded to `TextField` |
+| `decoration` | `InputDecoration?` | `null` | Forwarded to `TextField` |
+| `textAlign` | `TextAlign` | `TextAlign.start` | Forwarded to `TextField` |
+| `selectAllOnFocus` | `bool` | `true` | When `true` and the wrapper owns the focus node, the wrapper selects the full contents of `controller` on focus gain. Set to `false` to disable per instance — the caller is then responsible for the field's selection behavior. |
+
+All other `TextField` properties (`onChanged`, `onEditingComplete`, `onSubmitted`, `obscureText`, `textInputAction`, `maxLines`, `minLines`, `enabled`, `textCapitalization`) are forwarded unchanged.
+
+**Use sites** (every value-entry field with a numeric keyboard routes through this wrapper):
+- `lib/widgets/session/metric_crown_widget.dart` — set logging (weight, reps, time, distance)
+- `lib/widgets/session/duration_entry_dialog.dart` — h/m/s duration entry
+- `lib/features/profile/profile_screen.dart` — body measurement values + height (cm mode + ft/in mode)
+- `lib/features/routine/routine_setup_screen.dart` — round/timed targets (via the shared `showDurationEntryDialog`)
 
 ---
 
