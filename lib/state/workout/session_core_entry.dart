@@ -32,7 +32,13 @@ extension SessionCoreEntryMethods on SessionCore {
         effortKind = 'set';
       }
 
-      _exerciseCache[exercise.id] = exercise;
+      // Hydrate through the repository so the cached exercise carries the
+      // canonical capabilities (matches how the exercise browser presents
+      // them). The caller's Exercise is used as a fallback if the id is not
+      // yet known to the repository.
+      final hydrated =
+          (await _repository.getExerciseById(exercise.id)) ?? exercise;
+      _exerciseCache[exercise.id] = hydrated;
 
       final currentEfforts = _efforts[segment.id] ?? [];
       final effortId = 'effort-$now-${currentEfforts.length}';

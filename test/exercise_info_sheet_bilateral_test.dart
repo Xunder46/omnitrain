@@ -59,8 +59,12 @@ void main() {
   ) async {
     final ctx = await _setUpSession();
 
-    // Find a bilateral exercise in the mock repo.
-    final exercise = (await ctx.repository.getExercises()).firstWhere(
+    // Source the exercise via the SAME path the picker uses, so a regression
+    // anywhere in picker → session cache chain is caught (this is the real
+    // hydration path).
+    final exercise = (await ctx.workoutState.getExercisesRankedForModality(
+      modality: 'resistance_lifting',
+    )).firstWhere(
       (e) => e.capabilities.contains(ExerciseCapability.bilateral),
     );
     await ctx.workoutState.addExerciseToSession(
@@ -205,6 +209,107 @@ void main() {
 
       expect(find.text('LOGGING NOTE'), findsNothing);
       expect(find.text('No information available yet'), findsOneWidget);
+    },
+  );
+
+  // ── S-006: addExerciseToSession hydrates capabilities from the repo ──────
+  //
+  // Verifies that an Exercise whose capabilities list is empty when passed
+  // into addExerciseToSession still ends up with the canonical (repository)
+  // capabilities once cached — i.e. the session path doesn't trust the
+  // caller's payload blindly. Without the fix, the cached exercise keeps the
+  // empty list and the bilateral note never shows in the info sheet.
+  test(
+    'S-006: addExerciseToSession hydrates capabilities from repository',
+    () async {
+      final ctx = await _setUpSession();
+
+      // Build an Exercise whose id matches a seeded bilateral exercise but
+      // whose capabilities are deliberately empty (as if the caller had a
+      // stale or otherwise incomplete Exercise object).
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final exerciseWithoutCaps = Exercise(
+        id: 'exercise-dumbbell-curl',
+        name: 'Dumbbell Curl',
+        createdAtMs: now,
+        updatedAtMs: now,
+        capabilities: const [],
+      );
+      await ctx.workoutState.addExerciseToSession(
+        exerciseWithoutCaps,
+        chosenMetric: 'reps',
+      );
+
+      final cached = ctx.workoutState.getExercise('exercise-dumbbell-curl');
+      expect(
+        cached,
+        isNotNull,
+        reason: 'session should have cached the exercise after adding it',
+      );
+      expect(
+        cached!.capabilities,
+        isNotEmpty,
+        reason: 'cached exercise should carry the seeded capabilities, '
+            'not the empty list passed in by the caller',
+      );
+      expect(
+        cached.capabilities,
+        contains(ExerciseCapability.bilateral),
+        reason: 'the cached exercise must carry its real bilateral flag '
+            'so the info sheet can show the bilateral note',
+      );
+    },
+  );
+
+  // ── S-007: real-session-path info sheet (no caps injected by test) ──────
+  //
+  // Companion to S-001: S-001 sources the exercise from
+  // getExercisesRankedForModality (which already merges caps), so it does
+  // not catch a regression where addExerciseToSession trusts the caller.
+  // S-007 explicitly constructs an Exercise WITHOUT caps and relies on the
+  // session hydration to populate them before the info sheet renders.
+  testWidgets(
+    'S-007: info sheet renders bilateral note when exercise is added '
+    'without capabilities and hydrated via session path',
+    (WidgetTester tester) async {
+      final ctx = await _setUpSession();
+
+      // Build an Exercise whose id matches a seeded bilateral exercise but
+      // whose capabilities are empty — no capabilities injected by the test.
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final exercise = Exercise(
+        id: 'exercise-dumbbell-curl',
+        name: 'Dumbbell Curl',
+        createdAtMs: now,
+        updatedAtMs: now,
+        capabilities: const [],
+      );
+      await ctx.workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
+
+      await _pumpSessionScreen(
+        tester,
+        workoutState: ctx.workoutState,
+        routineState: ctx.routineState,
+        sessionSummaryService: ctx.summaryService,
+        repository: ctx.repository,
+      );
+
+      await tester.tap(find.text(exercise.name));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('exercise-info-button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('LOGGING NOTE'),
+        findsOneWidget,
+        reason: 'session must hydrate capabilities so the bilateral note '
+            'renders for a bilateral-flagged exercise',
+      );
+      expect(
+        find.textContaining('Log both sides as a single combined set'),
+        findsOneWidget,
+      );
     },
   );
 }

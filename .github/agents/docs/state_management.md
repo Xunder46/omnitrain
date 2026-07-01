@@ -111,7 +111,7 @@ The same pattern applies to `TimerManager` for `RoundInstance`/`TimedInstance` r
 
 | Method | Purpose |
 |--------|---------|
-| `addExerciseToSession(exercise, {chosenMetric})` | Creates effort with correct effortKind |
+| `addExerciseToSession(exercise, {chosenMetric})` | Hydrates the cached exercise via `_repository.getExerciseById(exercise.id)` so the session cache carries the canonical capabilities (matching how the exercise browser presents them), then creates the effort with the correct `effortKind`. The caller's `Exercise` is used as a fallback only if the repository doesn't know the id. |
 | `removeExerciseFromSession(effortId)` | Deletes effort + observations + rounds |
 | `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance |
 | `createCustomExercise(name, {modality, ...})` | Creates new exercise in repository with persisted modality key |
