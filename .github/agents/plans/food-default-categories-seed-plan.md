@@ -11,8 +11,8 @@ rows. The user's own library was built from a blank slate, with no
 predefined `FoodGroup` rows to drop foods into.
 
 This change seeds 9 default `FoodGroup` records on app start so the
-Categories tab is immediately usable. The names match the 9 catalog
-categories verbatim, so a future cross-reference (auto-assigning
+Groups tab is immediately usable. The names match the 9 catalog
+groups verbatim, so a future cross-reference (auto-assigning
 catalog foods to a group) is a one-step name lookup.
 
 ## Requirements
@@ -86,7 +86,7 @@ catalog foods to a group) is a one-step name lookup.
 
 ### S-004: User can archive a default group
 - Trigger: User taps the trash icon on the Proteins row in the
-  Categories tab.
+  Groups tab.
 - Precondition: Default Proteins group exists with
   id = `food-group-proteins`.
 - Flow: `archiveFoodGroup('food-group-proteins')` runs. The mutator path

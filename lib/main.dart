@@ -75,7 +75,8 @@ void main() async {
     // food photos. Construction resolves the documents directory
     // once at app start; the same instance is shared by every
     // state and screen that needs it (D-8).
-    final imageStorageService = await ImageStorageService.create();
+    // On web, skip initialization as it's not supported there.
+    final imageStorageService = kIsWeb ? null : await ImageStorageService.create();
 
     // Create state with repository
     final workoutState = WorkoutState(repository);

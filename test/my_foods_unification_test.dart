@@ -583,13 +583,13 @@ void main() {
       if (data == 'Manage Food Library') continue;
       if (data == 'My Foods') continue;
       if (data == 'Library') continue;
-      if (data == 'Categories') continue;
+      if (data == 'Groups') continue;
       if (data == '+ New Food') continue;
       if (data == 'No custom foods yet') continue;
       if (data == 'Create your own foods to use in your nutrition tracking') {
         continue;
       }
-      if (data == '+ New Category') continue;
+      if (data == '+ New Group') continue;
       // Macro line: contains " cal · " (foods render e.g.
       // "151 cal · 31P · 0C · 4F").
       if (data.contains(' cal · ')) continue;

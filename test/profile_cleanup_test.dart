@@ -457,7 +457,7 @@ void main() {
         // (no maxLines/overflow constraint), `find.text` matches the
         // full string in the widget tree even when the rendered text
         // wraps across multiple lines.
-        const formula = 'Body weight × (1 − body fat)';
+        const formula = 'Body weight × \n(1 − body fat)';
         expect(
           find.descendant(
             of: find.byKey(const Key('profile_lean_mass_card')),

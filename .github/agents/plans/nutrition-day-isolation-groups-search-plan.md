@@ -1,4 +1,4 @@
-# Feature: Nutrition Day Isolation + Food Groups (Categories) + Catalog Search
+# Feature: Nutrition Day Isolation + Food Groups (Groups) + Catalog Search
 
 ## Overview
 
@@ -13,8 +13,8 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
    day. (Fast-track — the contract is already enforced by frozen
    snapshots and date-keyed targets; this iteration adds explicit
    coverage and one safety net.)
-2. **Food Groups (Categories tab)** — let the user manage the groups
-   used to organize their library. Add a new `Categories` tab to the
+2. **Food Groups (Groups tab)** — let the user manage the groups
+   used to organize their library. Add a new `Groups` tab to the
    Manage Food Library screen with create / rename / delete for
    groups and an "Ungrouped" view for foods with no group. Deleting
    a group with foods must reassign those foods to "Ungrouped" (or a
@@ -42,11 +42,11 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
     today's target — so the in-memory state cannot leak yesterday's
     totals into today after a long-running app.
 
-### R-2 Food Groups (Categories tab) (STANDARD)
+### R-2 Food Groups (Groups tab) (STANDARD)
 
-- New `Categories` tab added to the `TabBar` in `AddFoodScreen`
-  (becomes 3 tabs: Library / + New Item / Categories).
-- Categories tab shows a list of existing `FoodGroup`s + an
+- New `Groups` tab added to the `TabBar` in `AddFoodScreen`
+  (becomes 3 tabs: Library / + New Item / Groups).
+- Groups tab shows a list of existing `FoodGroup`s + an
   "Ungrouped" row at the bottom.
 - Each row has an editable `TextField` (the group's name) and a trash
   `IconButton` on the right. Editing the field and pressing
@@ -57,12 +57,12 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
   are reassigned to the chosen destination.
 - The "Ungrouped" row is informational (count + open read-only) and
   cannot be renamed or deleted.
-- A small "+ New Category" affordance at the bottom of the list
+- A small "+ New Group" affordance at the bottom of the list
   creates a new group with a default name and focuses the new
   row's `TextField` for immediate rename.
-- A category with foods can be deleted; deletion never deletes foods
+- A Group with foods can be deleted; deletion never deletes foods
   — it reassigns their `groupId` to `null`.
-- Deleting an already-empty category is a no-op (no confirmation
+- Deleting an already-empty Group is a no-op (no confirmation
   needed); only non-empty deletions ask for confirmation.
 - New repository-level method
   `Future<void> reassignFoodsToGroup(List<String> foodIds, String? targetGroupId)`
@@ -114,13 +114,13 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
 ### R-2
 
 - [ ] The Manage Food Library screen has three tabs: Library /
-      + New Item / Categories.
-- [ ] The Categories tab lists all active groups alphabetically;
+      + New Item / Groups.
+- [ ] The Groups tab lists all active groups alphabetically;
       the "Ungrouped" row sits at the bottom and is non-editable.
 - [ ] Each group row has a `TextField` (name) and a trash
       `IconButton`; editing the field and unfocusing persists the
       rename.
-- [ ] A "+ New Category" affordance adds a new group and focuses
+- [ ] A "+ New Group" affordance adds a new group and focuses
       the new row's name field.
 - [ ] Deleting a non-empty group opens a confirmation dialog with
       a destination dropdown ("Ungrouped" + every other active
@@ -128,7 +128,7 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
       group's foods to the chosen destination and archives the
       group.
 - [ ] Deleting an empty group is a silent no-op (no confirmation).
-- [ ] The custom-food form's category dropdown continues to show
+- [ ] The custom-food form's Group dropdown continues to show
       the new groups and the "Ungrouped" option.
 - [ ] Foods with `groupId = null` still appear under "Ungrouped"
       on `NutritionScreen`.
@@ -178,11 +178,11 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
   past row is unchanged.
 - Edge case of: none
 
-### R-2 — Food Groups (Categories tab) (STANDARD)
+### R-2 — Food Groups (Groups tab) (STANDARD)
 
-#### S-101: Render categories list with Ungrouped at the bottom
+#### S-101: Render Groups list with Ungrouped at the bottom
 
-- Trigger: User opens the Categories tab in Manage Food Library.
+- Trigger: User opens the Groups tab in Manage Food Library.
 - Precondition: 2 groups exist ("Proteins", "Vegetables"); 1
   library food has `groupId == null`; 1 has groupId = "Proteins".
 - Flow: The tab builds the list.
@@ -191,7 +191,7 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
   trash icon hidden). All alphabetical.
 - Edge case of: none
 
-#### S-102: Rename a category
+#### S-102: Rename a Group
 
 - Trigger: User edits the "Proteins" row's name field to "Lean
   Proteins" and unfocuses.
@@ -204,27 +204,27 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
   past logs) is unaffected (snapshot is frozen).
 - Edge case of: none
 
-#### S-103: Create a new category
+#### S-103: Create a new Group
 
-- Trigger: User taps "+ New Category" at the bottom of the
-  Categories tab.
+- Trigger: User taps "+ New Group" at the bottom of the
+  Groups tab.
 - Precondition: 2 groups exist.
 - Flow:
-  1. `FoodLibraryState.createFoodGroup('New Category')` runs.
+  1. `FoodLibraryState.createFoodGroup('New Group')` runs.
   2. The new row's `TextField` is focused.
   3. User renames it to "Snacks" and unfocuses; persistence
      happens via `renameFoodGroup`.
 - Expected outcome: A new group "Snacks" is persisted; the
-  custom-food form's category dropdown includes it.
+  custom-food form's Group dropdown includes it.
 - Edge case of: none
 
-#### S-104: Delete a non-empty category (reassign)
+#### S-104: Delete a non-empty Group (reassign)
 
 - Trigger: User taps the trash icon next to "Proteins".
 - Precondition: "Proteins" has 3 library foods; "Vegetables" is
   empty; "Snacks" is also active.
 - Flow:
-  1. Confirmation dialog appears: "Delete category 'Proteins'?
+  1. Confirmation dialog appears: "Delete Group 'Proteins'?
      Move 3 foods to: [dropdown: Ungrouped / Snacks]"
      (default: "Ungrouped").
   2. User picks "Snacks" and confirms.
@@ -238,7 +238,7 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
   count.
 - Edge case of: none
 
-#### S-105: Delete an empty category (no confirm)
+#### S-105: Delete an empty Group (no confirm)
 
 - Trigger: User taps the trash icon next to "Vegetables".
 - Precondition: "Vegetables" has 0 library foods.
@@ -332,10 +332,10 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
 
 #### R-2
 - `AddFoodScreen`'s `TabController` length becomes 3; new tab
-  `Categories` is added.
-- New widget `CategoriesTab` in `add_food_screen.dart` renders
-  the categories list.
-- New private widget `_CategoryRow`:
+  `Groups` is added.
+- New widget `GroupsTab` in `add_food_screen.dart` renders
+  the Groups list.
+- New private widget `_GroupRow`:
   - `TextField` (controller) for the group name; on
     `onSubmitted` / `onEditingComplete` calls
     `foodLibraryState.renameFoodGroup`.
@@ -345,8 +345,8 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
     `deleteFoodGroupReassigningFoods`.
   - For the "Ungrouped" synthetic row, render a `Text` count
     and no edit / delete controls.
-- `+ New Category` button at the bottom of the list:
-  - Calls `foodLibraryState.createFoodGroup('New Category')`
+- `+ New Group` button at the bottom of the list:
+  - Calls `foodLibraryState.createFoodGroup('New Group')`
     with a stable default name; focuses the new row's
     `TextField`.
 
@@ -365,7 +365,7 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
    `searchCatalogFoods`.
 3. Extend `NutritionState.rolloverToDate` to also clear
    `_consumedToday`.
-4. Wire the Categories tab + `_CategoryRow` in
+4. Wire the Groups tab + `_GroupRow` in
    `add_food_screen.dart`; update the `TabController` length to 3.
 5. Add the search `TextField` to the Library tab.
 6. Update seed data / docs as needed.
@@ -383,7 +383,7 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
 ### R-2 (STANDARD)
 
 - `test/food_library_test.dart`, new group
-  `Food groups (categories tab)`:
+  `Food groups (Groups tab)`:
   - `renameFoodGroup persists the rename and notifies listeners`.
   - `deleteFoodGroupReassigningFoods moves foods to Ungrouped
     and archives the group`.
@@ -404,15 +404,15 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
 - [lib/data/repositories/hive_workout_repository.dart](lib/data/repositories/hive_workout_repository.dart) — implement `reassignFoodsToGroup`.
 - [lib/state/food_library_state.dart](lib/state/food_library_state.dart) — add `renameFoodGroup`, `deleteFoodGroupReassigningFoods`, `searchCatalogFoods`.
 - [lib/state/nutrition_state.dart](lib/state/nutrition_state.dart) — extend `rolloverToDate` to also clear `consumedToday`.
-- [lib/features/nutrition/add_food_screen.dart](lib/features/nutrition/add_food_screen.dart) — add Categories tab + search field; update `TabController` length to 3.
+- [lib/features/nutrition/add_food_screen.dart](lib/features/nutrition/add_food_screen.dart) — add Groups tab + search field; update `TabController` length to 3.
 - [scripts/sqlite_schema.sql](scripts/sqlite_schema.sql) — note that `reassignFoodsToGroup` is a single `UPDATE` against the existing `app_food.group_id` column.
 - [test/food_library_test.dart](test/food_library_test.dart) — new test groups.
 - [test/nutrition_test.dart](test/nutrition_test.dart) — new day-isolation test group.
 - [.github/agents/docs/data_models.md](.github/agents/docs/data_models.md) — note no new models.
 - [.github/agents/docs/db_integration.md](.github/agents/docs/db_integration.md) — add the new repo method.
 - [.github/agents/docs/state_management.md](.github/agents/docs/state_management.md) — add the new state methods.
-- [.github/agents/docs/navigation_and_screens.md](.github/agents/docs/navigation_and_screens.md) — note the new Categories tab.
-- [.github/agents/docs/widget_catalog.md](.github/agents/docs/widget_catalog.md) — note the new `_CategoryRow` and search field.
+- [.github/agents/docs/navigation_and_screens.md](.github/agents/docs/navigation_and_screens.md) — note the new Groups tab.
+- [.github/agents/docs/widget_catalog.md](.github/agents/docs/widget_catalog.md) — note the new `_GroupRow` and search field.
 
 ## Progress
 
@@ -420,7 +420,7 @@ the same data layer (`FoodLibraryState`, `NutritionState`,
 - [x] Phase 1 — data layer (repo + state methods)
 - [x] Phase 2.0 — TDD red tests for R-1, R-2, R-3
 - [x] Phase 2.1 — R-1 implementation (TRIVIAL)
-- [x] Phase 2.2 — R-2 implementation (Categories tab)
+- [x] Phase 2.2 — R-2 implementation (Groups tab)
 - [x] Phase 2.3 — R-3 implementation (Catalog search)
 - [x] Phase 2.6 — `flutter test` green
 - [x] Phase 2.7 — doc hygiene
@@ -462,8 +462,8 @@ Review findings presented to the user. Plan is locked.
   Ungrouped, delete + reassign to a chosen group,
   `reassignFoodsToGroup` total count preserved, empty list no-op,
   unknown ids silently skipped. Plus 3 widget tests in
-  `test/nutrition_test.dart` — Categories tab renders the
-  groups + Ungrouped + button, "+ New Category" creates a row and
+  `test/nutrition_test.dart` — Groups tab renders the
+  groups + Ungrouped + button, "+ New Group" creates a row and
   the state gains a group, trash on a non-empty group shows the
   confirm dialog and reassigns to Ungrouped.
 - **R-3 tests** (3 state + 2 widget): `test/food_library_test.dart` —
@@ -472,9 +472,9 @@ Review findings presented to the user. Plan is locked.
   — search field is present on the Library tab, typing filters the
   catalog by name.
 - **Implementation**: 3-tab `AddFoodScreen` (Library / + New Item /
-  Categories), `_CategoryRow` with inline rename + trash,
-  `_UngroupedRow`, `_DeleteCategoryDialog` with destination dropdown,
-  `+ New Category` button. `_FromCatalogTab` converted to
+  Groups), `_GroupRow` with inline rename + trash,
+  `_UngroupedRow`, `_DeleteGroupDialog` with destination dropdown,
+  `+ New Group` button. `_FromCatalogTab` converted to
   `StatefulWidget` with a `TextField` for the search filter. The
   search filter is pure-local (no network), driven by
   `FoodLibraryState.searchCatalogFoods`. The dialog's cancel vs
@@ -489,7 +489,7 @@ Review findings presented to the user. Plan is locked.
   re-introduced as the full-cache getter (preserving the
   pre-existing `archiveFoodGroup` test contract); a new
   `activeFoodGroups` getter returns the filtered list. The
-  Categories tab and the custom-food form's category dropdown both
+  Groups tab and the custom-food form's Group dropdown both
   consume `activeFoodGroups`.
 - **Test status**: 1306 pass, 5 pre-existing skipped, 0 failures.
 - **Doc hygiene**:
@@ -499,9 +499,9 @@ Review findings presented to the user. Plan is locked.
     `activeFoodGroups` getter, `searchCatalogFoods`,
     `rolloverToDate` extension.
   - `navigation_and_screens.md` — `AddFoodScreen` now described as
-    a 3-tab flow with the new `Categories` tab and the search field.
-  - `widget_catalog.md` — `_CategoriesTab`, `_CategoryRow`,
-    `_UngroupedRow`, `_DeleteCategoryDialog` entries.
+    a 3-tab flow with the new `Groups` tab and the search field.
+  - `widget_catalog.md` — `_GroupsTab`, `_GroupRow`,
+    `_UngroupedRow`, `_DeleteGroupDialog` entries.
 
 Next: Phase 3 — code review (human checkpoint).
 

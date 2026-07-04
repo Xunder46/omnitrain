@@ -479,13 +479,13 @@ void main() {
     );
   });
 
-  // ─── Food groups (Categories tab) (R-2) ──────────────────────────────
-  // The Categories tab lets the user rename groups inline, delete
+  // ─── Food groups (Groups tab) (R-2) ──────────────────────────────
+  // The Groups tab lets the user rename groups inline, delete
   // groups (with food reassignment, never silent data loss), and
   // create new groups. These tests cover the state + repo surface
   // the tab uses.
 
-  group('Food groups (Categories tab)', () {
+  group('Food groups (Groups tab)', () {
     test(
       'renameFoodGroup persists the rename and notifies listeners',
       () async {

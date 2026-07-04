@@ -1126,7 +1126,7 @@ CREATE INDEX IF NOT EXISTS IX_nutrition_target_date ON app_nutrition_target(date
 --   reassignFoodsToGroup(foodIds, targetGroupId):
 --     UPDATE app_food SET group_id = ?, updated_at_ms = ?
 --       WHERE id IN (?, ?, ...) AND is_catalog = 0;
---     -- Used by the Categories tab when deleting a non-empty group.
+--     -- Used by the Groups tab when deleting a non-empty group.
 --     -- Foods are NEVER deleted by this method; their group_id is just
 --     -- updated. Passing targetGroupId = NULL moves them to "Ungrouped".
 --     -- Catalog foods (is_catalog = 1) are excluded by the WHERE clause.

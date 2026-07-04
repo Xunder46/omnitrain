@@ -23,6 +23,7 @@
 
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -70,6 +71,38 @@ Uint8List _smallValidJpeg() {
   ]);
 }
 
+/// A tiny non-uniform PNG (four differently-colored quadrants),
+/// encoded via `dart:ui`. Used by the off-center/zoomed crop test
+/// — a uniform-color fixture like [_smallValidJpeg] renders
+/// identically under any pan/zoom transform (translating or
+/// scaling a solid color still yields that same solid color), so
+/// it cannot prove the `InteractiveViewer`'s matrix actually
+/// changes the captured pixels. Must be awaited inside
+/// `tester.runAsync` — the `dart:ui` image pipeline needs real
+/// time to schedule, same as the capture path it is feeding.
+Future<Uint8List> _quadrantPatternImage() async {
+  const side = 8.0;
+  const half = side / 2;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawRect(
+      const Rect.fromLTWH(0, 0, half, half), Paint()..color = Colors.red);
+  canvas.drawRect(
+      const Rect.fromLTWH(half, 0, half, half), Paint()..color = Colors.blue);
+  canvas.drawRect(
+      const Rect.fromLTWH(0, half, half, half), Paint()..color = Colors.green);
+  canvas.drawRect(const Rect.fromLTWH(half, half, half, half),
+      Paint()..color = Colors.yellow);
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(side.toInt(), side.toInt());
+  try {
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  } finally {
+    image.dispose();
+  }
+}
+
 /// Helper that drives the picker → crop step → save flow against
 /// the live render pipeline (no synth fixtures). Pushes the
 /// AvatarCropSheet, taps Use Photo, lets the capture finish in
@@ -80,8 +113,9 @@ Future<String> _driveCaptureFlow({
   required WidgetTester tester,
   required TestImageStorage imageStorage,
   required ProfileState profileState,
+  Uint8List? imageBytes,
 }) async {
-  final bytes = _smallValidJpeg();
+  final bytes = imageBytes ?? _smallValidJpeg();
 
   late Uint8List? capturedBytes;
   await tester.pumpWidget(
@@ -253,6 +287,14 @@ void main() {
         final imageStorage = TestImageStorage.create();
         addTearDown(imageStorage.dispose);
 
+        // Non-uniform fixture: a plain color would look identical
+        // under any pan/zoom, which would make this test
+        // vacuously true. See `_quadrantPatternImage`.
+        late Uint8List patternBytes;
+        await tester.runAsync(() async {
+          patternBytes = await _quadrantPatternImage();
+        });
+
         // First capture: identity transformation.
         final imageStorageA = TestImageStorage.create();
         addTearDown(imageStorageA.dispose);
@@ -265,6 +307,7 @@ void main() {
           tester: tester,
           imageStorage: imageStorageA,
           profileState: stateA,
+          imageBytes: patternBytes,
         );
         final identityBytes = File(
           p.join(imageStorageA.service.managedDirectoryPath, identityBasename),
@@ -292,7 +335,7 @@ void main() {
                         MaterialPageRoute(
                           fullscreenDialog: true,
                           builder: (_) => AvatarCropSheet(
-                            imageBytes: _smallValidJpeg(),
+                            imageBytes: patternBytes,
                           ),
                         ),
                       );
@@ -358,7 +401,7 @@ void main() {
                                 MaterialPageRoute(
                                   fullscreenDialog: true,
                                   builder: (_) => AvatarCropSheet(
-                                    imageBytes: _smallValidJpeg(),
+                                    imageBytes: patternBytes,
                                   ),
                                 ),
                               ) ??

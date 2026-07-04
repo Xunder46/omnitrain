@@ -1094,9 +1094,20 @@ void main() {
         expect(data.nutritionTrend, hasLength(3));
 
         // Ascending: day 7 (oldest) at index 0, day 3 in the
-        // middle, day 0 (today) at index 2.
-        final dates = data.nutritionTrend.map((p) => p.date.day).toList();
-        expect(dates, [dates.toList()..sort()].first);
+        // middle, day 0 (today) at index 2. Compare actual
+        // `DateTime`s chronologically — comparing `date.day`
+        // (calendar day-of-month) directly is not a valid proxy
+        // for chronological order once the window crosses a
+        // month boundary (e.g. day 27 of one month is older than
+        // day 1 of the next, even though 27 > 1 numerically).
+        final dates = data.nutritionTrend.map((p) => p.date).toList();
+        for (var i = 0; i < dates.length - 1; i++) {
+          expect(
+            dates[i].isBefore(dates[i + 1]),
+            isTrue,
+            reason: 'nutritionTrend must be chronologically ascending',
+          );
+        }
 
         // Day 7 totals (single row, fractional grams → round-once).
         // This is the OLDEST point in the trend (ascending).
