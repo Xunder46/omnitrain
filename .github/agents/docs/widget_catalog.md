@@ -310,7 +310,7 @@ One-shot orientation sheet for the Daily Nutrition page. The page inverts the us
 2. **CHECK TO LOG, SET THE AMOUNT** — describes daily check-off logging and the per-food portion amount.
 3. **TODAY AND OVER TIME** — describes the rollup: calories vs target, protein/carb/fat split, water, sodium.
 
-The sheet does NOT cover target editing, category management, or water-stepper instructions — those are discoverable and out of scope.
+The sheet does NOT cover target editing, group management, or water-stepper instructions — those are discoverable and out of scope.
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -784,7 +784,7 @@ Drives three branches from `FoodLibraryState`:
 | State | Renders |
 |---|---|
 | `isLoadingGroups \|\| isLoadingFoods` | Centered `CircularProgressIndicator` |
-| `foodGroups.isEmpty && foods.isEmpty` | Centered muted "No foods in library" text |
+| `foods.isEmpty` | Centered muted "Your Foods I Eat list is empty. Tap the pencil to add foods." text |
 | Data | One header per sorted `FoodGroup` (alphabetical, case-insensitive) followed by its sorted foods, then a trailing "Ungrouped" section for any foods with `groupId == null` |
 
 | Prop | Type | Description |
@@ -1247,7 +1247,7 @@ value: `null` → create mode, non-null → edit mode.
 **Form fields (top to bottom)**:
 1. Image picker tile (`FoodFormImageTile`, key `food_form_image_tile`) — square 96×96 with × (clear) and edit (change) overlays; opens a Camera / Gallery bottom sheet on tap; web is a no-op with a snackbar.
 2. Name (`food_form_name`) — `TextFormField` with `TextCapitalization.words`.
-3. Category (`food_form_group`) — `DropdownButtonFormField<String?>` of the active groups + an "Ungrouped" `null` entry.
+3. Group (`food_form_group`) — `DropdownButtonFormField<String?>` of the active groups + an "Ungrouped" `null` entry.
 4. Unit type (`food_form_unit_type`) — `DropdownButtonFormField<FoodUnitType>` of `count` / `grams`. Swapping units pre-fills sensible defaults for the reference amount + label.
 5. Reference amount (`food_form_reference_amount`) + Reference label (`food_form_reference_label`).
 6. Macros (per the reference above) — `Protein (g)` (required), `Carbs (g)` (required), `Fiber (g)` (optional, blank = unset), `Fat (g)` (required), `Sodium (mg)` (optional, blank = unset). All accept **decimal** input (e.g. `0.5`, `1.25`) via the `^\d*\.?\d*$` regex filter, mirroring the reference-amount field. Macros are stored as `double` on `Food` / `FoodDraft` so fractional grams persist (S-001).
@@ -1306,21 +1306,21 @@ overlay tap.
 ### `_CategoriesTab` (private to `AddFoodScreen`)
 
 **File**: `lib/features/nutrition/add_food_screen.dart` (private
-`_CategoriesTab`, `_CategoryRow`, `_UngroupedRow`, `_DeleteCategoryDialog`)
+`_CategoriesTab`, `_GroupRow`, `_UngroupedRow`, `_DeleteGroupDialog`)
 
 The third tab of `AddFoodScreen`. Manages the food groups that
 organize the user's library. Layout (top to bottom):
 
-- A scrollable list of `_CategoryRow` widgets, one per active
+- A scrollable list of `_GroupRow` widgets, one per active
   `FoodGroup` (alphabetical, case-insensitive).
 - A trailing read-only `_UngroupedRow` (foods with `groupId == null`).
-- A "+ New Category" `OutlinedButton.icon` (key `new_category_button`)
-  that calls `FoodLibraryState.createFoodGroup('New Category')`.
+- A "+ New Group" `OutlinedButton.icon` (key `new_group_button`)
+  that calls `FoodLibraryState.createFoodGroup('New Group')`.
 
 The list rebuilds via `ListenableBuilder(listenable: foodLibraryState)`
 so add / rename / archive operations reflect immediately.
 
-### `_CategoryRow` (private to `_CategoriesTab`)
+### `_GroupRow` (private to `_CategoriesTab`)
 
 | Param | Type | Purpose |
 |---|---|---|
@@ -1330,10 +1330,10 @@ so add / rename / archive operations reflect immediately.
 | `onRename(String)` | `Future<void> Function(String)` | Calls `FoodLibraryState.renameFoodGroup(id, newName)` |
 | `onDelete()` | `Future<void> Function()` | Opens the confirm dialog (or silent-deletes when `foodCount == 0`) |
 
-The `TextField` is keyed `category_name_<group.id>` and commits the
+The `TextField` is keyed `group_name_<group.id>` and commits the
 rename on `onEditingComplete` (IME action / unfocus) and on
 `onSubmitted` (Enter). The trash `IconButton` is keyed
-`category_delete_<group.id>`. Both use `OmniTheme.colors` and
+`group_delete_<group.id>`. Both use `OmniTheme.colors` and
 `theme.colorScheme` — no hardcoded colors.
 
 ### `_UngroupedRow` (private to `_CategoriesTab`)
@@ -1343,15 +1343,15 @@ Renders an `Icons.label_off_outlined` icon, the label "Ungrouped"
 (italic, muted), and the food count. No `TextField`, no trash
 affordance — the row is purely informational.
 
-### `_DeleteCategoryDialog`
+### `_DeleteGroupDialog`
 
-Confirmation dialog for deleting a non-empty category. Title
-"Delete category?"; body shows the count of foods to be moved and a
-`DropdownButtonFormField` (key `delete_category_destination`) for
+Confirmation dialog for deleting a non-empty group. Title
+"Delete group?"; body shows the count of foods to be moved and a
+`DropdownButtonFormField` (key `delete_group_destination`) for
 the destination group. Options: "Ungrouped" (the default, value
 `null`) plus every other active group. Actions: `TextButton("Cancel")`
 returns the private `_cancelledSentinel`; `FilledButton("Delete")`
-(red `theme.colorScheme.error`, key `delete_category_confirm`)
+(red `theme.colorScheme.error`, key `delete_group_confirm`)
 returns the picked destination id (which may be `null` for
 Ungrouped). The caller uses the sentinel to distinguish cancel from
 "Ungrouped".

@@ -180,7 +180,7 @@ None. OmniTrain has no server backend.
    `test/screen_widget_test.dart` (lines 64–180, the `OmniBottomCTA`
    group, plus the `PeriodListScreen` and `DaySessionListScreen` CTA
    anchor tests) and `test/nutrition_test.dart` (the `NutritionTarget`,
-   `AddFoodScreen` My Foods, and `AddFoodScreen` Categories CTA anchor
+   `AddFoodScreen` My Foods, and `AddFoodScreen` Groups CTA anchor
    tests) so the assertion measures the inset from the centered column's
    edges, not the surface's. Wrap the `pumpWidget` body in a
    `MaterialApp.builder` that applies the same cap as production (a

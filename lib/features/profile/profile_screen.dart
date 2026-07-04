@@ -855,6 +855,7 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
+                    autofocus: true,
                     decoration: InputDecoration(
                       labelText: widget.definition.unitId == 'unit-kg'
                           ? 'Value (${UnitFormatter.weightLabel(widget.settingsState)})'
@@ -907,6 +908,7 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
               child: NumericFieldWithDoneBar(
                 controller: _feetController,
                 keyboardType: TextInputType.number,
+                autofocus: true,
                 decoration: const InputDecoration(labelText: 'Feet'),
               ),
             ),
@@ -1300,6 +1302,7 @@ class _HeightDialogState extends State<_HeightDialog> {
                       controller: _feetController,
                       focusNode: focusNode,
                       keyboardType: TextInputType.number,
+                      autofocus: true,
                       decoration: const InputDecoration(labelText: 'Feet'),
                     ),
                   ),

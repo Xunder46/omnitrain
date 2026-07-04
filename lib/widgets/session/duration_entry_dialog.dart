@@ -48,6 +48,7 @@ Future<int?> showDurationEntryDialog(
                   controller: hhCtrl,
                   keyboardType: TextInputType.number,
                   textAlign: TextAlign.center,
+                  autofocus: true,
                   decoration: const InputDecoration(
                     labelText: 'Hours',
                     suffixText: 'h',

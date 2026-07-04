@@ -244,7 +244,7 @@ class FoodLibraryState extends ChangeNotifier {
   /// id / color / createdAtMs / isArchived, updates only `name` and
   /// `updatedAtMs`, and notifies listeners.
   ///
-  /// Used by the Categories tab's inline `TextField`. No-ops on
+  /// Used by the Groups tab's inline `TextField`. No-ops on
   /// whitespace-only or empty names (returns without mutating).
   /// Throws if the group is not in the cache.
   Future<void> renameFoodGroup(String id, String newName) async {
@@ -1106,12 +1106,25 @@ class FoodLibraryState extends ChangeNotifier {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  /// Generate a deterministic ID for a new food group or food.
+  /// Monotonic counter backing [_generateId]. `DateTime.now()`
+  /// alone (even down to microseconds) is not a reliable
+  /// uniqueness source: two calls issued back-to-back — the norm
+  /// when awaiting an in-memory repository — can land on the same
+  /// millisecond *and* the same microsecond, producing duplicate
+  /// ids that silently collide as map keys (a later create
+  /// overwrites an earlier one instead of coexisting). A static,
+  /// ever-incrementing counter guarantees every id generated in
+  /// this isolate is unique regardless of clock resolution.
+  static int _idCounter = 0;
+
+  /// Generate a deterministic, collision-free ID for a new food
+  /// group or food.
   String _generateId(String prefix) {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final random = DateTime.now().microsecond;
-    return '$prefix-$timestamp-$random';
+    final counter = _idCounter++;
+    return '$prefix-$timestamp-$counter';
   }
+
 
   /// Known IDs of bundled catalog foods (from assets/data/food_catalog.json).
   /// These foods cannot be hard-deleted - only removed from user's library.

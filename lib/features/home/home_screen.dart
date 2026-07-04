@@ -331,6 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         centerTitle: false,
         backgroundColor: Colors.transparent,
         elevation: 0,
+        toolbarHeight: 60,
       ),
       body: Stack(
         children: [

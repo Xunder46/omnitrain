@@ -891,17 +891,72 @@ void main() {
     });
   });
 
-  // S-002: Empty library. Drives a fresh FoodLibraryState against an
-  // empty repository and asserts the muted empty line renders.
+  // S-002: Empty library. The empty state now appears whenever foods.isEmpty,
+  // independent of group count. A fresh install has 9 default groups + 0
+  // foods, so the empty state is the normal UX for new users.
   group('FoodLibraryBrowse – empty', () {
     testWidgets(
-      'shows muted "No foods in library" line when library is empty',
+      'shows muted empty line when foods list is empty (with default groups present)',
       (tester) async {
         final repo = await _freshRepo();
         final primer = await buildNutritionPrimerState(repo);
-        // MockWorkoutRepository now seeds 9 default food groups on
-        // initialize. Archive them so the empty-library state is real
-        // (groups.isEmpty && foods.isEmpty) and the muted line renders.
+        // DO NOT archive groups. Default groups are present; foods list is
+        // empty. This is the real new-user state and should show the empty-state
+        // message. The presence of groups must have ZERO effect on empty state
+        // visibility.
+
+        final nutritionState = NutritionState(repo);
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadFoodGroups();
+        await foodLibraryState.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: NutritionScreen(
+              nutritionState: nutritionState,
+              foodLibraryState: foodLibraryState,
+              nutritionPrimerState: primer,),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // New empty-state message: tells user Foods I Eat list is empty
+        // and points to the pencil control
+        expect(
+          find.textContaining('Foods I Eat list is empty'),
+          findsOneWidget,
+          reason: 'Should show empty state with default groups present',
+        );
+        expect(
+          find.textContaining('pencil'),
+          findsOneWidget,
+          reason: 'Empty state should point to pencil control',
+        );
+        // No food-row text is rendered
+        expect(find.text('Ungrouped'), findsNothing);
+        // No group headers should render when foods is empty
+        expect(
+          find.text('Browse Proteins'),
+          findsNothing,
+          reason: 'Group headers should not appear when foods list is empty',
+        );
+        // Display-only: still no controls
+        expect(find.byType(FloatingActionButton), findsNothing);
+        // Regression: old misleading message must not appear
+        expect(
+          find.text('No foods in library'),
+          findsNothing,
+          reason: 'Old misleading message should not appear',
+        );
+      },
+    );
+
+    testWidgets(
+      'empty state appears with zero groups and zero foods',
+      (tester) async {
+        final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
+        // Archive all default groups
         for (final g in await repo.getFoodGroups()) {
           await repo.archiveFoodGroup(g.id);
         }
@@ -921,14 +976,231 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('No foods in library'), findsOneWidget);
-        // No food-row text is rendered (any seeded/grouped name would be).
-        // We can't enumerate every possible name, so we assert none of the
-        // common "No foods" neighbor strings appear, and no FoodGroup header
-        // strings are present.
+        // Empty state should still appear even with zero groups
+        expect(
+          find.textContaining('Foods I Eat list is empty'),
+          findsOneWidget,
+          reason: 'Empty state should appear with zero groups',
+        );
         expect(find.text('Ungrouped'), findsNothing);
-        // Display-only: still no controls.
-        expect(find.byType(FloatingActionButton), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'empty state disappears and food renders when one food is added',
+      (tester) async {
+        final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
+        const now = 1700000000000;
+
+        // Create a food group and add one food
+        await repo.createFoodGroup(
+          const FoodGroup(
+            id: 'g-test',
+            name: 'Test Group',
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+        await repo.createFood(
+          const Food(
+            id: 'f-test',
+            name: 'Test Food',
+            unitType: FoodUnitType.grams,
+            groupId: 'g-test',
+            referenceAmount: 100.0,
+            referenceLabel: 'g',
+            protein: 10,
+            carbs: 10,
+            fat: 5,
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+
+        final nutritionState = NutritionState(repo);
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadFoodGroups();
+        await foodLibraryState.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: NutritionScreen(
+              nutritionState: nutritionState,
+              foodLibraryState: foodLibraryState,
+              nutritionPrimerState: primer,),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Empty state should NOT appear when foods is populated
+        expect(
+          find.textContaining('Foods I Eat list is empty'),
+          findsNothing,
+          reason: 'Empty state should disappear when food exists',
+        );
+        // Food row should render
+        expect(find.text('Test Food'), findsOneWidget);
+        // Group header should render
+        expect(find.text('Test Group'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'empty state reappears when last food is removed',
+      (tester) async {
+        final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
+        const now = 1700000000000;
+
+        // Create a food group and one food
+        await repo.createFoodGroup(
+          const FoodGroup(
+            id: 'g-test',
+            name: 'Test Group',
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+        const testFood = Food(
+          id: 'f-test',
+          name: 'Test Food',
+          unitType: FoodUnitType.grams,
+          groupId: 'g-test',
+          referenceAmount: 100.0,
+          referenceLabel: 'g',
+          protein: 10,
+          carbs: 10,
+          fat: 5,
+          createdAtMs: now,
+          updatedAtMs: now,
+        );
+        await repo.createFood(testFood);
+
+        final nutritionState = NutritionState(repo);
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadFoodGroups();
+        await foodLibraryState.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: NutritionScreen(
+              nutritionState: nutritionState,
+              foodLibraryState: foodLibraryState,
+              nutritionPrimerState: primer,),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Food is visible
+        expect(find.text('Test Food'), findsOneWidget);
+
+        // Remove the food
+        await repo.removeFood(testFood.id);
+        await foodLibraryState.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: NutritionScreen(
+              nutritionState: nutritionState,
+              foodLibraryState: foodLibraryState,
+              nutritionPrimerState: primer,),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Empty state should reappear
+        expect(
+          find.textContaining('Foods I Eat list is empty'),
+          findsOneWidget,
+          reason: 'Empty state should reappear when last food is removed',
+        );
+        // Food should be gone
+        expect(find.text('Test Food'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'empty state visible regardless of group count variation',
+      (tester) async {
+        final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
+        const now = 1700000000000;
+
+        // Create several custom groups (in addition to 9 defaults)
+        await repo.createFoodGroup(
+          const FoodGroup(
+            id: 'g-custom-1',
+            name: 'Custom 1',
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+        await repo.createFoodGroup(
+          const FoodGroup(
+            id: 'g-custom-2',
+            name: 'Custom 2',
+            createdAtMs: now,
+            updatedAtMs: now,
+          ),
+        );
+        // Keep foods list empty throughout
+
+        final nutritionState = NutritionState(repo);
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadFoodGroups();
+        await foodLibraryState.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: NutritionScreen(
+              nutritionState: nutritionState,
+              foodLibraryState: foodLibraryState,
+              nutritionPrimerState: primer,),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Empty state should appear with many groups and empty foods
+        expect(
+          find.textContaining('Foods I Eat list is empty'),
+          findsOneWidget,
+          reason: 'Empty state should appear with many groups but zero foods',
+        );
+        // No group headers should render
+        expect(find.text('Browse Proteins'), findsNothing);
+        expect(find.text('Custom 1'), findsNothing);
+        expect(find.text('Custom 2'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'regression: "No foods in library" string does not appear',
+      (tester) async {
+        final repo = await _freshRepo();
+        final primer = await buildNutritionPrimerState(repo);
+
+        final nutritionState = NutritionState(repo);
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadFoodGroups();
+        await foodLibraryState.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: NutritionScreen(
+              nutritionState: nutritionState,
+              foodLibraryState: foodLibraryState,
+              nutritionPrimerState: primer,),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Old string must not appear anywhere
+        expect(
+          find.text('No foods in library'),
+          findsNothing,
+          reason: 'The old "No foods in library" message should be completely removed',
+        );
       },
     );
   });
@@ -2747,15 +3019,15 @@ void main() {
     });
   });
 
-  // ─── Categories tab (R-2) ──────────────────────────────────────────
-  // The Categories tab is reached via the third tab of the
+  // ─── Groups tab (R-2) ──────────────────────────────────────────
+  // The Groups tab is reached via the third tab of the
   // AddFoodScreen. Verifies the tab renders the active groups, an
-  // Ungrouped row, and a "+ New Category" affordance.
+  // Ungrouped row, and a "+ New Group" affordance.
 
-  group('AddFoodScreen — Categories tab', () {
-    Future<void> switchToCategoriesTab(WidgetTester tester) async {
-      // The third tab is "Categories".
-      await tester.tap(find.text('Categories'));
+  group('AddFoodScreen — Groups tab', () {
+    Future<void> switchToGroupsTab(WidgetTester tester) async {
+      // The third tab is "Groups".
+      await tester.tap(find.text('Groups'));
       await tester.pumpAndSettle();
     }
 
@@ -2795,18 +3067,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await switchToCategoriesTab(tester);
+      await switchToGroupsTab(tester);
 
       // Both groups have editable name fields.
-      expect(find.byKey(Key('category_name_$proteinsId')), findsOneWidget);
-      expect(find.byKey(Key('category_name_$vegetablesId')), findsOneWidget);
+      expect(find.byKey(Key('group_name_$proteinsId')), findsOneWidget);
+      expect(find.byKey(Key('group_name_$vegetablesId')), findsOneWidget);
       // Ungrouped row visible.
       expect(find.text('Ungrouped'), findsOneWidget);
-      // + New Category button visible.
-      expect(find.byKey(const Key('new_category_button')), findsOneWidget);
+      // + New Group button visible.
+      expect(find.byKey(const Key('new_group_button')), findsOneWidget);
     });
 
-    testWidgets('+ New Category adds a row and persists the new group', (
+    testWidgets('+ New Group adds a row and persists the new group', (
       tester,
     ) async {
       final repo = await _freshRepo();
@@ -2822,22 +3094,22 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await switchToCategoriesTab(tester);
+      await switchToGroupsTab(tester);
 
-      // Initially no category rows.
-      final beforeCategoryRows = find.byType(TextField).evaluate().length;
+      // Initially no group rows.
+      final beforeGroupRows = find.byType(TextField).evaluate().length;
 
-      // Tap the new category button.
-      await tester.tap(find.byKey(const Key('new_category_button')));
+      // Tap the new group button.
+      await tester.tap(find.byKey(const Key('new_group_button')));
       await tester.pumpAndSettle();
 
       // A new row was added (one more TextField).
-      final afterCategoryRows = find.byType(TextField).evaluate().length;
-      expect(afterCategoryRows, beforeCategoryRows + 1);
-      expect(afterCategoryRows, beforeCategoryRows + 1);
+      final afterGroupRows = find.byType(TextField).evaluate().length;
+      expect(afterGroupRows, beforeGroupRows + 1);
+      expect(afterGroupRows, beforeGroupRows + 1);
 
       // The new group is persisted in the state.
-      expect(foodLib.foodGroups.any((g) => g.name == 'New Category'), isTrue);
+      expect(foodLib.foodGroups.any((g) => g.name == 'New Group'), isTrue);
     });
 
     testWidgets('trash icon on a non-empty group shows the confirm dialog', (
@@ -2874,21 +3146,21 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await switchToCategoriesTab(tester);
+      await switchToGroupsTab(tester);
 
-      await tester.tap(find.byKey(Key('category_delete_$groupId')));
+      await tester.tap(find.byKey(Key('group_delete_$groupId')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Delete category?'), findsOneWidget);
+      expect(find.text('Delete group?'), findsOneWidget);
       // The dropdown default is "Ungrouped" (null value).
       expect(
-        find.byKey(const Key('delete_category_destination')),
+        find.byKey(const Key('delete_group_destination')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('delete_category_confirm')), findsOneWidget);
+      expect(find.byKey(const Key('delete_group_confirm')), findsOneWidget);
 
       // Confirm with the default (Ungrouped).
-      await tester.tap(find.byKey(const Key('delete_category_confirm')));
+      await tester.tap(find.byKey(const Key('delete_group_confirm')));
       // The async chain runs through the state method which awaits
       // several repository writes. pumpAndSettle alone is sometimes
       // not enough; pump the timer a few times to drain.
@@ -2909,9 +3181,9 @@ void main() {
   // AddFoodScreen — shared bottom CTA across tabs (S-001, S-002, S-003)
   // ═══════════════════════════════════════════════════════════════════════
   //
-  // Both the **My Foods** and **Categories** tabs of `AddFoodScreen`
+  // Both the **My Foods** and **Groups** tabs of `AddFoodScreen`
   // (the "Manage Food Library" screen) expose a primary bottom
-  // action — "+ New Food" and "+ New Category" respectively. Per
+  // action — "+ New Food" and "+ New Group" respectively. Per
   // the shared-CTA contract, both must route through
   // `Scaffold.bottomNavigationBar: OmniBottomCTA` so the buttons
   // sit at the same width, height, and vertical anchor as every
@@ -3005,7 +3277,7 @@ void main() {
     );
 
     testWidgets(
-      'anchors the Categories tab\'s primary bottom CTA at the shared width and vertical anchor (S-002)',
+      'anchors the Groups tab\'s primary bottom CTA at the shared width and vertical anchor (S-002)',
       (tester) async {
         // Fixed surface so the test can assert exact pixel math.
         const surface = Size(400, 800);
@@ -3031,8 +3303,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // Switch to the "Categories" tab.
-        await tester.tap(find.text('Categories'));
+        // Switch to the "Groups" tab.
+        await tester.tap(find.text('Groups'));
         await tester.pumpAndSettle();
 
         // The host's Scaffold has a non-null bottomNavigationBar
@@ -3042,11 +3314,11 @@ void main() {
         expect(
           scaffold.bottomNavigationBar,
           isNotNull,
-          reason: 'Categories tab must have a primary bottom CTA on the host '
+          reason: 'Groups tab must have a primary bottom CTA on the host '
               'Scaffold.bottomNavigationBar',
         );
 
-        // The Categories CTA is an OmniBottomCTA. We look for it as
+        // The Groups CTA is an OmniBottomCTA. We look for it as
         // a descendant of the bottomNavigationBar slot because the
         // CTA is wrapped in an AnimatedBuilder for tab transitions.
         final ctaFinder = find.descendant(
@@ -3055,10 +3327,10 @@ void main() {
         );
         expect(ctaFinder, findsOneWidget);
 
-        // The `new_category_button` key is preserved on the rendered
+        // The `new_group_button` key is preserved on the rendered
         // FilledButton so the existing test contract continues to work.
-        final newCategoryKey = find.byKey(const Key('new_category_button'));
-        expect(newCategoryKey, findsOneWidget);
+        final newGroupKey = find.byKey(const Key('new_group_button'));
+        expect(newGroupKey, findsOneWidget);
 
         // The CTA sits at the shared width and vertical anchor,
         // measured from the **centered content column's** edges
@@ -3120,10 +3392,10 @@ void main() {
           ),
           findsNothing,
         );
-        // The "+ New Food" / "+ New Category" labels are absent on
+        // The "+ New Food" / "+ New Group" labels are absent on
         // the Library tab.
         expect(find.text('+ New Food'), findsNothing);
-        expect(find.text('+ New Category'), findsNothing);
+        expect(find.text('+ New Group'), findsNothing);
       },
     );
   });

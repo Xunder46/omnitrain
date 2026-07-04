@@ -12,8 +12,8 @@ render their own bottom buttons inline**, bypassing the shared
   safe-area-aware on iOS (no `SafeArea` wrapper), and not at the
   same vertical anchor as every other primary bottom CTA in the
   app.
-* **Categories tab** — an `OutlinedButton.icon` for `+ New
-  Category` at the bottom of the tab's `Column`. Uses an
+* **Groups tab** — an `OutlinedButton.icon` for `+ New
+  Group` at the bottom of the tab's `Column`. Uses an
   *outlined* style (different from the rest of the app's primary
   bottom CTAs which are *filled*), and is positioned in the body
   rather than the `Scaffold.bottomNavigationBar` slot.
@@ -34,19 +34,19 @@ unchanged.
   - **Library** tab: no bottom CTA (browse-only).
   - **My Foods** tab: `OmniBottomCTA(label: 'New Food', ...)`
     (the existing `_AddNewFoodButton` label).
-  - **Categories** tab: `OmniBottomCTA(label: '+ New Category', ...)`
+  - **Groups** tab: `OmniBottomCTA(label: '+ New Group', ...)`
     (the existing `OutlinedButton.icon` label).
 - The `_AddNewFoodButton` widget and the inline `OutlinedButton.icon`
   in the two tabs are removed. The tab bodies' `ListView`s grow
   a bottom padding of `OmniTheme.formBottomCTAClearance` so the
   last row is never hidden behind the CTA.
-- The `Key('new_category_button')` is preserved on the
-  Categories tab's bottom CTA (forwards via the new
+- The `Key('new_group_button')` is preserved on the
+  Groups tab's bottom CTA (forwards via the new
   `OmniBottomCTA.buttonKey` prop) so the existing test contract
   continues to work.
-- The text-tap affordance for the "New Food" / "+ New Category"
+- The text-tap affordance for the "New Food" / "+ New Group"
   buttons in the existing tests continues to work — `find.text(
-  'New Food')` and `find.byKey(Key('new_category_button'))` both
+  'New Food')` and `find.byKey(Key('new_group_button'))` both
   hit the new `OmniBottomCTA`.
 - Empty-state `My Foods` tab: the centered `_AddNewFoodButton`
   inside the empty-state `Center + Column` is removed; the
@@ -60,25 +60,25 @@ unchanged.
 ## Acceptance Criteria
 - [ ] `AddFoodScreen` renders `OmniBottomCTA` on
       `Scaffold.bottomNavigationBar` for the My Foods and
-      Categories tabs, and no bottom CTA for the Library tab.
+      Groups tabs, and no bottom CTA for the Library tab.
 - [ ] The My Foods tab's bottom CTA has the same width, height,
       and vertical anchor as every other primary bottom CTA in
       the app (via `OmniTheme.bottomCTA*` tokens + `SafeArea`).
-- [ ] The Categories tab's bottom CTA has the same width,
-      height, and vertical anchor; the `Key('new_category_button')`
+- [ ] The Groups tab's bottom CTA has the same width,
+      height, and vertical anchor; the `Key('new_group_button')`
       is preserved on the rendered `FilledButton`.
-- [ ] The My Foods tab's `ListView` and the Categories tab's
+- [ ] The My Foods tab's `ListView` and the Groups tab's
       `ListView` both have a `bottomContentPadding` of
       `OmniTheme.formBottomCTAClearance` so the last row is never
       hidden behind the CTA.
 - [ ] The empty-state `My Foods` tab no longer renders an inline
       `_AddNewFoodButton` in its `Center + Column`. The empty
       state copy remains.
-- [ ] `find.text('New Food')` and `find.byKey(Key('new_category_button'))`
+- [ ] `find.text('New Food')` and `find.byKey(Key('new_group_button'))`
       continue to hit the bottom CTA in the existing tests.
 - [ ] New widget tests assert that `AddFoodScreen` exposes
       `OmniBottomCTA` on the `Scaffold.bottomNavigationBar` when
-      the My Foods and Categories tabs are active, at the shared
+      the My Foods and Groups tabs are active, at the shared
       width and vertical anchor.
 
 ## Scenarios
@@ -92,13 +92,13 @@ unchanged.
   vertical anchor. `find.text('New Food')` returns the CTA.
 - Edge case of: none
 
-### S-002: AddFoodScreen hosts the shared bottom CTA on the Categories tab
-- Trigger: open `AddFoodScreen`, switch to "Categories" tab
+### S-002: AddFoodScreen hosts the shared bottom CTA on the Groups tab
+- Trigger: open `AddFoodScreen`, switch to "Groups" tab
 - Precondition: food groups loaded
-- Flow: pumpWidget → switch to "Categories" tab → pumpAndSettle
+- Flow: pumpWidget → switch to "Groups" tab → pumpAndSettle
 - Expected outcome: `Scaffold.bottomNavigationBar` is
-  `OmniBottomCTA` with label "+ New Category" and the shared
-  width / vertical anchor. `find.byKey(Key('new_category_button'))`
+  `OmniBottomCTA` with label "+ New Group" and the shared
+  width / vertical anchor. `find.byKey(Key('new_group_button'))`
   returns the CTA.
 - Edge case of: none
 
@@ -131,9 +131,9 @@ File: `lib/features/nutrition/add_food_screen.dart`
     that calls `_MyFoodsTabState._openNewFoodForm(context)` (or
     the existing `_AddNewFoodButton._openNewFoodForm` method
     hoisted to the host).
-  - `Categories` tab → `OmniBottomCTA(label: '+ New Category',
-    buttonKey: const Key('new_category_button'), ...)` that
-    calls the existing `_CategoriesTabState._createCategory`
+  - `Groups` tab → `OmniBottomCTA(label: '+ New Group',
+    buttonKey: const Key('new_group_button'), ...)` that
+    calls the existing `_GroupsTabState._createGroup`
     (hoist the method to the host or expose it via a callback).
 - Add `Scaffold.bottomNavigationBar: <tab-aware CTA>` to the
   `_AddFoodScreenState.build` method.
@@ -146,7 +146,7 @@ File: `lib/features/nutrition/add_food_screen.dart`
   bare `ListView` whose bottom padding is
   `OmniTheme.formBottomCTAClearance` so the last row is never
   hidden behind the host's bottom CTA.
-- `_CategoriesTab`: remove the `SafeArea + Padding +
+- `_GroupsTab`: remove the `SafeArea + Padding +
   OutlinedButton.icon` footer. The `ListView`'s bottom padding
   is `OmniTheme.formBottomCTAClearance`.
 - Delete the now-unused `_AddNewFoodButton` class.
@@ -163,25 +163,25 @@ File: `.github/agents/docs/widget_catalog.md` and
 - Add a new test asserting `Scaffold.bottomNavigationBar` is
   `OmniBottomCTA` when the My Foods tab is active (S-001).
 - Add a new test asserting `Scaffold.bottomNavigationBar` is
-  `OmniBottomCTA` with `Key('new_category_button')` when the
-  Categories tab is active (S-002).
+  `OmniBottomCTA` with `Key('new_group_button')` when the
+  Groups tab is active (S-002).
 - Add a new test asserting `Scaffold.bottomNavigationBar` is
   `null` when the Library tab is active (S-003).
 - Existing tests that `find.text('New Food')` or `find.byKey(
-  Key('new_category_button'))` continue to work — the
+  Key('new_group_button'))` continue to work — the
   affordance moved, the surface key/label is preserved.
 
 ### Implementation Steps
 1. [ ] Add failing tests for the tab-aware bottom CTA
        (S-001, S-002, S-003).
-2. [ ] Hoist the new-food and new-category callbacks out of the
+2. [ ] Hoist the new-food and new-Group callbacks out of the
        tab widgets and into `_AddFoodScreenState` (or expose them
        via callbacks on the tab widgets).
 3. [ ] Add a tab-aware `bottomNavigationBar` to
        `_AddFoodScreenState`'s `Scaffold` and wire the existing
        labels and callbacks.
 4. [ ] Remove the inline buttons from `_MyFoodsTab` (both empty
-       and non-empty states) and `_CategoriesTab`. Apply
+       and non-empty states) and `_GroupsTab`. Apply
        `formBottomCTAClearance` to the relevant `ListView`s.
 5. [ ] Delete the now-unused `_AddNewFoodButton` class.
 6. [ ] Run `flutter test test/screen_widget_test.dart
@@ -204,7 +204,7 @@ Plan filed. Iteration 1 scope: 1 screen (`AddFoodScreen`) gains a
 tab-aware `Scaffold.bottomNavigationBar`; 2 inline buttons removed
 (`_AddNewFoodButton` and `OutlinedButton.icon`); 1 obsolete
 class deleted (`_AddNewFoodButton`); 1 obsolete method deleted
-(`_CategoriesTabState._createCategory`); 3 new widget tests added
+(`_GroupsTabState._createGroup`); 3 new widget tests added
 (S-001, S-002, S-003). Phase 1 skipped: this iteration is pure
 UI migration, no repository / state / model changes.
 
@@ -212,9 +212,9 @@ UI migration, no repository / state / model changes.
 Implementation done. `_AddFoodScreenState` now owns a tab-aware
 `Scaffold.bottomNavigationBar` (an `AnimatedBuilder` on
 `_tabController` that returns the right `OmniBottomCTA` per tab:
-`New Food` for the My Foods tab, `+ New Category` for the
-Categories tab, `SizedBox.shrink()` for the Library tab). The
-host's `_openNewFoodForm` and `_createCategory` methods replace
+`New Food` for the My Foods tab, `+ New Group` for the
+Groups tab, `SizedBox.shrink()` for the Library tab). The
+host's `_openNewFoodForm` and `_createGroup` methods replace
 the previous inline button handlers. The `_AddNewFoodButton`
 class and the inline `OutlinedButton.icon` are deleted. Both
 tab `ListView`s have a bottom padding of
@@ -224,8 +224,8 @@ shared CTA.
 Test coverage added:
 - S-001 — My Foods tab's bottom CTA at the shared width, height,
   and vertical anchor.
-- S-002 — Categories tab's bottom CTA at the shared width, height,
-  and vertical anchor; the `Key('new_category_button')` is
+- S-002 — Groups tab's bottom CTA at the shared width, height,
+  and vertical anchor; the `Key('new_group_button')` is
   preserved on the rendered FilledButton.
 - S-003 — Library tab has no `OmniBottomCTA` on the host's
   `bottomNavigationBar`.
@@ -244,5 +244,5 @@ Global conventions: PASS (5 rules), N/A (1 rule), FAIL 0.
 Architecture compliance: ✅ across all in-scope layers. Buttons
 rule: ✅ both migrated tabs now use the shared `OmniBottomCTA`.
 Dead code: `_AddNewFoodButton` class and
-`_CategoriesTabState._createCategory` method both removed. Test
+`_GroupsTabState._createGroup` method both removed. Test
 coverage: +3 new passing tests, 0 new failures.

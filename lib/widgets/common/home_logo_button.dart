@@ -136,7 +136,7 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
       ),
       padding: EdgeInsets.all(innerPadding),
       child: Padding(
-        padding: const EdgeInsets.only(top: 3.5, left: 0.3), // tweak: 1–4
+        padding: const EdgeInsets.only(right: 1), // tweak: 1–4
         child: Center(child: artwork),
       ),
     );
@@ -155,7 +155,7 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
     // exactly, so the AppBar toolbar height and the body-centered "TRAIN"
     // title do not shift.
     final padded = Padding(
-      padding: const EdgeInsets.fromLTRB(1, 4, 8, 4),
+      padding: const EdgeInsets.fromLTRB(1, 8, 8, 4),
       child: tile,
     );
 

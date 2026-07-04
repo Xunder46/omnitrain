@@ -14,7 +14,7 @@ import 'widgets/food_form.dart';
 import 'widgets/food_thumbnail.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 
-/// Sentinel used by [_DeleteCategoryDialog] to distinguish "user
+/// Sentinel used by [_DeleteGroupDialog] to distinguish "user
 /// tapped Cancel" from "user picked Ungrouped (which is a legitimate
 /// `null` destination)". The dialog returns this sentinel for cancel
 /// and the raw destination (which may itself be `null` for
@@ -41,7 +41,7 @@ const Object _cancelledSentinel = Object();
 /// arrow. The catalog itself is never modified.
 ///
 /// Tab 2: + New Item — form for a user-owned custom food (name,
-/// category, unit type, reference, macros). The custom food is added
+/// group, unit type, reference, macros). The custom food is added
 /// to the library only; the catalog is not modified. On save, the
 /// screen pops back to the nutrition page (one-shot form).
 ///
@@ -67,13 +67,13 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
-  /// Tracks the ID of the most recently created category.
-  /// This category will be shown at the end of the list (not sorted)
-  /// until the user navigates away or creates another category.
-  String? _newlyCreatedCategoryId;
+  /// Tracks the ID of the most recently created group.
+  /// This group will be shown at the end of the list (not sorted)
+  /// until the user navigates away or creates another group.
+  String? _newlyCreatedGroupId;
 
-  /// Category ID to focus (used for newly created category).
-  String? _focusCategoryId;
+  /// Group ID to focus (used for newly created group).
+  String? _focusGroupId;
 
   @override
   void initState() {
@@ -96,8 +96,8 @@ class _AddFoodScreenState extends State<AddFoodScreen>
 
   // ── Tab-aware primary bottom CTA ──────────────────────────────────────
   //
-  // The My Foods and Categories tabs each have a single primary
-  // bottom action (New Food / + New Category). Both are routed
+  // The My Foods and Groups tabs each have a single primary
+  // bottom action (New Food / + New Group). Both are routed
   // through the shared `OmniBottomCTA` on the host's
   // `Scaffold.bottomNavigationBar` (see
   // `.github/agents/plans/add-food-screen-bottom-cta-plan.md` and
@@ -114,7 +114,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   /// Index constants — must match the `TabBar` order above.
   static const int _libraryTabIndex = 0;
   static const int _myFoodsTabIndex = 1;
-  static const int _categoriesTabIndex = 2;
+  static const int _groupsTabIndex = 2;
 
   /// Pushes the full-screen New Food form (shared with the previous
   /// inline `_AddNewFoodButton._openNewFoodForm` method).
@@ -134,21 +134,21 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     );
   }
 
-  /// Creates a new category (shared with the previous inline
-  /// `_CategoriesTabState._createCategory` method).
-  /// Tracks the new category ID so it appears at the end of the list.
-  Future<void> _createCategory() async {
+  /// Creates a new group (shared with the previous inline
+  /// `_GroupsTabState._createGroup` method).
+  /// Tracks the new group ID so it appears at the end of the list.
+  Future<void> _createGroup() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final newId = await widget.foodLibraryState.createFoodGroup('New Category');
-      // Track this as the newly created category and focus it
+      final newId = await widget.foodLibraryState.createFoodGroup('New Group');
+      // Track this as the newly created group and focus it
       setState(() {
-        _newlyCreatedCategoryId = newId;
-        _focusCategoryId = newId;
+        _newlyCreatedGroupId = newId;
+        _focusGroupId = newId;
       });
     } catch (_) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not create category')),
+        const SnackBar(content: Text('Could not create group')),
       );
     }
   }
@@ -165,11 +165,11 @@ class _AddFoodScreenState extends State<AddFoodScreen>
               label: '+ New Food',
               onPressed: () => _openNewFoodForm(context),
             );
-          case _categoriesTabIndex:
+          case _groupsTabIndex:
             return OmniBottomCTA(
-              label: '+ New Category',
-              buttonKey: const Key('new_category_button'),
-              onPressed: _createCategory,
+              label: '+ New Group',
+              buttonKey: const Key('new_group_button'),
+              onPressed: _createGroup,
             );
           case _libraryTabIndex:
           default:
@@ -189,7 +189,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
           tabs: const [
             Tab(text: 'Library'),
             Tab(text: 'My Foods'),
-            Tab(text: 'Categories'),
+            Tab(text: 'Groups'),
           ],
         ),
       ),
@@ -204,10 +204,10 @@ class _AddFoodScreenState extends State<AddFoodScreen>
             foodLibraryState: widget.foodLibraryState,
             nutritionState: widget.nutritionState,
           ),
-          _CategoriesTab(
+          _GroupsTab(
             foodLibraryState: widget.foodLibraryState,
-            newlyCreatedCategoryId: _newlyCreatedCategoryId,
-            focusCategoryId: _focusCategoryId,
+            newlyCreatedGroupId: _newlyCreatedGroupId,
+            focusGroupId: _focusGroupId,
           ),
         ],
       ),
@@ -1261,7 +1261,7 @@ class _CatalogRowState extends State<_CatalogRow> {
 /// user creates goes into the catalog — the user can then add it
 /// to their personal library via the **Add** button on the row in
 /// the **Library** tab. Delegates to the shared [FoodForm] widget
-// ─── Tab 3: Categories ───────────────────────────────────────────────
+// ─── Tab 3: Groups ───────────────────────────────────────────────
 
 /// Manage the food groups that organize the library.
 ///
@@ -1273,27 +1273,27 @@ class _CatalogRowState extends State<_CatalogRow> {
 /// confirm the group's foods are reassigned and the group is
 /// archived. Deleting an empty group is silent (no confirmation).
 ///
-/// A "+ New Category" button at the bottom of the list creates a new
+/// A "+ New Group" button at the bottom of the list creates a new
 /// group with a default name and focuses the new row's `TextField`.
 ///
 /// The synthetic "Ungrouped" row at the bottom of the list is
 /// informational (food count) and cannot be renamed or deleted.
-class _CategoriesTab extends StatefulWidget {
+class _GroupsTab extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
-  final String? newlyCreatedCategoryId;
-  final String? focusCategoryId;
+  final String? newlyCreatedGroupId;
+  final String? focusGroupId;
 
-  const _CategoriesTab({
+  const _GroupsTab({
     required this.foodLibraryState,
-    this.newlyCreatedCategoryId,
-    this.focusCategoryId,
+    this.newlyCreatedGroupId,
+    this.focusGroupId,
   });
 
   @override
-  State<_CategoriesTab> createState() => _CategoriesTabState();
+  State<_GroupsTab> createState() => _GroupsTabState();
 }
 
-class _CategoriesTabState extends State<_CategoriesTab> {
+class _GroupsTabState extends State<_GroupsTab> {
   /// Tracks the `TextEditingController` for each group's name field,
   /// keyed by group id. The list rebuilds under a `ListenableBuilder`
   /// on every notify, so controllers are created lazily and disposed
@@ -1334,19 +1334,19 @@ class _CategoriesTabState extends State<_CategoriesTab> {
   }
 
   @override
-  void didUpdateWidget(covariant _CategoriesTab oldWidget) {
+  void didUpdateWidget(covariant _GroupsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // If focusCategoryId changed, request focus after frame renders
-    if (widget.focusCategoryId != null &&
-        widget.focusCategoryId != oldWidget.focusCategoryId) {
+    // If focusGroupId changed, request focus after frame renders
+    if (widget.focusGroupId != null &&
+        widget.focusGroupId != oldWidget.focusGroupId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _focusNodes[widget.focusCategoryId]?.requestFocus();
+        _focusNodes[widget.focusGroupId]?.requestFocus();
       });
     }
   }
 
-  /// Saves the category name on blur (tap away) or Enter key press.
-  Future<void> _saveCategoryName(String groupId, String newName) async {
+  /// Saves the group name on blur (tap away) or Enter key press.
+  Future<void> _saveGroupName(String groupId, String newName) async {
     await widget.foodLibraryState.renameFoodGroup(groupId, newName);
   }
 
@@ -1379,7 +1379,7 @@ class _CategoriesTabState extends State<_CategoriesTab> {
 
         return ListView(
           // Bottom padding clears the host's shared bottom CTA
-          // (+ New Category).
+          // (+ New Group).
           padding: const EdgeInsets.fromLTRB(
             0,
             8,
@@ -1388,12 +1388,12 @@ class _CategoriesTabState extends State<_CategoriesTab> {
           ),
           children: [
             for (final g in groups)
-              _CategoryRow(
+              _GroupRow(
                 group: g,
                 controller: _controllerFor(g.id, g.name),
                 focusNode: _focusNodeFor(g.id),
                 foodCount: foodsByGroup[g.id] ?? 0,
-                onNameSubmitted: (newName) => _saveCategoryName(g.id, newName),
+                onNameSubmitted: (newName) => _saveGroupName(g.id, newName),
                 onDelete: () => _confirmAndDeleteGroup(
                   context,
                   g,
@@ -1437,7 +1437,7 @@ class _CategoriesTabState extends State<_CategoriesTab> {
     // "Ungrouped"; a non-null id means "move to that group".
     final picked = await showDialog<String?>(
       context: context,
-      builder: (ctx) => _DeleteCategoryDialog(
+      builder: (ctx) => _DeleteGroupDialog(
         groupName: group.name,
         foodCount: foodCount,
         otherGroups: [
@@ -1461,13 +1461,13 @@ class _CategoriesTabState extends State<_CategoriesTab> {
     }
   }
 
-  /// Sorts groups alphabetically, but keeps the newly created category
+  /// Sorts groups alphabetically, but keeps the newly created group
   /// at the end of the list (not sorted) so user can find it easily.
   List<FoodGroup> _sorted(List<FoodGroup> groups) {
     final copy = [...groups];
 
-    // Separate the newly created category from the rest
-    final newlyCreatedId = widget.newlyCreatedCategoryId;
+    // Separate the newly created group from the rest
+    final newlyCreatedId = widget.newlyCreatedGroupId;
     final newlyCreated = newlyCreatedId != null
         ? copy.where((g) => g.id == newlyCreatedId).toList()
         : <FoodGroup>[];
@@ -1483,9 +1483,9 @@ class _CategoriesTabState extends State<_CategoriesTab> {
   }
 }
 
-/// A single category row: editable name on the left, trash icon on
+/// A single group row: editable name on the left, trash icon on
 /// the right. The TextField saves on blur (tap away) or Enter key.
-class _CategoryRow extends StatelessWidget {
+class _GroupRow extends StatelessWidget {
   final FoodGroup group;
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -1493,7 +1493,7 @@ class _CategoryRow extends StatelessWidget {
   final Future<void> Function(String newName) onNameSubmitted;
   final Future<void> Function() onDelete;
 
-  const _CategoryRow({
+  const _GroupRow({
     required this.group,
     required this.controller,
     required this.focusNode,
@@ -1511,13 +1511,13 @@ class _CategoryRow extends StatelessWidget {
         children: [
           Expanded(
             child: TextField(
-              key: Key('category_name_${group.id}'),
+              key: Key('group_name_${group.id}'),
               controller: controller,
               focusNode: focusNode,
               decoration: InputDecoration(
                 isDense: true,
                 border: const OutlineInputBorder(),
-                hintText: 'Category name',
+                hintText: 'Group name',
                 suffixText: foodCount == 0
                     ? 'empty'
                     : '$foodCount food${foodCount == 1 ? '' : 's'}',
@@ -1536,9 +1536,9 @@ class _CategoryRow extends StatelessWidget {
             width: OmniTheme.buttonIconSize / 2,
             height: OmniTheme.buttonIconSize / 2,
             child: IconButton(
-              key: Key('category_delete_${group.id}'),
+              key: Key('group_delete_${group.id}'),
               icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete category',
+              tooltip: 'Delete group',
               onPressed: onDelete,
             ),
           ),
@@ -1548,7 +1548,7 @@ class _CategoryRow extends StatelessWidget {
   }
 }
 
-/// Read-only "Ungrouped" row at the bottom of the Categories tab.
+/// Read-only "Ungrouped" row at the bottom of the Groups tab.
 /// No edit / delete affordances — the row is purely informational.
 class _UngroupedRow extends StatelessWidget {
   final int foodCount;
@@ -1588,28 +1588,28 @@ class _UngroupedRow extends StatelessWidget {
   }
 }
 
-/// Confirmation dialog for deleting a non-empty category.
+/// Confirmation dialog for deleting a non-empty group.
 ///
 /// The destination dropdown defaults to "Ungrouped" (null). Returns
 /// the picked destination group id, or `null` for Ungrouped. The
 /// `null` return value from the dialog itself means the user
 /// cancelled.
-class _DeleteCategoryDialog extends StatefulWidget {
+class _DeleteGroupDialog extends StatefulWidget {
   final String groupName;
   final int foodCount;
   final List<FoodGroup> otherGroups;
 
-  const _DeleteCategoryDialog({
+  const _DeleteGroupDialog({
     required this.groupName,
     required this.foodCount,
     required this.otherGroups,
   });
 
   @override
-  State<_DeleteCategoryDialog> createState() => _DeleteCategoryDialogState();
+  State<_DeleteGroupDialog> createState() => _DeleteGroupDialogState();
 }
 
-class _DeleteCategoryDialogState extends State<_DeleteCategoryDialog> {
+class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
   /// Default: Ungrouped (null).
   String? _destination;
 
@@ -1617,7 +1617,7 @@ class _DeleteCategoryDialogState extends State<_DeleteCategoryDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      title: const Text('Delete category?'),
+      title: const Text('Delete group?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1637,7 +1637,7 @@ class _DeleteCategoryDialogState extends State<_DeleteCategoryDialog> {
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String?>(
-            key: const Key('delete_category_destination'),
+            key: const Key('delete_group_destination'),
             initialValue: _destination,
             isExpanded: true,
             decoration: const InputDecoration(
@@ -1665,7 +1665,7 @@ class _DeleteCategoryDialogState extends State<_DeleteCategoryDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          key: const Key('delete_category_confirm'),
+          key: const Key('delete_group_confirm'),
           onPressed: () => Navigator.of(context).pop(_destination),
           style: FilledButton.styleFrom(
             backgroundColor: Theme.of(context).colorScheme.error,

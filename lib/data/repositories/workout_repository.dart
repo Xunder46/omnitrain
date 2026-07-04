@@ -427,7 +427,7 @@ abstract class WorkoutRepository {
 
   /// Reassign a list of foods to a new group in a single transaction.
   ///
-  /// Used by the Categories tab when deleting a non-empty group:
+  /// Used by the Groups tab when deleting a non-empty group:
   /// the caller passes the source group's food ids and a destination
   /// group id (or `null` for "Ungrouped"). The repository updates
   /// each food's `groupId` in place; foods are never deleted by

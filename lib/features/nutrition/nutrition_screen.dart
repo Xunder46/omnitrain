@@ -277,12 +277,16 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
         final groups = _sortedGroups(foodLibraryState.foodGroups);
         final foods = foodLibraryState.foods;
 
-        if (groups.isEmpty && foods.isEmpty) {
+        // Empty state: show whenever the user's Foods I Eat list is empty,
+        // regardless of category count. The presence of 0, 9, or any number of
+        // default/custom categories has no effect on this condition.
+        if (foods.isEmpty) {
           return SizedBox(
             height: 48,
             child: Center(
               child: Text(
-                'No foods in library',
+                'Your Foods I Eat list is empty. Tap the pencil to add foods.',
+                textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: OmniTheme.colors.textMuted,
                 ),
@@ -294,7 +298,7 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
         // Bucket foods by FoodGroup id (D-1 / S-042). The category
         // label is the FoodGroup's name from the live cache; null
         // groupId maps to the synthetic "Ungrouped" section. The
-        // section header mirrors the Categories tab exactly — the
+        // section header mirrors the Groups tab exactly — the
         // rename propagates here on the next notifyListeners.
         final Map<String, List<Food>> byGroup = {};
         for (final f in foods) {

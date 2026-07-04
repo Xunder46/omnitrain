@@ -456,7 +456,7 @@ Legacy compatibility: `servingSize` and `servingUnit` are deprecated getters tha
 
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
 
-> **Note:** `copyWith()` uses a private sentinel for the nullable fields — `groupId`, `imagePath`, and `lastAmountConsumed` — so callers can clear them (`copyWith(groupId: null)` / `copyWith(imagePath: null)` / `copyWith(lastAmountConsumed: null)`) without losing the previous value. This is what the Categories tab's group-reassignment path relies on when it moves foods to "Ungrouped" (`groupId = null`), what the Edit Food screen relies on when the user clears the image tile (`imagePath = null`), and what `NutritionState` relies on when it never writes `null` to `lastAmountConsumed` (the field is only ever set to a positive `double`, never cleared). The file on disk is left intact in all cases — it is the user's responsibility.
+> **Note:** `copyWith()` uses a private sentinel for the nullable fields — `groupId`, `imagePath`, and `lastAmountConsumed` — so callers can clear them (`copyWith(groupId: null)` / `copyWith(imagePath: null)` / `copyWith(lastAmountConsumed: null)`) without losing the previous value. This is what the Groups tab's group-reassignment path relies on when it moves foods to "Ungrouped" (`groupId = null`), what the Edit Food screen relies on when the user clears the image tile (`imagePath = null`), and what `NutritionState` relies on when it never writes `null` to `lastAmountConsumed` (the field is only ever set to a positive `double`, never cleared). The file on disk is left intact in all cases — it is the user's responsibility.
 
 #### Catalog `category` → `groupId` resolution
 
