@@ -41,6 +41,13 @@ class NumericFieldWithDoneBar extends StatefulWidget {
   /// for any selection behavior on it.
   final bool selectAllOnFocus;
 
+  /// When true, the field requests focus as soon as it is built. Combined
+  /// with [selectAllOnFocus] (default true), this immediately highlights
+  /// the current value so the user can start typing without an extra tap
+  /// — the right behavior for fields inside a modal/dialog whose entire
+  /// purpose is editing this one value.
+  final bool autofocus;
+
   const NumericFieldWithDoneBar({
     super.key,
     this.controller,
@@ -58,6 +65,7 @@ class NumericFieldWithDoneBar extends StatefulWidget {
     this.enabled,
     this.textCapitalization = TextCapitalization.none,
     this.selectAllOnFocus = true,
+    this.autofocus = false,
   });
 
   @override
@@ -181,6 +189,7 @@ class _NumericFieldWithDoneBarState extends State<NumericFieldWithDoneBar> {
       keyboardType: widget.keyboardType,
       decoration: widget.decoration,
       textAlign: widget.textAlign,
+      autofocus: widget.autofocus,
       onChanged: widget.onChanged,
       onEditingComplete: widget.onEditingComplete,
       onSubmitted: widget.onSubmitted,

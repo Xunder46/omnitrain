@@ -384,6 +384,7 @@ class _MetricEditDialogState extends State<_MetricEditDialog> {
           labelText: widget.unitLabel,
         ),
         textAlign: TextAlign.center,
+        autofocus: true,
         onChanged: (_) {},
       ),
       actions: [
