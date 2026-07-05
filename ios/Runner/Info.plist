@@ -43,20 +43,19 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<!-- Location permissions for movement tracking during workouts -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Omnitrain uses your location to track your workout movements and provide accurate distance/route data during sessions.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Omnitrain uses your location to track your workout movements and provide accurate distance/route data during sessions.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Omnitrain uses the camera so you can set a profile photo.</string>
+	<string>OmniTrain uses your photo library so you can set a profile picture and add photos to your foods.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Omnitrain uses your photo library so you can choose a profile photo.</string>
+	<string>OmniTrain uses your photo library so you can set a profile picture and add photos to your foods.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Omnitrain may save profile photo edits to your photo library when supported.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is not used by this app.</string>
 	<key>NSUserNotificationUsageDescription</key>
-	<string>Rest timer pings notify you when it's time to start your next set.</string>
+	<string>Rest timer pings notify you when it&apos;s time to start your next set.</string>
 </dict>
 </plist>
