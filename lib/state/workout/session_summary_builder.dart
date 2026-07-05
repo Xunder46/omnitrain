@@ -2,6 +2,7 @@ import '../../core/constants/effort_defaults.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/constants/workout_constants.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/stats_progress_service.dart';
 import '../../core/utils/observation_grouper.dart';
 import '../../data/models/models.dart';
 import 'timer_manager.dart';
@@ -58,6 +59,7 @@ class SessionSummaryBuilder {
 
         int setsCompleted = 0;
         double? bestWeight;
+        double? bestE1RM;
         int? effortDurationMs;
         int effortRounds = 0;
 
@@ -74,6 +76,22 @@ class SessionSummaryBuilder {
               if (bestWeight == null || weight > bestWeight) {
                 bestWeight = weight;
               }
+            }
+
+            // Also track the highest Epley e1RM in this session's
+            // sets, computed with the same formula the in-workout
+            // toast and the Stats screen use. A rep-driven
+            // improvement (more reps at a non-top weight) can be the
+            // new PR even when its raw weight is below `bestWeight`.
+            // See .github/agents/plans/summary-pr-parity-plan.md
+            // (D-1, D-2).
+            final e1rm = StatsProgressService.epley1RM(
+              weight ?? 0.0,
+              reps ?? 0,
+            );
+            if (e1rm != null &&
+                (bestE1RM == null || e1rm > bestE1RM)) {
+              bestE1RM = e1rm;
             }
           }
 
@@ -124,6 +142,7 @@ class SessionSummaryBuilder {
             executionOrder: executionOrder,
             totalDurationMs: effortDurationMs,
             totalRounds: effortRounds,
+            bestE1RM: bestE1RM,
             blockId: effort.blockId,
           ),
         );

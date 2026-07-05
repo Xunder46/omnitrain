@@ -57,7 +57,19 @@ class ExerciseSummary {
   final String name;
   final String effortKind;
   final int setsCompleted;
+
+  /// Highest **raw weight** lifted across this exercise's sets in the
+  /// session. Drives volume stats; not the PR metric.
   final double? bestWeight;
+
+  /// Highest **Epley estimated 1-rep-max** across this exercise's sets
+  /// in the session, computed as `weight × (1 + reps / 30)` per set
+  /// (`StatsProgressService.epley1RM`). `null` when no set in the
+  /// session has both positive weight and positive reps, and for
+  /// non-`set` effort kinds. **This is the PR metric** — it is what
+  /// the in-workout celebration, the Stats screen, and the Session
+  /// Summary all compare against.
+  final double? bestE1RM;
 
   /// Positional index preserving original execution order (0-based).
   final int executionOrder;
@@ -78,6 +90,7 @@ class ExerciseSummary {
     required this.setsCompleted,
     required this.bestWeight,
     required this.executionOrder,
+    this.bestE1RM,
     this.totalDurationMs,
     this.totalRounds = 0,
     this.blockId,

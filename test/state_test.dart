@@ -31,6 +31,78 @@ Future<MockWorkoutRepository> _freshRepoCleanConsumed() async {
   return repo;
 }
 
+/// Local equivalent of `services_test.dart`'s `_seedCompletedSetSession`,
+/// inline here so this file can build session→segment→effort→observation
+/// fixtures without crossing test files. Used by the AC-5 parity test
+/// in the WorkoutState group.
+Future<TrainingSession> _seedCompletedSetSession(
+  MockWorkoutRepository repo, {
+  required String sessionId,
+  required int startedAtMs,
+  required int endedAtMs,
+  required String exerciseId,
+  required int reps,
+  required double weight,
+}) async {
+  final session = TrainingSession(
+    id: sessionId,
+    ownerUserId: 'u-1',
+    startedAtMs: startedAtMs,
+    endedAtMs: endedAtMs,
+    createdAtMs: startedAtMs,
+    updatedAtMs: endedAtMs,
+  );
+  await repo.createSession(session);
+
+  final segId = 'seg-$sessionId';
+  await repo.createSegment(
+    SessionSegment(
+      id: segId,
+      sessionId: sessionId,
+      orderIndex: 0,
+      segmentType: 'main',
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+
+  final effortId = 'eff-$sessionId';
+  await repo.createEffort(
+    SegmentEffort(
+      id: effortId,
+      segmentId: segId,
+      orderIndex: 0,
+      effortKind: 'set',
+      exerciseId: exerciseId,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+
+  await repo.createObservation(
+    EffortObservation(
+      id: 'obs-reps-$sessionId',
+      effortId: effortId,
+      metricId: 'metric-reps',
+      valueInt: reps,
+      createdAtMs: startedAtMs,
+      updatedAtMs: startedAtMs,
+    ),
+  );
+  await repo.createObservation(
+    EffortObservation(
+      id: 'obs-weight-$sessionId',
+      effortId: effortId,
+      metricId: 'metric-weight',
+      valueReal: weight,
+      createdAtMs: startedAtMs + 1,
+      updatedAtMs: startedAtMs + 1,
+    ),
+  );
+
+  return session;
+}
+
 void main() {
   // ══════════════════════════════════════════════════════════════════════════
   // RoutineState
@@ -2778,6 +2850,42 @@ void main() {
         expect(summary.totalRounds, 1);
         expect(summary.totalRoundDurationMs, greaterThanOrEqualTo(0));
         expect(summary.exercises.single.totalRounds, 1);
+      },
+    );
+
+    test(
+      'computeSessionSummary populates ExerciseSummary.bestE1RM '
+      'for set-kind efforts (AC-5 parity-plan guard)',
+      () async {
+        // Plan: .github/agents/plans/summary-pr-parity-plan.md (AC-5).
+        // The builder must produce `bestE1RM` so the Session Summary's
+        // PR detector (which now uses the same Epley formula as the
+        // toast and Stats screen) has a value to compare against.
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final ex = exercises.first;
+        // Seed a completed session with one set (5 × 60 → e1RM 70.0).
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-e1rm',
+          startedAtMs: 1000,
+          endedAtMs: 5000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 60.0,
+        );
+
+        final state = WorkoutState(repo);
+        await state.loadHistoricalSession('s-e1rm');
+
+        final summary = state.computeSessionSummary();
+        final exerciseSummary = summary.exercises.single;
+        expect(exerciseSummary.effortKind, 'set');
+        // bestWeight remains the volume metric (raw top weight, in kg).
+        expect(exerciseSummary.bestWeight, 60.0);
+        // bestE1RM is the PR metric (e1RM = 70.0), populated by the
+        // builder so computePRs can compare against the standing best.
+        expect(exerciseSummary.bestE1RM, closeTo(70.0, 0.001));
       },
     );
 

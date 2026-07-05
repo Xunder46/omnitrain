@@ -491,12 +491,24 @@ class StatsProgressService {
   /// new set. Only `effortKind == 'set'` efforts are considered,
   /// matching the "Effort-Type Keying" rule in `docs/stats_screen.md`.
   ///
+  /// When [excludeSessionId] is non-null, the named completed session
+  /// is skipped — used by the Session Summary so the just-finished
+  /// workout's own PRs are not compared against themselves. The
+  /// zero-arg call (used by the in-session toast) is unchanged.
+  ///
   /// S-009 (in `.github/agents/plans/in-session-pr-toast-plan.md`)
   /// is the structural-guard test that locks this method to the
   /// Stats screen's PR detector for the same input data.
-  Future<double> getAllTimeBestE1RM(String exerciseId) async {
+  Future<double> getAllTimeBestE1RM(
+    String exerciseId, {
+    String? excludeSessionId,
+  }) async {
     final sessions = await _repository.getAllSessions();
-    final completed = sessions.where((s) => s.endedAtMs != null).toList();
+    var completed = sessions.where((s) => s.endedAtMs != null).toList();
+    if (excludeSessionId != null) {
+      completed =
+          completed.where((s) => s.id != excludeSessionId).toList();
+    }
 
     double best = 0.0;
     for (final session in completed) {

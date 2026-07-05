@@ -5,6 +5,7 @@ import '../../data/repositories/workout_repository.dart';
 import '../constants/metric_ids.dart';
 import '../models/session_summary.dart';
 import '../utils/observation_grouper.dart';
+import 'stats_progress_service.dart';
 
 class SessionSummaryService {
   final WorkoutRepository _repository;
@@ -183,27 +184,29 @@ class SessionSummaryService {
   }
 
   Future<List<PRAchievement>> computePRs(
-    List<ExerciseSummary> exercises,
-  ) async {
+    List<ExerciseSummary> exercises, {
+    String? currentSessionId,
+  }) async {
     final results = <PRAchievement>[];
 
     for (final summary in exercises) {
       if (summary.effortKind != 'set') continue;
-      final bestWeight = summary.bestWeight;
-      if (bestWeight == null || bestWeight <= 0) continue;
+      final bestE1RM = summary.bestE1RM;
+      if (bestE1RM == null || bestE1RM <= 0) continue;
 
-      final previousBest = await _repository.getPersonalRecordCandidates(
+      final previousBest =
+          await StatsProgressService(_repository).getAllTimeBestE1RM(
         summary.exerciseId,
-        metricId: MetricIds.weight,
+        excludeSessionId: currentSessionId,
       );
 
-      if (previousBest == null || bestWeight > previousBest) {
+      if (bestE1RM > previousBest) {
         results.add(
           PRAchievement(
             exerciseName: summary.name,
-            metricLabel: 'Weight',
-            previousBest: previousBest ?? 0,
-            newBest: bestWeight,
+            metricLabel: 'e1RM',
+            previousBest: previousBest,
+            newBest: bestE1RM,
           ),
         );
       }

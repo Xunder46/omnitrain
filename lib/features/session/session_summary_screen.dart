@@ -173,8 +173,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (currentSession != null) {
       final groupDeltas = await widget.sessionSummaryService
           .compareGroupsToPreviousSession(currentSession, _summary);
+      // Exclude the current session so the just-finished workout's
+      // own PRs are not compared against themselves (D-3 in
+      // .github/agents/plans/summary-pr-parity-plan.md). The same
+      // e1RM formula is used by the in-workout toast and the Stats
+      // screen — single source of truth
+      // (StatsProgressService.epley1RM).
       final prs = await widget.sessionSummaryService.computePRs(
         _summary.exercises,
+        currentSessionId: currentSession.id,
       );
       final groupedPrs = widget.sessionSummaryService.groupPrsByEffortKind(
         prs,

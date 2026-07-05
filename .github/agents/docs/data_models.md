@@ -350,8 +350,8 @@ Used by the post-workout summary screen (not persisted):
 |-------|------|---------|--------|
 | `SessionSummary` | `lib/core/models/session_summary.dart` | Computed session stats | **Active** — read by the summary screen |
 | `SessionGroupMetrics` | same | Per-group summary card metrics (count + effort time or volume) | **Active** — drives the group cards |
-| `ExerciseSummary` | same | Per-exercise stats | **Active** — used by the summary service |
-| `PRAchievement` | same | New personal records | **Active** — inline PR rows on the group cards (raw-weight definition; the in-workout toast + Stats screen use a different Epley e1RM definition per [PR-surface verification, June 27 2026](https://example.invalid/2026-06-27-pr-surface-verification)) |
+| `ExerciseSummary` | same | Per-exercise stats | **Active** — used by the summary service. Carries `bestWeight` (volume stat) and `bestE1RM` (PR stat); `bestE1RM` is populated only for `effortKind == 'set'` efforts. |
+| `PRAchievement` | same | New personal records | **Active** — inline PR rows on the group cards. Epley e1RM definition (`StatsProgressService.epley1RM`), shared with the in-workout toast and the Stats screen — single source of truth (`.github/agents/plans/summary-pr-parity-plan.md`). |
 | `GroupDelta` | same | Per-group comparison chip data vs previous session | **Active** — the per-group progress chip on each group card |
 | `VolumeComparison` | same | Delta vs previous session | **Retained in model, not rendered.** The earlier standalone volume-comparison surface on the summary was removed; progress feedback now lives as per-group `GroupDelta` chips (see [Session Summary](session_summary.md)). The model class is preserved because the summary service still constructs one internally and tests pin the type. |
 | `SessionTemplateDraft` | same | Draft for save-as-routine | **Active** — the "Save as Routine" flow |

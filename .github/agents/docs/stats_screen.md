@@ -56,38 +56,47 @@ are also shown in the user's preferred weight unit.
 
 Empty state: "No strength history yet." when `topLifts` is empty.
 
-#### Source of truth (Stats screen ↔ in-session toast)
+#### Source of truth (Stats screen ↔ in-session toast ↔ Session Summary)
 
-The in-session "Congrats! New PR" toast fires from
-`WorkoutSessionScreen._logSet()` (see
-[`PRToast` in the widget catalog](widget_catalog.md#prtoast))
-and uses the **same** Epley e1RM formula and **same** all-time-best
-query as this screen:
+The in-session "Congrats! New PR" toast, this Stats screen's PR
+detection, and the post-workout Session Summary's
+`SessionSummaryService.computePRs` all use the **same** Epley e1RM
+formula and **same** all-time-best query, so the same set produces
+the same record verdict in every surface:
 
 - **Formula** — `StatsProgressService.epley1RM(weight, reps)` returns
   `weight × (1 + reps / 30)` (returns `null` when weight or reps is
-  non-positive). Both the Stats PR detection loop in
-  `computeProgressData` and the in-session check call this static
-  helper. There is exactly one PR formula in the codebase.
+  non-positive). The Stats PR detection loop in
+  `computeProgressData`, the in-session check, and the Session
+  Summary's `computePRs` all call this static helper. There is
+  exactly one PR formula in the codebase.
 - **Standing-best query** —
-  `StatsProgressService.getAllTimeBestE1RM(exerciseId)` walks all
-  **completed** sessions (in-progress sessions are excluded so the
-  in-session toast and the Stats screen agree on the standing best
-  at the moment of a new set). Only `effortKind == 'set'` efforts
+  `StatsProgressService.getAllTimeBestE1RM(exerciseId,
+  {excludeSessionId})` walks all **completed** sessions (in-progress
+  sessions are excluded so the in-session toast and the Stats screen
+  agree on the standing best at the moment of a new set). The
+  Session Summary passes `currentSession.id` as
+  `excludeSessionId` so the just-finished workout's PRs are not
+  compared against themselves. Only `effortKind == 'set'` efforts
   contribute, matching the "Effort-Type Keying" rule below.
-- **Strict comparison** — the in-session toast fires when
-  `newE1rm > standingBest` (D-3 in the plan), and the Stats PR
-  detector uses the same strict `>` comparison when walking the
-  per-day e1RM trend. A set equal to the standing best is **not** a
-  PR on either surface.
+- **Strict comparison** — every surface fires when
+  `newE1rm > standingBest` (D-3 in the plan); the Stats PR detector
+  uses the same strict `>` comparison when walking the per-day e1RM
+  trend, and the Session Summary compares
+  `ExerciseSummary.bestE1RM > previousBest`. A set equal to the
+  standing best is **not** a PR on any surface.
+- **Cross-surface parity guard** — `S-T-001` in
+  `.github/agents/plans/summary-pr-parity-plan.md` exercises the
+  same seed through all three surfaces and asserts they agree.
+  `S-009` in `.github/agents/plans/in-session-pr-toast-plan.md` is
+  the toast ↔ Stats structural guard; both tests must pass
+  unchanged.
 
 If you change the PR formula, the standing-best query, or the
-comparison operator on either side, the structural-guard test
-**S-009** in
-`.github/agents/plans/in-session-pr-toast-plan.md` will fail loudly.
-Do not introduce a second e1RM helper or a second standing-best
-query — the two surfaces must continue to share a single source of
-truth.
+comparison operator on any of the three surfaces, the structural
+guards will fail loudly. Do not introduce a second e1RM helper or a
+second standing-best query — the three surfaces must continue to
+share a single source of truth.
 
 ### CARDIO
 Auto-detects the top-2 most-frequently-performed exercises with at least one
