@@ -1432,4 +1432,61 @@ CREATE TABLE app_water_log (
 );
 CREATE INDEX IF NOT EXISTS IX_water_log_date ON app_water_log(date_ms DESC);
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- CATALOG VERSION + SEED-ENTRY TOMBSTONES (July 2026)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The bundled app-authored catalog (exercises + capability / muscle-group /
+-- equipment relationships + the food catalog) carries an integer version
+-- (see `lib/core/constants/catalog_version.dart`). At app start,
+-- `CatalogRefreshService` compares the device's stored version against
+-- the bundled version and re-applies any new or changed seed entries in
+-- place. Per-entry tombstones protect user edits from being overwritten.
+--
+-- Storage shape (Hive runtime; SQL parity noted for the future importer):
+--
+--   meta box key                      | type    | semantics
+--   ----------------------------------|---------|---------------------------------
+--   `catalog_version`                 | INTEGER | last bundled version the device
+--   :                                   :        : has applied; `0` on legacy installs
+--   `seed_entry_touched_<type>_<id>`  | BOOLEAN | `true` once the user mutates
+--                                       a seed entry; refresh skips it forever
+--                                       after that
+--
+-- SqliteWorkoutRepository implementation notes:
+--   `catalog_version` becomes a single row in an `app_meta` key/value
+--   table (`key TEXT PRIMARY KEY, value_int INTEGER`). Tombstones map to
+--   one row each (`key = 'seed_entry_touched_<type>_<id>'`, `value_bool = 1`).
+--   The refresh orchestrator in `lib/core/services/catalog_refresh_service.dart`
+--   is identical for both runtimes — only the storage adapter differs.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- DATA-MIGRATION VERSION SEQUENCE (July 2026)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The device's `data_version` integer is the single source of truth for
+-- "which consolidated migration step the device has reached". The
+-- `DataMigrationService` (`lib/core/services/data_migration_service.dart`)
+-- runs on startup, advances the version only after each step succeeds,
+-- and falls back to a back-compat shim on the first launch under the
+-- new system to map legacy one-shot markers (`seed_loaded`,
+-- `seed_units_migrated_v1`, …) to the correct starting version.
+--
+-- Storage shape (Hive runtime; SQL parity noted for the future importer):
+--
+--   meta box key           | type    | semantics
+--   -----------------------|---------|----------------------------------------
+--   `data_version`         | INTEGER | current data-migration version;
+--                               :       : `1` on legacy installs that have not
+--                               :       : yet been mapped by the shim
+--   `data_version_last_from` | INTEGER | starting version of the most recent
+--                               :       : migration run (diagnostic)
+--   `data_version_last_to`   | INTEGER | ending version of the most recent
+--                                       : migration run (diagnostic)
+--
+-- SqliteWorkoutRepository implementation notes:
+--   `data_version`, `data_version_last_from`, and `data_version_last_to`
+--   become three rows in the `app_meta` key/value table (same table as
+--   the catalog-version row above). The migration orchestrator in
+--   `lib/core/services/data_migration_service.dart` is identical for
+--   both runtimes — only the storage adapter differs.
+--
 COMMIT;

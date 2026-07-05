@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../core/constants/catalog_version.dart';
 import '../core/models/food_draft.dart';
 import '../core/services/image_storage_service.dart';
 import '../data/models/models.dart';
@@ -845,6 +846,16 @@ class FoodLibraryState extends ChangeNotifier {
     );
     await _repository.updateCatalogFood(updated);
     _catalogFoods[existing.id] = updated;
+
+    // Mark this catalog row as user-touched so the next catalog
+    // refresh does not overwrite the user's edit. The marker is set
+    // by the state layer (the only path that can produce a "user
+    // edit") and read by `CatalogRefreshService` to decide which
+    // seed entries to skip.
+    await _repository.markSeedEntryTouched(
+      SeedEntryType.foodCatalog,
+      existing.id,
+    );
 
     // Propagate catalog edits to all linked library foods using durable
     // catalogId linkage. This ensures edits to the catalog automatically

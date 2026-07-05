@@ -13,7 +13,6 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/inputs/numeric_field_with_done_bar.dart';
-import '../../widgets/inputs/select_all_on_focus.dart';
 import 'widgets/avatar_crop_sheet.dart';
 import 'widgets/measurement_history_chart_sheet.dart';
 import 'widgets/measurement_sparkline.dart';
@@ -855,7 +854,6 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    autofocus: true,
                     decoration: InputDecoration(
                       labelText: widget.definition.unitId == 'unit-kg'
                           ? 'Value (${UnitFormatter.weightLabel(widget.settingsState)})'
@@ -908,7 +906,6 @@ class _MeasurementLogSheetState extends State<_MeasurementLogSheet> {
               child: NumericFieldWithDoneBar(
                 controller: _feetController,
                 keyboardType: TextInputType.number,
-                autofocus: true,
                 decoration: const InputDecoration(labelText: 'Feet'),
               ),
             ),
@@ -1296,46 +1293,33 @@ class _HeightDialogState extends State<_HeightDialog> {
             Row(
               children: [
                 Expanded(
-                  child: SelectAllOnFocus(
+                  child: TextField(
                     controller: _feetController,
-                    builder: (context, focusNode) => TextField(
-                      controller: _feetController,
-                      focusNode: focusNode,
-                      keyboardType: TextInputType.number,
-                      autofocus: true,
-                      decoration: const InputDecoration(labelText: 'Feet'),
-                    ),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Feet'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: SelectAllOnFocus(
+                  child: TextField(
                     controller: _inchesController,
-                    builder: (context, focusNode) => TextField(
-                      controller: _inchesController,
-                      focusNode: focusNode,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Inches'),
-                    ),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Inches'),
                   ),
                 ),
               ],
             )
           else
-            SelectAllOnFocus(
+            TextField(
+              key: const Key('height_dialog_value_field'),
               controller: _valueController,
-              builder: (context, focusNode) => TextField(
-                key: const Key('height_dialog_value_field'),
-                controller: _valueController,
-                focusNode: focusNode,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: label,
-                  errorText: _valueError,
-                ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: label,
+                errorText: _valueError,
               ),
             ),
           if (_isFtinMode && _valueError != null) ...[

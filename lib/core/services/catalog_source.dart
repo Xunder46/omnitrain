@@ -1,0 +1,29 @@
+import '../../data/models/models.dart';
+
+/// A bundled snapshot of the app-authored catalog.
+///
+/// [CatalogRefreshService] consumes a [CatalogSource] instead of reading
+/// [SeedData] directly so the data backing the refresh can later be swapped
+/// (e.g., a remote / server-provided catalog) without touching the
+/// version-check logic.
+///
+/// Implementations MUST be cheap to read repeatedly within a single refresh
+/// pass — [CatalogRefreshService] iterates the source's collections multiple
+/// times per entity type.
+abstract class CatalogSource {
+  /// The version this catalog represents. When the device's stored version
+  /// is less than [version], the refresh runs.
+  int get version;
+
+  /// Bundled exercises (`Exercise.id` is the storage key).
+  List<Exercise> get exercises;
+
+  /// Bundled exercise capabilities: `exerciseId → list of capability keys`.
+  Map<String, List<String>> get exerciseCapabilities;
+
+  /// Bundled exercise / muscle-group relationships: `exerciseId → muscleGroupIds`.
+  Map<String, List<String>> get exerciseMuscleGroups;
+
+  /// Bundled food catalog rows (each row carries `isCatalog = true`).
+  List<Food> get foodCatalog;
+}

@@ -226,7 +226,7 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
                     child: Text(
                       'This exercise is performed one side at a time. '
                       'Log both sides as a single combined set. '
-                      'Example: 15 lb × 10 reps on each arm = log as 30 lb × 10 reps.',
+                      'Example: 10 kg × 10 reps on each arm = log as 20 kg × 10 reps.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurface,
                       ),

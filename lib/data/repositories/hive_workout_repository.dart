@@ -5,13 +5,31 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../datasources/food_catalog_loader.dart';
 import '../../mock/seed_data.dart';
+import '../../core/constants/data_version.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/services/data_migration_service.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/date_utils.dart';
 import 'workout_repository.dart';
 
 const _hiveUuid = Uuid();
+
+/// A concrete [DataMigrationStep] that runs a single `Future<void>` closure.
+class _MethodStep extends DataMigrationStep {
+  _MethodStep(this.targetVersion, this.name, this._body);
+
+  @override
+  final int targetVersion;
+
+  @override
+  final String name;
+
+  final Future<void> Function() _body;
+
+  @override
+  Future<void> run() => _body();
+}
 
 /// Hive-backed repository for local persistence on web.
 /// Stores raw Map data to avoid TypeAdapter boilerplate.
@@ -39,6 +57,17 @@ class HiveWorkoutRepository implements WorkoutRepository {
       'default_food_groups_seeded_v1';
   static const String _foodCategoryGroupIdMigratedKey =
       'food_category_groupid_migrated_v1';
+  static const String _catalogVersionKey = 'catalog_version';
+  static const String _seedEntryTouchedKeyPrefix = 'seed_entry_touched_';
+
+  // Data-migration version sequence keys. The legacy one-shot markers
+  // above are read ONCE by the back-compat shim in DataMigrationService
+  // (on the first launch under the new system) to map legacy installs
+  // to the correct starting version. From that point on, the device's
+  // `data_version` integer is the single source of truth.
+  static const String _dataVersionKey = 'data_version';
+  static const String _dataVersionLastFromKey = 'data_version_last_from';
+  static const String _dataVersionLastToKey = 'data_version_last_to';
 
   /// The Hive meta-box key for the one-shot category→groupId migration.
   /// Exposed via [visibleForTesting] so migration tests can clear the
@@ -46,6 +75,18 @@ class HiveWorkoutRepository implements WorkoutRepository {
   @visibleForTesting
   static String get foodCategoryGroupIdMigratedKey =>
       _foodCategoryGroupIdMigratedKey;
+
+  /// The Hive meta-box key prefix for per-entry tombstones set when a
+  /// user mutates a seed entry. Tests use [visibleForTesting] to clear
+  /// markers so they can verify the refresh re-applies bundled values
+  /// when no user edit has happened.
+  @visibleForTesting
+  static String seedEntryTouchedKey(String entityType, String id) =>
+      '$_seedEntryTouchedKeyPrefix${entityType}_$id';
+
+  /// The Hive meta-box key for the device's stored catalog version.
+  @visibleForTesting
+  static String get catalogVersionKey => _catalogVersionKey;
 
   late Box<Map> _exercisesBox;
   late Box<Map> _sessionsBox;
@@ -178,32 +219,90 @@ class HiveWorkoutRepository implements WorkoutRepository {
       'exercise_capabilities',
     );
 
-    final seedLoaded = _metaBox.get(_seedLoadedKey) as bool? ?? false;
-    if (!seedLoaded) {
-      await _seedData();
-      await _metaBox.put(_seedLoadedKey, true);
-    }
-
-    await _migrateSeedUnits();
-    await _migrateExerciseRoundDefaults();
-    await _migrateSessionFeelingFields();
-    await _seedCalendarData();
-    await _purgeCalendarSeedData();
-    await _migrateExerciseContentFields();
-    await _migrateTimedExtraWeight();
-    await _migrateExerciseLibraryRefresh();
-    await _migrateDailyNutritionTargets();
-    await _seedFoodCatalog();
-    // Seed default food group categories (Proteins, Vegetables, …).
-    // Idempotent: existing user-created groups with the same name win
-    // over the seed (see _seedDefaultFoodGroups).
-    await _seedDefaultFoodGroups();
-    // Backfill any catalog rows whose category string is still stored in
-    // `notes` instead of the proper `group_id` FK. Runs after the default
-    // groups are seeded so it has lookup data to resolve against.
-    await _migrateFoodCategoryToGroupId();
+    // Run the consolidated data-migration sequence. Replaces the previous
+    // per-step `bool`-gated calls; the device's `data_version` integer
+    // is now the single source of truth for "which migration step the
+    // device has reached". The back-compat shim inside the service maps
+    // any legacy one-shot markers to a starting version on the first
+    // launch under the new system, so existing installs do not re-run
+    // already-applied steps.
+    await _runDataMigrations();
 
     _initialized = true;
+  }
+
+  /// Run the consolidated data-migration sequence once on startup. Each
+  /// step delegates to the existing private method body — only the gating
+  /// has changed (legacy `bool` marker → version check), so behavior is
+  /// preserved exactly.
+  Future<void> _runDataMigrations() async {
+    final service = DataMigrationService(
+      repository: this,
+      targetVersion: currentDataVersion,
+      steps: _dataMigrationSteps(),
+    );
+    await service.run();
+  }
+
+  /// The ordered list of consolidated data-migration steps. Each step's
+  /// `targetVersion` corresponds to the version the device lands at after
+  /// the step completes. Adding a new step = append a row + bump
+  /// [currentDataVersion] in `lib/core/constants/data_version.dart`.
+  ///
+  /// The `run` closure captures `this` and calls the existing private
+  /// method. The legacy `bool` gates inside those methods are now
+  /// redundant (the version gate is the only one that matters), but
+  /// they remain in place as a defense-in-depth check; the steps are
+  /// idempotent so the redundant gates are no-ops.
+  List<DataMigrationStep> _dataMigrationSteps() {
+    final repo = this;
+    return [
+      _MethodStep(2, 'seedData', () => repo._seedData()),
+      _MethodStep(3, 'seedUnits', () => repo._migrateSeedUnits()),
+      _MethodStep(
+        4,
+        'exerciseRoundDefaults',
+        () => repo._migrateExerciseRoundDefaults(),
+      ),
+      _MethodStep(
+        5,
+        'sessionFeelingFields',
+        () => repo._migrateSessionFeelingFields(),
+      ),
+      _MethodStep(6, 'seedCalendarData', () => repo._seedCalendarData()),
+      _MethodStep(
+        7,
+        'purgeCalendarSeedData',
+        () => repo._purgeCalendarSeedData(),
+      ),
+      _MethodStep(
+        8,
+        'exerciseContentFields',
+        () => repo._migrateExerciseContentFields(),
+      ),
+      _MethodStep(9, 'timedExtraWeight', () => repo._migrateTimedExtraWeight()),
+      _MethodStep(
+        10,
+        'exerciseLibraryRefresh',
+        () => repo._migrateExerciseLibraryRefresh(),
+      ),
+      _MethodStep(
+        11,
+        'dailyNutritionTargets',
+        () => repo._migrateDailyNutritionTargets(),
+      ),
+      _MethodStep(12, 'seedFoodCatalog', () => repo._seedFoodCatalog()),
+      _MethodStep(
+        13,
+        'seedDefaultFoodGroups',
+        () => repo._seedDefaultFoodGroups(),
+      ),
+      _MethodStep(
+        14,
+        'foodCategoryToGroupId',
+        () => repo._migrateFoodCategoryToGroupId(),
+      ),
+    ];
   }
 
   /// Seed the food catalog from the bundled asset on first install.
@@ -2187,6 +2286,95 @@ class HiveWorkoutRepository implements WorkoutRepository {
         },
       );
     }
+  }
+
+  // ===== CATALOG VERSION + SEED-ENTRY TOMBSTONES =====
+  //
+  // The bundled catalog carries a version constant (see
+  // [bundledCatalogVersion] in lib/core/constants/catalog_version.dart).
+  // At app start, [CatalogRefreshService] compares the device's stored
+  // version against the bundled version and re-applies any new or changed
+  // seed entries in place. Per-entry tombstones — set by the state layer
+  // when the user mutates a seed entry — protect user edits from being
+  // overwritten by the refresh.
+
+  @override
+  Future<int> getCatalogVersion({int defaultValue = 0}) async {
+    final raw = _metaBox.get(_catalogVersionKey);
+    if (raw is int) return raw;
+    return defaultValue;
+  }
+
+  @override
+  Future<void> setCatalogVersion(int version) async {
+    await _metaBox.put(_catalogVersionKey, version);
+  }
+
+  @override
+  Future<bool> isSeedEntryTouched(String entityType, String id) async {
+    return (_metaBox.get(seedEntryTouchedKey(entityType, id)) as bool?) ?? false;
+  }
+
+  @override
+  Future<void> markSeedEntryTouched(String entityType, String id) async {
+    await _metaBox.put(seedEntryTouchedKey(entityType, id), true);
+  }
+
+  // ===== DATA-MIGRATION VERSION SEQUENCE =====
+  //
+  // The device's `data_version` integer is the single source of truth for
+  // "which consolidated migration step the device has reached". The
+  // legacy one-shot markers (`seed_units_migrated_v1`, etc.) are read
+  // ONCE by [DataMigrationService]'s back-compat shim (on the first
+  // launch under the new system) to map legacy installs to the correct
+  // starting version. From that point on, the legacy markers are ignored.
+
+  @override
+  Future<int> getDataVersion({int defaultValue = 1}) async {
+    final raw = _metaBox.get(_dataVersionKey);
+    if (raw is int) return raw;
+    return defaultValue;
+  }
+
+  @override
+  Future<void> setDataVersion(int version) async {
+    await _metaBox.put(_dataVersionKey, version);
+  }
+
+  @override
+  Future<int> getLegacyAppliedDataVersion() async {
+    // Walk the legacy markers in REVERSE order; the highest one present
+    // wins because the legacy code always ran them in order (a device
+    // with the LATER marker present is guaranteed to have the earlier
+    // ones present too).
+    if (_metaBox.get(_foodCategoryGroupIdMigratedKey) == true) return 14;
+    if (_metaBox.get(_defaultFoodGroupsSeededKey) == true) return 13;
+    if (_metaBox.get(_foodCatalogSeededKey) == true) return 12;
+    if (_metaBox.get(_nutritionTargetsDailyMigrationKey) == true) return 11;
+    if (_metaBox.get(_exerciseLibraryRefreshMigrationKey) == true) return 10;
+    if (_metaBox.get(_timedExtraWeightMigrationKey) == true) return 9;
+    if (_metaBox.get(_exerciseContentFieldsMigrationKey) == true) return 8;
+    if (_metaBox.get(_calendarSeedPurgeMigrationKey) == true) return 7;
+    if (_metaBox.get(_calendarDataMigrationKey) == true) return 6;
+    if (_metaBox.get(_sessionFeelingFieldsMigrationKey) == true) return 5;
+    if (_metaBox.get(_exerciseRoundDefaultsMigrationKey) == true) return 4;
+    if (_metaBox.get(_seedUnitsMigrationKey) == true) return 3;
+    if (_metaBox.get(_seedLoadedKey) == true) return 2;
+    return 1;
+  }
+
+  @override
+  Future<({int from, int to})?> getLastDataVersionTransition() async {
+    final from = _metaBox.get(_dataVersionLastFromKey);
+    final to = _metaBox.get(_dataVersionLastToKey);
+    if (from is int && to is int) return (from: from, to: to);
+    return null;
+  }
+
+  @override
+  Future<void> setLastDataVersionTransition(int from, int to) async {
+    await _metaBox.put(_dataVersionLastFromKey, from);
+    await _metaBox.put(_dataVersionLastToKey, to);
   }
 
   // ===== UTILITY METHODS =====

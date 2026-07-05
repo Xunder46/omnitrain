@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'app.dart';
+import 'core/services/bundled_catalog_source.dart';
+import 'core/services/catalog_refresh_service.dart';
 import 'core/services/image_storage_service.dart';
 import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
@@ -61,6 +63,22 @@ void main() async {
     // Initialize repository (injectable, can be swapped per environment)
     final repository = await _createRepository();
     await repository.initialize();
+
+    // Reconcile the device's stored catalog against the bundled
+    // catalog. Runs at app start (after repository.initialize, before
+    // state construction) so every state class sees the post-refresh
+    // catalog. Failures are logged but do NOT block app startup —
+    // a transient I/O error will be retried on the next launch.
+    final catalogRefresh = CatalogRefreshService(
+      repository,
+      const BundledCatalogSource(),
+    );
+    try {
+      await catalogRefresh.refresh();
+    } catch (e, st) {
+      debugPrint('Catalog refresh failed (will retry next launch): $e');
+      debugPrintStack(stackTrace: st);
+    }
 
     // Check first-launch onboarding flag
     final onboardingComplete = await repository.getPreferenceBool(

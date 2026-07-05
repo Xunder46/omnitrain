@@ -4,13 +4,37 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../../mock/seed_data.dart';
 import '../../mock/food_catalog_seed.dart';
+import '../../core/constants/data_version.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/services/data_migration_service.dart';
 import '../../core/utils/fuzzy_search.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../core/utils/date_utils.dart';
 import 'workout_repository.dart';
 
 const _mockUuid = Uuid();
+
+/// A no-op [DataMigrationStep] used by [MockWorkoutRepository]'s
+/// consolidated sequence. The Mock's bulk-load in `initialize()` does
+/// the equivalent of all thirteen real migration steps in one shot; the
+/// steps exist here only so the [DataMigrationService] can advance the
+/// device's `data_version` through the sequence in the same order as
+/// the Hive-backed runtime. Behavioral parity for the real steps is
+/// validated in `HiveWorkoutRepository` integration tests.
+class _MockMigrationStep extends DataMigrationStep {
+  _MockMigrationStep(this.targetVersion, this.name);
+
+  @override
+  final int targetVersion;
+
+  @override
+  final String name;
+
+  @override
+  Future<void> run() async {
+    // No-op: Mock's initialize() bulk-loads the equivalent of every step.
+  }
+}
 
 /// In-memory mock implementation of WorkoutRepository for development/testing.
 /// Uses in-memory data and loads from mock/seed_data.dart.
@@ -66,6 +90,21 @@ class MockWorkoutRepository implements WorkoutRepository {
   final Map<String, SessionBlock> _sessionBlocks = {};
   final Map<String, bool> _boolPrefs = {};
   final Map<String, String> _stringPrefs = {};
+
+  // Catalog version + per-entry tombstones used by CatalogRefreshService.
+  // Mirrors the Hive-backed meta-box layout (`catalog_version` and
+  // `seed_entry_touched_<entityType>_<id>`). Defaults to `0` so legacy
+  // installs trigger a one-time refresh on first launch.
+  int _catalogVersion = 0;
+  final Map<String, bool> _seedEntryTouched = {};
+
+// Data-migration version sequence: mirrors the Hive-backed meta-box
+// layout (`data_version` int + `data_version_last_from`/`_last_to` ints).
+// Defaults to `1` so legacy installs trigger the back-compat shim on
+// first launch under the new system.
+  int _dataVersion = 1;
+  int? _dataVersionLastFrom;
+  int? _dataVersionLastTo;
 
   // Food library: maps for FoodGroup and Food
   final Map<String, FoodGroup> _foodGroups = {};
@@ -189,7 +228,47 @@ class MockWorkoutRepository implements WorkoutRepository {
     // sampleSegmentEfforts are available as reference data but NOT auto-loaded here.
     // Use them to manually populate a demo session when needed.
 
+    // Run the consolidated data-migration sequence. The Mock's bulk load
+    // above is equivalent to the Hive runtime's full sequence of
+    // thirteen migration steps; the no-op steps below exist only so
+    // the [DataMigrationService] can advance the device's
+    // `data_version` through the sequence in the same order as the
+    // production runtime. Legacy installs are mapped by the back-compat
+    // shim (e.g. `_seed_loaded` set under the old code path) on the
+    // first launch.
+    await _runDataMigrations();
+
     _initialized = true;
+  }
+
+  Future<void> _runDataMigrations() async {
+    final service = DataMigrationService(
+      repository: this,
+      targetVersion: currentDataVersion,
+      steps: _dataMigrationSteps(),
+    );
+    await service.run();
+  }
+
+  /// The thirteen no-op steps that map the Mock's bulk-loaded state to
+  /// the `data_version` sequence used by the Hive runtime. Each step's
+  /// `targetVersion` matches the corresponding real migration step.
+  List<DataMigrationStep> _dataMigrationSteps() {
+    return [
+      _MockMigrationStep(2, 'seedData'),
+      _MockMigrationStep(3, 'seedUnits'),
+      _MockMigrationStep(4, 'exerciseRoundDefaults'),
+      _MockMigrationStep(5, 'sessionFeelingFields'),
+      _MockMigrationStep(6, 'seedCalendarData'),
+      _MockMigrationStep(7, 'purgeCalendarSeedData'),
+      _MockMigrationStep(8, 'exerciseContentFields'),
+      _MockMigrationStep(9, 'timedExtraWeight'),
+      _MockMigrationStep(10, 'exerciseLibraryRefresh'),
+      _MockMigrationStep(11, 'dailyNutritionTargets'),
+      _MockMigrationStep(12, 'seedFoodCatalog'),
+      _MockMigrationStep(13, 'seedDefaultFoodGroups'),
+      _MockMigrationStep(14, 'foodCategoryToGroupId'),
+    ];
   }
 
   // ===== EXERCISES =====
@@ -1562,6 +1641,79 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<void> setPreferenceString(String key, String value) async {
     _stringPrefs[key] = value;
+  }
+
+  @override
+  Future<int> getCatalogVersion({int defaultValue = 0}) async {
+    return _catalogVersion;
+  }
+
+  @override
+  Future<void> setCatalogVersion(int version) async {
+    _catalogVersion = version;
+  }
+
+  @override
+  Future<bool> isSeedEntryTouched(String entityType, String id) async {
+    return _seedEntryTouched['${entityType}_$id'] ?? false;
+  }
+
+  @override
+  Future<void> markSeedEntryTouched(String entityType, String id) async {
+    _seedEntryTouched['${entityType}_$id'] = true;
+  }
+
+  // ===== DATA-MIGRATION VERSION SEQUENCE =====
+  //
+  // Mirrors the Hive-backed meta-box layout: a `data_version` int, a
+  // recorded (from, to) transition pair, and a back-compat shim that
+  // reads legacy one-shot markers (held in `_boolPrefs`) to map legacy
+  // installs to the correct starting version.
+
+  @override
+  Future<int> getDataVersion({int defaultValue = 1}) async {
+    return _dataVersion;
+  }
+
+  @override
+  Future<void> setDataVersion(int version) async {
+    _dataVersion = version;
+  }
+
+  @override
+  Future<int> getLegacyAppliedDataVersion() async {
+    // Walk legacy markers in REVERSE order; the highest one present wins
+    // because the legacy code always ran them in order.
+    if (_boolPrefs['food_category_groupid_migrated_v1'] == true) return 14;
+    if (_boolPrefs['default_food_groups_seeded_v1'] == true) return 13;
+    if (_boolPrefs['food_catalog_seeded_v1'] == true) return 12;
+    if (_boolPrefs['nutrition_targets_daily_migrated_v1'] == true) return 11;
+    if (_boolPrefs['exercise_library_refreshed_v5'] == true) return 10;
+    if (_boolPrefs['timed_extra_weight_migrated_v1'] == true) return 9;
+    if (_boolPrefs['exercise_content_fields_migrated_v1'] == true) return 8;
+    if (_boolPrefs['calendar_seed_purged_v1'] == true) return 7;
+    if (_boolPrefs['calendar_data_seeded_v1'] == true) return 6;
+    if (_boolPrefs['session_feeling_fields_migrated_v1'] == true) return 5;
+    if (_boolPrefs['exercise_round_defaults_migrated_v1'] == true) {
+      return 4;
+    }
+    if (_boolPrefs['seed_units_migrated_v1'] == true) return 3;
+    if (_boolPrefs['seed_loaded'] == true) return 2;
+    return 1;
+  }
+
+  @override
+  Future<({int from, int to})?> getLastDataVersionTransition() async {
+    if (_dataVersionLastFrom == null || _dataVersionLastTo == null) {
+      return null;
+    }
+    return (from: _dataVersionLastFrom!, to: _dataVersionLastTo!);
+  }
+
+  @override
+  Future<void> setLastDataVersionTransition(int from, int to) async {
+    _dataVersionLastFrom = from;
+    _dataVersionLastTo = to;
   }
 
   // ===== NUTRITION =====

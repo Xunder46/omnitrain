@@ -584,4 +584,73 @@ abstract class WorkoutRepository {
   /// the same day always maps to the same storage key in both
   /// implementations.
   Future<void> saveWaterVolumeForDate(int dateMs, int volumeMl);
+
+  // ─── Catalog Version + Seed-Entry Tombstones ─────────────────────────────
+  //
+  // These methods back [CatalogRefreshService]. They are intentionally
+  // separate from the per-entity read/write methods so the refresh can:
+  //   - read the device's stored catalog version,
+  //   - skip seed entries the user has touched (tombstone),
+  //   - write the new version atomically only after a successful refresh.
+  //
+  // The tombstone design lets the refresh distinguish "seed entry the user
+  // has edited" from "seed entry that hasn't been touched yet". A tombstone
+  // is set by the state layer when the user mutates a seed entry; the
+  // refresh reads it but never writes it.
+
+  /// Read the device's stored catalog version. Returns [defaultValue] when
+  /// no value has been written yet (typically `0` for legacy installs).
+  Future<int> getCatalogVersion({int defaultValue = 0});
+
+  /// Persist the device's catalog version. Called by [CatalogRefreshService]
+  /// after a successful refresh so subsequent launches skip the work.
+  Future<void> setCatalogVersion(int version);
+
+  /// Returns `true` if the user has ever mutated the seed entry identified
+  /// by ([entityType], [id]). The refresh consults this before overwriting
+  /// an existing device row with the bundled value.
+  Future<bool> isSeedEntryTouched(String entityType, String id);
+
+  /// Mark a seed entry as user-touched. The state layer calls this when the
+  /// user edits, archives, or deletes a seed entry; the refresh then skips
+  /// the entry on subsequent upgrades.
+  ///
+  /// Idempotent. Safe to call from any code path that mutates a seed entry.
+  Future<void> markSeedEntryTouched(String entityType, String id);
+
+  // ─── Data-Migration Version Sequence ─────────────────────────────────────
+  //
+  // The repository persists a single `data_version` integer that tracks
+  // which consolidated migration step the device has reached. On startup,
+  // `DataMigrationService` reads it, runs any pending steps in order, and
+  // advances the version after each step succeeds. The catalog refresh
+  // (`catalog_version`) is a separate always-on mechanism and is not
+  // affected by this version.
+
+  /// Read the device's stored data-migration version. Returns
+  /// [defaultValue] (typically `1`) when no value has been written yet —
+  /// either a brand-new install or a legacy install that has not yet been
+  /// mapped by the back-compat shim.
+  Future<int> getDataVersion({int defaultValue = 1});
+
+  /// Persist the device's data-migration version. Called by
+  /// `DataMigrationService` after each step completes so subsequent
+  /// launches skip the work.
+  Future<void> setDataVersion(int version);
+
+  /// Back-compat shim: returns the highest data-version implied by any
+  /// legacy one-shot marker still present on the device. `1` when none
+  /// of the legacy markers are set. Called once on the first launch under
+  /// the new system to map legacy installs to the correct starting
+  /// version without re-running already-applied steps.
+  Future<int> getLegacyAppliedDataVersion();
+
+  /// Returns the most recent `(from, to)` transition the device recorded
+  /// after a data-migration run, or `null` if no transition has been
+  /// recorded yet. Diagnostic — used by support / debugging tools.
+  Future<({int from, int to})?> getLastDataVersionTransition();
+
+  /// Record the most recent `(from, to)` data-migration transition.
+  /// Called by `DataMigrationService` after a successful migration run.
+  Future<void> setLastDataVersionTransition(int from, int to);
 }

@@ -94,7 +94,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('30 lb × 10 reps'),
+      find.textContaining('20 kg × 10 reps'),
       findsOneWidget,
     );
   });

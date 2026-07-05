@@ -104,50 +104,123 @@ Ordering persistence behavior:
 - `createEffort()` assigns canonical order metadata for standalone vs block effort placement.
 - `getSessionBlocks()` and `getSegmentEfforts()` return deterministic order based on canonical order columns with stable tie-breakers.
 
-### Hive Migration Keys
+### Catalog version + seed-entry tombstones (July 2026)
 
-- `seed_units_migrated_v1`:
-  - Backfills missing seed units (including `unit-cm` and `unit-pct`) for installs where seed bootstrap already ran.
-- `exercise_round_defaults_migrated_v1`:
-  - Existing migration for exercise round defaults.
-- `session_feeling_fields_migrated_v1`:
-  - Marker-only migration for newly nullable session feeling fields.
-- `nutrition_targets_daily_migrated_v1`:
-  - Converts any legacy single-row `app_nutrition_target` from nullable
-    REAL columns to non-nullable `0.0` defaults. New `nutrition_targets_by_date`
-    Hive box is created lazily on first read/write.
-- `default_food_groups_seeded_v1`:
-  - One-shot migration that backfills 9 default `FoodGroup` records
-    (`food-group-proteins`, `food-group-dairy`,
-    `food-group-grains-starches`, `food-group-fruits`,
-    `food-group-vegetables`, `food-group-nuts-seeds-fats`,
-    `food-group-snacks-prepared`, `food-group-drinks`,
-    `food-group-condiments`) on existing installs. Names match the
-    catalog categories in `assets/data/food_catalog.json`.
-  - Idempotency:
-    - Skip a default if its stable id is already present in the box.
-    - Skip a default if any existing row has the same name
-      (case-insensitive) — the user's row wins.
-  - Idempotent on subsequent launches: guarded by the meta key, so the
-    migration is a no-op once the marker is set.
-- `food_category_groupid_migrated_v1`:
-  - One-shot migration that backfills `group_id` on catalog rows whose
-    category was previously stored in `notes` (legacy storage
-    `"Proteins"` / `"Dairy"` / …) and clears `notes` once resolved.
-  - Runs over BOTH `_foodsBox` (library rows that originated from
-    the catalog) and `_foodCatalogBox` (the bundled catalog).
-  - Lookup is built from the *live* `food_groups` box (not the seed),
-    so user renames of default groups are honoured: a renamed group
-    that no longer matches the catalog's `notes` simply yields a
-    no-match and the catalog row stays as `group_id = NULL`
-    (Ungrouped).
-  - Library-box heuristic: only rows whose `notes` value matches
-    one of the 9 default category names (case-insensitive) are
-    backfilled, so user-typed notes are never stomped.
-  - Idempotent on subsequent launches: guarded by the meta key, so
-    the migration is a no-op once the marker is set. The same
-    semantics are documented in `scripts/sqlite_schema.sql` for the
-    future SQLite importer.
+The bundled app-authored catalog (exercises + capability / muscle-group /
+equipment relationships + the food catalog) is versioned. At app start,
+`CatalogRefreshService` (`lib/core/services/catalog_refresh_service.dart`)
+compares the device's stored catalog version against the bundled constant
+(`bundledCatalogVersion` in `lib/core/constants/catalog_version.dart`); if
+the bundled version is newer, the refresh re-applies new / changed seed
+entries to the device in place, never touching user-created entries and
+never overwriting a seed entry the user has edited.
+
+The repository exposes four small methods used by the refresh orchestrator
+and by the state layer:
+
+| Method | Purpose |
+|---|---|
+| `getCatalogVersion({defaultValue})` | Reads the device's stored catalog version. Returns `0` for legacy installs (no prior refresh). |
+| `setCatalogVersion(int)` | Persists the device's catalog version. Called once, at the end of a successful refresh. |
+| `isSeedEntryTouched(type, id)` | Returns `true` if the user has ever mutated the seed entry at `(type, id)`. |
+| `markSeedEntryTouched(type, id)` | Tombstone setter. Called by the state layer whenever the user edits / archives / deletes a seed entry. Idempotent. |
+
+Storage shape:
+
+- Hive: the meta box holds `catalog_version` (int) and a `bool` per
+  tombstone under the key `seed_entry_touched_<type>_<id>`.
+- Mock: in-memory `int _catalogVersion` (default `0`) and
+  `Map<String, bool> _seedEntryTouched` keyed by `<type>_<id>`.
+- SQLite parity: see the "CATALOG VERSION + SEED-ENTRY TOMBSTONES
+  (July 2026)" block at the bottom of `scripts/sqlite_schema.sql`. The
+  future `SqliteWorkoutRepository` is expected to use a single
+  `app_meta` key/value table for both the version and the tombstones,
+  keeping the orchestrator code identical across runtimes.
+
+Idempotency + interruption safety:
+
+- The refresh writes each entry individually (no clear-then-repopulate).
+- On any error mid-refresh, the stored version is NOT advanced; the next
+  launch retries from where it left off with the prior data still intact.
+- Running the refresh twice yields identical state: the second pass is a
+  no-op (stored version already at or above the bundled version).
+
+### Data-migration version sequence (July 2026)
+
+OmniTrain consolidates thirteen previously-independent one-time migration
+steps (`seed_loaded`, `seed_units_migrated_v1`, …) into a single ordered
+update sequence tracked by the device's `data_version` integer (see
+[`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart)
+and [`DataMigrationService`](../lib/core/services/data_migration_service.dart)).
+On startup, `HiveWorkoutRepository.initialize()` runs the service:
+
+1. Reads the device's `data_version` (default `1`).
+2. **Back-compat shim** — when `data_version == 1` AND any legacy one-shot
+   marker is present, the shim maps the highest legacy marker to a
+   starting version and writes it back. Existing installs land at the
+   correct starting point in one launch; already-applied steps are not
+   re-run.
+3. Runs every pending step in ascending `targetVersion` order. After each
+   step succeeds, `data_version` is advanced to the step's target. A
+   failing step does NOT advance past itself; the next launch retries
+   from that step.
+4. Records the most recent `from → to` transition in the meta box for
+   diagnostics.
+
+The shim's legacy-marker mapping (highest legacy marker wins, because
+the legacy code always ran them in order):
+
+| Legacy marker | Implied `data_version` |
+|---|---|
+| (none) | 1 |
+| `seed_loaded` | 2 |
+| `seed_units_migrated_v1` | 3 |
+| `exercise_round_defaults_migrated_v1` | 4 |
+| `session_feeling_fields_migrated_v1` | 5 |
+| `calendar_data_seeded_v1` | 6 |
+| `calendar_seed_purged_v1` | 7 |
+| `exercise_content_fields_migrated_v1` | 8 |
+| `timed_extra_weight_migrated_v1` | 9 |
+| `exercise_library_refreshed_v5` | 10 |
+| `nutrition_targets_daily_migrated_v1` | 11 |
+| `food_catalog_seeded_v1` | 12 |
+| `default_food_groups_seeded_v1` | 13 |
+| `food_category_groupid_migrated_v1` | 14 (`currentDataVersion`) |
+
+Repository methods used by the service:
+
+| Method | Purpose |
+|---|---|
+| `getDataVersion({defaultValue})` | Reads the device's stored version. |
+| `setDataVersion(int)` | Persists the device's version after each step. |
+| `getLegacyAppliedDataVersion()` | Back-compat shim: returns the highest version implied by any legacy marker (`1` if none). |
+| `getLastDataVersionTransition()` | Diagnostic: most recent `(from, to)` transition, or `null`. |
+| `setLastDataVersionTransition(int from, int to)` | Diagnostic: records a transition. |
+
+Storage shape (Hive runtime; SQL parity noted for the future importer):
+
+| Hive meta-box key | Type | Semantics |
+|---|---|---|
+| `data_version` | int | Current data-migration version; `1` on legacy installs not yet mapped by the shim. |
+| `data_version_last_from` | int | Starting version of the most recent migration run (diagnostic). |
+| `data_version_last_to` | int | Ending version of the most recent migration run (diagnostic). |
+
+Adding a new step: append a row to `HiveWorkoutRepository._dataMigrationSteps()`
+and bump `currentDataVersion` in
+[`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart).
+The next launch runs the new step exactly once per device. No new meta-box
+key is required for the step itself.
+
+Idempotency: every consolidated step preserves its existing effect — same
+box writes, same upsert semantics, same idempotency — only the gating
+changes (legacy `bool` marker → version check). The legacy `bool` markers
+are still read by the shim for back-compat but are otherwise inert.
+
+Catalog content versioning (`catalog_version`, `seed_entry_touched_*`) is
+a separate always-on mechanism and is unaffected by `data_version`.
+
+Tests: see `test/data_migration_test.dart` for the ordered-sequence,
+back-compat shim, retry-on-failure, idempotency, and orthogonality cases.
 
 ---
 

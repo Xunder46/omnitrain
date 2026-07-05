@@ -1,3 +1,4 @@
+import '../../core/constants/catalog_version.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
@@ -225,6 +226,16 @@ class ExerciseLibrary {
       await _repository.updateExercise(updated);
       await _repository.setExerciseCapabilities(updated.id, capabilities);
       await _repository.setExerciseMuscleGroups(updated.id, muscleGroupIds);
+
+      // Mark the entry as user-touched so the next catalog refresh
+      // doesn't overwrite the user's edit (or capability / muscle-group
+      // choices). For seed exercises this protects the user's
+      // customization; for custom exercises (whose ids are never in
+      // the seed list) it's a harmless no-op.
+      await _repository.markSeedEntryTouched(
+        SeedEntryType.exercise,
+        updated.id,
+      );
 
       final updatedWithCaps = updated.copyWith(capabilities: capabilities);
       _allExercises = [
