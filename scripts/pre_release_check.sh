@@ -168,11 +168,27 @@ else
   log_ok "No location declarations in Info.plist"
 fi
 
-# 11b. No microphone declaration (app never records audio)
-if grep -q 'NSMicrophoneUsageDescription' "$INFO_PLIST"; then
-  log_err "Info.plist declares microphone usage. The app does not record audio; remove the key."
+# 11b. Microphone purpose string must be present and non-empty
+# A bundled audio component (the `audio_session` plugin used for rest-timer
+# alert sounds) references microphone-related AVAudioSession APIs in the
+# binary. Apple rejects uploads that include any reference to a sensitive
+# API without a corresponding purpose string. The string must be honest:
+# it must not claim the app records audio, and must not be the prior
+# "unused capability" placeholder.
+if ! grep -q 'NSMicrophoneUsageDescription' "$INFO_PLIST"; then
+  log_err "Info.plist is missing NSMicrophoneUsageDescription. The `audio_session` plugin pulls microphone-related APIs into the binary; Apple rejects the upload without this string."
 else
-  log_ok "No microphone declaration in Info.plist"
+  mic_value=$(grep -A1 'NSMicrophoneUsageDescription' "$INFO_PLIST" \
+    | sed -n 's:.*<string>\(.*\)</string>.*:\1:p' \
+    | head -1 \
+    | tr -d '[:space:]')
+  if [[ -z "$mic_value" ]]; then
+    log_err "NSMicrophoneUsageDescription is present but empty. It must explain the binary's microphone-API reference."
+  elif echo "$mic_value" | grep -qi 'unused\|not used\|never used\|capability is unused'; then
+    log_err "NSMicrophoneUsageDescription contains the obsolete 'unused capability' placeholder. It must be a user-facing explanation, not a disclaimer that the capability is unused."
+  else
+    log_ok "NSMicrophoneUsageDescription is present and non-empty"
+  fi
 fi
 
 # 11c. No dead notification usage key (not a real iOS key)

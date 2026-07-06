@@ -38,6 +38,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>OmniTrain uses your camera to take a profile photo and photos of your foods.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OmniTrain does not record audio and will never prompt you for microphone access. A bundled audio component used for rest-timer alert sounds references microphone-related audio APIs as part of its framework, but OmniTrain does not use the microphone.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>OmniTrain uses your photo library so you can set a profile picture and add photos to your foods.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
