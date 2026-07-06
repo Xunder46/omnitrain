@@ -55,7 +55,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
       }
       await widget.workoutState.loadSessionData();
     } catch (e) {
-      print('Error initializing session: $e');
+      debugPrint('Error initializing session: $e');
     } finally {
       setState(() => _isLoading = false);
     }

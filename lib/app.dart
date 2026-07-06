@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/constants/omni_theme.dart';
+import 'core/models/app_version_info.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
 import 'data/repositories/workout_repository.dart';
@@ -37,6 +38,7 @@ class MyApp extends StatelessWidget {
   final NutritionPrimerState nutritionPrimerState;
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
+  final AppVersionInfo? appVersionInfo;
 
   MyApp({
     super.key,
@@ -55,6 +57,7 @@ class MyApp extends StatelessWidget {
     required this.foodLibraryState,
     required this.nutritionPrimerState,
     required this.timerAlertService,
+    this.appVersionInfo,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -124,6 +127,7 @@ class MyApp extends StatelessWidget {
                   foodLibraryState: foodLibraryState,
                   nutritionPrimerState: nutritionPrimerState,
                   restNotificationService: restNotificationService,
+                  appVersionInfo: appVersionInfo,
                 )
               : HomeScreen(
                   workoutState: workoutState,
@@ -140,6 +144,7 @@ class MyApp extends StatelessWidget {
                   foodLibraryState: foodLibraryState,
                   nutritionPrimerState: nutritionPrimerState,
                   restNotificationService: restNotificationService,
+                  appVersionInfo: appVersionInfo,
                 ),
         );
       },

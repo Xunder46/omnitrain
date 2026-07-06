@@ -40,24 +40,55 @@ OmniTrain uses **imperative navigation** via `OmniNavigator` (wrapping Flutter's
 
 ```
 main()
-  → _createRepository() → HiveWorkoutRepository
-  → repository.initialize()
-  → Creates: WorkoutState, HomeState, RoutineState, CalendarState, PeriodState, ProfileState, SettingsState, TimerAlertService, RestNotificationService, RoutineSessionService, SessionSummaryService
-  → runApp(MyApp(...))   // All dependencies injected via constructor
+  → _initializeLocalTimezone() (one-shot, outside the retry loop)
+  → runApp(StartupRoot(startupRunner: _runStartup))
+```
+
+`StartupRoot` (defined in `lib/app/startup_root.dart`) is the top-level
+widget that owns the startup phase. On `initState` it calls the
+`startupRunner` once. Three outcomes:
+
+- **Success** — runner returns a widget → that widget mounts and
+  becomes the running app. The failure screen never renders. This is
+  the normal-launch path.
+- **Failure** — runner throws → the failure screen renders with a
+  Retry button. The throw is logged for diagnostics only and is never
+  user-visible.
+- **Retry** — user taps Retry → the runner is re-invoked from the
+  top. Success lands on the running app; a second failure re-shows
+  the failure screen. The cycle can repeat indefinitely.
+
+`runStartup` (in `lib/main.dart`) performs the same work the entry
+point did previously:
+
+```
+_runStartup()
+  → PreferencesServiceImpl.init()
+  → repository = HiveWorkoutRepository(); await repository.initialize()
+  → CatalogRefreshService.refresh()  (failures logged, do not block startup)
+  → onboardingComplete = repository.getPreferenceBool('onboarding_complete')
+  → ImageStorageService.create() on native (skipped on web)
+  → Creates: WorkoutState, HomeState, RoutineState, CalendarState, PeriodState,
+             ProfileState, SettingsState, NutritionState, FoodLibraryState,
+             NutritionPrimerState, TimerAlertService, RestNotificationService,
+             RoutineSessionService, SessionSummaryService
+  → reads PackageInfo (fallback "0.0.0+0" on plugin failure)
+  → returns MyApp(... all dependencies injected via constructor ...)
 ```
 
 **File**: `lib/app.dart`
 
 `MyApp` is a `StatelessWidget` that:
 - Builds the theme via `buildTheme()`
-- Sets `MaterialApp.home` based on the `showOnboarding` flag (read from SQLite preference `onboarding_complete` in `main.dart`):
+- Sets `MaterialApp.home` based on the `showOnboarding` flag (read from SQLite preference `onboarding_complete` in `_runStartup`):
   - Fresh install (`onboarding_complete` absent or `false`) → `OnboardingScreen`
   - Returning user (`onboarding_complete = true`) → `HomeScreen`
 - Passes all dependencies via constructor
 
 ```
-main.dart → (fresh install, onboarding_complete absent/false) → OnboardingScreen → [Get Started] → HomeScreen
-main.dart → (returning user, onboarding_complete = true)       → HomeScreen
+StartupRoot → (fresh install, onboarding_complete absent/false) → OnboardingScreen → [Get Started] → HomeScreen
+StartupRoot → (returning user, onboarding_complete = true)       → HomeScreen
+StartupRoot → (startup failure)                                  → StartupFailureScreen → [Retry] → re-runs _runStartup
 ```
 
 ---
@@ -159,6 +190,7 @@ Day rollover:
 | `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: all-time sessions, total training time, current streak, scrollable Strength e1RM/volume trends and Cardio pace/duration trends selected from a current-state window (active training period or last N training days — see [Stats screen doc](stats_screen.md#selection-window-current-state-window)), all-time Recent PRs, and a full-history scrollable NUTRITION card with Calories / Macros segmented toggle |
 | `OnboardingScreen` | `lib/features/onboarding/onboarding_screen.dart` | First-launch 3-page swipeable intro. Page 1: app pitch. Page 2: modality tiles with accent colors and one-liners. Page 3: calendar features + Get Started button. Completion sets `onboarding_complete` preference key via `repository.setPreferenceBool` and calls `pushReplacement` to `HomeScreen`. |
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
+| `StartupFailureScreen` | `lib/features/startup/startup_failure_screen.dart` | End-user startup-failure surface. Shows when `_runStartup` throws inside `StartupRoot`. Plain-language headline ("Something went wrong while starting OmniTrain."), a short secondary line inviting a retry, and a full-width `FilledButton` labeled "Retry" that calls back into `StartupRoot` to re-run the entire startup sequence. No developer terminology is rendered — no "console", "log", "error", or raw exception text. The Retry button is disabled (with `onPressed: null`) while a retry attempt is in flight, to prevent concurrent startups. The screen uses the canonical Abyssal Neon theme tokens via the default failure theme passed in by `StartupRoot`; the user's saved theme is unavailable at this point in the lifecycle because `SettingsState` has not yet been constructed. |
 
 ### Empty / Placeholder Directories
 - `lib/features/workout/` — contains only `.gitkeep`. All workout UI lives in `lib/features/session/`.

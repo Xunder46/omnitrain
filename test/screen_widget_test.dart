@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/app.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
+import 'package:omnitrain/core/models/app_version_info.dart';
 import 'package:omnitrain/core/navigation/navigation.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
@@ -141,12 +142,9 @@ void main() {
         //   assertion still holds because it is measured from the
         //   column.
         final column = contentColumnRectFor(surface.width);
-        final expectedLeft =
-            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
         final expectedRight =
-            column.left +
-            column.width -
-            OmniTheme.bottomCTAHorizontalPadding;
+            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
         expect(buttonBox.left, closeTo(expectedLeft, 0.5));
         expect(buttonBox.right, closeTo(expectedRight, 0.5));
       },
@@ -211,6 +209,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -248,14 +247,55 @@ void main() {
       expect(find.text('APPEARANCE'), findsOneWidget);
 
       await tester.scrollUntilVisible(
-        find.text('Version 1.0.0'),
+        find.text('Version 0.0.0 (0)'),
         300,
         scrollable: find.byType(Scrollable).first,
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Version 1.0.0'), findsOneWidget);
+      expect(find.text('Version 0.0.0 (0)'), findsOneWidget);
+      // S-001 lock-out: the legacy hardcoded literal must no longer
+      // appear in the version footer.
+      expect(find.text('Version 1.0.0'), findsNothing);
     });
+
+    testWidgets(
+      'settings version row reflects injected metadata, not a constant '
+      '(S-002)',
+      (WidgetTester tester) async {
+        final repo = await _freshRepo();
+        final settingsState = SettingsState(repo, fakePreferencesService());
+        await settingsState.initialize();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              settingsState: settingsState,
+              timerAlertService: FakeTimerAlertService(),
+              appVersionInfo: const AppVersionInfo(
+                version: '9.8.7',
+                build: '6',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.scrollUntilVisible(
+          find.text('Version 9.8.7 (6)'),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+
+        // The row must display the injected version + build, formatted
+        // exactly as "Version X.Y.Z (N)", regardless of any previous
+        // value the codebase might have used.
+        expect(find.text('Version 9.8.7 (6)'), findsOneWidget);
+        // Hardcoded literal must remain absent.
+        expect(find.text('Version 1.0.0'), findsNothing);
+      },
+    );
 
     testWidgets('shows only the five retained theme options', (
       WidgetTester tester,
@@ -269,6 +309,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -392,12 +433,9 @@ void main() {
         // a tablet-class surface the column is narrower and the
         // assertion still holds.
         final column = contentColumnRectFor(surface.width);
-        final expectedLeft =
-            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
         final expectedRight =
-            column.left +
-            column.width -
-            OmniTheme.bottomCTAHorizontalPadding;
+            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
         expect(buttonRect.left, closeTo(expectedLeft, 0.5));
         expect(buttonRect.right, closeTo(expectedRight, 0.5));
         // Shared height.
@@ -684,7 +722,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // S-001: unified footer button rendered with the "+ New Routine" label.
-      expect(find.widgetWithText(FilledButton, '+ New Routine'), findsOneWidget);
+      expect(
+        find.widgetWithText(FilledButton, '+ New Routine'),
+        findsOneWidget,
+      );
       // S-001: the old FAB is gone — the routines screen now uses the shared
       // primary bottom CTA pattern.
       expect(find.byType(FloatingActionButton), findsNothing);
@@ -2907,7 +2948,9 @@ void main() {
             .ancestor(
               of: find.byWidget(
                 tester.widget<Scrollable>(
-                  find.byWidgetPredicate((w) => w is Scrollable && w == scrollable.widget),
+                  find.byWidgetPredicate(
+                    (w) => w is Scrollable && w == scrollable.widget,
+                  ),
                 ),
               ),
               matching: find.byType(ScrollableTrendChart),
@@ -2952,7 +2995,9 @@ void main() {
       // (bench has 3 distinct training days in this fixture).
       // A chart with <= 8 points must not engage horizontal scroll.
       ScrollPosition? strengthChartPosition;
-      for (final chart in tester.widgetList<LineChart>(find.byType(LineChart))) {
+      for (final chart in tester.widgetList<LineChart>(
+        find.byType(LineChart),
+      )) {
         if (chart.data.lineBarsData.isEmpty) continue;
         if (chart.data.lineBarsData.first.spots.length != 3) continue;
         // Find the Scrollable ancestor and use its position.
@@ -2963,8 +3008,9 @@ void main() {
             )
             .first;
         if (scrollFinder.evaluate().isEmpty) continue;
-        strengthChartPosition =
-            tester.state<ScrollableState>(scrollFinder).position;
+        strengthChartPosition = tester
+            .state<ScrollableState>(scrollFinder)
+            .position;
         break;
       }
       expect(
@@ -3002,16 +3048,22 @@ void main() {
       // does NOT mirror the data.
       final lineCharts = tester.widgetList<LineChart>(find.byType(LineChart));
       final multiSpotCharts = lineCharts
-          .where((c) => c.data.lineBarsData.isNotEmpty &&
-              c.data.lineBarsData.first.spots.length >= 2)
+          .where(
+            (c) =>
+                c.data.lineBarsData.isNotEmpty &&
+                c.data.lineBarsData.first.spots.length >= 2,
+          )
           .toList();
       expect(multiSpotCharts, isNotEmpty);
 
       for (final chart in multiSpotCharts) {
         final spots = chart.data.lineBarsData.first.spots;
         for (var i = 1; i < spots.length; i++) {
-          expect(spots[i].x, greaterThan(spots[i - 1].x),
-              reason: 'spots must be in ascending x order (not reversed)');
+          expect(
+            spots[i].x,
+            greaterThan(spots[i - 1].x),
+            reason: 'spots must be in ascending x order (not reversed)',
+          );
         }
         // The wrapper uses reverse:false (no mirror).
         final scrollAncestor = find.ancestor(
@@ -3041,9 +3093,14 @@ void main() {
       await pumpStatsScreen(tester, repo);
 
       // Verify every chart's LineTouchData is disabled.
-      for (final chart in tester.widgetList<LineChart>(find.byType(LineChart))) {
-        expect(chart.data.lineTouchData.enabled, isFalse,
-            reason: 'all stats charts must disable lineTouchData');
+      for (final chart in tester.widgetList<LineChart>(
+        find.byType(LineChart),
+      )) {
+        expect(
+          chart.data.lineTouchData.enabled,
+          isFalse,
+          reason: 'all stats charts must disable lineTouchData',
+        );
       }
 
       // Tap the chart and verify no Tooltip renders.
@@ -3072,7 +3129,9 @@ void main() {
       await pumpStatsScreen(tester, repo);
 
       // S-105: topTitles reservedSize == 0 (no popup headroom).
-      for (final chart in tester.widgetList<LineChart>(find.byType(LineChart))) {
+      for (final chart in tester.widgetList<LineChart>(
+        find.byType(LineChart),
+      )) {
         expect(
           chart.data.titlesData.topTitles.sideTitles.reservedSize,
           0,
@@ -3102,9 +3161,13 @@ void main() {
               }),
             )
             .evaluate();
-        expect(leftShiftTransforms, isEmpty,
-            reason: 'no Transform.translate chart-left-shift ancestor — '
-                'no double-padding wrapper');
+        expect(
+          leftShiftTransforms,
+          isEmpty,
+          reason:
+              'no Transform.translate chart-left-shift ancestor — '
+              'no double-padding wrapper',
+        );
       }
 
       // S-105c: the chart sits inside a SizedBox parent (the
@@ -3113,13 +3176,13 @@ void main() {
       for (var i = 0; i < lineCharts.evaluate().length; i++) {
         final chartFinder = find.byType(LineChart).at(i);
         final sizedBoxAncestors = find
-            .ancestor(
-              of: chartFinder,
-              matching: find.byType(SizedBox),
-            )
+            .ancestor(of: chartFinder, matching: find.byType(SizedBox))
             .evaluate();
-        expect(sizedBoxAncestors, isNotEmpty,
-            reason: 'chart sits inside a SizedBox(parent)');
+        expect(
+          sizedBoxAncestors,
+          isNotEmpty,
+          reason: 'chart sits inside a SizedBox(parent)',
+        );
       }
 
       // S-105b: the highest data point renders with at least 2 dp of
@@ -3133,12 +3196,15 @@ void main() {
       // padding logic in ChartAxisHelper (D-10), so the wrapper
       // accepts the helper's existing math and the structural
       // guard holds for normal data.
-      for (final chart in tester.widgetList<LineChart>(find.byType(LineChart))) {
+      for (final chart in tester.widgetList<LineChart>(
+        find.byType(LineChart),
+      )) {
         if (chart.data.lineBarsData.isEmpty) continue;
         final bar = chart.data.lineBarsData.first;
         if (bar.spots.isEmpty) continue;
-        final maxYValue =
-            bar.spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+        final maxYValue = bar.spots
+            .map((s) => s.y)
+            .reduce((a, b) => a > b ? a : b);
         final maxYBound = chart.data.maxY;
         final topPadding = maxYBound - maxYValue;
         expect(
@@ -3174,8 +3240,11 @@ void main() {
       final cardioCharts = tester
           .widgetList<LineChart>(find.byType(LineChart))
           .where((c) => c.data.lineBarsData.length >= 2);
-      expect(cardioCharts, isNotEmpty,
-          reason: 'multi-line cardio chart (pace + distance) present');
+      expect(
+        cardioCharts,
+        isNotEmpty,
+        reason: 'multi-line cardio chart (pace + distance) present',
+      );
       for (final chart in cardioCharts) {
         expect(chart.data.lineTouchData.enabled, isFalse);
       }
@@ -3219,56 +3288,56 @@ void main() {
       );
     }
 
-    testWidgets(
-      'S-005 guard: no feeling scalar / pill / tile appears in the '
-      'ALL TIME summary stat row',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1200));
-        final repo = await _freshRepo();
-        final now = DateTime.now();
-        await seedFeelingSession(
-          repo,
-          id: 'f-1',
-          start: now.subtract(const Duration(days: 1)),
-          duration: const Duration(minutes: 30),
-          feeling: 4,
-        );
+    testWidgets('S-005 guard: no feeling scalar / pill / tile appears in the '
+        'ALL TIME summary stat row', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1200));
+      final repo = await _freshRepo();
+      final now = DateTime.now();
+      await seedFeelingSession(
+        repo,
+        id: 'f-1',
+        start: now.subtract(const Duration(days: 1)),
+        duration: const Duration(minutes: 30),
+        feeling: 4,
+      );
 
-        await pumpStatsScreen(tester, repo);
+      await pumpStatsScreen(tester, repo);
 
-        // The ALL TIME row renders inside the first OmniSurface
-        // (the aggregate card). It must NOT contain any "Feeling"
-        // label, no "average feeling" scalar, no pill of any kind
-        // referencing feeling.
-        final aggregateCard = find.byType(OmniSurface).first;
-        expect(
-          find.descendant(of: aggregateCard, matching: find.text('HOW DID IT FEEL')),
-          findsNothing,
-          reason: 'HOW DID IT FEEL label must not appear in the ALL TIME row',
-        );
-        expect(
-          find.descendant(
-            of: aggregateCard,
-            matching: find.textContaining('feeling', findRichText: true),
-          ),
-          findsNothing,
-          reason: 'no "feeling" word anywhere in the ALL TIME row',
-        );
-        // The three canonical pills are still present and unchanged.
-        expect(
-          find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: aggregateCard, matching: find.text('TIME')),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: aggregateCard, matching: find.text('STREAK')),
-          findsOneWidget,
-        );
-      },
-    );
+      // The ALL TIME row renders inside the first OmniSurface
+      // (the aggregate card). It must NOT contain any "Feeling"
+      // label, no "average feeling" scalar, no pill of any kind
+      // referencing feeling.
+      final aggregateCard = find.byType(OmniSurface).first;
+      expect(
+        find.descendant(
+          of: aggregateCard,
+          matching: find.text('HOW DID IT FEEL'),
+        ),
+        findsNothing,
+        reason: 'HOW DID IT FEEL label must not appear in the ALL TIME row',
+      );
+      expect(
+        find.descendant(
+          of: aggregateCard,
+          matching: find.textContaining('feeling', findRichText: true),
+        ),
+        findsNothing,
+        reason: 'no "feeling" word anywhere in the ALL TIME row',
+      );
+      // The three canonical pills are still present and unchanged.
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('SESSIONS')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('TIME')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: aggregateCard, matching: find.text('STREAK')),
+        findsOneWidget,
+      );
+    });
 
     testWidgets(
       'feeling trend chart renders inside an OmniSurface — never a pill '
@@ -3363,10 +3432,7 @@ void main() {
         // chart's signature.
         expect(find.text('5'), findsAtLeastNWidgets(1));
         // Empty-state card must NOT be shown for a populated trend.
-        expect(
-          find.text('No feeling logged in this window yet'),
-          findsNothing,
-        );
+        expect(find.text('No feeling logged in this window yet'), findsNothing);
       },
     );
 
@@ -3507,9 +3573,7 @@ void main() {
         // The feeling LineChart has minY=1, maxY=5, interval=1.
         final feelingCharts = tester
             .widgetList<LineChart>(find.byType(LineChart))
-            .where(
-              (c) => c.data.minY == 1.0 && c.data.maxY == 5.0,
-            )
+            .where((c) => c.data.minY == 1.0 && c.data.maxY == 5.0)
             .toList();
         expect(
           feelingCharts,
@@ -3540,17 +3604,24 @@ void main() {
         // Exactly the 5 integer tick labels appear on the pinned
         // y-axis column.
         for (final tick in ['1', '2', '3', '4', '5']) {
-          expect(pinnedAxisTexts, contains(tick),
-              reason: 'tick "$tick" must appear on the pinned y-axis');
+          expect(
+            pinnedAxisTexts,
+            contains(tick),
+            reason: 'tick "$tick" must appear on the pinned y-axis',
+          );
         }
         // No "feeling" word on any pinned-axis label (the chart
         // was wired with `unitLabel: ''`).
         final feelingLabels = pinnedAxisTexts
             .where((s) => s != null && s.contains('feeling'))
             .toList();
-        expect(feelingLabels, isEmpty,
-            reason: 'no pinned y-axis label may include the word '
-                '"feeling"');
+        expect(
+          feelingLabels,
+          isEmpty,
+          reason:
+              'no pinned y-axis label may include the word '
+              '"feeling"',
+        );
       },
     );
 
@@ -3594,9 +3665,7 @@ void main() {
         // Locate the feeling LineChart (minY=1, maxY=5).
         final feelingCharts = tester
             .widgetList<LineChart>(find.byType(LineChart))
-            .where(
-              (c) => c.data.minY == 1.0 && c.data.maxY == 5.0,
-            )
+            .where((c) => c.data.minY == 1.0 && c.data.maxY == 5.0)
             .toList();
         expect(feelingCharts, hasLength(1));
         final chart = feelingCharts.first;
@@ -3608,51 +3677,79 @@ void main() {
         // chart on the screen (e1RM, volume, cardio, nutrition
         // calories, nutrition macros). Heavier weights are no
         // longer permitted; this locks the convention.
-        expect(bar.barWidth, 2.0,
-            reason: 'line width must match the other charts on '
-                'the screen (barWidth: 2.0)');
+        expect(
+          bar.barWidth,
+          2.0,
+          reason:
+              'line width must match the other charts on '
+              'the screen (barWidth: 2.0)',
+        );
         final dotPainter = bar.dotData.getDotPainter;
-        final painter = dotPainter(
-          bar.spots.first,
-          0,
-          bar,
-          0,
-        ) as FlDotCirclePainter;
-        expect(painter.radius, 3.0,
-            reason: 'dot radius must match the other charts on '
-                'the screen (radius: 3.0)');
-        expect(painter.strokeWidth, 1.5,
-            reason: 'dot stroke width must match the other charts '
-                'on the screen (strokeWidth: 1.5)');
+        final painter =
+            dotPainter(bar.spots.first, 0, bar, 0) as FlDotCirclePainter;
+        expect(
+          painter.radius,
+          3.0,
+          reason:
+              'dot radius must match the other charts on '
+              'the screen (radius: 3.0)',
+        );
+        expect(
+          painter.strokeWidth,
+          1.5,
+          reason:
+              'dot stroke width must match the other charts '
+              'on the screen (strokeWidth: 1.5)',
+        );
         // No halo stroke — other charts use a plain dot with the
         // default transparent strokeColor.
-        expect(painter.strokeColor, isNot(OmniTheme.colors.surface),
-            reason: 'dot must not carry a halo ring in the surface '
-                'color — that was added to compensate for a heavier '
-                'dot weight and is no longer needed; matches the '
-                'plain-dot convention used by every other chart on '
-                'the screen');
+        expect(
+          painter.strokeColor,
+          isNot(OmniTheme.colors.surface),
+          reason:
+              'dot must not carry a halo ring in the surface '
+              'color — that was added to compensate for a heavier '
+              'dot weight and is no longer needed; matches the '
+              'plain-dot convention used by every other chart on '
+              'the screen',
+        );
 
         // No glow shadow — every other chart on the screen has a
         // plain (no-shadow) line; the feeling chart must too.
-        expect(bar.shadow.blurRadius, 0,
-            reason: 'line must not carry a glow shadow — that was '
-                'added to compensate for a heavier line weight; '
-                'every other chart on the screen renders a plain '
-                '2dp stroke');
-        expect(bar.shadow.color.a, 0.0,
-            reason: 'line shadow must be a no-op (transparent) so '
-                'the 2dp stroke is not visually muddied');
+        expect(
+          bar.shadow.blurRadius,
+          0,
+          reason:
+              'line must not carry a glow shadow — that was '
+              'added to compensate for a heavier line weight; '
+              'every other chart on the screen renders a plain '
+              '2dp stroke',
+        );
+        expect(
+          bar.shadow.color.a,
+          0.0,
+          reason:
+              'line shadow must be a no-op (transparent) so '
+              'the 2dp stroke is not visually muddied',
+        );
 
         // Shape parity — straight segments, no area fill. These
         // were already conventions on the feeling chart; lock
         // them so a future change can't drift.
-        expect(bar.isCurved, isFalse,
-            reason: 'line must use straight segments so it '
-                'reads unambiguously on a 120dp-tall chart');
-        expect(bar.belowBarData.show, isFalse,
-            reason: 'area fill must be off so the line is not '
-                'washed out by the tinted region underneath');
+        expect(
+          bar.isCurved,
+          isFalse,
+          reason:
+              'line must use straight segments so it '
+              'reads unambiguously on a 120dp-tall chart',
+        );
+        expect(
+          bar.belowBarData.show,
+          isFalse,
+          reason:
+              'area fill must be off so the line is not '
+              'washed out by the tinted region underneath',
+        );
 
         // Color: the connecting line is ONE fixed color
         // (`themeColors.primary`), independent of any session's
@@ -3662,31 +3759,44 @@ void main() {
         // carry the meaning instead — each painted in its own
         // session's feeling color via the shared
         // `feelingColor(feeling, themeColors)` helper.
-        expect(bar.color, OmniTheme.colors.primary,
-            reason: 'line color must be themeColors.primary — '
-                'a single fixed color that never changes with '
-                'any session\'s rating');
+        expect(
+          bar.color,
+          OmniTheme.colors.primary,
+          reason:
+              'line color must be themeColors.primary — '
+              'a single fixed color that never changes with '
+              'any session\'s rating',
+        );
         // The line color is NOT a feeling color (the old buggy
         // behavior): when the latest rating is 4, the line must
         // NOT be Colors.green.
-        expect(bar.color, isNot(Colors.green),
-            reason: 'line color must not inherit a feeling '
-                'color — that was the visibility bug');
+        expect(
+          bar.color,
+          isNot(Colors.green),
+          reason:
+              'line color must not inherit a feeling '
+              'color — that was the visibility bug',
+        );
 
         // The most-recent dot is the latest session's feeling
         // color (4 → Colors.green), NOT the line color.
-        final latestFeeling =
-            bar.spots.last.y.round();
-        final latestPainter = bar.dotData.getDotPainter(
-          bar.spots.last,
-          0,
-          bar,
-          bar.spots.length - 1,
-        ) as FlDotCirclePainter;
-        expect(latestPainter.color, feelingColor(latestFeeling, OmniTheme.colors),
-            reason: 'dot color must match feelingColor($latestFeeling) — '
-                'the same source the survey tile and history-row '
-                'accent use for that rating');
+        final latestFeeling = bar.spots.last.y.round();
+        final latestPainter =
+            bar.dotData.getDotPainter(
+                  bar.spots.last,
+                  0,
+                  bar,
+                  bar.spots.length - 1,
+                )
+                as FlDotCirclePainter;
+        expect(
+          latestPainter.color,
+          feelingColor(latestFeeling, OmniTheme.colors),
+          reason:
+              'dot color must match feelingColor($latestFeeling) — '
+              'the same source the survey tile and history-row '
+              'accent use for that rating',
+        );
       },
     );
 
@@ -3712,9 +3822,13 @@ void main() {
           .widgetList<LineChart>(find.byType(LineChart))
           .where((c) => c.data.minY == 1.0 && c.data.maxY == 5.0)
           .toList();
-      expect(feelingCharts, hasLength(1),
-          reason: 'exactly one LineChart with the feeling-trend '
-              'y-axis (1..5) must be rendered');
+      expect(
+        feelingCharts,
+        hasLength(1),
+        reason:
+            'exactly one LineChart with the feeling-trend '
+            'y-axis (1..5) must be rendered',
+      );
       expect(feelingCharts.first.data.lineBarsData, hasLength(1));
       return feelingCharts.first.data.lineBarsData.first;
     }
@@ -3773,18 +3887,30 @@ void main() {
         // The bug: lineA would equal Colors.red, lineB would equal
         // Colors.green — i.e. the line color would vary with the
         // latest rating. The fix: both equal `OmniTheme.colors.primary`.
-        expect(lineA, OmniTheme.colors.primary,
-            reason: 'line color must equal themeColors.primary '
-                'even when the latest rating is 1 (the old code '
-                'painted it Colors.red)');
-        expect(lineB, OmniTheme.colors.primary,
-            reason: 'line color must equal themeColors.primary '
-                'even when the latest rating is 4 (the old code '
-                'painted it Colors.green)');
-        expect(lineA, lineB,
-            reason: 'line color must be identical across series '
-                'with different latest ratings — this is the '
-                'regression guard for the visibility bug');
+        expect(
+          lineA,
+          OmniTheme.colors.primary,
+          reason:
+              'line color must equal themeColors.primary '
+              'even when the latest rating is 1 (the old code '
+              'painted it Colors.red)',
+        );
+        expect(
+          lineB,
+          OmniTheme.colors.primary,
+          reason:
+              'line color must equal themeColors.primary '
+              'even when the latest rating is 4 (the old code '
+              'painted it Colors.green)',
+        );
+        expect(
+          lineA,
+          lineB,
+          reason:
+              'line color must be identical across series '
+              'with different latest ratings — this is the '
+              'regression guard for the visibility bug',
+        );
       },
     );
 
@@ -3832,16 +3958,17 @@ void main() {
         for (var i = 0; i < bar.spots.length; i++) {
           final feeling = bar.spots[i].y.round();
           final expected = feelingColor(feeling, OmniTheme.colors);
-          final painter = bar.dotData.getDotPainter(
-            bar.spots[i],
-            0,
-            bar,
-            i,
-          ) as FlDotCirclePainter;
-          expect(painter.color, expected,
-              reason: 'point $i (feeling=$feeling) must be painted '
-                  'in feelingColor($feeling) — the same source the '
-                  'survey tile and history-row accent use');
+          final painter =
+              bar.dotData.getDotPainter(bar.spots[i], 0, bar, i)
+                  as FlDotCirclePainter;
+          expect(
+            painter.color,
+            expected,
+            reason:
+                'point $i (feeling=$feeling) must be painted '
+                'in feelingColor($feeling) — the same source the '
+                'survey tile and history-row accent use',
+          );
         }
       },
     );
@@ -3881,12 +4008,20 @@ void main() {
         // On the default test theme (abyssalNeon) the primary is cyan,
         // which is clearly distinct from Colors.green (the feeling-4
         // color) so the line is not visually merged with the dots.
-        expect(bar.color, OmniTheme.colors.primary,
-            reason: 'line color must stay fixed at themeColors.primary '
-                'even when every dot is the same feeling color');
-        expect(bar.color, isNot(Colors.green),
-            reason: 'line color must not equal the feeling color '
-                'on a flat series — that was the old buggy behavior');
+        expect(
+          bar.color,
+          OmniTheme.colors.primary,
+          reason:
+              'line color must stay fixed at themeColors.primary '
+              'even when every dot is the same feeling color',
+        );
+        expect(
+          bar.color,
+          isNot(Colors.green),
+          reason:
+              'line color must not equal the feeling color '
+              'on a flat series — that was the old buggy behavior',
+        );
 
         // Every point renders individually with the chart's
         // standard dot conventions (radius 3, strokeWidth 1.5) and
@@ -3895,25 +4030,34 @@ void main() {
         // old heavier dot weight and is no longer needed now that
         // the dot matches every other chart on the screen.
         for (var i = 0; i < bar.spots.length; i++) {
-          final painter = bar.dotData.getDotPainter(
-            bar.spots[i],
-            0,
-            bar,
-            i,
-          ) as FlDotCirclePainter;
-          expect(painter.radius, 3.0,
-              reason: 'point $i must use the standard dot radius '
-                  '(3.0) shared with every other chart on the '
-                  'screen');
-          expect(painter.strokeWidth, 1.5,
-              reason: 'point $i must use the standard dot stroke '
-                  'width (1.5) shared with every other chart on '
-                  'the screen');
+          final painter =
+              bar.dotData.getDotPainter(bar.spots[i], 0, bar, i)
+                  as FlDotCirclePainter;
+          expect(
+            painter.radius,
+            3.0,
+            reason:
+                'point $i must use the standard dot radius '
+                '(3.0) shared with every other chart on the '
+                'screen',
+          );
+          expect(
+            painter.strokeWidth,
+            1.5,
+            reason:
+                'point $i must use the standard dot stroke '
+                'width (1.5) shared with every other chart on '
+                'the screen',
+          );
           // Dot fill is the session's own feeling color.
-          expect(painter.color, feelingColor(4, OmniTheme.colors),
-              reason: 'point $i fill must equal feelingColor(4) — '
-                  'the same color the survey tile and the history-'
-                  'row accent use for rating 4');
+          expect(
+            painter.color,
+            feelingColor(4, OmniTheme.colors),
+            reason:
+                'point $i fill must equal feelingColor(4) — '
+                'the same color the survey tile and the history-'
+                'row accent use for rating 4',
+          );
         }
       },
     );
@@ -4093,20 +4237,14 @@ void main() {
           ),
         );
         await repo.saveProfile(
-          UserProfile(
-            id: 'local-user',
-            displayName: 'Iris',
-            createdAtMs: 1000,
-          ),
+          UserProfile(id: 'local-user', displayName: 'Iris', createdAtMs: 1000),
         );
         final profileState = ProfileState(repo);
         await profileState.loadProfile();
-        await profileState.loadLatestMeasurements(
-          <String>{
-            ...ProfileMeasurements.additional.map((d) => d.type),
-            'height',
-          },
-        );
+        await profileState.loadLatestMeasurements(<String>{
+          ...ProfileMeasurements.additional.map((d) => d.type),
+          'height',
+        });
         final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
@@ -4243,83 +4381,79 @@ void main() {
       },
     );
 
-    testWidgets(
-      'identity block does not wrap in OmniSurface (S-006)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final profileState = ProfileState(repo);
-        await profileState.loadProfile();
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
+    testWidgets('identity block does not wrap in OmniSurface (S-006)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ProfileScreen(
-              profileState: profileState,
-              settingsState: settingsState,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfileScreen(
+            profileState: profileState,
+            settingsState: settingsState,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // The avatar is the highest-level element in the identity
-        // block; no OmniSurface appears between the ListView and the
-        // avatar.
-        final avatar = find.byKey(const Key('profile_identity_avatar'));
-        final element = tester.element(avatar);
-        bool identityBlockIsInsideOmniSurface = false;
-        element.visitAncestorElements((ancestor) {
-          if (ancestor.widget is OmniSurface) {
-            identityBlockIsInsideOmniSurface = true;
-            return false;
-          }
-          return true;
-        });
-        expect(identityBlockIsInsideOmniSurface, isFalse);
-      },
-    );
+      // The avatar is the highest-level element in the identity
+      // block; no OmniSurface appears between the ListView and the
+      // avatar.
+      final avatar = find.byKey(const Key('profile_identity_avatar'));
+      final element = tester.element(avatar);
+      bool identityBlockIsInsideOmniSurface = false;
+      element.visitAncestorElements((ancestor) {
+        if (ancestor.widget is OmniSurface) {
+          identityBlockIsInsideOmniSurface = true;
+          return false;
+        }
+        return true;
+      });
+      expect(identityBlockIsInsideOmniSurface, isFalse);
+    });
 
-    testWidgets(
-      'height row has no Icons.height arrow glyph (S-005)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        await repo.saveMeasurementEntry(
-          BodyMeasurementEntry(
-            id: 'profile-h-header-noicon',
-            measurementType: 'height',
-            value: 180.0,
-            unitId: 'unit-cm',
-            recordedAtMs: 1000,
+    testWidgets('height row has no Icons.height arrow glyph (S-005)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'profile-h-header-noicon',
+          measurementType: 'height',
+          value: 180.0,
+          unitId: 'unit-cm',
+          recordedAtMs: 1000,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      await profileState.loadLatestMeasurements(<String>{
+        ...ProfileMeasurements.additional.map((d) => d.type),
+        'height',
+      });
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfileScreen(
+            profileState: profileState,
+            settingsState: settingsState,
           ),
-        );
-        final profileState = ProfileState(repo);
-        await profileState.loadProfile();
-        await profileState.loadLatestMeasurements(
-          <String>{
-            ...ProfileMeasurements.additional.map((d) => d.type),
-            'height',
-          },
-        );
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ProfileScreen(
-              profileState: profileState,
-              settingsState: settingsState,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // The Icons.height arrow cue must be entirely gone from the
-        // Profile screen.
-        expect(find.byIcon(Icons.height), findsNothing);
-      },
-    );
+      // The Icons.height arrow cue must be entirely gone from the
+      // Profile screen.
+      expect(find.byIcon(Icons.height), findsNothing);
+    });
 
     testWidgets(
       'identity block vertical envelope collapses vs avatar-only height '
@@ -4337,20 +4471,14 @@ void main() {
           ),
         );
         await repo.saveProfile(
-          UserProfile(
-            id: 'local-user',
-            displayName: 'Iris',
-            createdAtMs: 1000,
-          ),
+          UserProfile(id: 'local-user', displayName: 'Iris', createdAtMs: 1000),
         );
         final profileState = ProfileState(repo);
         await profileState.loadProfile();
-        await profileState.loadLatestMeasurements(
-          <String>{
-            ...ProfileMeasurements.additional.map((d) => d.type),
-            'height',
-          },
-        );
+        await profileState.loadLatestMeasurements(<String>{
+          ...ProfileMeasurements.additional.map((d) => d.type),
+          'height',
+        });
         final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
@@ -4428,20 +4556,14 @@ void main() {
           ),
         );
         await repo.saveProfile(
-          UserProfile(
-            id: 'local-user',
-            displayName: 'Iris',
-            createdAtMs: 1000,
-          ),
+          UserProfile(id: 'local-user', displayName: 'Iris', createdAtMs: 1000),
         );
         final profileState = ProfileState(repo);
         await profileState.loadProfile();
-        await profileState.loadLatestMeasurements(
-          <String>{
-            ...ProfileMeasurements.additional.map((d) => d.type),
-            'height',
-          },
-        );
+        await profileState.loadLatestMeasurements(<String>{
+          ...ProfileMeasurements.additional.map((d) => d.type),
+          'height',
+        });
         final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
@@ -4478,8 +4600,7 @@ void main() {
         expect(
           (textBlockCenterY - avatarCenter.dy).abs(),
           lessThanOrEqualTo(20),
-          reason:
-              'name+height text block should sit at the avatar mid-height',
+          reason: 'name+height text block should sit at the avatar mid-height',
         );
 
         // Sanity: the avatar's own dimensions are still 200 × 200.
@@ -4488,151 +4609,133 @@ void main() {
       },
     );
 
-    testWidgets(
-      'identity header: tight vertical gap between name and height '
-      '(S-102 / S-103)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        await repo.saveMeasurementEntry(
-          BodyMeasurementEntry(
-            id: 'profile-rebalance-tight',
-            measurementType: 'height',
-            value: 180.0,
-            unitId: 'unit-cm',
-            recordedAtMs: 1000,
-          ),
-        );
-        await repo.saveProfile(
-          UserProfile(
-            id: 'local-user',
-            displayName: 'Iris',
-            createdAtMs: 1000,
-          ),
-        );
-        final profileState = ProfileState(repo);
-        await profileState.loadProfile();
-        await profileState.loadLatestMeasurements(
-          <String>{
-            ...ProfileMeasurements.additional.map((d) => d.type),
-            'height',
-          },
-        );
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
+    testWidgets('identity header: tight vertical gap between name and height '
+        '(S-102 / S-103)', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'profile-rebalance-tight',
+          measurementType: 'height',
+          value: 180.0,
+          unitId: 'unit-cm',
+          recordedAtMs: 1000,
+        ),
+      );
+      await repo.saveProfile(
+        UserProfile(id: 'local-user', displayName: 'Iris', createdAtMs: 1000),
+      );
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      await profileState.loadLatestMeasurements(<String>{
+        ...ProfileMeasurements.additional.map((d) => d.type),
+        'height',
+      });
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ProfileScreen(
-              profileState: profileState,
-              settingsState: settingsState,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfileScreen(
+            profileState: profileState,
+            settingsState: settingsState,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        final nameCenter = tester.getCenter(find.text('Iris'));
-        final heightCenter = tester.getCenter(
-          find.descendant(
-            of: find.byKey(const Key('profile_identity_height_value')),
-            matching: find.text('180 cm'),
+      final nameCenter = tester.getCenter(find.text('Iris'));
+      final heightCenter = tester.getCenter(
+        find.descendant(
+          of: find.byKey(const Key('profile_identity_height_value')),
+          matching: find.text('180 cm'),
+        ),
+      );
+      final gap = (heightCenter.dy - nameCenter.dy).abs();
+
+      // S-103 — the stacked pair must be tight: Y-distance between
+      // the two text centers is < 40 dp. Prior layout was ~46+ dp
+      // (ConstrainedBox minHeight 48/36 + 6/4 dp vertical padding
+      // + 4 dp SizedBox, with each text centered in its InkWell
+      // chrome). A tight pair reads as one stacked unit rather than
+      // two disconnected lines.
+      expect(
+        gap,
+        lessThan(40),
+        reason:
+            'name and height should read as a tight stacked pair; '
+            'gap was $gap dp',
+      );
+
+      // S-102 — they share a left edge. Both texts start near the
+      // same X coordinate.
+      expect(
+        (nameCenter.dx - heightCenter.dx).abs(),
+        lessThan(20),
+        reason:
+            'name and height should share a left gutter; '
+            'dx delta was ${(nameCenter.dx - heightCenter.dx).abs()}',
+      );
+    });
+
+    testWidgets('identity header: name uses a larger text style than height '
+        '(S-105)', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      await repo.saveProfile(
+        UserProfile(id: 'local-user', displayName: 'Iris', createdAtMs: 1000),
+      );
+      final profileState = ProfileState(repo);
+      await profileState.loadProfile();
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfileScreen(
+            profileState: profileState,
+            settingsState: settingsState,
           ),
-        );
-        final gap = (heightCenter.dy - nameCenter.dy).abs();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // S-103 — the stacked pair must be tight: Y-distance between
-        // the two text centers is < 40 dp. Prior layout was ~46+ dp
-        // (ConstrainedBox minHeight 48/36 + 6/4 dp vertical padding
-        // + 4 dp SizedBox, with each text centered in its InkWell
-        // chrome). A tight pair reads as one stacked unit rather than
-        // two disconnected lines.
-        expect(
-          gap,
-          lessThan(40),
-          reason:
-              'name and height should read as a tight stacked pair; '
-              'gap was $gap dp',
-        );
+      // Resolve the rendered TextStyle for the name and for the
+      // height (which is missing here, so use the default 'Add
+      // height' placeholder — it still uses bodyMedium).
+      final nameStyle = tester.renderObject<RenderBox>(find.text('Iris'));
+      final heightStyle = tester.renderObject<RenderBox>(
+        find.descendant(
+          of: find.byKey(const Key('profile_identity_height_value')),
+          matching: find.text('Add height'),
+        ),
+      );
+      // Both render boxes exist.
+      expect(nameStyle, isNotNull);
+      expect(heightStyle, isNotNull);
 
-        // S-102 — they share a left edge. Both texts start near the
-        // same X coordinate.
-        expect(
-          (nameCenter.dx - heightCenter.dx).abs(),
-          lessThan(20),
-          reason:
-              'name and height should share a left gutter; '
-              'dx delta was ${(nameCenter.dx - heightCenter.dx).abs()}',
-        );
-      },
-    );
-
-    testWidgets(
-      'identity header: name uses a larger text style than height '
-      '(S-105)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        await repo.saveProfile(
-          UserProfile(
-            id: 'local-user',
-            displayName: 'Iris',
-            createdAtMs: 1000,
-          ),
-        );
-        final profileState = ProfileState(repo);
-        await profileState.loadProfile();
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ProfileScreen(
-              profileState: profileState,
-              settingsState: settingsState,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Resolve the rendered TextStyle for the name and for the
-        // height (which is missing here, so use the default 'Add
-        // height' placeholder — it still uses bodyMedium).
-        final nameStyle = tester.renderObject<RenderBox>(
-          find.text('Iris'),
-        );
-        final heightStyle = tester.renderObject<RenderBox>(
-          find.descendant(
-            of: find.byKey(const Key('profile_identity_height_value')),
-            matching: find.text('Add height'),
-          ),
-        );
-        // Both render boxes exist.
-        expect(nameStyle, isNotNull);
-        expect(heightStyle, isNotNull);
-
-        // Walk the element tree to grab the resolved TextStyle for
-        // each. The widget tree wraps each Text in a Padding → the
-        // Text widget exposes its `style` directly.
-        final nameText = tester.widget<Text>(find.text('Iris'));
-        final heightText = tester.widget<Text>(
-          find.descendant(
-            of: find.byKey(const Key('profile_identity_height_value')),
-            matching: find.text('Add height'),
-          ),
-        );
-        final nameFontSize = nameText.style?.fontSize;
-        final heightFontSize = heightText.style?.fontSize;
-        expect(nameFontSize, isNotNull);
-        expect(heightFontSize, isNotNull);
-        expect(
-          nameFontSize! > heightFontSize!,
-          isTrue,
-          reason:
-              'name ($nameFontSize) must use a larger font size than '
-              'height ($heightFontSize)',
-        );
-      },
-    );
+      // Walk the element tree to grab the resolved TextStyle for
+      // each. The widget tree wraps each Text in a Padding → the
+      // Text widget exposes its `style` directly.
+      final nameText = tester.widget<Text>(find.text('Iris'));
+      final heightText = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const Key('profile_identity_height_value')),
+          matching: find.text('Add height'),
+        ),
+      );
+      final nameFontSize = nameText.style?.fontSize;
+      final heightFontSize = heightText.style?.fontSize;
+      expect(nameFontSize, isNotNull);
+      expect(heightFontSize, isNotNull);
+      expect(
+        nameFontSize! > heightFontSize!,
+        isTrue,
+        reason:
+            'name ($nameFontSize) must use a larger font size than '
+            'height ($heightFontSize)',
+      );
+    });
 
     testWidgets(
       'identity header: overall height is not increased by the rebalance '
@@ -4650,20 +4753,14 @@ void main() {
           ),
         );
         await repo.saveProfile(
-          UserProfile(
-            id: 'local-user',
-            displayName: 'Iris',
-            createdAtMs: 1000,
-          ),
+          UserProfile(id: 'local-user', displayName: 'Iris', createdAtMs: 1000),
         );
         final profileState = ProfileState(repo);
         await profileState.loadProfile();
-        await profileState.loadLatestMeasurements(
-          <String>{
-            ...ProfileMeasurements.additional.map((d) => d.type),
-            'height',
-          },
-        );
+        await profileState.loadLatestMeasurements(<String>{
+          ...ProfileMeasurements.additional.map((d) => d.type),
+          'height',
+        });
         final settingsState = SettingsState(repo, fakePreferencesService());
         await settingsState.initialize();
 
@@ -5468,12 +5565,9 @@ void main() {
           find.descendant(of: ctaFinder, matching: find.byType(FilledButton)),
         );
         final column = contentColumnRectFor(surface.width);
-        final expectedLeft =
-            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
         final expectedRight =
-            column.left +
-            column.width -
-            OmniTheme.bottomCTAHorizontalPadding;
+            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
         expect(buttonRect.left, closeTo(expectedLeft, 0.5));
         expect(buttonRect.right, closeTo(expectedRight, 0.5));
         expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
@@ -6505,10 +6599,7 @@ void main() {
 
       // D-9: the "Tap a point to view" half described a removed
       // affordance. The only remaining interaction is long-press.
-      expect(
-        find.text('Long-press to delete'),
-        findsOneWidget,
-      );
+      expect(find.text('Long-press to delete'), findsOneWidget);
     });
 
     // S-017: Helper text hidden in empty state
@@ -6537,97 +6628,92 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Long-press to delete'),
-        findsNothing,
-      );
+      expect(find.text('Long-press to delete'), findsNothing);
     });
 
     // Height chart label follows the active unit (cm mode by default).
-    testWidgets(
-      'height chart label follows the active unit (cm mode)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        await repo.saveMeasurementEntry(
-          BodyMeasurementEntry(
-            id: 'height-cm-entry',
-            measurementType: 'height',
-            value: 180.0,
-            unitId: 'unit-cm',
-            recordedAtMs: 1000,
-          ),
-        );
-        final profileState = ProfileState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-        await profileState.loadProfile();
-        const definition = ProfileMeasurements.height;
+    testWidgets('height chart label follows the active unit (cm mode)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'height-cm-entry',
+          measurementType: 'height',
+          value: 180.0,
+          unitId: 'unit-cm',
+          recordedAtMs: 1000,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+      await profileState.loadProfile();
+      const definition = ProfileMeasurements.height;
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MeasurementHistoryChartSheet(
-                profileState: profileState,
-                definition: definition,
-                settingsState: settingsState,
-                onLogNew: () async {},
-              ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: definition,
+              settingsState: settingsState,
+              onLogNew: () async {},
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // The selected-point label strip reads "180 cm" in cm
-        // mode. The y-axis pinned column also reads "180 cm"
-        // (one label per gridline tick), so this text appears
-        // at least twice — once on the axis, once on the strip.
-        expect(find.text('180 cm'), findsAtLeastNWidgets(1));
-      },
-    );
+      // The selected-point label strip reads "180 cm" in cm
+      // mode. The y-axis pinned column also reads "180 cm"
+      // (one label per gridline tick), so this text appears
+      // at least twice — once on the axis, once on the strip.
+      expect(find.text('180 cm'), findsAtLeastNWidgets(1));
+    });
 
     // Height chart label follows the active unit (ftin mode).
-    testWidgets(
-      'height chart label follows the active unit (ftin mode)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        await repo.saveMeasurementEntry(
-          BodyMeasurementEntry(
-            id: 'height-ftin-entry',
-            measurementType: 'height',
-            value: 180.0,
-            unitId: 'unit-cm',
-            recordedAtMs: 1000,
-          ),
-        );
-        final profileState = ProfileState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-        await settingsState.setPreferredHeightUnit('ftin');
-        await profileState.loadProfile();
-        const definition = ProfileMeasurements.height;
+    testWidgets('height chart label follows the active unit (ftin mode)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      await repo.saveMeasurementEntry(
+        BodyMeasurementEntry(
+          id: 'height-ftin-entry',
+          measurementType: 'height',
+          value: 180.0,
+          unitId: 'unit-cm',
+          recordedAtMs: 1000,
+        ),
+      );
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+      await settingsState.setPreferredHeightUnit('ftin');
+      await profileState.loadProfile();
+      const definition = ProfileMeasurements.height;
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MeasurementHistoryChartSheet(
-                profileState: profileState,
-                definition: definition,
-                settingsState: settingsState,
-                onLogNew: () async {},
-              ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: definition,
+              settingsState: settingsState,
+              onLogNew: () async {},
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // 180 cm = 70.866 in → 71 in = 5' 11" (compound).
-        expect(find.text("5' 11\""), findsOneWidget);
-        // The bare centimetres value is no longer the label.
-        expect(find.text('180 cm'), findsNothing);
-      },
-    );
+      // 180 cm = 70.866 in → 71 in = 5' 11" (compound).
+      expect(find.text("5' 11\""), findsOneWidget);
+      // The bare centimetres value is no longer the label.
+      expect(find.text('180 cm'), findsNothing);
+    });
 
     // S-001: Y-axis labels render with the data range's min and max values.
     // The vertical axis was hidden in A20; the readability fix restores it
@@ -6688,8 +6774,11 @@ void main() {
         );
 
         // The ScrollableTrendChart wrapper is present.
-        expect(find.byType(ScrollableTrendChart), findsOneWidget,
-            reason: 'Chart must be wrapped in ScrollableTrendChart.');
+        expect(
+          find.byType(ScrollableTrendChart),
+          findsOneWidget,
+          reason: 'Chart must be wrapped in ScrollableTrendChart.',
+        );
 
         // Compute the expected label values the wrapper actually
         // renders. The wrapper uses `ChartAxisHelper.computeBounds`
@@ -6700,9 +6789,11 @@ void main() {
         // stats chart style.
         final bounds = ChartAxisHelper.computeBounds(values);
         final expectedLabels = <int>{};
-        for (double v = bounds.min;
-            v <= bounds.max + bounds.interval / 2;
-            v += bounds.interval) {
+        for (
+          double v = bounds.min;
+          v <= bounds.max + bounds.interval / 2;
+          v += bounds.interval
+        ) {
           expectedLabels.add(v.round());
         }
 
@@ -6716,8 +6807,7 @@ void main() {
           expect(
             find.text('$label kg'),
             findsOneWidget,
-            reason:
-                'Y-axis label "$label kg" must render inside the wrapper.',
+            reason: 'Y-axis label "$label kg" must render inside the wrapper.',
           );
         }
       },
@@ -6792,8 +6882,11 @@ void main() {
             (w) => w is SizedBox && w.width == 64.0,
           ),
         );
-        expect(pinnedColumn, findsOneWidget,
-            reason: 'Pinned y-axis column (64 dp) must be present.');
+        expect(
+          pinnedColumn,
+          findsOneWidget,
+          reason: 'Pinned y-axis column (64 dp) must be present.',
+        );
         final pinnedRect = tester.getRect(pinnedColumn);
         final plotLeft = pinnedRect.right;
 
@@ -6811,20 +6904,32 @@ void main() {
         final lineChart = tester.widget<LineChart>(find.byType(LineChart));
         final spots = lineChart.data.lineBarsData.first.spots;
         expect(spots.length, 3);
-        expect(spots.first.x, 0.0,
-            reason: 'First spot x must be 0 (left edge of plot).');
-        expect(spots.last.x, 2.0,
-            reason: 'Last spot x must be points.length - 1.');
+        expect(
+          spots.first.x,
+          0.0,
+          reason: 'First spot x must be 0 (left edge of plot).',
+        );
+        expect(
+          spots.last.x,
+          2.0,
+          reason: 'Last spot x must be points.length - 1.',
+        );
 
         // The first spot's x = 0 is rendered at the left edge of
         // the plot area, which is at x = plotLeft in screen
         // coordinates. Verify by checking that the chart's plot
         // rect starts at plotLeft (i.e. the chart's inner padding
         // doesn't push the first dot inward).
-        expect(plotLeft, lessThan(chartRect.right),
-            reason: 'Plot area must start before the chart right edge.');
-        expect(expectedPlotRight, greaterThan(plotLeft),
-            reason: 'Plot area must have positive width.');
+        expect(
+          plotLeft,
+          lessThan(chartRect.right),
+          reason: 'Plot area must start before the chart right edge.',
+        );
+        expect(
+          expectedPlotRight,
+          greaterThan(plotLeft),
+          reason: 'Plot area must have positive width.',
+        );
       },
     );
 
@@ -6876,8 +6981,11 @@ void main() {
               'Inner LineChart must not render its own y-axis labels in the '
               'single-entry branch — the wrapper owns the pinned column.',
         );
-        expect(find.byType(ScrollableTrendChart), findsOneWidget,
-            reason: 'Chart must be wrapped in ScrollableTrendChart.');
+        expect(
+          find.byType(ScrollableTrendChart),
+          findsOneWidget,
+          reason: 'Chart must be wrapped in ScrollableTrendChart.',
+        );
 
         // The single spot sits at x = 0 (centered between the
         // chart's minX = -0.5 and maxX = 0.5, so the rendered dot
@@ -6885,10 +6993,13 @@ void main() {
         // against either edge).
         final spots = lineChart.data.lineBarsData.first.spots;
         expect(spots.length, 1);
-        expect(spots.first.x, 0.0,
-            reason:
-                'Single-entry spot x must be 0 (centered between the chart\'s '
-                'minX = -0.5 and maxX = 0.5).');
+        expect(
+          spots.first.x,
+          0.0,
+          reason:
+              'Single-entry spot x must be 0 (centered between the chart\'s '
+              'minX = -0.5 and maxX = 0.5).',
+        );
         // Verify the chart's x-axis is symmetric around the dot.
         expect(lineChart.data.minX, -0.5);
         expect(lineChart.data.maxX, 0.5);
@@ -6953,8 +7064,11 @@ void main() {
               'Inner LineChart must not render its own y-axis labels for '
               'height measurements — the wrapper owns the pinned column.',
         );
-        expect(find.byType(ScrollableTrendChart), findsOneWidget,
-            reason: 'Chart must be wrapped in ScrollableTrendChart.');
+        expect(
+          find.byType(ScrollableTrendChart),
+          findsOneWidget,
+          reason: 'Chart must be wrapped in ScrollableTrendChart.',
+        );
 
         // The wrapper renders the same `ChartAxisHelper`-derived
         // bounds the old bespoke code used, so the min and max
@@ -6964,10 +7078,16 @@ void main() {
         final bounds = ChartAxisHelper.computeBounds([178.0, 181.0]);
         final minLabel = bounds.min.toStringAsFixed(0);
         final maxLabel = bounds.max.toStringAsFixed(0);
-        expect(find.text('$minLabel cm'), findsOneWidget,
-            reason: 'Y-axis min label must render in the wrapper.');
-        expect(find.text('$maxLabel cm'), findsOneWidget,
-            reason: 'Y-axis max label must render in the wrapper.');
+        expect(
+          find.text('$minLabel cm'),
+          findsOneWidget,
+          reason: 'Y-axis min label must render in the wrapper.',
+        );
+        expect(
+          find.text('$maxLabel cm'),
+          findsOneWidget,
+          reason: 'Y-axis max label must render in the wrapper.',
+        );
       },
     );
 
@@ -7031,10 +7151,13 @@ void main() {
             (w) => w is SizedBox && w.width == 64.0,
           ),
         );
-        expect(pinnedColumn, findsOneWidget,
-            reason:
-                'Pinned y-axis column (64 dp) must be present and wide '
-                'enough for 3-char whole-number value labels.');
+        expect(
+          pinnedColumn,
+          findsOneWidget,
+          reason:
+              'Pinned y-axis column (64 dp) must be present and wide '
+              'enough for 3-char whole-number value labels.',
+        );
 
         // The chart no longer has a fixed-width 440 dp centered
         // container — it fills the sheet's content width so the
@@ -7131,85 +7254,96 @@ void main() {
         // border, so no minX/maxX extension is needed. Data is
         // not reversed or mirrored.
         final lineChart = tester.widget<LineChart>(find.byType(LineChart));
-        expect(lineChart.data.minX, 0.0,
-            reason: 'Chart x-axis must start at 0 (no left padding).');
-        expect(lineChart.data.maxX, 11.0,
-            reason: 'Chart x-axis must end at the last index (no right padding).');
+        expect(
+          lineChart.data.minX,
+          0.0,
+          reason: 'Chart x-axis must start at 0 (no left padding).',
+        );
+        expect(
+          lineChart.data.maxX,
+          11.0,
+          reason: 'Chart x-axis must end at the last index (no right padding).',
+        );
         final spots = lineChart.data.lineBarsData.first.spots;
         expect(spots.length, 12);
-        expect(spots.first.y, 75.0,
-            reason: 'First spot must be the oldest entry (75.0).');
-        expect(spots.last.y, 86.0,
-            reason: 'Last spot must be the newest entry (86.0).');
+        expect(
+          spots.first.y,
+          75.0,
+          reason: 'First spot must be the oldest entry (75.0).',
+        );
+        expect(
+          spots.last.y,
+          86.0,
+          reason: 'Last spot must be the newest entry (86.0).',
+        );
       },
     );
 
     // S-107: The strip defaults to the most recent entry on load.
     // We verify by reading the strip's date + value text.
-    testWidgets(
-      'S-107: strip defaults to the most recent entry on load',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final baseMs = DateTime.now().millisecondsSinceEpoch;
-        // Three entries at distinct times. The newest is the
-        // third (recordedAtMs == baseMs).
-        for (final s in [
-          ('bw-s107-1', 70.0, 60),
-          ('bw-s107-2', 75.0, 30),
-          ('bw-s107-3', 80.0, 0),
-        ]) {
-          await repo.saveMeasurementEntry(
-            BodyMeasurementEntry(
-              id: s.$1,
-              measurementType: 'bodyweight',
-              value: s.$2,
-              unitId: 'unit-kg',
-              recordedAtMs: baseMs - s.$3 * 24 * 60 * 60 * 1000,
-            ),
-          );
-        }
-        final profileState = ProfileState(repo);
-        final settingsState = SettingsState(repo, fakePreferencesService());
-        await settingsState.initialize();
-        await profileState.loadProfile();
-        const definition = ProfileMeasurements.bodyweight;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MeasurementHistoryChartSheet(
-                profileState: profileState,
-                definition: definition,
-                settingsState: settingsState,
-                onLogNew: () async {},
-              ),
-            ),
+    testWidgets('S-107: strip defaults to the most recent entry on load', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final baseMs = DateTime.now().millisecondsSinceEpoch;
+      // Three entries at distinct times. The newest is the
+      // third (recordedAtMs == baseMs).
+      for (final s in [
+        ('bw-s107-1', 70.0, 60),
+        ('bw-s107-2', 75.0, 30),
+        ('bw-s107-3', 80.0, 0),
+      ]) {
+        await repo.saveMeasurementEntry(
+          BodyMeasurementEntry(
+            id: s.$1,
+            measurementType: 'bodyweight',
+            value: s.$2,
+            unitId: 'unit-kg',
+            recordedAtMs: baseMs - s.$3 * 24 * 60 * 60 * 1000,
           ),
         );
-        await tester.pumpAndSettle();
+      }
+      final profileState = ProfileState(repo);
+      final settingsState = SettingsState(repo, fakePreferencesService());
+      await settingsState.initialize();
+      await profileState.loadProfile();
+      const definition = ProfileMeasurements.bodyweight;
 
-        // Strip shows today's date + 80 kg (the most recent entry).
-        final today = DateTime.fromMillisecondsSinceEpoch(baseMs);
-        final todayLabel = ChartAxisHelper.formatDateLabel(today);
-        expect(find.text(todayLabel), findsWidgets,
-            reason: 'Strip date must be today (the most recent entry).');
-        // The strip value is rendered as the display-unit weight
-        // via `UnitFormatter.formatWeight`. In default kg mode
-        // this is "80 kg" (or "80.0 kg" depending on the
-        // formatter's decimals policy). Match either.
-        expect(
-          find.byWidgetPredicate(
-            (w) =>
-                w is Text &&
-                (w.data == '80 kg' || w.data == '80.0 kg'),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MeasurementHistoryChartSheet(
+              profileState: profileState,
+              definition: definition,
+              settingsState: settingsState,
+              onLogNew: () async {},
+            ),
           ),
-          findsOneWidget,
-          reason:
-              'Strip value must be the most recent entry (80 kg or 80.0 kg).',
-        );
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Strip shows today's date + 80 kg (the most recent entry).
+      final today = DateTime.fromMillisecondsSinceEpoch(baseMs);
+      final todayLabel = ChartAxisHelper.formatDateLabel(today);
+      expect(
+        find.text(todayLabel),
+        findsWidgets,
+        reason: 'Strip date must be today (the most recent entry).',
+      );
+      // The strip value is rendered as the display-unit weight
+      // via `UnitFormatter.formatWeight`. In default kg mode
+      // this is "80 kg" (or "80.0 kg" depending on the
+      // formatter's decimals policy). Match either.
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Text && (w.data == '80 kg' || w.data == '80.0 kg'),
+        ),
+        findsOneWidget,
+        reason: 'Strip value must be the most recent entry (80 kg or 80.0 kg).',
+      );
+    });
 
     // S-109b: The top plotted point is not clipped against the top
     // edge after the headroom removal. We verify by checking the
@@ -9806,10 +9940,7 @@ void main() {
         );
         expect(
           buttonRect.right,
-          closeTo(
-            surface.width - OmniTheme.bottomCTAHorizontalPadding,
-            0.5,
-          ),
+          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
           reason:
               'on a phone-class surface the CTA must reach to '
               '`surface.width - bottomCTAHorizontalPadding`',
@@ -9857,10 +9988,7 @@ void main() {
         );
         expect(
           buttonRect.right,
-          closeTo(
-            surface.width - OmniTheme.bottomCTAHorizontalPadding,
-            0.5,
-          ),
+          closeTo(surface.width - OmniTheme.bottomCTAHorizontalPadding, 0.5),
         );
         expect(
           buttonRect.width,
@@ -9936,10 +10064,7 @@ void main() {
           greaterThanOrEqualTo(scaffoldRect.left),
           reason: 'body content must sit inside the centered column',
         );
-        expect(
-          bodyRect.right,
-          lessThanOrEqualTo(scaffoldRect.right),
-        );
+        expect(bodyRect.right, lessThanOrEqualTo(scaffoldRect.right));
       },
     );
 
@@ -9970,12 +10095,9 @@ void main() {
         //   + bottomCTAHorizontalPadding,
         // and its right edge is mirrored.
         final column = contentColumnRectFor(surface.width);
-        final expectedLeft =
-            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
         final expectedRight =
-            column.left +
-            column.width -
-            OmniTheme.bottomCTAHorizontalPadding;
+            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
         final buttonRect = tester.getRect(
           find.descendant(
             of: find.byType(OmniBottomCTA),
@@ -10006,10 +10128,7 @@ void main() {
         );
         expect(leftMargin, greaterThan(0.0));
         // Heights are unchanged.
-        expect(
-          buttonRect.height,
-          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
-        );
+        expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
         // Vertical anchor is unchanged — the button clears the
         // device safe area by `bottomCTAVerticalBottomPadding`.
         final expectedBottom =
@@ -10068,65 +10187,64 @@ void main() {
       },
     );
 
-    testWidgets(
-      'S-006: threshold is exactly kColumnMinActivationWidth',
-      (WidgetTester tester) async {
-        // 500 dp is the activation threshold itself — the cap must
-        // engage (the column width is `kColumnMaxWidth`).
-        // 499 dp is one dp below the threshold — the cap must be
-        // fully inert (the column fills the surface).
-        for (final entry in const <({double width, bool shouldCap})>[
-          (width: 499, shouldCap: false),
-          (width: 500, shouldCap: true),
-        ]) {
-          final surface = Size(entry.width, 800);
-          await tester.binding.setSurfaceSize(surface);
-          addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets('S-006: threshold is exactly kColumnMinActivationWidth', (
+      WidgetTester tester,
+    ) async {
+      // 500 dp is the activation threshold itself — the cap must
+      // engage (the column width is `kColumnMaxWidth`).
+      // 499 dp is one dp below the threshold — the cap must be
+      // fully inert (the column fills the surface).
+      for (final entry in const <({double width, bool shouldCap})>[
+        (width: 499, shouldCap: false),
+        (width: 500, shouldCap: true),
+      ]) {
+        final surface = Size(entry.width, 800);
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
 
-          await tester.pumpWidget(
-            MaterialApp(
-              home: OmniGradientBackground(
-                child: Scaffold(
-                  bottomNavigationBar: OmniBottomCTA(
-                    label: 'Log Set',
-                    onPressed: () {},
-                  ),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: OmniGradientBackground(
+              child: Scaffold(
+                bottomNavigationBar: OmniBottomCTA(
+                  label: 'Log Set',
+                  onPressed: () {},
                 ),
               ),
             ),
-          );
-          await tester.pumpAndSettle();
+          ),
+        );
+        await tester.pumpAndSettle();
 
-          final buttonRect = tester.getRect(find.byType(FilledButton));
-          if (entry.shouldCap) {
-            // Cap engaged: button is narrower than the surface.
-            expect(
-              buttonRect.width,
-              closeTo(
-                OmniTheme.kColumnMaxWidth -
-                    2 * OmniTheme.bottomCTAHorizontalPadding,
-                0.5,
-              ),
-              reason:
-                  'at ${entry.width} dp wide the cap must engage and the '
-                  'CTA must be inset within the centered column',
-            );
-          } else {
-            // Cap inert: button fills the surface.
-            expect(
-              buttonRect.width,
-              closeTo(
-                surface.width - 2 * OmniTheme.bottomCTAHorizontalPadding,
-                0.5,
-              ),
-              reason:
-                  'at ${entry.width} dp wide the cap must be inert and '
-                  'the CTA must fill the available width',
-            );
-          }
+        final buttonRect = tester.getRect(find.byType(FilledButton));
+        if (entry.shouldCap) {
+          // Cap engaged: button is narrower than the surface.
+          expect(
+            buttonRect.width,
+            closeTo(
+              OmniTheme.kColumnMaxWidth -
+                  2 * OmniTheme.bottomCTAHorizontalPadding,
+              0.5,
+            ),
+            reason:
+                'at ${entry.width} dp wide the cap must engage and the '
+                'CTA must be inset within the centered column',
+          );
+        } else {
+          // Cap inert: button fills the surface.
+          expect(
+            buttonRect.width,
+            closeTo(
+              surface.width - 2 * OmniTheme.bottomCTAHorizontalPadding,
+              0.5,
+            ),
+            reason:
+                'at ${entry.width} dp wide the cap must be inert and '
+                'the CTA must fill the available width',
+          );
         }
-      },
-    );
+      }
+    });
   });
 }
 

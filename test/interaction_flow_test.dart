@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/profile_measurements.dart';
+import 'package:omnitrain/core/models/app_version_info.dart';
 import 'package:omnitrain/core/services/preferences_service.dart'
     show PreferencesService;
 import 'package:omnitrain/core/services/routine_session_service.dart';
@@ -64,11 +65,8 @@ _FakePreferencesService _fakePrefs() => _FakePreferencesService();
 
 void main() {
   group('HomeScreen active-session affordance', () {
-    Future<({
-      HomeScreen screen,
-      WorkoutState workoutState,
-      String sessionId,
-    })> buildHomeWithLoadedSession(MockWorkoutRepository repo) async {
+    Future<({HomeScreen screen, WorkoutState workoutState, String sessionId})>
+    buildHomeWithLoadedSession(MockWorkoutRepository repo) async {
       final seedState = WorkoutState(repo);
       await seedState.createNewSession(modality: 'resistance_lifting');
       final exercises = await repo.getExercises();
@@ -109,14 +107,12 @@ void main() {
         nutritionPrimerState: nutritionPrimerState,
       );
 
-      return (
-        screen: screen,
-        workoutState: workoutState,
-        sessionId: sessionId,
-      );
+      return (screen: screen, workoutState: workoutState, sessionId: sessionId);
     }
 
-    Future<HomeScreen> buildHomeWithoutSession(MockWorkoutRepository repo) async {
+    Future<HomeScreen> buildHomeWithoutSession(
+      MockWorkoutRepository repo,
+    ) async {
       final workoutState = WorkoutState(repo);
       final homeState = HomeState(repo);
       await homeState.init();
@@ -180,11 +176,13 @@ void main() {
         expect(find.byType(WorkoutSessionScreen), findsOneWidget);
         expect(setup.workoutState.currentSession?.id, setup.sessionId);
         final firstSegmentId = setup.workoutState.segments.first.id;
-        final resumedEffortId =
-            setup.workoutState.getEffortsForSegment(firstSegmentId).first.id;
+        final resumedEffortId = setup.workoutState
+            .getEffortsForSegment(firstSegmentId)
+            .first
+            .id;
         final reps = setup.workoutState
-          .getObservationsForEffort(resumedEffortId)
-          .firstWhere((obs) => obs.valueInt == 12);
+            .getObservationsForEffort(resumedEffortId)
+            .firstWhere((obs) => obs.valueInt == 12);
         expect(reps.valueInt, 12);
       },
     );
@@ -210,135 +208,141 @@ void main() {
   group('InlineMetricEditor interactions', () {
     // Crown is dormant in InlineMetricEditor — value changes via tap-to-edit modal.
 
-    testWidgets('weight tap-to-edit: entering 10.5 confirms to onValueChanged(10.5)', (WidgetTester tester) async {
-      double? updatedValue;
+    testWidgets(
+      'weight tap-to-edit: entering 10.5 confirms to onValueChanged(10.5)',
+      (WidgetTester tester) async {
+        double? updatedValue;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: InlineMetricEditor(
-              metricType: 'weight',
-              currentValue: 10.0,
-              unitLabel: 'kg',
-              onValueChanged: (value) => updatedValue = value as double,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: InlineMetricEditor(
+                metricType: 'weight',
+                currentValue: 10.0,
+                unitLabel: 'kg',
+                onValueChanged: (value) => updatedValue = value as double,
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      // Tap the value text to open the modal.
-      await tester.tap(find.text('10.0'));
-      await tester.pumpAndSettle();
+        // Tap the value text to open the modal.
+        await tester.tap(find.text('10.0'));
+        await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), '10.5');
-      await tester.tap(find.text('Ok'));
-      await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), '10.5');
+        await tester.tap(find.text('Ok'));
+        await tester.pumpAndSettle();
 
-      expect(updatedValue, 10.5);
-    });
+        expect(updatedValue, 10.5);
+      },
+    );
 
-    testWidgets('extra-weight tap-to-edit: entering 0.5 confirms to onValueChanged(0.5)', (
-      WidgetTester tester,
-    ) async {
-      double? updatedValue;
+    testWidgets(
+      'extra-weight tap-to-edit: entering 0.5 confirms to onValueChanged(0.5)',
+      (WidgetTester tester) async {
+        double? updatedValue;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: InlineMetricEditor(
-              metricType: 'extra-weight',
-              currentValue: 0.0,
-              unitLabel: 'lbs',
-              onValueChanged: (value) => updatedValue = value as double,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: InlineMetricEditor(
+                metricType: 'extra-weight',
+                currentValue: 0.0,
+                unitLabel: 'lbs',
+                onValueChanged: (value) => updatedValue = value as double,
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      // The extra-weight display shows "0.0" for 0.0 (no sign when not positive).
-      await tester.tap(find.text('0.0'));
-      await tester.pumpAndSettle();
+        // The extra-weight display shows "0.0" for 0.0 (no sign when not positive).
+        await tester.tap(find.text('0.0'));
+        await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField), '0.5');
-      await tester.tap(find.text('Ok'));
-      await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), '0.5');
+        await tester.tap(find.text('Ok'));
+        await tester.pumpAndSettle();
 
-      expect(updatedValue, 0.5);
-    });
+        expect(updatedValue, 0.5);
+      },
+    );
 
     // The following tests drive MetricCrownWidget directly (dormant in
     // InlineMetricEditor but still constructible) to verify that the crown's
     // step-math is intact and has not been deleted.
 
-    testWidgets('fast weight drag on dormant crown widget still snaps to 0.5 increments', (
-      WidgetTester tester,
-    ) async {
-      double? updatedValue;
+    testWidgets(
+      'fast weight drag on dormant crown widget still snaps to 0.5 increments',
+      (WidgetTester tester) async {
+        double? updatedValue;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MetricCrownWidget(
-              metricType: 'weight',
-              currentValue: 10.0,
-              onValueChanged: (value) => updatedValue = value as double,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MetricCrownWidget(
+                metricType: 'weight',
+                currentValue: 10.0,
+                onValueChanged: (value) => updatedValue = value as double,
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      // Drive the crown's drag handler directly (same step-math as before).
-      final crownGd = tester.widget<GestureDetector>(
-        find.descendant(
-          of: find.byType(MetricCrownWidget),
-          matching: find.byType(GestureDetector),
-        ),
-      );
-      crownGd.onVerticalDragUpdate!(
-        DragUpdateDetails(
-          delta: const Offset(0, -13),
-          globalPosition: Offset.zero,
-        ),
-      );
-      await tester.pump();
+        // Drive the crown's drag handler directly (same step-math as before).
+        final crownGd = tester.widget<GestureDetector>(
+          find.descendant(
+            of: find.byType(MetricCrownWidget),
+            matching: find.byType(GestureDetector),
+          ),
+        );
+        crownGd.onVerticalDragUpdate!(
+          DragUpdateDetails(
+            delta: const Offset(0, -13),
+            globalPosition: Offset.zero,
+          ),
+        );
+        await tester.pump();
 
-      expect(updatedValue, 10.5);
-    });
+        expect(updatedValue, 10.5);
+      },
+    );
 
-    testWidgets('fast extra-weight drag on dormant crown widget still snaps to 0.5 increments', (
-      WidgetTester tester,
-    ) async {
-      double? updatedValue;
+    testWidgets(
+      'fast extra-weight drag on dormant crown widget still snaps to 0.5 increments',
+      (WidgetTester tester) async {
+        double? updatedValue;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MetricCrownWidget(
-              metricType: 'extra-weight',
-              currentValue: 0.0,
-              onValueChanged: (value) => updatedValue = value as double,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MetricCrownWidget(
+                metricType: 'extra-weight',
+                currentValue: 0.0,
+                onValueChanged: (value) => updatedValue = value as double,
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      // Drive the crown's drag handler directly.
-      final crownGd = tester.widget<GestureDetector>(
-        find.descendant(
-          of: find.byType(MetricCrownWidget),
-          matching: find.byType(GestureDetector),
-        ),
-      );
-      crownGd.onVerticalDragUpdate!(
-        DragUpdateDetails(
-          delta: const Offset(0, -13),
-          globalPosition: Offset.zero,
-        ),
-      );
-      await tester.pump();
+        // Drive the crown's drag handler directly.
+        final crownGd = tester.widget<GestureDetector>(
+          find.descendant(
+            of: find.byType(MetricCrownWidget),
+            matching: find.byType(GestureDetector),
+          ),
+        );
+        crownGd.onVerticalDragUpdate!(
+          DragUpdateDetails(
+            delta: const Offset(0, -13),
+            globalPosition: Offset.zero,
+          ),
+        );
+        await tester.pump();
 
-      expect(updatedValue, 0.5);
-    });
+        expect(updatedValue, 0.5);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -526,12 +530,18 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Workout Complete'), findsNothing);
-        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(
+          find.text('All exercises completed! Finish this workout?'),
+          findsNothing,
+        );
         expect(find.byType(SessionSummaryScreen), findsNothing);
         expect(find.byType(WorkoutSessionScreen), findsOneWidget);
 
         final segmentId = deps.workoutState.segments.first.id;
-        final effortId = deps.workoutState.getEffortsForSegment(segmentId).first.id;
+        final effortId = deps.workoutState
+            .getEffortsForSegment(segmentId)
+            .first
+            .id;
         final rests = deps.workoutState.getEntryRests(effortId);
 
         expect(rests.any((r) => r.entryIndex == 1), isTrue);
@@ -539,58 +549,60 @@ void main() {
       },
     );
 
-    testWidgets(
-      'logging final interval does not show finish prompt',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
+    testWidgets('logging final interval does not show finish prompt', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
 
-        final repo = await _freshRepo();
-        await repo.setPreferenceBool('hint_seen_exercise_info', true);
-        await repo.setPreferenceBool('hint_seen_exercise_notes', true);
-        final workoutState = WorkoutState(repo);
-        final routineState = RoutineState(repo);
-        final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo, _fakePrefs());
-        await settingsState.initialize();
-        await workoutState.createNewSession(modality: 'cardio_endurance');
+      final repo = await _freshRepo();
+      await repo.setPreferenceBool('hint_seen_exercise_info', true);
+      await repo.setPreferenceBool('hint_seen_exercise_notes', true);
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
+      await settingsState.initialize();
+      await workoutState.createNewSession(modality: 'cardio_endurance');
 
-        final exercises = await repo.getExercises();
-        final timedExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('time'),
-        );
-        await workoutState.addExerciseToSession(
-          timedExercise,
-          effortKindOverride: 'timed',
-        );
+      final exercises = await repo.getExercises();
+      final timedExercise = exercises.firstWhere(
+        (e) => e.capabilities.contains('time'),
+      );
+      await workoutState.addExerciseToSession(
+        timedExercise,
+        effortKindOverride: 'timed',
+      );
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: WorkoutSessionScreen(
-              workoutState: workoutState,
-              routineState: routineState,
-              sessionSummaryService: sessionSummaryService,
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: settingsState,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: settingsState,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.text(timedExercise.name));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text(timedExercise.name));
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
-        await tester.pump(const Duration(seconds: 1));
-        await tester.tap(find.widgetWithText(FilledButton, 'Log Interval'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Interval'));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Workout Complete'), findsNothing);
-        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
-        expect(find.byType(SessionSummaryScreen), findsNothing);
-        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
-        expect(workoutState.currentSession?.endedAtMs, isNull);
-      },
-    );
+      expect(find.text('Workout Complete'), findsNothing);
+      expect(
+        find.text('All exercises completed! Finish this workout?'),
+        findsNothing,
+      );
+      expect(find.byType(SessionSummaryScreen), findsNothing);
+      expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+      expect(workoutState.currentSession?.endedAtMs, isNull);
+    });
 
     testWidgets(
       're-visiting already-logged final set does not show finish prompt',
@@ -599,7 +611,10 @@ void main() {
         final deps = await setupSession();
 
         final segmentId = deps.workoutState.segments.first.id;
-        final effortId = deps.workoutState.getEffortsForSegment(segmentId).first.id;
+        final effortId = deps.workoutState
+            .getEffortsForSegment(segmentId)
+            .first
+            .id;
         await deps.workoutState.recordRestStart(effortId, 1);
 
         await tester.pumpWidget(
@@ -624,59 +639,63 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Workout Complete'), findsNothing);
-        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(
+          find.text('All exercises completed! Finish this workout?'),
+          findsNothing,
+        );
         expect(find.byType(SessionSummaryScreen), findsNothing);
         expect(find.byType(WorkoutSessionScreen), findsOneWidget);
         expect(deps.workoutState.currentSession?.endedAtMs, isNull);
       },
     );
 
-    testWidgets(
-      'editing last set in edit mode does not show finish prompt',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await setupSession();
+    testWidgets('editing last set in edit mode does not show finish prompt', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await setupSession();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: WorkoutSessionScreen(
-              workoutState: deps.workoutState,
-              routineState: deps.routineState,
-              sessionSummaryService: deps.sessionSummaryService,
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: deps.settingsState,
-              editMode: true,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WorkoutSessionScreen(
+            workoutState: deps.workoutState,
+            routineState: deps.routineState,
+            sessionSummaryService: deps.sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: deps.settingsState,
+            editMode: true,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.text(deps.firstExercise.name));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text(deps.firstExercise.name));
+      await tester.pumpAndSettle();
 
-        final repsEditor = find.byType(InlineMetricEditor).first;
-        await tester.tap(
-          find.descendant(
-            of: repsEditor,
-            matching: find.byType(GestureDetector),
-          ).first,
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Edit Reps'), findsOneWidget);
-        await tester.enterText(find.byType(TextField), '7');
-        await tester.tap(find.widgetWithText(FilledButton, 'Ok'));
-        await tester.pumpAndSettle();
+      final repsEditor = find.byType(InlineMetricEditor).first;
+      await tester.tap(
+        find
+            .descendant(of: repsEditor, matching: find.byType(GestureDetector))
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Edit Reps'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '7');
+      await tester.tap(find.widgetWithText(FilledButton, 'Ok'));
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.byIcon(Icons.arrow_forward).first);
-        await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.arrow_forward).first);
+      await tester.pumpAndSettle();
 
-        expect(find.text('Workout Complete'), findsNothing);
-        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
-        expect(find.byType(SessionSummaryScreen), findsNothing);
-        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
-        expect(deps.workoutState.currentSession?.endedAtMs, isNull);
-      },
-    );
+      expect(find.text('Workout Complete'), findsNothing);
+      expect(
+        find.text('All exercises completed! Finish this workout?'),
+        findsNothing,
+      );
+      expect(find.byType(SessionSummaryScreen), findsNothing);
+      expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+      expect(deps.workoutState.currentSession?.endedAtMs, isNull);
+    });
 
     testWidgets(
       'logging final round in sports modality does not show finish prompt',
@@ -725,7 +744,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Workout Complete'), findsNothing);
-        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(
+          find.text('All exercises completed! Finish this workout?'),
+          findsNothing,
+        );
         expect(find.byType(SessionSummaryScreen), findsNothing);
         expect(find.byType(WorkoutSessionScreen), findsOneWidget);
         expect(workoutState.currentSession?.endedAtMs, isNull);
@@ -753,9 +775,8 @@ void main() {
         final exercises = await repo.getExercises();
         final drillExercise = exercises.firstWhere(
           (e) => e.capabilities.contains('hold'),
-          orElse: () => exercises.firstWhere(
-            (e) => e.capabilities.contains('time'),
-          ),
+          orElse: () =>
+              exercises.firstWhere((e) => e.capabilities.contains('time')),
         );
         await workoutState.addExerciseToSession(
           drillExercise,
@@ -784,11 +805,17 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Workout Complete'), findsNothing);
-        expect(find.text('All exercises completed! Finish this workout?'), findsNothing);
+        expect(
+          find.text('All exercises completed! Finish this workout?'),
+          findsNothing,
+        );
         expect(find.byType(SessionSummaryScreen), findsNothing);
         expect(find.byType(WorkoutSessionScreen), findsOneWidget);
         expect(workoutState.currentSession?.endedAtMs, isNull);
-        expect(workoutState.currentSession?.routineTemplateId, 'template-test-1');
+        expect(
+          workoutState.currentSession?.routineTemplateId,
+          'template-test-1',
+        );
       },
     );
 
@@ -1136,7 +1163,8 @@ void main() {
                 tappedExercise = await Navigator.push<Exercise>(
                   ctx,
                   MaterialPageRoute(
-                    builder: (_) => ExercisePickerScreen(workoutState: workoutState),
+                    builder: (_) =>
+                        ExercisePickerScreen(workoutState: workoutState),
                   ),
                 );
               },
@@ -1168,9 +1196,7 @@ void main() {
       final workoutState = WorkoutState(repo);
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: ExercisePickerScreen(workoutState: workoutState),
-        ),
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
       );
       await tester.pumpAndSettle();
 
@@ -1258,37 +1284,36 @@ void main() {
       expect(startBtn.onPressed, isNull);
     });
 
-    testWidgets(
-      'tapping Add Exercise opens ExercisePickerScreen',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final repo = await _freshRepo();
-        final workoutState = WorkoutState(repo);
-        final routineState = RoutineState(repo);
-        final sessionSummaryService = SessionSummaryService(repo);
-        final settingsState = SettingsState(repo, _fakePrefs());
-        await settingsState.initialize();
-        await workoutState.createNewSession();
+    testWidgets('tapping Add Exercise opens ExercisePickerScreen', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
+      final routineState = RoutineState(repo);
+      final sessionSummaryService = SessionSummaryService(repo);
+      final settingsState = SettingsState(repo, _fakePrefs());
+      await settingsState.initialize();
+      await workoutState.createNewSession();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SessionOverviewScreen(
-              workoutState: workoutState,
-              routineState: routineState,
-              sessionSummaryService: sessionSummaryService,
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: settingsState,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionOverviewScreen(
+            workoutState: workoutState,
+            routineState: routineState,
+            sessionSummaryService: sessionSummaryService,
+            timerAlertService: FakeTimerAlertService(),
+            settingsState: settingsState,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Add Exercise'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('Add Exercise'));
+      await tester.pumpAndSettle();
 
-        expect(find.byType(ExercisePickerScreen), findsOneWidget);
-      },
-    );
+      expect(find.byType(ExercisePickerScreen), findsOneWidget);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1415,6 +1440,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -1440,6 +1466,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -1468,6 +1495,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -1501,6 +1529,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -1622,10 +1651,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Chart still present (hint text visible = entries still there)
-      expect(
-        find.text('Long-press to delete'),
-        findsOneWidget,
-      );
+      expect(find.text('Long-press to delete'), findsOneWidget);
       // Entry still in repo
       final history = await profileState.getMeasurementHistory('bodyweight');
       expect(history, hasLength(1));
@@ -1674,10 +1700,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // One entry remains — hint text still visible.
-      expect(
-        find.text('Long-press to delete'),
-        findsOneWidget,
-      );
+      expect(find.text('Long-press to delete'), findsOneWidget);
       final history = await profileState.getMeasurementHistory('bodyweight');
       expect(history, hasLength(1));
     });
@@ -1713,10 +1736,7 @@ void main() {
 
       // Empty state shown, hint text gone.
       expect(find.text('No entries yet'), findsOneWidget);
-      expect(
-        find.text('Long-press to delete'),
-        findsNothing,
-      );
+      expect(find.text('Long-press to delete'), findsNothing);
 
       // Log New Entry button still present (S-018).
       expect(find.text('Log New Entry'), findsOneWidget);
@@ -1745,9 +1765,7 @@ void main() {
 
       await pumpSheet(tester, profileState, settingsState);
 
-      await tester.tap(
-        find.byKey(const ValueKey('measurement_chart_area')),
-      );
+      await tester.tap(find.byKey(const ValueKey('measurement_chart_area')));
       await tester.pumpAndSettle();
 
       // No dialog should have opened.
@@ -1807,12 +1825,15 @@ void main() {
   // ── Scroll-to-bottom on back from exercise detail ─────────────────────────
 
   group('Scroll to bottom when navigating back from exercise detail', () {
-    Future<({
-      WorkoutState workoutState,
-      RoutineState routineState,
-      SessionSummaryService sessionSummaryService,
-      SettingsState settingsState,
-    })> buildScrollTestDeps({String? modality}) async {
+    Future<
+      ({
+        WorkoutState workoutState,
+        RoutineState routineState,
+        SessionSummaryService sessionSummaryService,
+        SettingsState settingsState,
+      })
+    >
+    buildScrollTestDeps({String? modality}) async {
       final repo = await _freshRepo();
       await repo.setPreferenceBool('hint_seen_exercise_info', true);
       await repo.setPreferenceBool('hint_seen_exercise_notes', true);
@@ -1847,52 +1868,50 @@ void main() {
       );
     }
 
-    testWidgets(
-      'back button from exercise detail returns to list view',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets('back button from exercise detail returns to list view', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps =
-            await buildScrollTestDeps(modality: 'resistance_lifting');
-        final repo = await _freshRepo();
-        final exercises = await repo.getExercises();
-        final exercise = exercises.firstWhere(
-          (e) => e.id == 'exercise-barbell-squat',
-        );
-        await deps.workoutState.addExerciseToSession(
-          exercise,
-          chosenMetric: 'reps',
-        );
+      final deps = await buildScrollTestDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final exercises = await repo.getExercises();
+      final exercise = exercises.firstWhere(
+        (e) => e.id == 'exercise-barbell-squat',
+      );
+      await deps.workoutState.addExerciseToSession(
+        exercise,
+        chosenMetric: 'reps',
+      );
 
-        await tester.pumpWidget(
-          buildScreen(
-            workoutState: deps.workoutState,
-            routineState: deps.routineState,
-            sessionSummaryService: deps.sessionSummaryService,
-            settingsState: deps.settingsState,
-          ),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        buildScreen(
+          workoutState: deps.workoutState,
+          routineState: deps.routineState,
+          sessionSummaryService: deps.sessionSummaryService,
+          settingsState: deps.settingsState,
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Verify list view is shown
-        expect(find.text('Exercises'), findsOneWidget);
+      // Verify list view is shown
+      expect(find.text('Exercises'), findsOneWidget);
 
-        // Navigate to detail view by tapping the exercise tile
-        await tester.tap(find.text('Barbell Back Squat'));
-        await tester.pumpAndSettle();
+      // Navigate to detail view by tapping the exercise tile
+      await tester.tap(find.text('Barbell Back Squat'));
+      await tester.pumpAndSettle();
 
-        // Detail view is now shown (header title changes to exercise name)
-        expect(find.text('Exercises'), findsNothing);
+      // Detail view is now shown (header title changes to exercise name)
+      expect(find.text('Exercises'), findsNothing);
 
-        // Tap the back arrow (IconButton in header) to return to list view
-        await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
-        await tester.pumpAndSettle();
+      // Tap the back arrow (IconButton in header) to return to list view
+      await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
+      await tester.pumpAndSettle();
 
-        // Should be back on list view
-        expect(find.text('Exercises'), findsOneWidget);
-      },
-    );
+      // Should be back on list view
+      expect(find.text('Exercises'), findsOneWidget);
+    });
 
     testWidgets(
       'scroll position moves to bottom after returning from exercise detail',
@@ -1901,8 +1920,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(400, 500));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps =
-            await buildScrollTestDeps(modality: 'resistance_lifting');
+        final deps = await buildScrollTestDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
         final exercises = await repo.getExercises();
         final exercise = exercises.firstWhere(
@@ -1959,8 +1977,7 @@ void main() {
         await tester.binding.setSurfaceSize(const Size(400, 500));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final deps =
-            await buildScrollTestDeps(modality: 'resistance_lifting');
+        final deps = await buildScrollTestDeps(modality: 'resistance_lifting');
         final repo = await _freshRepo();
         final exercises = await repo.getExercises();
         final exercise = exercises.firstWhere(
@@ -2013,10 +2030,8 @@ void main() {
   // ── Scroll-to-bottom on back from exercise detail (routine builder) ────────
 
   group('Scroll to bottom when navigating back from routine exercise detail', () {
-    Future<({
-      RoutineState routineState,
-      WorkoutState workoutState,
-    })> buildRoutineScrollDeps() async {
+    Future<({RoutineState routineState, WorkoutState workoutState})>
+    buildRoutineScrollDeps() async {
       final repo = await _freshRepo();
       final routineState = RoutineState(repo);
       routineState.setAutosaveEnabled(false);
@@ -2034,10 +2049,7 @@ void main() {
         final deps = await buildRoutineScrollDeps();
         await deps.workoutState.loadAllExercises();
         final allExercises = deps.workoutState.allExercises;
-        await deps.routineState.addExerciseToRoutine(
-          allExercises.first,
-          'set',
-        );
+        await deps.routineState.addExerciseToRoutine(allExercises.first, 'set');
         await deps.routineState.saveRoutine();
         final templateId = deps.routineState.currentTemplate!.id;
 
@@ -2118,7 +2130,10 @@ void main() {
         // (Layout may reflow after the scroll animation fires, causing
         // maxScrollExtent to shrink; ≥ is the correct invariant here.)
         expect(controller.offset, greaterThan(0.0));
-        expect(controller.offset, greaterThanOrEqualTo(controller.position.maxScrollExtent));
+        expect(
+          controller.offset,
+          greaterThanOrEqualTo(controller.position.maxScrollExtent),
+        );
       },
     );
 

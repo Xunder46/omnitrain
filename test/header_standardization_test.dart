@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/constants/profile_measurements.dart';
+import 'package:omnitrain/core/models/app_version_info.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
@@ -553,6 +554,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -938,6 +940,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settingsState,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -1487,11 +1490,7 @@ void main() {
       // migration: the screen has two outlined cards, both
       // OmniSurface, both with matching chrome.
       expect(
-        find
-            .descendant(
-              of: calorieRing,
-              matching: find.byType(OmniSurface),
-            ),
+        find.descendant(of: calorieRing, matching: find.byType(OmniSurface)),
         findsOneWidget,
         reason:
             'CalorieRingCard must render an OmniSurface in its build '

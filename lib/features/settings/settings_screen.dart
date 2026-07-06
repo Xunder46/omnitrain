@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/models/app_version_info.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../../state/profile/profile_state.dart';
 import '../../state/settings/settings_state.dart';
@@ -19,11 +20,13 @@ class SettingsScreen extends StatefulWidget {
   final RestNotificationService restNotificationService;
   final ProfileState? profileState;
   final double? userHeightCm; // For testing - directly pass height value
+  final AppVersionInfo appVersionInfo;
 
   SettingsScreen({
     super.key,
     required this.settingsState,
     required this.timerAlertService,
+    required this.appVersionInfo,
     RestNotificationService? restNotificationService,
     this.profileState,
     this.userHeightCm,
@@ -156,11 +159,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             return const SizedBox.shrink();
                           }
                           final appTheme = AppTheme.values[index];
-                          final isSelected = widget.settingsState.appTheme == appTheme;
+                          final isSelected =
+                              widget.settingsState.appTheme == appTheme;
 
                           return GestureDetector(
                             behavior: HitTestBehavior.opaque,
-                            onTap: () => widget.settingsState.setAppTheme(appTheme),
+                            onTap: () =>
+                                widget.settingsState.setAppTheme(appTheme),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 180),
                               curve: Curves.easeInOut,
@@ -194,7 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: isSelected
                                       ? theme.colorScheme.onSurface
-                                    : OmniTheme.colors.textSecondary,
+                                      : OmniTheme.colors.textSecondary,
                                   fontWeight: isSelected
                                       ? FontWeight.w600
                                       : FontWeight.w500,
@@ -212,7 +217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
-                      'Version 1.0.0',
+                      widget.appVersionInfo.formatVersionLine(),
                       textAlign: TextAlign.center,
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: OmniTheme.colors.textMuted,
@@ -358,8 +363,8 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
     final statusColor = !permissionAsked
         ? OmniTheme.colors.textSecondary
         : (_notificationsEnabled
-          ? theme.colorScheme.primary
-          : theme.colorScheme.error);
+              ? theme.colorScheme.primary
+              : theme.colorScheme.error);
 
     return OmniSurface(
       padding: EdgeInsets.zero,
@@ -575,7 +580,9 @@ class _SoundOptionTile extends StatelessWidget {
       title: Text(
         displayName,
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: isSelected ? theme.colorScheme.primary : OmniTheme.colors.textDominant,
+          color: isSelected
+              ? theme.colorScheme.primary
+              : OmniTheme.colors.textDominant,
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
@@ -635,7 +642,7 @@ class _IntervalPickerSheet extends StatelessWidget {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: opt.value == currentValue
                         ? theme.colorScheme.primary
-                      : OmniTheme.colors.textDominant,
+                        : OmniTheme.colors.textDominant,
                     fontWeight: opt.value == currentValue
                         ? FontWeight.w600
                         : FontWeight.w400,
@@ -974,7 +981,9 @@ class _SegmentedToggle extends StatelessWidget {
                   style: theme.textTheme.bodySmall?.copyWith(
                     letterSpacing: 1.0,
                     fontWeight: FontWeight.w600,
-                    color: isActive ? Colors.black : OmniTheme.colors.textSecondary,
+                    color: isActive
+                        ? Colors.black
+                        : OmniTheme.colors.textSecondary,
                   ),
                 ),
               ),

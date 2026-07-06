@@ -188,7 +188,15 @@ Interaction rules:
 
 ### Version Footer
 
-The screen ends with a centered, low-emphasis footer currently rendered as `Version 1.0.0`.
+The screen ends with a centered, low-emphasis footer that displays the **installed** app version and build number. The footer text is rendered as `Version X.Y.Z (N)` — version (`pubspec.yaml`'s `version:` token) followed by the build number (the `+N` suffix) in parentheses.
+
+**Source.** The values come from `package_info_plus`'s `PackageInfo.fromPlatform()`, resolved once at app startup in `lib/main.dart` and threaded into the `SettingsScreen` constructor as `appVersionInfo: AppVersionInfo(version, build)` via `MyApp` → `OnboardingScreen` / `HomeScreen` → `SettingsScreen` (and via `HubSheet` for the secondary access path). The Settings footer is the only site that consumes the value today.
+
+**Format helper.** The exact `Version X.Y.Z (N)` string is built by `AppVersionInfo.formatVersionLine()` in `lib/core/models/app_version_info.dart`, so the screen and its tests share one canonical formatter.
+
+**Hardcoded-string rule.** No version literal is baked into `lib/features/settings/`. A future version bump is reflected automatically — edit `pubspec.yaml`, rebuild, the row updates with zero source-code changes.
+
+**Failure mode.** If `package_info_plus` fails to resolve on a platform at startup (`main.dart` `try`/`catch`), `appVersionInfo` falls back to `AppVersionInfo(version: '0.0.0', build: '0')` so the footer remains renderable while the rest of the app continues to load. The placeholder string lives only in this catch block and never reaches a widget under normal operation.
 
 ### Removed Surface
 

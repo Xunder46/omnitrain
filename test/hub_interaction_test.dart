@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/models/app_version_info.dart';
 import 'package:omnitrain/core/navigation/navigation.dart';
 import 'package:omnitrain/core/services/preferences_service.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
@@ -71,42 +72,15 @@ void main() {
       sessionSummaryService = SessionSummaryService(repository);
     });
 
-    Future<void> pumpHomeScreen(WidgetTester tester) async {
-      final nutritionPrimerState = await buildNutritionPrimerState(repository);
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider.value(value: settingsState),
-          ],
-          child: MaterialApp(
-            home: HomeScreen(
-              workoutState: workoutState,
-              homeState: homeState,
-              routineState: routineState,
-              routineSessionService: routineSessionService,
-              sessionSummaryService: sessionSummaryService,
-              calendarState: calendarState,
-              periodState: periodState,
-              profileState: profileState,
-              settingsState: settingsState,
-              timerAlertService: FakeTimerAlertService(),
-              nutritionState: NutritionState(repository),
-              foodLibraryState: FoodLibraryState(repository),
-              nutritionPrimerState: nutritionPrimerState,
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
-
     testWidgets('Tapping logo opens Hub sheet', (tester) async {
       // Skipped — see TODO at the top of the file. The tap on
       // `InteractiveLogo` never resolves because HomeScreen currently uses
       // `HomeLogoButton`; the test errors with "Found 0 widgets".
     }, skip: true);
 
-    testWidgets('Hub label appears for first two opens, then disappears', (tester) async {
+    testWidgets('Hub label appears for first two opens, then disappears', (
+      tester,
+    ) async {
       // Skipped — see TODO at the top of the file.
     }, skip: true);
 
@@ -183,6 +157,10 @@ void main() {
               nutritionPrimerState: nutritionPrimerState,
               routineSessionService: routineSessionService,
               sessionSummaryService: sessionSummaryService,
+              appVersionInfo: const AppVersionInfo(
+                version: '0.0.0',
+                build: '0',
+              ),
             ),
           ),
         ),
@@ -225,30 +203,27 @@ void main() {
       },
     );
 
-    testWidgets(
-      'HubSheet.Stats tile pushes via OmniNavigator (OmniRoute, not '
-      'MaterialPageRoute)',
-      (WidgetTester tester) async {
-        final observer = _RouteTypeRecorder();
-        await pumpHubSheet(tester, observer);
+    testWidgets('HubSheet.Stats tile pushes via OmniNavigator (OmniRoute, not '
+        'MaterialPageRoute)', (WidgetTester tester) async {
+      final observer = _RouteTypeRecorder();
+      await pumpHubSheet(tester, observer);
 
-        await tester.tap(find.text('Stats'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('Stats'));
+      await tester.pumpAndSettle();
 
-        expect(
-          observer.lastPushed,
-          isA<OmniRoute<dynamic>>(),
-          reason:
-              'HubSheet.Stats must route through OmniNavigator.push so '
-              'the OmniRoute wrapper applies.',
-        );
-        expect(
-          observer.lastPushed,
-          isNot(isA<MaterialPageRoute<dynamic>>()),
-          reason: 'raw MaterialPageRoute bypasses the OmniRoute wrapper.',
-        );
-      },
-    );
+      expect(
+        observer.lastPushed,
+        isA<OmniRoute<dynamic>>(),
+        reason:
+            'HubSheet.Stats must route through OmniNavigator.push so '
+            'the OmniRoute wrapper applies.',
+      );
+      expect(
+        observer.lastPushed,
+        isNot(isA<MaterialPageRoute<dynamic>>()),
+        reason: 'raw MaterialPageRoute bypasses the OmniRoute wrapper.',
+      );
+    });
 
     testWidgets(
       'HubSheet.Nutrition tile pushes via OmniNavigator (OmniRoute, not '
@@ -353,7 +328,8 @@ void main() {
               matching: find.text(title),
             ),
             findsOneWidget,
-            reason: 'Hub sheet must expose the "$title" tile '
+            reason:
+                'Hub sheet must expose the "$title" tile '
                 '(layout/destination guard).',
           );
         }

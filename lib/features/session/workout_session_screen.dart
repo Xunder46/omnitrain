@@ -484,7 +484,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         _scheduleAutoOpenPicker();
       }
     } catch (e) {
-      print('Error loading exercises: $e');
+      debugPrint('Error loading exercises: $e');
       if (mounted) {
         setState(() {
           _hasError = true;

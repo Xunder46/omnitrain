@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/models/app_version_info.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
@@ -31,6 +32,7 @@ void main() {
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -50,6 +52,7 @@ void main() {
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -69,6 +72,7 @@ void main() {
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -87,6 +91,7 @@ void main() {
           home: SettingsScreen(
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -107,6 +112,10 @@ void main() {
               settingsState: settings,
               timerAlertService: FakeTimerAlertService(),
               restNotificationService: FakeRestNotificationService(),
+              appVersionInfo: const AppVersionInfo(
+                version: '0.0.0',
+                build: '0',
+              ),
             ),
           ),
         );
@@ -132,6 +141,7 @@ void main() {
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -154,6 +164,7 @@ void main() {
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -179,6 +190,7 @@ void main() {
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -206,6 +218,10 @@ void main() {
               settingsState: settings,
               timerAlertService: FakeTimerAlertService(),
               restNotificationService: FakeRestNotificationService(),
+              appVersionInfo: const AppVersionInfo(
+                version: '0.0.0',
+                build: '0',
+              ),
             ),
           ),
         );
@@ -241,6 +257,7 @@ void main() {
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: restService,
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -271,6 +288,7 @@ void main() {
             settingsState: settings,
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: restService,
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -280,32 +298,32 @@ void main() {
       expect(restService.hasPermissionCallCount, greaterThan(0));
     });
 
-    testWidgets(
-      'tapping notification row requests permission the first time',
-      (WidgetTester tester) async {
-        final settings = await makeSettings();
-        final restService = FakeRestNotificationService()
-          ..permissionGranted = true;
+    testWidgets('tapping notification row requests permission the first time', (
+      WidgetTester tester,
+    ) async {
+      final settings = await makeSettings();
+      final restService = FakeRestNotificationService()
+        ..permissionGranted = true;
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SettingsScreen(
-              settingsState: settings,
-              timerAlertService: FakeTimerAlertService(),
-              restNotificationService: restService,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: restService,
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Notification Permission'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('Notification Permission'));
+      await tester.pumpAndSettle();
 
-        expect(restService.requestPermissionCallCount, 1);
-        expect(settings.notificationPermissionAsked, isTrue);
-        expect(find.text('Enabled'), findsOneWidget);
-      },
-    );
+      expect(restService.requestPermissionCallCount, 1);
+      expect(settings.notificationPermissionAsked, isTrue);
+      expect(find.text('Enabled'), findsOneWidget);
+    });
 
     testWidgets(
       'tapping notification row when denied refreshes disabled status',
@@ -321,6 +339,10 @@ void main() {
               settingsState: settings,
               timerAlertService: FakeTimerAlertService(),
               restNotificationService: restService,
+              appVersionInfo: const AppVersionInfo(
+                version: '0.0.0',
+                build: '0',
+              ),
             ),
           ),
         );
@@ -349,6 +371,7 @@ void main() {
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
             userHeightCm: null,
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -371,6 +394,7 @@ void main() {
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
             userHeightCm: 180.0,
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -393,6 +417,7 @@ void main() {
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
             userHeightCm: 180.0,
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -416,6 +441,7 @@ void main() {
             timerAlertService: FakeTimerAlertService(),
             restNotificationService: FakeRestNotificationService(),
             userHeightCm: 175.0,
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       );
@@ -472,6 +498,10 @@ void main() {
               timerAlertService: FakeTimerAlertService(),
               restNotificationService: FakeRestNotificationService(),
               profileState: profileState,
+              appVersionInfo: const AppVersionInfo(
+                version: '0.0.0',
+                build: '0',
+              ),
             ),
           ),
         );
@@ -483,30 +513,30 @@ void main() {
       },
     );
 
-    testWidgets(
-      'shows height placeholder when no measurement exists',
-      (WidgetTester tester) async {
-        final repo = MockWorkoutRepository();
-        await repo.initialize();
-        final profileState = ProfileState(repo);
-        final settings = SettingsState(repo, fakePreferencesService());
-        await settings.initialize();
+    testWidgets('shows height placeholder when no measurement exists', (
+      WidgetTester tester,
+    ) async {
+      final repo = MockWorkoutRepository();
+      await repo.initialize();
+      final profileState = ProfileState(repo);
+      final settings = SettingsState(repo, fakePreferencesService());
+      await settings.initialize();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SettingsScreen(
-              settingsState: settings,
-              timerAlertService: FakeTimerAlertService(),
-              restNotificationService: FakeRestNotificationService(),
-              profileState: profileState,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsState: settings,
+            timerAlertService: FakeTimerAlertService(),
+            restNotificationService: FakeRestNotificationService(),
+            profileState: profileState,
+            appVersionInfo: const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // No height logged: placeholder is the canonical "—".
-        expect(find.text('—'), findsOneWidget);
-      },
-    );
+      // No height logged: placeholder is the canonical "—".
+      expect(find.text('—'), findsOneWidget);
+    });
   });
 }

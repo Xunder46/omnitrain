@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/models/app_version_info.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
@@ -37,6 +38,7 @@ class HubSheet extends StatelessWidget {
   final NutritionPrimerState nutritionPrimerState;
   final RoutineSessionService routineSessionService;
   final SessionSummaryService sessionSummaryService;
+  final AppVersionInfo? appVersionInfo;
 
   const HubSheet({
     super.key,
@@ -54,12 +56,13 @@ class HubSheet extends StatelessWidget {
     required this.nutritionPrimerState,
     required this.routineSessionService,
     required this.sessionSummaryService,
+    this.appVersionInfo,
   });
 
   @override
   Widget build(BuildContext context) {
     final themeColors = OmniTheme.colorsForTheme(settingsState.appTheme);
-    
+
     final maintenanceItems = [
       _HubItem(
         title: 'Calendar',
@@ -132,6 +135,9 @@ class HubSheet extends StatelessWidget {
               timerAlertService: timerAlertService,
               restNotificationService: restNotificationService,
               profileState: profileState,
+              appVersionInfo:
+                  appVersionInfo ??
+                  const AppVersionInfo(version: '0.0.0', build: '0'),
             ),
           );
         },

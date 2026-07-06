@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/models/app_version_info.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
@@ -36,6 +37,7 @@ class OmniSplashScreen extends StatefulWidget {
   final NutritionPrimerState nutritionPrimerState;
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
+  final AppVersionInfo? appVersionInfo;
   final Duration duration;
 
   OmniSplashScreen({
@@ -53,6 +55,7 @@ class OmniSplashScreen extends StatefulWidget {
     required this.foodLibraryState,
     required this.nutritionPrimerState,
     required this.timerAlertService,
+    this.appVersionInfo,
     RestNotificationService? restNotificationService,
     this.duration = OmniTheme.splashDuration,
   }) : restNotificationService =
@@ -104,6 +107,7 @@ class _OmniSplashScreenState extends State<OmniSplashScreen>
             nutritionState: widget.nutritionState,
             foodLibraryState: widget.foodLibraryState,
             nutritionPrimerState: widget.nutritionPrimerState,
+            appVersionInfo: widget.appVersionInfo,
           ),
         );
       }

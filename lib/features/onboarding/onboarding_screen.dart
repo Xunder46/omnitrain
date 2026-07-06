@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/modality_colors.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/models/app_version_info.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/navigation/navigation.dart';
@@ -40,6 +41,7 @@ class OnboardingScreen extends StatefulWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
   final NutritionPrimerState nutritionPrimerState;
+  final AppVersionInfo? appVersionInfo;
 
   OnboardingScreen({
     super.key,
@@ -57,6 +59,7 @@ class OnboardingScreen extends StatefulWidget {
     required this.nutritionState,
     required this.foodLibraryState,
     required this.nutritionPrimerState,
+    this.appVersionInfo,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -102,6 +105,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         foodLibraryState: widget.foodLibraryState,
         nutritionPrimerState: widget.nutritionPrimerState,
         restNotificationService: widget.restNotificationService,
+        appVersionInfo: widget.appVersionInfo,
       ),
     );
   }

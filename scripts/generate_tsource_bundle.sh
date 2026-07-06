@@ -6,6 +6,12 @@
 # - Collect source code, unit tests, docs, and settings/deployment files.
 # - Exclude plan docs and generated/binary artifacts.
 # - Emit one text bundle for LLM grounding.
+#
+# Changes vs. original:
+# - Header now records the git commit and dirty-file count, so every bundle
+#   is traceable to an exact repository state ("sole source of truth" needs
+#   to say WHICH truth). Warns on stderr when generating from a dirty tree.
+# - *.tsource added to exclusions so a bundle can never include a bundle.
 
 set -euo pipefail
 
@@ -75,7 +81,7 @@ is_excluded_relpath() {
     assets/icon/*|assets/sounds/*)
       return 0
       ;;
-    *.ipa|*.a|*.so|*.dylib|*.jar|*.class|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.mp3|*.wav|*.ogg|*.ttf|*.otf|*.z|*.zip)
+    *.ipa|*.a|*.so|*.dylib|*.jar|*.class|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.mp3|*.wav|*.ogg|*.ttf|*.otf|*.z|*.zip|*.tsource)
       return 0
       ;;
   esac
@@ -184,16 +190,30 @@ LC_ALL=C sort -u "$TMP_FINAL" -o "$TMP_FINAL"
 FILE_COUNT="$(wc -l < "$TMP_FINAL" | tr -d ' ')"
 GENERATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
+# Traceability: pin the bundle to an exact repository state.
+GIT_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo "unknown")"
+GIT_BRANCH="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+GIT_DIRTY_COUNT="$(git -C "$ROOT_DIR" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+
+if [[ "$GIT_DIRTY_COUNT" != "0" ]]; then
+  echo "WARNING: generating bundle from a dirty working tree ($GIT_DIRTY_COUNT uncommitted change(s))." >&2
+  echo "         The bundle will not correspond exactly to commit $GIT_COMMIT." >&2
+fi
+
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 {
   echo "# OmniTrain TSource Bundle"
   echo "generated_at_utc: $GENERATED_AT"
   echo "repository_root: $ROOT_DIR"
+  echo "git_commit: $GIT_COMMIT"
+  echo "git_branch: $GIT_BRANCH"
+  echo "git_uncommitted_changes: $GIT_DIRTY_COUNT"
   echo "included_files: $FILE_COUNT"
   echo "notes:"
   echo "- Plan files are excluded (paths containing /plans/ and filenames matching *plan*.md)."
   echo "- Binary and generated artifacts are excluded."
+  echo "- If git_uncommitted_changes > 0, this bundle does not correspond exactly to git_commit."
   echo
   echo "## Manifest"
 
@@ -217,3 +237,4 @@ mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 echo "Bundle created: $OUTPUT_PATH"
 echo "Included files: $FILE_COUNT"
+echo "Commit: $GIT_COMMIT (branch: $GIT_BRANCH, uncommitted: $GIT_DIRTY_COUNT)"

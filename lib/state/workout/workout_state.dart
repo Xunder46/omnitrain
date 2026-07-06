@@ -348,7 +348,7 @@ class WorkoutState extends ChangeNotifier {
 
       return sessions.first;
     } catch (e) {
-      print('Error checking for in-progress sessions: $e');
+      debugPrint('Error checking for in-progress sessions: $e');
       return null;
     }
   }

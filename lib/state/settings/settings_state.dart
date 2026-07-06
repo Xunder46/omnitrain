@@ -60,7 +60,6 @@ class SettingsState extends ChangeNotifier {
   int _restPingInterval = 0;
   String _restPingSound = 'soft_chime';
   bool _notificationPermissionAsked = false;
-  final bool _showHubLabel = false;
 
   AppTheme get appTheme => _appTheme;
   String get preferredWeightUnit => _preferredWeightUnit;

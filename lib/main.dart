@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'app.dart';
+import 'app/startup_root.dart';
+import 'core/models/app_version_info.dart';
 import 'core/services/bundled_catalog_source.dart';
 import 'core/services/catalog_refresh_service.dart';
 import 'core/services/image_storage_service.dart';
@@ -25,16 +28,13 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
-/// Create the appropriate repository based on platform
+/// Build the app's storage engine.
 ///
-/// Web: Always uses MockWorkoutRepository (in-memory, no persistence)
-/// Native (iOS/Android): Would use SqliteWorkoutRepository when implemented
-///
-/// This pattern allows easy switching between environments without platform checks
-/// scattered throughout the codebase
+/// One repository implementation, `HiveWorkoutRepository`, services every
+/// platform — web, iOS, and Android. Hive-backed persistence is web-safe
+/// and works natively too, so there is no platform-branching repository
+/// choice. Adding a new platform later will reuse this same constructor.
 Future<WorkoutRepository> _createRepository() async {
-  // Use Hive for local persistence across web and native.
-  // SqliteWorkoutRepository can replace this on native later.
   return HiveWorkoutRepository();
 }
 
@@ -55,109 +55,134 @@ Future<void> _initializeLocalTimezone() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _initializeLocalTimezone();
+  runApp(StartupRoot(startupRunner: _runStartup));
+}
+
+/// One full pass through OmniTrain's startup work.
+///
+/// Builds the repository, hydrates every state object, and returns
+/// the [MyApp] widget that should be mounted on success. Throws if
+/// any step fails — [StartupRoot] catches the throw and re-runs
+/// this routine when the user taps Retry. Every step is
+/// intentionally re-executed on retry; no state is cached across
+/// attempts because a partial init can leave state holders
+/// holding stale references.
+Future<Widget> _runStartup() async {
+  // Initialize services
+  final preferencesService = PreferencesServiceImpl();
+  await preferencesService.init();
+
+  // Initialize repository (injectable, can be swapped per environment)
+  final repository = await _createRepository();
+  await repository.initialize();
+
+  // Reconcile the device's stored catalog against the bundled
+  // catalog. Runs at app start (after repository.initialize, before
+  // state construction) so every state class sees the post-refresh
+  // catalog. Failures are logged but do NOT block app startup —
+  // a transient I/O error will be retried on the next launch.
+  final catalogRefresh = CatalogRefreshService(
+    repository,
+    const BundledCatalogSource(),
+  );
   try {
-    // Initialize services
-    final preferencesService = PreferencesServiceImpl();
-    await preferencesService.init();
-
-    // Initialize repository (injectable, can be swapped per environment)
-    final repository = await _createRepository();
-    await repository.initialize();
-
-    // Reconcile the device's stored catalog against the bundled
-    // catalog. Runs at app start (after repository.initialize, before
-    // state construction) so every state class sees the post-refresh
-    // catalog. Failures are logged but do NOT block app startup —
-    // a transient I/O error will be retried on the next launch.
-    final catalogRefresh = CatalogRefreshService(
-      repository,
-      const BundledCatalogSource(),
-    );
-    try {
-      await catalogRefresh.refresh();
-    } catch (e, st) {
-      debugPrint('Catalog refresh failed (will retry next launch): $e');
-      debugPrintStack(stackTrace: st);
-    }
-
-    // Check first-launch onboarding flag
-    final onboardingComplete = await repository.getPreferenceBool(
-      'onboarding_complete',
-    );
-    final showOnboarding = !onboardingComplete;
-
-    // Native-only image storage helper (Phase 2 of the
-    // image-persistence fix plan). Owns the managed directory
-    // `<applicationDocumentsDirectory>/omni_images/` and is the
-    // sole gate for the pick-and-store flow on profile avatars and
-    // food photos. Construction resolves the documents directory
-    // once at app start; the same instance is shared by every
-    // state and screen that needs it (D-8).
-    // On web, skip initialization as it's not supported there.
-    final imageStorageService = kIsWeb ? null : await ImageStorageService.create();
-
-    // Create state with repository
-    final workoutState = WorkoutState(repository);
-    final homeState = HomeState(repository);
-    await homeState.init();
-    final routineState = RoutineState(repository);
-    final calendarState = CalendarState(repository);
-    final periodState = PeriodState(repository);
-    final profileState = ProfileState(
-      repository,
-      imageStorage: imageStorageService,
-    );
-    final settingsState = SettingsState(repository, preferencesService);
-    await settingsState.initialize();
-    final nutritionState = NutritionState(repository);
-    await nutritionState.loadNutritionTarget();
-    final foodLibraryState = FoodLibraryState(
-      repository,
-      imageStorage: imageStorageService,
-    );
-    // One-shot Daily Nutrition primer state. Hydrated eagerly
-    // so the first home-strip tap consults the persisted
-    // seen-flag from frame 1 (no flicker of the auto-show).
-    final nutritionPrimerState = NutritionPrimerState(repository);
-    await nutritionPrimerState.init();
-    final timerAlertService = TimerAlertService();
-    await timerAlertService.initialize();
-    final restNotificationService = RestNotificationService();
-    await restNotificationService.initialize();
-
-    // Create service with repository
-    final routineSessionService = RoutineSessionService(repository);
-    final sessionSummaryService = SessionSummaryService(repository);
-
-    runApp(
-      MyApp(
-        repository: repository,
-        showOnboarding: showOnboarding,
-        workoutState: workoutState,
-        homeState: homeState,
-        routineState: routineState,
-        routineSessionService: routineSessionService,
-        sessionSummaryService: sessionSummaryService,
-        calendarState: calendarState,
-        periodState: periodState,
-        profileState: profileState,
-        settingsState: settingsState,
-        nutritionState: nutritionState,
-        foodLibraryState: foodLibraryState,
-        nutritionPrimerState: nutritionPrimerState,
-        timerAlertService: timerAlertService,
-        restNotificationService: restNotificationService,
-      ),
-    );
-  } catch (e) {
-    runApp(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Text('Error initializing app. Check console for details.'),
-          ),
-        ),
-      ),
-    );
+    await catalogRefresh.refresh();
+  } catch (e, st) {
+    debugPrint('Catalog refresh failed (will retry next launch): $e');
+    debugPrintStack(stackTrace: st);
   }
+
+  // Check first-launch onboarding flag
+  final onboardingComplete = await repository.getPreferenceBool(
+    'onboarding_complete',
+  );
+  final showOnboarding = !onboardingComplete;
+
+  // Native-only image storage helper (Phase 2 of the
+  // image-persistence fix plan). Owns the managed directory
+  // `<applicationDocumentsDirectory>/omni_images/` and is the
+  // sole gate for the pick-and-store flow on profile avatars and
+  // food photos. Construction resolves the documents directory
+  // once at app start; the same instance is shared by every
+  // state and screen that needs it (D-8).
+  // On web, skip initialization as it's not supported there.
+  final imageStorageService = kIsWeb
+      ? null
+      : await ImageStorageService.create();
+
+  // Create state with repository
+  final workoutState = WorkoutState(repository);
+  final homeState = HomeState(repository);
+  await homeState.init();
+  final routineState = RoutineState(repository);
+  final calendarState = CalendarState(repository);
+  final periodState = PeriodState(repository);
+  final profileState = ProfileState(
+    repository,
+    imageStorage: imageStorageService,
+  );
+  final settingsState = SettingsState(repository, preferencesService);
+  await settingsState.initialize();
+  final nutritionState = NutritionState(repository);
+  await nutritionState.loadNutritionTarget();
+  final foodLibraryState = FoodLibraryState(
+    repository,
+    imageStorage: imageStorageService,
+  );
+  // One-shot Daily Nutrition primer state. Hydrated eagerly
+  // so the first home-strip tap consults the persisted
+  // seen-flag from frame 1 (no flicker of the auto-show).
+  final nutritionPrimerState = NutritionPrimerState(repository);
+  await nutritionPrimerState.init();
+  final timerAlertService = TimerAlertService();
+  await timerAlertService.initialize();
+  final restNotificationService = RestNotificationService();
+  await restNotificationService.initialize();
+
+  // Create service with repository
+  final routineSessionService = RoutineSessionService(repository);
+  final sessionSummaryService = SessionSummaryService(repository);
+
+  // Build-metadata for the Settings footer.
+  //
+  // Source of truth = `pubspec.yaml`'s `version:` line, compiled into
+  // the native bundle and surfaced at runtime via `package_info_plus`.
+  // Reading once at startup is sufficient — the values are static for
+  // the lifetime of the process. A plugin failure (rare on supported
+  // platforms) falls back to a "0.0.0+0" placeholder so the footer
+  // remains renderable while the app keeps running. We deliberately
+  // do NOT bake any version literal into `lib/` — the placeholder
+  // string lives in this catch block only, never reaches a widget.
+  AppVersionInfo appVersionInfo;
+  try {
+    final packageInfo = await PackageInfo.fromPlatform();
+    appVersionInfo = AppVersionInfo(
+      version: packageInfo.version,
+      build: packageInfo.buildNumber,
+    );
+  } catch (e, st) {
+    debugPrint('Failed to read PackageInfo: $e');
+    debugPrintStack(stackTrace: st);
+    appVersionInfo = const AppVersionInfo(version: '0.0.0', build: '0');
+  }
+
+  return MyApp(
+    repository: repository,
+    showOnboarding: showOnboarding,
+    workoutState: workoutState,
+    homeState: homeState,
+    routineState: routineState,
+    routineSessionService: routineSessionService,
+    sessionSummaryService: sessionSummaryService,
+    calendarState: calendarState,
+    periodState: periodState,
+    profileState: profileState,
+    settingsState: settingsState,
+    nutritionState: nutritionState,
+    foodLibraryState: foodLibraryState,
+    nutritionPrimerState: nutritionPrimerState,
+    timerAlertService: timerAlertService,
+    restNotificationService: restNotificationService,
+    appVersionInfo: appVersionInfo,
+  );
 }

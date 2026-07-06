@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
+import '../../core/models/app_version_info.dart';
 import '../../state/workout/workout_state.dart';
 import '../../state/home/home_state.dart';
 import '../../state/routine/routine_state.dart';
@@ -45,6 +46,7 @@ class HomeScreen extends StatefulWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
   final NutritionPrimerState nutritionPrimerState;
+  final AppVersionInfo? appVersionInfo;
 
   HomeScreen({
     super.key,
@@ -61,6 +63,7 @@ class HomeScreen extends StatefulWidget {
     required this.nutritionState,
     required this.foodLibraryState,
     required this.nutritionPrimerState,
+    this.appVersionInfo,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -194,13 +197,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Initialize last seen date for rollover detection
   void _initializeLastSeenDate() {
     final now = DateTime.now();
-    _lastSeenDate = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    _lastSeenDate = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).millisecondsSinceEpoch;
   }
 
   /// Check if date has rolled over and trigger nutrition state rollover if needed
   void _checkAndHandleDateRollover() {
     final now = DateTime.now();
-    final todayMs = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    final todayMs = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).millisecondsSinceEpoch;
 
     if (todayMs != _lastSeenDate) {
       _lastSeenDate = todayMs;
@@ -370,7 +381,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     naturalTileSide * 3 + standardGridSpacing * 2;
 
                 // Total content height at natural sizes.
-                final totalNatural = titleHeight +
+                final totalNatural =
+                    titleHeight +
                     titleToGridGap +
                     naturalGridHeight +
                     gridToCardGap +
@@ -396,17 +408,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Padding(
-                      padding:
-                          const EdgeInsets.fromLTRB(16.0, 0, 16.0, 0.0),
+                      padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 0.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
                             'TRAIN',
                             textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 2.0,
@@ -441,40 +450,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               final hasActiveSession =
                                   widget.workoutState.hasActiveSession;
 
-                              final tiles = HomeTiles.all.map((tile) {
-                                final isActive = hasActiveSession &&
-                                    (tile.key == 'my_routines'
-                                        ? isRoutineSession
-                                        : tile.modality == null
+                              final tiles = HomeTiles.all
+                                  .map((tile) {
+                                    final isActive =
+                                        hasActiveSession &&
+                                        (tile.key == 'my_routines'
+                                            ? isRoutineSession
+                                            : tile.modality == null
                                             ? session?.modality == null &&
-                                                !isRoutineSession
+                                                  !isRoutineSession
                                             : session?.modality ==
-                                                tile.modality);
+                                                  tile.modality);
 
-                                return EnergyTile(
-                                  title: tile.label,
-                                  icon: tile.iconData,
-                                  iconWidget: tile.iconWidget,
-                                  accentColor: tile.accentColor,
-                                  isSecondary: tile.isSecondary,
-                                  isActive: isActive,
-                                  onTap: () => _handleTileTap(
-                                    context,
-                                    tile,
-                                    isActive,
-                                  ),
-                                );
-                              }).toList(growable: false);
+                                    return EnergyTile(
+                                      title: tile.label,
+                                      icon: tile.iconData,
+                                      iconWidget: tile.iconWidget,
+                                      accentColor: tile.accentColor,
+                                      isSecondary: tile.isSecondary,
+                                      isActive: isActive,
+                                      onTap: () => _handleTileTap(
+                                        context,
+                                        tile,
+                                        isActive,
+                                      ),
+                                    );
+                                  })
+                                  .toList(growable: false);
 
                               Widget rowOf(int start, int end) {
                                 return Row(
                                   children: [
-                                    for (var i = start;
-                                        i < end;
-                                        i++) ...[
+                                    for (var i = start; i < end; i++) ...[
                                       if (i > start)
                                         const SizedBox(
-                                            width: standardGridSpacing),
+                                          width: standardGridSpacing,
+                                        ),
                                       Expanded(
                                         child: SizedBox(
                                           height: tileSide,
@@ -489,11 +500,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               return Column(
                                 children: [
                                   rowOf(0, 2),
-                                  const SizedBox(
-                                      height: standardGridSpacing),
+                                  const SizedBox(height: standardGridSpacing),
                                   rowOf(2, 4),
-                                  const SizedBox(
-                                      height: standardGridSpacing),
+                                  const SizedBox(height: standardGridSpacing),
                                   rowOf(4, 6),
                                 ],
                               );
@@ -515,20 +524,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ListenableBuilder(
                       listenable: widget.nutritionState,
                       builder: (context, _) {
-                        final target =
-                            widget.nutritionState.nutritionTarget;
+                        final target = widget.nutritionState.nutritionTarget;
                         final targetCalories =
                             (target != null && target.calories > 0)
-                                ? target.calories.round()
-                                : null;
+                            ? target.calories.round()
+                            : null;
                         return NutritionSummaryCard(
                           consumedCalories:
                               widget.nutritionState.todayConsumedCalories,
                           targetCalories: targetCalories,
-                          proteinKcal:
-                              widget.nutritionState.todayProteinKcal,
-                          carbsKcal:
-                              widget.nutritionState.todayNetCarbsKcal,
+                          proteinKcal: widget.nutritionState.todayProteinKcal,
+                          carbsKcal: widget.nutritionState.todayNetCarbsKcal,
                           fatKcal: widget.nutritionState.todayFatKcal,
                           onTap: _openNutritionScreen,
                         );
@@ -1070,6 +1076,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             timerAlertService: widget.timerAlertService,
             restNotificationService: widget.restNotificationService,
             profileState: widget.profileState,
+            appVersionInfo:
+                widget.appVersionInfo ??
+                const AppVersionInfo(version: '0.0.0', build: '0'),
           ),
         ),
       ),
