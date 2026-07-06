@@ -22,10 +22,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           mainAxisSize: MainAxisSize.min,
           children: [
             SizedBox(
-              key: _infoIconKey,
               child: IconButton(
                 key: const Key('exercise-info-button'),
                 icon: Icon(
+                  key: _infoIconKey,
                   Icons.info_outline,
                   size: 30,
                   color: theme.colorScheme.onSurface.withOpacity(0.45),
@@ -41,10 +41,10 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
               clipBehavior: Clip.none,
               children: [
                 SizedBox(
-                  key: _notesIconKey,
                   child: IconButton(
                     key: const Key('exercise-note-button'),
                     icon: Icon(
+                      key: _notesIconKey,
                       Icons.edit_note,
                       size: 30,
                       color: theme.colorScheme.onSurface.withOpacity(0.45),

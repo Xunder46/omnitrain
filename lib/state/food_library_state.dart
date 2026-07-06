@@ -615,15 +615,34 @@ class FoodLibraryState extends ChangeNotifier {
   /// Called after [updateCatalogFood] saves the catalog change.
   ///
   /// This ensures that when a user edits a catalog food (name, macros,
-  /// image, etc.), the linked "Foods I Eat" entries automatically
-  /// reflect the updated values.
-  ///
-  /// Uses durable `catalogId` linkage first, then falls back to
-  /// identity matching against [oldCatalogFood] (the values BEFORE
-  /// the edit) for legacy library foods (those without `catalogId`
-  /// set). When a legacy library food is found via identity match, it
-  /// is upgraded to use `catalogId` so future propagations work
-  /// without identity matching.
+/// image, group, etc.), the linked "Foods I Eat" entries automatically
+/// reflect the updated values.
+///
+/// Uses durable `catalogId` linkage first, then falls back to
+/// identity matching against [oldCatalogFood] (the values BEFORE
+/// the edit) for legacy library foods (those without `catalogId`
+/// set). When a legacy library food is found via identity match, it
+/// is upgraded to use `catalogId` so future propagations work
+/// without identity matching.
+///
+/// Per-field invariants:
+///   * Every catalog field the user can edit — name, groupId,
+///     unitType, referenceAmount, referenceLabel, macros (protein,
+///     carbs, fiber, fat, sodium), notes, imagePath — propagates
+///     to the linked library row. The library food's `groupId`
+///     is NOT treated as user-customizable for catalog copies; the
+///     catalog's choice wins.
+///   * `id`, `isCatalog = false`, `catalogId`, and `createdAtMs`
+///     are preserved from the existing library row so the durable
+///     link stays intact.
+///   * `lastAmountConsumed` (per-user remembered portion from
+///     `NutritionState`, food-last-amount plan) is preserved from
+///     the existing library row. Catalog rows are always `null`
+///     for this field, so the propagation must explicitly carry
+///     the library value forward — otherwise the write-through
+///     amount the user just logged would be silently wiped.
+///   * `updatedAtMs` is bumped so the next `notifyListeners()`
+///     cycle reflects the propagation timestamp.
   Future<void> _propagateCatalogEditToLinkedFoods(
     String catalogFoodId,
     Food oldCatalogFood,
@@ -657,12 +676,15 @@ class FoodLibraryState extends ChangeNotifier {
       if (libFood == null) continue;
 
       // Create updated library food with catalog's current values
-      // but preserve the library food's own id, catalogId, and timestamps
+      // but preserve the library food's own id, catalogId,
+      // lastAmountConsumed, and createdAtMs. The catalog's
+      // groupId flows through (per the user-stated "any editable
+      // field including group" contract).
       final updatedLibFood = updatedCatalogFood.copyWith(
         id: libFood.id,
         catalogId: libFood.catalogId,
         isCatalog: false,
-        groupId: libFood.groupId,
+        lastAmountConsumed: libFood.lastAmountConsumed,
         createdAtMs: libFood.createdAtMs,
         updatedAtMs: now,
       );
@@ -678,7 +700,7 @@ class FoodLibraryState extends ChangeNotifier {
         id: legacyFood.id,
         catalogId: catalogFoodId, // Upgrade to durable linkage
         isCatalog: false,
-        groupId: legacyFood.groupId,
+        lastAmountConsumed: legacyFood.lastAmountConsumed,
         createdAtMs: legacyFood.createdAtMs,
         updatedAtMs: now,
       );

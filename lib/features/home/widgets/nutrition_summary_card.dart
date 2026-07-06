@@ -45,11 +45,24 @@ import '../../../widgets/layout/omni_surface.dart';
 ///     as a lit panel, not a status light.
 ///
 /// Required states:
-///   - **Empty** (S-104): `consumedCalories == 0`. The figure
-///     shows `"0 / {target} Cal"`, the gauge fill has zero
-///     width, and the caption row renders DASHES (`—`) for each
-///     macro — NOT `0%`. We do not imply a real split when
-///     there is no data. The card is still tappable.
+///   The empty state is split across two orthogonal axes — the
+///   gauge needs a **goal** (`consumed / target`) while the caption
+///   needs **data to split** (P/C/F kcal share of consumed).
+///
+///   - **Empty — both axes** (S-104 / S-201): no food logged
+///     (`consumedCalories == 0`). The figure shows
+///     `"0 / {target} Cal"` (or `"0 / — Cal"` when no target is
+///     set), the gauge fill has zero width, and the caption row
+///     renders DASHES (`—`) for each macro — NOT `0%`. We do not
+///     imply a real split when there is no data. The card is
+///     still tappable.
+///   - **Empty — gauge only** (S-200): no target configured
+///     (`targetCalories == null`) but food has been logged. The
+///     figure shows `"{n} / — Cal"`, the gauge fill is hidden
+///     (no goal to fill against), and the caption row renders
+///     the **real** macro percentages so the user gets
+///     actionable feedback. The track still renders at full
+///     width so the card layout stays stable.
 ///   - **Over-budget** (S-105): `consumedCalories > targetCalories`
 ///     (with `targetCalories > 0`). The figure text switches to
 ///     the theme's warning tone (`colorScheme.error`); the gauge
@@ -98,15 +111,47 @@ class NutritionSummaryCard extends StatelessWidget {
     required this.onTap,
   });
 
-  /// True when the card should render the empty state
-  /// (no target set OR nothing logged).
-  bool get _isEmpty =>
-      consumedCalories <= 0 || targetCalories == null || targetCalories! <= 0;
+  /// True when the user has NOT configured a daily calorie target.
+  /// Independent of whether food has been logged.
+  bool get _isNoTarget =>
+      targetCalories == null || targetCalories! <= 0;
+
+  /// True when the user has not logged any food yet.
+  bool get _hasNoConsumedData => consumedCalories <= 0;
+
+  /// True when there is no macro split to show — either no food
+  /// logged, or the macros on the logged foods sum to zero.
+  /// Captures the S-202 case (consumed > 0 but P/C/F all 0).
+  bool get _hasNoMacroData =>
+      _hasNoConsumedData || (proteinKcal + carbsKcal + fatKcal) <= 0;
+
+  /// True when the gauge should be hidden. The gauge represents
+  /// `consumed / target`, which is undefined without a target — we
+  /// hide the bar entirely rather than implying a progress value
+  /// against an unknown goal. Also hidden when there is no
+  /// consumed data, so the bar does not look broken on a fresh
+  /// day (S-200).
+  bool get _hideGauge => _isNoTarget || _hasNoConsumedData;
+
+  /// True when the caption row should render dashes instead of real
+  /// percentages. The caption only needs DATA to split, not a goal —
+  /// it stays live whenever macros exist, even with `target == null`
+  /// (S-200). Dashes return when there is nothing to split (no food
+  /// logged, or all macros zero — S-201 / S-202).
+  bool get _captionEmpty => _hasNoMacroData;
+
+  /// Backwards-compatible alias for callers/tests that still reason
+  /// in terms of a single "empty" state. True when the card has
+  /// neither a target nor consumed data — i.e., the headline
+  /// renders a fully empty figure AND the gauge AND the caption are
+  /// both empty.
+  bool get _isEmpty => _isNoTarget && _hasNoConsumedData;
 
   /// True when the user has exceeded the daily calorie goal.
-  /// Only meaningful when `!_isEmpty`.
+  /// Only meaningful when there IS a target and there IS consumed
+  /// data — otherwise the gauge is hidden anyway.
   bool get _isOverBudget {
-    if (_isEmpty) return false;
+    if (_isNoTarget || _hasNoConsumedData) return false;
     return consumedCalories > targetCalories!;
   }
 
@@ -166,7 +211,7 @@ class NutritionSummaryCard extends StatelessWidget {
                   proteinKcal: proteinKcal,
                   carbsKcal: carbsKcal,
                   fatKcal: fatKcal,
-                  isEmpty: _isEmpty,
+                  isEmpty: _hideGauge,
                 ),
                 const SizedBox(height: 10),
                 _CaptionRow(
@@ -175,7 +220,7 @@ class NutritionSummaryCard extends StatelessWidget {
                   proteinKcal: proteinKcal,
                   carbsKcal: carbsKcal,
                   fatKcal: fatKcal,
-                  isEmpty: _isEmpty,
+                  isEmpty: _captionEmpty,
                 ),
               ],
             ),
@@ -315,7 +360,12 @@ class _Gauge extends StatelessWidget {
         builder: (context, constraints) {
           final trackWidth = constraints.maxWidth;
           // S-102: fill fraction = consumed / target, clamped to 1.0.
-          final fillFraction = _isEmptyOrNoTarget
+          // The `isEmpty` parameter is the parent's `_hideGauge` flag:
+          // true when there's no goal (target == null) OR no data
+          // (consumed == 0) — see `NutritionSummaryCard._hideGauge`.
+          // We collapse to a zero-width fill in that case rather than
+          // implying progress against an unknown goal (S-200).
+          final fillFraction = isEmpty
               ? 0.0
               : (consumedCalories / targetCalories!).clamp(0.0, 1.0);
           final fillWidth = trackWidth * fillFraction;
@@ -385,9 +435,6 @@ class _Gauge extends StatelessWidget {
       ),
     );
   }
-
-  bool get _isEmptyOrNoTarget =>
-      isEmpty || targetCalories == null || targetCalories! <= 0;
 }
 
 /// A single segment of the gauge fill. Sized to its share of

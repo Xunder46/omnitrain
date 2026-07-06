@@ -788,6 +788,187 @@ void main() {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // S-200 — No target + consumed data: caption shows real percentages,
+  //         gauge is hidden. This is the user's requested behavior:
+  //         the progress bar disappears when no goal is set, but the
+  //         macro percentages stay live whenever food is logged.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('NutritionSummaryCard — no target + consumed data (S-200)', () {
+    testWidgets('caption row shows real P/C/F percentages when there is '
+        'no target but food has been logged', (tester) async {
+      await _pumpCard(
+        tester,
+        consumed: 643,
+        target: null,
+        proteinKcal: 270,
+        carbsKcal: 211,
+        fatKcal: 162,
+        onTap: () {},
+      );
+
+      // Same macro split as the S-100 happy-state assertions:
+      // P = 270/643 = 42%; C = 211/643 = 33%; F = 162/643 = 25%.
+      // The percentages must surface even though the target is null.
+      expect(find.textContaining('P 42%'), findsOneWidget);
+      expect(find.textContaining('C 33%'), findsOneWidget);
+      expect(find.textContaining('F 25%'), findsOneWidget);
+      // The dashes from the S-104 empty state must NOT appear in
+      // the caption row.
+      expect(find.text('—'), findsNothing);
+    });
+
+    testWidgets('gauge fill is absent (no progress bar) when no target '
+        'is set, even with consumed data', (tester) async {
+      await _pumpCard(
+        tester,
+        consumed: 643,
+        target: null,
+        proteinKcal: 270,
+        carbsKcal: 211,
+        fatKcal: 162,
+        onTap: () {},
+        surfaceWidth: 360,
+        surfaceHeight: 600,
+      );
+
+      // The fill is either absent or has zero width — there is no
+      // goal to measure progress against, so the bar is hidden.
+      if (find
+          .byKey(const Key('nutrition_card_gauge_fill'))
+          .evaluate()
+          .isNotEmpty) {
+        final fillWidth = tester.getSize(
+          find.byKey(const Key('nutrition_card_gauge_fill')),
+        ).width;
+        expect(
+          fillWidth,
+          0,
+          reason: 'S-200: with no target set the gauge fill must '
+              'have zero width — there is no goal to fill against.',
+        );
+      }
+      // The track still renders at full width so the card layout
+      // stays stable.
+      final trackWidth = tester.getSize(
+        find.byKey(const Key('nutrition_card_gauge_track')),
+      ).width;
+      expect(trackWidth, greaterThan(0));
+    });
+
+    testWidgets('headline reads "{consumed} / — Cal" when no target '
+        'is set', (tester) async {
+      await _pumpCard(
+        tester,
+        consumed: 643,
+        target: null,
+        proteinKcal: 270,
+        carbsKcal: 211,
+        fatKcal: 162,
+        onTap: () {},
+      );
+
+      // The headline format already handles `target == null` —
+      // it renders the consumed figure followed by an em-dash
+      // for the target slot, so the user sees their real intake
+      // even without a goal.
+      expect(find.text('643 / — Cal'), findsOneWidget);
+    });
+
+    testWidgets('the card is still tappable when no target is set but '
+        'food is logged (the empty-state is for the gauge, not for '
+        'the surface)', (tester) async {
+      var taps = 0;
+      await _pumpCard(
+        tester,
+        consumed: 643,
+        target: null,
+        proteinKcal: 270,
+        carbsKcal: 211,
+        fatKcal: 162,
+        onTap: () => taps++,
+      );
+
+      await tester.tap(find.byKey(const Key('nutrition_card')));
+      await tester.pumpAndSettle();
+      expect(
+        taps,
+        1,
+        reason: 'S-200: the card surface remains tappable even when '
+            'the gauge is hidden — the "no target" state is not a '
+            'disabled state.',
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // S-201 — No target + no consumed data: dashes in the caption row
+  //         (parity with the existing target-set + no-data case).
+  // ═══════════════════════════════════════════════════════════════════════
+  group('NutritionSummaryCard — no target + no data (S-201)', () {
+    testWidgets('caption row shows dashes (—) when no target is set '
+        'AND nothing is logged', (tester) async {
+      await _pumpCard(
+        tester,
+        consumed: 0,
+        target: null,
+        proteinKcal: 0,
+        carbsKcal: 0,
+        fatKcal: 0,
+        onTap: () {},
+      );
+
+      // Both axes (no target, no data) trigger the caption-empty
+      // branch — we render dashes, NOT a real (zero) split.
+      expect(find.text('—'), findsNWidgets(3));
+      expect(find.text('P 0%'), findsNothing);
+      expect(find.text('C 0%'), findsNothing);
+      expect(find.text('F 0%'), findsNothing);
+    });
+
+    testWidgets('headline reads "0 / — Cal" (real figure, em-dash '
+        'target slot)', (tester) async {
+      await _pumpCard(
+        tester,
+        consumed: 0,
+        target: null,
+        proteinKcal: 0,
+        carbsKcal: 0,
+        fatKcal: 0,
+        onTap: () {},
+      );
+
+      expect(find.text('0 / — Cal'), findsOneWidget);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // S-202 — No target + consumed but all macros zero: dashes still
+  //         win over "P 0% / C 0% / F 0%" because there is no
+  //         meaningful split to show.
+  // ═══════════════════════════════════════════════════════════════════════
+  group('NutritionSummaryCard — no target + zero-macro data (S-202)', () {
+    testWidgets('caption row shows dashes when consumed > 0 but all '
+        'macro contributions are zero', (tester) async {
+      await _pumpCard(
+        tester,
+        consumed: 100,
+        target: null,
+        proteinKcal: 0,
+        carbsKcal: 0,
+        fatKcal: 0,
+        onTap: () {},
+      );
+
+      // No macro data → dashes, NOT a fake "0% / 0% / 0%" split.
+      // We do not imply a real split when there is no data.
+      expect(find.text('—'), findsNWidgets(3));
+      expect(find.text('P 0%'), findsNothing);
+      expect(find.text('C 0%'), findsNothing);
+      expect(find.text('F 0%'), findsNothing);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Live update — card rebuilds when NutritionState notifies
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — live update', () {

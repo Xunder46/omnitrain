@@ -325,10 +325,11 @@ void main() {
     double? fiber = 0,
     double fat = 5,
     String? imagePath,
+    String? groupId,
   }) {
     return FoodDraft(
       name: name,
-      groupId: null,
+      groupId: groupId,
       unitType: FoodUnitType.grams,
       referenceAmount: 100,
       referenceLabel: 'g',
@@ -446,6 +447,214 @@ void main() {
       final fromRepo = await repo.getFoodById(userFoodAfter.id);
       expect(fromRepo!.protein, 25);
     });
+
+    test(
+      'propagates groupId change to the linked library copy (S-001)',
+      () async {
+        final repo = await _freshRepo();
+        // Create two real groups the catalog food can sit in.
+        final state = FoodLibraryState(repo);
+        await state.loadFoodGroups();
+        final groupA = await state.createFoodGroup('Group A');
+        final groupB = await state.createFoodGroup('Group B');
+
+        // Seed a catalog food that starts in Group A.
+        await repo.seedCatalogFood(
+          catalogFood(id: 'catalog-group-1', name: 'Grouped Food').copyWith(
+            groupId: groupA,
+          ),
+        );
+
+        await state.loadCatalogFoods();
+        await state.loadFoods();
+
+        // Add the catalog food to the user's library. The library
+        // copy starts with the catalog's groupId (Group A).
+        await state.addCatalogFoodToLibrary('catalog-group-1');
+        await state.loadFoods();
+
+        final libraryCopyBefore = state.foods.firstWhere(
+          (f) => f.catalogId == 'catalog-group-1',
+        );
+        expect(libraryCopyBefore.groupId, groupA);
+
+        // Edit the catalog food and move it to Group B.
+        final catalogSource = state.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-group-1',
+        );
+        await state.updateCatalogFood(
+          catalogSource,
+          catalogDraft(
+            name: 'Grouped Food',
+            protein: 10,
+            groupId: groupB,
+          ),
+        );
+
+        // The linked library copy's groupId must follow.
+        final libraryCopyAfter = state.foods.firstWhere(
+          (f) => f.catalogId == 'catalog-group-1',
+        );
+        expect(libraryCopyAfter.groupId, groupB);
+        // Repository must also reflect the propagated value.
+        final fromRepo = await repo.getFoodById(libraryCopyAfter.id);
+        expect(fromRepo!.groupId, groupB);
+      },
+    );
+
+    test(
+      'propagates null groupId (Ungrouped) to the linked library copy (S-002)',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.loadFoodGroups();
+        final groupA = await state.createFoodGroup('Group A');
+
+        // Catalog food starts in Group A.
+        await repo.seedCatalogFood(
+          catalogFood(id: 'catalog-ungroup-1').copyWith(groupId: groupA),
+        );
+
+        await state.loadCatalogFoods();
+        await state.loadFoods();
+        await state.addCatalogFoodToLibrary('catalog-ungroup-1');
+        await state.loadFoods();
+
+        final libBefore = state.foods.firstWhere(
+          (f) => f.catalogId == 'catalog-ungroup-1',
+        );
+        expect(libBefore.groupId, groupA);
+
+        // Edit and clear the group (Ungrouped).
+        final catalogSource = state.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-ungroup-1',
+        );
+        await state.updateCatalogFood(
+          catalogSource,
+          catalogDraft(),
+        );
+
+        final libAfter = state.foods.firstWhere(
+          (f) => f.catalogId == 'catalog-ungroup-1',
+        );
+        expect(libAfter.groupId, isNull);
+      },
+    );
+
+    test(
+      'propagates groupId change to a legacy identity-matched library copy (S-004)',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.loadFoodGroups();
+        final groupA = await state.createFoodGroup('Group A');
+        final groupB = await state.createFoodGroup('Group B');
+
+        // Seed a catalog food in Group A.
+        await repo.seedCatalogFood(
+          catalogFood(id: 'catalog-legacy-1', name: 'Legacy Test').copyWith(
+            groupId: groupA,
+          ),
+        );
+
+        await state.loadCatalogFoods();
+        await state.loadFoods();
+
+        // Manually create a legacy library food with matching
+        // identity but NO catalogId set. The identity-match fallback
+        // in `_propagateCatalogEditToLinkedFoods` must pick this up.
+        // ignore: deprecated_member_use_from_same_package
+        final legacyId = await state.createCustomFood(
+          name: 'Legacy Test',
+          groupId: groupA,
+          unitType: FoodUnitType.grams,
+          referenceAmount: 100,
+          referenceLabel: 'g',
+          protein: 10,
+          carbs: 20,
+          fiber: 0,
+          fat: 5,
+        );
+        await state.loadFoods();
+
+        // Sanity: the legacy row has no catalogId (legacy data).
+        final legacyBefore = state.foods.firstWhere(
+          (f) => f.id == legacyId,
+        );
+        expect(legacyBefore.catalogId, isNull);
+        expect(legacyBefore.groupId, groupA);
+
+        // Edit the catalog food and move it to Group B.
+        final catalogSource = state.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-legacy-1',
+        );
+        await state.updateCatalogFood(
+          catalogSource,
+          catalogDraft(
+            name: 'Legacy Test',
+            protein: 10,
+            groupId: groupB,
+          ),
+        );
+
+        // The legacy row must pick up the new groupId (via identity
+        // match) and be upgraded to durable linkage.
+        final legacyAfter = state.foods.firstWhere(
+          (f) => f.id == legacyId,
+        );
+        expect(legacyAfter.groupId, groupB);
+        expect(legacyAfter.catalogId, 'catalog-legacy-1');
+      },
+    );
+
+    test(
+      'preserves lastAmountConsumed on the linked library copy across a catalog edit (S-003)',
+      () async {
+        final repo = await _freshRepo();
+        await repo.seedCatalogFood(
+          catalogFood(id: 'catalog-amount-1', name: 'Remembered Food'),
+        );
+
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        await state.loadFoods();
+        final libraryId = await state.addCatalogFoodToLibrary(
+          'catalog-amount-1',
+        );
+
+        // Simulate a previous successful log: write-through sets the
+        // food row's `lastAmountConsumed` directly via the repo, then
+        // reload the cache so the state's `_foods` map reflects it.
+        final before = await repo.getFoodById(libraryId);
+        await repo.updateFood(
+          before!.copyWith(lastAmountConsumed: 100.0),
+        );
+        await state.loadFoods();
+
+        final libBefore = state.foods.firstWhere(
+          (f) => f.id == libraryId,
+        );
+        expect(libBefore.lastAmountConsumed, 100.0);
+
+        // Edit the catalog food (e.g. the manufacturer updated macros).
+        final catalogSource = state.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-amount-1',
+        );
+        await state.updateCatalogFood(
+          catalogSource,
+          catalogDraft(name: 'Remembered Food', protein: 99),
+        );
+
+        // The library copy must keep its remembered amount.
+        final libAfter = state.foods.firstWhere((f) => f.id == libraryId);
+        expect(libAfter.lastAmountConsumed, 100.0);
+        // Repository must also reflect the preserved value.
+        final fromRepo = await repo.getFoodById(libraryId);
+        expect(fromRepo!.lastAmountConsumed, 100.0);
+        // And the catalog edit itself must have landed.
+        expect(libAfter.protein, 99.0);
+      },
+    );
   });
 
   group('FoodLibraryState createCatalogFood', () {
