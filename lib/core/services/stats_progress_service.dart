@@ -33,6 +33,22 @@ class StatsProgressService {
   /// constant changes the window everywhere it applies.
   static const int kRecentTrainingDaysWindow = 14;
 
+  /// Recency floor (calendar days) for Strength and Cardio top-slot
+  /// selection. An exercise whose most-recent training day is
+  /// older than this many days ago is dropped from the displayed
+  /// top slots — even when its historical frequency is high — so
+  /// currently-trained work takes precedence over stale work.
+  ///
+  /// 30 days is generous enough that a weekly or biweekly rotation
+  /// does not flicker a lift in and out between sessions; dropping
+  /// out signals genuine abandonment, not normal spacing. Applies
+  /// symmetrically to Strength and Cardio selection
+  /// (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+  /// Item 3). Trend charts and PR lists for exercises that DO
+  /// appear are unaffected — only which exercises fill the top-N
+  /// slots is filtered.
+  static const int kTopExerciseRecencyDays = 30;
+
   /// Default "visible window" hint for the NUTRITION card. The card
   /// now scrolls through **full** history (the scrollable
   /// `ScrollableTrendChart` shows as much as fits and lets the user
@@ -56,8 +72,16 @@ class StatsProgressService {
     final periods = await _repository.getPeriods();
     final window = resolveWindow(periods: periods, completedSessions: completed);
 
-    // exerciseId → { training-day → list of SetTuple }
+    // exerciseId → { training-day → list of SetTuple } (loaded sets)
     final setsByExercise = <String, Map<DateTime, List<_SetTuple>>>{};
+
+    // exerciseId → { training-day → max reps } (bodyweight sets)
+    // Populated by `_processSetEffort` for entries with weight == 0.
+    // The reps axis lets bodyweight movements compete for the
+    // Strength top slots on the same training-frequency basis as
+    // loaded lifts (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+    // Item 2).
+    final repsByExercise = <String, Map<DateTime, _RepsDay>>{};
 
     // exerciseId → { training-day → accumulated _CardioDay }
     final cardioByExercise = <String, Map<DateTime, _CardioDay>>{};
@@ -73,7 +97,12 @@ class StatsProgressService {
         for (final effort in efforts) {
           switch (effort.effortKind) {
             case 'set':
-              await _processSetEffort(effort, sessionDay, setsByExercise);
+              await _processSetEffort(
+                effort,
+                sessionDay,
+                setsByExercise,
+                repsByExercise,
+              );
             case 'timed':
               await _processTimedEffort(effort, sessionDay, cardioByExercise);
             default:
@@ -86,22 +115,60 @@ class StatsProgressService {
 
     // Resolve exercise names for all referenced exercise IDs.
     final nameCache = <String, String>{};
-    for (final id in {...setsByExercise.keys, ...cardioByExercise.keys}) {
+    for (final id in {
+      ...setsByExercise.keys,
+      ...repsByExercise.keys,
+      ...cardioByExercise.keys,
+    }) {
       if (!nameCache.containsKey(id)) {
         final exercise = await _repository.getExerciseById(id);
         nameCache[id] = exercise?.name ?? id;
       }
     }
 
-    // Select top-N exercises by distinct training-day count.
-    final topLiftIds = _selectTopN(setsByExercise, kTopLiftCount, nameCache);
-    final topCardioIds = _selectTopN(cardioByExercise, kTopCardioCount, nameCache);
+    // Strength selection pools both axes: a training day is a
+    // training day regardless of whether the set was loaded or
+    // bodyweight. Combined days drive the frequency ranking; the
+    // recency floor (kTopExerciseRecencyDays) drops stale lifts.
+    final liftTrainingDays = <String, Set<DateTime>>{};
+    for (final entry in setsByExercise.entries) {
+      liftTrainingDays
+          .putIfAbsent(entry.key, () => <DateTime>{})
+          .addAll(entry.value.keys);
+    }
+    for (final entry in repsByExercise.entries) {
+      liftTrainingDays
+          .putIfAbsent(entry.key, () => <DateTime>{})
+          .addAll(entry.value.keys);
+    }
+
+    final topLiftIds = _selectTopNWithRecencyFloor(
+      liftTrainingDays,
+      kTopLiftCount,
+      nameCache,
+    );
+    // Cardio training days come from the cardio accumulator map;
+    // the helper expects `Map<String, Set<DateTime>>`, so project
+    // the inner DateTime keys into a Set here.
+    final cardioTrainingDays = <String, Set<DateTime>>{
+      for (final entry in cardioByExercise.entries)
+        entry.key: entry.value.keys.toSet(),
+    };
+    final topCardioIds = _selectTopNWithRecencyFloor(
+      cardioTrainingDays,
+      kTopCardioCount,
+      nameCache,
+    );
 
     // Trends and PRs are FULL-HISTORY for the selected exercises
     // — the window only decided who appears. Walk the unfiltered
     // `completed` list once and aggregate per-selected-exercise
     // day maps.
     final fullSetsByExercise = await _buildFullSetsForExercises(
+      completed,
+      topLiftIds,
+    );
+    final fullRepsByExercise = await _buildFullRepsForExercises(
       completed,
       topLiftIds,
     );
@@ -116,30 +183,65 @@ class StatsProgressService {
 
     for (final exerciseId in topLiftIds) {
       final name = nameCache[exerciseId] ?? exerciseId;
-      final dayMap = fullSetsByExercise[exerciseId] ?? const {};
-      final days = dayMap.keys.toList()..sort();
+      final setDayMap = fullSetsByExercise[exerciseId] ?? const {};
+      final repsDayMap = fullRepsByExercise[exerciseId] ?? const {};
 
+      // ── Per-exercise axis decision ──
+      // An exercise is reps-axis if it has ANY bodyweight set
+      // (`weight == 0`) in its history; otherwise it is
+      // weight-axis. The decision is per-exercise, not per-set —
+      // a mixed history never produces both an e1RM card and a
+      // reps card; the reps axis wins the moment any bodyweight
+      // set exists, and any added weight on weighted sets
+      // becomes a per-day annotation on the reps trend. See the
+      // Push-Up mixed-axis bug fix in
+      // `.github/agents/plans/stats-summary-fix-pack-plan.md`
+      // and the user report "Push-Up weight-based stats".
+      final isRepsAxis = repsDayMap.isNotEmpty;
+
+      // ── Reps-axis trend (bodyweight + weighted bodyweight) ──
+      final repsTrend = <TrendPoint>[];
+      if (isRepsAxis) {
+        final repsDays = repsDayMap.keys.toList()..sort();
+        for (final day in repsDays) {
+          final dayValue = repsDayMap[day]!;
+          repsTrend.add(
+            TrendPoint(
+              date: day,
+              value: dayValue.reps.toDouble(),
+              extraWeightKg: dayValue.extraWeightKg > 0
+                  ? dayValue.extraWeightKg
+                  : null,
+            ),
+          );
+        }
+      }
+
+      // ── Weight-axis trends (e1RM + volume) ──
+      // Only built when the exercise is weight-axis. A mixed
+      // exercise drops these to keep the card reps-only — the
+      // weighted sets are still on the reps axis as annotations.
       final e1RmTrend = <TrendPoint>[];
       final volumeTrend = <TrendPoint>[];
-
-      for (final day in days) {
-        final sets = dayMap[day]!;
-        double maxE1Rm = 0;
-        double totalVolume = 0;
-
-        for (final set in sets) {
-          final e1rm = epley1RM(set.weight, set.reps);
-          if (e1rm != null) {
-            if (e1rm > maxE1Rm) maxE1Rm = e1rm;
-            totalVolume += set.weight * set.reps;
+      if (!isRepsAxis) {
+        final setDays = setDayMap.keys.toList()..sort();
+        for (final day in setDays) {
+          final sets = setDayMap[day]!;
+          double maxE1Rm = 0;
+          double totalVolume = 0;
+          for (final set in sets) {
+            final e1rm = epley1RM(set.weight, set.reps);
+            if (e1rm != null) {
+              if (e1rm > maxE1Rm) maxE1Rm = e1rm;
+              totalVolume += set.weight * set.reps;
+            }
           }
-        }
-
-        if (maxE1Rm > 0) {
-          e1RmTrend.add(TrendPoint(date: day, value: maxE1Rm));
-        }
-        if (totalVolume > 0) {
-          volumeTrend.add(TrendPoint(date: day, value: totalVolume));
+          if (maxE1Rm > 0) {
+            e1RmTrend.add(TrendPoint(date: day, value: maxE1Rm));
+          }
+          if (totalVolume > 0) {
+            volumeTrend.add(TrendPoint(date: day, value: totalVolume));
+          }
         }
       }
 
@@ -147,30 +249,65 @@ class StatsProgressService {
         exerciseName: name,
         e1RmTrend: e1RmTrend,
         volumeTrend: volumeTrend,
+        repsTrend: repsTrend,
       ));
 
-      // PR detection: walk the e1RM trend chronologically.
+      // ── PR detection: weight axis (only on weight-axis exercises) ──
       double bestSoFar = 0;
-      for (final point in e1RmTrend) {
-        if (point.value > bestSoFar) {
-          bestSoFar = point.value;
-          allPRs.add(StatsPR(
-            exerciseName: name,
-            e1Rm: point.value,
-            date: point.date,
-          ));
+      if (!isRepsAxis) {
+        for (final point in e1RmTrend) {
+          if (point.value > bestSoFar) {
+            bestSoFar = point.value;
+            allPRs.add(StatsPR(
+              exerciseName: name,
+              e1Rm: point.value,
+              date: point.date,
+            ));
+          }
+        }
+      }
+
+      // ── PR detection: reps axis (only on reps-axis exercises) ──
+      // A "best reps in a single set" PR fires when the day's
+      // max-reps exceeds all earlier days' max-reps for this
+      // exercise. Same strict `>` comparison as the e1RM walker.
+      // The PR is the first day the running max was reached.
+      int bestRepsSoFar = 0;
+      if (isRepsAxis) {
+        for (final point in repsTrend) {
+          final reps = point.value.toInt();
+          if (reps > bestRepsSoFar) {
+            bestRepsSoFar = reps;
+            allPRs.add(StatsPR(
+              exerciseName: name,
+              reps: reps,
+              date: point.date,
+            ));
+          }
         }
       }
     }
 
-    // Sort PRs newest-first, then deduplicate: one entry per exercise at its
-    // current best (highest e1RM). Tiebreaker: most recent date, then alpha.
+    // Sort PRs newest-first, then deduplicate: one entry per
+    // exercise at its current best. An exercise is on exactly
+    // one axis (see the per-exercise axis decision above), so
+    // the dedup simplifies to "keep the higher value on the
+    // same axis, with later date as the tiebreaker."
     final dedupedPRs = <String, StatsPR>{};
     for (final pr in allPRs) {
       final existing = dedupedPRs[pr.exerciseName];
-      if (existing == null ||
-          pr.e1Rm > existing.e1Rm ||
-          (pr.e1Rm == existing.e1Rm && pr.date.isAfter(existing.date))) {
+      if (existing == null) {
+        dedupedPRs[pr.exerciseName] = pr;
+        continue;
+      }
+      // Each exercise is on exactly one axis, so `existing` and
+      // `pr` share the same verdict shape. Keep the higher value
+      // on that axis; tiebreak by later date.
+      final prIsReps = pr.reps != null;
+      final existingValue = prIsReps ? existing.reps! : existing.e1Rm!;
+      final prValue = prIsReps ? pr.reps! : pr.e1Rm!;
+      if (prValue > existingValue ||
+          (prValue == existingValue && pr.date.isAfter(existing.date))) {
         dedupedPRs[pr.exerciseName] = pr;
       }
     }
@@ -240,6 +377,7 @@ class StatsProgressService {
     SegmentEffort effort,
     DateTime sessionDay,
     Map<String, Map<DateTime, List<_SetTuple>>> setsByExercise,
+    Map<String, Map<DateTime, _RepsDay>> repsByExercise,
   ) async {
     final exerciseId = effort.exerciseId;
     if (exerciseId == null) return;
@@ -250,12 +388,63 @@ class StatsProgressService {
     for (final entry in entries) {
       final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
       final reps = entry['reps'] as int? ?? 0;
-      if (weight <= 0 || reps <= 0) continue;
+      // Zero-rep entries (skipped sets, or empty rows) contribute
+      // to neither axis.
+      if (reps <= 0) continue;
 
-      setsByExercise
-          .putIfAbsent(exerciseId, () => {})
-          .putIfAbsent(sessionDay, () => [])
-          .add(_SetTuple(weight: weight, reps: reps));
+      if (weight > 0) {
+        // Loaded set — contributes to the weight-axis trends
+        // (e1RM + volume). Any `metric-extra-weight` observation
+        // that may sit alongside is intentionally ignored: the
+        // axis decision is made on `metric-weight`, never on the
+        // annotation row, so a 0 kg weight with a 10 kg belt
+        // stays on the reps axis (per the bodyweight-inclusion
+        // plan in `.github/agents/plans/stats-summary-fix-pack-plan.md`,
+        // Item 2). The choice of axis for the whole exercise is
+        // made downstream in `computeProgressData` based on
+        // whether the exercise has any reps data at all.
+        setsByExercise
+            .putIfAbsent(exerciseId, () => {})
+            .putIfAbsent(sessionDay, () => [])
+            .add(_SetTuple(weight: weight, reps: reps));
+      } else {
+        // Bodyweight set (or weighted bodyweight: weight = 0,
+        // extra-weight = some positive value). Contributes to the
+        // reps axis. The day's max-reps wins; the day's max
+        // added weight is tracked as an annotation that travels
+        // with the trend point — see `TrendPoint.extraWeightKg`.
+        // Max added weight is computed across ALL sets that day,
+        // not just the winning set, so a day where the heaviest
+        // set was pure bodyweight but a later weighted set still
+        // used extra weight keeps the annotation.
+        final extraWeight =
+            (entry['extra-weight'] as num?)?.toDouble() ?? 0.0;
+        final dayMap = repsByExercise.putIfAbsent(exerciseId, () => {});
+        final existing = dayMap[sessionDay];
+        final dayMaxExtra =
+            [existing?.extraWeightKg ?? 0.0, extraWeight]
+                .reduce((a, b) => a > b ? a : b);
+        if (existing == null) {
+          dayMap[sessionDay] = _RepsDay(
+            reps: reps,
+            extraWeightKg: extraWeight,
+          );
+        } else if (reps > existing.reps) {
+          dayMap[sessionDay] = _RepsDay(
+            reps: reps,
+            extraWeightKg: dayMaxExtra,
+          );
+        } else if (dayMaxExtra > existing.extraWeightKg) {
+          // Today's heaviest set isn't this one, but a later
+          // (non-winning) set just bumped the day's max added
+          // weight — keep the existing max reps and only refresh
+          // the annotation.
+          dayMap[sessionDay] = _RepsDay(
+            reps: existing.reps,
+            extraWeightKg: dayMaxExtra,
+          );
+        }
+      }
     }
   }
 
@@ -307,15 +496,52 @@ class StatsProgressService {
   }
 
   /// Returns the top-[n] exercise IDs ordered by distinct training-day count
-  /// (descending), with alphabetical name as a tiebreaker.
-  List<String> _selectTopN(
-    Map<String, Map<DateTime, dynamic>> data,
+  /// (descending), with alphabetical name as a tiebreaker. Applies
+  /// the recency floor ([kTopExerciseRecencyDays]) so any candidate
+  /// whose most-recent training day is older than the threshold
+  /// drops out of the displayed top slots regardless of its
+  /// historical frequency. The threshold is generous enough that a
+  /// normal rotation (e.g. weekly / biweekly) does not flicker a
+  /// lift in and out between sessions; dropping out signals
+  /// genuine abandonment, not normal spacing
+  /// (`.github/agents/plans/stats-summary-fix-pack-plan.md`, Item 3).
+  ///
+  /// The selection input is a `Map<String, Set<DateTime>>` of
+  /// `exerciseId → training days`; the function does not care
+  /// whether those days came from the weight axis, the reps axis,
+  /// or the cardio axis — selection is identical across all three.
+  /// Used symmetrically for Strength and Cardio so the two sections
+  /// behave consistently.
+  List<String> _selectTopNWithRecencyFloor(
+    Map<String, Set<DateTime>> data,
     int n,
-    Map<String, String> nameCache,
-  ) {
+    Map<String, String> nameCache, {
+    DateTime? now,
+  }) {
+    if (data.isEmpty) return const [];
+
+    final today = now ?? DateTime.now();
+    final todayMidnight = DateTime(today.year, today.month, today.day);
+    // Threshold is inclusive on the trailing edge: a training day
+    // exactly `kTopExerciseRecencyDays` days ago still qualifies.
+    // Anything strictly older drops out.
+    final cutoff = todayMidnight.subtract(
+      Duration(days: kTopExerciseRecencyDays),
+    );
+
     final ranked = data.entries.map((e) {
-      return (id: e.key, count: e.value.length, name: nameCache[e.key] ?? e.key);
-    }).toList()
+      final days = e.value;
+      DateTime? mostRecent;
+      for (final d in days) {
+        if (mostRecent == null || d.isAfter(mostRecent)) mostRecent = d;
+      }
+      return (
+        id: e.key,
+        count: days.length,
+        lastDay: mostRecent,
+        name: nameCache[e.key] ?? e.key,
+      );
+    }).where((e) => e.lastDay != null && !e.lastDay!.isBefore(cutoff)).toList()
       ..sort((a, b) {
         final countCmp = b.count.compareTo(a.count);
         if (countCmp != 0) return countCmp;
@@ -537,6 +763,77 @@ class StatsProgressService {
     return best;
   }
 
+  /// Returns the highest single-set **reps** ever logged for
+  /// [exerciseId] across all **completed** sessions, walking only
+  /// bodyweight sets (`metric-weight == 0` or absent). Returns
+  /// `0` when no prior bodyweight set exists, so callers can use a
+  /// single strict `>` comparison to detect a new max-reps PR — a
+  /// first-ever bodyweight set is a PR because its positive reps
+  /// are strictly greater than `0`.
+  ///
+  /// **Source of truth.** Mirrors [getAllTimeBestE1RM] for the
+  /// reps axis. Used by the in-session "Congrats! New PR" toast
+  /// (reps variant) and by the Session Summary's rep-based PR
+  /// detection so the same set produces the same verdict on both
+  /// surfaces, matching the existing e1RM cross-surface parity
+  /// contract (`S-T-001` in `services_test.dart`).
+  ///
+  /// In-progress sessions are intentionally excluded — the same
+  /// reason [getAllTimeBestE1RM] excludes them, so the in-session
+  /// toast and the Stats screen agree on the standing best at the
+  /// moment of a new set.
+  ///
+  /// Only `effortKind == 'set'` efforts contribute. The reps axis
+  /// is populated for ANY set with `weight == 0`, regardless of
+  /// the exercise's equipment label — pull-ups and chin-ups are
+  /// included the moment they're logged at bodyweight, no
+  /// equipment-label lookup required
+  /// (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+  /// Item 2).
+  ///
+  /// When [excludeSessionId] is non-null, the named completed
+  /// session is skipped — used by the Session Summary so the
+  /// just-finished workout's own PRs are not compared against
+  /// themselves. The zero-arg call (used by the in-session toast)
+  /// is unchanged.
+  Future<int> getAllTimeBestReps(
+    String exerciseId, {
+    String? excludeSessionId,
+  }) async {
+    final sessions = await _repository.getAllSessions();
+    var completed = sessions.where((s) => s.endedAtMs != null).toList();
+    if (excludeSessionId != null) {
+      completed = completed.where((s) => s.id != excludeSessionId).toList();
+    }
+
+    int best = 0;
+    for (final session in completed) {
+      final segments = await _repository.getSessionSegments(session.id);
+      for (final segment in segments) {
+        final efforts = await _repository.getSegmentEfforts(segment.id);
+        for (final effort in efforts) {
+          if (effort.effortKind != 'set') continue;
+          if (effort.exerciseId != exerciseId) continue;
+
+          final observations =
+              await _repository.getEffortObservations(effort.id);
+          final entries =
+              ObservationGrouper.groupByEffortKind('set', observations);
+          for (final entry in entries) {
+            final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
+            final reps = entry['reps'] as int? ?? 0;
+            // Bodyweight sets only — see the axis-decision rule
+            // in `_processSetEffort`. Extra-weight annotations are
+            // intentionally not consulted.
+            if (weight != 0.0) continue;
+            if (reps > best) best = reps;
+          }
+        }
+      }
+    }
+    return best;
+  }
+
   // ── Window resolution (current-state window for exercise selection) ───────
 
   /// Resolves the [StatsWindow] used to select which exercises
@@ -654,6 +951,12 @@ class StatsProgressService {
     final result = <String, Map<DateTime, List<_SetTuple>>>{};
     if (exerciseIds.isEmpty) return result;
     final selected = exerciseIds.toSet();
+    // Both axes are fed through `_processSetEffort` so a single
+    // walk yields both weight-axis (loaded sets) and reps-axis
+    // (bodyweight sets) trend data. The reps result is discarded
+    // here — see [_buildFullRepsForExercises] for its own dedicated
+    // full-history walk.
+    final repsSentinel = <String, Map<DateTime, _RepsDay>>{};
     for (final session in completed) {
       if (session.endedAtMs == null) continue;
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(
@@ -668,7 +971,43 @@ class StatsProgressService {
           if (effort.effortKind != 'set') continue;
           final exId = effort.exerciseId;
           if (exId == null || !selected.contains(exId)) continue;
-          await _processSetEffort(effort, sessionDay, result);
+          await _processSetEffort(effort, sessionDay, result, repsSentinel);
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Builds a per-selected-exercise full-history reps trend map
+  /// (max reps per training day for bodyweight sets, plus the
+  /// day's max added weight as an annotation). Parallel
+  /// contract to [_buildFullSetsForExercises] — full history for
+  /// the selected exercises, windowed only at the selection step.
+  Future<Map<String, Map<DateTime, _RepsDay>>> _buildFullRepsForExercises(
+    List<TrainingSession> completed,
+    List<String> exerciseIds,
+  ) async {
+    final result = <String, Map<DateTime, _RepsDay>>{};
+    if (exerciseIds.isEmpty) return result;
+    final selected = exerciseIds.toSet();
+    // The weight-axis accumulator is discarded — we only want
+    // the reps axis here.
+    final setsSentinel = <String, Map<DateTime, List<_SetTuple>>>{};
+    for (final session in completed) {
+      if (session.endedAtMs == null) continue;
+      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
+        session.startedAtMs,
+      );
+      final sessionDay =
+          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final segments = await _repository.getSessionSegments(session.id);
+      for (final segment in segments) {
+        final efforts = await _repository.getSegmentEfforts(segment.id);
+        for (final effort in efforts) {
+          if (effort.effortKind != 'set') continue;
+          final exId = effort.exerciseId;
+          if (exId == null || !selected.contains(exId)) continue;
+          await _processSetEffort(effort, sessionDay, setsSentinel, result);
         }
       }
     }
@@ -721,4 +1060,17 @@ class _CardioDay {
   final double? distanceM;
 
   const _CardioDay({required this.durationSecs, required this.distanceM});
+}
+
+/// Per-day reps-axis accumulator for a single exercise. Carries
+/// the day's max reps (the value used for the trend point) and
+/// the day's max added weight (the annotation that travels with
+/// the trend point — `TrendPoint.extraWeightKg`). Added weight
+/// is annotation only and never contributes to the kg Total
+/// Volume figure.
+class _RepsDay {
+  final int reps;
+  final double extraWeightKg;
+
+  const _RepsDay({required this.reps, required this.extraWeightKg});
 }

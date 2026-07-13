@@ -179,6 +179,23 @@ Key public methods:
 
 - compareGroupsToPreviousSession
 - computePRs — records PRs using the **Epley e1RM** formula (`StatsProgressService.epley1RM = weight × (1 + reps / 30)`), the same definition the in-workout toast and the Stats screen use. The screen passes its own session id so the just-finished workout's PRs are not compared against themselves. See `.github/agents/plans/summary-pr-parity-plan.md`.
+
+  The returned list is collapsed to at most one `PRAchievement` per
+  exercise — when the same exercise appears in more than one block
+  (e.g. a user clones a block several times), the input list carries
+  one `ExerciseSummary` per block and the method groups by `exerciseId`
+  before emitting. The verdict ("is this a PR") is unchanged; only
+  the entry count collapses. Set count, total volume, and the
+  per-exercise breakdown are byte-equal before and after this step.
+  See `.github/agents/plans/stats-summary-fix-pack-plan.md` PR 1.
+
+  A parallel **reps-axis** pass emits bodyweight PRs
+  (`metricLabel: 'reps'`) using `StatsProgressService.getAllTimeBestReps`
+  — the same source-of-truth query the in-session reps-PR toast and
+  the Stats screen use. The two passes cannot collide because an
+  exercise on the e1RM axis never has a non-null `bestReps` and vice
+  versa. See `.github/agents/plans/stats-summary-fix-pack-plan.md`
+  Item 2 (rep-based record parity).
 - saveRoutineFromDraft
 - computeSessionRestTimeMs
 - buildGroupMetrics

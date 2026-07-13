@@ -923,7 +923,17 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  '${pr.exerciseName}: New best ${_formatWeight(pr.newBest)} (was ${_formatWeight(pr.previousBest)})',
+                  // Reps-axis (bodyweight) PRs read as
+                  // `${pr.exerciseName}: New best ${reps} reps (was ${prev} reps)`.
+                  // Weight-axis PRs read as
+                  // `${pr.exerciseName}: New best ${weight} (was ${prev})`
+                  // — the existing behaviour, preserved verbatim
+                  // for loaded exercises. The two branches
+                  // share the layout so the list reads identically
+                  // regardless of which axis fired.
+                  pr.metricLabel == 'reps'
+                      ? '${pr.exerciseName}: New best ${pr.newBest.toInt()} reps (was ${pr.previousBest.toInt()} reps)'
+                      : '${pr.exerciseName}: New best ${_formatWeight(pr.newBest)} (was ${_formatWeight(pr.previousBest)})',
                   style: theme.textTheme.bodyMedium,
                 ),
               ),

@@ -60,6 +60,7 @@ class SessionSummaryBuilder {
         int setsCompleted = 0;
         double? bestWeight;
         double? bestE1RM;
+        int? bestReps;
         int? effortDurationMs;
         int effortRounds = 0;
 
@@ -92,6 +93,18 @@ class SessionSummaryBuilder {
             if (e1rm != null &&
                 (bestE1RM == null || e1rm > bestE1RM)) {
               bestE1RM = e1rm;
+            }
+
+            // Bodyweight-axis PR: max reps in a single set for
+            // sets performed without added external weight
+            // (`weight == 0`). Mirrors the axis decision in
+            // `StatsProgressService._processSetEffort` so the
+            // session summary, the in-session toast, and the Stats
+            // screen agree on the same verdict for the same set
+            // (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+            // Item 2 — rep-based record parity).
+            if ((weight ?? 0.0) == 0.0 && reps != null && reps > 0) {
+              if (bestReps == null || reps > bestReps) bestReps = reps;
             }
           }
 
@@ -143,6 +156,7 @@ class SessionSummaryBuilder {
             totalDurationMs: effortDurationMs,
             totalRounds: effortRounds,
             bestE1RM: bestE1RM,
+            bestReps: bestReps,
             blockId: effort.blockId,
           ),
         );

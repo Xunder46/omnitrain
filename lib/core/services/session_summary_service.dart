@@ -189,11 +189,44 @@ class SessionSummaryService {
   }) async {
     final results = <PRAchievement>[];
 
+    // A session can produce at most one new record per exercise:
+    // its single best effort. When the same exercise appears in
+    // more than one block (most commonly when a user clones a
+    // block several times), the input list carries one
+    // `ExerciseSummary` per block — group by `exerciseId` and
+    // take the maximum e1RM across the group so the summary
+    // emits at most one PR entry per exercise at its true session
+    // maximum. The verdict (is this a PR) is unchanged; only the
+    // entry count collapses. Set count, total volume, and the
+    // per-exercise breakdown are byte-equal before and after this
+    // step.
+    //
+    // Axis rule (mirrors `StatsProgressService.computeProgressData`):
+    // an exercise that has ANY bodyweight set in this session
+    // (`bestReps > 0`) is reps-axis — its PR is a max-reps
+    // verdict and the e1RM path is skipped. A loaded-only
+    // exercise keeps its e1RM verdict. This stops Push-Up from
+    // emitting a "New best e1RM" line just because one session
+    // was logged with added weight — see the Push-Up mixed-axis
+    // bug fix in `.github/agents/plans/stats-summary-fix-pack-plan.md`.
+    //
+    // Plan: .github/agents/plans/stats-summary-fix-pack-plan.md (PR 1 + PR 2).
+    final byExerciseId = <String, ExerciseSummary>{};
     for (final summary in exercises) {
       if (summary.effortKind != 'set') continue;
       final bestE1RM = summary.bestE1RM;
       if (bestE1RM == null || bestE1RM <= 0) continue;
+      // Reps-axis exercises (any bodyweight set this session)
+      // never get an e1RM PR — see the axis rule above.
+      if ((summary.bestReps ?? 0) > 0) continue;
+      final existing = byExerciseId[summary.exerciseId];
+      if (existing == null || (existing.bestE1RM ?? 0) < bestE1RM) {
+        byExerciseId[summary.exerciseId] = summary;
+      }
+    }
 
+    for (final summary in byExerciseId.values) {
+      final bestE1RM = summary.bestE1RM!;
       final previousBest =
           await StatsProgressService(_repository).getAllTimeBestE1RM(
         summary.exerciseId,
@@ -207,6 +240,46 @@ class SessionSummaryService {
             metricLabel: 'e1RM',
             previousBest: previousBest,
             newBest: bestE1RM,
+          ),
+        );
+      }
+    }
+
+    // Reps-axis pass: exercises with at least one bodyweight set
+    // (`bestReps > 0`) produce a max-reps PR, not an e1RM PR.
+    // Mirrors the e1RM-axis logic above — group by exerciseId,
+    // take the session maximum, compare against the standing
+    // best via `StatsProgressService.getAllTimeBestReps`. The
+    // same one-entry-per-exercise collapse applies.
+    //
+    // Plan: .github/agents/plans/stats-summary-fix-pack-plan.md,
+    // Item 2 (rep-based record parity).
+    final repsByExerciseId = <String, ExerciseSummary>{};
+    for (final summary in exercises) {
+      if (summary.effortKind != 'set') continue;
+      final bestReps = summary.bestReps;
+      if (bestReps == null || bestReps <= 0) continue;
+      final existing = repsByExerciseId[summary.exerciseId];
+      if (existing == null || (existing.bestReps ?? 0) < bestReps) {
+        repsByExerciseId[summary.exerciseId] = summary;
+      }
+    }
+
+    for (final summary in repsByExerciseId.values) {
+      final bestReps = summary.bestReps!;
+      final previousBest =
+          await StatsProgressService(_repository).getAllTimeBestReps(
+        summary.exerciseId,
+        excludeSessionId: currentSessionId,
+      );
+
+      if (bestReps > previousBest) {
+        results.add(
+          PRAchievement(
+            exerciseName: summary.name,
+            metricLabel: 'reps',
+            previousBest: previousBest.toDouble(),
+            newBest: bestReps.toDouble(),
           ),
         );
       }

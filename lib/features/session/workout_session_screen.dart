@@ -129,6 +129,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // - Ascending bests each trigger once (each exceeds the previous session best)
   // See `.github/agents/plans/pr-celebration-throttle-plan.md`.
   final Map<String, double> _sessionRunningBestE1RM = {};
+  /// Session-scoped running max-reps per exercise. Mirror of
+  /// [_sessionRunningBestE1RM] for the bodyweight PR axis —
+  /// populated by [_maybeShowPRToast] when a bodyweight set beats
+  /// the standing / session best. Used so a second set at the
+  /// same or lower reps never re-fires the toast for the same
+  /// exercise (D-8 throttle applied symmetrically to both axes).
+  final Map<String, int> _sessionRunningBestReps = {};
 
   @override
   Timer? _ticker;
@@ -844,38 +851,66 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     if (widget.editMode) return;
     if (exerciseId.isEmpty) return;
 
-    final newE1rm = StatsProgressService.epley1RM(weight, reps);
-    // `null` means reps or weight was non-positive — the set has no
-    // meaningful e1RM and the PR check is skipped.
-    if (newE1rm == null) return;
-
-    final standingBest = await StatsProgressService(
-      widget.workoutState.repository,
-    ).getAllTimeBestE1RM(exerciseId);
-
-    // D-3: strictly greater. A set equal to the standing best is NOT
-    // a PR (matches the Stats screen's ">" comparison).
-    if (newE1rm <= standingBest) return;
-
-    // D-8 throttle: The toast only fires when the e1RM exceeds BOTH:
-    // 1. The standing best (all-time best from completed sessions)
-    // 2. The session's running best (highest e1RM logged in this session)
+    // Two axes:
+    //   - Weight axis (e1RM) when the set has added external weight
+    //     (`weight > 0`). Standing best comes from
+    //     `getAllTimeBestE1RM`.
+    //   - Reps axis (bodyweight) when the set has no added weight
+    //     (`weight == 0`) and positive reps. Standing best comes
+    //     from `getAllTimeBestReps`.
     //
-    // This ensures:
-    // - Re-saving an already-celebrated set does not re-trigger (same e1RM)
-    // - A lesser set after a greater set does not trigger (doesn't exceed session best)
-    // - Ascending bests each trigger once (each exceeds the previous session best)
-    final sessionBest = _sessionRunningBestE1RM[exerciseId] ?? 0.0;
-    if (newE1rm <= sessionBest) return;
+    // Both axes share the strict `>` comparison (D-3) and the D-8
+    // throttle (`_sessionRunningBestE1RM` for the weight axis,
+    // `_sessionRunningBestReps` for the reps axis). The reps-axis
+    // logic mirrors the e1RM-axis logic so the in-session toast,
+    // the post-workout summary, and the Stats screen always agree
+    // on the same verdict for the same set
+    // (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+    // Item 2 — rep-based record parity).
+    final hasAddedWeight = weight > 0;
+    if (hasAddedWeight) {
+      final newE1rm = StatsProgressService.epley1RM(weight, reps);
+      // `null` means reps or weight was non-positive — the set
+      // has no meaningful e1RM and the PR check is skipped.
+      if (newE1rm != null) {
+        final standingBest = await StatsProgressService(
+          widget.workoutState.repository,
+        ).getAllTimeBestE1RM(exerciseId);
 
-    if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    // Fire-and-forget — `showSnackBar` is synchronous; the SnackBar's
-    // auto-dismiss timer is internal. We do not await.
-    messenger.showSnackBar(PRToast.buildPRSnackBar(Theme.of(context)));
+        // D-3: strictly greater. A set equal to the standing best
+        // is NOT a PR (matches the Stats screen's ">" comparison).
+        if (newE1rm > standingBest) {
+          // D-8 throttle: also beats the session's running best.
+          final sessionBest = _sessionRunningBestE1RM[exerciseId] ?? 0.0;
+          if (newE1rm > sessionBest) {
+            if (!mounted) return;
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.showSnackBar(
+              PRToast.buildPRSnackBar(Theme.of(context)),
+            );
+            _sessionRunningBestE1RM[exerciseId] = newE1rm;
+          }
+        }
+      }
+    } else if (reps > 0) {
+      // Reps-axis (bodyweight) path. Mirrors the e1RM check above
+      // using `StatsProgressService.getAllTimeBestReps`.
+      final standingReps = await StatsProgressService(
+        widget.workoutState.repository,
+      ).getAllTimeBestReps(exerciseId);
 
-    // Update the session's running best for this exercise.
-    _sessionRunningBestE1RM[exerciseId] = newE1rm;
+      if (reps > standingReps) {
+        final sessionBest = _sessionRunningBestReps[exerciseId] ?? 0;
+        if (reps > sessionBest) {
+          if (!mounted) return;
+          final messenger = ScaffoldMessenger.of(context);
+          messenger.showSnackBar(
+            PRToast.buildRepPRSnackBar(Theme.of(context)),
+          );
+          _sessionRunningBestReps[exerciseId] = reps;
+        }
+      }
+    }
   }
 
   void _previousSet() {

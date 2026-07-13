@@ -7,7 +7,27 @@ class TrendPoint {
   final DateTime date;
   final double value;
 
-  const TrendPoint({required this.date, required this.value});
+  /// Optional annotation carrying added-weight context for the
+  /// day — populated only on reps-axis trend points where at
+  /// least one set was performed with a loaded belt / vest
+  /// (the `metric-extra-weight` observation on the set). The
+  /// value is the day's max added weight in kg; `null` means
+  /// no added weight was used that day (pure bodyweight, or the
+  /// trend belongs to a loaded-only exercise that has no
+  /// annotation concept).
+  ///
+  /// This is annotation-only: it never contributes to the kg
+  /// Total Volume figure, never produces a separate weight
+  /// record, and never flips the exercise onto a weight axis.
+  /// A loaded set on a reps-axis exercise contributes its reps
+  /// to [value] and its added weight here — and that's it.
+  final double? extraWeightKg;
+
+  const TrendPoint({
+    required this.date,
+    required this.value,
+    this.extraWeightKg,
+  });
 }
 
 /// A single chronological data point in a cardio trend series.
@@ -33,16 +53,32 @@ class CardioTrendPoint {
 class LiftProgress {
   final String exerciseName;
 
-  /// Max e1RM per training day, sorted chronologically.
+  /// Max e1RM per training day, sorted chronologically. Empty for
+  /// exercises tracked exclusively on the reps axis (bodyweight
+  /// movements — see [repsTrend]).
   final List<TrendPoint> e1RmTrend;
 
-  /// Total volume (reps × weight) per training day, sorted chronologically.
+  /// Total volume (reps × weight) per training day, sorted
+  /// chronologically. Empty for exercises tracked exclusively on
+  /// the reps axis.
   final List<TrendPoint> volumeTrend;
+
+  /// Max reps per training day, sorted chronologically. Populated
+  /// for bodyweight exercises (sets performed without added
+  /// external weight); an exercise is on the reps axis if ANY of
+  /// its logged sets has `weight == 0`. For mixed-axis exercises
+  /// (some sets with added weight, some without) the reps axis is
+  /// still used because the added-weight sets stay on the reps
+  /// axis as annotations only (see the bodyweight-inclusion plan
+  /// in `.github/agents/plans/stats-summary-fix-pack-plan.md`,
+  /// Item 2). Empty for exercises that have only weighted sets.
+  final List<TrendPoint> repsTrend;
 
   const LiftProgress({
     required this.exerciseName,
-    required this.e1RmTrend,
-    required this.volumeTrend,
+    this.e1RmTrend = const [],
+    this.volumeTrend = const [],
+    this.repsTrend = const [],
   });
 }
 
@@ -56,17 +92,32 @@ class CardioProgress {
   const CardioProgress({required this.exerciseName, required this.trend});
 }
 
-/// A personal record event (new all-time e1RM high for an exercise).
+/// A personal record event (new all-time high for an exercise).
+///
+/// Exactly one of [e1Rm] or [reps] is non-null on any given instance:
+///   - `e1Rm != null, reps == null` → loaded-exercise (weight-based) PR.
+///   - `e1Rm == null, reps != null` → bodyweight-exercise (reps-based) PR.
 class StatsPR {
   final String exerciseName;
-  final double e1Rm;
   final DateTime date;
+
+  /// Epley 1-rep-max at the moment the record was set. Null for
+  /// bodyweight exercises (which carry a [reps] PR instead).
+  final double? e1Rm;
+
+  /// Max reps in a single set at the moment the record was set.
+  /// Null for loaded exercises (which carry an [e1Rm] PR instead).
+  final int? reps;
 
   const StatsPR({
     required this.exerciseName,
-    required this.e1Rm,
     required this.date,
-  });
+    this.e1Rm,
+    this.reps,
+  }) : assert(
+          (e1Rm != null) ^ (reps != null),
+          'Exactly one of e1Rm or reps must be non-null on a StatsPR',
+        );
 }
 
 /// A single chronological data point in the Stats-screen feeling

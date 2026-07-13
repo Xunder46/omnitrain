@@ -598,13 +598,21 @@ void main() {
 
   group('S-009: in-session PR threshold matches Stats PR computation', () {
     test('identical seed → standing best agrees between Arm A (Stats) and Arm B (in-session)', () async {
-      // Use noon UTC for both timestamps so the local training-day
-      // (which is what the Stats service buckets on) is the same in
-      // any timezone.
-      final sOldStartMs = DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
-      final sOldEndMs = DateTime.utc(2025, 1, 1, 13).millisecondsSinceEpoch;
-      final sNewStartMs = DateTime.utc(2025, 1, 2, 12).millisecondsSinceEpoch;
-      final sNewEndMs = DateTime.utc(2025, 1, 2, 13).millisecondsSinceEpoch;
+      // Anchor both timestamps to local-midnight of recent days
+      // (2 days ago and 1 day ago) so the new recency floor
+      // (`StatsProgressService.kTopExerciseRecencyDays`) keeps the
+      // exercise eligible for selection. Noon UTC was previously
+      // used so the local training-day buckets cleanly; local
+      // midnight does the same for the tests that only check the
+      // e1RM/pr values, not the wall-clock time of day.
+      final today = DateTime.now();
+      final todayMidnight = DateTime(today.year, today.month, today.day);
+      final sOldDay = todayMidnight.subtract(const Duration(days: 2));
+      final sNewDay = todayMidnight.subtract(const Duration(days: 1));
+      final sOldStartMs = sOldDay.millisecondsSinceEpoch;
+      final sOldEndMs = sOldDay.add(const Duration(hours: 1)).millisecondsSinceEpoch;
+      final sNewStartMs = sNewDay.millisecondsSinceEpoch;
+      final sNewEndMs = sNewDay.add(const Duration(hours: 1)).millisecondsSinceEpoch;
 
       // Arm A — Stats-screen view: both sessions are completed, so
       // the Stats PR detector walks both per-day e1RM points.
