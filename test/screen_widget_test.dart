@@ -2281,7 +2281,7 @@ void main() {
       );
     }
 
-    testWidgets('renders welcome page with title and skip button', (
+    testWidgets('renders welcome page with no skip button', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(400, 900));
@@ -2293,7 +2293,8 @@ void main() {
       expect(find.byType(OnboardingScreen), findsOneWidget);
       expect(find.text('OMNITRAIN'), findsOneWidget);
       expect(find.text('one app for every way you train'), findsOneWidget);
-      expect(find.text('Skip'), findsOneWidget);
+      expect(find.text('Skip'), findsNothing);
+      expect(find.byType(TextButton), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -2324,26 +2325,12 @@ void main() {
       expect(find.text('How You Plan'), findsOneWidget);
       expect(find.text('Get Started'), findsOneWidget);
 
-      final skipButton = find.widgetWithText(TextButton, 'Skip');
-      expect(skipButton, findsOneWidget);
-
-      final skipOpacity = tester.widget<AnimatedOpacity>(
-        find
-            .ancestor(of: skipButton, matching: find.byType(AnimatedOpacity))
-            .first,
-      );
-      final skipIgnorePointer = tester.widget<IgnorePointer>(
-        find
-            .ancestor(of: skipButton, matching: find.byType(IgnorePointer))
-            .first,
-      );
-
-      expect(skipOpacity.opacity, 0.0);
-      expect(skipIgnorePointer.ignoring, isTrue);
+      // No Skip button should exist on any card, including the final one.
+      expect(find.text('Skip'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('tapping Skip completes onboarding and navigates home', (
+    testWidgets('no skip button is present on any onboarding card', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(400, 900));
@@ -2352,12 +2339,25 @@ void main() {
       await tester.pumpWidget(buildOnboardingScreen(deps));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Skip'));
-      await tester.pumpAndSettle();
+      // First card (welcome)
+      expect(find.text('OMNITRAIN'), findsOneWidget);
+      expect(find.text('Skip'), findsNothing);
+      expect(find.byType(TextButton), findsNothing);
 
-      expect(await deps.repo.getPreferenceBool('onboarding_complete'), isTrue);
-      expect(find.byType(OnboardingScreen), findsNothing);
-      expect(find.byType(HomeScreen), findsOneWidget);
+      // Middle card (how you train)
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('How You Train'), findsOneWidget);
+      expect(find.text('Skip'), findsNothing);
+      expect(find.byType(TextButton), findsNothing);
+
+      // Final card (how you plan) — still no Skip, only Get Started
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('How You Plan'), findsOneWidget);
+      expect(find.text('Get Started'), findsOneWidget);
+      expect(find.text('Skip'), findsNothing);
+      expect(find.byType(TextButton), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
