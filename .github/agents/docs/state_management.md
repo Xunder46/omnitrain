@@ -620,6 +620,27 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 
 Services contain business logic that doesn't belong in state classes. They depend only on `WorkoutRepository` — no state classes, no UI.
 
+### `CrashReportingService`
+
+**File**: `lib/core/services/crash_reporting_service.dart`
+**Depends on**: Sentry SDK only (no `WorkoutRepository` — crash reports are diagnostic, not domain data).
+
+| Member | Purpose |
+|--------|---------|
+| `bootstrap(reporter, enabled, buildMetadata)` | Installs Flutter-side error sinks when `enabled: true`. Idempotent — re-entry is a no-op. |
+| `buildMetadata(...)` | Returns the public allow-list `{appVersion, osVersion, deviceModel}`. The default-device helper reads platform info via `Platform.operatingSystem*`. |
+| `recordError(error, stackTrace, metadata)` | Forwards to the underlying reporter if reporting is active. Always rebuilds metadata via the allow-list — call-site tags cannot widen the payload. |
+| `SentryCrashReporter` | `CrashReporter` implementation backed by `sentry_flutter`. Disables `sendDefaultPii`, auto-breadcrumbs, auto-session-tracking; `beforeSend` re-applies the allow-list on every event. |
+| `defaultDeviceMetadata(appVersion)` | Pure-Dart helper for the startup metadata snapshot. |
+
+**Lifecycle**: `_runStartup` does not touch this service. Bootstrap runs in `main()` immediately after `WidgetsFlutterBinding.ensureInitialized()` and before `runApp`, with `enabled: kReleaseMode`. Debug and profile builds never install the sinks and never call the SDK.
+
+**Privacy contract** (enforced in `crash_reporting_service.dart` header):
+- Allow-list is the single source of truth — `buildMetadata` builds the return map from named args; any `extra` keys are silently dropped.
+- `sendDefaultPii: false` strips IP / device-id / request cookies at the SDK boundary.
+- `enableAutoSessionTracking = false`, `enableAutoNativeBreadcrumbs = false` block auto-breadcrumbs and session telemetry.
+- The pre-release gate (`scripts/pre_release_check.sh` §11k) re-asserts: Sentry in `pubspec.yaml`, `sentry_dart_plugin` in dev-deps, `bootstrap` actually called from `lib/main.dart`, gated on `kReleaseMode`, Android release minified with `:app:uploadSentryMapping` hook, iOS Release config keeping dSYMs.
+
 ### `RoutineSessionService`
 
 **File**: `lib/core/services/routine_session_service.dart`

@@ -1,0 +1,61 @@
+name: Release build
+on:
+  workflow_dispatch:    # you click "Run workflow" from the Actions tab
+
+jobs:
+  ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.10.7'
+      - run: flutter pub get
+      - run: pod install --project-directory=ios
+      - name: Build IPA with Sentry baked in
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+        run: |
+          flutter build ipa --release \
+            --dart-define=SENTRY_DSN=$SENTRY_DSN \
+            --dart-define=SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN \
+            --dart-define=SENTRY_ORG=$SENTRY_ORG \
+            --dart-define=SENTRY_PROJECT=omnitrain-ios
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipa
+          path: build/ios/ipa/*.ipa
+
+  android:
+    runs-on: ubuntu-latest
+    # Android build runs in parallel with iOS (separate runner).
+    # Same three secrets are reused; only SENTRY_PROJECT differs
+    # because dSYMs go to `omnitrain-ios` and ProGuard mappings go
+    # to `omnitrain-android` (assuming two Sentry projects).
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.10.7'
+      - run: flutter pub get
+      - name: Build AAB with Sentry baked in
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+        run: |
+          flutter build appbundle --release \
+            --dart-define=SENTRY_DSN=$SENTRY_DSN \
+            --dart-define=SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN \
+            --dart-define=SENTRY_ORG=$SENTRY_ORG \
+            --dart-define=SENTRY_PROJECT=omnitrain-android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aab
+          path: build/app/outputs/bundle/release/app-release.aab

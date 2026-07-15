@@ -47,6 +47,13 @@ dependencies:
   provider: ^6.0.0
   package_info_plus: ^8.0.0 # for installed-app version + build metadata
 
+  # Crash reporting — release builds only. Wired through
+  # lib/core/services/crash_reporting_service.dart which installs
+  # FlutterError.onError and PlatformDispatcher.onError when enabled.
+  # Sentry's Flutter SDK is chosen over Firebase Crashlytics — see
+  # `.github/agents/plans/crash-reporting-plan.md` for the rationale.
+  sentry_flutter: ^8.10.0
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -56,6 +63,10 @@ dev_dependencies:
     sdk: flutter
   sqflite_common_ffi: ^2.4.0
   flutter_launcher_icons: ^0.13.1
+  # Build-time hook that uploads iOS dSYMs and Android ProGuard mappings
+  # to Sentry. See `.github/agents/docs/` and the config block at the
+  # bottom of this file. Documented in the crash-reporting plan.
+  sentry_dart_plugin: ^2.0.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -120,3 +131,42 @@ flutter_launcher_icons:
   macos:
     generate: true
     image_path: "assets/icon/omnitrain_logo_black.png"
+
+# Sentry symbol-upload config. The dev_dependency `sentry_dart_plugin`
+# above reads this block at build time. The two tokens (auth_token and
+# org/project) are intentionally env-driven so the same pubspec.yaml
+# works for local builds (where the token is unset and the plugin is a
+# no-op) and for CI release builds. `release` and `debug` blocks let
+# the plugin upload on archive builds only.
+#
+# Set the following in your release environment (`.xcode.env`,
+# `android/local.properties`, or your CI secret store):
+#   SENTRY_AUTH_TOKEN=<project token>
+#   SENTRY_ORG=<your-sentry-org-slug>
+#   SENTRY_PROJECT=omnitrain-ios   (and ...-android for Android)
+sentry_dart_plugin:
+  upload_sources: true
+  upload_native_symbols: true
+  symbols_paths:
+    - build/symbols
+    - ios/Runner.xcworkspace
+  includes:
+    - build/**
+    - Classes/**
+    - Packages/**
+    - ios/**
+    - lib/**
+  excludes:
+    - "**/*.symbols"
+    - "**/*.sym"
+    - "**/*.map"
+    - "**/Pods/**"
+    - "**/.dart_tool/**"
+  url: https://sentry.io/
+  wait_for_processing: false
+  build_mode: release
+  buildscripts:
+    - name: OmniTrain_iOS_dSYM
+    - name: OmniTrain_Android_Mapping
+      task: :app:uploadSentryMapping
+      enabled: true

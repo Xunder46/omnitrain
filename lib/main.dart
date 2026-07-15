@@ -23,6 +23,7 @@ import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
 import 'core/utils/timer_alert_service.dart';
+import 'core/services/crash_reporting_service.dart';
 import 'core/utils/rest_notification_service.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -55,6 +56,36 @@ Future<void> _initializeLocalTimezone() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _initializeLocalTimezone();
+
+  // Crash reporting bootstrap. Release builds only — debug and
+  // profile builds skip the install path entirely so the debug overlay
+  // continues to surface errors directly. The DSN is injected via
+  // `--dart-define` at release-build time; on a developer machine the
+  // empty string simply produces a no-op Sentry init that the wrapper
+  // logs once via debugPrint and continues. The wrapper itself never
+  // blocks startup: a missing DSN, a Sentry outage, or a malformed
+  // payload drops the event instead of crashing the launch.
+  const sentryDsn = String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+  // Resolve the installed app version once via package_info_plus so
+  // every emitted event carries the same canonical value. A plugin
+  // failure (rare on supported platforms) falls back to "0.0.0" — the
+  // reporting layer prefers a known-but-imprecise value over no value.
+  var appVersion = '0.0.0+0';
+  try {
+    final pkg = await PackageInfo.fromPlatform();
+    appVersion = '${pkg.version}+${pkg.buildNumber}';
+  } catch (e, st) {
+    debugPrint('Crash-reporting metadata: PackageInfo unavailable: $e');
+    debugPrintStack(stackTrace: st);
+  }
+  await CrashReportingService.bootstrap(
+    reporter: SentryCrashReporter(dsn: sentryDsn),
+    // kReleaseMode is true only for `--release` builds. debug and
+    // profile builds stay at `enabled: false` and install no handlers.
+    enabled: kReleaseMode,
+    buildMetadata: () => defaultDeviceMetadata(appVersion: appVersion),
+  );
+
   runApp(StartupRoot(startupRunner: _runStartup));
 }
 

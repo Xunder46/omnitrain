@@ -261,6 +261,95 @@ if [[ -f "$PRIVACY_MANIFEST" ]]; then
   fi
 fi
 
+# 11k. Crash-reporting integration is wired and release-only.
+# Pre-launch invariant for the crash-reporting plan: a release that
+# could ship without telemetry must fail loudly. The five checks below
+# cover the four failure modes a regression can introduce — missing
+# dependency, missing SDK init, missing symbol-upload hook, or an
+# accidental flip on debug builds.
+if grep -qE '^[[:space:]]{2}sentry_flutter:' "$PUBSPEC"; then
+  log_ok "sentry_flutter is declared in pubspec.yaml dependencies"
+else
+  log_err "sentry_flutter is not in pubspec.yaml dependencies. The release build has no crash reporting configured."
+fi
+
+if grep -qE '^  sentry_dart_plugin:|^  sentry_dart_plugin:' "$PUBSPEC"; then
+  log_ok "sentry_dart_plugin is declared in pubspec.yaml dev_dependencies"
+else
+  log_err "sentry_dart_plugin is not in pubspec.yaml dev_dependencies. iOS dSYM and Android ProGuard mapping uploads will not run."
+fi
+
+# Find lines that contain the bootstrap call, ignoring Dart
+# line/block comments. The pattern requires the literal call
+# `await CrashReportingService.bootstrap(` — bare imports or commented
+# code do not satisfy the check.
+if [[ -f "lib/main.dart" ]]; then
+  non_comment_call=$(grep -nE 'CrashReportingService\.bootstrap\(' "lib/main.dart" \
+    | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*//' \
+    | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*\*' \
+    | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*/\*' \
+    | grep -vE '/\*.*CrashReportingService\.bootstrap\(' \
+    || true)
+  if echo "$non_comment_call" | grep -q 'await CrashReportingService\.bootstrap('; then
+    log_ok "CrashReportingService.bootstrap is awaited from lib/main.dart"
+  else
+    log_err "CrashReportingService.bootstrap call is missing or commented out from lib/main.dart. The SDK will never initialise and the release build will produce no crash reports."
+  fi
+else
+  log_err "lib/main.dart not found — cannot verify crash-reporting bootstrap."
+fi
+
+# The debug-build guard is the heart of the privacy contract: it must
+# gate the bootstrap call on kReleaseMode (or equivalent). The check is
+# deliberately permissive — any of the recognised patterns is acceptable.
+DEBUG_BUILD_GUARD_OK=0
+if [[ -f "lib/main.dart" ]]; then
+  if grep -qE 'enabled:[[:space:]]*kReleaseMode|kReleaseMode[[:space:]]*&&.*enabled' "lib/main.dart"; then
+    DEBUG_BUILD_GUARD_OK=1
+  fi
+fi
+if [[ "$DEBUG_BUILD_GUARD_OK" -eq 1 ]]; then
+  log_ok "Crash reporting is gated on kReleaseMode — debug builds will not report"
+else
+  log_err "Crash reporting is not gated on kReleaseMode. A debug build will ship telemetry to the crash service."
+fi
+
+# Symbol-upload plumbing must be present in both platform configs.
+# Android: release must be minified (so a mapping.txt is produced) and
+# the build must reference the uploadSentryMapping task (injected by
+# sentry_dart_plugin).
+if [[ -f "android/app/build.gradle.kts" ]]; then
+  if grep -q 'isMinifyEnabled = true' "android/app/build.gradle.kts"; then
+    log_ok "Android release build is minified (mapping.txt will be produced)"
+  else
+    log_err "Android release build is not minified. Without mapping.txt, JVM stack frames will not symbolicate."
+  fi
+else
+  log_err "android/app/build.gradle.kts is missing — cannot verify Android symbol-upload config."
+fi
+
+# The sentry_dart_plugin pubspec block must declare the Android mapping
+# upload hook. A future refactor that drops the block from pubspec.yaml
+# must fail the gate.
+if grep -q 'uploadSentryMapping' "$PUBSPEC"; then
+  log_ok "Android mapping upload hook (:app:uploadSentryMapping) is configured in pubspec.yaml"
+else
+  log_err "Android mapping upload hook (uploadSentryMapping) is missing from pubspec.yaml. JVM stack traces will not symbolicate."
+fi
+
+# iOS: the Xcode project must keep dSYMs (COPY_PHASE_STRIP=NO and
+# DEBUG_INFORMATION_FORMAT=dwarf-with-dsym on the Release config).
+if [[ -f "$PBXPROJ" ]]; then
+  if grep -qE 'COPY_PHASE_STRIP = NO' "$PBXPROJ" && \
+     grep -qE '"dwarf-with-dsym"' "$PBXPROJ"; then
+    log_ok "iOS Release config keeps dSYMs (COPY_PHASE_STRIP=NO + dwarf-with-dsym)"
+  else
+    log_err "iOS Release config does not keep dSYMs (need COPY_PHASE_STRIP=NO + DEBUG_INFORMATION_FORMAT=dwarf-with-dsym). Native stack frames will not symbolicate."
+  fi
+else
+  log_err "ios/Runner.xcodeproj/project.pbxproj is missing — cannot verify iOS dSYM config."
+fi
+
 # ── 12–13. Analyzer and test suite (the actual code gate) ────────────────────
 echo ""
 if [[ $SKIP_HEAVY -eq 1 ]]; then

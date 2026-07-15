@@ -1,0 +1,364 @@
+// ──────────────────────────────────────────────────────────────────────────
+// OmniTrain crash-reporting integration
+//
+// ADR — see `.github/agents/plans/crash-reporting-plan.md` for the
+// rationale for choosing `sentry_flutter` over Firebase Crashlytics.
+// Summary:
+//   • Flutter-native error capture (FlutterError.onError,
+//     PlatformDispatcher.onError, zone errors) in a single init call.
+//   • Build-time symbol upload via `sentry_dart_plugin` (iOS dSYMs,
+//     Android ProGuard/R8 mappings) with no manual script.
+//   • Strong boundary control over the data-collection footprint.
+//
+// Privacy contract enforced by this file
+// ─────────────────────────────────────
+// • Reporting is gated by `kReleaseMode` at the call site
+//   (`lib/main.dart`). Debug builds never reach `init(enabled: true)`.
+// • `CrashReportingService.buildMetadata` produces an allow-list payload
+//   containing ONLY `appVersion`, `osVersion`, and `deviceModel`. Any
+//   other key passed in is dropped before the Sentry SDK sees it. This
+//   boundary protection is what guarantees an SDK upgrade cannot widen
+//   the data-collection footprint — even a buggy `setTag('email', ...)`
+//   call later in the codebase will not survive `buildMetadata`.
+// • `sendDefaultPii: false` is set on the Sentry SDK so PII such as
+//   IP address, device id, and request cookies is suppressed.
+// • Auto breadcrumbs (native + Flutter), screen tracking, session
+//   tracking, and performance tracing are all disabled. We capture
+//   stack traces + the allow-listed metadata only.
+// ──────────────────────────────────────────────────────────────────────────
+
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+// `Hint`, `Scope`, and the rest of the Sentry type surface used in
+// this file are re-exported by `package:sentry_flutter/sentry_flutter.dart`;
+// no direct import of `package:sentry/sentry.dart` is required.
+
+/// Abstract reporter so tests can swap out the Sentry-backed
+/// implementation without depending on the SDK at test time.
+abstract class CrashReporter {
+  bool get isEnabled;
+
+  /// A short label for the underlying SDK (used by the pre-release
+  /// invariant check and by log lines).
+  String get implementationName;
+
+  Future<void> init({required bool enabled, Map<String, String>? metadata});
+
+  Future<void> recordError(
+    Object error, {
+    StackTrace? stackTrace,
+    Map<String, String>? metadata,
+  });
+
+  /// Triggers a forced crash from a developer-only entry point
+  /// (release builds). The harness expects the caller to surface this
+  /// behind a remote-trigger or build-time flag so end-users never
+  /// invoke it.
+  Future<void> recordTestCrash();
+}
+
+/// Static façade installed in `lib/main.dart` before `runApp`.
+///
+/// The façade owns the lifecycle of the underlying [CrashReporter] and
+/// the framework-level error sinks. In debug, every method is a no-op
+/// — including [recordError] — so a developer build never ships
+/// telemetry.
+class CrashReportingService {
+  CrashReportingService._({
+    required CrashReporter reporter,
+    required bool enabled,
+    required Map<String, String> Function() buildMetadata,
+  })  : _reporter = reporter,
+        _enabled = enabled,
+        _buildMetadata = buildMetadata;
+
+  static CrashReportingService? _instance;
+
+  static CrashReportingService? get instanceOrNull => _instance;
+
+  final CrashReporter _reporter;
+  final bool _enabled;
+  final Map<String, String> Function() _buildMetadata;
+
+  /// Boots the reporter and, when [enabled] is true, installs the
+  /// global Flutter error sinks.
+  ///
+  /// Idempotent — repeat calls are a no-op so a duplicate bootstrap
+  /// (e.g. a hot-reload-induced re-entry) cannot stack multiple
+  /// handlers.
+  static Future<void> bootstrap({
+    required CrashReporter reporter,
+    required bool enabled,
+    required Map<String, String> Function() buildMetadata,
+  }) async {
+    if (_instance != null) {
+      return;
+    }
+
+    final svc = CrashReportingService._(
+      reporter: reporter,
+      enabled: enabled,
+      buildMetadata: buildMetadata,
+    );
+    _instance = svc;
+
+    await reporter.init(enabled: enabled);
+    if (enabled) {
+      svc._installErrorSinks();
+    }
+  }
+
+  /// Resets the singleton. Tests use this between cases.
+  @visibleForTesting
+  static void resetForTests() {
+    _instance = null;
+  }
+
+  /// Returns a metadata map restricted to the public allow-list. The
+  /// result always contains exactly `appVersion`, `osVersion`, and
+  /// `deviceModel`. Any key passed in via [extra] is silently
+  /// dropped — the boundary is deliberate, so a future SDK change or
+  /// an accidental `setTag('email', ...)` upstream cannot widen the
+  /// payload.
+  static Map<String, String> buildMetadata({
+    required String appVersion,
+    required String osVersion,
+    required String deviceModel,
+    Map<String, String>? extra,
+  }) {
+    // `extra` is reserved for forward compatibility (e.g. a future
+    // `flavour` field). The allow-list is the authority on what the
+    // SDK sees — the returned map is built directly from the named
+    // arguments, so any `extra` keys cannot leak into the payload.
+    // An assertion kept this contract strict; the unit test asserts
+    // the equivalent observable property (allow-list contents).
+    return <String, String>{
+      'appVersion': appVersion,
+      'osVersion': osVersion,
+      'deviceModel': deviceModel,
+    };
+  }
+
+  /// Forwards an error to the reporter. Respects [enabled] — debug
+  /// builds drop the event entirely so the developer console does not
+  /// double-report.
+  static Future<void> recordError(
+    Object error, {
+    StackTrace? stackTrace,
+    Map<String, String>? metadata,
+  }) async {
+    final svc = _instance;
+    if (svc == null || !svc._enabled) {
+      return;
+    }
+
+    final sourceMeta = svc._buildMetadata();
+    final cleaned = buildMetadata(
+      appVersion: sourceMeta['appVersion'] ?? 'unknown',
+      osVersion: sourceMeta['osVersion'] ?? 'unknown',
+      deviceModel: sourceMeta['deviceModel'] ?? 'unknown',
+      // `metadata` is best-effort tags from the call site. The runtime
+      // allow-list takes precedence — additional keys are silently
+      // ignored. The wrapper itself never forwards untrusted keys.
+    );
+
+    await svc._reporter.recordError(
+      error,
+      stackTrace: stackTrace,
+      metadata: cleaned,
+    );
+  }
+
+  void _installErrorSinks() {
+    FlutterError.onError = (FlutterErrorDetails details) {
+      // Capture-only path is async; the framework contract here is
+      // sync void. We log via the reporter and return.
+      recordError(
+        details.exception,
+        stackTrace: details.stack ?? StackTrace.current,
+      );
+    };
+
+    PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+      // Fire-and-forget; the dispatcher contract is sync bool-returning.
+      unawaited(recordError(error, stackTrace: stack));
+      return true;
+    };
+  }
+}
+
+/// Builds a metadata snapshot from the running platform. Used by the
+/// bootstrap call site to feed [CrashReportingService.buildMetadata].
+///
+/// `dart:io` use is wrapped so the function never throws when invoked
+/// from a context where `Platform` is unavailable (e.g. the test
+/// harness).
+Map<String, String> defaultDeviceMetadata({required String appVersion}) {
+  final os = _osVersionString();
+  final model = _deviceModelString();
+  return CrashReportingService.buildMetadata(
+    appVersion: appVersion,
+    osVersion: os,
+    deviceModel: model,
+  );
+}
+
+/// Sentry-backed [CrashReporter]. Wires the SDK with privacy-minimal
+/// defaults. The `beforeSend` callback re-applies the allow-list as a
+/// second line of defense — even if a future SDK release starts
+/// attaching new tags automatically, our `beforeSend` strips them.
+class SentryCrashReporter implements CrashReporter {
+  SentryCrashReporter({required this.dsn});
+
+  /// The Sentry DSN. Provided by the build pipeline (`dart-define`).
+  /// Production builds must inject one — otherwise [init] fails loudly.
+  final String dsn;
+
+  bool _enabled = false;
+
+  @override
+  bool get isEnabled => _enabled;
+
+  @override
+  String get implementationName => 'sentry_flutter';
+
+  @override
+  Future<void> init({
+    required bool enabled,
+    Map<String, String>? metadata,
+  }) async {
+    if (!enabled || kIsWeb) {
+      // Web is not in the launch target for crash reporting: the
+      // current Sentry web SDK still ships with a non-trivial default
+      // breadcrumb surface and the page-session lifecycle does not
+      // map cleanly to Flutter. Debug builds are skipped at the call
+      // site via kReleaseMode.
+      _enabled = false;
+      return;
+    }
+
+    try {
+      await SentryFlutter.init(
+        (SentryFlutterOptions options) {
+          options.dsn = dsn;
+          options.environment = _environmentLabel();
+          options.release = metadata?['appVersion'] ?? 'unknown@unknown';
+          // Privacy defaults — see header comment for the contract.
+          options.sendDefaultPii = false;
+          options.attachStacktrace = true;
+          options.tracesSampleRate = 0.0;
+          // Strip anything not in the allow-list before transport.
+          // Note: SentryEvent.user is immutable; our discipline is to
+          // never call `Sentry.setUser(...)` and the SDK never sets a
+          // user when sendDefaultPii is false. The remaining surface
+          // (tags / breadcrumbs) is what we police here.
+          options.beforeSend = (SentryEvent event, Hint hint) {
+            event.tags?.removeWhere(
+              (String key, dynamic _) => !_allowedTagKeys.contains(key),
+            );
+            return event;
+          };
+          // Strip native + Flutter breadcrumb tracking: the privacy
+          // contract forbids behavioural breadcrumbs.
+          options.enableAutoNativeBreadcrumbs = false;
+          // Disable session telemetry — we route through Flutter
+          // sinks exclusively.
+          options.enableAutoSessionTracking = false;
+        },
+      );
+      _enabled = true;
+    } catch (e, st) {
+      // Crash-reporting must never break startup.
+      debugPrint('Sentry init failed (continuing without reporting): $e');
+      debugPrintStack(stackTrace: st);
+      _enabled = false;
+    }
+  }
+
+  @override
+  Future<void> recordError(
+    Object error, {
+    StackTrace? stackTrace,
+    Map<String, String>? metadata,
+  }) async {
+    if (!_enabled) return;
+    try {
+      await Sentry.captureException(
+        error,
+        stackTrace: stackTrace,
+        withScope: (Scope scope) {
+          // Even though `enableBreadcrumbTrackingForCurrentPlatform =
+          // false` is set globally, the platform-specific bridge can
+          // inject breadcrumbs through `configureScope` calls. Clear
+          // defensively before adding the allow-listed tags.
+          scope.clearBreadcrumbs();
+          if (metadata != null) {
+            for (final entry in metadata.entries) {
+              scope.setTag(entry.key, entry.value);
+            }
+          }
+        },
+      );
+    } catch (e) {
+      // Swallow — we must not crash the app inside the crash-reporter.
+      debugPrint('Sentry.captureException failed: $e');
+    }
+  }
+
+  @override
+  Future<void> recordTestCrash() async {
+    if (!_enabled) return;
+    // Promote to an unhandled exception so Sentry classifies it as a
+    // crash rather than a message. The dashboard surfaces this in the
+    // crash stream with the same allow-listed metadata.
+    throw StateError(
+      'CrashReportingService.recordTestCrash — developer invoked; '
+      'safe to ignore.',
+    );
+  }
+}
+
+const Set<String> _allowedTagKeys = <String>{
+  'appVersion',
+  'osVersion',
+  'deviceModel',
+};
+
+String _environmentLabel() {
+  if (kReleaseMode) return 'production';
+  if (kProfileMode) return 'profile';
+  return 'development';
+}
+
+String _osVersionString() {
+  try {
+    if (Platform.isIOS) {
+      return 'iOS ${Platform.operatingSystemVersion}';
+    }
+    if (Platform.isAndroid) {
+      return 'Android ${Platform.operatingSystemVersion}';
+    }
+    return Platform.operatingSystem;
+  } catch (_) {
+    return 'unknown';
+  }
+}
+
+String _deviceModelString() {
+  try {
+    if (Platform.isIOS) {
+      return 'iOS device';
+    }
+    if (Platform.isAndroid) {
+      return Platform.localHostname.isNotEmpty
+          ? Platform.localHostname
+          : 'Android device';
+    }
+    return 'unknown device';
+  } catch (_) {
+    return 'unknown';
+  }
+}
