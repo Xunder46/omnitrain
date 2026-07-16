@@ -11,7 +11,7 @@ plugins {
 }
 
 android {
-    namespace = "com.akhramtcov.omnitrain"
+    namespace = "dev.sasha.omnitrain"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -25,8 +25,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.akhramtcov.omnitrain"
-        minSdk = 21
+        applicationId = "dev.sasha.omnitrain"
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
