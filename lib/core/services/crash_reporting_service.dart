@@ -51,6 +51,7 @@ abstract class CrashReporter {
     Object error, {
     StackTrace? stackTrace,
     Map<String, String>? metadata,
+    String? errorContext,
   });
 
   /// Triggers a forced crash from a developer-only entry point
@@ -149,6 +150,7 @@ class CrashReportingService {
     Object error, {
     StackTrace? stackTrace,
     Map<String, String>? metadata,
+    String? errorContext,
   }) async {
     final svc = _instance;
     if (svc == null || !svc._enabled) {
@@ -169,6 +171,7 @@ class CrashReportingService {
       error,
       stackTrace: stackTrace,
       metadata: cleaned,
+      errorContext: errorContext,
     );
   }
 
@@ -283,6 +286,7 @@ class SentryCrashReporter implements CrashReporter {
     Object error, {
     StackTrace? stackTrace,
     Map<String, String>? metadata,
+    String? errorContext,
   }) async {
     if (!_enabled) return;
     try {
@@ -299,6 +303,9 @@ class SentryCrashReporter implements CrashReporter {
             for (final entry in metadata.entries) {
               scope.setTag(entry.key, entry.value);
             }
+          }
+          if (errorContext != null && errorContext.isNotEmpty) {
+            scope.setTag('errorContext', errorContext);
           }
         },
       );
@@ -325,6 +332,7 @@ const Set<String> _allowedTagKeys = <String>{
   'appVersion',
   'osVersion',
   'deviceModel',
+  'errorContext',
 };
 
 String _environmentLabel() {

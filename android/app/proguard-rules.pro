@@ -22,7 +22,19 @@
 -dontwarn io.sentry.android.timber.**
 -dontwarn io.sentry.compose.**
 
-# Keep the `flutter` plugin classes that are referenced reflectively
-# from the Sentry SDK at runtime when it bridges Flutter errors.
--keep class io.flutter.embedding.android.** { *; }
--keep class io.flutter.embedding.engine.** { *; }
+# Flutter deferred components (Play Core) — unused, safe to ignore
+-dontwarn com.google.android.play.core.**
+
+# Sentry
+-dontwarn io.sentry.**
+-keep class io.sentry.** { *; }
+
+# Hive: keep generated TypeAdapters and annotated model classes from
+# R8 renaming/stripping. Hive resolves adapters and fields at runtime,
+# which R8's static analysis cannot see through.
+-keep class * extends com.google.gson.TypeAdapter
+-keepclassmembers class * {
+    @hive.HiveField <fields>;
+}
+-keep class **Adapter extends hive.TypeAdapter { *; }
+-keep class hive.** { *; }

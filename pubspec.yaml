@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.1+11
+version: 1.0.1+13
 
 environment:
   sdk: ^3.10.7
@@ -52,7 +52,7 @@ dependencies:
   # FlutterError.onError and PlatformDispatcher.onError when enabled.
   # Sentry's Flutter SDK is chosen over Firebase Crashlytics — see
   # `.github/agents/plans/crash-reporting-plan.md` for the rationale.
-  sentry_flutter: ^8.10.0
+  sentry_flutter: ^9.24.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -126,11 +126,10 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/icon/omnitrain_logo_black.png"
-  min_sdk_android: 21
-  macos:
-    generate: true
-    image_path: "assets/icon/omnitrain_logo_black.png"
+  image_path: "assets/icon/omnitrain_logo_black.png"   # unchanged — legacy/iOS still wants one flattened image, iOS icons can't have transparency anyway
+  adaptive_icon_background: "#000000"                   # confirm this matches your actual black exactly
+  adaptive_icon_foreground: "assets/icon/omnitrain_logo_foreground_padded.png"
+  min_sdk_android: 26
 
 # Sentry symbol-upload config. The dev_dependency `sentry_dart_plugin`
 # above reads this block at build time. The two tokens (auth_token and

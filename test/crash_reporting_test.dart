@@ -46,6 +46,7 @@ class FakeCrashReporter implements CrashReporter {
     Object error, {
     StackTrace? stackTrace,
     Map<String, String>? metadata,
+    String? errorContext,
   }) async {
     capturedErrors.add(error);
     capturedStacks.add(stackTrace ?? StackTrace.empty);

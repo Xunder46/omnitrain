@@ -73,3 +73,6 @@ macos/Runner.xcworkspace/
 
 # Generated agent grounding bundle (not for version control)
 /omnitrain-grounding.tsource
+
+android/key.properties
+*.jks
