@@ -318,10 +318,35 @@ HomeScreen
 - **Empty state**: Circle icon + "No Routines Yet" + "Create your first routine" message
 - **List state**: `ListView.builder` with `Card` widgets per routine
   - Each card shows: exercise icon, routine name, creation date (relative: "today", "3 days ago")
+  - Built-in demo routines carry a subtle "Demo" badge (via `DemoRoutineBadge`) sourced from `OmniTheme` typography + `colorScheme.primary` tokens. The badge is purely informational; demo rows are still editable, startable, and deletable like user rows.
   - Tap card → starts routine as session
   - ⋮ menu → Edit or Delete
 - **Primary bottom CTA**: `OmniBottomCTA(label: '+ New Routine', ...)` anchored via `Scaffold.bottomNavigationBar` — the shared full-width, safe-area-anchored footer action (see [widget_catalog.md → OmniBottomCTA](widget_catalog.md)). The list's bottom padding uses `OmniTheme.formBottomCTAClearance` so the last routine card clears the CTA. Replaces the legacy `FloatingActionButton` so the routines screen matches the unified bottom-CTA pattern used by the calendar day list, food library, etc.
 - **Active session indicator**: If current session is a routine session (`intent == 'routine'`), the My Routines home tile glows active
+
+### Built-in Demo Routines
+
+`MyRoutinesScreen` ships a curated set of built-in demo templates the
+first time the app is launched (and on every subsequent launch where the
+device's stored catalog version is older than the bundled one). Demos
+follow the same versioned refresh pipeline used for bundled exercises
+and the food catalog:
+
+- Eight templates covering resistance (Push/Pull/Leg/Dumbbell Arms),
+  bodyweight circuit (Bodyweight Circuit), cardio (Easy Run — 30 min),
+  sports (Heavy Bag — 5×3), and isometric / mobility (Mobility Flow)
+  modalities.
+- Demo ids are namespaced under `demo-template-…` so they cannot collide
+  with user-created routines (which use `template-{ms}`).
+- User edits are respected on refresh — the
+  `WorkoutRepository.isSeedEntryTouched(SeedEntryType.routineTemplate,
+  demoTemplateId)` tombstone is set whenever the user mutates or
+  deletes a demo, and the refresh skips the entry on the next bump.
+- Validation at startup (`lib/main.dart::_validateBundledDemoRoutines`)
+  and at archive time (`scripts/pre_release_check.sh` →
+  `tools/validate_demo_routines.dart`) confirms every demo's exercise
+  references resolve to the bundled catalog and that every effort
+  carries the targets its kind requires.
 
 ### RoutineSetupScreen (`lib/features/routine/routine_setup_screen.dart`)
 

@@ -764,6 +764,55 @@ void main() {
       expect(find.text('Push Day'), findsOneWidget);
       expect(find.text('No Routines Yet'), findsNothing);
     });
+
+    testWidgets('renders the "Demo" badge next to built-in demo routines', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      // User routine: no badge.
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-user',
+          name: 'My Squat Day',
+          isBuiltInDemo: false,
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+      // Demo routine: badge visible.
+      await repo.createTemplate(
+        WorkoutTemplate(
+          id: 'tmpl-demo',
+          name: 'Push Day',
+          isBuiltInDemo: true,
+          focusModality: 'resistance_lifting',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+
+      final routineState = RoutineState(repo);
+      await routineState.loadRoutines();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MyRoutinesScreen(
+            routineState: routineState,
+            routineSessionService: RoutineSessionService(repo),
+            sessionSummaryService: SessionSummaryService(repo),
+            settingsState: SettingsState(repo, fakePreferencesService()),
+            timerAlertService: FakeTimerAlertService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Push Day'), findsOneWidget);
+      expect(find.text('My Squat Day'), findsOneWidget);
+      // Only the demo row gets the chip; user rows don't.
+      expect(find.text('Demo'), findsOneWidget);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -6,27 +6,74 @@ jobs:
   ios:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.41.9'
-      - run: flutter pub get
-      - run: pod install --project-directory=ios
-      - name: Build IPA with Sentry baked in
-        env:
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-        run: |
-          flutter build ipa --release \
-            --dart-define=SENTRY_DSN=$SENTRY_DSN \
-            --dart-define=SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN \
-            --dart-define=SENTRY_ORG=$SENTRY_ORG \
-            --dart-define=SENTRY_PROJECT=omnitrain-ios
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ipa
-          path: build/ios/ipa/*.ipa
+    - uses: actions/checkout@v4
+
+    # Import the signing cert into a temporary keychain so Xcode can sign.
+    - name: Import signing certificate
+      env:
+        CERT_P12: ${{ secrets.IOS_CERTIFICATE_P12 }}
+        CERT_PASS: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+        KEYCHAIN_PASS: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+      run: |
+        KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
+        security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+        security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+        echo "$CERT_P12" | base64 --decode > $RUNNER_TEMP/cert.p12
+        security import $RUNNER_TEMP/cert.p12 \
+          -P "$CERT_PASS" \
+          -A -t cert -f pkcs12 \
+          -k "$KEYCHAIN_PATH"
+        security list-keychain -d user -s "$KEYCHAIN_PATH"
+        security set-keychain-settings -lut 21600 -u "$KEYCHAIN_PATH"
+
+    # Drop the provisioning profile where Xcode expects it.
+    - name: Install provisioning profile
+      env:
+        PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+      run: |
+        PROFILE_DIR=$HOME/Library/MobileDevice/Provisioning\ Profiles
+        mkdir -p "$PROFILE_DIR"
+        echo "$PROFILE" | base64 --decode > "$PROFILE_DIR/build.mobileprovision"
+
+    - uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.41.9'
+
+    - run: flutter pub get
+    - run: pod install --project-directory=ios
+
+    - name: Build IPA (manual signing)
+      env:
+        SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+        # Disable automatic signing; Xcode reads the profile we just dropped in.
+        FLUTTER_BUILD_MODE: release
+      run: |
+        # Switch the project to manual signing before building.
+        /usr/libexec/PlistBuddy -c "Set :TargetAttributes:1D6058900D05DD5D00689F52:DevelopmentTeam:S3976AA7K8" \
+          ios/Runner.xcodeproj/project.pbxproj || true
+        xcodebuild -workspace ios/Runner.xcworkspace \
+                   -scheme Runner \
+                   -configuration Release \
+                   -allowProvisioningUpdates \
+                   DEVELOPMENT_TEAM=S3976AA7K8 \
+                   CODE_SIGN_STYLE=Manual \
+                   CODE_SIGN_IDENTITY="Apple Distribution" \
+                   PROVISIONING_PROFILE_SPECIFIER="$(ls $HOME/Library/MobileDevice/Provisioning\ Profiles/ | head -1 | sed 's/.mobileprovision//')" \
+                   -archivePath $RUNNER_TEMP/Runner.xcarchive \
+                   archive
+        xcodebuild -exportArchive \
+                   -archivePath $RUNNER_TEMP/Runner.xcarchive \
+                   -exportPath $RUNNER_TEMP/ipa \
+                   -exportOptionsPlist ios/ExportOptions.plist
+        ls $RUNNER_TEMP/ipa
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: ipa
+        path: ${{ runner.temp }}/ipa/*.ipa
 
   android:
     runs-on: ubuntu-latest

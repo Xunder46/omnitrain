@@ -1,3 +1,4 @@
+import '../../core/models/demo_routine_spec.dart';
 import '../../data/models/models.dart';
 import '../../mock/food_catalog_seed.dart';
 import '../../mock/seed_data.dart';
@@ -6,7 +7,7 @@ import 'catalog_source.dart';
 
 /// The default [CatalogSource] used by [CatalogRefreshService]: reads the
 /// bundled catalog that ships with the app (the seed data + the food
-/// catalog seed).
+/// catalog seed + the seeded demo routines).
 ///
 /// All getters are pure reads of compile-time [SeedData] /
 /// [FoodCatalogSeed] constants — they have no side effects and are safe
@@ -30,4 +31,8 @@ class BundledCatalogSource implements CatalogSource {
 
   @override
   List<Food> get foodCatalog => FoodCatalogSeed.sampleCatalogFoods;
+
+  @override
+  List<DemoRoutineBundle> get routineTemplates =>
+      SeedData.sampleDemoRoutineBundles;
 }

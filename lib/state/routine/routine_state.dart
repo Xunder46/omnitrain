@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../../core/constants/catalog_version.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import '../../core/constants/effort_defaults.dart';
@@ -205,14 +206,28 @@ class RoutineState extends ChangeNotifier {
   }
 
   /// Delete a routine
+  ///
+  /// When the deleted routine is a built-in demo, the routine-template
+  /// tombstone is set on the repository so the next catalog refresh
+  /// doesn't resurrect it (see `SeedEntryType.routineTemplate`).
   Future<void> deleteRoutine(String templateId) async {
     _clearError();
 
     try {
+      final existing = await _repository.getTemplateById(templateId);
+      final isDemo = existing?.isBuiltInDemo ?? false;
+
       // Cascade-delete: remove all planned sessions linked to this template.
       await _repository.deletePlannedSessionsByTemplateId(templateId);
 
       await _repository.deleteTemplate(templateId);
+      if (isDemo) {
+        // Persist the user's deletion choice across the next catalog bump.
+        await _repository.markSeedEntryTouched(
+          SeedEntryType.routineTemplate,
+          templateId,
+        );
+      }
       _routines.removeWhere((r) => r.id == templateId);
       notifyListeners();
     } catch (e) {
@@ -937,7 +952,19 @@ class RoutineState extends ChangeNotifier {
     if (_currentTemplate == null) return;
 
     try {
+      // Persist top-level template (no-op on re-save because the
+      // repository upserts by id).
       await _repository.createTemplate(_currentTemplate!);
+
+      // User edits to a built-in demo must survive the next catalog
+      // refresh. Setting the tombstone here is idempotent and only
+      // applies to demos — user-created routines are untouched.
+      if (_currentTemplate!.isBuiltInDemo) {
+        await _repository.markSeedEntryTouched(
+          SeedEntryType.routineTemplate,
+          _currentTemplate!.id,
+        );
+      }
 
       final existingSegments = await _repository.getTemplateSegments(
         _currentTemplate!.id,
@@ -1004,28 +1031,8 @@ class RoutineState extends ChangeNotifier {
   }
 }
 
-extension on WorkoutTemplate {
-  WorkoutTemplate copyWith({
-    String? name,
-    String? description,
-    String? focusModality,
-    String? primaryDisciplineId,
-    String? note,
-    int? updatedAtMs,
-  }) {
-    return WorkoutTemplate(
-      id: id,
-      ownerUserId: ownerUserId,
-      name: name ?? this.name,
-      description: description ?? this.description,
-      focusModality: focusModality ?? this.focusModality,
-      primaryDisciplineId: primaryDisciplineId ?? this.primaryDisciplineId,
-      note: note ?? this.note,
-      createdAtMs: createdAtMs,
-      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
-    );
-  }
-}
+// WorkoutTemplate.copyWith is provided by the model itself
+// (`lib/data/models/models.dart`).
 
 extension on TemplateSegment {
   TemplateSegment copyWith({

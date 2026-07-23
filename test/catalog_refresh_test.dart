@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/constants/catalog_version.dart';
+import 'package:omnitrain/core/models/demo_routine_spec.dart';
 import 'package:omnitrain/core/services/catalog_refresh_service.dart';
 import 'package:omnitrain/core/services/catalog_source.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
@@ -28,6 +29,7 @@ class _FakeCatalogSource implements CatalogSource {
     required this.exerciseCapabilities,
     required this.exerciseMuscleGroups,
     required this.foodCatalog,
+    this.routineTemplates = const [],
   });
 
   @override
@@ -44,6 +46,9 @@ class _FakeCatalogSource implements CatalogSource {
 
   @override
   final List<Food> foodCatalog;
+
+  @override
+  final List<DemoRoutineBundle> routineTemplates;
 }
 
 CatalogSource _bundledSource() {
