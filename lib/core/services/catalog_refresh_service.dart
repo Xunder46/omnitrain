@@ -1,4 +1,5 @@
 import '../../core/constants/catalog_version.dart';
+import '../../core/models/demo_routine_spec.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'catalog_source.dart';
@@ -59,6 +60,7 @@ class CatalogRefreshService {
     await _refreshExerciseCapabilities();
     await _refreshExerciseMuscleGroups();
     await _refreshFoodCatalog();
+    await _refreshDemoRoutines();
 
     await _repository.setCatalogVersion(_source.version);
     return true;
@@ -141,6 +143,102 @@ class CatalogRefreshService {
         await _repository.updateCatalogFood(bundledFood);
       }
     }
+  }
+
+  /// Reconcile bundled demo [WorkoutTemplate]s onto the device.
+  ///
+  /// Each bundle contains a template + segments + efforts + targets; the
+  /// orchestrator writes the whole subtree in one shot so the device never
+  /// observes a half-written demo. User edits and deletions are tracked via
+  /// the per-entry tombstone returned by
+  /// [WorkoutRepository.isSeedEntryTouched] for [SeedEntryType.routineTemplate]
+  /// — a touched demo is skipped entirely so the user's mutation (or
+  /// delete) remains authoritative.
+  ///
+  /// A previously-stored demo that has been *deleted* leaves no row behind
+  /// for the in-place-update path: the existing-row check returns `null`
+  /// and the bundled content is re-created. That's why the state layer
+  /// must call [WorkoutRepository.markSeedEntryTouched] for
+  /// [SeedEntryType.routineTemplate] whenever the user deletes or edits a
+  /// demo.
+  Future<void> _refreshDemoRoutines() async {
+    for (final bundle in _source.routineTemplates) {
+      final templateId = bundle.template.id;
+      if (await _repository.isSeedEntryTouched(
+        SeedEntryType.routineTemplate,
+        templateId,
+      )) {
+        continue;
+      }
+
+      final existing = await _repository.getTemplateById(templateId);
+      if (existing == null) {
+        await _writeFullDemoBundle(bundle);
+        continue;
+      }
+
+      if (_demoBundleTemplateDiffers(existing, bundle.template)) {
+        // Patch the template row in place and let the existing
+        // segments/efforts/targets stay (they are managed by the
+        // routine editor; the user may have edited them too).
+        await _repository.updateTemplate(bundle.template);
+      }
+    }
+  }
+
+  Future<void> _writeFullDemoBundle(DemoRoutineBundle bundle) async {
+    // Templates first — segments/efforts/targets reference it.
+    await _repository.createTemplate(bundle.template);
+
+    // Map source-segment ids → freshly-created device-segment ids so the
+    // effort / target rows reference the ones we just persisted. We use
+    // the source ids verbatim here because the refresh is the only
+    // writer of demo segments and the routine editor never edits them
+    // (the user's edits apply only to the *top-level* template fields).
+    for (final segmentSpec in bundle.segments) {
+      await _repository.createTemplateSegment(segmentSpec.segment);
+
+      for (final effortSpec in segmentSpec.efforts) {
+        await _repository.createTemplateEffort(effortSpec.effort);
+
+        for (final targetSpec in effortSpec.targets) {
+          await _repository.createTemplateTarget(
+            TemplateTarget(
+              id: 'demo-ttar-${effortSpec.effort.id}-${targetSpec.setIndex ?? 0}-${targetSpec.metricId}',
+              templateEffortId: effortSpec.effort.id,
+              metricId: targetSpec.metricId,
+              setIndex: targetSpec.setIndex,
+              unitId: targetSpec.unitId,
+              targetMin: targetSpec.targetMin,
+              targetMax: targetSpec.targetMax,
+              targetInt: targetSpec.targetInt,
+              targetText: targetSpec.targetText,
+              createdAtMs: bundle.template.createdAtMs,
+              updatedAtMs: bundle.template.updatedAtMs,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  /// `true` when the stored template row differs from the bundled row in
+  /// any seed-managed field. The routine's name, description, focus
+  /// modality, and `isBuiltInDemo` flag are all owned by the bundled
+  /// source; segments / efforts / targets are owned by the user once
+  /// they start editing, so this method only diffs the top-level
+  /// template fields.
+  bool _demoBundleTemplateDiffers(
+    WorkoutTemplate stored,
+    WorkoutTemplate bundled,
+  ) {
+    if (stored.name != bundled.name) return true;
+    if (stored.description != bundled.description) return true;
+    if (stored.focusModality != bundled.focusModality) return true;
+    if (stored.primaryDisciplineId != bundled.primaryDisciplineId) return true;
+    if (stored.note != bundled.note) return true;
+    if (stored.isBuiltInDemo != bundled.isBuiltInDemo) return true;
+    return false;
   }
 
   /// `true` when the two exercises differ in any seed-managed field.

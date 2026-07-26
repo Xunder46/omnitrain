@@ -292,12 +292,13 @@ WorkoutTemplate (routine)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String` | UUID |
+| `id` | `String` | UUID. Demo templates use the `demo-template-…` namespace to keep the prefix unambiguous against the user prefix (`template-{ms}`). |
 | `ownerUserId` | `String?` | Future: user ownership |
 | `name` | `String` | Routine name (e.g., "Push Day") |
 | `primaryDisciplineId` | `String?` | Optional discipline filter |
 | `focusModality` | `String?` | Optional modality hint |
 | `note` | `String?` | Optional notes |
+| `isBuiltInDemo` | `bool` | `true` when this template shipped as a built-in demo via the versioned catalog refresh pipeline. Edit/delete gating is enforced by the per-entry tombstone returned by `WorkoutRepository.isSeedEntryTouched` for `SeedEntryType.routineTemplate`; this flag is informational only. |
 | `createdAtMs` | `int` | Timestamp |
 | `updatedAtMs` | `int` | Timestamp |
 

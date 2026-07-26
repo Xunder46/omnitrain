@@ -107,13 +107,22 @@ Ordering persistence behavior:
 ### Catalog version + seed-entry tombstones (July 2026)
 
 The bundled app-authored catalog (exercises + capability / muscle-group /
-equipment relationships + the food catalog) is versioned. At app start,
-`CatalogRefreshService` (`lib/core/services/catalog_refresh_service.dart`)
-compares the device's stored catalog version against the bundled constant
+equipment relationships + the food catalog + seeded demo workout
+templates) is versioned. At app start, `CatalogRefreshService`
+(`lib/core/services/catalog_refresh_service.dart`) compares the device's
+stored catalog version against the bundled constant
 (`bundledCatalogVersion` in `lib/core/constants/catalog_version.dart`); if
 the bundled version is newer, the refresh re-applies new / changed seed
 entries to the device in place, never touching user-created entries and
 never overwriting a seed entry the user has edited.
+
+`SeedEntryType` enumerates the tombstone key spaces the refresh understands:
+
+| Constant | Tombstone space | Notes |
+|---|---|---|
+| `SeedEntryType.exercise` | `seed_entry_touched_exercise_<exerciseId>` | Bundled exercises. |
+| `SeedEntryType.foodCatalog` | `seed_entry_touched_food_catalog_<foodId>` | Bundled food-catalog rows. |
+| `SeedEntryType.routineTemplate` | `seed_entry_touched_routine_template_<demoTemplateId>` | Bundled demo routines (the `Demo`-tagged routines delivered through the catalog refresh; version bumped to `3` to ship the initial set). |
 
 The repository exposes four small methods used by the refresh orchestrator
 and by the state layer:

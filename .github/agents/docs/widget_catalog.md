@@ -237,6 +237,28 @@ All other `TextField` properties (`onChanged`, `onEditingComplete`, `onSubmitted
 
 ---
 
+## Routine Primitives
+
+### `DemoRoutineBadge`
+
+**File**: `lib/features/routine/widgets/demo_routine_badge.dart`
+
+Subtle "Demo" pill rendered next to built-in demo routines on the
+`MyRoutinesScreen` list row. Sourced from `OmniTheme` typography tokens
++ `Theme.colorScheme.primary`; never hardcodes colors. Pass
+`compact: true` to use the reduced horizontal padding when nested next
+to a title that already has generous spacing.
+
+The chip is purely informational — the versioned catalog refresh
+pipeline (`SeedEntryType.routineTemplate`) is the source of truth for
+"is this a demo"; delete / edit behaviour is identical for demo and
+user routines.
+
+**Use site**: `lib/features/routine/my_routines_screen.dart` (the row
+title when `routine.isBuiltInDemo`).
+
+---
+
 ## Profile Primitives
 
 ### `AvatarCropSheet`

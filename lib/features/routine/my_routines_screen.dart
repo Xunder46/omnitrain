@@ -9,6 +9,7 @@ import '../../state/workout/workout_state.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import 'routine_setup_screen.dart';
+import 'widgets/demo_routine_badge.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../session/workout_session_screen.dart';
@@ -149,12 +150,23 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                         color: Theme.of(context).colorScheme.primary,
                         size: 28,
                       ),
-                      title: Text(
-                        routine.name,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                      title: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              routine.name,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (routine.isBuiltInDemo) ...[
+                            SizedBox(width: 8),
+                            const DemoRoutineBadge(),
+                          ],
+                        ],
                       ),
                       subtitle: Text(
                         'Created ${_formatDate(DateTime.fromMillisecondsSinceEpoch(routine.createdAtMs))}',

@@ -1,3 +1,4 @@
+import '../../core/models/demo_routine_spec.dart';
 import '../../data/models/models.dart';
 
 /// A bundled snapshot of the app-authored catalog.
@@ -26,4 +27,11 @@ abstract class CatalogSource {
 
   /// Bundled food catalog rows (each row carries `isCatalog = true`).
   List<Food> get foodCatalog;
+
+  /// Bundled demo workout templates (each carries `isBuiltInDemo = true`).
+  ///
+  /// Arriving on a device via the same versioned refresh pipeline used for
+  /// exercises and food; demo deletion / edit tombstones live under
+  /// [SeedEntryType.routineTemplate].
+  List<DemoRoutineBundle> get routineTemplates;
 }
