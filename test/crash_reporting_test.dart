@@ -28,6 +28,7 @@ class FakeCrashReporter implements CrashReporter {
   final List<Map<String, String>> capturedMetadata =
       <Map<String, String>>[];
   final List<StackTrace> capturedStacks = <StackTrace>[];
+  final List<CapturedSignal> capturedSignals = <CapturedSignal>[];
   bool _enabled = false;
 
   @override
@@ -54,11 +55,45 @@ class FakeCrashReporter implements CrashReporter {
   }
 
   @override
+  Future<void> recordInfoSignal({
+    required String fingerprint,
+    required String message,
+    Map<String, String>? metadata,
+    String? errorContext,
+  }) async {
+    capturedSignals.add(
+      CapturedSignal(
+        fingerprint: fingerprint,
+        message: message,
+        metadata: metadata ?? const <String, String>{},
+        errorContext: errorContext,
+      ),
+    );
+  }
+
+  @override
   Future<void> recordTestCrash() async {
     // Surface as an unhandled Dart error to mirror what the production
     // wrapper does on a developer-triggered crash.
     capturedErrors.add(FlutterError('forced test crash'));
   }
+}
+
+/// Snapshot of a low-severity informational signal emitted via
+/// [CrashReporter.recordInfoSignal]. Captured by [FakeCrashReporter]
+/// so tests can assert on the stable fingerprint / message contract.
+class CapturedSignal {
+  CapturedSignal({
+    required this.fingerprint,
+    required this.message,
+    required this.metadata,
+    required this.errorContext,
+  });
+
+  final String fingerprint;
+  final String message;
+  final Map<String, String> metadata;
+  final String? errorContext;
 }
 
 void main() {

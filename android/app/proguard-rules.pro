@@ -30,8 +30,16 @@
 -keep class io.sentry.** { *; }
 
 # flutter_local_notifications uses Gson TypeTokens to deserialize queued
-# notification payloads. Keep generic signature metadata and plugin models
-# so release shrinking cannot break timer notification schedule/cancel paths.
--keepattributes Signature
+# notification payloads stored in SharedPreferences. R8 strips the generic
+# Signature attribute on `com.google.gson.reflect.TypeToken` by default,
+# which causes `loadScheduledNotifications()` to throw
+# `Missing type parameter.` from `cancel()` / `zonedSchedule()` (see
+# flutter_local_notifications #2014). Keep the type token itself, its
+# anonymous subclasses, the plugin models, and the generic signature
+# metadata so the cancel/schedule hot paths cannot break in release builds.
+-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken { *; }
 -keep class com.dexterous.flutterlocalnotifications.** { *; }
--keep class * extends com.google.gson.reflect.TypeToken
+-keep class com.dexterous.flutterlocalnotifications.models.** { *; }
+-dontwarn com.google.gson.reflect.TypeToken

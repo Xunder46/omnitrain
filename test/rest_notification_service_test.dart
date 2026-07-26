@@ -362,5 +362,267 @@ void main() {
         greaterThanOrEqualTo(2),
       );
     });
+
+    test('isCacheSchemaError detects Gson Missing type parameter errors', () {
+      final plugin = FlutterLocalNotificationsPlugin();
+      final service = RestNotificationService.withPlugin(
+        plugin,
+        isWeb: true,
+      );
+
+      final gsonError = PlatformException(
+        code: 'error',
+        message: 'Missing type parameter.',
+        stacktrace:
+            'java.lang.RuntimeException: Missing type parameter.\n'
+            '\tat com.google.gson.reflect.a.getSuperclassTypeParameter\n'
+            '\tat com.dexterous.flutterlocalnotifications.'
+            'FlutterLocalNotificationsPlugin\$1.<init>',
+      );
+      final unrelatedError = PlatformException(
+        code: 'cancel_failed',
+        message: 'boom',
+      );
+
+      expect(service.isCacheSchemaError(gsonError), isTrue);
+      expect(service.isCacheSchemaError(unrelatedError), isFalse);
+      expect(service.isCacheSchemaError(Exception('not a platform exc')), isFalse);
+    });
+
+    test(
+      'cancelRestNotifications records cache-schema PlatformException as a '
+      'low-severity info signal — NOT as an error',
+      () async {
+        final plugin = FlutterLocalNotificationsPlugin();
+        final canceled = <int>[];
+        final reportedErrors = <Object>[];
+        final reportedSignals = <_CapturedInfoSignal>[];
+
+        final service = RestNotificationService.withPlugin(
+          plugin,
+          cancelOverride: (id) async {
+            canceled.add(id);
+            throw PlatformException(
+              code: 'error',
+              message: 'Missing type parameter.',
+              stacktrace:
+                  'java.lang.RuntimeException: Missing type parameter.\n'
+                  '\tat com.google.gson.reflect.a.getSuperclassTypeParameter',
+            );
+          },
+          reportErrorOverride: (error, {stackTrace, errorContext}) async {
+            reportedErrors.add(error);
+          },
+          reportInfoSignalOverride: ({
+            required fingerprint,
+            required message,
+            errorContext,
+          }) async {
+            reportedSignals.add(
+              _CapturedInfoSignal(
+                fingerprint: fingerprint,
+                message: message,
+                errorContext: errorContext,
+              ),
+            );
+          },
+        );
+
+        await service.cancelRestNotifications();
+
+        // All 50 cancels ran.
+        expect(canceled.length, RestNotificationService.maxRestPings);
+        // The cache-schema error must NOT reach the full-severity
+        // reporting channel — that is the whole point of suppression.
+        expect(reportedErrors, isEmpty);
+        // But it must be observable as a low-severity info signal so
+        // a regression in the release-build keep-rules is detectable.
+        expect(reportedSignals, isNotEmpty);
+        expect(reportedSignals.first.fingerprint,
+            RestNotificationService.cacheSchemaErrorFingerprint);
+        expect(
+          reportedSignals.first.errorContext,
+          'RestNotificationService.cancelRestNotifications.cancel',
+        );
+      },
+    );
+
+    test(
+      'scheduleRestPings records cache-schema PlatformException as a '
+      'low-severity info signal — NOT as an error',
+      () async {
+        final plugin = FlutterLocalNotificationsPlugin();
+        final reportedErrors = <Object>[];
+        final reportedSignals = <_CapturedInfoSignal>[];
+        final scheduledIds = <int>[];
+        var didThrowOnCancel = false;
+
+        final service = RestNotificationService.withPlugin(
+          plugin,
+          nowProvider: () => DateTime.utc(2026, 1, 1, 12, 0, 0),
+          cancelOverride: (_) async {
+            if (!didThrowOnCancel) {
+              didThrowOnCancel = true;
+              throw PlatformException(
+                code: 'error',
+                message: 'Missing type parameter.',
+                stacktrace:
+                    'java.lang.RuntimeException: ... '
+                    'com.google.gson.reflect.TypeToken',
+              );
+            }
+          },
+          zonedScheduleOverride: ({
+            required id,
+            required title,
+            required body,
+            required scheduledDate,
+            required details,
+          }) async {
+            scheduledIds.add(id);
+          },
+          reportErrorOverride: (error, {stackTrace, errorContext}) async {
+            reportedErrors.add(error);
+          },
+          reportInfoSignalOverride: ({
+            required fingerprint,
+            required message,
+            errorContext,
+          }) async {
+            reportedSignals.add(
+              _CapturedInfoSignal(
+                fingerprint: fingerprint,
+                message: message,
+                errorContext: errorContext,
+              ),
+            );
+          },
+        );
+
+        await service.scheduleRestPings(
+          restStartMs: DateTime.utc(2026, 1, 1, 12, 0, 0).millisecondsSinceEpoch,
+          intervalSecs: 60,
+          soundId: 'boxing_bell',
+        );
+
+        expect(scheduledIds, isNotEmpty);
+        expect(reportedErrors, isEmpty);
+        expect(reportedSignals, isNotEmpty);
+        expect(reportedSignals.first.fingerprint,
+            RestNotificationService.cacheSchemaErrorFingerprint);
+      },
+    );
+
+    test(
+      'non-matching notification PlatformException still reports at full '
+      'severity (suppression does not widen)',
+      () async {
+        final plugin = FlutterLocalNotificationsPlugin();
+        final reportedErrors = <Object>[];
+        final reportedSignals = <_CapturedInfoSignal>[];
+
+        final service = RestNotificationService.withPlugin(
+          plugin,
+          cancelOverride: (_) async {
+            throw PlatformException(
+              // Same error category, but the message and stack do NOT
+              // match the cache-schema signature — must NOT be
+              // suppressed.
+              code: 'security_exception',
+              message: 'Notification permission denied',
+            );
+          },
+          reportErrorOverride: (error, {stackTrace, errorContext}) async {
+            reportedErrors.add(error);
+          },
+          reportInfoSignalOverride: ({
+            required fingerprint,
+            required message,
+            errorContext,
+          }) async {
+            reportedSignals.add(
+              _CapturedInfoSignal(
+                fingerprint: fingerprint,
+                message: message,
+                errorContext: errorContext,
+              ),
+            );
+          },
+        );
+
+        await service.cancelEffortTimerNotification();
+
+        expect(reportedErrors, hasLength(1));
+        expect(reportedErrors.single, isA<PlatformException>());
+        expect(reportedSignals, isEmpty);
+      },
+    );
+
+    test(
+      'cache-schema info signal carries the stable fingerprint used for '
+      'rate-threshold alerting',
+      () async {
+        final plugin = FlutterLocalNotificationsPlugin();
+        final reportedSignals = <_CapturedInfoSignal>[];
+
+        final service = RestNotificationService.withPlugin(
+          plugin,
+          cancelOverride: (_) async {
+            throw PlatformException(
+              code: 'error',
+              message: 'Missing type parameter.',
+              stacktrace:
+                  'java.lang.RuntimeException: Missing type parameter.\n'
+                  '\tat com.google.gson.reflect.a.getSuperclassTypeParameter',
+            );
+          },
+          reportErrorOverride: (error, {stackTrace, errorContext}) async {},
+          reportInfoSignalOverride: ({
+            required fingerprint,
+            required message,
+            errorContext,
+          }) async {
+            reportedSignals.add(
+              _CapturedInfoSignal(
+                fingerprint: fingerprint,
+                message: message,
+                errorContext: errorContext,
+              ),
+            );
+          },
+        );
+
+        await service.cancelEffortTimerNotification();
+
+        // The fingerprint must be stable AND specific enough that a
+        // rate-threshold alert can be attached. This guards against
+        // a future refactor accidentally widening or renaming the
+        // identity — alerting would silently break.
+        expect(reportedSignals, hasLength(1));
+        expect(reportedSignals.single.fingerprint,
+            RestNotificationService.cacheSchemaErrorFingerprint);
+        expect(reportedSignals.single.fingerprint, isNotEmpty);
+        // Distinct from a generic notification-failure fingerprint.
+        expect(
+          reportedSignals.single.fingerprint,
+          isNot(equals('notification.failure')),
+        );
+      },
+    );
   });
+}
+
+/// Test-side snapshot of the low-severity info-signal payload. The
+/// production path records via [CrashReportingService.recordInfoSignal];
+/// tests use the override to capture the same shape.
+class _CapturedInfoSignal {
+  _CapturedInfoSignal({
+    required this.fingerprint,
+    required this.message,
+    required this.errorContext,
+  });
+
+  final String fingerprint;
+  final String message;
+  final String? errorContext;
 }

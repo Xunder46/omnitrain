@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:omnitrain/core/services/crash_reporting_service.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -31,6 +32,21 @@ class RestNotificationService {
     String? errorContext,
   })?
   _reportErrorOverride;
+  final Future<void> Function({
+    required String fingerprint,
+    required String message,
+    String? errorContext,
+  })?
+  _reportInfoSignalOverride;
+
+  /// Stable identity for the flutter_local_notifications Android
+  /// cache-schema error. Used as the Sentry fingerprint so every
+  /// emission groups together in the dashboard and a single
+  /// rate-threshold alert can be attached. The value is part of the
+  /// observability contract — changing it requires coordinated
+  /// alerting updates.
+  static const String cacheSchemaErrorFingerprint =
+      'flutter_local_notifications.cache_schema';
 
   RestNotificationService()
     : _plugin = FlutterLocalNotificationsPlugin(),
@@ -40,7 +56,8 @@ class RestNotificationService {
       _cancelOverride = null,
       _requestPermissionOverride = null,
       _hasPermissionOverride = null,
-      _reportErrorOverride = null;
+      _reportErrorOverride = null,
+      _reportInfoSignalOverride = null;
 
   RestNotificationService.noop()
     : _plugin = FlutterLocalNotificationsPlugin(),
@@ -50,7 +67,8 @@ class RestNotificationService {
       _cancelOverride = null,
       _requestPermissionOverride = null,
       _hasPermissionOverride = null,
-      _reportErrorOverride = null;
+      _reportErrorOverride = null,
+      _reportInfoSignalOverride = null;
 
   @visibleForTesting
   RestNotificationService.withPlugin(
@@ -74,6 +92,12 @@ class RestNotificationService {
       String? errorContext,
     })?
     reportErrorOverride,
+    Future<void> Function({
+      required String fingerprint,
+      required String message,
+      String? errorContext,
+    })?
+    reportInfoSignalOverride,
   }) : _plugin = plugin,
        _isWebOverride = isWeb,
        _nowProvider = nowProvider,
@@ -81,7 +105,8 @@ class RestNotificationService {
        _cancelOverride = cancelOverride,
        _requestPermissionOverride = requestPermissionOverride,
        _hasPermissionOverride = hasPermissionOverride,
-       _reportErrorOverride = reportErrorOverride;
+       _reportErrorOverride = reportErrorOverride,
+       _reportInfoSignalOverride = reportInfoSignalOverride;
 
   bool get _isWeb => _isWebOverride ?? kIsWeb;
 
@@ -396,6 +421,25 @@ class RestNotificationService {
     StackTrace? stackTrace,
     required String errorContext,
   }) async {
+    // flutter_local_notifications on Android release builds can throw
+    // `Missing type parameter.` from Gson reflection when reading its
+    // SharedPreferences cache (see flutter_local_notifications #2014).
+    // The platform-side notification cancel/schedule already succeeded
+    // before this cache reload, so the failure is purely cosmetic and
+    // cannot be cleared by the user short of reinstalling.
+    //
+    // We do NOT report this at error/crash level — that would drown
+    // genuine issues and risk paging on a known benign signal. We also
+    // do NOT drop it entirely: a silent regression (build setting
+    // change, dependency update) would be undetectable. Instead, emit
+    // a low-severity, informational signal under a stable fingerprint
+    // so its rate is observable in telemetry and a regression can be
+    // caught by a rate-threshold alert.
+    if (_isCacheSchemaError(error)) {
+      await _reportCacheSchemaSignal(errorContext: errorContext);
+      return;
+    }
+
     if (_reportErrorOverride != null) {
       await _reportErrorOverride(
         error,
@@ -410,5 +454,37 @@ class RestNotificationService {
       stackTrace: stackTrace,
       errorContext: errorContext,
     );
+  }
+
+  Future<void> _reportCacheSchemaSignal({required String errorContext}) async {
+    const message =
+        'flutter_local_notifications Android cache-schema error '
+        '(known benign; release build keep-rule regression marker)';
+    if (_reportInfoSignalOverride != null) {
+      await _reportInfoSignalOverride(
+        fingerprint: cacheSchemaErrorFingerprint,
+        message: message,
+        errorContext: errorContext,
+      );
+      return;
+    }
+
+    await CrashReportingService.recordInfoSignal(
+      fingerprint: cacheSchemaErrorFingerprint,
+      message: message,
+      errorContext: errorContext,
+    );
+  }
+
+  @visibleForTesting
+  bool isCacheSchemaError(Object error) => _isCacheSchemaError(error);
+
+  bool _isCacheSchemaError(Object error) {
+    if (error is! PlatformException) return false;
+    final message = error.message ?? '';
+    final stack = error.stacktrace?.toString() ?? '';
+    return message.contains('Missing type parameter') ||
+        stack.contains('com.google.gson.reflect') ||
+        stack.contains('TypeToken');
   }
 }
