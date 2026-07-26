@@ -1,2 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@mipmap/ic_launcher" />
+<!--
+  R8 / shrinker keep rules for resources that are not referenced by any
+  XML layout or manifest entry and would otherwise be stripped from release
+  builds.
+
+  1. The launcher icon mipmap is referenced through the manifest, but kept
+     here defensively so a future refactor that drops the manifest reference
+     does not silently drop the icon.
+
+  2. The five timer alert sounds under res/raw/ are resolved by string at
+     runtime through `RawResourceAndroidNotificationSound(soundId)` in
+     `lib/core/utils/rest_notification_service.dart`. Because the resource
+     names are not referenced by any layout, R8's resource shrinker would
+     otherwise treat them as unreachable and remove them from the release
+     APK. That would make every Android notification schedule call throw
+     `PlatformException(invalid_sound, ...)` and disrupt active workouts.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@mipmap/ic_launcher,@raw/boxing_bell,@raw/digital_buzzer,@raw/soft_chime,@raw/double_tap,@raw/signal_tone" />

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:omnitrain/core/services/crash_reporting_service.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -31,6 +32,30 @@ class RestNotificationService {
     String? errorContext,
   })?
   _reportErrorOverride;
+  final Future<void> Function({
+    required String fingerprint,
+    required String message,
+    String? errorContext,
+  })?
+  _reportInfoSignalOverride;
+  final Future<void> Function(
+    InitializationSettings initializationSettings, {
+    DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
+    DidReceiveBackgroundNotificationResponseCallback?
+        onDidReceiveBackgroundNotificationResponse,
+  })?
+  _pluginInitializeOverride;
+  final Future<void> Function(AndroidNotificationChannel channel)?
+  _androidChannelCreateOverride;
+
+  /// Stable identity for the flutter_local_notifications Android
+  /// cache-schema error. Used as the Sentry fingerprint so every
+  /// emission groups together in the dashboard and a single
+  /// rate-threshold alert can be attached. The value is part of the
+  /// observability contract — changing it requires coordinated
+  /// alerting updates.
+  static const String cacheSchemaErrorFingerprint =
+      'flutter_local_notifications.cache_schema';
 
   RestNotificationService()
     : _plugin = FlutterLocalNotificationsPlugin(),
@@ -40,7 +65,10 @@ class RestNotificationService {
       _cancelOverride = null,
       _requestPermissionOverride = null,
       _hasPermissionOverride = null,
-      _reportErrorOverride = null;
+      _reportErrorOverride = null,
+      _reportInfoSignalOverride = null,
+      _pluginInitializeOverride = null,
+      _androidChannelCreateOverride = null;
 
   RestNotificationService.noop()
     : _plugin = FlutterLocalNotificationsPlugin(),
@@ -50,7 +78,10 @@ class RestNotificationService {
       _cancelOverride = null,
       _requestPermissionOverride = null,
       _hasPermissionOverride = null,
-      _reportErrorOverride = null;
+      _reportErrorOverride = null,
+      _reportInfoSignalOverride = null,
+      _pluginInitializeOverride = null,
+      _androidChannelCreateOverride = null;
 
   @visibleForTesting
   RestNotificationService.withPlugin(
@@ -74,6 +105,21 @@ class RestNotificationService {
       String? errorContext,
     })?
     reportErrorOverride,
+    Future<void> Function({
+      required String fingerprint,
+      required String message,
+      String? errorContext,
+    })?
+    reportInfoSignalOverride,
+    Future<void> Function(
+      InitializationSettings initializationSettings, {
+      DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
+      DidReceiveBackgroundNotificationResponseCallback?
+          onDidReceiveBackgroundNotificationResponse,
+    })?
+    pluginInitializeOverride,
+    Future<void> Function(AndroidNotificationChannel channel)?
+    androidChannelCreateOverride,
   }) : _plugin = plugin,
        _isWebOverride = isWeb,
        _nowProvider = nowProvider,
@@ -81,7 +127,10 @@ class RestNotificationService {
        _cancelOverride = cancelOverride,
        _requestPermissionOverride = requestPermissionOverride,
        _hasPermissionOverride = hasPermissionOverride,
-       _reportErrorOverride = reportErrorOverride;
+       _reportErrorOverride = reportErrorOverride,
+       _reportInfoSignalOverride = reportInfoSignalOverride,
+       _pluginInitializeOverride = pluginInitializeOverride,
+       _androidChannelCreateOverride = androidChannelCreateOverride;
 
   bool get _isWeb => _isWebOverride ?? kIsWeb;
 
@@ -95,9 +144,13 @@ class RestNotificationService {
       requestSoundPermission: false,
     );
 
-    await _plugin.initialize(
-      const InitializationSettings(android: androidInit, iOS: iosInit),
-    );
+    final initSettings =
+        const InitializationSettings(android: androidInit, iOS: iosInit);
+    if (_pluginInitializeOverride != null) {
+      await _pluginInitializeOverride(initSettings);
+    } else {
+      await _plugin.initialize(initSettings);
+    }
 
     await _createAndroidChannels();
   }
@@ -118,16 +171,32 @@ class RestNotificationService {
     ];
 
     for (final soundId in sounds) {
-      await androidPlugin.createNotificationChannel(
-        AndroidNotificationChannel(
-          _channelIdForSound(soundId),
-          'Rest Pings',
-          description: 'Rest period interval alerts',
-          importance: Importance.high,
-          sound: RawResourceAndroidNotificationSound(soundId),
-          playSound: true,
-        ),
+      final channel = AndroidNotificationChannel(
+        _channelIdForSound(soundId),
+        'Rest Pings',
+        description: 'Rest period interval alerts',
+        importance: Importance.high,
+        sound: RawResourceAndroidNotificationSound(soundId),
+        playSound: true,
       );
+      try {
+        if (_androidChannelCreateOverride != null) {
+          await _androidChannelCreateOverride(channel);
+        } else {
+          await androidPlugin.createNotificationChannel(channel);
+        }
+      } catch (error, stackTrace) {
+        // One channel failing must not abort the rest, and must not
+        // bubble out of `initialize` (which would block the app shell
+        // from rendering on a misconfigured device). The failure is
+        // observable as a non-fatal error so a regression is
+        // detectable in Sentry without disrupting the workout.
+        await _reportNonFatal(
+          error,
+          stackTrace: stackTrace,
+          errorContext: 'RestNotificationService._createAndroidChannels.create',
+        );
+      }
     }
   }
 
@@ -235,41 +304,31 @@ class RestNotificationService {
       );
 
       if (_zonedScheduleOverride != null) {
-        try {
-          await _zonedScheduleOverride(
-            id: notifId,
-            title: _title,
-            body: body,
-            scheduledDate: scheduledDate,
-            details: details,
-          );
-        } catch (error, stackTrace) {
-          await _reportNonFatal(
-            error,
-            stackTrace: stackTrace,
-            errorContext:
-                'RestNotificationService.scheduleRestPings.scheduleOverride',
-          );
-        }
+        await _scheduleWithSilentFallback(
+          notifId: notifId,
+          title: _title,
+          body: body,
+          scheduledDate: scheduledDate,
+          audibleDetails: details,
+          scheduleOverride: _zonedScheduleOverride,
+          overrideErrorContext:
+              'RestNotificationService.scheduleRestPings.scheduleOverride',
+          realErrorContext:
+              'RestNotificationService.scheduleRestPings.schedule',
+        );
       } else {
-        try {
-          await _plugin.zonedSchedule(
-            notifId,
-            _title,
-            body,
-            scheduledDate,
-            details,
-            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-            uiLocalNotificationDateInterpretation:
-                UILocalNotificationDateInterpretation.absoluteTime,
-          );
-        } catch (error, stackTrace) {
-          await _reportNonFatal(
-            error,
-            stackTrace: stackTrace,
-            errorContext: 'RestNotificationService.scheduleRestPings.schedule',
-          );
-        }
+        await _scheduleWithSilentFallback(
+          notifId: notifId,
+          title: _title,
+          body: body,
+          scheduledDate: scheduledDate,
+          audibleDetails: details,
+          scheduleOverride: null,
+          overrideErrorContext:
+              'RestNotificationService.scheduleRestPings.scheduleOverride',
+          realErrorContext:
+              'RestNotificationService.scheduleRestPings.schedule',
+        );
       }
     }
   }
@@ -308,44 +367,180 @@ class RestNotificationService {
     final scheduledDate = tz.TZDateTime.from(fireAt, tz.local);
     const body = 'Time to log your next set';
 
-    if (_zonedScheduleOverride != null) {
-      try {
-        await _zonedScheduleOverride(
-          id: effortTimerNotificationId,
-          title: _effortTitle,
-          body: body,
-          scheduledDate: scheduledDate,
-          details: details,
-        );
-      } catch (error, stackTrace) {
-        await _reportNonFatal(
-          error,
-          stackTrace: stackTrace,
-          errorContext:
-              'RestNotificationService.scheduleEffortTimerExpiry.scheduleOverride',
-        );
-      }
-      return;
-    }
+    await _scheduleWithSilentFallback(
+      notifId: effortTimerNotificationId,
+      title: _effortTitle,
+      body: body,
+      scheduledDate: scheduledDate,
+      audibleDetails: details,
+      scheduleOverride: _zonedScheduleOverride,
+      overrideErrorContext:
+          'RestNotificationService.scheduleEffortTimerExpiry.scheduleOverride',
+      realErrorContext:
+          'RestNotificationService.scheduleEffortTimerExpiry.schedule',
+    );
+  }
 
+  /// Schedule a single notification, falling back to a guaranteed-silent
+  /// schedule if the audible attempt throws.
+  ///
+  /// Contract:
+  /// 1. The method never propagates a [PlatformException] to the caller.
+  ///    A failing schedule mid-workout is the exact pathology the silent
+  ///    fallback exists to prevent — it must never surface as a thrown
+  ///    error to user code.
+  /// 2. If the audible attempt throws AND `audibleDetails.android.playSound`
+  ///    is `true`, exactly one silent retry is attempted for the same
+  ///    notification ID, title, body, and scheduled time. The silent
+  ///    retry uses `playSound: false` and a `NotificationDetails` with
+  ///    no `android.sound` and no iOS sound — so the timer alert still
+  ///    fires visually, but the device default tone is never used as a
+  ///    substitute.
+  /// 3. If the audible attempt was already silent (`playSound == false`)
+  ///    or the silent retry itself throws, the error is reported through
+  ///    the existing non-fatal channel and the method returns normally.
+  /// 4. The `audible` error is always reported with the supplied
+  ///    [audibleErrorContext] so the original failure is still observable
+  ///    in telemetry.
+  ///
+  /// This is the production safety net for
+  /// `PlatformException(invalid_sound, ...)` and the catch-all for any
+  /// other transient schedule failure: lose the sound, never lose the
+  /// workout.
+  Future<void> _scheduleWithSilentFallback({
+    required int notifId,
+    required String title,
+    required String body,
+    required tz.TZDateTime scheduledDate,
+    required NotificationDetails audibleDetails,
+    required Future<void> Function({
+      required int id,
+      required String title,
+      required String body,
+      required tz.TZDateTime scheduledDate,
+      required NotificationDetails details,
+    })?
+    scheduleOverride,
+    required String overrideErrorContext,
+    required String realErrorContext,
+  }) async {
+    // Production callers always supply Android details (the schedule
+    // methods construct the `NotificationDetails` with `android:
+    // AndroidNotificationDetails(...)`). If a future caller passes
+    // something else, the `!` throws and the failure is reported —
+    // still better than silently dropping a timer alert.
+    final androidAudible = audibleDetails.android!;
+    final audiblePlaySound = androidAudible.playSound;
+
+    // Try the audible schedule first.
     try {
-      await _plugin.zonedSchedule(
-        effortTimerNotificationId,
-        _effortTitle,
-        body,
-        scheduledDate,
-        details,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
+      await _invokeSchedule(
+        notifId: notifId,
+        title: title,
+        body: body,
+        scheduledDate: scheduledDate,
+        details: audibleDetails,
+        scheduleOverride: scheduleOverride,
       );
+      return;
     } catch (error, stackTrace) {
+      // The audible attempt failed. Report it so a regression is
+      // observable in Sentry, then fall through to the silent retry.
       await _reportNonFatal(
         error,
         stackTrace: stackTrace,
-        errorContext: 'RestNotificationService.scheduleEffortTimerExpiry.schedule',
+        errorContext: scheduleOverride != null
+            ? overrideErrorContext
+            : realErrorContext,
       );
     }
+
+    // If the user already asked for a silent notification, there is
+    // nothing to fall back to — the silent attempt itself failed and
+    // reporting it is the right outcome. Re-throwing here would defeat
+    // the "never interrupt a workout" contract.
+    if (!audiblePlaySound) {
+      return;
+    }
+
+    // Silent retry: same id, title, body, scheduledDate, channelId; the
+    // only difference is `playSound: false` and no `android.sound` (so
+    // the device default tone is never substituted).
+    final silentDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        androidAudible.channelId,
+        'Rest Pings',
+        channelDescription: 'Rest period interval alerts',
+        importance: Importance.high,
+        priority: Priority.high,
+        // No `sound` — we explicitly do not want the device default
+        // tone, and the previous audible attempt already proved the
+        // selected sound is unresolvable.
+        playSound: false,
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: false,
+        presentSound: false,
+      ),
+    );
+
+    try {
+      await _invokeSchedule(
+        notifId: notifId,
+        title: title,
+        body: body,
+        scheduledDate: scheduledDate,
+        details: silentDetails,
+        scheduleOverride: scheduleOverride,
+      );
+    } catch (error, stackTrace) {
+      // Even the silent retry failed (extremely unusual — likely a
+      // deeper plugin issue). Report and move on; do not propagate.
+      await _reportNonFatal(
+        error,
+        stackTrace: stackTrace,
+        errorContext: scheduleOverride != null
+            ? '$overrideErrorContext.silentRetry'
+            : '$realErrorContext.silentRetry',
+      );
+    }
+  }
+
+  Future<void> _invokeSchedule({
+    required int notifId,
+    required String title,
+    required String body,
+    required tz.TZDateTime scheduledDate,
+    required NotificationDetails details,
+    required Future<void> Function({
+      required int id,
+      required String title,
+      required String body,
+      required tz.TZDateTime scheduledDate,
+      required NotificationDetails details,
+    })?
+    scheduleOverride,
+  }) {
+    if (scheduleOverride != null) {
+      return scheduleOverride(
+        id: notifId,
+        title: title,
+        body: body,
+        scheduledDate: scheduledDate,
+        details: details,
+      );
+    }
+    return _plugin.zonedSchedule(
+      notifId,
+      title,
+      body,
+      scheduledDate,
+      details,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+    );
   }
 
   Future<void> cancelRestNotifications() async {
@@ -396,6 +591,25 @@ class RestNotificationService {
     StackTrace? stackTrace,
     required String errorContext,
   }) async {
+    // flutter_local_notifications on Android release builds can throw
+    // `Missing type parameter.` from Gson reflection when reading its
+    // SharedPreferences cache (see flutter_local_notifications #2014).
+    // The platform-side notification cancel/schedule already succeeded
+    // before this cache reload, so the failure is purely cosmetic and
+    // cannot be cleared by the user short of reinstalling.
+    //
+    // We do NOT report this at error/crash level — that would drown
+    // genuine issues and risk paging on a known benign signal. We also
+    // do NOT drop it entirely: a silent regression (build setting
+    // change, dependency update) would be undetectable. Instead, emit
+    // a low-severity, informational signal under a stable fingerprint
+    // so its rate is observable in telemetry and a regression can be
+    // caught by a rate-threshold alert.
+    if (_isCacheSchemaError(error)) {
+      await _reportCacheSchemaSignal(errorContext: errorContext);
+      return;
+    }
+
     if (_reportErrorOverride != null) {
       await _reportErrorOverride(
         error,
@@ -410,5 +624,37 @@ class RestNotificationService {
       stackTrace: stackTrace,
       errorContext: errorContext,
     );
+  }
+
+  Future<void> _reportCacheSchemaSignal({required String errorContext}) async {
+    const message =
+        'flutter_local_notifications Android cache-schema error '
+        '(known benign; release build keep-rule regression marker)';
+    if (_reportInfoSignalOverride != null) {
+      await _reportInfoSignalOverride(
+        fingerprint: cacheSchemaErrorFingerprint,
+        message: message,
+        errorContext: errorContext,
+      );
+      return;
+    }
+
+    await CrashReportingService.recordInfoSignal(
+      fingerprint: cacheSchemaErrorFingerprint,
+      message: message,
+      errorContext: errorContext,
+    );
+  }
+
+  @visibleForTesting
+  bool isCacheSchemaError(Object error) => _isCacheSchemaError(error);
+
+  bool _isCacheSchemaError(Object error) {
+    if (error is! PlatformException) return false;
+    final message = error.message ?? '';
+    final stack = error.stacktrace?.toString() ?? '';
+    return message.contains('Missing type parameter') ||
+        stack.contains('com.google.gson.reflect') ||
+        stack.contains('TypeToken');
   }
 }

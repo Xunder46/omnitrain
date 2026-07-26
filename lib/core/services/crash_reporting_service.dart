@@ -54,6 +54,20 @@ abstract class CrashReporter {
     String? errorContext,
   });
 
+  /// Records a low-severity, informational signal that is grouped under
+  /// a stable [fingerprint]. Use this for known benign issues whose
+  /// rate must remain observable in telemetry (so a regression is
+  /// detectable) but which must never compete with genuine crashes or
+  /// page anyone. The signal is emitted at `info` level — the dashboard
+  /// surfaces it as a separate stream from `recordError` events and a
+  /// rate-threshold alert can be attached to the fingerprint.
+  Future<void> recordInfoSignal({
+    required String fingerprint,
+    required String message,
+    Map<String, String>? metadata,
+    String? errorContext,
+  });
+
   /// Triggers a forced crash from a developer-only entry point
   /// (release builds). The harness expects the caller to surface this
   /// behind a remote-trigger or build-time flag so end-users never
@@ -170,6 +184,38 @@ class CrashReportingService {
     await svc._reporter.recordError(
       error,
       stackTrace: stackTrace,
+      metadata: cleaned,
+      errorContext: errorContext,
+    );
+  }
+
+  /// Emits a low-severity informational signal under a stable
+  /// [fingerprint]. See [CrashReporter.recordInfoSignal] for the
+  /// intended use. The same metadata allow-list as [recordError] is
+  /// applied — callers cannot widen the data-collection footprint.
+  ///
+  /// No-ops when reporting is disabled (debug builds) or before
+  /// [bootstrap] has been called, mirroring [recordError].
+  static Future<void> recordInfoSignal({
+    required String fingerprint,
+    required String message,
+    String? errorContext,
+  }) async {
+    final svc = _instance;
+    if (svc == null || !svc._enabled) {
+      return;
+    }
+
+    final sourceMeta = svc._buildMetadata();
+    final cleaned = buildMetadata(
+      appVersion: sourceMeta['appVersion'] ?? 'unknown',
+      osVersion: sourceMeta['osVersion'] ?? 'unknown',
+      deviceModel: sourceMeta['deviceModel'] ?? 'unknown',
+    );
+
+    await svc._reporter.recordInfoSignal(
+      fingerprint: fingerprint,
+      message: message,
       metadata: cleaned,
       errorContext: errorContext,
     );
@@ -325,6 +371,43 @@ class SentryCrashReporter implements CrashReporter {
       'CrashReportingService.recordTestCrash — developer invoked; '
       'safe to ignore.',
     );
+  }
+
+  @override
+  Future<void> recordInfoSignal({
+    required String fingerprint,
+    required String message,
+    Map<String, String>? metadata,
+    String? errorContext,
+  }) async {
+    if (!_enabled) return;
+    try {
+      // `captureMessage` at `info` level produces a real Sentry event
+      // (so a rate-threshold alert can be attached to the fingerprint)
+      // without being promoted to the crash/error stream. Setting the
+      // fingerprint to a constant string groups every emission of the
+      // same signal together in the dashboard — variable stack
+      // traces and call-site metadata do not fragment the issue.
+      await Sentry.captureMessage(
+        message,
+        level: SentryLevel.info,
+        withScope: (Scope scope) {
+          scope.clearBreadcrumbs();
+          scope.fingerprint = <String>[fingerprint];
+          if (metadata != null) {
+            for (final entry in metadata.entries) {
+              scope.setTag(entry.key, entry.value);
+            }
+          }
+          if (errorContext != null && errorContext.isNotEmpty) {
+            scope.setTag('errorContext', errorContext);
+          }
+        },
+      );
+    } catch (e) {
+      // Swallow — we must not crash the app inside the crash-reporter.
+      debugPrint('Sentry.captureMessage failed: $e');
+    }
   }
 }
 
