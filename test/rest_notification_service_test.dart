@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:omnitrain/core/utils/rest_notification_service.dart';
@@ -5,6 +6,9 @@ import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 void main() {
+  // Unit tests here validate Dart-side wiring and non-fatal behavior only.
+  // Release shrinker keep-rules cannot be proven in a Dart unit test because
+  // the crash reproduces in optimized on-device Android builds.
   setUpAll(() {
     if (tz.timeZoneDatabase.locations.isEmpty) {
       tzdata.initializeTimeZones();
@@ -93,6 +97,72 @@ void main() {
       expect(canceled.length, RestNotificationService.maxRestPings);
       expect(canceled.first, RestNotificationService.restPingBaseId);
       expect(canceled.last, RestNotificationService.restPingBaseId + 49);
+    });
+
+    test('cancelRestNotifications swallows PlatformException and reports error', () async {
+      final plugin = FlutterLocalNotificationsPlugin();
+      final canceled = <int>[];
+      final reportedErrors = <Object>[];
+
+      final service = RestNotificationService.withPlugin(
+        plugin,
+        cancelOverride: (id) async {
+          canceled.add(id);
+          throw PlatformException(code: 'cancel_failed', message: 'boom');
+        },
+        reportErrorOverride: (error, {stackTrace, errorContext}) async {
+          reportedErrors.add(error);
+        },
+      );
+
+      await service.cancelRestNotifications();
+
+      expect(canceled.length, RestNotificationService.maxRestPings);
+      expect(reportedErrors.length, RestNotificationService.maxRestPings);
+      expect(reportedErrors.first, isA<PlatformException>());
+    });
+
+    test('scheduleRestPings continues scheduling when cancel throws and reports error', () async {
+      final plugin = FlutterLocalNotificationsPlugin();
+      final reportedErrors = <Object>[];
+      final scheduledIds = <int>[];
+      var didThrowOnCancel = false;
+
+      final service = RestNotificationService.withPlugin(
+        plugin,
+        nowProvider: () => DateTime.utc(2026, 1, 1, 12, 0, 0),
+        cancelOverride: (_) async {
+          if (!didThrowOnCancel) {
+            didThrowOnCancel = true;
+            throw PlatformException(
+              code: 'cancel_failed_once',
+              message: 'cancel failed',
+            );
+          }
+        },
+        zonedScheduleOverride: ({
+          required id,
+          required title,
+          required body,
+          required scheduledDate,
+          required details,
+        }) async {
+          scheduledIds.add(id);
+        },
+        reportErrorOverride: (error, {stackTrace, errorContext}) async {
+          reportedErrors.add(error);
+        },
+      );
+
+      await service.scheduleRestPings(
+        restStartMs: DateTime.utc(2026, 1, 1, 12, 0, 0).millisecondsSinceEpoch,
+        intervalSecs: 60,
+        soundId: 'boxing_bell',
+      );
+
+      expect(scheduledIds, isNotEmpty);
+      expect(scheduledIds.first, RestNotificationService.restPingBaseId);
+      expect(reportedErrors.whereType<PlatformException>(), isNotEmpty);
     });
 
     test('requestPermission and hasPermission use injected overrides', () async {
@@ -193,6 +263,67 @@ void main() {
 
       expect(canceled, [RestNotificationService.effortTimerNotificationId]);
     });
+
+    test('scheduleEffortTimerExpiry swallows PlatformException and reports error', () async {
+      final plugin = FlutterLocalNotificationsPlugin();
+      final reportedErrors = <Object>[];
+
+      final service = RestNotificationService.withPlugin(
+        plugin,
+        nowProvider: () => DateTime.utc(2026, 1, 1, 12, 0, 0),
+        cancelOverride: (_) async {},
+        zonedScheduleOverride: ({
+          required id,
+          required title,
+          required body,
+          required scheduledDate,
+          required details,
+        }) async {
+          throw PlatformException(
+            code: 'schedule_failed',
+            message: 'schedule failed',
+          );
+        },
+        reportErrorOverride: (error, {stackTrace, errorContext}) async {
+          reportedErrors.add(error);
+        },
+      );
+
+      await service.scheduleEffortTimerExpiry(
+        fireAtMs: DateTime.utc(2026, 1, 1, 12, 0, 10).millisecondsSinceEpoch,
+        soundId: 'boxing_bell',
+      );
+
+      expect(reportedErrors.length, 1);
+      expect(reportedErrors.single, isA<PlatformException>());
+    });
+
+    test('cancelEffortTimerNotification swallows PlatformException and reports error', () async {
+      final plugin = FlutterLocalNotificationsPlugin();
+      final reportedErrors = <Object>[];
+
+      final service = RestNotificationService.withPlugin(
+        plugin,
+        cancelOverride: (_) async {
+          throw PlatformException(
+            code: 'cancel_effort_failed',
+            message: 'cancel effort failed',
+          );
+        },
+        reportErrorOverride: (error, {stackTrace, errorContext}) async {
+          reportedErrors.add(error);
+        },
+      );
+
+      await service.cancelEffortTimerNotification();
+
+      expect(reportedErrors.length, 1);
+      expect(reportedErrors.single, isA<PlatformException>());
+    });
+
+    // These override-based tests are still valuable for wiring coverage, but
+    // they bypass the real platform plugin and cannot reproduce release-only
+    // shrinker/obfuscation regressions by construction.
 
     test('effort notification can be canceled then rescheduled', () async {
       final plugin = FlutterLocalNotificationsPlugin();

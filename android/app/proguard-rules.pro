@@ -29,12 +29,9 @@
 -dontwarn io.sentry.**
 -keep class io.sentry.** { *; }
 
-# Hive: keep generated TypeAdapters and annotated model classes from
-# R8 renaming/stripping. Hive resolves adapters and fields at runtime,
-# which R8's static analysis cannot see through.
--keep class * extends com.google.gson.TypeAdapter
--keepclassmembers class * {
-    @hive.HiveField <fields>;
-}
--keep class **Adapter extends hive.TypeAdapter { *; }
--keep class hive.** { *; }
+# flutter_local_notifications uses Gson TypeTokens to deserialize queued
+# notification payloads. Keep generic signature metadata and plugin models
+# so release shrinking cannot break timer notification schedule/cancel paths.
+-keepattributes Signature
+-keep class com.dexterous.flutterlocalnotifications.** { *; }
+-keep class * extends com.google.gson.reflect.TypeToken

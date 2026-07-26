@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:omnitrain/core/services/crash_reporting_service.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 class RestNotificationService {
@@ -24,6 +25,12 @@ class RestNotificationService {
   final Future<void> Function(int id)? _cancelOverride;
   final Future<bool> Function()? _requestPermissionOverride;
   final Future<bool> Function()? _hasPermissionOverride;
+  final Future<void> Function(
+    Object error, {
+    StackTrace? stackTrace,
+    String? errorContext,
+  })?
+  _reportErrorOverride;
 
   RestNotificationService()
     : _plugin = FlutterLocalNotificationsPlugin(),
@@ -32,7 +39,8 @@ class RestNotificationService {
       _zonedScheduleOverride = null,
       _cancelOverride = null,
       _requestPermissionOverride = null,
-      _hasPermissionOverride = null;
+      _hasPermissionOverride = null,
+      _reportErrorOverride = null;
 
   RestNotificationService.noop()
     : _plugin = FlutterLocalNotificationsPlugin(),
@@ -41,7 +49,8 @@ class RestNotificationService {
       _zonedScheduleOverride = null,
       _cancelOverride = null,
       _requestPermissionOverride = null,
-      _hasPermissionOverride = null;
+      _hasPermissionOverride = null,
+      _reportErrorOverride = null;
 
   @visibleForTesting
   RestNotificationService.withPlugin(
@@ -59,13 +68,20 @@ class RestNotificationService {
     Future<void> Function(int id)? cancelOverride,
     Future<bool> Function()? requestPermissionOverride,
     Future<bool> Function()? hasPermissionOverride,
+    Future<void> Function(
+      Object error, {
+      StackTrace? stackTrace,
+      String? errorContext,
+    })?
+    reportErrorOverride,
   }) : _plugin = plugin,
        _isWebOverride = isWeb,
        _nowProvider = nowProvider,
        _zonedScheduleOverride = zonedScheduleOverride,
        _cancelOverride = cancelOverride,
        _requestPermissionOverride = requestPermissionOverride,
-       _hasPermissionOverride = hasPermissionOverride;
+       _hasPermissionOverride = hasPermissionOverride,
+       _reportErrorOverride = reportErrorOverride;
 
   bool get _isWeb => _isWebOverride ?? kIsWeb;
 
@@ -219,24 +235,41 @@ class RestNotificationService {
       );
 
       if (_zonedScheduleOverride != null) {
-        await _zonedScheduleOverride(
-          id: notifId,
-          title: _title,
-          body: body,
-          scheduledDate: scheduledDate,
-          details: details,
-        );
+        try {
+          await _zonedScheduleOverride(
+            id: notifId,
+            title: _title,
+            body: body,
+            scheduledDate: scheduledDate,
+            details: details,
+          );
+        } catch (error, stackTrace) {
+          await _reportNonFatal(
+            error,
+            stackTrace: stackTrace,
+            errorContext:
+                'RestNotificationService.scheduleRestPings.scheduleOverride',
+          );
+        }
       } else {
-        await _plugin.zonedSchedule(
-          notifId,
-          _title,
-          body,
-          scheduledDate,
-          details,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-        );
+        try {
+          await _plugin.zonedSchedule(
+            notifId,
+            _title,
+            body,
+            scheduledDate,
+            details,
+            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+          );
+        } catch (error, stackTrace) {
+          await _reportNonFatal(
+            error,
+            stackTrace: stackTrace,
+            errorContext: 'RestNotificationService.scheduleRestPings.schedule',
+          );
+        }
       }
     }
   }
@@ -276,36 +309,62 @@ class RestNotificationService {
     const body = 'Time to log your next set';
 
     if (_zonedScheduleOverride != null) {
-      await _zonedScheduleOverride(
-        id: effortTimerNotificationId,
-        title: _effortTitle,
-        body: body,
-        scheduledDate: scheduledDate,
-        details: details,
-      );
+      try {
+        await _zonedScheduleOverride(
+          id: effortTimerNotificationId,
+          title: _effortTitle,
+          body: body,
+          scheduledDate: scheduledDate,
+          details: details,
+        );
+      } catch (error, stackTrace) {
+        await _reportNonFatal(
+          error,
+          stackTrace: stackTrace,
+          errorContext:
+              'RestNotificationService.scheduleEffortTimerExpiry.scheduleOverride',
+        );
+      }
       return;
     }
 
-    await _plugin.zonedSchedule(
-      effortTimerNotificationId,
-      _effortTitle,
-      body,
-      scheduledDate,
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-    );
+    try {
+      await _plugin.zonedSchedule(
+        effortTimerNotificationId,
+        _effortTitle,
+        body,
+        scheduledDate,
+        details,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    } catch (error, stackTrace) {
+      await _reportNonFatal(
+        error,
+        stackTrace: stackTrace,
+        errorContext: 'RestNotificationService.scheduleEffortTimerExpiry.schedule',
+      );
+    }
   }
 
   Future<void> cancelRestNotifications() async {
     if (_isWeb) return;
 
     for (int i = restPingBaseId; i < restPingBaseId + maxRestPings; i++) {
-      if (_cancelOverride != null) {
-        await _cancelOverride(i);
-      } else {
-        await _plugin.cancel(i);
+      try {
+        if (_cancelOverride != null) {
+          await _cancelOverride(i);
+        } else {
+          await _plugin.cancel(i);
+        }
+      } catch (error, stackTrace) {
+        await _reportNonFatal(
+          error,
+          stackTrace: stackTrace,
+          errorContext:
+              'RestNotificationService.cancelRestNotifications.cancel',
+        );
       }
     }
   }
@@ -313,13 +372,43 @@ class RestNotificationService {
   Future<void> cancelEffortTimerNotification() async {
     if (_isWeb) return;
 
-    if (_cancelOverride != null) {
-      await _cancelOverride(effortTimerNotificationId);
-      return;
-    }
+    try {
+      if (_cancelOverride != null) {
+        await _cancelOverride(effortTimerNotificationId);
+        return;
+      }
 
-    await _plugin.cancel(effortTimerNotificationId);
+      await _plugin.cancel(effortTimerNotificationId);
+    } catch (error, stackTrace) {
+      await _reportNonFatal(
+        error,
+        stackTrace: stackTrace,
+        errorContext:
+            'RestNotificationService.cancelEffortTimerNotification.cancel',
+      );
+    }
   }
 
   String _channelIdForSound(String soundId) => 'rest_pings_$soundId';
+
+  Future<void> _reportNonFatal(
+    Object error, {
+    StackTrace? stackTrace,
+    required String errorContext,
+  }) async {
+    if (_reportErrorOverride != null) {
+      await _reportErrorOverride(
+        error,
+        stackTrace: stackTrace,
+        errorContext: errorContext,
+      );
+      return;
+    }
+
+    await CrashReportingService.recordError(
+      error,
+      stackTrace: stackTrace,
+      errorContext: errorContext,
+    );
+  }
 }
