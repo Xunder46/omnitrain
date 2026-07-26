@@ -1,4 +1,6 @@
+import '../core/models/demo_routine_spec.dart';
 import '../data/models/models.dart';
+import 'demo_routines_seed.dart';
 
 /// Seed data for development and testing purposes
 class SeedData {
@@ -6017,6 +6019,16 @@ class SeedData {
 
     return rows;
   }
+
+  // ─── Demo workout templates ──────────────────────────────────────────────
+  //
+  // Built-in demo routines that ship with the catalog. Materialised on
+  // every device through the versioned catalog refresh — see
+  // [CatalogRefreshService] and [BundledCatalogSource.routineTemplates].
+  // The data lives in `demo_routines_seed.dart` so the (large) curated
+  // definition of every routine stays out of this 5000+-line file.
+  static final List<DemoRoutineBundle> sampleDemoRoutineBundles =
+      DemoRoutineSeed.bundles;
 }
 
 /// Helper class for metric-to-effort-kind relationships

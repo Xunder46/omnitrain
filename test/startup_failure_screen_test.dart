@@ -3,10 +3,71 @@
 // scenarios in `.github/agents/plans/startup-failure-screen-plan.md`
 // (S-001..S-004) map 1:1 to the four tests below.
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/app.dart';
 import 'package:omnitrain/app/startup_root.dart';
+import 'package:omnitrain/core/models/app_version_info.dart';
+import 'package:omnitrain/core/services/preferences_service.dart';
+import 'package:omnitrain/core/services/startup_failure_diagnostic_writer.dart';
+import 'package:omnitrain/core/utils/rest_notification_service.dart';
+import 'package:omnitrain/core/utils/timer_alert_service.dart';
+import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/startup/startup_failure_screen.dart';
+import 'package:omnitrain/main.dart' as app_main;
+
+class _CapturedStartupFailure {
+  _CapturedStartupFailure(this.error, this.stackTrace);
+
+  final Object error;
+  final StackTrace stackTrace;
+}
+
+Future<void> _noopPersist(Object _, StackTrace __) async {}
+void _noopLog(Object _, StackTrace __) {}
+
+class _FakePreferencesService implements PreferencesService {
+  int _hubOpenCount = 0;
+
+  @override
+  Future<void> init() async {}
+
+  @override
+  int getHubOpenCount() => _hubOpenCount;
+
+  @override
+  Future<void> incrementHubOpenCount() async {
+    _hubOpenCount += 1;
+  }
+}
+
+class _SucceedingRestNotificationService extends RestNotificationService {
+  _SucceedingRestNotificationService() : super.noop();
+
+  bool initializeCalled = false;
+
+  @override
+  Future<void> initialize() async {
+    initializeCalled = true;
+  }
+}
+
+class _FailingRestNotificationService extends RestNotificationService {
+  _FailingRestNotificationService(this.error, this.stackTrace) : super.noop();
+
+  final Object error;
+  final StackTrace stackTrace;
+  bool initializeCalled = false;
+
+  @override
+  Future<void> initialize() async {
+    initializeCalled = true;
+    Error.throwWithStackTrace(error, stackTrace);
+  }
+}
 
 void main() {
   group('StartupFailureScreen', () {
@@ -59,7 +120,10 @@ void main() {
         }
 
         await tester.pumpWidget(
-          StartupRoot(startupRunner: alwaysFail),
+          StartupRoot(
+            startupRunner: alwaysFail,
+            onStartupFailurePersisted: _noopPersist,
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -96,7 +160,10 @@ void main() {
         }
 
         await tester.pumpWidget(
-          StartupRoot(startupRunner: recoverOnRetry),
+          StartupRoot(
+            startupRunner: recoverOnRetry,
+            onStartupFailurePersisted: _noopPersist,
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -125,7 +192,10 @@ void main() {
         }
 
         await tester.pumpWidget(
-          StartupRoot(startupRunner: persistentFailure),
+          StartupRoot(
+            startupRunner: persistentFailure,
+            onStartupFailurePersisted: _noopPersist,
+          ),
         );
         await tester.pumpAndSettle();
 
@@ -162,13 +232,321 @@ void main() {
         }
 
         await tester.pumpWidget(
-          StartupRoot(startupRunner: succeedImmediately),
+          StartupRoot(
+            startupRunner: succeedImmediately,
+            onStartupFailurePersisted: _noopPersist,
+          ),
         );
         await tester.pumpAndSettle();
 
         expect(find.byType(StartupFailureScreen), findsNothing);
         expect(find.text('FIRST-LAUNCH-SURFACE'), findsOneWidget);
         expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  group('StartupRoot — startup-failure observability', () {
+    testWidgets(
+      'forwards the original startup exception + stack trace to the log hook',
+      (WidgetTester tester) async {
+        final stack = StackTrace.current;
+        final error = StateError('simulated startup crash');
+        final captured = <_CapturedStartupFailure>[];
+
+        Future<Widget> alwaysFail() async {
+          Error.throwWithStackTrace(error, stack);
+        }
+
+        await tester.pumpWidget(
+          StartupRoot(
+            startupRunner: alwaysFail,
+            onStartupFailureLogged: (Object e, StackTrace st) {
+              captured.add(_CapturedStartupFailure(e, st));
+            },
+            onStartupFailurePersisted: _noopPersist,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(captured, hasLength(1));
+        expect(identical(captured.first.error, error), isTrue);
+        expect(identical(captured.first.stackTrace, stack), isTrue);
+      },
+    );
+
+    testWidgets(
+      'reports startup failure exactly once with the same error object',
+      (WidgetTester tester) async {
+        final stack = StackTrace.current;
+        final error = ArgumentError('bad startup state');
+        final reported = <_CapturedStartupFailure>[];
+
+        Future<Widget> alwaysFail() async {
+          Error.throwWithStackTrace(error, stack);
+        }
+
+        await tester.pumpWidget(
+          StartupRoot(
+            startupRunner: alwaysFail,
+            onStartupFailureReported: (Object e, StackTrace st) async {
+              reported.add(_CapturedStartupFailure(e, st));
+            },
+            onStartupFailurePersisted: _noopPersist,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(reported, hasLength(1));
+        expect(identical(reported.first.error, error), isTrue);
+        expect(identical(reported.first.stackTrace, stack), isTrue);
+      },
+    );
+
+    testWidgets(
+      'successful startup does not trigger startup-failure log or report hooks',
+      (WidgetTester tester) async {
+        var logCalls = 0;
+        var reportCalls = 0;
+
+        Future<Widget> succeedImmediately() async {
+          return const MaterialApp(
+            home: Scaffold(body: Text('SUCCESS-ONLY')),
+          );
+        }
+
+        await tester.pumpWidget(
+          StartupRoot(
+            startupRunner: succeedImmediately,
+            onStartupFailureLogged: (_, __) => logCalls += 1,
+            onStartupFailureReported: (_, __) async => reportCalls += 1,
+            onStartupFailurePersisted: _noopPersist,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(logCalls, 0);
+        expect(reportCalls, 0);
+        expect(find.text('SUCCESS-ONLY'), findsOneWidget);
+      },
+    );
+  });
+
+  group('Startup notification initialization', () {
+    test(
+      'runStartup still returns the running app when notification initialization fails',
+      () async {
+        final startupIssue = <_CapturedStartupFailure>[];
+        final initError = StateError('invalid_icon');
+        final initStack = StackTrace.fromString('#0 notification init');
+
+        final app = await app_main.runStartup(
+          createRepository: () async => MockWorkoutRepository(),
+          createPreferencesService: () => _FakePreferencesService(),
+          createTimerAlertService: () => TimerAlertService.forTesting(isWeb: true),
+          createRestNotificationService: () =>
+              _FailingRestNotificationService(initError, initStack),
+          createImageStorageService: () async => null,
+          loadAppVersionInfo: () async =>
+              const AppVersionInfo(version: '1.0.0', build: '1'),
+          onNonFatalStartupIssue: (Object error, StackTrace stackTrace) async {
+            startupIssue.add(_CapturedStartupFailure(error, stackTrace));
+          },
+        );
+
+        expect(app, isA<MyApp>());
+        expect(startupIssue, hasLength(1));
+        expect(
+          startupIssue.single.error.toString(),
+          contains('Non-fatal startup notification initialization failure'),
+        );
+        expect(
+          startupIssue.single.error.toString(),
+          contains('invalid_icon'),
+        );
+        expect(identical(startupIssue.single.stackTrace, initStack), isTrue);
+
+        final myApp = app as MyApp;
+        expect(myApp.restNotificationService, isNot(isA<_FailingRestNotificationService>()));
+      },
+    );
+
+    testWidgets(
+      'notification initialization failure does not show the startup failure screen',
+      (WidgetTester tester) async {
+        final initError = StateError('invalid_icon');
+        final initStack = StackTrace.fromString('#0 notification init');
+
+        await tester.pumpWidget(
+          StartupRoot(
+            startupRunner: () => app_main.runStartup(
+              createRepository: () async => MockWorkoutRepository(),
+              createPreferencesService: () => _FakePreferencesService(),
+              createTimerAlertService: () =>
+                  TimerAlertService.forTesting(isWeb: true),
+              createRestNotificationService: () =>
+                  _FailingRestNotificationService(initError, initStack),
+              createImageStorageService: () async => null,
+              loadAppVersionInfo: () async =>
+                  const AppVersionInfo(version: '1.0.0', build: '1'),
+              onNonFatalStartupIssue: (_, __) async {},
+            ),
+            onStartupFailurePersisted: _noopPersist,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(StartupFailureScreen), findsNothing);
+        expect(find.byType(MyApp), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    test(
+      'successful notification initialization keeps the original notification service',
+      () async {
+        final notificationService = _SucceedingRestNotificationService();
+        var nonFatalCalls = 0;
+
+        final app = await app_main.runStartup(
+          createRepository: () async => MockWorkoutRepository(),
+          createPreferencesService: () => _FakePreferencesService(),
+          createTimerAlertService: () => TimerAlertService.forTesting(isWeb: true),
+          createRestNotificationService: () => notificationService,
+          createImageStorageService: () async => null,
+          loadAppVersionInfo: () async =>
+              const AppVersionInfo(version: '1.0.0', build: '1'),
+          onNonFatalStartupIssue: (_, __) async => nonFatalCalls += 1,
+        );
+
+        expect(app, isA<MyApp>());
+        expect(notificationService.initializeCalled, isTrue);
+        expect(nonFatalCalls, 0);
+        expect(
+          identical(
+            (app as MyApp).restNotificationService,
+            notificationService,
+          ),
+          isTrue,
+        );
+      },
+    );
+  });
+
+  group('StartupRoot — startup-failure diagnostic file', () {
+    test(
+      'writes the latest startup failure error + stack trace to a file',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'omnitrain_startup_diag_test_1_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final writer = StartupFailureDiagnosticWriter.fromBaseDirectory(
+          tempDir.path,
+        );
+        final writeDone = Completer<void>();
+        final expectedStack = StackTrace.current;
+        final expectedError = StateError('startup-file-test-first');
+
+        await handleStartupFailure(
+          error: expectedError,
+          stackTrace: expectedStack,
+          onStartupFailureLogged: _noopLog,
+          onStartupFailureReported: _noopPersist,
+          onStartupFailurePersisted: (Object e, StackTrace st) async {
+            await writer.writeLatestFailure(e, st);
+            writeDone.complete();
+          },
+        );
+        await writeDone.future;
+
+        final diagnosticFile = File(
+          '${tempDir.path}${Platform.pathSeparator}'
+          '${StartupFailureDiagnosticWriter.diagnosticFileName}',
+        );
+
+        expect(diagnosticFile.existsSync(), isTrue);
+        final text = diagnosticFile.readAsStringSync();
+        expect(text, contains('error: $expectedError'));
+        expect(text, contains('$expectedStack'));
+      },
+    );
+
+    test(
+      'consecutive startup failures overwrite the file with only the latest error',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'omnitrain_startup_diag_test_2_',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            await tempDir.delete(recursive: true);
+          }
+        });
+
+        final writer = StartupFailureDiagnosticWriter.fromBaseDirectory(
+          tempDir.path,
+        );
+        final firstDone = Completer<void>();
+        final secondDone = Completer<void>();
+
+        await handleStartupFailure(
+          error: StateError('startup-first-failure'),
+          stackTrace: StackTrace.current,
+          onStartupFailureLogged: _noopLog,
+          onStartupFailureReported: _noopPersist,
+          onStartupFailurePersisted: (Object e, StackTrace st) async {
+            await writer.writeLatestFailure(e, st);
+            firstDone.complete();
+          },
+        );
+        await firstDone.future;
+
+        await handleStartupFailure(
+          error: StateError('startup-second-failure'),
+          stackTrace: StackTrace.current,
+          onStartupFailureLogged: _noopLog,
+          onStartupFailureReported: _noopPersist,
+          onStartupFailurePersisted: (Object e, StackTrace st) async {
+            await writer.writeLatestFailure(e, st);
+            secondDone.complete();
+          },
+        );
+        await secondDone.future;
+
+        final diagnosticFile = File(
+          '${tempDir.path}${Platform.pathSeparator}'
+          '${StartupFailureDiagnosticWriter.diagnosticFileName}',
+        );
+        expect(diagnosticFile.existsSync(), isTrue);
+
+        final text = diagnosticFile.readAsStringSync();
+        expect(text, contains('startup-second-failure'));
+        expect(text, isNot(contains('startup-first-failure')));
+      },
+    );
+
+    test(
+      'file-write failure does not let an exception escape the write attempt',
+      () async {
+        await handleStartupFailure(
+          error: StateError('still failing'),
+          stackTrace: StackTrace.current,
+          onStartupFailureLogged: _noopLog,
+          onStartupFailureReported: _noopPersist,
+          onStartupFailurePersisted: (Object _, StackTrace __) async {
+            throw FileSystemException('simulated diagnostic write failure');
+          },
+        );
+
+        // If we reach this line, the failing persister did not escape
+        // through the startup-failure handler.
+        expect(true, isTrue);
       },
     );
   });

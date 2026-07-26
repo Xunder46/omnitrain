@@ -15,10 +15,12 @@
 ///   always reads the bundled catalog directly and writes it to the device.
 /// - The first published version is `1`. When this refresh mechanism shipped,
 ///   we bumped to `2` so every existing install runs a one-time refresh on
-///   next launch (catching everyone who installed at v1).
+///   next launch (catching everyone who installed at v1). When the bundled
+///   demo routines shipped, we bumped to `3` so existing installs receive
+///   them exactly once on next launch.
 library;
 
-const int bundledCatalogVersion = 2;
+const int bundledCatalogVersion = 3;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///
@@ -34,4 +36,8 @@ class SeedEntryType {
   /// A bundled food-catalog row (the [FoodCatalogSeed.sampleCatalogFoods]
   /// list, or equivalent JSON-backed asset).
   static const String foodCatalog = 'food_catalog';
+
+  /// A bundled demo `WorkoutTemplate` (the
+  /// [SeedData.sampleDemoRoutineBundles] list).
+  static const String routineTemplate = 'routine_template';
 }

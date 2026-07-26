@@ -41,8 +41,17 @@ OmniTrain uses **imperative navigation** via `OmniNavigator` (wrapping Flutter's
 ```
 main()
   → _initializeLocalTimezone() (one-shot, outside the retry loop)
+  → CrashReportingService.bootstrap(enabled: kReleaseMode, ...)
   → runApp(StartupRoot(startupRunner: _runStartup))
 ```
+
+Crash reporting is bootstrapped outside the `StartupRoot` retry loop
+so a startup retry does not double-install the global error sinks. The
+bootstrap itself is idempotent, but installing it before
+`StartupRoot` keeps the retry behaviour predictable — a retry
+re-runs `_runStartup` from the top without rerunning the bootstrap
+(if the user reaches the failure screen, the SDK is already
+initialised and primed to capture the next throw).
 
 `StartupRoot` (defined in `lib/app/startup_root.dart`) is the top-level
 widget that owns the startup phase. On `initState` it calls the
@@ -75,7 +84,10 @@ _runStartup()
   → reads PackageInfo (fallback "0.0.0+0" on plugin failure)
   → returns MyApp(... all dependencies injected via constructor ...)
 ```
-
+> Note: `CrashReportingService.bootstrap` is intentionally **not** part of
+> `_runStartup`. It runs before `runApp` (in `main()` itself) and is
+> idempotent — the retry loop in `StartupRoot` re-runs `_runStartup`
+> without re-installing the global error sinks.
 **File**: `lib/app.dart`
 
 `MyApp` is a `StatelessWidget` that:

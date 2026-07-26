@@ -9,11 +9,24 @@
 /// `action:` button — and auto-dismisses in 4.0 s so it never gates
 /// the rest timer or the next set.
 ///
+/// Two axes:
+///   - **Weight axis** (Epley e1RM) — the original path.
+///     `buildPRSnackBar` is the SnackBar factory.
+///   - **Reps axis** (bodyweight) — added with the bodyweight
+///     inclusion in
+///     `.github/agents/plans/stats-summary-fix-pack-plan.md`
+///     (Item 2). `buildRepPRSnackBar` is the reps-axis
+///     counterpart; it shares the same trophy + minimal-copy
+///     treatment as `buildPRSnackBar` so the celebration reads
+///     identically regardless of which axis fired.
+///
 /// The contract is pinned in
 /// `.github/agents/plans/in-session-pr-toast-plan.md` (Decision Ledger
 /// D-9, D-10, D-11, D-12). The PR definition itself is the source of
-/// truth in `StatsProgressService.epley1RM` + `getAllTimeBestE1RM`; the
-/// in-session check and the Stats screen use the same formula.
+/// truth in `StatsProgressService.epley1RM` + `getAllTimeBestE1RM` for
+/// the weight axis and `StatsProgressService.getAllTimeBestReps` for
+/// the reps axis; both surfaces share the formula so the in-session
+/// toast, the post-workout summary, and the Stats screen always agree.
 library;
 
 import 'package:flutter/material.dart';
@@ -66,6 +79,46 @@ class PRToast {
   /// - No `action:` field — the user is never asked to tap "Dismiss"
   ///   or anything similar (D-9).
   static SnackBar buildPRSnackBar(ThemeData theme) {
+    return SnackBar(
+      duration: const Duration(milliseconds: 4000),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: theme.colorScheme.surface,
+      margin: const EdgeInsets.only(bottom: 150, left: 16, right: 16),
+      content: Row(
+        children: [
+          Icon(
+            Icons.emoji_events,
+            size: _iconSize,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'Congrats! New PR',
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface,
+                fontSize: _textFontSize,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Reps-axis variant of [buildPRSnackBar] for bodyweight PRs.
+  /// Visually identical to the e1RM toast — same trophy icon, same
+  /// `"Congrats! New PR"` copy, same 4.0 s auto-dismiss, same
+  /// floating placement — so the celebration reads the same
+  /// regardless of which axis fired. The [reps] argument is the
+  /// just-logged max-reps count; it is currently unused on the
+  /// toast itself (the copy stays minimal per D-11, the in-session
+  /// toast is intentionally value-free) but is part of the public
+  /// API so a future call-site that wants to surface the value has
+  /// it available without a signature change.
+  static SnackBar buildRepPRSnackBar(ThemeData theme, {int? reps}) {
     return SnackBar(
       duration: const Duration(milliseconds: 4000),
       behavior: SnackBarBehavior.floating,

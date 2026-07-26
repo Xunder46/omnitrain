@@ -273,6 +273,18 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
         )
         .toList();
+    // Reps-axis (bodyweight) display. Convert nothing — reps are
+    // already unit-free integers. The `extraWeightKg` annotation
+    // (set when a bodyweight set was performed with added weight,
+    // e.g. a dip belt) is preserved through to the trend chart
+    // and single-point card so the user sees a "+10 kg" marker
+    // on the day that used added weight. This is annotation only
+    // — the reps trend never produces a kg-derived figure on a
+    // reps-axis exercise (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
+    // Push-Up mixed-axis bug fix).
+    final repsDisplay = lift.repsTrend.toList();
+    final repsHasAddedWeight =
+        repsDisplay.any((p) => (p.extraWeightKg ?? 0) > 0);
 
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
@@ -328,8 +340,74 @@ class _StatsScreenState extends State<StatsScreen> {
               date: volumeDisplay.first.date,
             ),
           ],
+          if (repsDisplay.length >= 2) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Reps',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildTrendChart(themeColors, repsDisplay, label: 'reps'),
+            if (repsHasAddedWeight) ...[
+              const SizedBox(height: 6),
+              _buildAddedWeightNote(theme, themeColors),
+            ],
+          ] else if (repsDisplay.length == 1) ...[
+            const SizedBox(height: 8),
+            _buildSinglePointCard(
+              theme: theme,
+              themeColors: themeColors,
+              label: 'Reps:',
+              value: _formatRepsValue(repsDisplay.first),
+              date: repsDisplay.first.date,
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  /// Format a single reps-axis data point's value with the
+  /// optional added-weight annotation. The kg figure is rendered
+  /// in the user's preferred weight unit (kg/lbs) so the
+  /// annotation reads naturally next to the weight-based values
+  /// on the same screen.
+  String _formatRepsValue(TrendPoint point) {
+    final reps = point.value.toInt();
+    final extra = point.extraWeightKg;
+    if (extra == null || extra <= 0) return '$reps reps';
+    final converted = UnitFormatter.convertWeight(extra, widget.settingsState);
+    final unit = UnitFormatter.weightLabel(widget.settingsState);
+    return '$reps reps (+${_formatNumber(converted)} $unit)';
+  }
+
+  /// Small note shown beneath a multi-point reps trend chart
+  /// when at least one day on the trend had added weight. The
+  /// individual per-day annotation lives on the data point (the
+  /// chart's tooltip) — this is the inline cue so the user
+  /// knows the kg figure on this card is annotation-only, never
+  /// a Total Volume contribution.
+  Widget _buildAddedWeightNote(ThemeData theme, OmniThemeColors themeColors) {
+    return Row(
+      children: [
+        Icon(
+          Icons.info_outline,
+          size: 14,
+          color: themeColors.textMuted,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            'Some sessions used added weight — annotation only, not added to volume.',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: themeColors.textMuted,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -463,10 +541,22 @@ class _StatsScreenState extends State<StatsScreen> {
             final dateStr =
                 '${OmniDateUtils.shortMonthName(pr.date.month)} ${pr.date.day},'
                 ' ${pr.date.year}';
-            final displayE1Rm = UnitFormatter.convertWeight(
-              pr.e1Rm,
-              widget.settingsState,
-            );
+            // Reps-axis PR (bodyweight) and weight-axis PR
+            // (e1RM) render differently on the right side:
+            //   - `pr.reps != null` → `${reps} reps`
+            //   - `pr.e1Rm != null` → `${displayE1Rm} $weightLabel`
+            // Exactly one of the two is non-null on any given PR
+            // (asserted in `StatsPR`).
+            final String valueText;
+            if (pr.reps != null) {
+              valueText = '${pr.reps} reps';
+            } else {
+              final displayE1Rm = UnitFormatter.convertWeight(
+                pr.e1Rm!,
+                widget.settingsState,
+              );
+              valueText = '${displayE1Rm.toStringAsFixed(1)} $weightLabel';
+            }
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
@@ -487,7 +577,7 @@ class _StatsScreenState extends State<StatsScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '${displayE1Rm.toStringAsFixed(1)} $weightLabel',
+                    valueText,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: themeColors.primary,
                       fontWeight: FontWeight.w600,
@@ -1856,6 +1946,17 @@ class _StatsScreenState extends State<StatsScreen> {
 
   /// Formats a duration in milliseconds as "Xh Ym" for all-time totals.
   String _formatDuration(int ms) => OmniDateUtils.formatDurationHoursMins(ms);
+
+  /// Compact numeric formatter used for the added-weight
+  /// annotation on a reps-axis trend point. Strips trailing
+  /// zeros so a 10 kg value reads "10" rather than "10.0" and
+  /// keeps a single decimal otherwise.
+  String _formatNumber(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toStringAsFixed(0);
+    }
+    return value.toStringAsFixed(1);
+  }
 
   double _paceForDisplay(double paceSecPerKm, String distUnit) {
     if (distUnit == 'mi') {

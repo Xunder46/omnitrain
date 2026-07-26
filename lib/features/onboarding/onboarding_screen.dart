@@ -129,36 +129,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ],
           ),
 
-          // ─── Top bar: Skip button (hidden on last page) ──────────────
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: AnimatedOpacity(
-                opacity: _currentPage < _pageCount - 1 ? 1.0 : 0.0,
-                duration: OmniTheme.animationDuration,
-                child: IgnorePointer(
-                  ignoring: _currentPage >= _pageCount - 1,
-                  child: TextButton(
-                    style: TextButton.styleFrom(
-                      foregroundColor: themeColors.textMuted,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          OmniTheme.buttonUtilityRadius,
-                        ),
-                      ),
-                    ),
-                    onPressed: () => _complete(context),
-                    child: const Text('Skip'),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
           // ─── Bottom: Page dots ───────────────────────────────────────
           SafeArea(
             child: Align(

@@ -616,6 +616,12 @@ class WorkoutTemplate {
   final String? focusModality;
   final String? primaryDisciplineId;
   final String? note;
+  /// `true` when this template shipped as a built-in demo via the versioned
+  /// catalog refresh pipeline. The flag is informational only — the refresh
+  /// still gates writes on the per-entry tombstone returned by
+  /// [WorkoutRepository.isSeedEntryTouched] so that user edits and deletions
+  /// remain authoritative.
+  final bool isBuiltInDemo;
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -627,6 +633,7 @@ class WorkoutTemplate {
     this.focusModality,
     this.primaryDisciplineId,
     this.note,
+    this.isBuiltInDemo = false,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
@@ -639,6 +646,7 @@ class WorkoutTemplate {
     focusModality: m['focus_modality'] as String?,
     primaryDisciplineId: m['primary_discipline_id'] as String?,
     note: m['note'] as String?,
+    isBuiltInDemo: (m['is_built_in_demo'] as int? ?? 0) == 1,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
   );
@@ -651,9 +659,39 @@ class WorkoutTemplate {
     'focus_modality': focusModality,
     'primary_discipline_id': primaryDisciplineId,
     'note': note,
+    'is_built_in_demo': isBuiltInDemo ? 1 : 0,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
   };
+
+  /// Returns a copy with selected fields replaced. `isBuiltInDemo` defaults
+  /// to preserving the current value, mirroring the
+  /// `Optional<String?>`-style semantics of the other nullable fields.
+  WorkoutTemplate copyWith({
+    String? id,
+    String? ownerUserId,
+    String? name,
+    String? description,
+    String? focusModality,
+    String? primaryDisciplineId,
+    String? note,
+    bool? isBuiltInDemo,
+    int? createdAtMs,
+    int? updatedAtMs,
+  }) {
+    return WorkoutTemplate(
+      id: id ?? this.id,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      focusModality: focusModality ?? this.focusModality,
+      primaryDisciplineId: primaryDisciplineId ?? this.primaryDisciplineId,
+      note: note ?? this.note,
+      isBuiltInDemo: isBuiltInDemo ?? this.isBuiltInDemo,
+      createdAtMs: createdAtMs ?? this.createdAtMs,
+      updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+    );
+  }
 }
 
 class TemplateSegment {

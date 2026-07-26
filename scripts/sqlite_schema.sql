@@ -452,6 +452,10 @@ CREATE TABLE app_workout_template (
   focus_modality TEXT,
   primary_discipline_id TEXT,
   note TEXT,
+  -- 1 when this template shipped as a built-in demo via the versioned
+  -- catalog refresh pipeline (see SeedEntryType.routineTemplate).
+  -- Informational: deletion/edit gating is per-entry tombstone based.
+  is_built_in_demo INTEGER NOT NULL DEFAULT 0,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   FOREIGN KEY(primary_discipline_id) REFERENCES app_discipline(id)

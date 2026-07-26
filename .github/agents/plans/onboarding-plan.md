@@ -172,5 +172,55 @@ Future<void> _complete(BuildContext context) async {
 
 ### Phase Status: **Complete**
 
+## Iteration 2 — Remove Onboarding Skip Button (TRIVIAL)
+
+### Analysis
+TRIVIAL signal: no schema change, no new state, no new user-facing behavior beyond removing an existing bypass. The existing `OnboardingScreen` already contains a `_complete(context)` method that persists the flag and navigates home; that method stays as-is and is still reachable from the "Get Started" `FilledButton` on the final card. The Skip control sits in its own overlay `Stack` child (`SafeArea` + `Align` + `AnimatedOpacity` + `IgnorePointer` + `TextButton`) — removing the whole subtree cleanly avoids any visual gap or dead tap target. No `lib/data/`, `lib/state/`, or repository changes are needed.
+
+### DB Changes
+None.
+
+### Backend Changes
+None.
+
+### Frontend Changes
+**Modify: `lib/features/onboarding/onboarding_screen.dart`**
+- Remove the entire top-bar subtree containing the Skip `TextButton` (lines ~130–162 of the current file).
+- Page content, page dots, "Get Started" CTA, and `_complete()` are unchanged.
+
+**Modify: `test/screen_widget_test.dart`**
+- Rename `'renders welcome page with title and skip button'` → `'renders welcome page with no skip button'`; replace `expect(find.text('Skip'), findsOneWidget);` with `expect(find.text('Skip'), findsNothing);`.
+- Inside `'swiping advances pages and final page shows get started'`: drop the `skipButton` lookup and the `AnimatedOpacity` / `IgnorePointer` assertions for it (obsolete — no Skip button exists).
+- Delete `'tapping Skip completes onboarding and navigates home'` (its intent is already covered by the Get Started test).
+- Add `'no skip button is present on any onboarding card'` — pump the screen, walk through all three pages, assert `find.text('Skip')` is `findsNothing` on each (first, middle, last).
+- Do **not** touch `data_tracking_fixes_test.dart`, `edge_case_test.dart`, `widget_test.dart`, `utils_test.dart`, `resistance_emphasis_redesign_test.dart`, `in_session_pr_toast_test.dart` — they test the unrelated "skipped" flag on workout sets, a different concept.
+
+### Implementation Steps
+1. [ ] Remove Skip overlay subtree from `lib/features/onboarding/onboarding_screen.dart`.
+2. [ ] Update `test/screen_widget_test.dart` per the Frontend Changes list.
+3. [ ] Run `flutter test` — all onboarding tests + skipped-set tests pass.
+
+## Progress
+- [x] Create `lib/features/onboarding/onboarding_screen.dart`
+- [x] Implement welcome page (_buildWelcomePage)
+- [x] Implement modality tiles page (_buildHowYouTrainPage + _ModalityTile)
+- [x] Implement calendar page (_buildHowYouPlanPage)
+- [x] Implement page dots indicator
+- [x] Implement Skip / Get Started button logic + _complete()
+- [x] Modify `lib/app.dart` (add showOnboarding + repository)
+- [x] Modify `lib/main.dart` (check onboarding_complete pref)
+- [x] All 476 tests green — no regressions
+- [x] Remove Skip overlay from `onboarding_screen.dart`
+- [x] Update `screen_widget_test.dart` Skip-related assertions
+- [x] Add no-skip-button-on-any-card guard test
+- [x] `flutter test` green (onboarding + skipped-set)
+
+### Phase Status: Iteration 2 implementation complete
+
 ## Feedback
 _Leave empty until a specialist or reviewer adds notes._
+
+### Phase 0 Complete ✓
+### Phase 1 Complete ✓
+### Phase 2 Complete ✓
+### Phase 3 Complete ✓

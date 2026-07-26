@@ -292,12 +292,13 @@ WorkoutTemplate (routine)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String` | UUID |
+| `id` | `String` | UUID. Demo templates use the `demo-template-…` namespace to keep the prefix unambiguous against the user prefix (`template-{ms}`). |
 | `ownerUserId` | `String?` | Future: user ownership |
 | `name` | `String` | Routine name (e.g., "Push Day") |
 | `primaryDisciplineId` | `String?` | Optional discipline filter |
 | `focusModality` | `String?` | Optional modality hint |
 | `note` | `String?` | Optional notes |
+| `isBuiltInDemo` | `bool` | `true` when this template shipped as a built-in demo via the versioned catalog refresh pipeline. Edit/delete gating is enforced by the per-entry tombstone returned by `WorkoutRepository.isSeedEntryTouched` for `SeedEntryType.routineTemplate`; this flag is informational only. |
 | `createdAtMs` | `int` | Timestamp |
 | `updatedAtMs` | `int` | Timestamp |
 
@@ -350,8 +351,8 @@ Used by the post-workout summary screen (not persisted):
 |-------|------|---------|--------|
 | `SessionSummary` | `lib/core/models/session_summary.dart` | Computed session stats | **Active** — read by the summary screen |
 | `SessionGroupMetrics` | same | Per-group summary card metrics (count + effort time or volume) | **Active** — drives the group cards |
-| `ExerciseSummary` | same | Per-exercise stats | **Active** — used by the summary service. Carries `bestWeight` (volume stat) and `bestE1RM` (PR stat); `bestE1RM` is populated only for `effortKind == 'set'` efforts. |
-| `PRAchievement` | same | New personal records | **Active** — inline PR rows on the group cards. Epley e1RM definition (`StatsProgressService.epley1RM`), shared with the in-workout toast and the Stats screen — single source of truth (`.github/agents/plans/summary-pr-parity-plan.md`). |
+| `ExerciseSummary` | same | Per-exercise stats | **Active** — used by the summary service. Carries `bestWeight` (volume stat), `bestE1RM` (weight-axis PR stat for loaded sets), and `bestReps` (reps-axis PR stat for bodyweight sets). `bestE1RM` and `bestReps` are populated only for `effortKind == 'set'` efforts; an exercise on the weight axis has a non-null `bestE1RM`, an exercise on the reps axis has a non-null `bestReps`, never both. See `.github/agents/plans/stats-summary-fix-pack-plan.md` Items 1 and 2. |
+| `PRAchievement` | same | New personal records | **Active** — inline PR rows on the group cards. Weight-axis (Epley e1RM, `StatsProgressService.epley1RM`) and reps-axis (max reps in a single set, `StatsProgressService.getAllTimeBestReps`) variants both surface here, distinguished by `metricLabel` (`'e1RM'` or `'reps'`). One entry per exercise per session — duplicate rows from cloned blocks are collapsed. Shared source of truth with the in-workout toast and the Stats screen (`.github/agents/plans/stats-summary-fix-pack-plan.md` PR 1 + Item 2). |
 | `GroupDelta` | same | Per-group comparison chip data vs previous session | **Active** — the per-group progress chip on each group card |
 | `VolumeComparison` | same | Delta vs previous session | **Retained in model, not rendered.** The earlier standalone volume-comparison surface on the summary was removed; progress feedback now lives as per-group `GroupDelta` chips (see [Session Summary](session_summary.md)). The model class is preserved because the summary service still constructs one internally and tests pin the type. |
 | `SessionTemplateDraft` | same | Draft for save-as-routine | **Active** — the "Save as Routine" flow |

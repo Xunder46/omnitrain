@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Export options for `xcodebuild -exportArchive` in the release CI workflow.
+	  See `.github/workflows/release.yml`. This file is committed to git and
+	  contains ONLY public IDs + flags — no signing secrets.
+	-->
+	<key>compileBitcode</key>
+	<false/>
+	<key>destination</key>
+	<string>export</string>
+	<key>method</key>
+	<!--
+	  Switch this to "app-store" for App Store / TestFlight uploads and
+	  to "ad-hoc" for installing on your own device. "development" is what
+	  GH Actions CI uses; it lets Xcode pick the development profile you
+	  just imported.
+	-->
+	<string>app-store</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>dev.sasha.omnitrain</key>
+		<string>dev.sasha.omnitrain</string>
+	</dict>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>teamID</key>
+	<string>S3976AA7K8</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<!--
+	  The `sentry_dart_plugin` already uploads dSYMs/mappings at build time,
+	  so leaving the legacy Xcode `uploadSymbols` = true is safe (it'll
+	  re-upload to Apple but not to Sentry). Set to `false` if you want to
+	  skip the Apple side.
+	-->
+	<key>thinning</key>
+	<string>none</string>
+</dict>
+</plist>

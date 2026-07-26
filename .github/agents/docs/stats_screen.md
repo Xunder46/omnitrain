@@ -40,19 +40,106 @@ A row of three stat pills (unchanged from v1):
 Auto-detects the top-3 most-frequently-trained exercises with at least one
 `set`-kind effort, ranked by distinct training days then alphabetically.
 
-For each lift:
-- **e1RM trend** — estimated 1-rep-max per training day (Epley: `w × (1 + r/30)`),
-  max across sets in that day; rendered as a scrollable `LineChart` when
-  ≥ 2 data points. Values are converted to the user's preferred weight
-  unit (`UnitFormatter.convertWeight`).
-- **Volume trend** — total `weight × reps` per training day; scrollable
-  `LineChart` when ≥ 2 points. Displayed in the user's preferred weight
-  unit.
+Selection is gated by two filters:
+
+1. **Current-state window** (see [Selection Window](#selection-window-current-state-window))
+   — an exercise must have a training day inside the resolved window to
+   be eligible. The window is shared between Strength and Cardio and is
+   surfaced on-screen.
+2. **Recency floor** (`StatsProgressService.kTopExerciseRecencyDays`,
+   default **30** calendar days) — an exercise whose most-recent
+   training day is older than the threshold drops out of the displayed
+   top slots, freeing space for exercises the user is currently training.
+   The threshold is generous enough that a weekly / biweekly rotation
+   does not flicker a lift in and out between sessions; dropping out
+   signals genuine abandonment, not normal spacing. Trend charts and PR
+   lists for exercises that DO appear are unaffected — only which
+   exercises fill the top-N slots is filtered. See
+   `.github/agents/plans/stats-summary-fix-pack-plan.md` Item 3.
+
+#### Per-exercise axes
+
+Each lift has up to three trend axes. They render independently based on
+whether the user has logged data on each axis:
+
+- **e1RM trend** — estimated 1-rep-max per training day (Epley:
+  `w × (1 + r/30)`), max across weighted sets in that day. Populated
+  only when the exercise has at least one weighted set (`weight > 0`).
+  Converted to the user's preferred weight unit
+  (`UnitFormatter.convertWeight`). Drives the PR record on the
+  weight axis.
+- **Volume trend** — total `weight × reps` per training day. Populated
+  only when the exercise is on the **weight axis** (see the axis
+  rule below); empty for reps-axis exercises. Bodyweight sets
+  contribute zero to the kilogram Total Volume — that figure stays
+  load-only.
+- **Reps trend** — max reps per training day across bodyweight sets
+  (`weight == 0`). Populated only when the exercise is on the
+  **reps axis**. Each trend point carries an optional
+  `extraWeightKg` annotation: the day's max added weight when at
+  least one set used a `metric-extra-weight` observation (e.g. a
+  dip belt). The annotation is rendered as `"+X kg"` on the
+  single-point card and as an inline note beneath the multi-point
+  chart; it is **never** summed into the Total Volume figure and
+  **never** flips the exercise onto a weight axis.
 - Single-point fallback: inline text (no chart, no scroll).
 
-A **Recent PRs** card follows, listing up to 5 exercises where the all-time
-e1RM high was set or exceeded (first-ever session counts as a PR). PR values
-are also shown in the user's preferred weight unit.
+#### Per-exercise axis rule
+
+Each lift is classified as either **reps-axis** or **weight-axis**
+based on its full history, not per-set:
+
+- **Reps-axis** — the exercise has at least one logged set with
+  `weight == 0` (bodyweight). Its Stats card is reps-only: a reps
+  trend and a max-reps PR. e1RM and kg Volume sections are not
+  rendered, even when some of its sets carried added weight.
+  This is the rule that fixed the "Push-Up mixed-axis" bug —
+  Push-Up now renders reps-only even when one session was logged
+  with a weighted belt.
+- **Weight-axis** — every set has `weight > 0`. Its Stats card is
+  weight-based: an Estimated 1RM trend and a kg Volume trend.
+  Reps-axis sections are not rendered.
+
+The rule is per-exercise, applied by `StatsProgressService.computeProgressData`
+via `isRepsAxis = repsDayMap.isNotEmpty`. A weighted set on a
+reps-axis exercise contributes its reps to the day's max and its
+added weight to the `extraWeightKg` annotation — that is the entire
+contribution. It does **not** create a separate weight record, does
+**not** switch the exercise onto a weight axis, and does **not**
+contribute to the kilogram Total Volume.
+
+#### Bodyweight inclusion rule
+
+Inclusion is purely "the set was performed without added external
+weight" (`weight == 0`). The exercise's category or equipment label
+is NOT consulted — pull-ups and chin-ups in particular are NOT
+labelled as bodyweight in the seed data and must NOT be excluded by
+any label technicality. When a bodyweight exercise is occasionally
+performed with added weight (e.g. a dip belt), the added weight is
+recorded as a `metric-extra-weight` annotation on the observation
+only; it does NOT create a separate weight record, does NOT switch
+the exercise onto a weight axis, and does NOT contribute to the
+kilogram Total Volume. The exercise stays on its reps axis so a
+single exercise never splits across two units. See
+`.github/agents/plans/stats-summary-fix-pack-plan.md` Item 2.
+
+#### Recent PRs
+
+A **Recent PRs** card follows, listing up to 5 exercises where the
+all-time high on the exercise's axis (reps or weight, per the
+per-exercise axis rule) was set or exceeded (first-ever session
+counts as a PR on the chosen axis). PRs are deduplicated to one
+entry per exercise name; the highest verdict wins:
+
+- `StatsPR.reps != null` → rendered as `"<n> reps"`.
+- `StatsPR.e1Rm != null` → rendered as `"<value> <unit>"` in the
+  user's preferred weight unit.
+
+Loaded exercises emit weight-axis PRs; bodyweight exercises emit
+reps-axis PRs. The same rep-based verdict also surfaces on the
+in-session toast (when wired through the reps-axis variant of
+`_maybeShowPRToast`) and the post-workout Session Summary (through
+the reps-axis pass in `SessionSummaryService.computePRs`).
 
 Empty state: "No strength history yet." when `topLifts` is empty.
 
@@ -388,6 +475,7 @@ final data = await StatsProgressService(
 | `kTopCardioCount` | 2 | Max cardio activities shown |
 | `kRecentPRCount` | 5 | Max PR rows in the Recent PRs card |
 | `kRecentTrainingDaysWindow` | 14 | Single tunable: number of recent "training days" used for the Strength/Cardio selection window when no period qualifies. See [Selection Window](#selection-window-current-state-window). |
+| `kTopExerciseRecencyDays` | 30 | Recency floor (calendar days) for Strength and Cardio top-slot selection. An exercise whose most-recent training day is older than this drops out of the displayed top slots regardless of its historical frequency. Applied symmetrically to Strength and Cardio. See `.github/agents/plans/stats-summary-fix-pack-plan.md` Item 3. |
 | `kNutritionTrendDays` | 10 | Soft "default visible window" hint; the NUTRITION card uses `days: null` for full history |
 
 ## Key Constants (`ScrollableTrendChart`)

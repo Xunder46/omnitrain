@@ -70,7 +70,18 @@ class ExerciseSummary {
   /// the in-workout celebration, the Stats screen, and the Session
   /// Summary all compare against.
   final double? bestE1RM;
-
+  /// Highest **reps** across this exercise's bodyweight sets (sets
+  /// with `weight == 0`) in the session. `null` when no set in the
+  /// session is a bodyweight set, and for non-`set` effort kinds.
+  /// This is the bodyweight-axis PR metric — the same value the
+  /// in-workout celebration, the Stats screen, and the Session
+  /// Summary compare against for bodyweight exercises
+  /// (`.github/agents/plans/stats-summary-fix-pack-plan.md`, Item 2).
+  /// Weighted calisthenics (sets with both `weight == 0` and a
+  /// `metric-extra-weight` observation) contribute their reps here
+  /// — the extra weight is an annotation only, never an axis
+  /// switch.
+  final int? bestReps;
   /// Positional index preserving original execution order (0-based).
   final int executionOrder;
 
@@ -91,6 +102,7 @@ class ExerciseSummary {
     required this.bestWeight,
     required this.executionOrder,
     this.bestE1RM,
+    this.bestReps,
     this.totalDurationMs,
     this.totalRounds = 0,
     this.blockId,

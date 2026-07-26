@@ -10,6 +10,7 @@ import 'core/services/image_storage_service.dart';
 import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
 import 'core/services/session_summary_service.dart';
+import 'core/services/startup_failure_diagnostic_writer.dart';
 import 'data/repositories/hive_workout_repository.dart';
 import 'data/repositories/workout_repository.dart';
 import 'state/workout/workout_state.dart';
@@ -23,10 +24,37 @@ import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
 import 'core/utils/timer_alert_service.dart';
+import 'core/services/crash_reporting_service.dart';
 import 'core/utils/rest_notification_service.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
+
+final _startupDiagnosticWriter = StartupFailureDiagnosticWriter.create();
+
+typedef StartupRepositoryFactory = Future<WorkoutRepository> Function();
+typedef StartupPreferencesServiceFactory = PreferencesService Function();
+typedef StartupTimerAlertServiceFactory = TimerAlertService Function();
+typedef StartupRestNotificationServiceFactory = RestNotificationService
+    Function();
+typedef StartupImageStorageServiceFactory = Future<ImageStorageService?>
+    Function();
+typedef StartupAppVersionInfoLoader = Future<AppVersionInfo> Function();
+typedef StartupNonFatalIssueHandler = Future<void> Function(
+  Object error,
+  StackTrace stackTrace,
+);
+
+class StartupNotificationInitializationError implements Exception {
+  StartupNotificationInitializationError(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() {
+    return 'Non-fatal startup notification initialization failure: $cause';
+  }
+}
 
 /// Build the app's storage engine.
 ///
@@ -52,9 +80,91 @@ Future<void> _initializeLocalTimezone() async {
   }
 }
 
+Future<void> _reportNonFatalStartupIssue(
+  Object error,
+  StackTrace stackTrace,
+) async {
+  debugPrint('OmniTrain startup non-fatal issue: $error');
+  debugPrintStack(stackTrace: stackTrace);
+
+  try {
+    await CrashReportingService.recordError(
+      error,
+      stackTrace: stackTrace,
+      errorContext: 'startup.notificationInitialization',
+    );
+  } catch (reportError, reportStack) {
+    debugPrint('Startup non-fatal reporter hook failed: $reportError');
+    debugPrintStack(stackTrace: reportStack);
+  }
+
+  await _startupDiagnosticWriter.writeLatestFailure(error, stackTrace);
+}
+
+Future<RestNotificationService> _initializeRestNotificationServiceSafely({
+  required StartupRestNotificationServiceFactory createRestNotificationService,
+  required StartupNonFatalIssueHandler onNonFatalStartupIssue,
+}) async {
+  final restNotificationService = createRestNotificationService();
+  try {
+    await restNotificationService.initialize();
+    return restNotificationService;
+  } catch (error, stackTrace) {
+    await onNonFatalStartupIssue(
+      StartupNotificationInitializationError(error),
+      stackTrace,
+    );
+    return RestNotificationService.noop();
+  }
+}
+
+Future<AppVersionInfo> _loadAppVersionInfo() async {
+  try {
+    final packageInfo = await PackageInfo.fromPlatform();
+    return AppVersionInfo(
+      version: packageInfo.version,
+      build: packageInfo.buildNumber,
+    );
+  } catch (e, st) {
+    debugPrint('Failed to read PackageInfo: $e');
+    debugPrintStack(stackTrace: st);
+    return const AppVersionInfo(version: '0.0.0', build: '0');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _initializeLocalTimezone();
+
+  // Crash reporting bootstrap. Release builds only — debug and
+  // profile builds skip the install path entirely so the debug overlay
+  // continues to surface errors directly. The DSN is injected via
+  // `--dart-define` at release-build time; on a developer machine the
+  // empty string simply produces a no-op Sentry init that the wrapper
+  // logs once via debugPrint and continues. The wrapper itself never
+  // blocks startup: a missing DSN, a Sentry outage, or a malformed
+  // payload drops the event instead of crashing the launch.
+  const sentryDsn = String.fromEnvironment('SENTRY_DSN', defaultValue: '');
+  // Resolve the installed app version once via package_info_plus so
+  // every emitted event carries the same canonical value. A plugin
+  // failure (rare on supported platforms) falls back to "0.0.0" — the
+  // reporting layer prefers a known-but-imprecise value over no value.
+  var appVersion = '0.0.0+0';
+  try {
+    final pkg = await PackageInfo.fromPlatform();
+    appVersion = '${pkg.version}+${pkg.buildNumber}';
+  } catch (e, st) {
+    debugPrint('Crash-reporting metadata: PackageInfo unavailable: $e');
+    debugPrintStack(stackTrace: st);
+  }
+  await CrashReportingService.bootstrap(
+    reporter: SentryCrashReporter(dsn: sentryDsn),
+    // kReleaseMode is true only for `--release` builds. debug and
+    // profile builds stay at `enabled: false` and install no handlers.
+    enabled: kReleaseMode,
+    buildMetadata: () => defaultDeviceMetadata(appVersion: appVersion),
+  );
+
   runApp(StartupRoot(startupRunner: _runStartup));
 }
 
@@ -68,12 +178,29 @@ void main() async {
 /// attempts because a partial init can leave state holders
 /// holding stale references.
 Future<Widget> _runStartup() async {
+  return runStartup();
+}
+
+@visibleForTesting
+Future<Widget> runStartup({
+  StartupRepositoryFactory createRepository = _createRepository,
+  StartupPreferencesServiceFactory createPreferencesService =
+      PreferencesServiceImpl.new,
+  StartupTimerAlertServiceFactory createTimerAlertService =
+      TimerAlertService.new,
+  StartupRestNotificationServiceFactory createRestNotificationService =
+      RestNotificationService.new,
+  StartupImageStorageServiceFactory? createImageStorageService,
+  StartupAppVersionInfoLoader loadAppVersionInfo = _loadAppVersionInfo,
+  StartupNonFatalIssueHandler onNonFatalStartupIssue =
+      _reportNonFatalStartupIssue,
+}) async {
   // Initialize services
-  final preferencesService = PreferencesServiceImpl();
+  final preferencesService = createPreferencesService();
   await preferencesService.init();
 
   // Initialize repository (injectable, can be swapped per environment)
-  final repository = await _createRepository();
+  final repository = await createRepository();
   await repository.initialize();
 
   // Reconcile the device's stored catalog against the bundled
@@ -106,9 +233,10 @@ Future<Widget> _runStartup() async {
   // once at app start; the same instance is shared by every
   // state and screen that needs it (D-8).
   // On web, skip initialization as it's not supported there.
-  final imageStorageService = kIsWeb
-      ? null
-      : await ImageStorageService.create();
+    final imageStorageServiceFactory =
+      createImageStorageService ??
+      () async => kIsWeb ? null : ImageStorageService.create();
+    final imageStorageService = await imageStorageServiceFactory();
 
   // Create state with repository
   final workoutState = WorkoutState(repository);
@@ -134,10 +262,13 @@ Future<Widget> _runStartup() async {
   // seen-flag from frame 1 (no flicker of the auto-show).
   final nutritionPrimerState = NutritionPrimerState(repository);
   await nutritionPrimerState.init();
-  final timerAlertService = TimerAlertService();
+  final timerAlertService = createTimerAlertService();
   await timerAlertService.initialize();
-  final restNotificationService = RestNotificationService();
-  await restNotificationService.initialize();
+  final restNotificationService =
+      await _initializeRestNotificationServiceSafely(
+        createRestNotificationService: createRestNotificationService,
+        onNonFatalStartupIssue: onNonFatalStartupIssue,
+      );
 
   // Create service with repository
   final routineSessionService = RoutineSessionService(repository);
@@ -153,18 +284,7 @@ Future<Widget> _runStartup() async {
   // remains renderable while the app keeps running. We deliberately
   // do NOT bake any version literal into `lib/` — the placeholder
   // string lives in this catch block only, never reaches a widget.
-  AppVersionInfo appVersionInfo;
-  try {
-    final packageInfo = await PackageInfo.fromPlatform();
-    appVersionInfo = AppVersionInfo(
-      version: packageInfo.version,
-      build: packageInfo.buildNumber,
-    );
-  } catch (e, st) {
-    debugPrint('Failed to read PackageInfo: $e');
-    debugPrintStack(stackTrace: st);
-    appVersionInfo = const AppVersionInfo(version: '0.0.0', build: '0');
-  }
+  final appVersionInfo = await loadAppVersionInfo();
 
   return MyApp(
     repository: repository,

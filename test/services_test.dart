@@ -600,13 +600,24 @@ void main() {
           // ── Surface B: Stats screen ────────────────────────────────
           // Both sessions completed; Stats PR detection walks the per-day
           // e1RM trend and must register s-new as a PR.
+          // Sessions are anchored to recent days so the new
+          // recency floor (`StatsProgressService.kTopExerciseRecencyDays`)
+          // keeps the exercise eligible for selection.
           final statsRepo = await _freshRepo();
           final statsEx = (await statsRepo.getExercises()).first;
+          final now = DateTime.now();
+          final todayMidnight = DateTime(now.year, now.month, now.day);
+          final sOldMs = todayMidnight
+              .subtract(const Duration(days: 2))
+              .millisecondsSinceEpoch;
+          final sNewMs = todayMidnight
+              .subtract(const Duration(days: 1))
+              .millisecondsSinceEpoch;
           await _seedCompletedSetSession(
             statsRepo,
             sessionId: 's-old',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
+            startedAtMs: sOldMs,
+            endedAtMs: sOldMs + 3600000,
             exerciseId: statsEx.id,
             reps: 5,
             weight: 60.0,
@@ -614,8 +625,8 @@ void main() {
           await _seedCompletedSetSession(
             statsRepo,
             sessionId: 's-new',
-            startedAtMs: 3000,
-            endedAtMs: 4000,
+            startedAtMs: sNewMs,
+            endedAtMs: sNewMs + 3600000,
             exerciseId: statsEx.id,
             reps: 5,
             weight: 70.0,
@@ -1040,6 +1051,343 @@ void main() {
             ),
             closeTo(93.3333, 0.001),
           );
+        },
+      );
+
+      // ── Stats & Summary Fix Pack — PR 1 (PR de-duplication) ─────────────
+      //
+      // Plan: .github/agents/plans/stats-summary-fix-pack-plan.md
+      //
+      // One session can produce only one new record per exercise.
+      // When the same exercise appears in more than one block (e.g.
+      // a user clones a block three times) the current implementation
+      // emits one `PRAchievement` per `ExerciseSummary` (one per
+      // block), burying the genuine best among duplicates. The
+      // fixed `computePRs` collapses the list to at most one entry
+      // per exercise per session, at the session's true maximum.
+      //
+      // The verdict ("is this a PR") is unchanged — only the entry
+      // count collapses. Set count, total volume, and the per-exercise
+      // breakdown are byte-equal before and after this change.
+
+      // S-001: same exercise in 3 cloned blocks, all beating the prior
+      // best → exactly one PR entry at the true maximum.
+      test(
+        'S-001 same exercise in 3 cloned blocks → exactly one PR entry '
+        'at the true maximum',
+        () async {
+          final repo = await _freshRepo();
+          final exercises = await repo.getExercises();
+          final ex = exercises.first;
+
+          // Prior history: 60 × 5 → e1RM 70.0.
+          await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-prior',
+            startedAtMs: 1000,
+            endedAtMs: 2000,
+            exerciseId: ex.id,
+            reps: 5,
+            weight: 60.0,
+          );
+          final currentSession = await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-current',
+            startedAtMs: 3000,
+            endedAtMs: 4000,
+            exerciseId: ex.id,
+            reps: 5,
+            weight: 70.0, // e1RM ~81.67
+          );
+
+          // Three `ExerciseSummary` entries for the same exercise,
+          // simulating three cloned blocks that each logged the
+          // same set. Each entry's `bestE1RM` is the same — the
+          // session's only qualifying effort — but they are
+          // independent `ExerciseSummary` rows so the bug-fix has
+          // to actually collapse them.
+          const newE1rm = 70.0 * (1 + 5 / 30);
+          final prs = await SessionSummaryService(repo).computePRs(
+            [
+              ExerciseSummary(
+                exerciseId: ex.id,
+                name: ex.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 70.0,
+                bestE1RM: newE1rm,
+                executionOrder: 0,
+                blockId: 'block-1',
+              ),
+              ExerciseSummary(
+                exerciseId: ex.id,
+                name: ex.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 70.0,
+                bestE1RM: newE1rm,
+                executionOrder: 1,
+                blockId: 'block-2',
+              ),
+              ExerciseSummary(
+                exerciseId: ex.id,
+                name: ex.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 70.0,
+                bestE1RM: newE1rm,
+                executionOrder: 2,
+                blockId: 'block-3',
+              ),
+            ],
+            currentSessionId: currentSession.id,
+          );
+
+          expect(prs, hasLength(1));
+          expect(prs.first.exerciseName, ex.name);
+          expect(prs.first.newBest, closeTo(newE1rm, 0.001));
+          expect(prs.first.previousBest, 70.0);
+        },
+      );
+
+      // S-002: two different exercises, each in multiple blocks → one
+      // entry each, at their respective maximums.
+      test(
+        'S-002 two exercises across multiple blocks → one entry each',
+        () async {
+          final repo = await _freshRepo();
+          final allExercises = await repo.getExercises();
+          // Pick two distinct seeded exercises — the seed provides
+          // multiple resistance exercises.
+          final exA = allExercises.first;
+          final exB = allExercises[1];
+
+          // Prior history for both: 60 × 5 → e1RM 70.0 each.
+          await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-prior-A',
+            startedAtMs: 1000,
+            endedAtMs: 2000,
+            exerciseId: exA.id,
+            reps: 5,
+            weight: 60.0,
+          );
+          await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-prior-B',
+            startedAtMs: 1100,
+            endedAtMs: 2100,
+            exerciseId: exB.id,
+            reps: 5,
+            weight: 60.0,
+          );
+          final currentSession = await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-current-A',
+            startedAtMs: 3000,
+            endedAtMs: 4000,
+            exerciseId: exA.id,
+            reps: 5,
+            weight: 70.0,
+          );
+
+          // exA's session maximum is 80 × 5 = e1RM 93.33 across
+          // three cloned blocks; exB's is 70 × 5 = e1RM 81.67
+          // across two cloned blocks.
+          const newE1rmA = 80.0 * (1 + 5 / 30);
+          const newE1rmB = 70.0 * (1 + 5 / 30);
+
+          final prs = await SessionSummaryService(repo).computePRs(
+            [
+              ExerciseSummary(
+                exerciseId: exA.id,
+                name: exA.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 80.0,
+                bestE1RM: newE1rmA,
+                executionOrder: 0,
+                blockId: 'A-block-1',
+              ),
+              ExerciseSummary(
+                exerciseId: exA.id,
+                name: exA.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 80.0,
+                bestE1RM: newE1rmA,
+                executionOrder: 1,
+                blockId: 'A-block-2',
+              ),
+              ExerciseSummary(
+                exerciseId: exA.id,
+                name: exA.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 80.0,
+                bestE1RM: newE1rmA,
+                executionOrder: 2,
+                blockId: 'A-block-3',
+              ),
+              ExerciseSummary(
+                exerciseId: exB.id,
+                name: exB.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 70.0,
+                bestE1RM: newE1rmB,
+                executionOrder: 3,
+                blockId: 'B-block-1',
+              ),
+              ExerciseSummary(
+                exerciseId: exB.id,
+                name: exB.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 70.0,
+                bestE1RM: newE1rmB,
+                executionOrder: 4,
+                blockId: 'B-block-2',
+              ),
+            ],
+            currentSessionId: currentSession.id,
+          );
+
+          expect(prs, hasLength(2));
+          final byName = {for (final p in prs) p.exerciseName: p};
+          expect(byName[exA.name]?.newBest, closeTo(newE1rmA, 0.001));
+          expect(byName[exA.name]?.previousBest, 70.0);
+          expect(byName[exB.name]?.newBest, closeTo(newE1rmB, 0.001));
+          expect(byName[exB.name]?.previousBest, 70.0);
+        },
+      );
+
+      // S-003: cloned block that does NOT beat the prior best →
+      // zero record entries for that exercise.
+      test(
+        'S-003 cloned blocks below prior best → zero PR entries',
+        () async {
+          final repo = await _freshRepo();
+          final exercises = await repo.getExercises();
+          final ex = exercises.first;
+
+          // Prior history: 80 × 5 → e1RM ~93.33 (high bar).
+          await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-prior',
+            startedAtMs: 1000,
+            endedAtMs: 2000,
+            exerciseId: ex.id,
+            reps: 5,
+            weight: 80.0,
+          );
+          final currentSession = await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-current',
+            startedAtMs: 3000,
+            endedAtMs: 4000,
+            exerciseId: ex.id,
+            reps: 5,
+            weight: 70.0, // e1RM ~81.67 — strictly below 93.33
+          );
+
+          // Two cloned blocks, both below the prior best.
+          const belowBest = 70.0 * (1 + 5 / 30);
+          final prs = await SessionSummaryService(repo).computePRs(
+            [
+              ExerciseSummary(
+                exerciseId: ex.id,
+                name: ex.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 70.0,
+                bestE1RM: belowBest,
+                executionOrder: 0,
+                blockId: 'block-1',
+              ),
+              ExerciseSummary(
+                exerciseId: ex.id,
+                name: ex.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 70.0,
+                bestE1RM: belowBest,
+                executionOrder: 1,
+                blockId: 'block-2',
+              ),
+            ],
+            currentSessionId: currentSession.id,
+          );
+
+          expect(prs, isEmpty);
+        },
+      );
+
+      // S-004: collapsing across blocks picks the maximum even when
+      // entries disagree on `bestE1RM` (e.g. block-1 had 70 kg × 5,
+      // block-2 had 80 kg × 5 — same exercise, different block
+      // maxima). The single surviving entry must be at 80 × 5.
+      test(
+        'S-004 collapsing picks the maximum across blocks',
+        () async {
+          final repo = await _freshRepo();
+          final exercises = await repo.getExercises();
+          final ex = exercises.first;
+
+          await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-prior',
+            startedAtMs: 1000,
+            endedAtMs: 2000,
+            exerciseId: ex.id,
+            reps: 5,
+            weight: 60.0, // e1RM 70.0
+          );
+          final currentSession = await _seedCompletedSetSession(
+            repo,
+            sessionId: 's-current',
+            startedAtMs: 3000,
+            endedAtMs: 4000,
+            exerciseId: ex.id,
+            reps: 5,
+            weight: 80.0,
+          );
+
+          const e1rm70 = 70.0 * (1 + 5 / 30); // ~81.67
+          const e1rm80 = 80.0 * (1 + 5 / 30); // ~93.33
+
+          final prs = await SessionSummaryService(repo).computePRs(
+            [
+              // Lower block — appears first in executionOrder but is
+              // NOT the session maximum.
+              ExerciseSummary(
+                exerciseId: ex.id,
+                name: ex.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 70.0,
+                bestE1RM: e1rm70,
+                executionOrder: 0,
+                blockId: 'block-lower',
+              ),
+              // Higher block — must win.
+              ExerciseSummary(
+                exerciseId: ex.id,
+                name: ex.name,
+                effortKind: 'set',
+                setsCompleted: 3,
+                bestWeight: 80.0,
+                bestE1RM: e1rm80,
+                executionOrder: 1,
+                blockId: 'block-higher',
+              ),
+            ],
+            currentSessionId: currentSession.id,
+          );
+
+          expect(prs, hasLength(1));
+          expect(prs.first.newBest, closeTo(e1rm80, 0.001));
+          expect(prs.first.previousBest, 70.0);
         },
       );
     });

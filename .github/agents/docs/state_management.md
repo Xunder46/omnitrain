@@ -620,6 +620,27 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 
 Services contain business logic that doesn't belong in state classes. They depend only on `WorkoutRepository` — no state classes, no UI.
 
+### `CrashReportingService`
+
+**File**: `lib/core/services/crash_reporting_service.dart`
+**Depends on**: Sentry SDK only (no `WorkoutRepository` — crash reports are diagnostic, not domain data).
+
+| Member | Purpose |
+|--------|---------|
+| `bootstrap(reporter, enabled, buildMetadata)` | Installs Flutter-side error sinks when `enabled: true`. Idempotent — re-entry is a no-op. |
+| `buildMetadata(...)` | Returns the public allow-list `{appVersion, osVersion, deviceModel}`. The default-device helper reads platform info via `Platform.operatingSystem*`. |
+| `recordError(error, stackTrace, metadata)` | Forwards to the underlying reporter if reporting is active. Always rebuilds metadata via the allow-list — call-site tags cannot widen the payload. |
+| `SentryCrashReporter` | `CrashReporter` implementation backed by `sentry_flutter`. Disables `sendDefaultPii`, auto-breadcrumbs, auto-session-tracking; `beforeSend` re-applies the allow-list on every event. |
+| `defaultDeviceMetadata(appVersion)` | Pure-Dart helper for the startup metadata snapshot. |
+
+**Lifecycle**: `_runStartup` does not touch this service. Bootstrap runs in `main()` immediately after `WidgetsFlutterBinding.ensureInitialized()` and before `runApp`, with `enabled: kReleaseMode`. Debug and profile builds never install the sinks and never call the SDK.
+
+**Privacy contract** (enforced in `crash_reporting_service.dart` header):
+- Allow-list is the single source of truth — `buildMetadata` builds the return map from named args; any `extra` keys are silently dropped.
+- `sendDefaultPii: false` strips IP / device-id / request cookies at the SDK boundary.
+- `enableAutoSessionTracking = false`, `enableAutoNativeBreadcrumbs = false` block auto-breadcrumbs and session telemetry.
+- The pre-release gate (`scripts/pre_release_check.sh` §11k) re-asserts: Sentry in `pubspec.yaml`, `sentry_dart_plugin` in dev-deps, `bootstrap` actually called from `lib/main.dart`, gated on `kReleaseMode`, Android release minified with `:app:uploadSentryMapping` hook, iOS Release config keeping dSYMs.
+
 ### `RoutineSessionService`
 
 **File**: `lib/core/services/routine_session_service.dart`
@@ -648,7 +669,7 @@ Post-workout analytics.
 | Method | Returns | Purpose |
 |--------|---------|---------|
 | `compareGroupsToPreviousSession(session, summary)` | `Map<String, GroupDelta>` | Finds the most recent previous session; computes per-group stats (strength volume, cardio/isometric duration, round counts); returns delta map keyed by `'strength'`, `'cardio'`, `'rounds'`, `'isometric'` |
-| `computePRs(exerciseSummaries)` | `List<PRAchievement>` | Checks best weights against historical data |
+| `computePRs(exerciseSummaries)` | `List<PRAchievement>` | Compares the session's per-exercise bests against the all-time best via `StatsProgressService.getAllTimeBestE1RM` (weight axis) and `StatsProgressService.getAllTimeBestReps` (reps axis). Collapses duplicate per-block entries to at most one record per exercise per session. Emits a weight-axis (`metricLabel: 'e1RM'`) PR for loaded exercises and a reps-axis (`metricLabel: 'reps'`) PR for bodyweight exercises — never both for the same exercise (`.github/agents/plans/stats-summary-fix-pack-plan.md` PR 1 + Item 2). |
 | `saveRoutineFromDraft(draft, {focusModality})` | `String` (template ID) | Persists a session-to-routine template |
 
 ---

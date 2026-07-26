@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../app.dart';
 import '../core/constants/omni_theme.dart';
+import '../core/services/crash_reporting_service.dart';
+import '../core/services/startup_failure_diagnostic_writer.dart';
 import '../features/startup/startup_failure_screen.dart';
 
 /// Signature for the routine that performs OmniTrain's startup work
@@ -13,6 +17,17 @@ import '../features/startup/startup_failure_screen.dart';
 /// never user-visible), and re-shows the failure screen so the user
 /// can tap Retry.
 typedef StartupRunner = Future<Widget> Function();
+typedef StartupFailureLogger = void Function(Object error, StackTrace stackTrace);
+typedef StartupFailureReporter = Future<void> Function(
+  Object error,
+  StackTrace stackTrace,
+);
+typedef StartupFailureDiagnosticPersister = Future<void> Function(
+  Object error,
+  StackTrace stackTrace,
+);
+
+final _startupFailureDiagnosticWriter = StartupFailureDiagnosticWriter.create();
 
 /// Top-level widget that owns the app's startup phase.
 ///
@@ -36,6 +51,9 @@ typedef StartupRunner = Future<Widget> Function();
 /// spinning up a real Hive repository or a real `MyApp`.
 class StartupRoot extends StatefulWidget {
   final StartupRunner startupRunner;
+  final StartupFailureLogger onStartupFailureLogged;
+  final StartupFailureReporter onStartupFailureReported;
+  final StartupFailureDiagnosticPersister onStartupFailurePersisted;
 
   /// Theme used to host the failure screen when the runner has
   /// not yet succeeded. We deliberately default to the canonical
@@ -50,8 +68,17 @@ class StartupRoot extends StatefulWidget {
   StartupRoot({
     super.key,
     required this.startupRunner,
+    StartupFailureLogger? onStartupFailureLogged,
+    StartupFailureReporter? onStartupFailureReported,
+    StartupFailureDiagnosticPersister? onStartupFailurePersisted,
     ThemeData? failureTheme,
-  }) : failureTheme = failureTheme ?? _defaultFailureTheme();
+  })  : onStartupFailureLogged =
+            onStartupFailureLogged ?? _defaultStartupFailureLogger,
+        onStartupFailureReported =
+            onStartupFailureReported ?? _defaultStartupFailureReporter,
+      onStartupFailurePersisted =
+        onStartupFailurePersisted ?? _defaultStartupFailurePersister,
+        failureTheme = failureTheme ?? _defaultFailureTheme();
   // Not const — the default failure theme is computed at
   // construction time (it routes through `buildTheme`).
 
@@ -77,6 +104,73 @@ ThemeData _defaultFailureTheme() {
     textSecondary: tokens.textSecondary,
     divider: tokens.divider,
   );
+}
+
+void _defaultStartupFailureLogger(Object error, StackTrace stackTrace) {
+  // Dev-facing startup diagnostics. This does not affect the fallback
+  // UI copy and remains invisible to end users.
+  debugPrint('OmniTrain startup failed: $error');
+  debugPrintStack(stackTrace: stackTrace);
+}
+
+Future<void> _defaultStartupFailureReporter(
+  Object error,
+  StackTrace stackTrace,
+) {
+  return CrashReportingService.recordError(
+    error,
+    stackTrace: stackTrace,
+    errorContext: 'startup.initialization',
+  );
+}
+
+Future<void> _defaultStartupFailurePersister(
+  Object error,
+  StackTrace stackTrace,
+) {
+  return _startupFailureDiagnosticWriter.writeLatestFailure(error, stackTrace);
+}
+
+Future<void> handleStartupFailure({
+  required Object error,
+  required StackTrace stackTrace,
+  required StartupFailureLogger onStartupFailureLogged,
+  required StartupFailureReporter onStartupFailureReported,
+  required StartupFailureDiagnosticPersister onStartupFailurePersisted,
+}) async {
+  try {
+    onStartupFailureLogged(error, stackTrace);
+  } catch (logError, logStack) {
+    // Observability hooks must never break startup-retry behavior.
+    debugPrint('Startup failure logger hook failed: $logError');
+    debugPrintStack(stackTrace: logStack);
+  }
+
+  try {
+    await onStartupFailureReported(error, stackTrace);
+  } catch (reportError, reportStack) {
+    // Reporting failures are non-fatal by contract.
+    debugPrint('Startup failure reporter hook failed: $reportError');
+    debugPrintStack(stackTrace: reportStack);
+  }
+
+  try {
+    // Keep this side-channel non-blocking so diagnostic IO can never
+    // delay fallback rendering or Retry availability.
+    unawaited(
+      onStartupFailurePersisted(error, stackTrace).catchError((
+        Object persistError,
+        StackTrace persistStack,
+      ) {
+        debugPrint('Startup failure diagnostic hook failed: $persistError');
+        debugPrintStack(stackTrace: persistStack);
+      }),
+    );
+  } catch (persistError, persistStack) {
+    // Covers synchronous throw from hook construction.
+    debugPrint('Startup failure diagnostic hook failed: $persistError');
+    debugPrintStack(stackTrace: persistStack);
+  }
 }
 
 class _StartupRootState extends State<StartupRoot> {
@@ -107,13 +201,13 @@ class _StartupRootState extends State<StartupRoot> {
       if (!mounted) return;
       setState(() => _runningApp = next);
     } catch (e, st) {
-      // Diagnostic-only log — the user never sees this. The
-      // requirement is explicitly "no developer terminology in
-      // the failure UI", and the previous behavior already
-      // logged to console; we preserve that for anyone tailing
-      // `flutter logs` during troubleshooting.
-      debugPrint('OmniTrain startup failed: $e');
-      debugPrintStack(stackTrace: st);
+      await handleStartupFailure(
+        error: e,
+        stackTrace: st,
+        onStartupFailureLogged: widget.onStartupFailureLogged,
+        onStartupFailureReported: widget.onStartupFailureReported,
+        onStartupFailurePersisted: widget.onStartupFailurePersisted,
+      );
     } finally {
       if (mounted) {
         setState(() => _attemptInFlight = false);
