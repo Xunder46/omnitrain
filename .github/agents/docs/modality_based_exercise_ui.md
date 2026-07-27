@@ -407,7 +407,7 @@ HomeScreen → My Routines tile
 1. User selects modality tile on home screen (e.g., "Cardio / Endurance")
 2. System creates session with `modality = 'cardio_endurance'`
 3. User taps FAB (➕) in session screen
-4. System opens `ExercisePickerDialog` with `sessionModality: 'cardio_endurance'`
+4. System opens `ExercisePickerScreen` with `sessionModality: 'cardio_endurance'`
 5. Picker shows exercises sorted by relevance score (cardio-compatible exercises first)
 6. User selects exercise (e.g., "Running")
 7. System calls `addExerciseToSession(exercise, chosenMetric: null)`
@@ -419,7 +419,7 @@ HomeScreen → My Routines tile
 
 1. User selects "Free Training" tile or starts a Routine session (modality = null)
 2. User taps FAB to add exercise
-3. System opens `ExercisePickerDialog` (no filtering)
+3. System opens `ExercisePickerScreen` (no filtering)
 4. User selects exercise (e.g., "Barbell Squat")
 5. System opens `ModalityPickerDialog` — user selects a modality for this exercise
    - **Specific modality picked** (e.g., Cardio): `effortKindOverride = ModalityConfig.forModality(modality)?.effortKind`; no metric chooser shown
@@ -431,7 +431,7 @@ HomeScreen → My Routines tile
 
 ### + New Item Exercise (Picker)
 
-1. User taps "New Exercise" in `ExercisePickerDialog`
+1. User taps "New Exercise" in `ExercisePickerScreen`
 2. App opens `ExerciseEditorScreen` (form with name, description, discipline, capabilities, muscle groups)
 3. User saves → `WorkoutState.createCustomExercise(...)` persists the new exercise
 4. Editor closes and returns the new `Exercise`
@@ -516,7 +516,7 @@ theme.colorScheme.primaryContainer
 ### Empty State
 **Condition**: No exercises in session
 **UI**: Centered message + "Add First Exercise" button
-**Flow**: Tap button → ExercisePickerDialog → Add exercise → Detail view
+**Flow**: Tap button → ExercisePickerScreen → Add exercise → Detail view
 
 ### Loading State
 **Condition**: Fetching exercises from repository
@@ -705,12 +705,12 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 **Last Updated**: April 13, 2026  
 **Author**: Automated documentation generated from codebase analysis  
 **Related Docs**: 
-- [modality_tracking.md](.github/agents/docs/modality_tracking.md) — Data layer + business logic
-- [exercise_ranking.md](.github/agents/docs/exercise_ranking.md) — Exercise picker sorting algorithm
-- [create_new_exercise.md](.github/agents/docs/create_new_exercise.md) — Create custom exercises from the picker
-- [my_routines.md](.github/agents/docs/my_routines.md) — Reusable workout template system
+- [modality_tracking.md](modality_tracking.md) — Data layer + business logic
+- [exercise_ranking.md](exercise_ranking.md) — Exercise picker sorting algorithm
+- [create_new_exercise.md](create_new_exercise.md) — Create custom exercises from the picker
+- [my_routines.md](my_routines.md) — Reusable workout template system
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

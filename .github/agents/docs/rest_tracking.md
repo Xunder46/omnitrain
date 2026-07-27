@@ -64,7 +64,14 @@ The `ON DELETE CASCADE` constraint ensures rest records are removed automaticall
 
 ### Migration
 
-`lib/data/datasources/migrations.dart` contains a `CREATE TABLE IF NOT EXISTS app_entry_rest` migration for existing databases.
+`scripts/sqlite_schema.sql` contains the `CREATE TABLE IF NOT EXISTS
+app_entry_rest` statement.
+
+> **Corrected 2026-07-26 (docs audit).** This line pointed at
+> `lib/data/datasources/migrations.dart`. That file was deleted when the
+> SQLite runtime was retired; schema statements now live in
+> `scripts/sqlite_schema.sql` itself. See
+> [DB Integration](db_integration.md#sqlite-schema-versioning).
 
 ---
 
@@ -254,4 +261,4 @@ Rest records are **never created or mutated during edit mode** (`WorkoutSessionS
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

@@ -13,8 +13,17 @@
 ### Explicit Non-Goals (v1)
 - Coaching-first experience
 - Social network features
-- Nutrition tracking
 - Advanced predictive analytics
+
+> **Corrected 2026-07-26 (docs audit).** "Nutrition tracking" was listed here
+> as an explicit non-goal. It has since shipped and is no longer out of scope.
+> The app now has a full nutrition feature: `NutritionScreen`,
+> `NutritionTargetScreen`, `AddFoodScreen`, `EditFoodScreen`, the
+> `NutritionState` / `FoodLibraryState` / `NutritionPrimerState` state classes,
+> the home-screen `NutritionSummaryCard`, a NUTRITION card on the Stats screen,
+> water tracking, and backing repository APIs plus SQLite tables. See
+> [Navigation & Screens](navigation_and_screens.md) and
+> [Nutrition State](state_management/nutrition_state.md).
 
 ---
 
@@ -202,7 +211,24 @@ Used for:
 See [Navigation & Screens](navigation_and_screens.md) for the complete screen flow and [Session Summary](session_summary.md) for what happens after a workout ends.
 
 ### Maintenance Sheet
-A draggable bottom sheet provides access to system features (Profile, Stats, Settings). All three routes are implemented. The sheet now snaps directly between collapsed (7%) and expanded (92%); the previous mid snap point was removed so opening the sheet is a single-step gesture.
+A draggable bottom sheet provides access to system features. The sheet snaps directly between collapsed (7%) and expanded (92%); the previous mid snap point was removed so opening the sheet is a single-step gesture.
+
+**Corrected 2026-07-26 (docs audit).** This section previously said the sheet
+offers "Profile, Stats, Settings — all three routes are implemented". The
+production sheet renders **four** items, in this order:
+
+| # | Item | Destination |
+|---|------|-------------|
+| 1 | Calendar | `CalendarScreen` |
+| 2 | Stats | `StatsScreen` |
+| 3 | Profile | `ProfileScreen` |
+| 4 | Settings | `SettingsScreen` |
+
+Source: `_buildMaintenanceGrid` in `lib/features/home/home_screen.dart`.
+Nutrition is **not** in the sheet — it is reached from the
+`NutritionSummaryCard` below the tile grid. See the
+[hub discrepancy flag](navigation_and_screens.md#hub-discrepancy) for the
+unresolved `HubSheet` question.
 
 Home screen never shows individual exercises.
 
@@ -322,9 +348,12 @@ No global “score” or gamification required.
 - Advanced analytics
 - Coaching logic
 - Social features
-- Nutrition tracking
 - Wearable integrations (can be layered later)
+
+> **Corrected 2026-07-26 (docs audit).** "Nutrition tracking" was listed as
+> deferred here as well. It has shipped — see the note under
+> [Explicit Non-Goals](#explicit-non-goals-v1).
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

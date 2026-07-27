@@ -400,7 +400,7 @@ When adding a new exercise, default targets depend on effort kind:
 
 Unlike modality-driven sessions, routines always show the `MetricChooserDialog` (since routines have no modality preset):
 
-1. Tap (+) → `ExercisePickerDialog` (no modality filter, all exercises shown)
+1. Tap (+) → `ExercisePickerScreen` (no modality filter, all exercises shown)
 2. Select exercise → `MetricChooserDialog` (user picks tracking method based on exercise capabilities)
 3. Returns `effortKind` derived from `ModalityConfig.effortKindFromMetric(chosenMetric)`
 4. Exercise added to routine with chosen tracking type
@@ -445,10 +445,32 @@ The My Routines tile glows active when the current session's `intent == 'routine
 
 **Rationale**: A single routine may mix tracking types (e.g., "Circuit Day" with timed cardio + rep-based strength + hold-based stretching). Forcing a modality would limit flexibility.
 
-### 2. Single Segment Per Routine
-**Decision**: Each routine gets one `TemplateSegment` of type `'mixed'`.
+### 2. Multiple Segments (Blocks) Per Routine
+**Decision**: A routine holds one or more `TemplateSegment` rows, each with a
+name and a segment type.
 
-**Rationale**: Segment grouping (e.g., "Warm-up", "Main Set", "Cool-down") is deferred to a future version. MVP prioritizes getting exercises into routines quickly.
+> **Corrected 2026-07-26 (docs audit).** This section previously read *"Single
+> Segment Per Routine — each routine gets one `TemplateSegment` of type
+> `'mixed'`"*, with the rationale that *"segment grouping (e.g. Warm-up, Main
+> Set, Cool-down) is deferred to a future version"*. **That grouping has
+> shipped** — and with very nearly the labels the doc used as its example of
+> what was deferred.
+
+`RoutineSetupScreen` renders one card per segment, offers an **Add Block**
+button (`_addSegment`), lets segments be reordered
+(`RoutineState.reorderSegments`), and names an unnamed segment
+`Block {index + 1}`. The available segment types are:
+
+| Type | Typical use |
+|------|-------------|
+| `warmup` | Warm-up |
+| `main` | Main set (the default for `RoutineState.addSegment`) |
+| `accessory` | Accessory work |
+| `finisher` | Finisher |
+| `cooldown` | Cool-down |
+
+Source: `_segmentTypes` in `lib/features/routine/routine_setup_screen.dart`
+and `RoutineState.addSegment({String? name, String segmentType = 'main'})`.
 
 ### 3. Session Intent = 'routine'
 **Decision**: Sessions created from routines carry `intent: 'routine'` to distinguish them from ad-hoc sessions.
@@ -551,4 +573,4 @@ The My Routines tile glows active when the current session's `intent == 'routine
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
