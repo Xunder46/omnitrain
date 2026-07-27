@@ -212,6 +212,15 @@ String _formatRestElapsed(String effortId, int entryIndex) {
 
 The overlay refreshes on every `_ticker` tick (1 second, already exists for round timers) — no additional `Timer.periodic` is required.
 
+The current chip is **display-only**. `_buildRestOverlayChip` returns a decorated
+`Container`, not an interactive control; `EntryRest` stores only start/end
+timestamps and cannot represent a paused interval. Logging the next entry or
+starting an effort timer still closes open rest as described above.
+
+> **Scheduled, not current:** feedback-pack PR 4 adds whole-tile pause/resume,
+> reload-safe counted duration that excludes stopped time, and distinct
+> not-started/running/stopped presentation.
+
 ---
 
 ## Effort Kind Coverage
@@ -237,7 +246,7 @@ As part of the full rest tracking implementation, the `_isSetLogged()` method wa
 
 ## Relationship to Legacy `EffortObservation.restDurationMs`
 
-`EffortObservation.restDurationMs` already exists and is stored in the SQLite schema, but it only applied to `set`-kind efforts and was never populated in the UI. `EntryRest` supersedes it for all effort kinds. The column remains in the schema unused — no migration is needed to remove it.
+`EffortObservation.restDurationMs` remains in the canonical SQL schema documentation, but it only applied to `set`-kind efforts and was never populated in the UI. `EntryRest` supersedes it for all effort kinds. The column is not part of the retired SQLite runtime path; no live persistence migration is needed to remove it.
 
 ---
 
@@ -255,10 +264,10 @@ Rest records are **never created or mutated during edit mode** (`WorkoutSessionS
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: March 22, 2026
+**Document Version**: 1.1
+**Last Updated**: July 27, 2026
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

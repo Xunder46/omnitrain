@@ -54,18 +54,27 @@ re-runs `_runStartup` from the top without rerunning the bootstrap
 initialised and primed to capture the next throw).
 
 `StartupRoot` (defined in `lib/app/startup_root.dart`) is the top-level
-widget that owns the startup phase. On `initState` it calls the
-`startupRunner` once. Three outcomes:
+widget that owns the startup attempt. Its **current implementation does not
+model preparation separately from failure**: `_runningApp == null` covers both
+"runner still in flight" and "runner threw", so `build()` renders
+`StartupFailureScreen` in both cases. `_attemptInFlight` only disables/spins the
+Retry control. Current outcomes:
 
-- **Success** — runner returns a widget → that widget mounts and
-  becomes the running app. The failure screen never renders. This is
-  the normal-launch path.
-- **Failure** — runner throws → the failure screen renders with a
-  Retry button. The throw is logged for diagnostics only and is never
-  user-visible.
-- **Retry** — user taps Retry → the runner is re-invoked from the
-  top. Success lands on the running app; a second failure re-shows
-  the failure screen. The cycle can repeat indefinitely.
+- **Preparing (visually conflated with failure)** — the first attempt starts
+  from `initState`; until it completes, the failure surface is already in the
+  tree. A healthy launch can therefore show a failure-screen frame.
+- **Succeeded** — runner returns a widget → `_runningApp` is set and that widget
+  mounts as the running app.
+- **Genuinely failed** — runner throws → diagnostics run and the same failure
+  surface remains, now with Retry enabled.
+- **Retry** — Retry invokes the runner from the top. During the attempt the same
+  surface remains with Retry disabled; success mounts the app and another
+  failure re-enables Retry.
+
+> **Scheduled, not current:** PR 2 in the
+> [2026-07-27 feedback-pack queue](../plans/2026-07-27-00-feedback-pack-shipping-order.md)
+> introduces distinct preparing/succeeded/failed rendering. Preparation must be
+> neutral, and a successful launch must never pass through failure content.
 
 `runStartup` (in `lib/main.dart`) performs the same work the entry
 point did previously:
@@ -92,7 +101,7 @@ _runStartup()
 
 `MyApp` is a `StatelessWidget` that:
 - Builds the theme via `buildTheme()`
-- Sets `MaterialApp.home` based on the `showOnboarding` flag (read from SQLite preference `onboarding_complete` in `_runStartup`):
+- Sets `MaterialApp.home` based on the `showOnboarding` flag (read through the Hive-backed repository preference `onboarding_complete` in `_runStartup`):
   - Fresh install (`onboarding_complete` absent or `false`) → `OnboardingScreen`
   - Returning user (`onboarding_complete = true`) → `HomeScreen`
 - Passes all dependencies via constructor
@@ -110,33 +119,21 @@ StartupRoot → (startup failure)                                  → StartupFa
 ```
 HomeScreen
   │
-  ├── Modality Tile (1 of 5) ──→ SessionOverviewScreen (creates session)
-  │                                  │
-  │                                  ├── Add Exercise → ExercisePickerScreen (page push)
-  │                                  │                    └── [ModalityPickerDialog] (if null modality: pick modality or General)
-  │                                  │                         └── [MetricChooserDialog] (if General picked)
-  │                                  │                         └── → WorkoutSessionScreen (auto-navigate, focused on new exercise)
-  │                                  │
-  │                                  └── Start Workout → WorkoutSessionScreen
-  │                                                        │
-  │                                                        ├── finish → **pushReplacement** → SessionSummaryScreen
-  │                                                        │   (back after finish pops to caller; cannot resume active session)
-  │                                                        │                       │
-  │                                                        ├── back → SessionSummaryScreen
-  │                                                        │                       │
-  │                                                        │                       ├── Edit Session → SessionOverviewScreen (push)
-  │                                                        │                       ├── Save as Routine → bottom sheet
-  │                                                        │                       │      └── Add Exercise → ExercisePickerScreen
-  │                                                        │                       │            (pushed from inside the sheet)
-  │                                                        │                       ├── Open Calendar → CalendarScreen (push)
-  │                                                        │                       │      — or pops back when openedFromCalendar
-  │                                                        │                       ├── Discard → popUntil(isFirst)
-  │                                                        │                       └── Done → popUntil(isFirst)
-  │                                                        │
-  │                                                        └── Add Exercise → ExercisePickerScreen (page push)
-  │                                                              └── [ModalityPickerDialog] (if null modality: pick modality or General)
-  │                                                                    └── [MetricChooserDialog] (if General picked)
-  │                                                              └── [ExerciseEditorScreen] (create custom)
+  ├── Modality Tile (Cardio / Resistance / Sports / Isometric)
+  │      → creates session → WorkoutSessionScreen
+  │            ├── first empty load schedules ExercisePickerScreen automatically
+  │            │     └── selected exercise returns to focused detail view
+  │            ├── Add Exercise → ExercisePickerScreen (page push)
+  │            │     └── [ModalityPickerDialog] (null modality only)
+  │            │           └── [MetricChooserDialog] (General only)
+  │            ├── Add Block → creates a session block in place
+  │            ├── finish → **pushReplacement** → SessionSummaryScreen
+  │            │     ├── Edit Session → SessionOverviewScreen (push)
+  │            │     ├── Save as Routine → bottom sheet
+  │            │     ├── Open Calendar → CalendarScreen (push)
+  │            │     ├── Discard → popUntil(isFirst)
+  │            │     └── Done → popUntil(isFirst)
+  │            └── back → SessionSummaryScreen
   │
   ├── My Routines Tile ──→ (if routine session active) → WorkoutSessionScreen
   │                     ──→ (else) → MyRoutinesScreen
@@ -151,8 +148,9 @@ HomeScreen
   │
   ├── Free Training Tile ──→ Free Training start sheet
   │                            ├── Rolling Session toggle
-  │                            └── Start Session ──→ WorkoutSessionScreen (modality = null)
-  │                                                  └── Empty finish discards the session and returns to HomeScreen
+  │                            └── Start Session ──→ WorkoutSessionScreen
+  │                                  ├── empty first load auto-opens ExercisePickerScreen
+  │                                  └── empty finish discards the session and returns to HomeScreen
   │
   ├── NutritionSummaryCard (below the tile grid) ──→ NutritionScreen
   │      (first-ever tap shows NutritionPrimerSheet, then pushes)
@@ -345,8 +343,13 @@ Cold-start persistence resume:
 - If multiple dangling sessions exist, only the most recent is surfaced; older ones are cleaned up by state.
 
 When tapping a different modality tile while a session is active:
-- A confirmation dialog appears: "Start New Session? Current session will not be saved."
-- Confirming ends the current session and creates a new one
+- A confirmation dialog appears: "Start New Session? Current session will be saved."
+- Confirming clears the current in-memory session selection and creates a new session
+
+> **Scheduled, not current:** PR 6 removes the first-load picker auto-open and
+> leaves the user on the neutral empty session with equally weighted Add Exercise
+> and Add Block choices. Routine-populated sessions continue to bypass the empty
+> state.
 
 ---
 
@@ -358,10 +361,10 @@ When tapping a different modality tile while a session is active:
 
 ---
 
-**Document Version**: 1.7
-**Last Updated**: June 7, 2026
+**Document Version**: 1.8
+**Last Updated**: July 27, 2026
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

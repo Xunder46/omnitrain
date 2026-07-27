@@ -290,8 +290,13 @@ switch (effortKind) {
 - Elapsed time is read from `workoutState.getRestElapsedSeconds(effortId, entryIndex)` on each `_ticker` tick (wall-clock derived from `EntryRest.startedAtMs`)
 - Displays elapsed rest time (MM:SS format)
 - Positioned in lower screen area (above controls, non-intrusive)
+- The current chip is display-only: it has no tap handler and `EntryRest` has no paused/stopped state
 - Hides when the next effort timer starts (overlay check gates on `hasRestRecord`)
 - Independent of effort timers — rest records are keyed per effortId+entryIndex, not globally
+
+> **Scheduled, not current:** feedback-pack PR 4 makes the whole rest tile
+> toggle persisted pause/resume state and visually distinguishes not-started,
+> running, and stopped states.
 
 **Visual Design**:
 ```dart
@@ -346,13 +351,16 @@ Detail view now uses two distinct control rows instead of a single toolbar.
 - removing a logged entry shows a confirmation dialog
 - removing the last remaining entry shows a stronger confirmation because it deletes the whole exercise from the session
 
-**Swipe Gestures** (Detail View):
-- **Horizontal swipes**:
-  - Swipe right (velocity > 500): Previous set
-  - Swipe left (velocity < -500): Skip set
-- **Vertical swipes**:
-  - Swipe up (velocity < -300): Next exercise
-  - Swipe down (velocity > 300): Previous exercise
+**Current Screen-Level Swipe Gestures** (workout detail view):
+- The detector uses `primaryVelocity` with an absolute threshold of `200`.
+- **Horizontal**: right → previous set; left → next/skip set (`_nextSetInEditMode` while editing).
+- **Vertical**: up → next exercise; down → previous exercise.
+- Routine setup detail currently mirrors the same four gestures; see [My Routines](my_routines.md).
+- Metric/number scrollers own separate drag handlers; do not confuse those value-edit gestures with screen-level navigation.
+
+> **Scheduled, not current:** feedback-pack PR 2 removes all four screen-level
+> navigation gestures from workout and routine detail, adds no replacement
+> gesture, and preserves explicit controls and number-scroller sensitivity.
 
 ### 7. List View vs Detail View Toggle
 
@@ -514,9 +522,11 @@ theme.colorScheme.primaryContainer
 ## Edge Cases and Error Handling
 
 ### Empty State
-**Condition**: No exercises in session
-**UI**: Centered message + "Add First Exercise" button
-**Flow**: Tap button → ExercisePickerScreen → Add exercise → Detail view
+**Condition**: No exercises or blocks in the session.
+
+**Current first-load behavior**: after an empty non-edit session loads, `_shouldAutoOpenPicker()` schedules `_addExercise()`, so `ExercisePickerScreen` opens automatically. If the picker is dismissed, the underlying list surface exposes Add Exercise (filled) and Add Block (outlined); the actions are not equally weighted. A rolling session with an existing block and a routine-populated session bypass this auto-open condition.
+
+> **Scheduled, not current:** feedback-pack PR 6 removes auto-open and makes the neutral empty session's Add Exercise/Add Block choices equally weighted.
 
 ### Loading State
 **Condition**: Fetching exercises from repository
@@ -701,10 +711,10 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 
 ---
 
-**Document Version**: 1.4  
-**Last Updated**: April 13, 2026  
-**Author**: Automated documentation generated from codebase analysis  
-**Related Docs**: 
+**Document Version**: 1.5
+**Last Updated**: July 27, 2026
+**Author**: Automated documentation generated from codebase analysis
+**Related Docs**:
 - [modality_tracking.md](modality_tracking.md) — Data layer + business logic
 - [exercise_ranking.md](exercise_ranking.md) — Exercise picker sorting algorithm
 - [create_new_exercise.md](create_new_exercise.md) — Create custom exercises from the picker
@@ -713,4 +723,4 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

@@ -11,6 +11,14 @@
 > [`docs-audit-2026-07-26.md`](docs-audit-2026-07-26.md) for the full summary
 > and the list of things left unresolved.
 >
+> **Feedback-pack baseline — 2026-07-27.** Before PRs 2–8, the startup,
+> gesture, routine, session-entry, rest, nutrition, exercise-ownership, and
+> maintenance-sheet surfaces were rechecked against `lib/`. Read
+> [`feedback-pack-baseline-2026-07-27.md`](feedback-pack-baseline-2026-07-27.md)
+> for verified current behavior and the explicit current-vs-planned boundary.
+> The linked [shipping order](../plans/2026-07-27-00-feedback-pack-shipping-order.md)
+> takes precedence over the pending 2026-07-13 plans.
+>
 > **Size ceiling:** no file in this folder may exceed **64 KiB** — larger files
 > are silently skipped by the indexers that serve these docs to agents.
 > Enforced by `test/docs_indexing_contract_test.dart`.
@@ -27,7 +35,7 @@ This documentation describes the architecture, features, and conventions of Omni
 
 - **Tech stack**: Flutter (Dart), Hive (persistence), ChangeNotifier (state), Constructor DI
 - **No** Provider/Riverpod/Bloc — all dependencies are injected manually from `main.dart`
-- **Repository pattern**: `WorkoutRepository` interface with `HiveWorkoutRepository` (current) and future `SqliteWorkoutRepository`
+- **Repository pattern**: `WorkoutRepository` interface with `HiveWorkoutRepository` (runtime) and `MockWorkoutRepository` (tests/dev); the SQLite runtime is retired
 - **Navigation**: Imperative, but always through `OmniNavigator` (`lib/core/navigation/`) — no named routes or declarative routers, and raw `MaterialPageRoute` / `PageRouteBuilder` outside that module is a build break
 
 Beyond training, the app also ships **nutrition tracking** (daily calorie
@@ -43,6 +51,7 @@ non-overlapping training periods).
 | Document | Description |
 |----------|-------------|
 | [Global Conventions](global_conventions.md) | Cross-cutting rules that apply to every task: units and canonical storage, theme tokens, effort-kind analytics, timestamps, and product guardrails |
+| [2026-07-27 Feedback-Pack Baseline](feedback-pack-baseline-2026-07-27.md) | Source-verified current behavior before PRs 2–8, downstream desired behavior kept separate, and the ordered delivery queue |
 
 ### Product & Philosophy
 | Document | Description |
@@ -108,7 +117,6 @@ lib/
 │   └── utils/            # ObservationGrouper, ExerciseHelpers, TimerAlertService,
 │                         #   UnitFormatter, FuzzySearch, OmniDateUtils, …
 ├── data/
-│   ├── datasources/      # DatabaseProvider (SQLite), migrations
 │   ├── models/           # 30+ pure Dart model classes (models.dart)
 │   └── repositories/     # WorkoutRepository interface + Hive and Mock implementations
 ├── features/
@@ -173,7 +181,7 @@ Exercises have capability flags (`time`, `reps`, `load`, `hold`, `rounds`, `dist
 - No duplicate exercises needed for different modalities
 
 ### 3. Repository Pattern Is Law
-All data access goes through `WorkoutRepository` interface. State classes never import concrete repository implementations. This enables swapping between Hive (web/current) and SQLite (native/future) with zero code changes.
+All data access goes through the `WorkoutRepository` interface. State classes never import concrete repository implementations. `HiveWorkoutRepository` is the runtime implementation on every platform; `MockWorkoutRepository` provides in-memory test/dev compatibility. The SQLite runtime has been retired.
 
 ### 4. Immediate Persistence
 Every metric change is persisted immediately via the repository — no "save" button, no unsaved state. If the app crashes mid-workout, data is preserved.
@@ -209,7 +217,7 @@ Profile measurement rules implemented in code:
 ### For the DBA Agent
 - Every schema change must update the `WorkoutRepository` interface first
 - Then implement in `HiveWorkoutRepository` (in-memory boxes)
-- Update `scripts/sqlite_schema.sql` and `scripts/sqlite_seed.sql` for future SQLite
+- Update `scripts/sqlite_schema.sql` and `scripts/sqlite_seed.sql` when the canonical data-model contract changes, even though SQLite is not a runtime backend
 - Models in `lib/data/models/models.dart` must be pure Dart (no Flutter imports)
 
 ### For the Designer Agent
@@ -236,8 +244,8 @@ Documents that describe a past snapshot, a superseded design, or a single-purpos
 Current contents:
 
 - [`history/route-migration-audit.md`](history/route-migration-audit.md) — the original `centralized-route-system` migration audit (May–June 2026). Superseded as the enforcement mechanism by [`test/navigation_contract_enforcement_test.dart`](../../../test/navigation_contract_enforcement_test.dart); the test wins on disagreement.
-**Last Updated**: July 26, 2026
+**Last Updated**: July 27, 2026
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

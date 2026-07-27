@@ -1,5 +1,11 @@
 # My Routines — Feature Documentation
 
+> **2026-07-27 current-state boundary:** Card bodies currently start routines,
+> routine detail currently supports horizontal/vertical swipe navigation, and
+> routine exits currently have no unsaved-changes confirmation. PRs 2, 5, and 6
+> in the [feedback-pack baseline](feedback-pack-baseline-2026-07-27.md) change
+> those contracts; their desired behavior is not yet shipped.
+
 ## Overview
 
 **My Routines** allows users to create, save, edit, and replay reusable workout templates. A routine defines a list of exercises with per-set target values (reps, weight, duration, etc.) that can be loaded into a live workout session with a single tap. This eliminates repetitive setup for recurring training patterns.
@@ -74,6 +80,10 @@ MyRoutinesScreen → Tap a routine card
 If an active session exists, a confirmation dialog appears:
 > "Starting a routine will start a new session. Current session will not be saved."
 
+> **Scheduled, not current:** feedback-pack PR 6 changes the card body to open
+> `RoutineSetupScreen` without creating a session. A separate, non-overlapping
+> start control retains the manifest/session flow above.
+
 ### 4. Editing a Routine
 ```
 MyRoutinesScreen → Tap ⋮ menu on routine card → "Edit"
@@ -82,6 +92,16 @@ MyRoutinesScreen → Tap ⋮ menu on routine card → "Edit"
     → Tap "Save"
   → Returns to MyRoutinesScreen (updated)
 ```
+
+Current routine-detail screen gestures use the same `200` velocity threshold as
+workout detail: right/left selects the previous/next set and up/down selects the
+next/previous exercise. Feedback-pack PR 2 removes these screen-level gestures
+without changing metric scrollers or explicit controls.
+
+Header back, system back, and bottom Cancel currently clear the working routine
+and exit without a dirty-state comparison. When detail is open, system back
+first returns to the list. Feedback-pack PR 5 adds the shared unsaved-changes
+guard; that guard is not current behavior.
 
 ### 5. Deleting a Routine
 ```
@@ -321,6 +341,8 @@ HomeScreen
   - Built-in demo routines carry a subtle "Demo" badge (via `DemoRoutineBadge`) sourced from `OmniTheme` typography + `colorScheme.primary` tokens. The badge is purely informational; demo rows are still editable, startable, and deletable like user rows.
   - Tap card → starts routine as session
   - ⋮ menu → Edit or Delete
+  - No current unsaved-changes prompt protects routine setup exits
+  - Routine detail currently navigates sets/exercises with horizontal/vertical swipes at a `200` velocity threshold
 - **Primary bottom CTA**: `OmniBottomCTA(label: '+ New Routine', ...)` anchored via `Scaffold.bottomNavigationBar` — the shared full-width, safe-area-anchored footer action (see [widget_catalog.md → OmniBottomCTA](widget_catalog.md)). The list's bottom padding uses `OmniTheme.formBottomCTAClearance` so the last routine card clears the CTA. Replaces the legacy `FloatingActionButton` so the routines screen matches the unified bottom-CTA pattern used by the calendar day list, food library, etc.
 - **Active session indicator**: If current session is a routine session (`intent == 'routine'`), the My Routines home tile glows active
 
@@ -377,9 +399,10 @@ Dual-view screen for building/editing a routine.
   - add-set button on the right
 - Remove-set is only enabled on the final entry when more than one set exists; add-set is capped by `WorkoutConstants.maxEntriesPerEffort`
 - **Previous set stats**: Shows last set's values for reference (e.g., "Previous: 10 reps @ 135.0 lbs")
-- **Swipe gestures**:
-  - Horizontal: Navigate between sets
-  - Vertical: Navigate between exercises
+- **Current screen-level swipe gestures** (absolute primary-velocity threshold `200`):
+  - Horizontal: right/left navigates to previous/next set
+  - Vertical: up/down navigates to next/previous exercise
+  - Feedback-pack PR 2 removes these handlers without replacement; metric scrollers and explicit arrows remain
 
 This detail view was intentionally brought into closer parity with the live `WorkoutSessionScreen` so routine editing and live execution share the same mental model.
 
@@ -398,12 +421,15 @@ When adding a new exercise, default targets depend on effort kind:
 
 ### Exercise Addition Flow (Routine Context)
 
-Unlike modality-driven sessions, routines always show the `MetricChooserDialog` (since routines have no modality preset):
+Routines have an optional Focus Modality and do not filter the picker library:
 
-1. Tap (+) → `ExercisePickerScreen` (no modality filter, all exercises shown)
-2. Select exercise → `MetricChooserDialog` (user picks tracking method based on exercise capabilities)
-3. Returns `effortKind` derived from `ModalityConfig.effortKindFromMetric(chosenMetric)`
-4. Exercise added to routine with chosen tracking type
+1. Tap (+) → `ExercisePickerScreen` with the full library.
+2. Select an exercise.
+3. If Focus Modality is set, add immediately with that modality's effort kind.
+4. If Focus Modality is null (Mixed), open `ModalityPickerDialog`; the selected modality determines the effort kind.
+5. "Change Tracking" remains an explicit per-exercise override in either case.
+
+Changing Focus Modality does not rewrite existing efforts; only exercises added afterward inherit the new value.
 
 ---
 
@@ -440,10 +466,10 @@ The My Routines tile glows active when the current session's `intent == 'routine
 
 ## Key Design Decisions
 
-### 1. Routines Are Modality-Agnostic
-**Decision**: Routines do not have a preset modality. Each exercise in a routine independently chooses its tracking type via the metric chooser.
+### 1. Optional Focus Modality
+**Decision**: A routine may set a Focus Modality or remain Mixed (`null`). The picker still shows the full exercise library.
 
-**Rationale**: A single routine may mix tracking types (e.g., "Circuit Day" with timed cardio + rep-based strength + hold-based stretching). Forcing a modality would limit flexibility.
+**Rationale**: Focus Modality supplies a low-friction default effort kind for newly added exercises while Mixed routines can choose per exercise. Existing exercises are not retroactively rewritten when focus changes.
 
 ### 2. Multiple Segments (Blocks) Per Routine
 **Decision**: A routine holds one or more `TemplateSegment` rows, each with a
@@ -477,10 +503,10 @@ and `RoutineState.addSegment({String? name, String segmentType = 'main'})`.
 
 **Rationale**: Enables the home screen to correctly highlight the My Routines tile when a routine session is active, rather than highlighting a modality tile.
 
-### 4. Metric Chooser Always Shown
-**Decision**: The metric chooser dialog always appears when adding exercises to a routine (unlike modality sessions where the tracking method is auto-determined).
+### 4. Focus Default with Per-Exercise Override
+**Decision**: Focused routines derive the initial tracking kind without another prompt; Mixed routines ask for a modality. "Change Tracking" can override either result per exercise.
 
-**Rationale**: Without a modality context, the system cannot infer the tracking method. The user must explicitly choose.
+**Rationale**: Preserve quick setup when intent is known without removing mixed-modality routines or explicit correction.
 
 ### 5. Copy-From-Previous Set Defaults
 **Decision**: New sets auto-fill from the previous set's targets.
@@ -566,11 +592,11 @@ and `RoutineState.addSegment({String? name, String segmentType = 'main'})`.
 
 ---
 
-**Document Version**: 1.1
-**Last Updated**: February 15, 2026
+**Document Version**: 1.2
+**Last Updated**: July 27, 2026
 **Author**: Automated documentation generated from codebase analysis
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

@@ -283,6 +283,10 @@ one-note-per-exercise rule.
 > introduce one on the assumption that `ownerUserId` is a reliable
 > discriminator for pre-existing rows without checking migration history
 > first.
+>
+> **2026-07-27 downstream boundary:** PR 7 needs reliable custom markers and PR 8
+> needs custom-only filtering plus built-in immutability. Those plans may require
+> a durable ownership migration; nullable `ownerUserId` is not yet that contract.
 
 **Extension methods** (in `lib/core/utils/exercise_helpers.dart`):
 - `supports(String capability)` — single capability check
@@ -677,8 +681,8 @@ the matching `FoodGroup.id` from `SeedData.defaultFoodGroups`
 - Pre-existing installs (with `notes: 'Proteins'` etc. and
   `group_id = NULL`) are backfilled by the Hive one-shot migration
   `food_category_groupid_migrated_v1` — see `db_integration.md` for
-  details and the equivalent SQL block in `scripts/sqlite_schema.sql`
-  for the future SQLite importer.
+  details and the equivalent SQL contract block in
+  `scripts/sqlite_schema.sql`.
 
 ### ConsumedFood
 
@@ -835,9 +839,9 @@ MetricDefinition ←── UnitModel
 ---
 
 **Document Version**: 1.4
-**Last Updated**: June 5, 2026
+**Last Updated**: July 27, 2026
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
