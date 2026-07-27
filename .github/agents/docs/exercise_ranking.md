@@ -12,7 +12,7 @@ This document describes how exercises are ranked and sorted for a given session 
 - Repository entrypoint: `lib/data/repositories/mock_workout_repository.dart` — implements `getExercisesRankedForModality(...)` for the mock data source.
 - Public state wrapper: `lib/state/workout/workout_state.dart` — delegates to the repository and exposes `getExercisesRankedForModality` to UI code.
 - Modality configuration & scoring helpers: `lib/core/constants/modality_config.dart` — defines `ModalityConfig` and contains the scoring logic (`calculateRelevanceScore`).
-- Consumer/UI: `lib/widgets/pickers/exercise_picker_dialog.dart` — previously partitioned the returned list into sections; UI now consumes the repository-sorted list.
+- Consumer/UI: `lib/features/exercise/exercise_picker_screen.dart` — previously partitioned the returned list into sections; UI now consumes the repository-sorted list.
 
 ## Inputs
 
@@ -52,7 +52,7 @@ Note: the precise numeric weights live in `ModalityConfig.forModality` / `calcul
 
 ## UI considerations
 
-- The UI (`ExercisePickerDialog`) requests `getExercisesRankedForModality(modality, ...)` and receives a sorted list.
+- The UI (`ExercisePickerScreen`) requests `getExercisesRankedForModality(modality, ...)` and receives a sorted list.
 - Previously the dialog partitioned results into "Recommended" (exercises supporting the modality's primary metric) and "Other exercises"; that partitioning has been removed and the list is displayed in the repository's sorted order.
 
 ## Example pseudocode
@@ -88,7 +88,7 @@ return scored.map((s) => s.exercise).toList();
 
 - `lib/core/constants/modality_config.dart` — adjust primary/secondary/anti capability lists and weights.
 - `lib/data/repositories/mock_workout_repository.dart` — port to SQLite: the same input/output contract should be preserved.
-- `lib/widgets/pickers/exercise_picker_dialog.dart` — decide whether to reintroduce UI grouping by thresholds or display score badges.
+- `lib/features/exercise/exercise_picker_screen.dart` — decide whether to reintroduce UI grouping by thresholds or display score badges.
 
 ---
 Generated: automated documentation added to repository.
@@ -96,4 +96,4 @@ Generated: automated documentation added to repository.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

@@ -1,0 +1,276 @@
+# Workout Session State
+
+> Part of [State Management & Services](../state_management.md). Return to the index for the full class list and dependency graph.
+
+---
+
+### `WorkoutState` (Facade)
+
+**File**: `lib/state/workout/workout_state.dart`
+**Depends on**: `WorkoutRepository`
+
+Thin `ChangeNotifier` facade. Constructs and holds `TimerManager`, `ExerciseLibrary`, and `SessionCore`, then delegates every public getter and method to the appropriate sub-holder. No business logic lives here.
+
+**Construction order** (cross-references require this sequence):
+```dart
+_timerManager    = TimerManager(_repository, notify: notifyListeners);
+_exerciseLibrary = ExerciseLibrary(_repository, notify: notifyListeners);
+_sessionCore     = SessionCore(
+  _repository,
+  notify: notifyListeners,
+  timerManager: _timerManager,
+  exerciseLibrary: _exerciseLibrary,
+);
+```
+
+Each sub-holder receives `notify: () => notifyListeners()` so all `notifyListeners()` calls still fire once from the single `ChangeNotifier` that consumers subscribe to. No consumer screen or test changes are required.
+
+**`notify` callback pattern**: Sub-holders are plain Dart objects (not ChangeNotifiers). They call the injected `notify` callback in place of `notifyListeners()`. This preserves the single-listener model and avoids the double-dispatch overhead of chaining multiple ChangeNotifiers.
+
+#### Active Session Persistence Helpers
+
+`WorkoutState` includes cold-start lifecycle helpers that are intentionally facade-level (not in `SessionCore`):
+
+| Method | Purpose |
+|--------|---------|
+| `checkForInProgressSession()` | Reads repository `getInProgressSessions()`, returns most recent dangling session, and best-effort deletes older duplicates |
+| `deleteSessionById(String id)` | Deletes a session by id without mutating current in-memory session |
+| `countSetsForSession(String sessionId)` | Read-only aggregate count of `EffortObservation` rows across all session segments/efforts for resume dialog display |
+
+These methods keep feature screens on the state boundary and avoid direct repository access from `features/`.
+
+---
+
+---
+
+### `SessionCore`
+
+**Files** (split for maintainability):
+- `session_core.dart` — core fields, getters, query methods (~211 lines)
+- `session_core_io.dart` — I/O operations (load, save, update) (~281 lines)
+- `session_core_entry.dart` — entry/exercise CRUD (~394 lines)
+- `session_core_lifecycle.dart` — session lifecycle management (~292 lines)
+
+**Depends on**: `WorkoutRepository`, `TimerManager`, `ExerciseLibrary`
+
+Handles all session lifecycle and CRUD concerns (Cluster A of the original `WorkoutState`). Calls `timerManager.addRound` / `addTimedEntry` when creating timer-based entries; calls `exerciseLibrary.clearNoteCache()` from `clearSession()`.
+
+#### SyncService Integration Surface (forward-looking)
+
+When cloud sync is added, `SyncService` will be injected into `SessionCore` at construction time:
+
+```dart
+// SessionCore(_repository, syncService: SyncService?, notify: ..., ...)
+//
+// After each successful repository write:
+// await _repository.createSession(session);
+// syncService?.queueCreate(SyncEntity.session, session);
+```
+
+The same pattern applies to `TimerManager` for `RoundInstance`/`TimedInstance` records and to `ExerciseLibrary` for exercise and note writes.
+
+#### Key State Fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `_currentSession` | `TrainingSession?` | Active session |
+| `_segments` | `List<SessionSegment>` | Session segments (usually one) |
+| `_efforts` | `Map<String, List<SegmentEffort>>` | Efforts keyed by segment ID |
+| `_observations` | `Map<String, List<EffortObservation>>` | Observations keyed by effort ID |
+| `_sessionBlocks` | `Map<String, List<SessionBlock>>` | Blocks keyed by session ID |
+| `_exerciseCache` | `Map<String, Exercise>` | Cache of exercise definitions for active session |
+| `_currentModalityConfig` | `ModalityConfig?` | Active modality config |
+| `_isLoading` | `bool` | Loading state |
+| `_error` | `String?` | Last error message |
+
+#### Session Lifecycle Methods
+
+| Method | Purpose |
+|--------|---------|
+| `createNewSession({modality, title, intent, routineTemplateId, isRolling})` | Creates session + segment; `isRolling` (bool, default `false`) sets `TrainingSession.isRolling` |
+| `loadSessionData()` | Loads exercises, efforts, observations for current session |
+| `loadHistoricalSession(session)` | Loads a previously completed session for review/edit mode; sets `_currentModalityConfig` correctly from `session.modality` |
+| `endSession()` | Marks session as ended (`endedAtMs`); idempotent — no-op if session already has `endedAtMs` |
+| `clearSession()` | Removes session reference from state (doesn't delete data) |
+| `discardCurrentSession()` | Deletes session and all related data |
+| `updateSessionNote(note)` | Updates session note |
+| `updateSessionEndTime(durationSecs)` | Edit-mode only — sets `endedAtMs = startedAtMs + durationSecs × 1000`; no-op if `durationSecs ≤ 0` |
+| `updateSessionFeeling(feeling)` | Persists a 1-5 feeling score to `TrainingSession.sessionFeeling`; updates `_currentSession` in-place |
+| `isRollingSession` | Getter — returns `true` when the active session has `isRolling == true`; returns `false` when no session is loaded |
+
+#### Exercise Management
+
+| Method | Purpose |
+|--------|---------|
+| `addExerciseToSession(exercise, {chosenMetric})` | Hydrates the cached exercise via `_repository.getExerciseById(exercise.id)` so the session cache carries the canonical capabilities (matching how the exercise browser presents them), then creates the effort with the correct `effortKind`. The caller's `Exercise` is used as a fallback only if the repository doesn't know the id. |
+| `removeExerciseFromSession(effortId)` | Deletes effort + observations + rounds |
+| `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance |
+| `createCustomExercise(name, {modality, ...})` | Creates new exercise in repository with persisted modality key |
+| `updateCustomExercise(exercise, {...})` | Updates existing exercise metadata + capability/muscle-group associations via repository interface |
+
+#### Observation Management
+
+| Method | Purpose |
+|--------|---------|
+| `addEntry(effortId, {previousValues})` | Creates a new set/interval/round/drill. The optional `previousValues` map carries forward metrics from the prior entry into the new observation rows / round instance — see the per-effort-kind table below. Keys not present fall back to the app-wide defaults (`reps=10`, `weight=0.0`, `extra-weight=0.0`, `round-duration=WorkoutConstants.defaultRoundDurationSecs` or the exercise's `defaultRoundDurationSecs`). The carry-forward is read-only on the prior entry — `previousValues` only seeds the new entry's defaults, it does not mutate prior observations. The `_addSet` caller in `workout_session_screen.dart` populates `previousValues` from the prior entry in `getExercisesWithEntries()` so each new set/interval/round/drill pre-fills with the prior values (June 2026, exercise-set-last-value-plan). |
+
+##### `previousValues` carry-forward keys per effort kind
+
+| Effort kind | Keys accepted | Default if absent |
+|---|---|---|
+| `set` (load-capable) | `reps` (int), `weight` (double) | `reps=10`, `weight=0.0` |
+| `set` (no load) | `reps` (int), `extra-weight` (double) | `reps=10`, `extra-weight=0.0` |
+| `timed` | `extra-weight` (double) | `extra-weight=0.0` |
+| `drill` | `extra-weight` (double) | `extra-weight=0.0` |
+| `round` | `round-duration` (int seconds) | `WorkoutConstants.defaultRoundDurationSecs` (or the exercise's `defaultRoundDurationSecs` if set) |
+| `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields including `rpeRating` and `restDurationMs` |
+| `deleteLastEntry(effortId)` | Removes last set |
+| `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check |
+
+#### Routine Session Support
+
+| Method | Purpose |
+|--------|--------|
+| `populateSessionFromManifest(manifest)` | Loads exercises from `RoutineSessionManifest` |
+| `computeSessionSummary()` | Returns `SessionSummary`; counts `RoundState.finished` rounds (both natural completion and early-end logged rounds; not-started/active/paused are excluded) |
+| `buildTemplateDraftExercises()` | Returns `List<SessionTemplateExercise>` for save-as-routine |
+
+---
+
+---
+
+### `SessionBlockManager`
+
+**File**: `lib/state/workout/session_block_manager.dart`
+**Depends on**: `WorkoutRepository`, `TimerManager`
+
+Encapsulates all session block CRUD and block-effort assignment logic. Extracted from `SessionCore` to keep each sub-holder within its size target.
+
+| Method | Purpose |
+|--------|--------|
+| `getSessionBlocks()` | Returns blocks for the current session sorted by `orderIndex` |
+| `addSessionBlock({String? name})` | Creates a new `SessionBlock`; if `name` is omitted, names the block with current wall-clock time (`"3:45 PM"`) — the mechanism behind time-stamped blocks in rolling sessions |
+| `updateSessionBlock(block)` | Persists changes to an existing block |
+| `deleteSessionBlock(blockId)` | Deletes a block and mirrors the cascade to in-memory effort/observation maps |
+| `reorderSessionBlocks(orderedIds)` | Reorders blocks for the current session |
+| `cloneSessionBlock(blockId)` | Deep-clones a block and all linked records via the repository |
+| `assignEffortToBlock(effortId, blockId)` | Assigns or unassigns an effort to a block |
+
+---
+
+---
+
+### `SessionSummaryBuilder`
+
+**File**: `lib/state/workout/session_summary_builder.dart`
+**Depends on**: `WorkoutRepository`, `TimerManager`
+
+Extracted from `SessionCore` to isolate session summary computation. Called by `SessionCore.computeSessionSummary()`.
+
+| Method | Purpose |
+|--------|--------|
+| `computeSessionSummary(session, segments, efforts, observations, exerciseCache)` | Aggregates all session metrics into a `SessionSummary` model; counts finished rounds; sums durations |
+
+---
+
+---
+
+### `TimerManager`
+
+**File**: `lib/state/workout/timer_manager.dart`
+**Depends on**: `WorkoutRepository`
+
+Handles all round, timed-entry, and rest state machines (Cluster B of the original `WorkoutState`). Notifies listeners via the injected `notify` callback.
+
+#### Key State Fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `_roundInstances` | `Map<String, List<RoundInstance>>` | Round instances keyed by effort ID |
+| `_timedInstances` | `Map<String, List<TimedInstance>>` | Timed instances keyed by effort ID |
+| `_entryRests` | `Map<String, List<EntryRest>>` | Rest records keyed by effort ID |
+
+#### Round Management (round effortKind only)
+
+| Method | Transition | Purpose |
+|--------|-----------|---------|
+| `addRound(effortId, {plannedDurationSecs})` | — | Creates new `RoundInstance` |
+| `startRound(effortId, roundIndex)` | notStarted → active | Starts timer |
+| `pauseRound(effortId, roundIndex)` | active → paused | Stamps `pausedAtMs` |
+| `resumeRound(effortId, roundIndex)` | paused → active | Folds pause into `totalPausedDurationMs` |
+| `endRoundEarly(effortId, roundIndex)` | active/paused → finished | Derives elapsed from timestamps |
+| `completeRound(effortId, roundIndex)` | active → finished | Natural countdown completion |
+| `updateRoundPlannedDuration(effortId, roundIndex, secs)` | — | Adjusts target duration |
+| `deleteRound(effortId, roundIndex)` | — | Removes round instance |
+| `getRoundsForEffort(effortId)` | — | Returns all rounds for an effort |
+
+#### Timed Management (timed / drill effortKind)
+
+| Method | Transition | Purpose |
+|--------|-----------|---------|
+| `addTimedEntry(effortId, {targetDurationSecs})` | — | Creates new `TimedInstance`; `targetDurationSecs` used as elapsed offset on first start |
+| `startTimedEntry(effortId, entryIndex)` | notStarted → active | Back-dates `startedAtMs` by any pre-set `targetDurationSecs` offset; clears target after first start so entry is open-ended |
+| `pauseTimedEntry(effortId, entryIndex)` | active → paused | Stamps `pausedAtMs` |
+| `resumeTimedEntry(effortId, entryIndex)` | paused → active | Folds pause duration into `totalPausedDurationMs`; clears `pausedAtMs` |
+| `finishTimedEntry(effortId, entryIndex)` | active/paused → finished | Derives `actualDurationSecs` from timestamps; folds final pause if paused |
+| `deleteTimedEntry(effortId, entryIndex)` | — | Removes instance and re-indexes subsequent entries |
+| `getTimedInstancesForEffort(effortId)` | — | Returns unmodifiable list of timed instances for an effort |
+
+#### Rest Tracking Methods
+
+| Method | Signature | Purpose |
+|--------|-----------|--------|
+| `recordRestStart` | `(effortId, entryIndex) → Future<void>` | Creates an `EntryRest` record with `restStartMs = now`; called after a set/round is logged |
+| `recordRestEnd` | `(effortId, entryIndex) → Future<void>` | Sets `restEndMs = now` on the open rest record; called when the athlete starts the next entry |
+| `persistOpenRests` | `(closeAtMs) → Future<void>` | Closes every open `EntryRest` across all efforts at `closeAtMs`; called by `endSession()` |
+| `getRestElapsedSeconds` | `(effortId, entryIndex) → int` | Returns live elapsed seconds for the rest overlay display |
+| `hasRestRecord` | `(effortId, entryIndex) → bool` | Returns `true` if a rest record exists for this entry; drives overlay visibility |
+| `getEntryRests` | `(effortId) → List<EntryRest>` | Returns unmodifiable list of rest records for an effort |
+
+See [Rest Tracking](../rest_tracking.md) for full architecture details.
+
+---
+
+---
+
+### `ExerciseLibrary`
+
+**File**: `lib/state/workout/exercise_library.dart`
+**Depends on**: `WorkoutRepository`
+
+Handles the exercise catalog, exercise notes, and coach-mark hint flags (Cluster C of the original `WorkoutState`). Exposes `clearNoteCache()` called by `SessionCore.clearSession()`.
+
+#### Key State Fields
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `_allExercises` | `List<Exercise>` | Full exercise catalog |
+| `_muscleGroups` | `List<String>` | Available muscle groups |
+| `_disciplines` | `List<String>` | Available disciplines |
+| `_exerciseNotes` | `Map<String, ExerciseNote>` | Notes keyed by exercise ID |
+| `_exerciseNoteLoadInFlight` | `Set<String>` | Guards concurrent note loads |
+| `_exerciseNoteSaveInFlight` | `List<Future<void>>` | Queued save operations |
+| `_exerciseNotesHintSeen` | `bool` | Coach-mark hint flag |
+| `_exerciseInfoHintSeen` | `bool` | Coach-mark hint flag |
+
+#### Key Methods
+
+| Method | Purpose |
+|--------|---------|
+| `loadAllExercises()` | Loads full exercise catalog |
+| `loadMuscleGroups()` / `loadDisciplines()` | Loads filter options |
+| `searchExercises(query)` | Filters exercises by name |
+| `getExercisesRankedForModality(modality, {...})` | Returns exercises sorted by relevance score |
+| `createCustomExercise(name, {...})` | Creates exercise in repository and caches it |
+| `updateCustomExercise(exercise, {...})` | Updates exercise and refreshes cache |
+| `loadExerciseNote(exerciseId)` | Loads note with in-flight guard |
+| `saveExerciseNote(exerciseId, note, {sessionId})` | Saves note with debounce queue |
+| `getExerciseNote(exerciseId)` | Returns cached note or null |
+| `hasExerciseNote(exerciseId)` | Checks if a note exists |
+| `clearNoteCache()` | Clears note state; called by `SessionCore.clearSession()` |
+| `initExerciseHints()` | Loads hint flags from repository |
+| `markExerciseNotesHintSeen()` / `markExerciseInfoHintSeen()` | Persists hint flags |
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

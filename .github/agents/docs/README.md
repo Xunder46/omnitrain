@@ -1,7 +1,19 @@
 # OmniTrain Documentation Index
 
-> **Doc freshness:** This index and every doc linked below were re-derived from the `lib/` source tree on **2026-06-29**. The current-state docs in this folder are not hand-maintained — they are derived from source. Every current-state doc carries a `Last reconciled against source: 2026-06-29` stamp at the bottom. Past-snapshot / superseded docs live under [`.github/agents/docs/history/`](history/) with a `HISTORY` banner so they cannot be mistaken for current state.
-> **When the source disagrees with this index, the source wins.** This pass corrects this index to match the product as it actually exists today; future drift should be caught at the same boundary.
+> **Doc freshness:** This index and every doc linked below were re-derived from the `lib/` source tree. The current-state docs in this folder are not hand-maintained — they are derived from source. Past-snapshot / superseded docs live under [`.github/agents/docs/history/`](history/) with a `HISTORY` banner so they cannot be mistaken for current state.
+> **When the source disagrees with this index, the source wins.**
+>
+> **Audit pass — 2026-07-26.** A full audit against `lib/` corrected several
+> documents that had drifted. Highlights: nutrition tracking was still listed
+> as an explicit non-goal; six screens were missing from the inventory; four
+> data models were undocumented; and the two largest docs exceeded the size
+> ceiling of the tools that index this folder and have been split. See
+> [`docs-audit-2026-07-26.md`](docs-audit-2026-07-26.md) for the full summary
+> and the list of things left unresolved.
+>
+> **Size ceiling:** no file in this folder may exceed **64 KiB** — larger files
+> are silently skipped by the indexers that serve these docs to agents.
+> Enforced by `test/docs_indexing_contract_test.dart`.
 
 ## What This Is
 
@@ -16,7 +28,12 @@ This documentation describes the architecture, features, and conventions of Omni
 - **Tech stack**: Flutter (Dart), Hive (persistence), ChangeNotifier (state), Constructor DI
 - **No** Provider/Riverpod/Bloc — all dependencies are injected manually from `main.dart`
 - **Repository pattern**: `WorkoutRepository` interface with `HiveWorkoutRepository` (current) and future `SqliteWorkoutRepository`
-- **Navigation**: Imperative (`Navigator.push/pop`) — no named routes or declarative routers
+- **Navigation**: Imperative, but always through `OmniNavigator` (`lib/core/navigation/`) — no named routes or declarative routers, and raw `MaterialPageRoute` / `PageRouteBuilder` outside that module is a build break
+
+Beyond training, the app also ships **nutrition tracking** (daily calorie
+target, a food catalog and personal food library, per-day consumed log, water
+tracking) and **calendar planning** (month view, planned sessions, and
+non-overlapping training periods).
 
 ---
 
@@ -48,6 +65,7 @@ This documentation describes the architecture, features, and conventions of Omni
 | [Theme & Settings](theme_and_settings.md) | Theme system, measurement/calendar preferences, timer alerts, workout toggles, and Settings screen behavior |
 | [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, and inline start-sheet guidance |
 | [Stats Screen](stats_screen.md) | All-time aggregates (Sessions / Time / Streak), scrollable Strength e1RM and volume trends, scrollable Cardio pace + distance (or duration) trends, all-time Recent PRs, and a full-history NUTRITION card with a Calories / Macros segmented toggle. Each section's top-N exercise list is selected from a "current-state window" (active training period or last 14 training days) while the trend charts themselves use the selected exercise's full history. |
+| **Nutrition** — no dedicated feature doc yet | ⚠️ Nutrition shipped but never got its own feature document. Until one exists, the behavior is spread across [Navigation & Screens](navigation_and_screens.md) (the four nutrition screens and their flows), [Nutrition State](state_management/nutrition_state.md) (`NutritionState`, `FoodLibraryState`, `NutritionPrimerState`), [Nutrition Widgets](widget_catalog/nutrition_widgets.md) and [Home Screen & Nutrition Cards](widget_catalog/home_screen.md), [Data Models](data_models.md#nutrition-models), and [DB Integration](db_integration.md). |
 
 ### Release & Operations
 | Document | Description | Status |
@@ -60,11 +78,11 @@ This documentation describes the architecture, features, and conventions of Omni
 | Document | Description |
 |----------|-------------|
 | [Navigation & Screens](navigation_and_screens.md) | Complete screen map, navigation flow, dependency injection pattern |
-| [State Management & Services](state_management.md) | ChangeNotifier classes, service classes, dependency graph |
+| [State Management & Services](state_management.md) | **Index** — ChangeNotifier classes, service classes, dependency graph. Split into [Workout](state_management/workout_state.md), [Nutrition](state_management/nutrition_state.md), [Routine/Calendar/Home/Profile/Settings](state_management/app_state.md), and [Services & Utilities](state_management/services_and_utils.md) |
 | [Data Models](data_models.md) | All domain models — sessions, exercises, templates, measurements, relationships |
 | [Constants & Configuration](constants_reference.md) | Modalities, capabilities, metrics, effort kinds, intents, design tokens |
 | [DB Integration](db_integration.md) | Database setup, schema, seed data, dual-backend strategy |
-| [Widget Catalog](widget_catalog.md) | Reusable UI components — layout primitives, tiles, pickers, metric editors |
+| [Widget Catalog](widget_catalog.md) | **Index** — reusable UI components. Split into [Layout & Inputs](widget_catalog/layout_and_inputs.md), [Home & Nutrition Cards](widget_catalog/home_screen.md), [Session/Pickers](widget_catalog/session_widgets.md), [Nutrition Widgets](widget_catalog/nutrition_widgets.md), and [Routine/Profile/Brand](widget_catalog/feature_primitives.md) |
 | [Rest Tracking](rest_tracking.md) | Wall-clock rest tracking architecture, EntryRest model, DB-backed rest records between sets |
 | [Navigation Contract](navigation_contract.md) | The single source of truth for screen-level navigation. Enforced by `test/navigation_contract_enforcement_test.dart`; raw `MaterialPageRoute` / `PageRouteBuilder` outside `lib/core/navigation/` is a build break. The historical migration audit lives under [history/route-migration-audit.md](history/route-migration-audit.md). |
 
@@ -72,42 +90,67 @@ This documentation describes the architecture, features, and conventions of Omni
 
 ## Architecture Overview
 
+Re-derived from `lib/` on 2026-07-26. The previous version of this tree was
+missing the entire `features/nutrition/`, `features/calendar/`,
+`features/period/`, `features/stats/`, `features/onboarding/` and
+`features/startup/` areas, the `state/nutrition/` classes, and four
+`widgets/` subdirectories.
+
 ```
 lib/
 ├── core/
 │   ├── constants/        # Modalities, capabilities, metrics, theme tokens
 │   ├── errors/           # (placeholder — reserved)
-│   ├── models/           # Session summary models, routine manifest
-│   ├── services/         # RoutineSessionService, SessionSummaryService
-│   └── utils/            # ObservationGrouper, ExerciseHelpers, TimerAlertService
+│   ├── models/           # Session summary, stats progress, food draft, routine manifest
+│   ├── navigation/       # OmniNavigator, OmniRoute — the navigation contract
+│   ├── services/         # RoutineSessionService, SessionSummaryService, StatsProgressService,
+│   │                     #   CatalogRefreshService, ImageStorageService, CrashReportingService, …
+│   └── utils/            # ObservationGrouper, ExerciseHelpers, TimerAlertService,
+│                         #   UnitFormatter, FuzzySearch, OmniDateUtils, …
 ├── data/
 │   ├── datasources/      # DatabaseProvider (SQLite), migrations
-│   ├── models/           # 20+ pure Dart model classes
-│   └── repositories/     # WorkoutRepository interface + Hive implementation
+│   ├── models/           # 30+ pure Dart model classes (models.dart)
+│   └── repositories/     # WorkoutRepository interface + Hive and Mock implementations
 ├── features/
-│   ├── exercise/         # ExerciseEditorScreen
-│   ├── home/             # HomeScreen, maintenance sheet routes
-│   ├── profile/          # ProfileScreen + profile feature widgets
-│   ├── routine/          # MyRoutinesScreen, RoutineSetupScreen
+│   ├── calendar/         # CalendarScreen, DaySessionListScreen
+│   ├── exercise/         # ExerciseEditorScreen, ExercisePickerScreen, ExerciseDetailScreen (wrapper)
+│   ├── home/             # HomeScreen + widgets/, MaintenancePlaceholderScreen (dead)
+│   ├── nutrition/        # NutritionScreen, NutritionTargetScreen, AddFoodScreen,
+│   │                     #   EditFoodScreen + widgets/
+│   ├── onboarding/       # OnboardingScreen
+│   ├── period/           # PeriodListScreen, CreatePeriodScreen
+│   ├── profile/          # ProfileScreen + widgets/
+│   ├── routine/          # MyRoutinesScreen, RoutineSetupScreen + widgets/
 │   ├── session/          # SessionOverviewScreen, WorkoutSessionScreen, SessionSummaryScreen
+│   ├── settings/         # SettingsScreen
 │   ├── splash/           # OmniSplashScreen (disabled)
+│   ├── startup/          # StartupFailureScreen
+│   ├── stats/            # StatsScreen + widgets/ (ScrollableTrendChart)
 │   └── workout/          # (empty — reserved)
 ├── mock/                 # SeedData for development
 ├── state/
-│   ├── home/             # HomeState (maintenance hint)
 │   ├── calendar/         # CalendarState (month/day session management)
+│   ├── home/             # HomeState (maintenance hint)
+│   ├── nutrition/        # NutritionPrimerState (one-shot primer seen-flag)
 │   ├── period/           # PeriodState (training period lifecycle + overlap guards)
 │   ├── profile/          # ProfileState (profile + measurement flows)
 │   ├── routine/          # RoutineState (template CRUD)
 │   ├── settings/         # SettingsState (theme, unit, and preference state)
-│   └── workout/          # WorkoutState (session lifecycle)
+│   ├── workout/          # WorkoutState (session lifecycle)
+│   ├── nutrition_state.dart     # NutritionState (targets, consumed log, water)
+│   └── food_library_state.dart  # FoodLibraryState (catalog + groups + personal library)
 ├── widgets/
 │   ├── buttons/          # (empty — reserved)
 │   ├── cards/            # EnergyTile, EnergyCore, MaintenanceTile
-│   ├── layout/           # OmniGradientBackground, OmniSurface, NoiseOverlay
+│   ├── chart/            # Shared chart primitives
+│   ├── common/           # InteractiveLogo
+│   ├── hub/              # HubSheet — built and tested but NOT wired up (see nav doc)
+│   ├── icons/            # Custom icon widgets
+│   ├── inputs/           # SelectAllOnFocus, NumericFieldWithDoneBar
+│   ├── layout/           # OmniGradientBackground, OmniSurface, OmniCardHeader, NoiseOverlay
 │   ├── logo/             # AnimatedZenHalo, ZenHaloPainter
 │   ├── models/           # UiSetData (presentation model)
-│   ├── pickers/          # ExercisePickerDialog, MetricChooserDialog, ModalityPickerDialog
+│   ├── pickers/          # MetricChooserDialog, ModalityPickerDialog
 │   └── session/          # InlineMetricEditor, DominantMetricWidget
 ├── app.dart              # MyApp, theme construction
 └── main.dart             # Entry point, DI setup
@@ -181,7 +224,8 @@ Profile measurement rules implemented in code:
 - Look for hardcoded colors (should use `theme.colorScheme`)
 
 ---
-2026-06-29 (full re-derivation against source; see top of file)
+2026-07-26 (full audit against source; see the audit note at the top of this file
+and [`docs-audit-2026-07-26.md`](docs-audit-2026-07-26.md))
 
 ---
 
@@ -192,4 +236,8 @@ Documents that describe a past snapshot, a superseded design, or a single-purpos
 Current contents:
 
 - [`history/route-migration-audit.md`](history/route-migration-audit.md) — the original `centralized-route-system` migration audit (May–June 2026). Superseded as the enforcement mechanism by [`test/navigation_contract_enforcement_test.dart`](../../../test/navigation_contract_enforcement_test.dart); the test wins on disagreement.
-**Last Updated**: May 22, 2026
+**Last Updated**: July 26, 2026
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

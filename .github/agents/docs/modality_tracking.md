@@ -235,7 +235,7 @@ Important behavior:
 
 #### Exercise Picker with Ranking
 ```dart
-class ExercisePickerDialog extends StatefulWidget {
+class ExercisePickerScreen extends StatefulWidget {
   final String? sessionModality;  // Pass current session modality
   
   Widget _buildExerciseList() {
@@ -522,10 +522,22 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 ✅ **Pause Support for Rounds**: `pauseRound()` and `resumeRound()` added to `WorkoutState`. Each pause start is stamped to `pausedAtMs`; on resume, `(now - pausedAtMs)` is folded into `totalPausedDurationMs` and `pausedAtMs` is cleared. The elapsed formula subtracts `totalPausedDurationMs` so paused time is never counted as work. UI-level rapid-tap guard (`_pendingRoundTransitions` set) prevents concurrent duplicate transitions.
 ✅ **Delete Exercise from Session**: `removeExerciseFromSession` implemented in `WorkoutState`.
 
+### Phase 2 (Completed — since shipped)
+✅ **User-Created Exercise Capabilities**: `ExerciseEditorScreen`
+(`lib/features/exercise/exercise_editor_screen.dart`) lets the user tag a
+custom exercise with capabilities. The selectable set is filtered per modality
+via `ModalityConfig.formCapabilities`, selections outside the chosen modality
+are dropped on modality change, and save is blocked unless at least one of
+`ModalityConfig.formRequiredCapabilities` is selected. See
+[Create New Exercise](create_new_exercise.md).
+
+> **Corrected 2026-07-26 (docs audit).** This item was listed under
+> "Phase 2 (Still Deferred)" while the capability-tagging UI was already
+> shipped.
+
 ### Phase 2 (Still Deferred)
-1. **User-Created Exercise Capabilities**: UI to tag custom exercises with capabilities
-2. **Mid-Session Modality Re-mapping**: Preserve exercises when changing modality, prompt for new tracking method
-3. **Capability Auto-Detection**: Suggest capabilities based on exercise name/description (ML-assisted)
+1. **Mid-Session Modality Re-mapping**: Preserve exercises when changing modality, prompt for new tracking method
+2. **Capability Auto-Detection**: Suggest capabilities based on exercise name/description (ML-assisted)
 
 ### Phase 3 (Research)
 1. **Hybrid Modalities**: Mix effort kinds in one session (e.g., "Crossfit" with both timed and set-based)
@@ -585,7 +597,7 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 - **Repositories**: `lib/data/repositories/` (workout_repository.dart, mock_workout_repository.dart)
 - **State**: `lib/state/workout/workout_state.dart` (WorkoutState with modality awareness)
 - **UI**: `lib/features/` (home_screen.dart, session_overview_screen.dart, workout_session_screen.dart)
-- **Widgets**: `lib/widgets/pickers/` (exercise_picker_dialog.dart, metric_chooser_dialog.dart)
+- **Widgets**: `lib/widgets/pickers/` (metric_chooser_dialog.dart, modality_picker_dialog.dart); the exercise picker is a full screen at `lib/features/exercise/exercise_picker_screen.dart`
 - **Utilities**: `lib/core/utils/observation_grouper.dart`
 - **Schema**: `scripts/sqlite_schema.sql` (app_exercise_capability table)
 - **Seed Data**: `lib/mock/seed_data.dart`, `scripts/sqlite_seed.sql`
@@ -603,4 +615,4 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

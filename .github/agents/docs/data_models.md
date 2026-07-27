@@ -37,6 +37,11 @@ TrainingSession
 | `sessionFeeling` | `int?` | Optional 1-5 post-session feeling score |
 | `qualityRating` | `int?` | Reserved nullable quality field |
 | `isRolling` | `bool` | Marks the session as using the rolling/continuous format. Exercises are grouped into named time-stamped segment blocks; session duration display is suppressed. Defaults to `false`. |
+| `ownerUserId` | `String` | Owning user id |
+| `locationText` | `String?` | Optional free-text location for the session |
+| `perceivedSessionRpe` | `double?` | Optional whole-session perceived exertion; distinct from the 1-5 `sessionFeeling` |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
 
 Active session persistence semantics:
 - A session is considered in-progress when `endedAtMs == null`.
@@ -51,6 +56,11 @@ Active session persistence semantics:
 | `sessionId` | `String` | Parent session |
 | `segmentType` | `String` | Block type (e.g., `mixed`) |
 | `orderIndex` | `int` | Display ordering |
+| `disciplineId` | `String?` | Optional FK to `Discipline` |
+| `name` | `String?` | Optional segment label |
+| `note` | `String?` | Optional segment note |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
 
 ### SessionBlock
 
@@ -72,11 +82,19 @@ Active session persistence semantics:
 | `segmentId` | `String` | Parent segment |
 | `exerciseId` | `String?` | References `Exercise` |
 | `effortKind` | `String` | `set`, `timed`, `round`, or `drill` |
-| `modality` | `String?` | Optional modality context |
 | `orderIndex` | `int` | Display ordering |
 | `topLevelOrderIndex` | `int?` | Canonical top-level order for standalone efforts; aligns block members to their block's top-level slot |
 | `blockOrderIndex` | `int?` | Canonical local order inside a block; null for standalone efforts |
+| `blockId` | `String?` | FK to the owning `SessionBlock`; `null` for standalone efforts. Deleting a block nulls this rather than deleting the effort |
 | `note` | `String?` | Per-exercise note |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+
+> **Corrected 2026-07-26 (docs audit).** `modality` was listed as a field but
+> does not exist on `SegmentEffort` (nor as a column on
+> `app_segment_effort`). Modality context lives on the parent
+> `TrainingSession`. `blockId`, `createdAtMs`, and `updatedAtMs` were missing
+> and have been added.
 
 Ordering contract:
 - Top-level active-session order is persisted via `SessionBlock.topLevelOrderIndex` and `SegmentEffort.topLevelOrderIndex`.
@@ -87,18 +105,34 @@ Ordering contract:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | `String` | UUID |
+| `id` | `String` | UUID. **Also carries the entry index** — see the note below |
 | `effortId` | `String` | Parent effort |
 | `metricId` | `String` | e.g., `metric-reps`, `metric-weight`, `metric-duration` |
-| `entryIndex` | `int` | Which set/interval (0-based) |
 | `valueReal` | `double?` | Decimal value (weight, distance) |
 | `valueInt` | `int?` | Integer value (reps, duration seconds) |
 | `valueText` | `String?` | Text value |
+| `valueBool` | `bool?` | Skip marker: `true` when set was explicitly skipped (with `valueInt: 0`); used by `_isSetLogged` to restore skip state on reload |
 | `unitId` | `String?` | Unit reference (e.g., `unit-kg`) |
-| `recordedAtMs` | `int` | Timestamp |
 | `rpeRating` | `int?` | Optional RPE 1-10 value for richer observation payloads |
 | `restDurationMs` | `int?` | Legacy field — superseded by `EntryRest` for all effort kinds; currently unpopulated |
-| `valueBool` | `bool?` | Skip marker: `true` when set was explicitly skipped (with `valueInt: 0`); used by `_isSetLogged` to restore skip state on reload |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+
+> **Corrected 2026-07-26 (docs audit).** This table previously listed two
+> fields that do not exist on the model or in the schema:
+>
+> - **`entryIndex`** — there is no such field and no `entry_index` column on
+>   `app_effort_observation`. The set/interval index is encoded in the
+>   observation **id**, which is built as
+>   `'obs-{effortId}-{entryIndex}-{metricSuffix}'` (see
+>   `lib/state/workout/session_core_entry.dart`) and parsed back out with
+>   `RegExp(r'obs-.+-(\d+)-[^-]+$')`. Code that needs the index must go
+>   through that id convention.
+> - **`recordedAtMs`** — the model carries `createdAtMs` / `updatedAtMs`
+>   instead, matching the schema.
+>
+> Both the Dart model and `scripts/sqlite_schema.sql` agree on the corrected
+> shape above.
 
 **Observation Layout by Effort Kind:**
 
@@ -133,6 +167,9 @@ Observations are persisted one-per-entry and grouped by effort kind:
 | `totalPausedDurationMs` | `int` | Cumulative pause time |
 | `finishedAtMs` | `int` | Epoch ms when round ended (0 = not finished) |
 | `completed` | `bool` | `true` only when ended via natural countdown |
+| `id` | `String` | UUID |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
 
 **Computed getters:**
 - `elapsedMs` — derived from timestamps; 0 for notStarted; frozen when paused
@@ -157,19 +194,95 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 **Computed helper:**
 - `elapsedSeconds(int nowMs)` — `((restEndMs ?? nowMs) - restStartMs) / 1000`, clamped to `[0, 99999]`
 
+### TimedInstance
+
+> **Added 2026-07-26 (docs audit).** This model was entirely absent from this
+> document despite being live, persisted, and the sole owner of duration for
+> two of the four effort kinds.
+
+The timed counterpart to `RoundInstance`. One record per timed entry within a
+`timed` or `drill` effort (`effortKind == 'timed' || effortKind == 'drill'`).
+It **replaces the old duration `EffortObservation`** for these effort kinds —
+companion metrics (distance for timed, extra weight for drill) remain as
+`EffortObservation` rows. SQLite table: `app_timed_instance`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | UUID |
+| `effortId` | `String` | Parent `SegmentEffort` id |
+| `entryIndex` | `int` | 0-based entry number within the effort |
+| `targetDurationSecs` | `int` | Target length for alert/expiry. `0` means open-ended (no alert, no expiry) |
+| `actualDurationSecs` | `int` | Elapsed time at finish, derived from timestamps — never accumulated as a counter |
+| `startedAtMs` | `int` | Wall-clock epoch ms when started (`0` = not started) |
+| `finishedAtMs` | `int?` | Wall-clock epoch ms when finished; `null` until terminal |
+| `state` | `TimedState` | Current lifecycle state |
+| `pausedAtMs` | `int?` | Epoch ms of the most recent pause; cleared on resume |
+| `totalPausedDurationMs` | `int` | Cumulative paused time, subtracted from elapsed |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+
+**Computed helper:**
+- `elapsedMs` — `now - startedAtMs - totalPausedDurationMs`. Always derived
+  from wall-clock timestamps, never inferred from a stored duration, so the
+  value survives backgrounding and reload.
+
+**TimedState enum:** `notStarted` → `active` ⇄ `paused` → `finished` (terminal).
+Partial entries are never discarded — session close finishes any still-active
+entry via the `_persistActiveTimedEntries` safety net.
+
+### ExerciseNote
+
+> **Added 2026-07-26 (docs audit).** Behavior is documented in
+> [Exercise Info & Notes](exercise_info_and_notes.md); the model itself was
+> missing here.
+
+One persistent note per exercise, surviving across sessions. SQLite table:
+`app_exercise_note`, with a unique index on `exercise_id` enforcing the
+one-note-per-exercise rule.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | UUID |
+| `exerciseId` | `String` | FK to `Exercise` — unique; one note per exercise |
+| `note` | `String` | The note body |
+| `lastSessionId` | `String?` | Session in which the note was last edited |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+
 ### Exercise
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `String` | UUID |
+| `ownerUserId` | `String?` | Set to `'user-1'` by `ExerciseLibrary.createExercise` for user-created exercises; bundled seed exercises leave it `null`. See the caveat below |
 | `name` | `String` | Display name |
 | `modality` | `String?` | Exercise modality key: `cardio_endurance`, `resistance_lifting`, `isometric_stretching`, `sports`; nullable for pre-feature legacy/custom exercises |
 | `description` | `String?` | Optional description |
 | `disciplineId` | `String?` | FK to `Discipline` |
-| `isCustom` | `bool` | User-created vs seed data |
+| `movementPattern` | `String?` | Movement-pattern classification (e.g. hinge, squat, press) |
 | `isArchived` | `bool` | Soft-delete flag |
 | `capabilities` | `List<String>` | Capability flags (populated at query time, not stored on model) |
-| `relevanceScore` | `double?` | Transient field for ranked sorting |
+| `defaultRoundDurationSecs` | `int?` | Sport-specific default round/period length in seconds. `null` = use `WorkoutConstants.defaultRoundDurationSecs` (180). Only meaningful for `effortKind == 'round'` exercises — e.g. Soccer Match = 2700 (45-min half), Ice Hockey = 1200 (20-min period) |
+| `howToSteps` | `List<String>?` | Ordered how-to instructions shown in the exercise-info sheet (added in migration v5) |
+| `imageAssetPath` | `String?` | Bundled illustration asset path (added in migration v5) |
+| `relevanceScore` | `double?` | Transient field for ranked sorting; populated only by ranked queries, never persisted |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+
+> **Corrected 2026-07-26 (docs audit).** This table listed `isCustom`
+> (`bool`, "user-created vs seed data"). **No such field exists** — not on
+> `Exercise`, not anywhere in `lib/`, and not as a column on `app_exercise`.
+> Six real fields were missing and have been added above.
+>
+> ⚠️ **Unresolved:** the *intent* behind `isCustom` has no clean replacement.
+> `ownerUserId` is the closest thing — `ExerciseLibrary.createExercise` stamps
+> `'user-1'` on user-created exercises and the seed catalog does not set it —
+> but **no code anywhere reads `ownerUserId` to branch on custom-vs-seed**
+> (there is no `ownerUserId == null` / `!= null` check in `lib/`). So there is
+> currently no supported way to ask "is this a custom exercise?". Do not
+> introduce one on the assumption that `ownerUserId` is a reliable
+> discriminator for pre-existing rows without checking migration history
+> first.
 
 **Extension methods** (in `lib/core/utils/exercise_helpers.dart`):
 - `supports(String capability)` — single capability check
@@ -183,6 +296,9 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 | `id` | `String` | UUID |
 | `name` | `String` | e.g., "Running", "Boxing" |
 | `categoryId` | `String?` | FK to `SportCategory` |
+| `key` | `String` | Stable lookup key |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
 
 ### SportCategory
 
@@ -190,6 +306,13 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 |-------|------|-------------|
 | `id` | `String` | e.g., `category-cardio`, `category-sports` |
 | `name` | `String` | Display name |
+| `key` | `String` | Stable lookup key |
+| `description` | `String?` | Optional description |
+| `iconName` | `String?` | Optional icon identifier |
+| `sortOrder` | `int` | Display ordering; defaults to `0` |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+| `deletedAtMs` | `int?` | Soft-delete timestamp; `null` when active |
 
 ### MuscleGroup
 
@@ -197,7 +320,11 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 |-------|------|-------------|
 | `id` | `String` | UUID |
 | `name` | `String` | e.g., "Quads", "Chest" |
-| `bodyRegion` | `String?` | Grouping (upper/lower/core) |
+| `createdAtMs` | `int` | Creation timestamp |
+
+> **Corrected 2026-07-26 (docs audit).** `bodyRegion` was listed but does not
+> exist on the model or as a column on `app_muscle_group`. `createdAtMs` was
+> missing.
 
 ### Equipment
 
@@ -205,6 +332,7 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 |-------|------|-------------|
 | `id` | `String` | UUID |
 | `name` | `String` | e.g., "Barbell", "Dumbbell" |
+| `createdAtMs` | `int` | Creation timestamp |
 
 ### Tag
 
@@ -212,6 +340,7 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 |-------|------|-------------|
 | `id` | `String` | UUID |
 | `name` | `String` | Freeform tag |
+| `createdAtMs` | `int` | Creation timestamp |
 
 ### ExerciseAlias
 
@@ -219,6 +348,59 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 |-------|------|-------------|
 | `exerciseId` | `String` | FK to Exercise |
 | `alias` | `String` | Alternative name for search matching |
+| `id` | `String` | UUID |
+| `createdAtMs` | `int` | Creation timestamp |
+
+---
+
+## Calendar & Period Models
+
+> **Added 2026-07-26 (docs audit).** Both models were absent from this
+> document. Their product behavior is described in
+> [Calendar & Periods](calendar_periods.md); this section covers the shapes.
+
+### PlannedSession
+
+A session the user has scheduled on the calendar but has not necessarily
+performed. SQLite table: `app_planned_session`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | UUID |
+| `ownerUserId` | `String` | Owning user id |
+| `scheduledDateMs` | `int` | Intended training day. Stored as **start-of-day (midnight local time)** for reliable day-level grouping |
+| `modality` | `String?` | Modality key, or `null` for Free Training |
+| `title` | `String?` | Optional short title |
+| `note` | `String?` | Optional notes |
+| `isCompleted` | `bool` | `true` once performed; `false` while still planned |
+| `linkedSessionId` | `String?` | FK to the `TrainingSession` created when the plan was executed |
+| `routineTemplateId` | `String?` | FK to a `WorkoutTemplate` when the plan is based on a routine |
+| `recurrenceRule` | `String?` | **Placeholder only.** No recurrence engine exists — the field is copied through `copyWith` and persisted, but nothing expands it into repeated occurrences |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+
+### TrainingPeriod
+
+A named, non-overlapping block of training days (e.g. "Off-Season Strength
+Block"). Drives the calendar's period banding and the Stats screen's
+"current-state window". Managed by `PeriodState`; SQLite table:
+`app_training_period`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `String` | UUID |
+| `ownerUserId` | `String?` | Owning user id |
+| `name` | `String` | User-facing period name |
+| `startDateMs` | `int` | First day of the period (start-of-day, local) |
+| `endDateMs` | `int` | Last day of the period (start-of-day, local) |
+| `focusModalities` | `List<String>` | Modality keys this period focuses on |
+| `notes` | `String?` | Optional notes |
+| `colorHex` | `String?` | Optional band colour override |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
+
+Overlap between periods is rejected at the state layer by
+`PeriodState.validate`, which returns an `overlapError` rather than throwing.
 
 ---
 
@@ -254,6 +436,7 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 | `defaultUnitId` | `String?` | FK to `UnitModel` |
 | `isCore` | `bool` | Whether metric is part of core tracking vocabulary |
 | `appliesToEffortKind` | `String?` | Optional effort-kind hint |
+| `createdAtMs` | `int` | Creation timestamp |
 
 ### UnitModel
 
@@ -263,6 +446,7 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 | `key` | `String` | Stable short unit key (`kg`, `cm`, `pct`) |
 | `name` | `String` | Display name |
 | `unitType` | `String?` | Optional grouping (`weight`, `length`, `ratio`) |
+| `createdAtMs` | `int` | Creation timestamp |
 
 ### MetricApplicability
 
@@ -272,8 +456,11 @@ Junction model mapping which metrics apply to which effort kinds.
 |-------|------|-------------|
 | `metricId` | `String` | FK to MetricDefinition |
 | `effortKind` | `String` | `set`, `timed`, `round`, `drill` |
-| `isRequired` | `bool` | Whether the metric is mandatory for this effort kind |
-| `displayOrder` | `int` | Rendering order |
+
+> **Corrected 2026-07-26 (docs audit).** `isRequired` and `displayOrder` were
+> listed but exist on neither the model nor `app_metric_applicability` — the
+> junction is a bare `(metric_id, effort_kind)` composite key. Requiredness and
+> ordering are driven by `ModalityConfig` / `MetricIds`, not by this table.
 
 ---
 
@@ -301,6 +488,7 @@ WorkoutTemplate (routine)
 | `isBuiltInDemo` | `bool` | `true` when this template shipped as a built-in demo via the versioned catalog refresh pipeline. Edit/delete gating is enforced by the per-entry tombstone returned by `WorkoutRepository.isSeedEntryTouched` for `SeedEntryType.routineTemplate`; this flag is informational only. |
 | `createdAtMs` | `int` | Timestamp |
 | `updatedAtMs` | `int` | Timestamp |
+| `description` | `String?` | Optional template description, separate from `note` |
 
 ### TemplateSegment
 
@@ -310,6 +498,11 @@ WorkoutTemplate (routine)
 | `templateId` | `String` | Parent template |
 | `segmentType` | `String` | Usually `mixed` |
 | `orderIndex` | `int` | Display ordering |
+| `disciplineId` | `String?` | Optional FK to `Discipline` |
+| `name` | `String?` | Optional segment label |
+| `note` | `String?` | Optional segment note |
+| `createdAtMs` | `int` | Creation timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
 
 ### TemplateEffort
 
@@ -340,6 +533,7 @@ WorkoutTemplate (routine)
 | `targetInt` | `int?` | Used for reps, duration (seconds) |
 | `targetText` | `String?` | Text-based targets (unused currently) |
 | `createdAtMs` | `int` | Timestamp |
+| `updatedAtMs` | `int` | Last modified timestamp |
 
 ---
 
@@ -446,6 +640,7 @@ A food item with macronutrient metadata. Foods exist in two collections:
 | `lastAmountConsumed` | `double?` | Remembered "last amount" the user logged for this food, in the food's own unit (grams for `grams`-type, count for `count`-type). `null` when the food has never been logged. Drives the `LogFoodRow` pre-fill (June 2026, `food-last-amount-plan.md`): when the food is not logged today, the amount input is pre-filled with this value so the user does not have to retype the same portion every day. Overwritten on every successful `NutritionState.logConsumedFoodAt`; never mutated by an unsaved UI edit. Stored on the food row (not on `ConsumedFood`) so a remove-then-re-add via `addCatalogFoodToLibrary` (with `catalogId` linkage, per `food-durable-identity-plan.md`) reuses the same library food and therefore the same remembered amount. Legacy rows (pre-feature) deserialize to `null`. |
 | `createdAtMs` | `int` | Creation timestamp |
 | `updatedAtMs` | `int` | Last update timestamp |
+| `catalogId` | `String?` | Durable link back to the catalog row this library food was copied from. Older library rows may lack it and fall back to value-based identity matching, which upgrades to durable linkage on the next propagation |
 
 Derived getters:
 - `calories`: computed as `(protein * 4 + carbs * 4 + fat * 9).round()` — the macro math is now `double`-precision (so `0.5 g` of fat survives storage), then rounded to `int` at the display boundary because the calorie UI shows whole kcal.
@@ -645,4 +840,4 @@ MetricDefinition ←── UnitModel
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

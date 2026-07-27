@@ -322,7 +322,7 @@ depends only on `WorkoutRepository.getConsumedFoodsInRange` and the
 Every on-card line chart on this screen — strength e1RM, strength volume,
 cardio pace + distance, cardio duration, nutrition calories, nutrition
 macros — renders inside a `ScrollableTrendChart` wrapper
-([`lib/features/stats/widgets/scrollable_trend_chart.dart`](../../lib/features/stats/widgets/scrollable_trend_chart.dart))
+([`lib/features/stats/widgets/scrollable_trend_chart.dart`](../../../lib/features/stats/widgets/scrollable_trend_chart.dart))
 that combines:
 
 - A **pinned y-axis label column** on the left (static; never moves
@@ -600,9 +600,23 @@ The screen shows a `CircularProgressIndicator` while loading and an empty-state 
 
 - No per-modality session count breakdown
 - No date range selector or filter controls
-- No per-exercise or per-exercise-type stats
 - No week / month / year toggle
-- All deferred to post-launch iteration
+- Those three remain deferred to post-launch iteration
+
+> **Corrected 2026-07-26 (docs audit).** This list also claimed "No
+> per-exercise or per-exercise-type stats". That is no longer true and it
+> contradicted this document's own overview. `StatsScreen` renders
+> **per-exercise** trend cards: each Strength entry shows an exercise name with
+> its e1RM / volume / reps trends, each Cardio entry shows an exercise name
+> with pace and distance-or-duration trends, and Recent PRs are listed per
+> exercise. Source: `lib/features/stats/stats_screen.dart` (`lift.exerciseName`,
+> `cardio.exerciseName`, `pr.exerciseName`).
+>
+> The other three items were re-verified against source on the same date and
+> still hold: there is no modality breakdown, no date-range/filter control, and
+> no week/month/year toggle. The only `SegmentedButton` on the screen is the
+> NUTRITION card's Calories / Macros view switch, which is not a time-range
+> control.
 
 ---
 
@@ -632,4 +646,4 @@ The screen shows a `CircularProgressIndicator` while loading and an empty-state 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

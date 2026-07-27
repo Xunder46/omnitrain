@@ -126,6 +126,10 @@ HomeScreen
   │                                                        │                       │
   │                                                        │                       ├── Edit Session → SessionOverviewScreen (push)
   │                                                        │                       ├── Save as Routine → bottom sheet
+  │                                                        │                       │      └── Add Exercise → ExercisePickerScreen
+  │                                                        │                       │            (pushed from inside the sheet)
+  │                                                        │                       ├── Open Calendar → CalendarScreen (push)
+  │                                                        │                       │      — or pops back when openedFromCalendar
   │                                                        │                       ├── Discard → popUntil(isFirst)
   │                                                        │                       └── Done → popUntil(isFirst)
   │                                                        │
@@ -141,36 +145,85 @@ HomeScreen
   │                                    ├── FAB (+) → RoutineSetupScreen (new)
   │                                    └── ⋮ menu → Edit → RoutineSetupScreen (existing)
   │                                               → Delete → confirmation dialog
+  │                                                  │
+  │                                    RoutineSetupScreen
+  │                                      └── Add Exercise → ExercisePickerScreen (page push)
   │
   ├── Free Training Tile ──→ Free Training start sheet
   │                            ├── Rolling Session toggle
   │                            └── Start Session ──→ WorkoutSessionScreen (modality = null)
   │                                                  └── Empty finish discards the session and returns to HomeScreen
   │
-  ├── Nutrition Strip (footer) ──→ NutritionScreen
+  ├── NutritionSummaryCard (below the tile grid) ──→ NutritionScreen
+  │      (first-ever tap shows NutritionPrimerSheet, then pushes)
   │                                   ├── ring-card edit icon → NutritionTargetScreen
   │                                   └── Food Library card pencil icon → AddFoodScreen
   │                                                                     │
   │                                                                     ├── Library tab row tap → EditFoodScreen
   │                                                                     └── + New Item tab → creates a new catalog food
   │
-    └── Hub (via logo tap)
+    └── Maintenance sheet (drag up, or tap the logo)
       ├── Calendar ──→ CalendarScreen
-      ├── Profile ──→ ProfileScreen
+      │                   ├── tap a day with 1 session → SessionSummaryScreen
+      │                   │                                (openedFromCalendar: true)
+      │                   ├── tap a day with >1 session → DaySessionListScreen
+      │                   │                                 ├── tap completed → SessionSummaryScreen
+      │                   │                                 └── continue → WorkoutSessionScreen
+      │                   └── periods entry ──→ PeriodListScreen
+      │                                           ├── FAB (+) → CreatePeriodScreen (new)
+      │                                           └── tap a period → CreatePeriodScreen (edit)
       ├── Stats ──→ StatsScreen
-      ├── Nutrition ──→ NutritionScreen
-      │                   ├── ring-card edit icon → NutritionTargetScreen
-      │                   └── Food Library card pencil icon → AddFoodScreen
-      │                                                                     │
-      │                                                                     ├── Library tab row tap → EditFoodScreen
-      │                                                                     └── + New Item tab → creates a new catalog food
+      ├── Profile ──→ ProfileScreen
+      │                   └── avatar tap → AvatarCropSheet (pushed as a route)
       └── Settings ──→ SettingsScreen
 ```
 
-Both entry points (home strip, hub) land on `NutritionScreen` (daily summary)
-first; the small edit icon on the `CalorieRingCard` at the top of the
-screen pushes `NutritionTargetScreen`. The legacy bottom "Edit Targets"
-button is gone. The legacy placeholder no longer exists.
+<a id="hub-discrepancy"></a>
+
+> ### ⚠️ Unresolved: two hub implementations
+>
+> **Flagged 2026-07-26 (docs audit). Not resolved — do not "fix" either side
+> without a product decision.**
+>
+> There are two maintenance-sheet implementations in the tree, and they do not
+> agree:
+>
+> | | Items | Order | Wired up? |
+> |---|---|---|---|
+> | `_buildMaintenanceGrid` in `lib/features/home/home_screen.dart` | **4** | Calendar, Stats, Profile, Settings | **Yes** — this is what renders |
+> | `HubSheet` in `lib/widgets/hub/hub_sheet.dart` | **5** | Calendar, Stats, Nutrition, Profile, Settings | **No** — never instantiated |
+>
+> `HubSheet` is fully built and unit-tested (`test/hub_interaction_test.dart`
+> asserts all five destinations route through `OmniNavigator`), but grepping
+> `lib/` for `HubSheet(` finds only its own constructor. `HomeScreen` renders
+> `_buildMaintenanceGrid`; `_openHubSheet` merely snaps the existing
+> `DraggableScrollableSheet` open.
+>
+> Consequences for anyone reading this doc:
+> - The sheet a user actually sees has **no Nutrition entry**. Nutrition is
+>   reached from the `NutritionSummaryCard` below the tile grid.
+> - The item order above is the shipped order, taken from
+>   `_buildMaintenanceGrid`. The previous version of this document listed the
+>   `HubSheet` order (Calendar, Profile, Stats, Nutrition, Settings), which
+>   matched neither implementation.
+> - A passing `hub_interaction_test.dart` does **not** mean the hub works in
+>   the app; the test renders `HubSheet` directly.
+>
+> Which side is correct is a product question this audit cannot answer: either
+> `HubSheet` was meant to replace the inline grid and the wiring was missed, or
+> it was abandoned and should be deleted along with its test. Resolve before
+> relying on either as the hub contract.
+
+Nutrition is entered from the `NutritionSummaryCard` on the home screen, which
+lands on `NutritionScreen` (daily summary); the small edit icon on the
+`CalorieRingCard` at the top of that screen pushes `NutritionTargetScreen`. The
+legacy bottom "Edit Targets" button is gone. The legacy placeholder no longer
+exists.
+
+> **Corrected 2026-07-26 (docs audit).** This paragraph read "Both entry points
+> (home strip, hub) land on `NutritionScreen`". There is only **one** shipped
+> entry point — the home card. The hub route exists solely on the unwired
+> `HubSheet`; see the flag above.
 
 Day rollover:
 - `HomeScreen` calls `NutritionState.rolloverToDate(todayMs)` from
@@ -204,6 +257,30 @@ Day rollover:
 | `OmniSplashScreen` | `lib/features/splash/omni_splash_screen.dart` | Brand splash (currently disabled) |
 | `StartupFailureScreen` | `lib/features/startup/startup_failure_screen.dart` | End-user startup-failure surface. Shows when `_runStartup` throws inside `StartupRoot`. Plain-language headline ("Something went wrong while starting OmniTrain."), a short secondary line inviting a retry, and a full-width `FilledButton` labeled "Retry" that calls back into `StartupRoot` to re-run the entire startup sequence. No developer terminology is rendered — no "console", "log", "error", or raw exception text. The Retry button is disabled (with `onPressed: null`) while a retry attempt is in flight, to prevent concurrent startups. The screen uses the canonical Abyssal Neon theme tokens via the default failure theme passed in by `StartupRoot`; the user's saved theme is unavailable at this point in the lifecycle because `SettingsState` has not yet been constructed. |
 
+### Calendar & Period Screens
+
+Added 2026-07-26 (docs audit) — these four screens exist and are reachable in
+production but had no inventory row. `CalendarScreen` was referenced elsewhere
+in this document; the other three were not mentioned anywhere in the docs.
+
+| Screen | File | Purpose |
+|--------|------|---------|
+| `CalendarScreen` | `lib/features/calendar/calendar_screen.dart` | Month calendar with training-period banding and per-day session markers. Pushed from the home maintenance sheet (Calendar item) and from `SessionSummaryScreen`'s "Open Calendar". Pushes `PeriodListScreen` (periods entry point), `DaySessionListScreen` (tap a day with multiple sessions), and `SessionSummaryScreen` directly (tap a day with exactly one session). See [Calendar & Periods](calendar_periods.md). |
+| `DaySessionListScreen` | `lib/features/calendar/day_session_list_screen.dart` | List of the sessions recorded on one calendar day. Pushes `SessionSummaryScreen` for a completed session and `WorkoutSessionScreen` to resume/continue one. |
+| `PeriodListScreen` | `lib/features/period/period_list_screen.dart` | Lists training periods with their date ranges. Pushes `CreatePeriodScreen` for both the create and the edit flow. Backed by `PeriodState`. |
+| `CreatePeriodScreen` | `lib/features/period/create_period_screen.dart` | Create / edit a training period (name, date range, focus modalities, colour). Validation — including the non-overlap guard — runs through `PeriodState.validate`, which returns field-level `nameError` / `dateError` / `overlapError`. |
+
+### Non-Production Screens
+
+These screen classes exist in `lib/` but are **not reachable from any
+production navigation path**. Listed here so the inventory matches the source
+tree, and so nobody assumes they are live surfaces.
+
+| Screen | File | Status |
+|--------|------|--------|
+| `ExerciseDetailScreen` | `lib/features/exercise/exercise_detail_screen.dart` | Thin compatibility wrapper — its `build` returns `WorkoutSessionScreen(initialFocusId: effortId, …)`. Kept so older imports keep compiling. No production call site; exercised only by `test/screen_widget_test.dart`. |
+| `MaintenancePlaceholderScreen` | `lib/features/home/maintenance_placeholder_screen.dart` | Dead code. Zero references anywhere in `lib/` or `test/`. Every maintenance-sheet destination is now a real screen, so the placeholder it existed to serve is gone. |
+
 ### Empty / Placeholder Directories
 - `lib/features/workout/` — contains only `.gitkeep`. All workout UI lives in `lib/features/session/`.
 
@@ -234,7 +311,7 @@ main.dart
       → (passes relevant subset to child screens; `NutritionScreen` requires nutritionState + foodLibraryState + nutritionPrimerState)
 ```
 
-The Daily Nutrition primer (see `widget_catalog.md` → `NutritionPrimerSheet`) auto-shows on the first-ever tap of the home nutrition strip via a `showModalBottomSheet` over the home screen; dismissal flips `NutritionPrimerState.shouldShowPrimer` to `false` and pushes `NutritionScreen`. The header "?" on `NutritionScreen` reopens the same sheet at any time without mutating the seen state.
+The Daily Nutrition primer (see [`widget_catalog/nutrition_widgets.md`](widget_catalog/nutrition_widgets.md) → `NutritionPrimerSheet`) auto-shows on the first-ever tap of the home `NutritionSummaryCard` via a `showModalBottomSheet` over the home screen; dismissal flips `NutritionPrimerState.shouldShowPrimer` to `false` and pushes `NutritionScreen`. The header "?" on `NutritionScreen` reopens the same sheet at any time without mutating the seen state.
 
 ### Key Injection Rules
 - State classes depend only on `WorkoutRepository` interface (never concrete implementations)
@@ -287,4 +364,4 @@ When tapping a different modality tile while a session is active:
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

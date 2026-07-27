@@ -17,8 +17,7 @@ This document explains how to validate DB assets and how profile-related persist
 - `lib/data/repositories/workout_repository.dart`
 - `lib/data/repositories/hive_workout_repository.dart`
 - `lib/data/repositories/mock_workout_repository.dart`
-- `lib/data/datasources/database_provider.dart`
-- `lib/data/datasources/migrations.dart`
+- `lib/data/datasources/food_catalog_loader.dart`
 - `scripts/sqlite_schema.sql`
 - `scripts/sqlite_seed.sql`
 - `test/db_seed_test.dart`
@@ -159,8 +158,8 @@ Idempotency + interruption safety:
 OmniTrain consolidates thirteen previously-independent one-time migration
 steps (`seed_loaded`, `seed_units_migrated_v1`, …) into a single ordered
 update sequence tracked by the device's `data_version` integer (see
-[`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart)
-and [`DataMigrationService`](../lib/core/services/data_migration_service.dart)).
+[`lib/core/constants/data_version.dart`](../../../lib/core/constants/data_version.dart)
+and [`DataMigrationService`](../../../lib/core/services/data_migration_service.dart)).
 On startup, `HiveWorkoutRepository.initialize()` runs the service:
 
 1. Reads the device's `data_version` (default `1`).
@@ -216,7 +215,7 @@ Storage shape (Hive runtime; SQL parity noted for the future importer):
 
 Adding a new step: append a row to `HiveWorkoutRepository._dataMigrationSteps()`
 and bump `currentDataVersion` in
-[`lib/core/constants/data_version.dart`](../lib/core/constants/data_version.dart).
+[`lib/core/constants/data_version.dart`](../../../lib/core/constants/data_version.dart).
 The next launch runs the new step exactly once per device. No new meta-box
 key is required for the step itself.
 
@@ -575,24 +574,54 @@ Recommended SQL ordering for retrieval parity:
 
 ---
 
-## SQLite Datasource Versioning
+## SQLite Schema Versioning
 
-- `DatabaseProvider.open(..., version: 7)` is now the default.
-- `migrations.dart` contains incremental SQL migrations for:
+> **Corrected 2026-07-26 (docs audit).** This section described a live
+> `DatabaseProvider.open(..., version: 7)` runtime and a `migrations.dart`
+> holding incremental SQL migrations. **Neither file exists any more.** The
+> SQLite *runtime* was retired (see
+> `.github/agents/plans/retire-sqlite-runtime-plan.md`):
+> `lib/data/datasources/database_provider.dart`, `db_helper.dart`, and
+> `migrations.dart` were deleted, `sqflite` was dropped from `dependencies`
+> (only `sqflite_common_ffi` remains, under `dev_dependencies`, for the
+> validation test), and the SQL files are no longer bundled as Flutter
+> assets. The app persists exclusively through `HiveWorkoutRepository` on
+> every platform.
+
+What remains is the **schema documentation**, and it is still authoritative
+for the data model:
+
+- `scripts/sqlite_schema.sql` and `scripts/sqlite_seed.sql` are maintained in
+  the repository as the pipeline's canonical data-model contract.
+- Schema evolution is expressed as `ALTER TABLE` / `CREATE TABLE IF NOT
+  EXISTS` statements appended to `sqlite_schema.sql` itself, not as separate
+  numbered migration files.
+- The historical migration steps the retired provider applied are listed
+  below for reference. They are **history**, not a live upgrade path:
   - v2: `modality`, `intent` fields on `app_training_session`
   - v3: `session_feeling`, `quality_rating`, `rpe_rating`, `rest_duration_ms`
   - v4: `app_entry_rest` table
   - v5: exercise content and `app_exercise_note`
   - v6: rolling sessions, `app_session_block`, and `block_id`
-  - v7: canonical ordering fields (`top_level_order_index`, `block_order_index`) and indexes for deterministic active-session ordering
+  - v7: canonical ordering fields (`top_level_order_index`,
+    `block_order_index`) and indexes for deterministic active-session ordering
+
+Runtime **data** migrations (the ones that actually execute today) are a
+separate mechanism keyed on `currentDataVersion` — see
+[Constants Reference](constants_reference.md#data_versiondart).
 
 ---
 
 ## Practical Notes
 
-- DB schema/seed SQL are loaded from assets via `rootBundle`.
-- `DatabaseProvider` supports `inMemory` mode for deterministic tests.
-- Current runtime behavior is Hive-first; SQL assets are still maintained to preserve repository parity and avoid drift.
+- The schema/seed SQL are read from disk with `File` by
+  `test/db_seed_test.dart`, which executes them against an in-memory
+  `sqflite_common_ffi` database to prove they remain valid, executable SQL.
+  They are **not** loaded via `rootBundle` and are no longer shipped as app
+  assets.
+- Runtime persistence is Hive on every platform. The SQL files are
+  maintained as the data-model contract so the documented schema cannot
+  drift from the models.
 
 ---
 
@@ -651,4 +680,4 @@ The same seam applies in `TimerManager` (for round/timed instance writes) and `E
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
