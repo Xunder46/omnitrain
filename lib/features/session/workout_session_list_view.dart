@@ -682,30 +682,18 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
-      body: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          if (details.primaryVelocity! > 200) {
-            _previousSet();
-          } else if (details.primaryVelocity! < -200) {
-            if (widget.editMode) {
-              _nextSetInEditMode();
-            } else {
-              _nextSet();
-            }
-          }
-        },
-        onVerticalDragEnd: (details) {
-          // Up swipe = next exercise; down swipe = previous exercise
-          if (details.primaryVelocity! < -200) {
-            // Swipe up = next exercise
-            _switchExercise(1);
-          } else if (details.primaryVelocity! > 200) {
-            // Swipe down = previous exercise
-            _switchExercise(-1);
-          }
-        },
-        child: Stack(
-          children: [
+      // PR 2 (Launch Quality Hotfix): removed the screen-level
+      // GestureDetector that previously interpreted horizontal and
+      // vertical drags as set / exercise navigation. Those gestures
+      // fought the number-scroller (InlineMetricEditor) drag-to-edit
+      // affordance and were a frequent source of accidental jumps
+      // mid-set. Navigation is now exclusively via the explicit
+      // Previous / Next arrows, the set dots, and the per-set
+      // controls at the bottom of the detail view. See
+      // `.github/agents/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
+      // scenario S-003.
+      body: Stack(
+        children: [
             SafeArea(
               child: Column(
                 children: [
@@ -781,7 +769,6 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ),
           ],
         ),
-      ),
     );
   }
 

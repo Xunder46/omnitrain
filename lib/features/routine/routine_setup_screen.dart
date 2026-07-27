@@ -599,89 +599,71 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
           _scrollListToBottom();
         },
       ),
-      body: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          if (details.primaryVelocity == null) return;
-          if (details.primaryVelocity! > 200) {
-            _previousSet();
-          } else if (details.primaryVelocity! < -200) {
-            _nextSet();
-          }
-        },
-        onVerticalDragEnd: (details) {
-          if (details.primaryVelocity == null) return;
-          if (details.primaryVelocity! < -200) {
-            _switchExercise(1);
-          } else if (details.primaryVelocity! > 200) {
-            _switchExercise(-1);
-          }
-        },
-        child: SafeArea(
-          child: Stack(
-            children: [
-              Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            segment?.name ?? 'Block',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color:
-                                  theme.textTheme.bodyMedium?.color ??
-                                  theme.colorScheme.onSurface.withOpacity(0.7),
-                            ),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          segment?.name ?? 'Block',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color:
+                                theme.textTheme.bodyMedium?.color ??
+                                theme.colorScheme.onSurface.withOpacity(0.7),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            exercise?.name ?? 'Unknown Exercise',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: theme.colorScheme.onSurface,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          exercise?.name ?? 'Unknown Exercise',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(height: 24),
-                          Center(
-                            child: _buildMetricWidget(effort, targets, theme),
+                        ),
+                        const SizedBox(height: 24),
+                        Center(
+                          child: _buildMetricWidget(effort, targets, theme),
+                        ),
+                        const SizedBox(height: 16),
+                        Center(
+                          child: _buildSetProgress(
+                            setCount,
+                            effort,
+                            canAddSet,
+                            theme,
                           ),
-                          const SizedBox(height: 16),
-                          Center(
-                            child: _buildSetProgress(
-                              setCount,
-                              effort,
-                              canAddSet,
-                              theme,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Center(child: _buildSetIndicator(setCount, theme)),
-                          const SizedBox(height: 80),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 12),
+                        Center(child: _buildSetIndicator(setCount, theme)),
+                        const SizedBox(height: 80),
+                      ],
                     ),
                   ),
-                ],
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: _buildSetControls(setCount, effort),
-                  ),
+                ),
+              ],
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: _buildSetControls(setCount, effort),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1616,16 +1598,5 @@ extension on _RoutineSetupScreenState {
         ),
       ),
     );
-  }
-
-  void _switchExercise(int delta) {
-    final efforts = widget.routineState.currentEfforts;
-    if (efforts.isEmpty) return;
-    final newIndex = _currentExerciseIndex + delta;
-    if (newIndex < 0 || newIndex >= efforts.length) return;
-    _updateUi(() {
-      _currentExerciseIndex = newIndex;
-      _currentSet = 1;
-    });
   }
 }

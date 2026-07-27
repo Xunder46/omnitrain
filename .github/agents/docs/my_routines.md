@@ -1,10 +1,12 @@
 # My Routines — Feature Documentation
 
 > **2026-07-27 current-state boundary:** Card bodies currently start routines,
-> routine detail currently supports horizontal/vertical swipe navigation, and
-> routine exits currently have no unsaved-changes confirmation. PRs 2, 5, and 6
-> in the [feedback-pack baseline](feedback-pack-baseline-2026-07-27.md) change
-> those contracts; their desired behavior is not yet shipped.
+> routine exits currently have no unsaved-changes confirmation, and the
+> routine card intent (start vs. edit) is still ambiguous. PRs 5 and 6 in the
+> [feedback-pack baseline](feedback-pack-baseline-2026-07-27.md) change
+> those contracts; their desired behavior is not yet shipped. PR 2
+> (Launch Quality Hotfix) already removed the legacy horizontal/vertical
+> swipe navigation from the routine detail view.
 
 ## Overview
 

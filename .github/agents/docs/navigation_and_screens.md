@@ -54,27 +54,31 @@ re-runs `_runStartup` from the top without rerunning the bootstrap
 initialised and primed to capture the next throw).
 
 `StartupRoot` (defined in `lib/app/startup_root.dart`) is the top-level
-widget that owns the startup attempt. Its **current implementation does not
-model preparation separately from failure**: `_runningApp == null` covers both
-"runner still in flight" and "runner threw", so `build()` renders
-`StartupFailureScreen` in both cases. `_attemptInFlight` only disables/spins the
-Retry control. Current outcomes:
+widget that owns the startup attempt. Lifecycle is modelled as an explicit
+`_StartupLifecycle` enum (`preparing` / `succeeded` / `failed`) and `build()`
+renders the appropriate surface for each state. The three outcomes are
+disjoint — a successful launch never passes through `failed`:
 
-- **Preparing (visually conflated with failure)** — the first attempt starts
-  from `initState`; until it completes, the failure surface is already in the
-  tree. A healthy launch can therefore show a failure-screen frame.
-- **Succeeded** — runner returns a widget → `_runningApp` is set and that widget
-  mounts as the running app.
-- **Genuinely failed** — runner throws → diagnostics run and the same failure
-  surface remains, now with Retry enabled.
-- **Retry** — Retry invokes the runner from the top. During the attempt the same
-  surface remains with Retry disabled; success mounts the app and another
-  failure re-enables Retry.
+- **Preparing** — the first attempt starts from `initState`. While the runner
+  is in flight, the neutral preparation surface
+  (`lib/features/startup/startup_preparing_screen.dart`) is mounted. It is a
+  single `CircularProgressIndicator` on the gradient background — no brand
+  content, no failure copy. A healthy launch MUST NOT render the failure
+  screen during this phase.
+- **Succeeded** — runner returns a widget → `_runningApp` is set and that
+  widget mounts as the running app. Only reachable from `preparing`.
+- **Failed** — runner throws → diagnostics run and `StartupFailureScreen` is
+  mounted with the Retry control enabled. Only reachable from `preparing`.
+- **Retry** — Retry invokes the runner from the top. The lifecycle returns
+  to `preparing` first, so the failure screen is replaced by the neutral
+  preparation surface during the retry. Success mounts the app; another
+  failure re-enters `failed` and re-enables Retry.
 
-> **Scheduled, not current:** PR 2 in the
-> [2026-07-27 feedback-pack queue](../plans/2026-07-27-00-feedback-pack-shipping-order.md)
-> introduces distinct preparing/succeeded/failed rendering. Preparation must be
-> neutral, and a successful launch must never pass through failure content.
+The lifecycle model is the PR 2 fix — previously the failure screen was
+rendered during `preparing` as well, which caused a flash of failure content
+on every healthy launch. See
+`.github/agents/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
+scenarios S-001 and S-002 for the contract.
 
 `runStartup` (in `lib/main.dart`) performs the same work the entry
 point did previously:
