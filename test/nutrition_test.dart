@@ -236,9 +236,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       // The bottom "Edit Targets" button is gone. The new affordance
-      // is the small icon button on the calorie-ring card.
+      // is the labelled "Set target" / "Change target" button on the
+      // Today header (PR 3 / S-002).
       expect(find.text('Edit Targets'), findsNothing);
-      expect(find.byKey(const Key('edit_targets_icon')), findsOneWidget);
+      expect(find.byKey(const Key('nutrition_target_button')), findsOneWidget);
     });
   });
 
@@ -1354,9 +1355,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Note: Edit targets icon moved to header section outside the card
-      // (in NutritionScreen, alongside "Today" title). The card no longer
-      // contains the edit icon.
+      // Note: Edit-targets control (labelled `OutlinedButton.icon`,
+      // key `nutrition_target_button`, PR 3 / S-002) lives in the header
+      // section outside the card (in `NutritionScreen`, alongside the
+      // "Today" title). The card no longer contains the control.
       // Center text shows consumed / target (calories formatted with
       // thousands grouping).
       final cal1Str = formatThousands(cal1);
@@ -1491,10 +1493,16 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      // The icon is present (no target, no log yet — empty ring branch).
-      expect(find.byKey(const Key('edit_targets_icon')), findsOneWidget);
+      // The labelled control is present (no target, no log yet — empty
+      // ring branch). The button reads "Set target" because no target
+      // is saved (PR 3 / S-002).
+      expect(
+        find.byKey(const Key('nutrition_target_button')),
+        findsOneWidget,
+      );
+      expect(find.text('Set target'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('edit_targets_icon')));
+      await tester.tap(find.byKey(const Key('nutrition_target_button')));
       await tester.pumpAndSettle();
 
       // The targets screen is now on top (Phase 3 / D-3: title is

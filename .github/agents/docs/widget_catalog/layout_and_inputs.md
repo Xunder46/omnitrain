@@ -99,7 +99,7 @@ Canonical per-card header rendered above an outlined card. Single source of trut
 - Use cases (every section/card header in the app routes through this widget):
   - **Settings screen** (Phase 1): `PREFERENCES`, `SOUNDS & ALERTS`, `WORKOUT`, `APPEARANCE`.
   - **Session Summary screen** (Phase 2 / 2.1 / 2.2): the date header above the combined session info card (with the modality chip in actions), the `SESSION NOTE` header above the note card, and the month label header above the calendar card (with the `Open Calendar` button in actions).
-  - **Daily Nutrition screen** (Phase 3): `Today` header (with the `edit_targets_icon` `IconButton` in actions), `Foods I Eat` header (with the `food_library_manage_pencil` `IconButton` in actions).
+  - **Daily Nutrition screen** (Phase 3): `Today` header (with the `nutrition_target_button` `OutlinedButton.icon` in actions — PR 3 / S-002), `Foods I Eat` header (with the `food_library_manage_pencil` `IconButton` in actions).
   - **Profile screen** (Phase 4): one `OmniCardHeader` per measurement definition (label + the `+` add `OutlinedButton` in actions).
   - **Stats screen** (Phase 5): `ALL TIME`, `STRENGTH` / `CARDIO` (with the window chip in actions), `NUTRITION`.
 

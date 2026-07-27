@@ -199,11 +199,16 @@ the macro-donut tap-to-focus interaction.
   `protein = todayConsumedProtein`,
   `netCarbs = max(0, todayConsumedCarbs - todayConsumedFiber)`,
   `fiber = todayConsumedFiber`, `fat = todayConsumedFat`.
-- Edit icon (`Icons.tune`, `Key('edit_targets_icon')`, tooltip "Edit
-  targets") lives in the `OmniCardHeader` actions slot above the card
-  (rendered by `NutritionScreen`). The icon button has an explicit
-  `shape:` override (`OmniTheme.buttonIconRadius` = 10) to avoid
-  Material 3's default `StadiumBorder`. The icon is **not** part of the
+- Edit control (`OutlinedButton.icon`, `Key('nutrition_target_button')`)
+  lives in the `OmniCardHeader` actions slot above the card (rendered by
+  `NutritionScreen`). PR 3 / Item 5 of the 2026-07-27 feedback pack
+  replaced the previous icon-only `Icons.tune` `IconButton` with this
+  labelled utility variant. The label reflects the saved-target state:
+  "Set target" when no target is saved, "Change target" when a target
+  is already saved. The button has an explicit `shape:` override
+  (`OmniTheme.buttonUtilityRadius` = 8) and uses
+  `theme.colorScheme.primary` for the border + label colour, per the
+  utility-button design-system rule. The button is **not** part of the
   focus state — tapping it navigates to the targets editor as before.
 - `ListenableBuilder` over `nutritionState` — every `notifyListeners()`
   (target load/save, consumed-food load, water increment / decrement,
