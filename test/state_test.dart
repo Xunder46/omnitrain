@@ -147,7 +147,9 @@ void main() {
       expect(state.currentTemplate!.name, 'Leg Day');
       expect(state.currentSegments, hasLength(1));
       expect(state.currentSegments.first.segmentType, 'main');
-      expect(state.hasUnsavedChanges, true);
+      // A brand-new routine is at the baseline — no edits yet — so the
+      // unsaved-changes guard must not trigger on the first exit.
+      expect(state.hasUnsavedChanges, isFalse);
     });
 
     test('updateRoutineName changes name', () async {

@@ -1,12 +1,13 @@
 # My Routines — Feature Documentation
 
 > **2026-07-27 current-state boundary:** Card bodies currently start routines,
-> routine exits currently have no unsaved-changes confirmation, and the
-> routine card intent (start vs. edit) is still ambiguous. PRs 5 and 6 in the
-> [feedback-pack baseline](feedback-pack-baseline-2026-07-27.md) change
-> those contracts; their desired behavior is not yet shipped. PR 2
+> and the routine card intent (start vs. edit) is still ambiguous. PR 6 in
+> the [feedback-pack baseline](feedback-pack-baseline-2026-07-27.md) changes
+> that contract; its desired behavior is not yet shipped. PR 2
 > (Launch Quality Hotfix) already removed the legacy horizontal/vertical
-> swipe navigation from the routine detail view.
+> swipe navigation from the routine detail view. **PR 5 (Tier 3 data-loss
+> guard — shipped) lands the unsaved-changes guard described in
+> `Editing a Routine` below.**
 
 ## Overview
 
@@ -100,10 +101,23 @@ workout detail: right/left selects the previous/next set and up/down selects the
 next/previous exercise. Feedback-pack PR 2 removes these screen-level gestures
 without changing metric scrollers or explicit controls.
 
-Header back, system back, and bottom Cancel currently clear the working routine
-and exit without a dirty-state comparison. When detail is open, system back
-first returns to the list. Feedback-pack PR 5 adds the shared unsaved-changes
-guard; that guard is not current behavior.
+Header back, system back, and bottom Cancel all funnel through the same
+`_attemptExit` guard. The guard compares the working state against the
+`RoutineSnapshot` baseline captured at editor entry (or at the last
+successful save). Only continue when the routine has been touched — the
+fields covered are name, description, focus modality, segments
+(add/remove/rename/retype/reorder), efforts per segment
+(add/remove/reorder/change tracking/rest), and targets per effort
+(per-set metric values, add/remove set). Untouched routines exit
+without prompting.
+
+Confirmation copy, layout, and button shapes mirror the completed-session
+edit confirmation: title "Unsaved changes", body "You have unsaved
+edits. Save them or discard to return to the routines list.", and the
+`Discard` / `Save` row uses `OmniTheme.buttonUtilityRadius`. The
+header-bar close icon is the "Keep editing" affordance. When detail is
+open, system back first returns to the list (same as the AppBar's back
+arrow) before the guard engages.
 
 ### 5. Deleting a Routine
 ```
