@@ -150,7 +150,7 @@ void main() {
   });
 
   testWidgets(
-    'Exercise detail header icons share larger size, 44pt hit targets, and remain tappable',
+    'Exercise detail header icons share compact size, 40pt hit targets, and remain tappable',
     (WidgetTester tester) async {
       final repository = MockWorkoutRepository();
       await repository.initialize();
@@ -186,12 +186,17 @@ void main() {
       final infoIcon = infoButton.icon as Icon;
       final notesIcon = notesButton.icon as Icon;
 
+      // Both icons share the same size (compact header treatment).
       expect(infoIcon.size, greaterThan(18));
       expect(notesIcon.size, infoIcon.size);
-      expect(infoButton.constraints!.minWidth, greaterThanOrEqualTo(44));
-      expect(infoButton.constraints!.minHeight, greaterThanOrEqualTo(44));
-      expect(notesButton.constraints!.minWidth, greaterThanOrEqualTo(44));
-      expect(notesButton.constraints!.minHeight, greaterThanOrEqualTo(44));
+      // Both icons share the same compact hit-target floor (40 dp).
+      // Matches the Discard button in the list header so every
+      // secondary header action is the same size across
+      // list ↔ detail navigation.
+      expect(infoButton.constraints!.minWidth, 40.0);
+      expect(infoButton.constraints!.minHeight, 40.0);
+      expect(notesButton.constraints!.minWidth, 40.0);
+      expect(notesButton.constraints!.minHeight, 40.0);
 
       await tester.tap(find.byKey(const Key('exercise-info-button')));
       await tester.pumpAndSettle();

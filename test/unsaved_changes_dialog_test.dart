@@ -163,7 +163,14 @@ void main() {
 
     expect(entryCount(deps.workoutState), 2);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Discard'));
+    // Scope the Discard tap to the dialog so the screen-level Discard
+    // button (added by PR 4) does not match.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(OutlinedButton, 'Discard'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(WorkoutSessionScreen), findsNothing);
@@ -225,7 +232,16 @@ void main() {
       exerciseName: deps.exercise.name,
     );
 
-    expect(find.widgetWithText(OutlinedButton, 'Discard'), findsOneWidget);
+    // Scope to the dialog because the screen also exposes a Discard
+    // button (PR 4 added a secondary hollow red OutlinedButton to
+    // the session list).
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(OutlinedButton, 'Discard'),
+      ),
+      findsOneWidget,
+    );
     expect(find.widgetWithText(FilledButton, 'Save'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

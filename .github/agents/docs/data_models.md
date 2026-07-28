@@ -188,11 +188,14 @@ Wall-clock-persisted rest record created when a set/round is logged. Tracks reco
 | `entryIndex` | `int` | 0-based; identifies the set/round this rest precedes |
 | `restStartMs` | `int` | Wall-clock epoch ms when the previous set was logged |
 | `restEndMs` | `int?` | Wall-clock epoch ms when the next set/round was started; `null` while still resting |
+| `restIsPaused` | `bool` | PR 4: `true` while the rest window is in the paused state. While paused, `elapsedSeconds` freezes at `restPausedAtMs`. |
+| `restPausedAtMs` | `int?` | PR 4: wall-clock instant when the rest was paused; `null` when not paused |
+| `restPausedDurationMs` | `int` | PR 4: cumulative paused time across all pause/resume cycles. Subtracted from the recorded duration so stopped intervals never count. |
 | `createdAtMs` | `int` | Creation timestamp |
 | `updatedAtMs` | `int` | Last modified timestamp |
 
 **Computed helper:**
-- `elapsedSeconds(int nowMs)` — `((restEndMs ?? nowMs) - restStartMs) / 1000`, clamped to `[0, 99999]`
+- `elapsedSeconds(int nowMs)` — `((effectiveEndMs - restStartMs - restPausedDurationMs) / 1000).round()`, clamped to `[0, 99999]`. `effectiveEndMs` is `restEndMs` if closed, otherwise `restPausedAtMs` while paused or `nowMs` while running.
 
 ### TimedInstance
 

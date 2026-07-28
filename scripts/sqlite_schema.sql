@@ -706,13 +706,23 @@ CREATE TABLE app_round_instance (
 );
 CREATE INDEX IF NOT EXISTS IX_round_instance_effort ON app_round_instance(effort_id, round_index);
 
--- ENTRY REST RECORDS (March 2026)
--- =================================
+-- ENTRY REST RECORDS (March 2026 — extended June 2026 for pause/resume)
+-- =================================================================
 -- Tracks the actual recovery time between consecutive sets/rounds for any effort kind.
 -- Created when a set is logged (rest_start_ms). Closed with rest_end_ms when the
 -- next set/round is actively begun. rest_end_ms IS NULL while the athlete is resting.
 -- Works uniformly for effort kinds: set, round, timed, drill, and any future kinds.
 -- On DELETE CASCADE ensures automatic cleanup when the parent effort is deleted.
+--
+-- Pause / resume (June 2026, feedback-pack PR 4):
+--   The athlete can tap the rest tile to pause (stop the counted time) and
+--   resume. The pause is captured as rest_paused_at_ms; the elapsed
+--   formula subtracts rest_paused_duration_ms (accumulated across all
+--   pause/resume cycles) so the recorded rest duration excludes any
+--   stopped interval. While paused, rest_is_paused is `true` and the
+--   elapsed is frozen at the pause time; on resume, the new pause-time
+--   is added to the accumulator. All three fields are persisted so the
+--   pause state survives app backgrounding and reloads.
 --
 -- SqliteWorkoutRepository implementation notes:
 --   getEntryRests(effortId):
@@ -720,15 +730,26 @@ CREATE INDEX IF NOT EXISTS IX_round_instance_effort ON app_round_instance(effort
 --   createEntryRest(rest):
 --     INSERT INTO app_entry_rest VALUES (...);
 --   updateEntryRest(rest):
---     UPDATE app_entry_rest SET rest_end_ms=?, updated_at_ms=? WHERE id=?;
+--     UPDATE app_entry_rest SET
+--       rest_end_ms=?, rest_is_paused=?, rest_paused_at_ms=?,
+--       rest_paused_duration_ms=?, updated_at_ms=?
+--     WHERE id=?;
 --   deleteEntryRestsForEffort(effortId):
 --     DELETE FROM app_entry_rest WHERE effort_id = ?;
+--
+-- Migration (for existing production databases — add new columns with safe defaults):
+--   ALTER TABLE app_entry_rest ADD COLUMN rest_is_paused INTEGER NOT NULL DEFAULT 0;
+--   ALTER TABLE app_entry_rest ADD COLUMN rest_paused_at_ms INTEGER;
+--   ALTER TABLE app_entry_rest ADD COLUMN rest_paused_duration_ms INTEGER NOT NULL DEFAULT 0;
 CREATE TABLE app_entry_rest (
   id            TEXT    NOT NULL PRIMARY KEY,
   effort_id     TEXT    NOT NULL,
   entry_index   INTEGER NOT NULL,   -- 0-based: this rest precedes this set/round
   rest_start_ms INTEGER NOT NULL,   -- wall-clock epoch ms when previous set was logged
   rest_end_ms   INTEGER,            -- wall-clock epoch ms when next set/round began; NULL = still resting
+  rest_is_paused         INTEGER NOT NULL DEFAULT 0, -- 1 = rest tile tapped to stop counted time
+  rest_paused_at_ms      INTEGER,                  -- wall-clock ms when paused; NULL if not paused
+  rest_paused_duration_ms INTEGER NOT NULL DEFAULT 0, -- accumulated pause time in ms, excluded from recorded rest duration
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,
   FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE

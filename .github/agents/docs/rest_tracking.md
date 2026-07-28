@@ -28,15 +28,25 @@ The replacement architecture stores a per-entry rest record in the repository at
 | `entryIndex` | `int` | 0-based; identifies the set/round **this rest precedes** |
 | `restStartMs` | `int` | Wall-clock epoch ms when the previous set was logged |
 | `restEndMs` | `int?` | Wall-clock epoch ms when the next set/round was started; `null` while still resting |
+| `restIsPaused` | `bool` | PR 4: `true` while the rest window is in the paused state. PR 4 hides the running elapsed count until resumed. |
+| `restPausedAtMs` | `int?` | PR 4: wall-clock instant when the rest was paused; `elapsedSeconds` freezes at this value. `null` when not paused. |
+| `restPausedDurationMs` | `int` | PR 4: cumulative paused time across all pause/resume cycles for this rest. Subtracted from the running duration so the recorded rest excludes stopped intervals. |
 | `createdAtMs` | `int` | Creation timestamp |
 | `updatedAtMs` | `int` | Last modified timestamp |
 
 ### Computed Helper
 
 ```dart
-// Returns elapsed rest seconds; live value if restEndMs is null.
-int elapsedSeconds(int nowMs) =>
-    (((restEndMs ?? nowMs) - restStartMs) / 1000).round().clamp(0, 99999);
+// Returns elapsed rest seconds; paused freezes at restPausedAtMs,
+// running reads from nowMs. Subtracts restPausedDurationMs so the
+// recorded rest excludes stopped intervals.
+int elapsedSeconds(int nowMs) {
+  final effectiveEndMs = restEndMs ??
+      (restIsPaused ? (restPausedAtMs ?? nowMs) : nowMs);
+  return ((effectiveEndMs - restStartMs - restPausedDurationMs) / 1000)
+      .round()
+      .clamp(0, 99999);
+}
 ```
 
 ---
@@ -47,17 +57,26 @@ int elapsedSeconds(int nowMs) =>
 
 ```sql
 CREATE TABLE app_entry_rest (
-  id                TEXT    NOT NULL PRIMARY KEY,
-  effort_id         TEXT    NOT NULL,
-  entry_index       INTEGER NOT NULL,
-  rest_start_ms     INTEGER NOT NULL,
-  rest_end_ms       INTEGER,           -- NULL while athlete is still resting
-  created_at_ms     INTEGER NOT NULL,
-  updated_at_ms     INTEGER NOT NULL,
+  id                       TEXT    NOT NULL PRIMARY KEY,
+  effort_id                TEXT    NOT NULL,
+  entry_index              INTEGER NOT NULL,
+  rest_start_ms            INTEGER NOT NULL,
+  rest_end_ms              INTEGER,           -- NULL while athlete is still resting
+  rest_is_paused           INTEGER NOT NULL DEFAULT 0, -- PR 4: 1 = paused, 0 = running
+  rest_paused_at_ms        INTEGER,                    -- PR 4: wall-clock pause time
+  rest_paused_duration_ms  INTEGER NOT NULL DEFAULT 0, -- PR 4: cumulative paused duration
+  created_at_ms            INTEGER NOT NULL,
+  updated_at_ms            INTEGER NOT NULL,
   FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS UX_entry_rest_effort_index
     ON app_entry_rest(effort_id, entry_index);
+
+-- PR 4 migration: add pause/resume columns on existing installs.
+ALTER TABLE app_entry_rest ADD COLUMN rest_is_paused INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE app_entry_rest ADD COLUMN rest_paused_at_ms INTEGER;
+ALTER TABLE app_entry_rest ADD COLUMN rest_paused_duration_ms INTEGER NOT NULL DEFAULT 0;
+```
 ```
 
 The `ON DELETE CASCADE` constraint ensures rest records are removed automatically when their parent effort is deleted.
@@ -121,8 +140,11 @@ Populated during `loadSessionData()` and `loadHistoricalSession()` alongside obs
 | `getEntryRests` | `(String effortId) → List<EntryRest>` | Returns unmodifiable list of rest records for an effort |
 | `recordRestStart` | `(String effortId, int entryIndex) → Future<void>` | Creates rest record with current epoch time as `restStartMs`; called after a set is logged |
 | `recordRestEnd` | `(String effortId, int entryIndex) → Future<void>` | Updates `restEndMs` on the open rest record; called when the athlete starts the next set/round |
+| `pauseRest` | `(String effortId, int entryIndex) → Future<void>` | PR 4: Sets `restIsPaused = true` and stamps `restPausedAtMs = now`. No-op when the rest is already paused or closed. |
+| `resumeRest` | `(String effortId, int entryIndex) → Future<void>` | PR 4: Accumulates the paused interval (`now - restPausedAtMs`) into `restPausedDurationMs` and clears `restIsPaused`. No-op when the rest is already running or closed. |
+| `isRestPaused` | `(String effortId, int entryIndex) → bool` | PR 4: Returns the `restIsPaused` flag for the given rest. Drives the overlay chip's running/paused branch. |
 | `persistOpenRests` | `(int closeAtMs) → Future<void>` | Closes all still-open rest records at session end using a shared wall-clock timestamp |
-| `getRestElapsedSeconds` | `(String effortId, int entryIndex) → int` | Returns live elapsed seconds for display (uses wall-clock `now` when `restEndMs` is null) |
+| `getRestElapsedSeconds` | `(String effortId, int entryIndex) → int` | Returns live elapsed seconds for display (uses wall-clock `now` when `restEndMs` is null; freezes at `restPausedAtMs` while paused; subtracts `restPausedDurationMs` so the recorded value excludes stopped time) |
 | `hasRestRecord` | `(String effortId, int entryIndex) → bool` | Returns true if a rest record exists for this entry; drives overlay visibility |
 
 ### Record Lifecycle
@@ -212,14 +234,49 @@ String _formatRestElapsed(String effortId, int entryIndex) {
 
 The overlay refreshes on every `_ticker` tick (1 second, already exists for round timers) — no additional `Timer.periodic` is required.
 
-The current chip is **display-only**. `_buildRestOverlayChip` returns a decorated
-`Container`, not an interactive control; `EntryRest` stores only start/end
-timestamps and cannot represent a paused interval. Logging the next entry or
-starting an effort timer still closes open rest as described above.
+The current chip is **tappable**. PR 4 wraps the chip in `Material` + `InkWell`
+whose `onTap` calls `_toggleRestChip`, which dispatches to `workoutState.pauseRest`
+or `workoutState.resumeRest` based on the current `isRestPaused` flag. The chip
+has a 48-dp touch-target floor (vertical padding 12 + minHeight 48) so the
+whole tile is hittable without aiming for a small icon.
 
-> **Scheduled, not current:** feedback-pack PR 4 adds whole-tile pause/resume,
-> reload-safe counted duration that excludes stopped time, and distinct
-> not-started/running/stopped presentation.
+Three visually distinct states (PR 4 spec: "Three rest states are visually
+distinct without reading the number"):
+
+| State | Background tint | Icon | Extra chrome |
+|-------|-----------------|------|--------------|
+| **Running** (default, rest just opened) | Primary-tinted | `Icons.self_improvement` (meditation) | (none) |
+| **Paused** (after tap) | Muted surface tint | `Icons.pause` | (none) |
+| **Not started** (no open rest for the session) | — (chip hidden entirely) | — | — |
+
+`_shouldShowRestOverlay()` (above) hides the chip in the not-started case.
+The running/paused branches share the same chip widget; the icon swap is
+the sole differentiator (background tint + icon). The chip's bounding
+rect is intentionally identical in both states — no shadow, no border —
+so the user can read the same timer without layout jumping.
+
+> **Removed 2026-07-27 (PR 4 refinement).** Earlier drafts of PR 4 carried
+> a "Paused · tap to resume" caption under the timer in the paused state.
+> That caption made the chip 2dp taller than the running chip (because of
+> the wrapped `Column`) and the feedback was deemed redundant with the
+> icon swap. The chip is now single-line in both states.
+
+Pause/resume behaviour:
+
+- Tap-pause captures the wall-clock instant as `restPausedAtMs` so the
+  elapsed display freezes on the next `_ticker` tick (≤ 1s later).
+- Tap-resume adds the stopped interval (`now - restPausedAtMs`) to
+  `restPausedDurationMs` and clears the paused flag; the displayed
+  elapsed count resumes from the frozen value with stopped time
+  excluded from the recorded duration.
+- Reloading during a paused window restores the exact `restPausedAtMs`
+  stamp so the chip continues to display the same frozen count.
+- Closing the rest (via `recordRestEnd`/`closeAllOpenRests`/`persistOpenRests`)
+  uses `_effectiveRestEndMs` which honours the paused instant — a paused
+  rest is closed at `restPausedAtMs`, never at `now`, so the recorded
+  duration never includes stopped time.
+
+Logging the next entry or starting an effort timer still closes open rest as described above.
 
 ---
 

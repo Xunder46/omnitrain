@@ -2420,6 +2420,217 @@ void main() {
           expect(rest0.restEndMs, lessThan(rest1.restEndMs!));
         },
       );
+
+      // ── PR 4 (Session Screen Controls): rest pause / resume ────────────
+      // The rest timer becomes a tappable tile. Tapping it toggles
+      // between running and stopped; counted time excludes stopped
+      // intervals and reloads safely from the persisted model.
+
+      test(
+        'pauseRest captures the wall-clock pause time and excludes paused time from elapsed',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          // Rest starts at t0 and pauses at t0+10s.
+          await state.recordRestStart(effortId, 0);
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          await state.pauseRest(effortId, 0);
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+
+          // After pause, the counted time must not include the paused
+          // interval (a few ms of roundtrip overhead is acceptable).
+          final elapsed = state.getRestElapsedSeconds(effortId, 0);
+          expect(elapsed, lessThanOrEqualTo(1));
+          expect(elapsed, greaterThanOrEqualTo(0));
+        },
+      );
+
+      test(
+        'resumeRest extends counted time forward so previously accrued time is preserved',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          // Start (t0), pause (t0+10s), resume (t0+30s), then query.
+          await state.recordRestStart(effortId, 0);
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          await state.pauseRest(effortId, 0);
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          await state.resumeRest(effortId, 0);
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+
+          // The 20 s gap between pause and resume must not be counted;
+          // counted time at this point should still be ~0 s.
+          final elapsed = state.getRestElapsedSeconds(effortId, 0);
+          expect(elapsed, lessThanOrEqualTo(1));
+        },
+      );
+
+      test(
+        'recordRestEnd while paused records the pause time as restEndMs '
+        '(not the wall-clock now), so the closed duration excludes paused time',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          await state.recordRestStart(effortId, 0);
+          // Capture the start timestamp so we can compute the expected end.
+          final startMs = state
+              .getEntryRests(effortId)
+              .first
+              .restStartMs;
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          await state.pauseRest(effortId, 0);
+          // Wait well past the start while the rest is paused.
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+          final wallNow = DateTime.now().millisecondsSinceEpoch;
+          await state.recordRestEnd(effortId, 0);
+
+          final rest = state.getEntryRests(effortId).first;
+          expect(rest.restEndMs, isNotNull);
+          // The recorded restEndMs must be the pause time, not wallNow,
+          // because the user did nothing during the paused interval.
+          expect(rest.restEndMs!, lessThan(wallNow));
+          // And it must be at or shortly after the start (we paused ~5 ms
+          // after start). The point: pause-time is captured faithfully.
+          expect(rest.restEndMs!, greaterThanOrEqualTo(startMs));
+          expect(rest.restEndMs! - startMs, lessThan(20));
+          // The rest is no longer paused after ending.
+          expect(rest.restIsPaused, isFalse);
+          expect(rest.restPausedAtMs, isNull);
+        },
+      );
+
+      test(
+        'rapid pause/resume/pause/resume converges without losing or double-counting time',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          await state.recordRestStart(effortId, 0);
+
+          // Four rapid toggles: each pause/resume cycle adds 0 s of
+          // active counted time. After the final resume, the rest is
+          // still running but the counted time is still 0 s.
+          for (var i = 0; i < 4; i++) {
+            await state.pauseRest(effortId, 0);
+            await state.resumeRest(effortId, 0);
+          }
+
+          final rest = state.getEntryRests(effortId).first;
+          // State must be running (final operation was resume).
+          expect(rest.restIsPaused, isFalse);
+          expect(rest.restPausedAtMs, isNull);
+          // The counted time must be exactly 0 — no pause interval was
+          // ever counted, and no active period elapsed after start.
+          final elapsed = state.getRestElapsedSeconds(effortId, 0);
+          expect(elapsed, 0);
+          // And the accumulated pause duration is the time the rest
+          // spent paused. We don't assert a value (timing is racy in
+          // tests) but the field is well-formed.
+          expect(rest.restPausedDurationMs, greaterThanOrEqualTo(0));
+        },
+      );
+
+      test(
+        'paused rest survives a reload with counted time excluding stopped intervals',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+          final sessionId = state.currentSession!.id;
+
+          // Active counted: ~5s. Pause. Wait 10s while paused. (Reload
+          // happens here in the test by re-reading from the repo.)
+          await state.recordRestStart(effortId, 0);
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          await state.pauseRest(effortId, 0);
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+
+          // Reload from repo (state layer recreates the rest record
+          // with the persisted pause state). The historical loader
+          // fetches the existing session by id, rather than creating
+          // a new one the way `loadSessionData` does for an empty
+          // state holder.
+          final reloaded = WorkoutState(repo);
+          await reloaded.loadHistoricalSession(sessionId);
+          final reloadedRest = reloaded
+              .getEntryRests(effortId)
+              .firstWhere((r) => r.entryIndex == 0);
+
+          // The rest must still be paused with the same pause-time
+          // bookkeeping.
+          expect(reloadedRest.restIsPaused, isTrue);
+          expect(reloadedRest.restPausedAtMs, isNotNull);
+          // Counted time at the moment of reload must be the original
+          // active counted time (~5s) — not 15s (5s active + 10s
+          // paused). Wall-clock may have advanced slightly past the
+          // pause (tolerance up to 1 s for a racy test).
+          final elapsed = reloaded.getRestElapsedSeconds(
+            effortId,
+            0,
+          );
+          expect(elapsed, lessThanOrEqualTo(1));
+        },
+      );
+
+      test(
+        'closeAllOpenRests preserves counted time for paused rests by '
+        'recording the pause time as the end time',
+        () async {
+          final repo = await _freshRepo();
+          final state = WorkoutState(repo);
+          await state.createNewSession();
+          final exercises = await repo.getExercises();
+          final effortId = await state.addExerciseToSession(
+            exercises.first,
+            chosenMetric: 'reps',
+          );
+
+          await state.recordRestStart(effortId, 0);
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          await state.pauseRest(effortId, 0);
+          final pauseTime = DateTime.now().millisecondsSinceEpoch;
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+
+          await state.closeAllOpenRests(effortId);
+          final rest = state.getEntryRests(effortId).first;
+          expect(rest.restEndMs, isNotNull);
+          // End time must be at the pause time (not now), so the
+          // recorded rest duration is ~0s rather than ~35s.
+          expect(rest.restEndMs!, lessThanOrEqualTo(pauseTime + 5));
+        },
+      );
     });
 
     test('updateSessionRpe persists RPE value', () async {

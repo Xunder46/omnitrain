@@ -27,14 +27,19 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                 icon: Icon(
                   key: _infoIconKey,
                   Icons.info_outline,
-                  size: 30,
+                  size: 22,
                   color: theme.colorScheme.onSurface.withOpacity(0.45),
                 ),
                 onPressed: exercise == null
                     ? null
                     : () => _showExerciseInfoSheet(context, exercise),
-                padding: EdgeInsets.fromLTRB(0, 0, 5, 0),
-                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(
+                  minWidth: OmniTheme.headerSecondaryActionSize,
+                  minHeight: OmniTheme.headerSecondaryActionSize,
+                ),
+                tooltip: 'Exercise info',
               ),
             ),
             Stack(
@@ -46,17 +51,19 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     icon: Icon(
                       key: _notesIconKey,
                       Icons.edit_note,
-                      size: 30,
+                      size: 22,
                       color: theme.colorScheme.onSurface.withOpacity(0.45),
                     ),
                     onPressed: exercise == null
                         ? null
                         : () => _showExerciseNoteSheet(context, exercise),
-                    padding: EdgeInsets.fromLTRB(5, 0, 0, 0),
+                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                    visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints(
-                      minWidth: 44,
-                      minHeight: 44,
+                      minWidth: OmniTheme.headerSecondaryActionSize,
+                      minHeight: OmniTheme.headerSecondaryActionSize,
                     ),
+                    tooltip: 'Exercise note',
                   ),
                 ),
                 if (exerciseId != null &&

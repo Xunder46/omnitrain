@@ -569,6 +569,14 @@ class TimerManager {
     }
   }
 
+  /// Returns the wall-clock [nowMs]-based effective end of an open
+  /// [EntryRest]. When the rest is paused, the effective end is the
+  /// pause time (frozen display) — never `nowMs` — so the recorded
+  /// duration never includes time the user spent paused. When running,
+  /// the effective end is simply `nowMs`.
+  int _effectiveRestEndMs(EntryRest rest, int nowMs) =>
+      rest.restIsPaused ? (rest.restPausedAtMs ?? nowMs) : nowMs;
+
   Future<void> recordRestStart(String effortId, int entryIndex) async {
     _clearError();
 
@@ -583,7 +591,13 @@ class TimerManager {
       for (var i = 0; i < list.length; i++) {
         final rest = list[i];
         if (rest.restEndMs != null) continue;
-        final closed = rest.copyWith(restEndMs: now, updatedAtMs: now);
+        final effectiveEnd = _effectiveRestEndMs(rest, now);
+        final closed = rest.copyWith(
+          restEndMs: effectiveEnd,
+          restIsPaused: false,
+          restPausedAtMs: null,
+          updatedAtMs: now,
+        );
         await _repository.updateEntryRest(closed);
         list[i] = closed;
       }
@@ -617,13 +631,89 @@ class TimerManager {
       if (idx == -1) return;
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final updated = list[idx].copyWith(restEndMs: now, updatedAtMs: now);
+      final rest = list[idx];
+      final effectiveEnd = _effectiveRestEndMs(rest, now);
+      final updated = rest.copyWith(
+        restEndMs: effectiveEnd,
+        restIsPaused: false,
+        restPausedAtMs: null,
+        updatedAtMs: now,
+      );
 
       await _repository.updateEntryRest(updated);
       list[idx] = updated;
       _notify();
     } catch (e) {
       _setError('Failed to record rest end: $e');
+    }
+  }
+
+  /// Pauses an open rest record. The wall-clock pause time is captured
+  /// as [EntryRest.restPausedAtMs] so the elapsed display freezes at
+  /// the pause instant. Persisted to the repository so a reload
+  /// during the paused window restores the same state.
+  ///
+  /// No-op when:
+  /// - the rest is already closed ([EntryRest.restEndMs] != null), or
+  /// - the rest is already paused ([EntryRest.restIsPaused] is true).
+  Future<void> pauseRest(String effortId, int entryIndex) async {
+    _clearError();
+    try {
+      final list = _entryRests[effortId];
+      if (list == null) return;
+      final idx = list.indexWhere((r) => r.entryIndex == entryIndex);
+      if (idx == -1) return;
+      final rest = list[idx];
+      if (rest.restEndMs != null) return; // already closed
+      if (rest.restIsPaused) return; // already paused
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = rest.copyWith(
+        restIsPaused: true,
+        restPausedAtMs: now,
+        updatedAtMs: now,
+      );
+      await _repository.updateEntryRest(updated);
+      list[idx] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to pause rest: $e');
+    }
+  }
+
+  /// Resumes a paused rest record. The duration spent paused
+  /// (`now - restPausedAtMs`) is added to
+  /// [EntryRest.restPausedDurationMs] so the recorded rest duration
+  /// excludes the stopped interval. Persisted to the repository so
+  /// the accumulated pause time survives a reload.
+  ///
+  /// No-op when:
+  /// - the rest is already closed, or
+  /// - the rest is already running (not paused).
+  Future<void> resumeRest(String effortId, int entryIndex) async {
+    _clearError();
+    try {
+      final list = _entryRests[effortId];
+      if (list == null) return;
+      final idx = list.indexWhere((r) => r.entryIndex == entryIndex);
+      if (idx == -1) return;
+      final rest = list[idx];
+      if (rest.restEndMs != null) return; // already closed
+      if (!rest.restIsPaused) return; // already running
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final pauseStart = rest.restPausedAtMs ?? now;
+      final additionalPauseMs = now - pauseStart;
+      final updated = rest.copyWith(
+        restIsPaused: false,
+        restPausedAtMs: null,
+        restPausedDurationMs:
+            rest.restPausedDurationMs + additionalPauseMs,
+        updatedAtMs: now,
+      );
+      await _repository.updateEntryRest(updated);
+      list[idx] = updated;
+      _notify();
+    } catch (e) {
+      _setError('Failed to resume rest: $e');
     }
   }
 
@@ -640,6 +730,20 @@ class TimerManager {
     }
   }
 
+  /// Whether the rest record for the given effort/entry is currently
+  /// in the **paused** state (i.e. tap is needed to resume the counted
+  /// time). Returns `false` for closed, running, or missing rests.
+  bool isRestPaused(String effortId, int entryIndex) {
+    final list = _entryRests[effortId];
+    if (list == null) return false;
+    for (final r in list) {
+      if (r.entryIndex == entryIndex) {
+        return r.restIsPaused;
+      }
+    }
+    return false;
+  }
+
   bool hasRestRecord(String effortId, int entryIndex) {
     final list = _entryRests[effortId];
     if (list == null) return false;
@@ -648,7 +752,9 @@ class TimerManager {
 
   /// Closes every open [EntryRest] across **all** efforts at [closeAtMs].
   /// Called from [endSession] so the last rest window is captured
-  /// rather than discarded.
+  /// rather than discarded. When a rest is paused, the effective end
+  /// is the pause time (not [closeAtMs]) so the recorded rest
+  /// duration excludes the stopped interval.
   Future<void> persistOpenRests(int closeAtMs) async {
     for (final effortId in List<String>.from(_entryRests.keys)) {
       final list = _entryRests[effortId];
@@ -656,8 +762,15 @@ class TimerManager {
       for (var i = 0; i < list.length; i++) {
         final rest = list[i];
         if (rest.restEndMs != null) continue;
+        // Paused rests: preserve the pause time as the end so the
+        // recorded duration doesn't include paused time. The session
+        // end timestamp is the wall-clock "now" but the rest's effective
+        // end is the last active-counted moment.
+        final effectiveEnd = _effectiveRestEndMs(rest, closeAtMs);
         final closed = rest.copyWith(
-          restEndMs: closeAtMs,
+          restEndMs: effectiveEnd,
+          restIsPaused: false,
+          restPausedAtMs: null,
           updatedAtMs: closeAtMs,
         );
         try {
@@ -673,6 +786,8 @@ class TimerManager {
   /// Closes every open [EntryRest] record for [effortId], regardless of
   /// entryIndex. Called when an interval timer starts so that a rest window
   /// opened for a previously-skipped interval does not keep ticking.
+  /// Paused rests are closed at their pause time so the recorded
+  /// duration excludes the stopped interval.
   Future<void> closeAllOpenRests(String effortId) async {
     _clearError();
     try {
@@ -682,7 +797,13 @@ class TimerManager {
       for (var i = 0; i < list.length; i++) {
         final rest = list[i];
         if (rest.restEndMs != null) continue;
-        final closed = rest.copyWith(restEndMs: now, updatedAtMs: now);
+        final effectiveEnd = _effectiveRestEndMs(rest, now);
+        final closed = rest.copyWith(
+          restEndMs: effectiveEnd,
+          restIsPaused: false,
+          restPausedAtMs: null,
+          updatedAtMs: now,
+        );
         await _repository.updateEntryRest(closed);
         list[i] = closed;
       }
