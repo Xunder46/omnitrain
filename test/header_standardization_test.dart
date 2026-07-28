@@ -1432,8 +1432,9 @@ void main() {
         expect(foodsTitle.style?.color, OmniTheme.colors.textMuted);
 
         // Each header has exactly one trailing action (the
-        // `edit_targets_icon` on Today, the `food_library_manage_pencil`
-        // on Foods I Eat).
+        // `nutrition_target_button` on Today, the `food_library_manage_pencil`
+        // on Foods I Eat). PR 3 / S-002 replaced the icon-only `tune`
+        // gear with a labelled `OutlinedButton.icon` utility variant.
         for (final header in tester.widgetList<OmniCardHeader>(
           find.byType(OmniCardHeader),
         )) {
@@ -1450,8 +1451,10 @@ void main() {
           );
         }
 
-        // Tap the edit-targets icon — the targets screen is pushed.
-        await tester.tap(find.byKey(const Key('edit_targets_icon')));
+        // Tap the labelled target control — the targets screen is pushed
+        // (PR 3 / S-002 replaces the icon-only gear with a labelled
+        // `OutlinedButton.icon` utility variant).
+        await tester.tap(find.byKey(const Key('nutrition_target_button')));
         await tester.pumpAndSettle();
         expect(find.byType(NutritionTargetScreen), findsOneWidget);
 
@@ -1500,7 +1503,7 @@ void main() {
 
       // The "Today" header (above the calorie ring card) is the
       // title-only or single-action header with the
-      // `edit_targets_icon` action. The "Foods I Eat" header
+      // `nutrition_target_button` action. The "Foods I Eat" header
       // follows the calorie ring card. Walk the headers in render
       // order and confirm: the first header's title is 'TODAY',
       // the second is 'Foods I Eat'. The screen source passes

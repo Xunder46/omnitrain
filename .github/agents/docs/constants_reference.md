@@ -267,7 +267,69 @@ See [Design System](design_system.md) for the full token reference. Key categori
 
 ---
 
+## Versioning & Water Constants
+
+> **Added 2026-07-26 (docs audit).** These three constants files exist in
+> `lib/core/constants/` but had no entry in this reference.
+
+### `water_constants.dart`
+
+| Constant | Value | Notes |
+|----------|-------|-------|
+| `kWaterGlassMl` | `250` | Milliliters per logged glass |
+
+Water has **no goal** — like macros and sodium it is tracked for the historical
+record only. The day's stored **volume in ml** is the source of truth; the
+on-screen glass count is derived at the display boundary
+(`volumeMl ~/ kWaterGlassMl`). Never hardcode `250` — go through the constant
+so storage, unit, and widget agree.
+
+### `catalog_version.dart`
+
+| Constant | Value | Notes |
+|----------|-------|-------|
+| `bundledCatalogVersion` | `3` | Content version of the bundled catalog (exercises, capability / muscle-group / equipment links, food catalog, demo routines) |
+
+At app start the device compares its stored version against
+`bundledCatalogVersion`; when the bundled version is newer,
+`CatalogRefreshService` writes new / changed entries in place. **Bumping this
+integer by 1 is the only step required for a catalog change to reach existing
+users.** Versions are monotonically increasing integers; there is no
+cross-version schema compatibility story, because the refresh always reads the
+bundled catalog directly.
+
+`SeedEntryType` (same file) holds the stable entity-type strings used in
+seed-entry tombstone markers — `exercise`, `food_catalog`, `routine_template` —
+stored under the meta-box key `seed_entry_touched_<entityType>_<id>`. These
+strings persist across app upgrades; keep them stable.
+
+### `data_version.dart`
+
+| Constant | Value | Notes |
+|----------|-------|-------|
+| `currentDataVersion` | `14` | Version a device reaches once the last consolidated migration step has run |
+
+Replaces the former ~13 independent one-time `bool`-gated steps with a single
+ordered sequence tracked by the device's `data_version` integer. Steps are
+appended in order and gated by a version check; each must remain idempotent. A
+failing step does **not** advance the version past itself, so the next launch
+retries from there. To ship a new data change, append a `DataMigrationStep` to
+`HiveWorkoutRepository._dataMigrationSteps` (and the Mock mirror) and bump
+`currentDataVersion`.
+
+`DataMigrationStep` is the step interface: `targetVersion` (version the device
+lands at after `run()`), `name` (diagnostics), and `run()`.
+
+Catalog content versioning is explicitly **out of scope** for this file — see
+`catalog_version.dart` above.
+
+See [DB Integration](db_integration.md) for how both versioning mechanisms run
+at startup.
+
+---
+
 ## Related Documentation
+
 
 - [Design System](design_system.md) — Visual design tokens and rules
 - [Modality Tracking](modality_tracking.md) — How constants drive the modality system
@@ -276,9 +338,9 @@ See [Design System](design_system.md) for the full token reference. Key categori
 ---
 
 **Document Version**: 1.1
-**Last Updated**: March 15, 2026
+**Last Updated**: July 26, 2026
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

@@ -365,6 +365,22 @@ class OmniTheme {
   /// Fixed size for icon-only square buttons.
   static const double buttonIconSize = 60.0;
 
+  /// Shared size for secondary header actions — the trailing
+  /// notes / info / discard buttons that sit on the header row
+  /// alongside the back arrow. Matches the compact header
+  /// action style used elsewhere in the app (calendar `+`
+  /// button, period-list add button, etc.) so every secondary
+  /// header action — icon-only [IconButton] or labeled
+  /// [OutlinedButton] — renders at exactly the same height
+  /// regardless of widget type. Keeps the header row visually
+  /// aligned across the list ↔ detail navigation without
+  /// crowding the title column.
+  ///
+  /// Pair with [VisualDensity.compact] on the receiving widget
+  /// so the [IconButton]s / [OutlinedButton]s settle at 40 dp
+  /// instead of the Material default 48 dp tap-target.
+  static const double headerSecondaryActionSize = 40.0;
+
   // ═══════════════════════════════════════════════════════════
   // BOTTOM CTA
   // ═══════════════════════════════════════════════════════════

@@ -138,7 +138,23 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
             ? _buildListView(theme)
             : _buildDetailView(theme);
 
-        return WillPopScope(onWillPop: _handleWillPop, child: content);
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            // Detail view: system back first returns to the list view
+            // (matches the AppBar's back-arrow behaviour). Only when
+            // the list view is already showing do we route through the
+            // unsaved-changes guard.
+            if (!_showListView) {
+              setState(() => _showListView = true);
+              _scrollListToBottom();
+              return;
+            }
+            _attemptExit();
+          },
+          child: content,
+        );
       },
     );
   }
@@ -599,89 +615,71 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
           _scrollListToBottom();
         },
       ),
-      body: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          if (details.primaryVelocity == null) return;
-          if (details.primaryVelocity! > 200) {
-            _previousSet();
-          } else if (details.primaryVelocity! < -200) {
-            _nextSet();
-          }
-        },
-        onVerticalDragEnd: (details) {
-          if (details.primaryVelocity == null) return;
-          if (details.primaryVelocity! < -200) {
-            _switchExercise(1);
-          } else if (details.primaryVelocity! > 200) {
-            _switchExercise(-1);
-          }
-        },
-        child: SafeArea(
-          child: Stack(
-            children: [
-              Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            segment?.name ?? 'Block',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color:
-                                  theme.textTheme.bodyMedium?.color ??
-                                  theme.colorScheme.onSurface.withOpacity(0.7),
-                            ),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          segment?.name ?? 'Block',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color:
+                                theme.textTheme.bodyMedium?.color ??
+                                theme.colorScheme.onSurface.withOpacity(0.7),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            exercise?.name ?? 'Unknown Exercise',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: theme.colorScheme.onSurface,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          exercise?.name ?? 'Unknown Exercise',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(height: 24),
-                          Center(
-                            child: _buildMetricWidget(effort, targets, theme),
+                        ),
+                        const SizedBox(height: 24),
+                        Center(
+                          child: _buildMetricWidget(effort, targets, theme),
+                        ),
+                        const SizedBox(height: 16),
+                        Center(
+                          child: _buildSetProgress(
+                            setCount,
+                            effort,
+                            canAddSet,
+                            theme,
                           ),
-                          const SizedBox(height: 16),
-                          Center(
-                            child: _buildSetProgress(
-                              setCount,
-                              effort,
-                              canAddSet,
-                              theme,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Center(child: _buildSetIndicator(setCount, theme)),
-                          const SizedBox(height: 80),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 12),
+                        Center(child: _buildSetIndicator(setCount, theme)),
+                        const SizedBox(height: 80),
+                      ],
                     ),
                   ),
-                ],
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: _buildSetControls(setCount, effort),
-                  ),
+                ),
+              ],
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: _buildSetControls(setCount, effort),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -982,28 +980,126 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
     await widget.routineState.saveRoutine();
 
+    if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('Routine saved successfully')));
 
+    // Reset is internal to saveRoutine(); pop without re-prompting.
     Navigator.pop(context);
   }
 
-  Future<bool> _handleWillPop() async {
-    if (!_showListView) {
-      setState(() => _showListView = true);
-      _scrollListToBottom();
-      return false;
+  /// Single exit path for the Routine editor. Used by header back, system
+  /// back, and the bottom Cancel button so every exit surface shows the
+  /// same confirmation. Returns silently when the user has nothing to
+  /// lose; pops when the user has nothing to lose OR has explicitly
+  /// chosen Discard; stays put on Keep-Editing.
+  Future<void> _attemptExit() async {
+    if (!widget.routineState.hasUnsavedChanges) {
+      // Clean baseline — drop the in-memory working state and pop.
+      widget.routineState.clearCurrentRoutine();
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      return;
     }
 
-    widget.routineState.clearCurrentRoutine();
-    return true;
+    final action = await _showUnsavedChangesDialog();
+    if (!mounted) return;
+
+    switch (action) {
+      case _UnsavedChangesAction.discard:
+        // Discard: tear down the in-flight draft and pop.
+        await widget.routineState.discardCurrentRoutineAndClearDraft();
+        if (!mounted) return;
+        Navigator.of(context).pop();
+      case _UnsavedChangesAction.save:
+        if (_nameController.text.trim().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enter a routine name')),
+          );
+          return;
+        }
+        await widget.routineState.saveRoutine();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Routine saved successfully')),
+        );
+        Navigator.of(context).pop();
+      case _UnsavedChangesAction.keepEditing:
+      case null:
+        // Stay on the screen.
+        break;
+    }
   }
 
-  void _discardAndPop() {
-    widget.routineState.clearCurrentRoutine();
-    Navigator.of(context).pop();
+  Future<_UnsavedChangesAction?> _showUnsavedChangesDialog() {
+    final theme = Theme.of(context);
+    return showDialog<_UnsavedChangesAction>(
+      context: context,
+      builder: (dialogContext) {
+        final utilityButtonShape = RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+        );
+        return AlertDialog(
+          backgroundColor: theme.colorScheme.surface,
+          title: Row(
+            children: [
+              const Expanded(child: Text('Unsaved changes')),
+              IconButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _UnsavedChangesAction.keepEditing),
+                tooltip: 'Keep editing',
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          content: const Text(
+            'You have unsaved edits. Save them or discard to return to the routines list.',
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Tooltip(
+                      message: 'Discard changes',
+                      child: OutlinedButton(
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, _UnsavedChangesAction.discard),
+                        style: ButtonStyle(
+                          shape: WidgetStateProperty.all(utilityButtonShape),
+                        ),
+                        child: const Text('Discard'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Tooltip(
+                      message: 'Save changes',
+                      child: FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(dialogContext, _UnsavedChangesAction.save),
+                        style: ButtonStyle(
+                          shape: WidgetStateProperty.all(utilityButtonShape),
+                        ),
+                        child: const Text('Save'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
+
+  /// Bottom Cancel uses the same guard as the header back and system back.
+  Future<void> _discardAndPop() => _attemptExit();
 
   void _updateUi(VoidCallback fn) {
     if (!mounted) return;
@@ -1025,6 +1121,11 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     });
   }
 }
+
+/// Action returned by the routine editor's unsaved-changes dialog. Mirrors
+/// the completed-session edit confirmation vocabulary so the two flows
+/// share the same wording and ordering.
+enum _UnsavedChangesAction { save, discard, keepEditing }
 
 /// Card displaying an exercise in the routine setup
 class ExerciseCard extends StatelessWidget {
@@ -1616,16 +1717,5 @@ extension on _RoutineSetupScreenState {
         ),
       ),
     );
-  }
-
-  void _switchExercise(int delta) {
-    final efforts = widget.routineState.currentEfforts;
-    if (efforts.isEmpty) return;
-    final newIndex = _currentExerciseIndex + delta;
-    if (newIndex < 0 || newIndex >= efforts.length) return;
-    _updateUi(() {
-      _currentExerciseIndex = newIndex;
-      _currentSet = 1;
-    });
   }
 }

@@ -978,6 +978,136 @@ void main() {
       expect(updated.restEndMs, 5000);
       expect(updated.entryIndex, 3);
     });
+
+    test('fromMap defaults restIsPaused to false and restPausedAtMs to null', () {
+      final obj = EntryRest.fromMap({
+        'id': 'er-1',
+        'effort_id': 'e-1',
+        'entry_index': 0,
+        'rest_start_ms': 1000,
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      });
+      expect(obj.restIsPaused, isFalse);
+      expect(obj.restPausedAtMs, isNull);
+      expect(obj.restPausedDurationMs, 0);
+    });
+
+    test('fromMap coerces restIsPaused from int to bool', () {
+      final paused = EntryRest.fromMap({
+        'id': 'er-1',
+        'effort_id': 'e-1',
+        'entry_index': 0,
+        'rest_start_ms': 1000,
+        'rest_is_paused': 1,
+        'rest_paused_at_ms': 5000,
+        'rest_paused_duration_ms': 2000,
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      });
+      expect(paused.restIsPaused, isTrue);
+      expect(paused.restPausedAtMs, 5000);
+      expect(paused.restPausedDurationMs, 2000);
+
+      final running = EntryRest.fromMap({
+        'id': 'er-1',
+        'effort_id': 'e-1',
+        'entry_index': 0,
+        'rest_start_ms': 1000,
+        'rest_is_paused': 0,
+        'rest_paused_at_ms': 5000,
+        'created_at_ms': 100,
+        'updated_at_ms': 200,
+      });
+      expect(running.restIsPaused, isFalse);
+    });
+
+    test('elapsedSeconds excludes restPausedDurationMs from counted time', () {
+      // Active for 5s, paused 10s (accumulates 10s of pause time),
+      // resumed, then 3 more active seconds → counted = 5 + 3 = 8s.
+      const startMs = 1000;
+      final obj = EntryRest(
+        id: 'er-1',
+        effortId: 'e-1',
+        entryIndex: 0,
+        restStartMs: startMs,
+        restPausedDurationMs: 10000,
+        createdAtMs: 100,
+        updatedAtMs: 200,
+      );
+      // Query at +13s: 13000 - 1000 - 10000 = 2s (huh?) — let me recompute.
+      // Actually, the rest "started" at 1000ms, and 10s of pause was
+      // already in the accumulator. So the effective end-of-counted-time
+      // is (now - accumulatedPause).
+      // At 18000 (10s after start + 10s of pause already in accumulator):
+      // 18000 - 1000 - 10000 = 7000ms = 7s.
+      // We picked 18000 because the rest is "open" with 10s of pause
+      // already accumulated; effective counted = 10s (start) - 10s (pause) = 0
+      //  No wait, that's not right either. Let me think:
+      // restStartMs = 1000
+      // restPausedDurationMs = 10000 (already paused for 10s)
+      // nowMs = 18000
+      // restEndMs = null (open)
+      // Since the rest is NOT paused (restIsPaused is false), the effective
+      // end is nowMs = 18000.
+      // counted = 18000 - 1000 - 10000 = 7000ms = 7s.
+      expect(obj.elapsedSeconds(18000), 7);
+    });
+
+    test('elapsedSeconds freezes at pause time when rest is paused', () {
+      // Active for 5s, then paused. Even as wall-clock advances by
+      // another 30s, the counted time must stay at 5s.
+      const startMs = 1000;
+      const pauseAtMs = 6000; // 5s of counted time at pause moment
+      final obj = EntryRest(
+        id: 'er-1',
+        effortId: 'e-1',
+        entryIndex: 0,
+        restStartMs: startMs,
+        restIsPaused: true,
+        restPausedAtMs: pauseAtMs,
+        createdAtMs: 100,
+        updatedAtMs: 200,
+      );
+      // At pause time: 6000 - 1000 = 5000ms = 5s.
+      expect(obj.elapsedSeconds(pauseAtMs), 5);
+      // 30s later, still 5s (the rest is paused; counted time frozen).
+      expect(obj.elapsedSeconds(pauseAtMs + 30000), 5);
+    });
+
+    test('toMap serializes restIsPaused as int', () {
+      final obj = EntryRest(
+        id: 'er-1',
+        effortId: 'e-1',
+        entryIndex: 0,
+        restStartMs: 1000,
+        restIsPaused: true,
+        restPausedAtMs: 5000,
+        restPausedDurationMs: 2000,
+        createdAtMs: 100,
+        updatedAtMs: 200,
+      );
+      final map = obj.toMap();
+      expect(map['rest_is_paused'], 1);
+      expect(map['rest_paused_at_ms'], 5000);
+      expect(map['rest_paused_duration_ms'], 2000);
+    });
+
+    test('copyWith with restIsPaused updates the pause flag', () {
+      final obj = EntryRest(
+        id: 'er-1',
+        effortId: 'e-1',
+        entryIndex: 0,
+        restStartMs: 1000,
+        createdAtMs: 100,
+        updatedAtMs: 200,
+      );
+      final paused = obj.copyWith(restIsPaused: true);
+      expect(paused.restIsPaused, isTrue);
+
+      final resumed = paused.copyWith(restIsPaused: false);
+      expect(resumed.restIsPaused, isFalse);
+    });
   });
 
   // ── ExerciseNote ──────────────────────────────────────────────────────────

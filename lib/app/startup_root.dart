@@ -6,6 +6,7 @@ import '../core/constants/omni_theme.dart';
 import '../core/services/crash_reporting_service.dart';
 import '../core/services/startup_failure_diagnostic_writer.dart';
 import '../features/startup/startup_failure_screen.dart';
+import '../features/startup/startup_preparing_screen.dart';
 
 /// Signature for the routine that performs OmniTrain's startup work
 /// (timezone init, repository init, state construction, theme
@@ -28,6 +29,22 @@ typedef StartupFailureDiagnosticPersister = Future<void> Function(
 );
 
 final _startupFailureDiagnosticWriter = StartupFailureDiagnosticWriter.create();
+
+/// Outcome of a single startup attempt captured by `_StartupRootState`.
+///
+/// The three states are explicit and disjoint:
+///
+///  - [preparing] — the runner is in flight. The widget MUST render the
+///    neutral preparation surface (no failure content, no brand splash).
+///    This is the PR 2 fix: prior to this split, the failure screen was
+///    rendered during this phase, which caused a flash of failure
+///    content on healthy launches.
+///  - [failed] — the runner threw. The widget MUST render
+///    `StartupFailureScreen`. Only reachable from [preparing].
+///  - [succeeded] — the runner returned a widget. The widget MUST render
+///    that returned widget. ONLY reachable from [preparing] — a
+///    successful launch never passes through [failed].
+enum _StartupLifecycle { preparing, succeeded, failed }
 
 /// Top-level widget that owns the app's startup phase.
 ///
@@ -175,9 +192,13 @@ Future<void> handleStartupFailure({
 
 class _StartupRootState extends State<StartupRoot> {
   /// Holds the running app widget the moment the startup runner
-  /// returns successfully. `null` means "not yet running" and
-  /// the failure screen should render in its place.
+  /// returns successfully. `null` while preparing or after a failure.
   Widget? _runningApp;
+
+  /// Outcome of the most recent attempt. Tracked explicitly so the
+  /// build method can render the right surface without conflating
+  /// "in flight" with "failed".
+  _StartupLifecycle _lifecycle = _StartupLifecycle.preparing;
 
   /// True while a startup attempt is in flight. Used to disable
   /// the Retry button so a fast double tap cannot trigger two
@@ -193,14 +214,28 @@ class _StartupRootState extends State<StartupRoot> {
   /// One full startup attempt. Increments via Retry on the
   /// failure screen, and runs once automatically from
   /// `initState`.
+  ///
+  /// Lifecycle transitions:
+  ///   (any) → preparing → succeeded   (runner returns)
+  ///   (any) → preparing → failed      (runner throws)
   Future<void> _attempt() async {
     if (!mounted) return;
-    setState(() => _attemptInFlight = true);
+    setState(() {
+      _attemptInFlight = true;
+      _lifecycle = _StartupLifecycle.preparing;
+    });
     try {
       final next = await widget.startupRunner();
       if (!mounted) return;
-      setState(() => _runningApp = next);
+      setState(() {
+        _runningApp = next;
+        _lifecycle = _StartupLifecycle.succeeded;
+      });
     } catch (e, st) {
+      if (!mounted) return;
+      setState(() {
+        _lifecycle = _StartupLifecycle.failed;
+      });
       await handleStartupFailure(
         error: e,
         stackTrace: st,
@@ -217,28 +252,47 @@ class _StartupRootState extends State<StartupRoot> {
 
   @override
   Widget build(BuildContext context) {
-    final app = _runningApp;
-    if (app != null) {
-      // Happy path: the startup runner returned the real `MyApp`
-      // (or any other widget the runner decided to mount).
-      // Mount it directly; the failure screen never enters the
-      // tree on a successful first attempt.
-      return app;
+    switch (_lifecycle) {
+      case _StartupLifecycle.succeeded:
+        // Happy path: the startup runner returned the real `MyApp`
+        // (or any other widget the runner decided to mount).
+        // Mount it directly; the failure screen never enters the
+        // tree on a successful attempt.
+        final app = _runningApp;
+        // Defensive: callers of the constructor must contract that a
+        // succeeded lifecycle corresponds to a non-null running app.
+        // If a future bug violates that contract, fall back to the
+        // preparing surface rather than crash.
+        if (app == null) return const StartupPreparingScreen();
+        return app;
+      case _StartupLifecycle.failed:
+        // Failure path: wrap the failure screen in a MaterialApp that
+        // uses the default theme tokens. We can't hand it the user's
+        // saved theme — `SettingsState` doesn't exist yet — so we use
+        // the canonical Abyssal Neon theme. This is acceptable for a
+        // low-frequency recovery surface.
+        return MaterialApp(
+          title: 'Omnitrain',
+          debugShowCheckedModeBanner: false,
+          theme: widget.failureTheme,
+          home: StartupFailureScreen(
+            onRetry: _attempt,
+            isRetrying: _attemptInFlight,
+          ),
+        );
+      case _StartupLifecycle.preparing:
+        // Preparing path: render the neutral preparation surface.
+        // This is the PR 2 fix — previously the failure screen was
+        // rendered here, which caused a flash of failure content on
+        // every healthy launch. The neutral surface is wrapped in a
+        // MaterialApp using the same fallback theme so design tokens
+        // resolve cleanly.
+        return MaterialApp(
+          title: 'Omnitrain',
+          debugShowCheckedModeBanner: false,
+          theme: widget.failureTheme,
+          home: const StartupPreparingScreen(),
+        );
     }
-
-    // Failure path: wrap the failure screen in a MaterialApp that
-    // uses the default theme tokens. We can't hand it the user's
-    // saved theme — `SettingsState` doesn't exist yet — so we use
-    // the canonical Abyssal Neon theme. This is acceptable for a
-    // low-frequency recovery surface.
-    return MaterialApp(
-      title: 'Omnitrain',
-      debugShowCheckedModeBanner: false,
-      theme: widget.failureTheme,
-      home: StartupFailureScreen(
-        onRetry: _attempt,
-        isRetrying: _attemptInFlight,
-      ),
-    );
   }
 }

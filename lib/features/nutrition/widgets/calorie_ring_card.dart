@@ -189,8 +189,12 @@ class _CalorieRingCardState extends State<CalorieRingCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Note: Edit targets icon moved to header section outside
-              // the card (in NutritionScreen, alongside "Today" title).
+              // Note: Edit-targets control (labelled `OutlinedButton.icon`,
+              // key `nutrition_target_button`, PR 3 / S-002) moved to the
+              // header section outside the card (in `NutritionScreen`,
+              // alongside the "Today" title). The control displays
+              // "Set target" when no target is saved and "Change target"
+              // when one is.
               // Donut chart (outer) + calorie ring (inner) in a
               // Stack. The donut is hidden when no macros are
               // logged — the calorie ring stays visible alone at

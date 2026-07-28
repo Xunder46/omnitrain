@@ -1529,9 +1529,18 @@ class TrainingPeriod {
 /// [restEndMs] set to the current wall-clock time — when the athlete actively
 /// begins the next set/round/timer.
 ///
-/// Because all times are wall-clock epoch milliseconds, rest durations survive
-/// app backgrounding, device restarts, and navigation. The UI derives the
-/// display value from `now - restStartMs` without a Stopwatch.
+/// While the rest is active, the user can tap the rest tile to **pause**
+/// (stop) and **resume** the counted time. The pause is captured as
+/// [restPausedAtMs] and the elapsed formula subtracts
+/// [restPausedDurationMs] (accumulated across all pause/resume cycles)
+/// so the recorded rest duration excludes any stopped interval. While
+/// paused, [restIsPaused] is `true` and the elapsed is frozen at the
+/// pause time; on resume, the new pause-time is added to the
+/// accumulator.
+///
+/// Because all times are wall-clock epoch milliseconds, rest durations
+/// survive app backgrounding, device restarts, and navigation. The UI
+/// derives the display value without a Stopwatch.
 ///
 /// [entryIndex] is 0-based and identifies the set/round that this rest
 /// *precedes* (i.e., the set the athlete is currently resting before).
@@ -1543,6 +1552,19 @@ class EntryRest {
   final int entryIndex;    // 0-based; this rest precedes this set/round
   final int restStartMs;  // wall-clock epoch ms when previous set was logged
   final int? restEndMs;   // wall-clock epoch ms when this set/round began; null = still resting
+  /// `true` when the user has tapped the rest tile to stop the counted
+  /// time. While `true`, [restPausedAtMs] holds the wall-clock
+  /// moment the rest was paused (used to freeze the elapsed display).
+  final bool restIsPaused;
+  /// Wall-clock epoch ms when the rest was paused; `null` while not
+  /// paused. Persisted so the pause state survives reloads.
+  final int? restPausedAtMs;
+  /// Accumulated duration the rest spent in the paused state, in
+  /// milliseconds. Excluded from the recorded rest duration on
+  /// close/finish. The field is the single source of truth for
+  /// "time not counted toward the rest" across all pause/resume
+  /// cycles.
+  final int restPausedDurationMs;
   final int createdAtMs;
   final int updatedAtMs;
 
@@ -1552,13 +1574,22 @@ class EntryRest {
     required this.entryIndex,
     required this.restStartMs,
     this.restEndMs,
+    this.restIsPaused = false,
+    this.restPausedAtMs,
+    this.restPausedDurationMs = 0,
     required this.createdAtMs,
     required this.updatedAtMs,
   });
 
-  /// Elapsed rest in whole seconds. Live (unbounded) while [restEndMs] is null.
-  int elapsedSeconds(int nowMs) =>
-      (((restEndMs ?? nowMs) - restStartMs) / 1000).round().clamp(0, 99999);
+  /// Elapsed rest in whole seconds, excluding any paused interval.
+  /// Live (unbounded) while [restEndMs] is null.
+  int elapsedSeconds(int nowMs) {
+    final effectiveEndMs = restEndMs ??
+        (restIsPaused ? (restPausedAtMs ?? nowMs) : nowMs);
+    return ((effectiveEndMs - restStartMs - restPausedDurationMs) / 1000)
+        .round()
+        .clamp(0, 99999);
+  }
 
   factory EntryRest.fromMap(Map<String, dynamic> m) => EntryRest(
     id: m['id'] as String,
@@ -1566,6 +1597,9 @@ class EntryRest {
     entryIndex: m['entry_index'] as int,
     restStartMs: m['rest_start_ms'] as int,
     restEndMs: m['rest_end_ms'] as int?,
+    restIsPaused: (m['rest_is_paused'] as int? ?? 0) == 1,
+    restPausedAtMs: m['rest_paused_at_ms'] as int?,
+    restPausedDurationMs: m['rest_paused_duration_ms'] as int? ?? 0,
     createdAtMs: m['created_at_ms'] as int,
     updatedAtMs: m['updated_at_ms'] as int,
   );
@@ -1576,6 +1610,9 @@ class EntryRest {
     'entry_index': entryIndex,
     'rest_start_ms': restStartMs,
     'rest_end_ms': restEndMs,
+    'rest_is_paused': restIsPaused ? 1 : 0,
+    'rest_paused_at_ms': restPausedAtMs,
+    'rest_paused_duration_ms': restPausedDurationMs,
     'created_at_ms': createdAtMs,
     'updated_at_ms': updatedAtMs,
   };
@@ -1586,6 +1623,9 @@ class EntryRest {
     int? entryIndex,
     int? restStartMs,
     Object? restEndMs = _entryRestCopyWithUnset,
+    bool? restIsPaused,
+    Object? restPausedAtMs = _entryRestCopyWithUnset,
+    int? restPausedDurationMs,
     int? createdAtMs,
     int? updatedAtMs,
   }) => EntryRest(
@@ -1596,6 +1636,11 @@ class EntryRest {
     restEndMs: restEndMs == _entryRestCopyWithUnset
         ? this.restEndMs
         : restEndMs as int?,
+    restIsPaused: restIsPaused ?? this.restIsPaused,
+    restPausedAtMs: restPausedAtMs == _entryRestCopyWithUnset
+        ? this.restPausedAtMs
+        : restPausedAtMs as int?,
+    restPausedDurationMs: restPausedDurationMs ?? this.restPausedDurationMs,
     createdAtMs: createdAtMs ?? this.createdAtMs,
     updatedAtMs: updatedAtMs ?? this.updatedAtMs,
   );

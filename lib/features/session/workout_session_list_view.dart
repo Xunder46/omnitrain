@@ -526,44 +526,112 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   // ── Rest overlay chip ─────────────────────────────────────────────────────
 
+  /// Returns the most-recent open rest's `(effortId, entryIndex)` key
+  /// for the live chip. Centralised here so the chip's tap handler
+  /// and the underlying state plumbing stay in sync.
+  ({String effortId, int entryIndex})? _openRestKeyForChip() =>
+      _getMostRecentOpenRestKey();
+
+  /// Toggles the live rest between running and stopped. Tap-stops
+  /// within one second (the chip's underlying state-machine method
+  /// completes in O(1) and the next _ticker tick, at most 1s later,
+  /// repaints the chip with the new state). Tap-resumes without
+  /// resetting the counted time — the elapsed formula subtracts
+  /// the accumulated `restPausedDurationMs` so the resumption
+  /// continues from where the rest was paused.
+  Future<void> _toggleRestChip() async {
+    final key = _openRestKeyForChip();
+    if (key == null) return;
+    final isPaused = widget.workoutState.isRestPaused(
+      key.effortId,
+      key.entryIndex,
+    );
+    if (isPaused) {
+      await widget.workoutState.resumeRest(key.effortId, key.entryIndex);
+    } else {
+      await widget.workoutState.pauseRest(key.effortId, key.entryIndex);
+    }
+  }
+
+  /// Tappable rest timer overlay.
+  ///
+  /// Three visually distinct states (spec: "Three rest states are
+  /// visually distinct without reading the number"):
+  ///   - **not started** — no chip shown (handled by
+  ///     [_shouldShowRestOverlay], not the chip builder).
+  ///   - **running** — primary-tinted background, meditation icon,
+  ///     primary foreground.
+  ///   - **stopped** — muted-tinted background, *pause* icon (or a
+  ///     play-arrow icon when transitionable) so the user can read
+  ///     the state at a glance.
+  ///
+  /// Tap behaviour: whole-tile Material + InkWell, no visual chrome
+  /// outside the chip's own padding. Tap toggles the persisted
+  /// pause/resume state on the underlying [EntryRest] record.
   Widget _buildRestOverlayChip(ThemeData theme, String elapsedText) {
-    return Container(
+    final key = _openRestKeyForChip();
+    final isPaused = key == null
+        ? false
+        : widget.workoutState.isRestPaused(key.effortId, key.entryIndex);
+    final tileColors = OmniTheme.colorsForTheme(widget.settingsState.appTheme);
+
+    // Running state: prominent primary tint, meditation icon.
+    // Stopped state: muted surface tint, a different (pause) icon.
+    final baseColor = isPaused
+        ? tileColors.surface.withOpacity(0.85)
+        : theme.colorScheme.primary.withOpacity(0.8);
+    final foregroundColor = isPaused
+        ? tileColors.textDominant
+        : theme.colorScheme.onPrimary;
+    final iconData = isPaused ? Icons.pause : Icons.self_improvement;
+    // No box shadow and no border in either state — both would
+    // add spread/stroke padding to the bounding rect and make the
+    // two states different sizes. Visual distinction between
+    // running and paused is carried solely by background tint and
+    // icon swap, which is sufficient (and per spec, the chip must
+    // stay the same size across states).
+    final boxShadow = null;
+    final border = null;
+
+    return Material(
       key: const Key('rest-overlay-chip'),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withOpacity(0.8),
+      color: Colors.transparent,
+      // No MaterialTappability constraints — the whole chip is tappable
+      // (PR 4 spec: "whole-tile tap"), but stays inside the natural
+      // chip area thanks to the InkWell boundary below.
+      child: InkWell(
+        onTap: _toggleRestChip,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: theme.colorScheme.primary.withAlpha((0.2 * 255).round()),
-            blurRadius: 12,
-            spreadRadius: 2,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: baseColor,
+            borderRadius: BorderRadius.circular(12),
+            border: border,
+            boxShadow: boxShadow,
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.self_improvement,
-            size: 24,
-            color: theme.colorScheme.onPrimary,
-          ),
-          const SizedBox(width: 12),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                elapsedText,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: theme.colorScheme.onPrimary,
-                  fontWeight: FontWeight.w600,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12, // taller than before so the chip hits the
+              // 48-dp touch-target floor (vertical: 24 + 24 = 48)
+            ),
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(iconData, size: 24, color: foregroundColor),
+                const SizedBox(width: 12),
+                Text(
+                  elapsedText,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: foregroundColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -682,30 +750,18 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
-      body: GestureDetector(
-        onHorizontalDragEnd: (details) {
-          if (details.primaryVelocity! > 200) {
-            _previousSet();
-          } else if (details.primaryVelocity! < -200) {
-            if (widget.editMode) {
-              _nextSetInEditMode();
-            } else {
-              _nextSet();
-            }
-          }
-        },
-        onVerticalDragEnd: (details) {
-          // Up swipe = next exercise; down swipe = previous exercise
-          if (details.primaryVelocity! < -200) {
-            // Swipe up = next exercise
-            _switchExercise(1);
-          } else if (details.primaryVelocity! > 200) {
-            // Swipe down = previous exercise
-            _switchExercise(-1);
-          }
-        },
-        child: Stack(
-          children: [
+      // PR 2 (Launch Quality Hotfix): removed the screen-level
+      // GestureDetector that previously interpreted horizontal and
+      // vertical drags as set / exercise navigation. Those gestures
+      // fought the number-scroller (InlineMetricEditor) drag-to-edit
+      // affordance and were a frequent source of accidental jumps
+      // mid-set. Navigation is now exclusively via the explicit
+      // Previous / Next arrows, the set dots, and the per-set
+      // controls at the bottom of the detail view. See
+      // `.github/agents/plans/2026-07-27-02-pr2-launch-quality-hotfix-plan.md`
+      // scenario S-003.
+      body: Stack(
+        children: [
             SafeArea(
               child: Column(
                 children: [
@@ -781,7 +837,110 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ),
           ],
         ),
+    );
+  }
+
+  // ── Discard Session ────────────────────────────────────────────────────
+
+  /// Confirmation dialog: states permanence. Matches the dismiss button
+  /// styling used by the Session Summary's "Discard" dialog (TextButton
+  /// + utility radius + error color tint) so the two flows feel like
+  /// one feature.
+  Future<void> _showDiscardDialog() async {
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard session?'),
+        content: const Text(
+          'This will permanently delete this session and all its data. '
+          'You will return to Home.',
+        ),
+        actions: [
+          TextButton(
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+              foregroundColor: WidgetStateProperty.all(
+                Theme.of(ctx).colorScheme.error,
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard'),
+          ),
+        ],
       ),
+    );
+    if (confirmed == true) {
+      await _discardCurrentSession();
+    }
+  }
+
+  /// Performs the discard + navigates home. Idempotent: if the user
+  /// cancels mid-flow we don't pop anything; if the discard succeeds we
+  /// unwind to the bottom of the navigation stack (the hub / home).
+  Future<void> _discardCurrentSession() async {
+    await widget.workoutState.discardCurrentSession();
+    if (!mounted) return;
+    // The session was pushed on top of the home stack; pop until first
+    // so the user lands on Home. Safe when there's only the session
+    // route — `popUntil((route) => route.isFirst)` pops exactly the
+    // session and stops.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  /// Compact hollow red "Discard" button for the header (PR 4 spec:
+  /// secondary destructive, away from logging controls, error-tinted,
+  /// utility radius). Replaces the trash-can icon button that PR 4
+  /// originally introduced. Only the session-details (list) header
+  /// renders it; the exercise-details (detail) header is unaffected
+  /// so its action row stays focused on notes / info.
+  ///
+  /// Sized via `VisualDensity.compact` + utility radius — the same
+  /// compact header-button style used by the calendar `+` button
+  /// and the period-list add button — so it matches the notes /
+  /// info [IconButton]s in the exercise-details header at exactly
+  /// [OmniTheme.headerSecondaryActionSize] (40 dp). Do **not**
+  /// set `tapTargetSize: shrinkWrap`; that would drop the button
+  /// below the 40-dp floor (the VisualDensity.compact adjustment
+  /// already keeps it there).
+  Widget _buildDiscardHeaderButton(ThemeData theme) {
+    return OutlinedButton(
+      onPressed: widget.editMode ? null : _showDiscardDialog,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: widget.editMode
+            ? OmniTheme.colors.textDisabled
+            : theme.colorScheme.error,
+        side: BorderSide(
+          color: widget.editMode
+              ? OmniTheme.colors.textDisabled
+              : theme.colorScheme.error,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        visualDensity: VisualDensity.compact,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+        ),
+      ),
+      child: const Text('Discard'),
     );
   }
 
@@ -860,6 +1019,11 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ],
             ),
           ),
+          // PR 4 spec: Discard lives in the session-details (list)
+          // header — replacing the trash-can icon button. Hidden in the
+          // exercise-details (detail) header so its action row stays
+          // focused on notes / info.
+          if (_showListView) _buildDiscardHeaderButton(theme),
           if (!_showListView && _exercises.isNotEmpty)
             _buildExerciseHeaderActions(theme),
         ],

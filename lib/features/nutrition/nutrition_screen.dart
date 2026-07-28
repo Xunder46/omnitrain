@@ -164,25 +164,71 @@ class _NutritionScreenState extends State<NutritionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Calorie ring header with edit icon — now an
+                  // Calorie ring header with edit control — now an
                   // OmniCardHeader per the unified card-and-header
-                  // plan. The edit icon lives in the actions slot
+                  // plan. The control lives in the actions slot
                   // (D-2: controls pertinent to a card live in its
                   // header). The previous `SizedBox(height: 12)` gap
                   // is replaced by the header's built-in 8 dp bottom
                   // padding.
+                  //
+                  // PR 3 / Item 5 of the 2026-07-27 feedback pack
+                  // replaces the icon-only `Icons.tune` gear with a
+                  // labelled `OutlinedButton.icon` utility variant
+                  // whose text reflects the saved-target state:
+                  //   - No target saved    → "Set target"
+                  //   - Target already set → "Change target"
+                  // The button follows the OmniTheme utility-button
+                  // shape rule (buttonUtilityRadius, explicit
+                  // `shape:` override) and uses
+                  // `theme.colorScheme.primary` for the border +
+                  // label colour. The tap target still opens the
+                  // same `NutritionTargetScreen` via
+                  // `_navigateToTargets()`.
                   OmniCardHeader(
                     title: 'TODAY',
                     actions: [
-                      IconButton(
-                        key: const Key('edit_targets_icon'),
-                        icon: Icon(
-                          Icons.tune,
-                          size: 20,
-                          color: theme.colorScheme.primary,
-                        ),
-                        tooltip: 'Edit targets',
-                        onPressed: _navigateToTargets,
+                      Builder(
+                        builder: (context) {
+                          final target = widget.nutritionState.nutritionTarget;
+                          final hasTarget =
+                              target != null && target.calories > 0;
+                          return OutlinedButton.icon(
+                            key: const Key('nutrition_target_button'),
+                            icon: Icon(
+                              Icons.tune,
+                              size: 16,
+                              color: theme.colorScheme.primary,
+                            ),
+                            label: Text(
+                              hasTarget ? 'Change target' : 'Set target',
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  OmniTheme.buttonUtilityRadius,
+                                ),
+                              ),
+                              side: BorderSide(
+                                color: theme.colorScheme.primary,
+                                width: 1,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              minimumSize: const Size(0, 36),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: _navigateToTargets,
+                          );
+                        },
                       ),
                     ],
                   ),

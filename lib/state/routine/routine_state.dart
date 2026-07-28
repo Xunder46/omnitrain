@@ -34,6 +34,24 @@ class RoutineState extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  /// Immutable snapshot of the routine hierarchy at the moment the user
+  /// opened the editor (or last saved). The unsaved-changes guard compares
+  /// the working state against this snapshot; any divergence marks the
+  /// routine as dirty.
+  ///
+  /// `originalTemplateId == null` indicates the snapshot was taken on a
+  /// brand-new routine that has not yet been persisted; the first time we
+  /// capture a baseline for a new routine we also persist the template so
+  /// that `discardCurrentRoutine` can cleanly remove it from the
+  /// repository.
+  RoutineSnapshot? _baseline;
+
+  /// True when the working routine has been opened as a new (unsaved)
+  /// template — `discardCurrentRoutine` must remove the template from the
+  /// repository because `_persistDraft` already writes it on the first
+  /// edit.
+  bool _isNewRoutine = false;
+
   RoutineState(this._repository);
 
   // ===== GETTERS =====
@@ -47,7 +65,35 @@ class RoutineState extends ChangeNotifier {
   List<TemplateTarget> get currentTargets => List.unmodifiable(_currentTargets);
   bool get isLoading => _isLoading;
   String? get error => _error;
-  bool get hasUnsavedChanges => _currentTemplate != null;
+
+  /// True when the working routine differs from the snapshot captured at
+  /// editor entry (or last successful save). The UI uses this to gate the
+  /// unsaved-changes confirmation dialog.
+  bool get hasUnsavedChanges {
+    if (_currentTemplate == null) return false;
+    final baseline = _baseline;
+    if (baseline == null) return false;
+    return !_matchesBaseline(baseline);
+  }
+
+  /// Snapshot helpers exposed for the UI to orchestrate the
+  /// unsaved-changes guard. The capture happens automatically inside
+  /// [createNewRoutine], [loadRoutineForEditing], and
+  /// [resetBaselineAfterSave]; callers rarely need to invoke these
+  /// directly.
+  void captureBaseline() {
+    _baseline = RoutineSnapshot.fromState(
+      _currentTemplate,
+      _currentSegments,
+      _segmentEfforts,
+      _currentTargets,
+    );
+  }
+
+  void resetBaselineAfterSave() {
+    _isNewRoutine = false;
+    captureBaseline();
+  }
 
   void setAutosaveEnabled(bool enabled) {
     _autosaveEnabled = enabled;
@@ -106,6 +152,8 @@ class RoutineState extends ChangeNotifier {
       _currentTargets = [];
       _exerciseCache.clear();
 
+      _isNewRoutine = true;
+      captureBaseline();
       _scheduleAutosave();
       notifyListeners();
     } catch (e) {
@@ -197,6 +245,11 @@ class RoutineState extends ChangeNotifier {
       if (!_routines.any((r) => r.id == _currentTemplate!.id)) {
         _routines = [..._routines, _currentTemplate!];
       }
+
+      // Successful save resets the dirty baseline so the next exit does
+      // not re-prompt. The routine is now an "existing" routine.
+      _isNewRoutine = false;
+      captureBaseline();
 
       _isLoading = false;
       notifyListeners();
@@ -301,6 +354,8 @@ class RoutineState extends ChangeNotifier {
         _segmentEfforts[_currentSegments.first.id] = [];
       }
 
+      _isNewRoutine = false;
+      captureBaseline();
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -1019,15 +1074,155 @@ class RoutineState extends ChangeNotifier {
     _error = null;
   }
 
-  /// Clear current routine being edited
-  void clearCurrentRoutine() {
+  /// Clear current routine being edited WITHOUT touching the repository.
+  ///
+  /// Use this when the user discards a brand-new routine so we drop the
+  /// in-memory working state that has not yet been confirmed by an
+  /// explicit save. The repository is left as-is (no autosave leak).
+  void discardCurrentRoutine() => _clearInMemoryState();
+
+  /// Clear current routine being edited.
+  ///
+  /// On save, downstream store operations already persisted the routine —
+  /// the baseline is reset so the next exit does not re-prompt. This
+  /// method exists for symmetry with the pre-PR-5 contract and is the
+  /// routine called by the save and direct-pop flows.
+  void clearCurrentRoutine() => _clearInMemoryState();
+
+  /// Drop every piece of in-memory routine state and notify listeners.
+  /// Shared by [discardCurrentRoutine] and [clearCurrentRoutine] (the
+  /// discard path additionally removes the persisted draft via
+  /// [discardCurrentRoutineAndClearDraft]). The repository is not
+  /// touched here.
+  void _clearInMemoryState() {
     _currentTemplate = null;
     _currentSegments = [];
     _segmentEfforts.clear();
     _currentTargets = [];
+    _exerciseCache.clear();
     _autosaveTimer?.cancel();
+    _baseline = null;
+    _isNewRoutine = false;
     _clearError();
     notifyListeners();
+  }
+
+  /// Cancel any pending autosave draft so a quick back-out does not leak
+  /// the in-flight draft onto disk. Idempotent.
+  void cancelPendingAutosave() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = null;
+  }
+
+  // ===== DIRTY-STATE COMPARISON =====
+
+  /// Persist a routine that was authored from scratch so that the
+  /// repository has a record to delete on discard. The autosave pipeline
+  /// already does this lazily, but the dirty guard runs before the timer
+  /// has fired, so we explicitly mark the template as dirty and force a
+  /// synchronous persist when the user discards a new routine.
+  Future<void> _persistDraftForDiscard() async {
+    if (_currentTemplate == null) return;
+    try {
+      await _repository.createTemplate(_currentTemplate!);
+    } catch (_) {
+      // Best-effort: missing draft is fine; the repository is the source
+      // of truth and `deleteTemplate` is a no-op when the id is absent.
+    }
+  }
+
+  /// Discard the working routine and remove any draft that was persisted
+  /// for a brand-new routine. Existing routines are not touched — the
+  /// autosave diff in [_persistDraft] has already restored them via
+  /// `deleteTemplate*` for the changes the user subsequently reverted,
+  /// so the repository state matches the baseline-by-construction.
+  Future<void> discardCurrentRoutineAndClearDraft() async {
+    cancelPendingAutosave();
+    if (_isNewRoutine && _currentTemplate != null) {
+      await _persistDraftForDiscard();
+      try {
+        await _repository.deleteTemplate(_currentTemplate!.id);
+      } catch (_) {
+        // Best-effort cleanup.
+      }
+    }
+    discardCurrentRoutine();
+  }
+
+  bool _matchesBaseline(RoutineSnapshot baseline) {
+    final template = _currentTemplate;
+    if (template == null) return false;
+
+    // ── Template-level fields ─────────────────────────────────────────────
+    if (template.name != baseline.templateName) return false;
+    if (template.description != baseline.templateDescription) return false;
+    if (template.focusModality != baseline.templateFocusModality) return false;
+
+    // ── Segments ─────────────────────────────────────────────────────────
+    final currentSegments = [..._currentSegments]
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    final baselineSegments = baseline.segmentsSortedByOrder;
+    if (currentSegments.length != baselineSegments.length) return false;
+    for (var i = 0; i < currentSegments.length; i++) {
+      final cur = currentSegments[i];
+      final base = baselineSegments[i];
+      if (cur.id != base.id) return false;
+      if (cur.name != base.name) return false;
+      if (cur.segmentType != base.segmentType) return false;
+    }
+
+    // ── Efforts per segment ───────────────────────────────────────────────
+    for (final segment in currentSegments) {
+      final currentEfforts = [...?_segmentEfforts[segment.id]]
+        ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      final baselineEfforts = baseline.effortsBySegment[segment.id] ?? const [];
+      if (currentEfforts.length != baselineEfforts.length) return false;
+      for (var i = 0; i < currentEfforts.length; i++) {
+        final cur = currentEfforts[i];
+        final base = baselineEfforts[i];
+        if (cur.id != base.id) return false;
+        if (cur.effortKind != base.effortKind) return false;
+        if (cur.exerciseId != base.exerciseId) return false;
+        if (cur.restSeconds != base.restSeconds) return false;
+        if (cur.restType != base.restType) return false;
+      }
+    }
+
+    // ── Targets per effort ────────────────────────────────────────────────
+    final currentTargetsByEffort = <String, List<TemplateTarget>>{};
+    for (final target in _currentTargets) {
+      currentTargetsByEffort
+          .putIfAbsent(target.templateEffortId, () => [])
+          .add(target);
+    }
+    for (final entry in currentTargetsByEffort.entries) {
+      entry.value.sort((a, b) {
+        final idx = (a.setIndex ?? 0).compareTo(b.setIndex ?? 0);
+        if (idx != 0) return idx;
+        return a.metricId.compareTo(b.metricId);
+      });
+    }
+
+    if (currentTargetsByEffort.length != baseline.targetsByEffort.length) {
+      return false;
+    }
+    for (final entry in currentTargetsByEffort.entries) {
+      final base = baseline.targetsByEffort[entry.key] ?? const [];
+      if (entry.value.length != base.length) return false;
+      for (var i = 0; i < entry.value.length; i++) {
+        final cur = entry.value[i];
+        final bs = base[i];
+        if ((cur.setIndex ?? 0) != (bs.setIndex ?? 0)) return false;
+        if (cur.metricId != bs.metricId) return false;
+        if (cur.unitId != bs.unitId) return false;
+        if (cur.targetInt != bs.targetInt) return false;
+        if (cur.targetMin != bs.targetMin) return false;
+        if (cur.targetMax != bs.targetMax) return false;
+        if (cur.targetText != bs.targetText) return false;
+      }
+    }
+
+    return true;
   }
 }
 
@@ -1075,4 +1270,96 @@ extension on TemplateEffort {
       createdAtMs: createdAtMs,
     );
   }
+}
+
+/// Immutable baseline snapshot of a routine hierarchy. The
+/// unsaved-changes guard compares the live working state against an
+/// instance of this class to decide whether the user has touched
+/// anything that warrants a confirmation prompt.
+///
+/// The snapshot captures the user-visible, semantically-relevant fields
+/// of the template, segments, efforts, and targets. Server-side fields
+/// like `ownerUserId`, `createdAtMs`, or `updatedAtMs` are intentionally
+/// not captured — those are managed by the model layer and are not what
+/// the user is editing.
+@immutable
+class RoutineSnapshot {
+  final String? templateName;
+  final String? templateDescription;
+  final String? templateFocusModality;
+  final List<TemplateSegment> _segments;
+  final Map<String, List<TemplateEffort>> _effortsBySegment;
+  final Map<String, List<TemplateTarget>> _targetsByEffort;
+
+  const RoutineSnapshot._({
+    required this.templateName,
+    required this.templateDescription,
+    required this.templateFocusModality,
+    required List<TemplateSegment> segments,
+    required Map<String, List<TemplateEffort>> effortsBySegment,
+    required Map<String, List<TemplateTarget>> targetsByEffort,
+  })  : _segments = segments,
+        _effortsBySegment = effortsBySegment,
+        _targetsByEffort = targetsByEffort;
+
+  factory RoutineSnapshot.fromState(
+    WorkoutTemplate? template,
+    List<TemplateSegment> segments,
+    Map<String, List<TemplateEffort>> effortsBySegment,
+    List<TemplateTarget> targets,
+  ) {
+    if (template == null) {
+      return const RoutineSnapshot._(
+        templateName: null,
+        templateDescription: null,
+        templateFocusModality: null,
+        segments: <TemplateSegment>[],
+        effortsBySegment: <String, List<TemplateEffort>>{},
+        targetsByEffort: <String, List<TemplateTarget>>{},
+      );
+    }
+
+    final sortedSegments = [...segments]
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+
+    final efforts = <String, List<TemplateEffort>>{};
+    for (final segment in sortedSegments) {
+      final source = effortsBySegment[segment.id] ?? const <TemplateEffort>[];
+      final list = <TemplateEffort>[...source]
+        ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      efforts[segment.id] = list;
+    }
+
+    final targetsByEffort = <String, List<TemplateTarget>>{};
+    for (final target in targets) {
+      targetsByEffort
+          .putIfAbsent(target.templateEffortId, () => [])
+          .add(target);
+    }
+    for (final entry in targetsByEffort.entries) {
+      entry.value.sort((a, b) {
+        final idx = (a.setIndex ?? 0).compareTo(b.setIndex ?? 0);
+        if (idx != 0) return idx;
+        return a.metricId.compareTo(b.metricId);
+      });
+    }
+
+    return RoutineSnapshot._(
+      templateName: template.name,
+      templateDescription: template.description,
+      templateFocusModality: template.focusModality,
+      segments: sortedSegments,
+      effortsBySegment: efforts,
+      targetsByEffort: targetsByEffort,
+    );
+  }
+
+  List<TemplateSegment> get segmentsSortedByOrder =>
+      List.unmodifiable(_segments);
+
+  Map<String, List<TemplateEffort>> get effortsBySegment =>
+      Map.unmodifiable(_effortsBySegment);
+
+  Map<String, List<TemplateTarget>> get targetsByEffort =>
+      Map.unmodifiable(_targetsByEffort);
 }

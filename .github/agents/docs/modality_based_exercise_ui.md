@@ -290,8 +290,13 @@ switch (effortKind) {
 - Elapsed time is read from `workoutState.getRestElapsedSeconds(effortId, entryIndex)` on each `_ticker` tick (wall-clock derived from `EntryRest.startedAtMs`)
 - Displays elapsed rest time (MM:SS format)
 - Positioned in lower screen area (above controls, non-intrusive)
+- The current chip is display-only: it has no tap handler and `EntryRest` has no paused/stopped state
 - Hides when the next effort timer starts (overlay check gates on `hasRestRecord`)
 - Independent of effort timers — rest records are keyed per effortId+entryIndex, not globally
+
+> **Scheduled, not current:** feedback-pack PR 4 makes the whole rest tile
+> toggle persisted pause/resume state and visually distinguishes not-started,
+> running, and stopped states.
 
 **Visual Design**:
 ```dart
@@ -346,13 +351,16 @@ Detail view now uses two distinct control rows instead of a single toolbar.
 - removing a logged entry shows a confirmation dialog
 - removing the last remaining entry shows a stronger confirmation because it deletes the whole exercise from the session
 
-**Swipe Gestures** (Detail View):
-- **Horizontal swipes**:
-  - Swipe right (velocity > 500): Previous set
-  - Swipe left (velocity < -500): Skip set
-- **Vertical swipes**:
-  - Swipe up (velocity < -300): Next exercise
-  - Swipe down (velocity > 300): Previous exercise
+**Current Screen-Level Swipe Gestures** (workout detail view):
+- The detector uses `primaryVelocity` with an absolute threshold of `200`.
+- **Horizontal**: right → previous set; left → next/skip set (`_nextSetInEditMode` while editing).
+- **Vertical**: up → next exercise; down → previous exercise.
+- Routine setup detail currently mirrors the same four gestures; see [My Routines](my_routines.md).
+- Metric/number scrollers own separate drag handlers; do not confuse those value-edit gestures with screen-level navigation.
+
+> **Scheduled, not current:** feedback-pack PR 2 removes all four screen-level
+> navigation gestures from workout and routine detail, adds no replacement
+> gesture, and preserves explicit controls and number-scroller sensitivity.
 
 ### 7. List View vs Detail View Toggle
 
@@ -407,7 +415,7 @@ HomeScreen → My Routines tile
 1. User selects modality tile on home screen (e.g., "Cardio / Endurance")
 2. System creates session with `modality = 'cardio_endurance'`
 3. User taps FAB (➕) in session screen
-4. System opens `ExercisePickerDialog` with `sessionModality: 'cardio_endurance'`
+4. System opens `ExercisePickerScreen` with `sessionModality: 'cardio_endurance'`
 5. Picker shows exercises sorted by relevance score (cardio-compatible exercises first)
 6. User selects exercise (e.g., "Running")
 7. System calls `addExerciseToSession(exercise, chosenMetric: null)`
@@ -419,7 +427,7 @@ HomeScreen → My Routines tile
 
 1. User selects "Free Training" tile or starts a Routine session (modality = null)
 2. User taps FAB to add exercise
-3. System opens `ExercisePickerDialog` (no filtering)
+3. System opens `ExercisePickerScreen` (no filtering)
 4. User selects exercise (e.g., "Barbell Squat")
 5. System opens `ModalityPickerDialog` — user selects a modality for this exercise
    - **Specific modality picked** (e.g., Cardio): `effortKindOverride = ModalityConfig.forModality(modality)?.effortKind`; no metric chooser shown
@@ -431,7 +439,7 @@ HomeScreen → My Routines tile
 
 ### + New Item Exercise (Picker)
 
-1. User taps "New Exercise" in `ExercisePickerDialog`
+1. User taps "New Exercise" in `ExercisePickerScreen`
 2. App opens `ExerciseEditorScreen` (form with name, description, discipline, capabilities, muscle groups)
 3. User saves → `WorkoutState.createCustomExercise(...)` persists the new exercise
 4. Editor closes and returns the new `Exercise`
@@ -514,9 +522,11 @@ theme.colorScheme.primaryContainer
 ## Edge Cases and Error Handling
 
 ### Empty State
-**Condition**: No exercises in session
-**UI**: Centered message + "Add First Exercise" button
-**Flow**: Tap button → ExercisePickerDialog → Add exercise → Detail view
+**Condition**: No exercises or blocks in the session.
+
+**Current first-load behavior**: after an empty non-edit session loads, `_shouldAutoOpenPicker()` schedules `_addExercise()`, so `ExercisePickerScreen` opens automatically. If the picker is dismissed, the underlying list surface exposes Add Exercise (filled) and Add Block (outlined); the actions are not equally weighted. A rolling session with an existing block and a routine-populated session bypass this auto-open condition.
+
+> **Scheduled, not current:** feedback-pack PR 6 removes auto-open and makes the neutral empty session's Add Exercise/Add Block choices equally weighted.
 
 ### Loading State
 **Condition**: Fetching exercises from repository
@@ -701,16 +711,16 @@ This architecture demonstrates how **data-driven UI rendering** (effortKind → 
 
 ---
 
-**Document Version**: 1.4  
-**Last Updated**: April 13, 2026  
-**Author**: Automated documentation generated from codebase analysis  
-**Related Docs**: 
-- [modality_tracking.md](.github/agents/docs/modality_tracking.md) — Data layer + business logic
-- [exercise_ranking.md](.github/agents/docs/exercise_ranking.md) — Exercise picker sorting algorithm
-- [create_new_exercise.md](.github/agents/docs/create_new_exercise.md) — Create custom exercises from the picker
-- [my_routines.md](.github/agents/docs/my_routines.md) — Reusable workout template system
+**Document Version**: 1.5
+**Last Updated**: July 27, 2026
+**Author**: Automated documentation generated from codebase analysis
+**Related Docs**:
+- [modality_tracking.md](modality_tracking.md) — Data layer + business logic
+- [exercise_ranking.md](exercise_ranking.md) — Exercise picker sorting algorithm
+- [create_new_exercise.md](create_new_exercise.md) — Create custom exercises from the picker
+- [my_routines.md](my_routines.md) — Reusable workout template system
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-06-29. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
