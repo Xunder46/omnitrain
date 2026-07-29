@@ -265,52 +265,75 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   // ── Add exercise + block bar ──────────────────────────────────────────────
 
-  Widget _buildAddExerciseAndBlockBar(ThemeData theme, {String? segmentId}) {
+  /// PR 6 — Add Exercise and Add Block are ALWAYS secondary
+  /// (OutlinedButton) CTAs, regardless of whether the session is empty
+  /// or already has content. Neither choice should ever look like the
+  /// "primary" action: the bottom Finish Workout CTA is the only
+  /// FilledButton in the session screen. Visual consistency across
+  /// empty-state and populated sessions keeps the user's attention on
+  /// the logged work, not on chrome that competes with it.
+  ///
+  /// The picker only opens when the user explicitly taps Add Exercise.
+  /// Add Block calls `workoutState.addSessionBlock()` directly.
+  Widget _buildAddExerciseAndBlockBar(
+    ThemeData theme, {
+    String? segmentId,
+  }) {
+    final addExercise = SizedBox(
+      width: double.infinity,
+      height: OmniTheme.buttonPrimaryHeight,
+      child: OutlinedButton(
+        key: const Key('add-exercise'),
+        onPressed: () => _addExercise(segmentId: segmentId),
+        style: ButtonStyle(
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                OmniTheme.buttonBorderRadius,
+              ),
+            ),
+          ),
+        ),
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text('Add Exercise'),
+        ),
+      ),
+    );
+
+    final addBlock = SizedBox(
+      width: double.infinity,
+      height: OmniTheme.buttonPrimaryHeight,
+      child: OutlinedButton(
+        key: const Key('add-block'),
+        onPressed: () async {
+          await widget.workoutState.addSessionBlock();
+          _updateUi(() {});
+        },
+        style: ButtonStyle(
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                OmniTheme.buttonBorderRadius,
+              ),
+            ),
+          ),
+        ),
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text('Add Block'),
+        ),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: double.infinity,
-            height: OmniTheme.buttonPrimaryHeight,
-            child: FilledButton(
-              onPressed: () => _addExercise(segmentId: segmentId),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text('Add Exercise'),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () async {
-                await widget.workoutState.addSessionBlock();
-                _updateUi(() {});
-              },
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                side: BorderSide(color: theme.colorScheme.primary),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-              child: const Text('Add Block'),
-            ),
-          ),
+          addExercise,
+          const SizedBox(height: 12),
+          addBlock,
         ],
       ),
     );
@@ -407,53 +430,66 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         : null;
 
     if (_exercises.isEmpty && blocks.isEmpty) {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
-        extendBody: true,
-        body: Stack(
-          children: [
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(theme),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(children: [_buildSessionTimeWidget(theme)]),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: _kBottomControlsClearance,
-                        ),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 480),
-                          child: _buildAddExerciseAndBlockBar(
-                            theme,
-                            segmentId: segmentId,
+      // PR 6 / S-003 + S-004 — new workouts (modality or Free Training
+      // start) land on the balanced empty state; routine-populated
+      // sessions bypass it entirely (no neutral prompt mid-context).
+      final isRoutineSession =
+          widget.workoutState.currentSession?.routineTemplateId != null;
+      if (isRoutineSession) {
+        // Fall through to the populated list view — a routine session
+        // should never show the neutral empty state, even if its manifest
+        // happens to resolve to zero visible exercises. The bottom CTA
+        // and rest overlay still mount in the populated path below.
+      } else {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBody: true,
+          body: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildHeader(theme),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(children: [_buildSessionTimeWidget(theme)]),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: _kBottomControlsClearance,
+                          ),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 480),
+                            child: _buildAddExerciseAndBlockBar(
+                              theme,
+                              segmentId: segmentId,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: OmniBottomCTA(
-                label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-                onPressed: widget.editMode
-                    ? _saveEditChanges
-                    : _showFinishSessionDialog,
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: OmniBottomCTA(
+                  label:
+                      widget.editMode ? 'Save Changes' : 'Finish Workout',
+                  onPressed: widget.editMode
+                      ? _saveEditChanges
+                      : _showFinishSessionDialog,
+                ),
               ),
-            ),
-          ],
-        ),
-      );
+            ],
+          ),
+        );
+      }
     }
 
     final items = _buildNonRollingTopLevelItems(_exercises);

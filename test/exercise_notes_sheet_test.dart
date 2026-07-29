@@ -125,13 +125,13 @@ void main() {
       sessionSummaryService: sessionSummaryService,
     );
 
-    // Empty session auto-opens the exercise picker. If the picker is not yet
-    // visible (i.e. another code path), tap Icons.add to open it manually.
+    // PR 6 — empty sessions no longer auto-open the exercise picker;
+    // the user explicitly taps Add Exercise from the balanced empty state.
     if (find
         .widgetWithText(TextField, 'Search exercises...')
         .evaluate()
         .isEmpty) {
-      await tester.tap(find.widgetWithText(FilledButton, 'Add Exercise'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Add Exercise'));
       await tester.pumpAndSettle();
     }
 

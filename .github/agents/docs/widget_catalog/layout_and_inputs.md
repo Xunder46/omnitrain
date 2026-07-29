@@ -78,6 +78,10 @@ Standardized back-and-title header used by all secondary screens. Implements `Pr
 - Calendar uses `actions: [FilledButton('+')]` for the Periods shortcut
 - `SessionSummaryScreen` uses `actions: [PopupMenuButton]` for the Edit/Save/Discard overflow
 - `SessionOverviewScreen` and `RoutineSetupScreen` use `subtitle` for contextual secondary text
+- `RoutineSetupScreen` (PR 6) uses `actions: [IconButton(Icons.delete_outline)]`
+  (key `routine-delete-action`) for the destructive delete action; the
+  underlying dialog is rendered via `showDeleteRoutineDialog` from
+  `my_routines_screen.dart`.
 
 ### `OmniCardHeader`
 

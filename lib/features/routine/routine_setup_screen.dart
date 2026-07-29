@@ -15,6 +15,7 @@ import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
+import 'my_routines_screen.dart' show showDeleteRoutineDialog;
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -171,6 +172,19 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
         title: 'Exercises',
         subtitle: '${efforts.length} exercise${efforts.length != 1 ? 's' : ''}',
         onBack: () => _discardAndPop(),
+        actions: widget.templateId != null
+            ? [
+                IconButton(
+                  key: const Key('routine-delete-action'),
+                  tooltip: 'Delete routine',
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: theme.colorScheme.error,
+                  ),
+                  onPressed: _deleteCurrentRoutine,
+                ),
+              ]
+            : null,
       ),
       body: Stack(
         children: [
@@ -987,6 +1001,40 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
 
     // Reset is internal to saveRoutine(); pop without re-prompting.
     Navigator.pop(context);
+  }
+
+  /// PR 6 / S-002 — header delete action. Shows the destructive delete
+  /// dialog naming the routine and states permanence; on confirm, removes
+  /// the template (and any planned-session rows) while leaving completed
+  /// sessions, history, stats, and PRs untouched. The action is gated to
+  /// routines loaded by id (it is not shown for new unsaved drafts).
+  Future<void> _deleteCurrentRoutine() async {
+    final templateId = widget.templateId;
+    if (templateId == null) return;
+
+    final routineName = widget.routineState.currentTemplate?.name ??
+        _nameController.text.trim();
+
+    final confirmed = await showDeleteRoutineDialog(
+      context,
+      routineState: widget.routineState,
+      templateId: templateId,
+      routineName: routineName,
+    );
+    if (!mounted || !confirmed) return;
+
+    await widget.routineState.deleteRoutine(templateId);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Deleted "$routineName"')),
+    );
+
+    // Cancel any pending autosave draft for this routine and pop without
+    // re-prompting — the routine is gone, so the dirty baseline is moot.
+    widget.routineState.cancelPendingAutosave();
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
   /// Single exit path for the Routine editor. Used by header back, system

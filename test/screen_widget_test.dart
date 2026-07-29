@@ -7960,11 +7960,10 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          // Dismiss the auto-opened picker so WorkoutSessionScreen is foregrounded
-          if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
-            await tester.tap(find.byIcon(Icons.arrow_back));
-            await tester.pumpAndSettle();
-          }
+          // PR 6 / S-003 — empty sessions no longer auto-open the
+          // exercise picker; the picker only appears when the user
+          // explicitly taps Add Exercise. The session screen is
+          // foregrounded by default.
 
           final finishFinder = find.widgetWithText(
             FilledButton,
@@ -7976,7 +7975,13 @@ void main() {
             reason: '${appTheme.name} – Finish Workout button not found',
           );
 
-          final addFinder = find.widgetWithText(FilledButton, 'Add Exercise');
+          // PR 6 / S-003 — empty-state Add Exercise is an OutlinedButton
+          // so Add Block is equally weighted. The bottom CTA is the
+          // sole FilledButton on the empty state.
+          final addFinder = find.widgetWithText(
+            OutlinedButton,
+            'Add Exercise',
+          );
           expect(
             addFinder,
             findsOneWidget,
@@ -8476,14 +8481,15 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        // Dismiss the auto-opened picker so WorkoutSessionScreen is foregrounded
-        if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
-          await tester.tap(find.byIcon(Icons.arrow_back));
-          await tester.pumpAndSettle();
-        }
+        // PR 6 / S-003 — empty sessions no longer auto-open the picker.
+        expect(find.byType(ExercisePickerScreen), findsNothing);
 
+        // PR 6 / S-003 — empty state uses equally weighted OutlinedButtons
+        // for Add Exercise and Add Block. The bottom CTA stays a
+        // FilledButton so the finish action is still the dominant
+        // affordance below the balanced prompt.
         final addExerciseFinder = find.widgetWithText(
-          FilledButton,
+          OutlinedButton,
           'Add Exercise',
         );
         final addBlockFinder = find.widgetWithText(OutlinedButton, 'Add Block');
@@ -8533,13 +8539,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // Dismiss the auto-opened picker so WorkoutSessionScreen is foregrounded
-      if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
-        await tester.tap(find.byIcon(Icons.arrow_back));
-        await tester.pumpAndSettle();
-      }
+      // PR 6 / S-003 — empty sessions no longer auto-open the picker.
+      expect(find.byType(ExercisePickerScreen), findsNothing);
 
-      expect(find.widgetWithText(FilledButton, 'Add Exercise'), findsOneWidget);
+      // PR 6 / S-003 — equally weighted OutlinedButtons in the
+      // rolling-session empty state.
+      expect(
+        find.widgetWithText(OutlinedButton, 'Add Exercise'),
+        findsOneWidget,
+      );
       expect(find.widgetWithText(OutlinedButton, 'Add Block'), findsOneWidget);
     });
 

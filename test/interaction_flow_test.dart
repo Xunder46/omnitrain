@@ -837,13 +837,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // Dismiss the auto-opened picker so WorkoutSessionScreen is foregrounded
-      if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
-        await tester.tap(find.byIcon(Icons.arrow_back));
-        await tester.pumpAndSettle();
-      }
 
-      expect(find.widgetWithText(FilledButton, 'Add Exercise'), findsOneWidget);
+      // PR 6 / S-003 — empty sessions no longer auto-open the exercise
+      // picker; the user picks Add Exercise or Add Block from the balanced
+      // empty state. Both buttons are equally weighted OutlinedButtons.
+      expect(find.byType(ExercisePickerScreen), findsNothing);
+      expect(
+        find.widgetWithText(OutlinedButton, 'Add Exercise'),
+        findsOneWidget,
+      );
       expect(find.widgetWithText(OutlinedButton, 'Add Block'), findsOneWidget);
       expect(
         find.byWidgetPredicate(
@@ -929,19 +931,19 @@ void main() {
 
       expect(find.text('Delete Me'), findsOneWidget);
 
-      // open popup menu
-      await tester.tap(find.byType(PopupMenuButton<dynamic>));
+      // PR 6 / S-001 — overflow menu is gone. Open the editor via the card
+      // body and use the header delete action.
+      await tester.tap(find.byKey(const Key('routine-card-body')));
+      await tester.pump();
+      tester.takeException(); // consume setState-during-build from initState
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Delete'));
+      await tester.tap(find.byKey(const Key('routine-delete-action')));
       await tester.pumpAndSettle();
 
-      // Confirmation dialog - tap confirm delete
-      final confirmDelete = find.text('Delete');
-      if (confirmDelete.evaluate().isNotEmpty) {
-        await tester.tap(confirmDelete.last);
-        await tester.pumpAndSettle();
-      }
+      // Confirmation dialog — tap the destructive Delete button.
+      await tester.tap(find.byKey(const Key('routine-delete-confirm')));
+      await tester.pumpAndSettle();
 
       expect(find.text('Delete Me'), findsNothing);
     });

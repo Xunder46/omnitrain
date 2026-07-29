@@ -1400,31 +1400,17 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   /// Check if the exercise picker should auto-open on first session load.
-  /// Auto-open only if:
-  /// - NOT in edit mode (edit mode is for reviewing completed sessions)
-  /// - Session has no exercises yet
-  /// - First load (auto-open not yet attempted)
-  /// - Not a rolling session with existing blocks
-  bool _shouldAutoOpenPicker() {
-    final hasBlocks = widget.workoutState.getSessionBlocks().isNotEmpty;
-    return !widget.editMode &&
-        _exercises.isEmpty &&
-        !_autoOpenAttempted &&
-        (!widget.workoutState.isRollingSession || !hasBlocks);
-  }
+  ///
+  /// PR 6 / S-003 contract: new workouts land on a neutral empty session
+  /// rather than auto-opening the picker. The user picks Add Exercise or
+  /// Add Block from the balanced empty state; the picker only opens when
+  /// the user explicitly asks for it.
+  bool _shouldAutoOpenPicker() => false;
 
   /// Schedule the exercise picker to open after the current frame renders.
-  /// Uses [Future.microtask] to ensure the UI is fully built and the loading
-  /// spinner is cleared before triggering the dialog.
+  /// PR 6: no-op — see [_shouldAutoOpenPicker].
   void _scheduleAutoOpenPicker() {
-    _autoOpenAttempted =
-        true; // Prevent re-opening on subsequent _loadExercises calls
-    // Schedule after current frame renders so loading state is cleared
-    Future.microtask(() {
-      if (mounted) {
-        _addExercise();
-      }
-    });
+    _autoOpenAttempted = true;
   }
 
   Future<void> _addExercise({String? segmentId, String? blockId}) async {

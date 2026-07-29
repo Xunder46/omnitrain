@@ -125,8 +125,12 @@ HomeScreen
   │
   ├── Modality Tile (Cardio / Resistance / Sports / Isometric)
   │      → creates session → WorkoutSessionScreen
-  │            ├── first empty load schedules ExercisePickerScreen automatically
-  │            │     └── selected exercise returns to focused detail view
+  │            ├── (PR 6 / S-003) empty sessions do NOT auto-open the
+│            │     picker; the empty state renders equally weighted
+│            │     Add Exercise / Add Block actions and the user picks
+│            │     one explicitly. Both are always-secondary
+│            │     OutlinedButtons — adding content never flips Add
+│            │     Exercise to primary (PR 6 / S-005).
   │            ├── Add Exercise → ExercisePickerScreen (page push)
   │            │     └── [ModalityPickerDialog] (null modality only)
   │            │           └── [MetricChooserDialog] (General only)
@@ -142,10 +146,21 @@ HomeScreen
   ├── My Routines Tile ──→ (if routine session active) → WorkoutSessionScreen
   │                     ──→ (else) → MyRoutinesScreen
   │                                    │
-  │                                    ├── Tap routine card → start session → WorkoutSessionScreen
-  │                                    ├── FAB (+) → RoutineSetupScreen (new)
-  │                                    └── ⋮ menu → Edit → RoutineSetupScreen (existing)
-  │                                               → Delete → confirmation dialog
+  │                                    ├── (PR 6 / S-001) Tap card body
+  │                                    │     → opens RoutineSetupScreen
+  │                                    │     (no session created)
+  │                                    ├── (PR 6 / S-006) Tap card play
+  │                                    │     glyph (Icons.play_arrow,
+  │                                    │     accent colour, 48 dp hit
+  │                                    │     target, no text label) →
+  │                                    │     existing manifest +
+  │                                    │     active-session flow →
+  │                                    │     WorkoutSessionScreen
+  │                                    ├── + New Routine CTA → RoutineSetupScreen (new)
+  │                                    └── (PR 6 / S-002) RoutineSetupScreen
+  │                                          header has a delete icon →
+  │                                          confirmation dialog (names the
+  │                                          routine, states permanence)
   │                                                  │
   │                                    RoutineSetupScreen
   │                                      └── Add Exercise → ExercisePickerScreen (page push)
@@ -153,7 +168,11 @@ HomeScreen
   ├── Free Training Tile ──→ Free Training start sheet
   │                            ├── Rolling Session toggle
   │                            └── Start Session ──→ WorkoutSessionScreen
-  │                                  ├── empty first load auto-opens ExercisePickerScreen
+  │                                  ├── (PR 6 / S-003) empty rolling
+  │                                  │     session renders the same
+  │                                  │     balanced empty state as a
+  │                                  │     modality start; no auto-open
+  │                                  │     picker
   │                                  └── empty finish discards the session and returns to HomeScreen
   │
   ├── NutritionSummaryCard (below the tile grid) ──→ NutritionScreen
@@ -350,10 +369,20 @@ When tapping a different modality tile while a session is active:
 - A confirmation dialog appears: "Start New Session? Current session will be saved."
 - Confirming clears the current in-memory session selection and creates a new session
 
-> **Scheduled, not current:** PR 6 removes the first-load picker auto-open and
-> leaves the user on the neutral empty session with equally weighted Add Exercise
-> and Add Block choices. Routine-populated sessions continue to bypass the empty
-> state.
+> **PR 6 (shipped 2026-07-27):** the first-load picker auto-open is
+> gone. Modality and Free Training starts land on the session screen
+> with no picker pushed; the empty state renders equally weighted
+> Add Exercise / Add Block actions (both OutlinedButtons, identical
+> shape) and the picker only opens when the user explicitly taps
+> Add Exercise. Routine-populated sessions (`currentSession.routineTemplateId`
+> is non-null) bypass the centered empty-state layout and land directly
+> on a populated list, so the block-header add stays direct and the
+> routine context is never interrupted by a neutral prompt.
+>
+> **S-005 contract:** Add Exercise and Add Block are always-secondary
+> OutlinedButtons regardless of session contents. The bottom Finish
+> Workout CTA is the only FilledButton in the session screen —
+> adding a block or an exercise never flips Add Exercise to primary.
 
 ---
 

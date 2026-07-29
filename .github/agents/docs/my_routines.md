@@ -1,13 +1,47 @@
 # My Routines — Feature Documentation
 
-> **2026-07-27 current-state boundary:** Card bodies currently start routines,
-> and the routine card intent (start vs. edit) is still ambiguous. PR 6 in
-> the [feedback-pack baseline](feedback-pack-baseline-2026-07-27.md) changes
-> that contract; its desired behavior is not yet shipped. PR 2
-> (Launch Quality Hotfix) already removed the legacy horizontal/vertical
-> swipe navigation from the routine detail view. **PR 5 (Tier 3 data-loss
-> guard — shipped) lands the unsaved-changes guard described in
-> `Editing a Routine` below.**
+> **2026-07-27 PR 6 (Tier 3 intent correction — shipped):** routine-card
+> bodies open the existing routine editor instead of starting a session;
+> a distinct, non-overlapping **Start** glyph on the card creates the
+> session in one tap. The card no longer renders an overflow menu — the
+> destructive delete action lives in the editor's app bar (`Icons.delete_outline`)
+> where the dialog can name the routine and state permanence. **S-006
+> contract (2026-07-28):** the start control is a *bare play triangle*,
+> not a filled button with a "Start" label. The glyph uses the theme
+> accent colour, has no fill or border, is vertically centred in the
+> row, and has a ≥ 48 dp touch target — but is no longer the largest
+> hit region on the card. The "Demo" pill lives on the metadata line
+> next to the creation date, not on the title line. Between these two
+> changes routine names of typical length render in full on narrow
+> viewports (320 dp) instead of being truncated to "Bodyweight \u2026" or
+> "Easy Run \u2014 3\u2026". **S-007 contract (2026-07-28):** the play glyph's
+> tappable region is *comfortably larger* than the visible glyph (≥ 44
+> dp in both dimensions — the implementation pins the tap region to
+> 56 dp without changing the 28 dp glyph itself). The tap region
+> never overlaps the row body and no point in a row is unresponsive.
+> The Demo badge sits at a fixed horizontal position on every row
+> regardless of date text length (the metadata line uses a `Stack` to
+> pin the badge to the right edge), while user rows render the date
+> line with no visible gap (the date reserves
+> `OmniTheme.demoBadgeReservedWidth` of right padding only when the
+> badge is present). **S-008 contract (2026-07-28):** the Demo badge
+> is moved BACK onto the title row next to the routine name and
+> vertically centred with the title text. The metadata line returns
+> to a simple `Row` with just the date text — no Stack and no
+> reserved space. The S-008 design reverts the metadata-line placement
+> from S-006 / S-007 now that the start control is small enough (56-dp
+> tap region around a 28-dp glyph) for the title row to host the badge
+> without crowding the routine name.
+>
+> **S-005 contract:** on the `WorkoutSessionScreen`,
+> Add Exercise and Add Block are *always*-secondary OutlinedButtons
+> regardless of whether the session is empty or already has content —
+> adding a block or an exercise must never flip Add Exercise to primary.
+> The bottom Finish Workout CTA is the only `FilledButton` in the
+> session screen. PR 2 (Launch Quality Hotfix) already removed the
+> legacy horizontal/vertical swipe navigation from the routine detail
+> view. **PR 5 (Tier 3 data-loss guard — shipped) lands the
+> unsaved-changes guard described in `Editing a Routine` below.**
 
 ## Overview
 
@@ -83,11 +117,21 @@ MyRoutinesScreen → Tap a routine card
 If an active session exists, a confirmation dialog appears:
 > "Starting a routine will start a new session. Current session will not be saved."
 
-> **Scheduled, not current:** feedback-pack PR 6 changes the card body to open
-> `RoutineSetupScreen` without creating a session. A separate, non-overlapping
-> start control retains the manifest/session flow above.
-
 ### 4. Editing a Routine
+
+> **PR 6 / S-006 / S-007 / S-008 contract:** tapping the card body
+> opens `RoutineSetupScreen` with no session created. The card's bare
+> **play glyph** (`Icons.play_arrow`, accent colour, no fill or
+> border, 56 dp tap region around a 28 dp visible glyph) on the
+> trailing edge is the only path that triggers the manifest +
+> active-session flow above. The card never renders an overflow menu.
+> Routine names of typical length render in full on a 320-dp
+> viewport; the "Demo" pill sits on the TITLE row next to the
+> routine name (vertically centred with the title text) and its
+> right edge is pinned to the title row's right edge regardless of
+> name length via an `Expanded` (FlexFit.tight) wrapper around the
+> title text.
+
 ```
 MyRoutinesScreen → Tap ⋮ menu on routine card → "Edit"
   → RoutineSetupScreen (pre-loaded with existing data)
@@ -120,10 +164,27 @@ open, system back first returns to the list (same as the AppBar's back
 arrow) before the guard engages.
 
 ### 5. Deleting a Routine
+
+> **PR 6 contract:** the destructive delete action lives in the routine
+> editor's app bar (an `IconButton` with `Icons.delete_outline`, keyed
+> `routine-delete-action`). The card no longer has an overflow menu.
+> The confirmation dialog names the routine in both the title
+> (`Delete "<name>"?`) and body and explicitly states permanence
+> (`This action cannot be undone.`). If the routine has any
+> `PlannedSession` rows, the body also notes that they will be removed.
+> On confirm, the template and any planned-session rows are removed
+> from the repository; **completed sessions, their
+> `routineTemplateId`, all efforts, observations, rest records, and
+> analytics / PRs are preserved by design** — analytics read from
+> `TrainingSession` and its child rows directly and never join through
+> the template.
+
 ```
-MyRoutinesScreen → Tap ⋮ menu on routine card → "Delete"
-  → Confirmation dialog: "This action cannot be undone."
-  → Confirm → Routine removed from list
+MyRoutinesScreen → Tap card body → RoutineSetupScreen
+  → Tap header delete icon (Icons.delete_outline)
+    → Confirmation dialog names the routine and states permanence
+    → Confirm → template (and any planned-session rows) removed
+      → Completed sessions, history, stats, and PRs unchanged
 ```
 
 ---

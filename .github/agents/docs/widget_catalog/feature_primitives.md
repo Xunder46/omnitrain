@@ -6,6 +6,46 @@
 
 ## Routine Primitives
 
+### `_RoutineCard` (private to `MyRoutinesScreen`)
+
+**File**: `lib/features/routine/my_routines_screen.dart`
+
+PR 6 routine card with two distinct, non-overlapping hit regions
+(S-006 + S-007 + S-008 — PR 6 / S-001 / S-006 / S-007 / S-008):
+
+- **Card body** (`Key('routine-card-body')`) — wraps the icon, name,
+  creation-date metadata, and the optional `DemoRoutineBadge` on
+  the TITLE row (S-008). Tap opens `RoutineSetupScreen` for the
+  existing routine; no session is created. The body's right edge
+  sits flush with the start control's left edge so there is no dead
+  zone between the two regions (S-007 contract).
+- **Play glyph** (`Key('routine-card-start')`, tooltip `Start routine`)
+  — a bare `IconButton` with `Icons.play_arrow` on the trailing edge.
+  PR 6 / S-006 reduced this control from a 96-dp filled `TextButton`
+  with a "Start" label to a single glyph; PR 6 / S-007 increased the
+  tappable region to `SizedBox(width: 56, height: 56)` so the hit
+  area is comfortably larger than the 28-dp visible glyph without
+  changing the glyph itself. Tap creates the session in one tap
+  using the existing `RoutineSessionService.buildSessionFromTemplate`
+  + active-session warning flow.
+
+The card deliberately renders **no overflow menu** — destructive
+delete is gated to the editor's app bar (see
+`OmniBackHeader.actions` below and the `routine-delete-action` key)
+so the user can see the routine name they are about to remove when
+the confirmation dialog opens.
+
+The `DemoRoutineBadge(compact: true)` sits on the TITLE row as a
+Row sibling of the title text. The title text is wrapped in an
+`Expanded` (FlexFit.tight) so the badge's right edge is pinned to the
+title row's right edge regardless of how long the routine name
+happens to be — using `Flexible` (loose) instead would shrink-fit
+the row to the Text's natural width and pull the badge inwards on
+short names. The Row's default `CrossAxisAlignment.center` keeps
+the badge pill vertically centred with the title text, and the
+badge's own symmetric vertical padding keeps the "Demo" text
+vertically centred within the pill.
+
 ### `DemoRoutineBadge`
 
 **File**: `lib/features/routine/widgets/demo_routine_badge.dart`
