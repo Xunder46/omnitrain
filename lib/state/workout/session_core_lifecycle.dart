@@ -240,7 +240,8 @@ extension SessionCoreLifecycleMethods on SessionCore {
       sessionId: _currentSession!.id,
       segments: List<SessionSegment>.from(_segments),
       efforts: {
-        for (final entry in _efforts.entries) entry.key: List<SegmentEffort>.from(entry.value),
+        for (final entry in _efforts.entries)
+          entry.key: List<SegmentEffort>.from(entry.value),
       },
       observations: {
         for (final entry in _observations.entries)

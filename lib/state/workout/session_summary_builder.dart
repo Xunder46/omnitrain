@@ -53,7 +53,8 @@ class SessionSummaryBuilder {
 
       for (final effort in segmentEfforts) {
         final exerciseId = effort.exerciseId ?? 'unknown';
-        final exerciseName = _exerciseCache[exerciseId]?.name ?? 'Unknown Exercise';
+        final exerciseName =
+            _exerciseCache[exerciseId]?.name ?? 'Unknown Exercise';
         final observations = _observations[effort.id] ?? [];
         final entries = _buildEntriesForEffort(effort.effortKind, observations);
 
@@ -90,8 +91,7 @@ class SessionSummaryBuilder {
               weight ?? 0.0,
               reps ?? 0,
             );
-            if (e1rm != null &&
-                (bestE1RM == null || e1rm > bestE1RM)) {
+            if (e1rm != null && (bestE1RM == null || e1rm > bestE1RM)) {
               bestE1RM = e1rm;
             }
 
@@ -129,18 +129,41 @@ class SessionSummaryBuilder {
           effortRounds = finishedRounds.length;
           setsCompleted = effortRounds;
           totalRounds += effortRounds;
-          effortDurationMs = finishedRounds.fold<int>(0, (sum, round) => sum + round.elapsedMs);
+          effortDurationMs = finishedRounds.fold<int>(
+            0,
+            (sum, round) => sum + round.elapsedMs,
+          );
           totalRoundDurationMs += effortDurationMs;
         } else if (effort.effortKind == 'timed') {
-          final timedInstances = _timerManager.getTimedInstancesForEffort(effort.id);
-          setsCompleted = timedInstances.where((inst) => inst.state == TimedState.finished).length;
-          totalCardioDurationMs += timedInstances.fold<int>(0, (sum, inst) => sum + inst.elapsedMs);
-          effortDurationMs = timedInstances.fold<int>(0, (sum, inst) => sum + inst.elapsedMs);
+          final timedInstances = _timerManager.getTimedInstancesForEffort(
+            effort.id,
+          );
+          setsCompleted = timedInstances
+              .where((inst) => inst.state == TimedState.finished)
+              .length;
+          totalCardioDurationMs += timedInstances.fold<int>(
+            0,
+            (sum, inst) => sum + inst.elapsedMs,
+          );
+          effortDurationMs = timedInstances.fold<int>(
+            0,
+            (sum, inst) => sum + inst.elapsedMs,
+          );
         } else if (effort.effortKind == 'drill') {
-          final timedInstances = _timerManager.getTimedInstancesForEffort(effort.id);
-          setsCompleted = timedInstances.where((inst) => inst.state == TimedState.finished).length;
-          totalDrillDurationMs += timedInstances.fold<int>(0, (sum, inst) => sum + inst.elapsedMs);
-          effortDurationMs = timedInstances.fold<int>(0, (sum, inst) => sum + inst.elapsedMs);
+          final timedInstances = _timerManager.getTimedInstancesForEffort(
+            effort.id,
+          );
+          setsCompleted = timedInstances
+              .where((inst) => inst.state == TimedState.finished)
+              .length;
+          totalDrillDurationMs += timedInstances.fold<int>(
+            0,
+            (sum, inst) => sum + inst.elapsedMs,
+          );
+          effortDurationMs = timedInstances.fold<int>(
+            0,
+            (sum, inst) => sum + inst.elapsedMs,
+          );
         } else {
           setsCompleted = entries.length;
         }
@@ -192,13 +215,15 @@ class SessionSummaryBuilder {
 
       for (final effort in segmentEfforts) {
         final exerciseId = effort.exerciseId ?? 'unknown';
-        final exerciseName = _exerciseCache[exerciseId]?.name ?? 'Unknown Exercise';
+        final exerciseName =
+            _exerciseCache[exerciseId]?.name ?? 'Unknown Exercise';
 
         List<TemplateTargetDraft> targets;
         if (effort.effortKind == 'round') {
           final rounds = _timerManager.getRoundsForEffort(effort.id);
-          final plannedDuration =
-              rounds.isNotEmpty ? rounds.first.plannedDurationSecs : WorkoutConstants.defaultRoundDurationSecs;
+          final plannedDuration = rounds.isNotEmpty
+              ? rounds.first.plannedDurationSecs
+              : WorkoutConstants.defaultRoundDurationSecs;
           targets = [
             TemplateTargetDraft(
               metricId: MetricIds.rounds,
@@ -217,9 +242,14 @@ class SessionSummaryBuilder {
               valueText: null,
             ),
           ];
-        } else if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
-          final timedInstances = _timerManager.getTimedInstancesForEffort(effort.id);
-          final targetDuration = timedInstances.isNotEmpty ? timedInstances.first.targetDurationSecs : 300;
+        } else if (effort.effortKind == 'timed' ||
+            effort.effortKind == 'drill') {
+          final timedInstances = _timerManager.getTimedInstancesForEffort(
+            effort.id,
+          );
+          final targetDuration = timedInstances.isNotEmpty
+              ? timedInstances.first.targetDurationSecs
+              : 300;
           targets = [
             TemplateTargetDraft(
               metricId: MetricIds.duration,
@@ -233,7 +263,9 @@ class SessionSummaryBuilder {
 
           if (effort.effortKind == 'drill') {
             final companionObs = _observations[effort.id] ?? [];
-            final extraWeight = companionObs.isNotEmpty ? (companionObs.first.valueReal ?? 0.0) : 0.0;
+            final extraWeight = companionObs.isNotEmpty
+                ? (companionObs.first.valueReal ?? 0.0)
+                : 0.0;
             targets.add(
               TemplateTargetDraft(
                 metricId: MetricIds.extraWeight,
@@ -247,7 +279,9 @@ class SessionSummaryBuilder {
           }
           if (effort.effortKind == 'timed') {
             final companionObs = _observations[effort.id] ?? [];
-            final ewObs = companionObs.where((o) => o.metricId == MetricIds.extraWeight).toList();
+            final ewObs = companionObs
+                .where((o) => o.metricId == MetricIds.extraWeight)
+                .toList();
             if (ewObs.isNotEmpty) {
               targets.add(
                 TemplateTargetDraft(
@@ -263,7 +297,10 @@ class SessionSummaryBuilder {
           }
         } else {
           final observations = _observations[effort.id] ?? [];
-          targets = _buildTemplateTargetsFromObservations(observations, effort.effortKind);
+          targets = _buildTemplateTargetsFromObservations(
+            observations,
+            effort.effortKind,
+          );
         }
 
         drafts.add(
@@ -305,7 +342,8 @@ class SessionSummaryBuilder {
                 },
               )
               .toList();
-        } else if (effort.effortKind == 'timed' || effort.effortKind == 'drill') {
+        } else if (effort.effortKind == 'timed' ||
+            effort.effortKind == 'drill') {
           final timedList = _timerManager.getTimedInstancesForEffort(effort.id);
           final companionObs = _observations[effort.id] ?? [];
           entries = <Map<String, dynamic>>[];
@@ -320,9 +358,15 @@ class SessionSummaryBuilder {
               'timedState': t.state.name,
             };
             if (effort.effortKind == 'timed') {
-              final distObs = companionObs.where((o) => o.metricId == MetricIds.distance).toList();
-              final ewObs = companionObs.where((o) => o.metricId == MetricIds.extraWeight).toList();
-              entryMap['distance'] = i < distObs.length ? (distObs[i].valueReal ?? 0.0) : 0.0;
+              final distObs = companionObs
+                  .where((o) => o.metricId == MetricIds.distance)
+                  .toList();
+              final ewObs = companionObs
+                  .where((o) => o.metricId == MetricIds.extraWeight)
+                  .toList();
+              entryMap['distance'] = i < distObs.length
+                  ? (distObs[i].valueReal ?? 0.0)
+                  : 0.0;
               if (i < ewObs.length) {
                 entryMap['extra-weight'] = ewObs[i].valueReal ?? 0.0;
               }
@@ -337,11 +381,16 @@ class SessionSummaryBuilder {
           }
         } else {
           final effortObservations = _observations[effort.id] ?? [];
-          entries = ObservationGrouper.groupByEffortKind(effort.effortKind, effortObservations);
+          entries = ObservationGrouper.groupByEffortKind(
+            effort.effortKind,
+            effortObservations,
+          );
 
           final hasLoad = exercise?.capabilities.contains('load') ?? false;
           if (effort.effortKind == 'set' && !hasLoad) {
-            final extraWeightObs = effortObservations.where((o) => o.metricId == MetricIds.extraWeight).toList();
+            final extraWeightObs = effortObservations
+                .where((o) => o.metricId == MetricIds.extraWeight)
+                .toList();
             for (int i = 0; i < entries.length; i++) {
               entries[i]['extra-weight'] = i < extraWeightObs.length
                   ? (extraWeightObs[i].valueReal ?? 0.0)
@@ -450,5 +499,4 @@ class SessionSummaryBuilder {
         return 0;
     }
   }
-
 }

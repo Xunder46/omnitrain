@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/exercise_helpers.dart';
 import '../../data/models/models.dart';
 import '../../state/workout/workout_state.dart';
+import '../../features/exercise/exercise_detail_view_screen.dart';
 import '../../features/exercise/exercise_editor_screen.dart';
 import '../../core/constants/modality_config.dart';
 import '../../core/navigation/navigation.dart';
@@ -549,12 +551,43 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      title: Text(
-        exercise.name,
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: OmniTheme.colors.textDominant,
-        ),
+      title: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              exercise.name,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: OmniTheme.colors.textDominant,
+              ),
+            ),
+          ),
+          if (exercise.isCustomExercise)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Container(
+                key: const Key('exercise_row_custom_marker'),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  'Custom',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -615,7 +648,37 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
           ),
         ],
       ),
+      trailing: IconButton(
+        key: const Key('exercise_row_details_button'),
+        icon: Icon(
+          Icons.info_outline,
+          color: theme.colorScheme.primary,
+          size: 24,
+        ),
+        tooltip: 'View exercise details',
+        onPressed: () => _openDetails(context, exercise),
+      ),
       onTap: () => Navigator.of(context).pop(exercise),
     );
+  }
+
+  Future<void> _openDetails(BuildContext context, Exercise exercise) async {
+    // Capture the navigator now so we can pop the picker from outside the
+    // async gap. Using the captured reference avoids the
+    // use_build_context_synchronously lint that fires on `context` after an
+    // `await`.
+    final pickerNavigator = Navigator.of(context);
+    final result = await OmniNavigator.push<Exercise>(
+      context,
+      (_) => ExerciseDetailViewScreen(
+        workoutState: widget.workoutState,
+        exercise: exercise,
+      ),
+    );
+    if (result == null) return;
+    // Hand the chosen exercise back to the picker caller (same contract
+    // as the row-body tap). Returning null is equivalent to a back press.
+    if (!mounted) return;
+    pickerNavigator.pop(result);
   }
 }

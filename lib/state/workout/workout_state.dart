@@ -249,6 +249,7 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.recordRestStart(effortId, entryIndex);
   Future<void> recordRestEnd(String effortId, int entryIndex) =>
       _timerManager.recordRestEnd(effortId, entryIndex);
+
   /// Pauses an open rest record. The wall-clock pause time is captured
   /// on the record so the elapsed display freezes at the pause instant
   /// and reloads correctly across backgrounding. The rest is not
@@ -267,6 +268,7 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.closeAllOpenRests(effortId);
   int getRestElapsedSeconds(String effortId, int entryIndex) =>
       _timerManager.getRestElapsedSeconds(effortId, entryIndex);
+
   /// Whether the rest record is currently in the paused state. Drives
   /// the rest-tile visual differentiation and the icon swap between
   /// play (tap to resume) and pause (tap to resume is the same).

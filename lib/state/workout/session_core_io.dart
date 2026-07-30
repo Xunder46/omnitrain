@@ -85,7 +85,9 @@ extension SessionCoreIOMethods on SessionCore {
         _efforts[segment.id] = efforts;
 
         for (final effort in efforts) {
-          _observations[effort.id] = await _repository.getEffortObservations(effort.id);
+          _observations[effort.id] = await _repository.getEffortObservations(
+            effort.id,
+          );
 
           if (effort.effortKind == 'round') {
             _timerManager.setRoundInstances(
@@ -133,7 +135,9 @@ extension SessionCoreIOMethods on SessionCore {
     _clearError();
 
     try {
-      final segments = await _repository.getSessionSegments(_currentSession!.id);
+      final segments = await _repository.getSessionSegments(
+        _currentSession!.id,
+      );
       _segments
         ..clear()
         ..addAll(segments);
@@ -145,7 +149,9 @@ extension SessionCoreIOMethods on SessionCore {
         _efforts[segment.id] = efforts;
 
         for (final effort in efforts) {
-          _observations[effort.id] = await _repository.getEffortObservations(effort.id);
+          _observations[effort.id] = await _repository.getEffortObservations(
+            effort.id,
+          );
 
           if (effort.effortKind == 'round') {
             _timerManager.setRoundInstances(
@@ -166,8 +172,11 @@ extension SessionCoreIOMethods on SessionCore {
             await _repository.getEntryRests(effort.id),
           );
 
-          if (effort.exerciseId != null && !_exerciseCache.containsKey(effort.exerciseId)) {
-            final exercise = await _repository.getExerciseById(effort.exerciseId!);
+          if (effort.exerciseId != null &&
+              !_exerciseCache.containsKey(effort.exerciseId)) {
+            final exercise = await _repository.getExerciseById(
+              effort.exerciseId!,
+            );
             if (exercise != null) {
               _exerciseCache[effort.exerciseId!] = exercise;
             }
@@ -175,7 +184,9 @@ extension SessionCoreIOMethods on SessionCore {
         }
       }
 
-      final sessionBlocks = await _repository.getSessionBlocks(_currentSession!.id);
+      final sessionBlocks = await _repository.getSessionBlocks(
+        _currentSession!.id,
+      );
       _blockManager.setSessionBlocks(_currentSession!.id, sessionBlocks);
 
       _notify();
@@ -186,7 +197,9 @@ extension SessionCoreIOMethods on SessionCore {
     }
   }
 
-  Future<void> populateSessionFromManifest(RoutineSessionManifest manifest) async {
+  Future<void> populateSessionFromManifest(
+    RoutineSessionManifest manifest,
+  ) async {
     if (_currentSession == null) {
       throw Exception('No active session to populate');
     }
@@ -220,7 +233,9 @@ extension SessionCoreIOMethods on SessionCore {
 
         String? blockId;
         if (segmentEntry.exercises.isNotEmpty) {
-          blockId = await addSessionBlock(name: templateSegment.name ?? 'Block $segmentCounter');
+          blockId = await addSessionBlock(
+            name: templateSegment.name ?? 'Block $segmentCounter',
+          );
         }
 
         for (final entry in segmentEntry.exercises) {
@@ -242,7 +257,8 @@ extension SessionCoreIOMethods on SessionCore {
 
           for (final target in entry.targets) {
             final entryIndex = target.setIndex ?? 0;
-            final metricKey = MetricIds.metricIdToKey[target.metricId] ?? target.metricId;
+            final metricKey =
+                MetricIds.metricIdToKey[target.metricId] ?? target.metricId;
 
             dynamic value;
             if (target.targetInt != null) {
@@ -257,7 +273,9 @@ extension SessionCoreIOMethods on SessionCore {
 
             if (value == null) continue;
 
-            if (metricKey == 'reps' || metricKey == 'rounds' || metricKey == 'duration') {
+            if (metricKey == 'reps' ||
+                metricKey == 'rounds' ||
+                metricKey == 'duration') {
               value = value is int ? value : (value as double).toInt();
             } else {
               value = value is double ? value : (value as int).toDouble();

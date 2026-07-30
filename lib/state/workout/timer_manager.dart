@@ -180,7 +180,9 @@ class TimerManager {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final pauseDuration = old.pausedAtMs != null ? (now - old.pausedAtMs!) : 0;
+      final pauseDuration = old.pausedAtMs != null
+          ? (now - old.pausedAtMs!)
+          : 0;
 
       final updated = old.copyWith(
         state: RoundState.active,
@@ -204,13 +206,17 @@ class TimerManager {
       final old = list[roundIndex];
 
       if (!_isValidRoundTransition(old.state, RoundState.finished)) {
-        debugPrint('Invalid round transition: ${old.state} -> finished (complete)');
+        debugPrint(
+          'Invalid round transition: ${old.state} -> finished (complete)',
+        );
         return;
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
       final finishedAtMs =
-          old.startedAtMs + (old.plannedDurationSecs * 1000) + old.totalPausedDurationMs;
+          old.startedAtMs +
+          (old.plannedDurationSecs * 1000) +
+          old.totalPausedDurationMs;
 
       final updated = old.copyWith(
         state: RoundState.finished,
@@ -236,7 +242,9 @@ class TimerManager {
       final old = list[roundIndex];
 
       if (!_isValidRoundTransition(old.state, RoundState.finished)) {
-        debugPrint('Invalid round transition: ${old.state} -> finished (early)');
+        debugPrint(
+          'Invalid round transition: ${old.state} -> finished (early)',
+        );
         return;
       }
 
@@ -246,7 +254,9 @@ class TimerManager {
           ? old.totalPausedDurationMs + (now - old.pausedAtMs!)
           : old.totalPausedDurationMs;
 
-      final elapsedMs = old.startedAtMs > 0 ? (now - old.startedAtMs - totalPausedMs) : 0;
+      final elapsedMs = old.startedAtMs > 0
+          ? (now - old.startedAtMs - totalPausedMs)
+          : 0;
       final actualDurationSecs = (elapsedMs / 1000).round().clamp(
         0,
         old.plannedDurationSecs * WorkoutConstants.roundActualDurationCapFactor,
@@ -324,7 +334,8 @@ class TimerManager {
       final rounds = entry.value;
       for (int i = 0; i < rounds.length; i++) {
         final round = rounds[i];
-        if (round.state == RoundState.active || round.state == RoundState.paused) {
+        if (round.state == RoundState.active ||
+            round.state == RoundState.paused) {
           await endRoundEarly(effortId, i);
         }
       }
@@ -388,7 +399,9 @@ class TimerManager {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final offsetMs = old.targetDurationSecs > 0 ? old.targetDurationSecs * 1000 : 0;
+      final offsetMs = old.targetDurationSecs > 0
+          ? old.targetDurationSecs * 1000
+          : 0;
       final updated = old.copyWith(
         state: TimedState.active,
         startedAtMs: now - offsetMs,
@@ -442,7 +455,9 @@ class TimerManager {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final pauseDuration = old.pausedAtMs != null ? (now - old.pausedAtMs!) : 0;
+      final pauseDuration = old.pausedAtMs != null
+          ? (now - old.pausedAtMs!)
+          : 0;
 
       final updated = old.copyWith(
         state: TimedState.active,
@@ -476,7 +491,9 @@ class TimerManager {
           ? old.totalPausedDurationMs + (now - old.pausedAtMs!)
           : old.totalPausedDurationMs;
 
-      final elapsedMs = old.startedAtMs > 0 ? (now - old.startedAtMs - totalPausedMs) : 0;
+      final elapsedMs = old.startedAtMs > 0
+          ? (now - old.startedAtMs - totalPausedMs)
+          : 0;
       final actualDurationSecs = (elapsedMs / 1000).round().clamp(0, 86400);
 
       final updated = old.copyWith(
@@ -514,7 +531,9 @@ class TimerManager {
       final observations = _observations?[effortId];
       if (observations != null) {
         final idPrefix = 'obs-$effortId-$entryIndex-';
-        final toDelete = observations.where((o) => o.id.startsWith(idPrefix)).toList();
+        final toDelete = observations
+            .where((o) => o.id.startsWith(idPrefix))
+            .toList();
         for (final obs in toDelete) {
           await _repository.deleteObservation(obs.id);
         }
@@ -562,7 +581,8 @@ class TimerManager {
       final entries = entry.value;
       for (int i = 0; i < entries.length; i++) {
         final timedEntry = entries[i];
-        if (timedEntry.state == TimedState.active || timedEntry.state == TimedState.paused) {
+        if (timedEntry.state == TimedState.active ||
+            timedEntry.state == TimedState.paused) {
           await finishTimedEntry(effortId, i);
         }
       }
@@ -705,8 +725,7 @@ class TimerManager {
       final updated = rest.copyWith(
         restIsPaused: false,
         restPausedAtMs: null,
-        restPausedDurationMs:
-            rest.restPausedDurationMs + additionalPauseMs,
+        restPausedDurationMs: rest.restPausedDurationMs + additionalPauseMs,
         updatedAtMs: now,
       );
       await _repository.updateEntryRest(updated);
@@ -833,8 +852,9 @@ class TimerManager {
       final old = list[entryIndex];
       final now = DateTime.now().millisecondsSinceEpoch;
       // Synthesise timestamps so elapsedMs == durationSecs * 1000.
-      final startedAtMs =
-          old.startedAtMs > 0 ? old.startedAtMs : now - (durationSecs * 1000);
+      final startedAtMs = old.startedAtMs > 0
+          ? old.startedAtMs
+          : now - (durationSecs * 1000);
       final finishedAtMs = startedAtMs + (durationSecs * 1000);
       final updated = old.copyWith(
         state: TimedState.finished,
@@ -868,11 +888,13 @@ class TimerManager {
       if (list == null || roundIndex >= list.length) return;
       final old = list[roundIndex];
       final now = DateTime.now().millisecondsSinceEpoch;
-      final startedAtMs =
-          old.startedAtMs > 0 ? old.startedAtMs : now - (durationSecs * 1000);
+      final startedAtMs = old.startedAtMs > 0
+          ? old.startedAtMs
+          : now - (durationSecs * 1000);
       final finishedAtMs = startedAtMs + (durationSecs * 1000);
-      final plannedDurationSecs =
-          old.plannedDurationSecs > 0 ? old.plannedDurationSecs : durationSecs;
+      final plannedDurationSecs = old.plannedDurationSecs > 0
+          ? old.plannedDurationSecs
+          : durationSecs;
       final updated = old.copyWith(
         state: RoundState.finished,
         actualDurationSecs: durationSecs,
@@ -904,8 +926,9 @@ class TimerManager {
       for (int i = 0; i < rounds.length; i++) {
         final round = rounds[i];
         if (round.state != RoundState.finished) {
-          final durationSecs =
-              round.plannedDurationSecs > 0 ? round.plannedDurationSecs : 0;
+          final durationSecs = round.plannedDurationSecs > 0
+              ? round.plannedDurationSecs
+              : 0;
           await setRoundFinished(effortId, i, durationSecs);
         }
       }

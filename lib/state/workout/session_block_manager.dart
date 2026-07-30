@@ -56,7 +56,7 @@ class SessionBlockManager {
     try {
       final now = DateTime.now();
       final nowMs = now.millisecondsSinceEpoch;
-        final nowUs = now.microsecondsSinceEpoch;
+      final nowUs = now.microsecondsSinceEpoch;
       final blockName =
           name ??
           () {
@@ -69,7 +69,8 @@ class SessionBlockManager {
       final blocks = _sessionBlocks[currentSessionId] ?? [];
       final maxOrder = blocks.fold<int>(
         -1,
-        (currentMax, block) => block.orderIndex > currentMax ? block.orderIndex : currentMax,
+        (currentMax, block) =>
+            block.orderIndex > currentMax ? block.orderIndex : currentMax,
       );
 
       final block = SessionBlock(
@@ -149,8 +150,9 @@ class SessionBlockManager {
 
     try {
       await _repository.reorderSessionBlocks(currentSessionId, orderedIds);
-      _sessionBlocks[currentSessionId] =
-          await _repository.getSessionBlocks(currentSessionId);
+      _sessionBlocks[currentSessionId] = await _repository.getSessionBlocks(
+        currentSessionId,
+      );
       _notify();
     } catch (e) {
       _setError('Failed to reorder session blocks: $e');
@@ -165,7 +167,9 @@ class SessionBlockManager {
 
     try {
       final newBlockId = await _repository.cloneSessionBlock(blockId);
-      _sessionBlocks[currentSessionId] = await _repository.getSessionBlocks(currentSessionId);
+      _sessionBlocks[currentSessionId] = await _repository.getSessionBlocks(
+        currentSessionId,
+      );
       _notify();
       return newBlockId;
     } catch (e) {

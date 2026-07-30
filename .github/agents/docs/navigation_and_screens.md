@@ -132,6 +132,10 @@ HomeScreen
 │            │     OutlinedButtons — adding content never flips Add
 │            │     Exercise to primary (PR 6 / S-005).
   │            ├── Add Exercise → ExercisePickerScreen (page push)
+  │            │     ├── row body tap → pops picked Exercise
+  │            │     ├── per-row details control (PR 7) →
+  │            │     │     ExerciseDetailViewScreen (page push)
+  │            │     │     └── Add action → pops picked Exercise
   │            │     └── [ModalityPickerDialog] (null modality only)
   │            │           └── [MetricChooserDialog] (General only)
   │            ├── Add Block → creates a session block in place
@@ -270,7 +274,8 @@ Day rollover:
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |
 | `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create/edit custom exercises with modality-aware capability/discipline filtering; accepts optional `contextModality` for session-prefill |
-| `ExercisePickerScreen` | `lib/features/exercise/exercise_picker_screen.dart` | Full-screen exercise search and selection with modality ranking, discipline/muscle filters, and inline "New Exercise" creation; opened via `OmniNavigator.push<Exercise>`; returns selected `Exercise` on pop |
+| `ExercisePickerScreen` | `lib/features/exercise/exercise_picker_screen.dart` | Full-screen exercise search and selection with modality ranking, discipline/muscle filters, and inline "New Exercise" creation; opened via `OmniNavigator.push<Exercise>`; returns selected `Exercise` on pop. **PR 7** adds a distinct per-row details control (`Icons.info_outline` trailing button, key `exercise_row_details_button`) that pushes `ExerciseDetailViewScreen` without adding the exercise; the row body still pops the picked exercise immediately. User-created (custom) exercises are flagged in-picker via a `Custom` chip on the title row (key `exercise_row_custom_marker`). |
+| `ExerciseDetailViewScreen` | `lib/features/exercise/exercise_detail_view_screen.dart` | PR 7 read-only details surface. Shows name, optional description (collapsed when absent), discipline (collapsed when absent), capabilities as Tracking Methods, and muscles (collapsed when absent). Surfaces a `Custom` chip (key `exercise_detail_custom_marker`) when `Exercise.isCustomExercise` is true. Bottom-pinned Add `FilledButton` (key `exercise_detail_add_button`) returns the [Exercise] to the caller; rapid taps are idempotent (`_hasPoppedWithAdd` guard). Optional `showAddAction: false` hides the Add action for PR 8 reuse in management contexts. |
 | `ProfileScreen` | `lib/features/profile/profile_screen.dart` | Identity, avatar, and body measurement tracking |
 | `SettingsScreen` | `lib/features/settings/settings_screen.dart` | Calendar start-of-week, weight/distance units, timer alert preferences, notification-permission row for rest and effort alerts, feeling survey toggle, appearance theme selector, and a low-emphasis version footer |
 | `StatsScreen` | `lib/features/stats/stats_screen.dart` | Read-only stats: all-time sessions, total training time, current streak, scrollable Strength e1RM/volume trends and Cardio pace/duration trends selected from a current-state window (active training period or last N training days — see [Stats screen doc](stats_screen.md#selection-window-current-state-window)), all-time Recent PRs, and a full-history scrollable NUTRITION card with Calories / Macros segmented toggle |
