@@ -16,6 +16,7 @@ import 'core/utils/rest_notification_service.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
+import 'state/exercise/exercise_library_state.dart';
 
 import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -36,6 +37,7 @@ class MyApp extends StatelessWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
   final NutritionPrimerState nutritionPrimerState;
+  final ExerciseLibraryState exerciseLibraryState;
   final TimerAlertService timerAlertService;
   final RestNotificationService restNotificationService;
   final AppVersionInfo? appVersionInfo;
@@ -56,6 +58,7 @@ class MyApp extends StatelessWidget {
     required this.nutritionState,
     required this.foodLibraryState,
     required this.nutritionPrimerState,
+    required this.exerciseLibraryState,
     required this.timerAlertService,
     this.appVersionInfo,
     RestNotificationService? restNotificationService,
@@ -126,6 +129,7 @@ class MyApp extends StatelessWidget {
                   nutritionState: nutritionState,
                   foodLibraryState: foodLibraryState,
                   nutritionPrimerState: nutritionPrimerState,
+                  exerciseLibraryState: exerciseLibraryState,
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
                 )
@@ -139,6 +143,7 @@ class MyApp extends StatelessWidget {
                   periodState: periodState,
                   profileState: profileState,
                   settingsState: settingsState,
+                  exerciseLibraryState: exerciseLibraryState,
                   timerAlertService: timerAlertService,
                   nutritionState: nutritionState,
                   foodLibraryState: foodLibraryState,

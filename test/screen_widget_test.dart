@@ -41,6 +41,8 @@ import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/nutrition/nutrition_primer_state.dart';
+import 'package:omnitrain/state/exercise/exercise_library_state.dart';
+import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/state/period/period_state.dart';
 import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
@@ -1967,6 +1969,10 @@ void main() {
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
         nutritionPrimerState: nutritionPrimerState,
+        exerciseLibraryState: ExerciseLibraryState(
+          service: ExerciseLibraryService(repo),
+          workoutState: workoutState,
+        ),
       );
     }
 
@@ -2059,6 +2065,10 @@ void main() {
             nutritionState: NutritionState(repo),
             foodLibraryState: FoodLibraryState(repo),
             nutritionPrimerState: nutritionPrimerState,
+            exerciseLibraryState: ExerciseLibraryState(
+              service: ExerciseLibraryService(repo),
+              workoutState: workoutState,
+            ),
           ),
         ),
       );
@@ -2113,6 +2123,10 @@ void main() {
             nutritionState: NutritionState(repo),
             foodLibraryState: FoodLibraryState(repo),
             nutritionPrimerState: nutritionPrimerState,
+            exerciseLibraryState: ExerciseLibraryState(
+              service: ExerciseLibraryService(repo),
+              workoutState: workoutState,
+            ),
           ),
         ),
       );
@@ -2172,6 +2186,10 @@ void main() {
               nutritionState: NutritionState(repo),
               foodLibraryState: FoodLibraryState(repo),
               nutritionPrimerState: nutritionPrimerState,
+              exerciseLibraryState: ExerciseLibraryState(
+                service: ExerciseLibraryService(repo),
+                workoutState: workoutState,
+              ),
             ),
           ),
         );
@@ -2261,6 +2279,7 @@ void main() {
         ProfileState profileState,
         SettingsState settingsState,
         NutritionPrimerState nutritionPrimerState,
+        ExerciseLibraryState exerciseLibraryState,
       })
     >
     buildOnboardingDeps() async {
@@ -2291,6 +2310,10 @@ void main() {
         profileState: profileState,
         settingsState: settingsState,
         nutritionPrimerState: await buildNutritionPrimerState(repo),
+        exerciseLibraryState: ExerciseLibraryState(
+          service: ExerciseLibraryService(repo),
+          workoutState: workoutState,
+        ),
       );
     }
 
@@ -2307,6 +2330,7 @@ void main() {
         ProfileState profileState,
         SettingsState settingsState,
         NutritionPrimerState nutritionPrimerState,
+        ExerciseLibraryState exerciseLibraryState,
       })
       deps,
     ) {
@@ -2326,6 +2350,7 @@ void main() {
           nutritionState: NutritionState(deps.repo),
           foodLibraryState: FoodLibraryState(deps.repo),
           nutritionPrimerState: deps.nutritionPrimerState,
+          exerciseLibraryState: deps.exerciseLibraryState,
         ),
       );
     }
@@ -2456,6 +2481,7 @@ void main() {
           nutritionState: NutritionState(deps.repo),
           foodLibraryState: FoodLibraryState(deps.repo),
           nutritionPrimerState: deps.nutritionPrimerState,
+          exerciseLibraryState: deps.exerciseLibraryState,
         ),
       );
       await tester.pumpAndSettle();
@@ -6439,6 +6465,10 @@ void main() {
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
         nutritionPrimerState: nutritionPrimerState,
+        exerciseLibraryState: ExerciseLibraryState(
+          service: ExerciseLibraryService(repo),
+          workoutState: workoutState,
+        ),
         timerAlertService: FakeTimerAlertService(),
         // Use a very short duration so no navigation fires during the test
         duration: const Duration(milliseconds: 1),
@@ -7978,10 +8008,7 @@ void main() {
           // PR 6 / S-003 — empty-state Add Exercise is an OutlinedButton
           // so Add Block is equally weighted. The bottom CTA is the
           // sole FilledButton on the empty state.
-          final addFinder = find.widgetWithText(
-            OutlinedButton,
-            'Add Exercise',
-          );
+          final addFinder = find.widgetWithText(OutlinedButton, 'Add Exercise');
           expect(
             addFinder,
             findsOneWidget,

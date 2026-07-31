@@ -4,6 +4,7 @@ import 'package:omnitrain/app.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/core/services/routine_session_service.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
+import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
@@ -14,6 +15,7 @@ import 'package:omnitrain/state/profile/profile_state.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
+import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/test_nutrition_primer_state.dart';
@@ -76,6 +78,10 @@ void main() {
         nutritionState: nutritionState,
         foodLibraryState: foodLibraryState,
         nutritionPrimerState: nutritionPrimerState,
+        exerciseLibraryState: ExerciseLibraryState(
+          service: ExerciseLibraryService(repository),
+          workoutState: workoutState,
+        ),
       ),
     );
 

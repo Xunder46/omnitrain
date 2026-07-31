@@ -135,27 +135,27 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
         boxShadow: [OmniTheme.softShadow],
       ),
       padding: EdgeInsets.all(innerPadding),
-      child: Padding(
-        padding: const EdgeInsets.only(right: 1), // tweak: 1–4
-        child: Center(child: artwork),
-      ),
+      child: Center(child: artwork),
     );
 
     // Internal margin so the circle's soft shadow has full room to render
     // and the visible button reads with breathing room inside the AppBar.
-    // The AppBar's title slot is tightly sized to the toolbar height
-    // (kToolbarHeight = 56px); this padding insets the visible circle from
-    // the widget's left edge (away from the screen edge) and top edge (away
-    // from the status bar), and reserves room for the shadow's blur on the
-    // right and bottom. The padding is transparent and does not change the
-    // visible circle's shape, size, fill, or logo. The widget's bounding
-    // box is 72×64 (8px horizontal × 2 + 56, 4px vertical × 2 + 56), well
-    // above the 44×44pt hit-target minimum even before the ConstrainedBox
-    // below guarantees it. The visible circle (56px) matches kToolbarHeight
-    // exactly, so the AppBar toolbar height and the body-centered "TRAIN"
-    // title do not shift.
+    // Symmetric 8 px `EdgeInsets.all(8)` insets the visible circle from
+    // the widget's left, top, right, and bottom edges — the widget's
+    // bounding box becomes 71×71 (8 px × 2 + 55 tile). This sits cleanly
+    // inside the AppBar's `toolbarHeight: 60` slot (the visible 55 px
+    // circle has 8 px above and 8 px below within the bounding box,
+    // keeping it visually centred while leaving room for the soft
+    // shadow's blur on every side). The padding is transparent and does
+    // not change the visible circle's shape, size, fill, or logo.
+    // The symmetric inset is also what keeps the visible circle off the
+    // sheet's top edge when the Hub sheet is fully expanded (the sheet
+    // top lands at `padding.top + toolbarHeight`, just below the
+    // AppBar's bottom edge; the symmetric bottom padding guarantees the
+    // circle is fully inside the AppBar regardless of the actual
+    // `toolbarHeight` configured on the host Scaffold).
     final padded = Padding(
-      padding: const EdgeInsets.fromLTRB(1, 8, 8, 4),
+      padding: const EdgeInsets.all(8),
       child: tile,
     );
 

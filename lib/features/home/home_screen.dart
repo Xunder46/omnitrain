@@ -21,6 +21,7 @@ import '../calendar/calendar_screen.dart';
 import '../profile/profile_screen.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
+import '../exercise/exercise_library_screen.dart';
 import 'widgets/nutrition_summary_card.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
@@ -28,6 +29,7 @@ import '../../widgets/common/home_logo_button.dart';
 import '../../state/nutrition_state.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
+import '../../state/exercise/exercise_library_state.dart';
 import '../nutrition/nutrition_screen.dart';
 import '../nutrition/widgets/nutrition_primer_sheet.dart';
 
@@ -46,6 +48,7 @@ class HomeScreen extends StatefulWidget {
   final NutritionState nutritionState;
   final FoodLibraryState foodLibraryState;
   final NutritionPrimerState nutritionPrimerState;
+  final ExerciseLibraryState exerciseLibraryState;
   final AppVersionInfo? appVersionInfo;
 
   HomeScreen({
@@ -63,6 +66,7 @@ class HomeScreen extends StatefulWidget {
     required this.nutritionState,
     required this.foodLibraryState,
     required this.nutritionPrimerState,
+    required this.exerciseLibraryState,
     this.appVersionInfo,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
@@ -880,12 +884,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildMaintenanceSheet(BuildContext context) {
     final mq = MediaQuery.of(context);
     // `context` here is the outer Scaffold context, so `padding.top` is the
-    // status-bar safe-area only.  Add `kToolbarHeight` explicitly to account
-    // for the transparent AppBar so the sheet top lands at the TRAIN title
-    // level instead of covering the logo.
+    // status-bar safe-area only.  Subtract the AppBar's actual toolbar
+    // height (the host Scaffold sets `toolbarHeight: 60` on its AppBar)
+    // so the sheet top lands exactly at the AppBar's bottom edge instead
+    // of covering the logo. The named local keeps the AppBar's
+    // `toolbarHeight` and the sheet-extent calculation in sync — using
+    // `kToolbarHeight` (56) would leave a 4 px drift.
+    //
+    // Upper clamp is `0.76` (was 0.86): the previous 0.86 left a sizeable
+    // empty band of unrendered sheet height below the 5-tile grid on
+    // tall screens, which read as "the tiles are still low" because the
+    // grid sat in the upper-middle of an oversized sheet. Capping at
+    // 0.76 shrinks the sheet so the grid is visually centred, the
+    // tiles reach near the bottom edge with a small breathing gap, and
+    // the bottom row no longer floats in empty space. See plan
+    // `hub-sheet-gap-and-logo-clip-plan.md` for the full chain.
+    const appBarToolbarHeight = 60.0;
+    const hubSheetMaxExtent = 0.95;
     _maxSheetExtent =
-        ((mq.size.height - mq.padding.top - kToolbarHeight) / mq.size.height)
-            .clamp(0.5, 0.86);
+        ((mq.size.height - mq.padding.top - appBarToolbarHeight) /
+                mq.size.height)
+            .clamp(0.5, hubSheetMaxExtent);
 
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {
@@ -937,40 +956,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   controller: scrollController,
                   slivers: [
                     SliverToBoxAdapter(child: _buildHandle()),
-                    SliverToBoxAdapter(
-                      child: IgnorePointer(
-                        ignoring: contentOpacity < 0.05,
-                        child: Opacity(
-                          opacity: contentOpacity,
-                          child: Transform.translate(
-                            offset: Offset(0, slideOffset),
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'HUB',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(
-                                          color: OmniTheme.colors.textSecondary
-                                              .withOpacity(0.7),
-                                          letterSpacing: 3.0,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    // HUB label + tile grid fused into one SliverPadding
+                    // so the HUB eyebrow reads as the grid's section
+                    // header (4 px visual breath) and shares the grid's
+                    // 16 px horizontal alignment. See plan
+                    // hub-sheet-gap-and-logo-clip-plan.md for the chain
+                    // of cuts.
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                       sliver: SliverToBoxAdapter(
                         child: IgnorePointer(
                           ignoring: contentOpacity < 0.05,
@@ -978,7 +971,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             opacity: contentOpacity,
                             child: Transform.translate(
                               offset: Offset(0, slideOffset),
-                              child: _buildMaintenanceGrid(context),
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.only(bottom: 0),
+                                    child: Text(
+                                      'HUB',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(
+                                            color: OmniTheme
+                                                .colors
+                                                .textSecondary
+                                                .withOpacity(0.7),
+                                            letterSpacing: 3.0,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ),
+                                  _buildMaintenanceGrid(context),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -996,7 +1013,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildHandle() {
     return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 12),
+      // Top 20 puts the handle bar a comfortable distance below the
+      // sheet's rounded top edge — earlier follow-ups had the handle
+      // hugging the edge (top: 4) which read as the handle being
+      // "too high" against the rounded sheet clip. Bottom 0 keeps
+      // the handle bar flush against the HUB section header below.
+      // See plan `hub-sheet-gap-and-logo-clip-plan.md` for the
+      // full chain of cuts.
+      padding: const EdgeInsets.only(top: 20, bottom: 0),
       child: Center(
         child: GestureDetector(
           onTap: () => _snapSheet(_maxSheetExtent),
@@ -1026,6 +1050,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildMaintenanceGrid(BuildContext context) {
     final items = [
+       _MaintenanceItem(
+        title: 'Profile',
+        icon: Icons.person_outline,
+        onTap: () => OmniNavigator.push(
+          context,
+          (_) => ProfileScreen(
+            profileState: widget.profileState,
+            settingsState: widget.settingsState,
+          ),
+        ),
+      ),
+      _MaintenanceItem(
+        title: 'Stats',
+        icon: Icons.query_stats,
+        onTap: () => OmniNavigator.push(
+          context,
+          (_) => StatsScreen(
+            workoutState: widget.workoutState,
+            settingsState: widget.settingsState,
+          ),
+        ),
+      ),
       _MaintenanceItem(
         title: 'Calendar',
         icon: Icons.calendar_today,
@@ -1045,24 +1091,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
       _MaintenanceItem(
-        title: 'Stats',
-        icon: Icons.query_stats,
+        title: 'Exercise Library',
+        icon: Icons.library_books_outlined,
         onTap: () => OmniNavigator.push(
           context,
-          (_) => StatsScreen(
+          (_) => ExerciseLibraryScreen(
+            exerciseLibraryState: widget.exerciseLibraryState,
             workoutState: widget.workoutState,
-            settingsState: widget.settingsState,
-          ),
-        ),
-      ),
-      _MaintenanceItem(
-        title: 'Profile',
-        icon: Icons.person_outline,
-        onTap: () => OmniNavigator.push(
-          context,
-          (_) => ProfileScreen(
-            profileState: widget.profileState,
-            settingsState: widget.settingsState,
           ),
         ),
       ),

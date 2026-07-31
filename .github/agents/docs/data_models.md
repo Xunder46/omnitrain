@@ -291,7 +291,32 @@ one-note-per-exercise rule.
 > needs custom-only filtering plus built-in immutability. Those plans may require
 > a durable ownership migration; nullable `ownerUserId` is not yet that contract.
 
+> **PR 7 (shipped):** `Exercise.isCustomExercise` (in
+> `lib/core/utils/exercise_helpers.dart`) commits to
+> `ownerUserId != null` as the canonical custom marker. The seed
+> catalog leaves `ownerUserId` null on every bundled row and
+> `ExerciseLibrary.createExercise` stamps `'user-1'` on every
+> user-created row, so the value-as-stored is consistent on both
+> sides. UI surfaces that need the marker MUST go through this
+> getter; reading `ownerUserId` directly is a code-review warning.
+
+> **PR 8 (shipped):** adds the reference-aware removal contract
+> via `isArchived`. `ExerciseLibraryService.removeExercise(exercise)`
+> branches on `isExerciseReferenced(exercise.id)`:
+> - zero references in `app_segment_effort.exercise_id` AND
+>   `app_template_effort.exercise_id` → hard-delete via
+>   `WorkoutRepository.deleteExercise`.
+> - any reference → soft-retire via `isArchived = true`; the row
+>   stays resolvable by id (history keeps rendering) but is
+>   excluded from `getExercises()` and `getExercisesRankedForModality()`.
+>
+> Built-in exercises (where `isCustomExercise == false`) reject
+> mutation with `BuiltInExerciseImmutableError` at the service
+> layer; the library UI also gates Copy/Edit/Remove on
+> `isCustomExercise`.
+
 **Extension methods** (in `lib/core/utils/exercise_helpers.dart`):
+- `isCustomExercise` — `ownerUserId != null`; the canonical custom marker.
 - `supports(String capability)` — single capability check
 - `supportsAny(List<String>)` — any-of check
 - `copyWith({...})` — full copy constructor including `relevanceScore` and nullable `modality` (sentinel-backed)

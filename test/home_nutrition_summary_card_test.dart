@@ -46,6 +46,8 @@ import 'package:omnitrain/features/home/home_screen.dart';
 import 'package:omnitrain/features/home/widgets/nutrition_summary_card.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/exercise/exercise_library_state.dart';
+import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
@@ -96,17 +98,17 @@ class _FakePreferencesService implements PreferencesService {
 
 /// Per-100g chicken breast: 31P / 0C / 3F = 151 kcal, 0 fiber, 0 sodium.
 Food _chicken() => Food(
-      id: 'card-chicken',
-      name: 'Chicken Breast',
-      unitType: FoodUnitType.grams,
-      referenceAmount: 100.0,
-      referenceLabel: '100 g',
-      protein: 31,
-      carbs: 0,
-      fat: 3,
-      createdAtMs: 1000,
-      updatedAtMs: 1000,
-    );
+  id: 'card-chicken',
+  name: 'Chicken Breast',
+  unitType: FoodUnitType.grams,
+  referenceAmount: 100.0,
+  referenceLabel: '100 g',
+  protein: 31,
+  carbs: 0,
+  fat: 3,
+  createdAtMs: 1000,
+  updatedAtMs: 1000,
+);
 
 Future<HomeScreen> _buildHomeScreen(MockWorkoutRepository repo) async {
   final workoutState = WorkoutState(repo);
@@ -142,6 +144,10 @@ Future<HomeScreen> _buildHomeScreen(MockWorkoutRepository repo) async {
     nutritionState: nutritionState,
     foodLibraryState: foodLibraryState,
     nutritionPrimerState: nutritionPrimerState,
+    exerciseLibraryState: ExerciseLibraryState(
+      service: ExerciseLibraryService(repo),
+      workoutState: workoutState,
+    ),
   );
 }
 
@@ -161,9 +167,7 @@ Future<void> _pumpCard(
   double surfaceHeight = 600,
   double bottomPadding = 0,
 }) async {
-  await tester.binding.setSurfaceSize(
-    Size(surfaceWidth, surfaceHeight),
-  );
+  await tester.binding.setSurfaceSize(Size(surfaceWidth, surfaceHeight));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   // The card sits inside a `Scaffold` body that fills the
@@ -235,9 +239,7 @@ void main() {
         onTap: () {},
       );
 
-      final cardRect = tester.getRect(
-        find.byKey(const Key('nutrition_card')),
-      );
+      final cardRect = tester.getRect(find.byKey(const Key('nutrition_card')));
       // The card width is strictly less than the surface width
       // — the 16 px inset on each side narrows the card from
       // 360 px to 328 px.
@@ -285,8 +287,9 @@ void main() {
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — body tap opens nutrition feature '
       '(S-101)', () {
-    testWidgets('tapping the card body (not the chevron) invokes onTap',
-        (tester) async {
+    testWidgets('tapping the card body (not the chevron) invokes onTap', (
+      tester,
+    ) async {
       var taps = 0;
       await _pumpCard(
         tester,
@@ -306,7 +309,8 @@ void main() {
       expect(
         taps,
         1,
-        reason: 'S-101: tap on the card body must invoke onTap, not just '
+        reason:
+            'S-101: tap on the card body must invoke onTap, not just '
             'on the chevron.',
       );
     });
@@ -325,9 +329,7 @@ void main() {
         onTap: () => taps++,
       );
 
-      await tester.tap(
-        find.byKey(const Key('nutrition_card_headline_text')),
-      );
+      await tester.tap(find.byKey(const Key('nutrition_card_headline_text')));
       await tester.pumpAndSettle();
       expect(taps, 1);
     });
@@ -354,16 +356,14 @@ void main() {
         find.byKey(const Key('nutrition_card_chevron')),
       );
       // Tap just to the left of the chevron, in the gauge row.
-      final tapPoint = Offset(
-        chevronRect.left - 30,
-        chevronRect.center.dy,
-      );
+      final tapPoint = Offset(chevronRect.left - 30, chevronRect.center.dy);
       await tester.tapAt(tapPoint);
       await tester.pumpAndSettle();
       expect(
         taps,
         1,
-        reason: 'S-101: tap on the gauge row (left of the chevron) must '
+        reason:
+            'S-101: tap on the gauge row (left of the chevron) must '
             'invoke onTap.',
       );
     });
@@ -390,8 +390,9 @@ void main() {
   // S-102 — Gauge fill proportion equals consumed / goal
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — gauge fill proportion (S-102)', () {
-    testWidgets('fill width / track width = consumed / goal (60% case)',
-        (tester) async {
+    testWidgets('fill width / track width = consumed / goal (60% case)', (
+      tester,
+    ) async {
       await _pumpCard(
         tester,
         consumed: 1200,
@@ -404,18 +405,19 @@ void main() {
         surfaceHeight: 600,
       );
 
-      final trackWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_track')),
-      ).width;
-      final fillWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_fill')),
-      ).width;
+      final trackWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_track')))
+          .width;
+      final fillWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_fill')))
+          .width;
       // 1200 / 2000 = 0.6 (within sub-pixel rounding).
       expect(fillWidth / trackWidth, closeTo(0.6, 0.01));
     });
 
-    testWidgets('fill width / track width = consumed / goal (32% case)',
-        (tester) async {
+    testWidgets('fill width / track width = consumed / goal (32% case)', (
+      tester,
+    ) async {
       await _pumpCard(
         tester,
         consumed: 643,
@@ -428,12 +430,12 @@ void main() {
         surfaceHeight: 600,
       );
 
-      final trackWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_track')),
-      ).width;
-      final fillWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_fill')),
-      ).width;
+      final trackWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_track')))
+          .width;
+      final fillWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_fill')))
+          .width;
       expect(fillWidth / trackWidth, closeTo(643 / 2000, 0.01));
     });
   });
@@ -443,8 +445,9 @@ void main() {
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — macro segments are share of CONSUMED '
       '(S-103)', () {
-    testWidgets('equal 400/400/400 split → three equal segment widths',
-        (tester) async {
+    testWidgets('equal 400/400/400 split → three equal segment widths', (
+      tester,
+    ) async {
       await _pumpCard(
         tester,
         consumed: 1200,
@@ -457,15 +460,15 @@ void main() {
         surfaceHeight: 600,
       );
 
-      final s0 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_0')),
-      ).width;
-      final s1 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_1')),
-      ).width;
-      final s2 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_2')),
-      ).width;
+      final s0 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_0')))
+          .width;
+      final s1 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_1')))
+          .width;
+      final s2 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_2')))
+          .width;
       // Each segment is 1/3 of the fill. Allow a 1 px drift for
       // rounding when the fill is clamped to 100% of the track.
       expect((s0 - s1).abs(), lessThanOrEqualTo(1));
@@ -488,21 +491,21 @@ void main() {
         surfaceHeight: 600,
       );
 
-      final trackWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_track')),
-      ).width;
-      final fillWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_fill')),
-      ).width;
-      final s0 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_0')),
-      ).width;
-      final s1 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_1')),
-      ).width;
-      final s2 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_2')),
-      ).width;
+      final trackWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_track')))
+          .width;
+      final fillWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_fill')))
+          .width;
+      final s0 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_0')))
+          .width;
+      final s1 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_1')))
+          .width;
+      final s2 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_2')))
+          .width;
       // Sum of segments ≈ fill width (the segments are sized
       // within the fill, not the track).
       expect((s0 + s1 + s2) - fillWidth, lessThanOrEqualTo(1));
@@ -512,7 +515,8 @@ void main() {
       expect(
         s0 + s1 + s2,
         lessThan(trackWidth),
-        reason: 'S-103: the macro segments must be sized within the '
+        reason:
+            'S-103: the macro segments must be sized within the '
             'fill, not across the full bar. A wrong implementation '
             'that sizes the segments as a share of the full bar '
             'would sum to trackWidth here.',
@@ -533,15 +537,15 @@ void main() {
         surfaceHeight: 600,
       );
 
-      final s0 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_0')),
-      ).width;
-      final s1 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_1')),
-      ).width;
-      final s2 = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_segment_2')),
-      ).width;
+      final s0 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_0')))
+          .width;
+      final s1 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_1')))
+          .width;
+      final s2 = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_segment_2')))
+          .width;
       final total = s0 + s1 + s2;
       // Each segment is the macro's share of consumed. Allow a
       // 2% drift for rounding.
@@ -555,8 +559,9 @@ void main() {
   // S-104 — Empty state: nothing logged
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — empty state (S-104)', () {
-    testWidgets('calorie figure shows "0 / 2,000 Cal" (not blank)',
-        (tester) async {
+    testWidgets('calorie figure shows "0 / 2,000 Cal" (not blank)', (
+      tester,
+    ) async {
       await _pumpCard(
         tester,
         consumed: 0,
@@ -572,8 +577,9 @@ void main() {
       expect(find.text('0 / 2,000 Cal'), findsOneWidget);
     });
 
-    testWidgets('gauge is empty (no fill width) when nothing is logged',
-        (tester) async {
+    testWidgets('gauge is empty (no fill width) when nothing is logged', (
+      tester,
+    ) async {
       await _pumpCard(
         tester,
         consumed: 0,
@@ -584,18 +590,18 @@ void main() {
         onTap: () {},
       );
 
-      final trackWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_track')),
-      ).width;
+      final trackWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_track')))
+          .width;
       // The fill is either absent or has zero width when
       // consumed == 0.
       if (find
           .byKey(const Key('nutrition_card_gauge_fill'))
           .evaluate()
           .isNotEmpty) {
-        final fillWidth = tester.getSize(
-          find.byKey(const Key('nutrition_card_gauge_fill')),
-        ).width;
+        final fillWidth = tester
+            .getSize(find.byKey(const Key('nutrition_card_gauge_fill')))
+            .width;
         expect(fillWidth, 0);
       }
       // The track still renders at full width so the user
@@ -628,8 +634,9 @@ void main() {
   // S-105 — Over-budget: consumed > goal
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — over-budget state (S-105)', () {
-    testWidgets('gauge fill is clamped to 100% of the track width',
-        (tester) async {
+    testWidgets('gauge fill is clamped to 100% of the track width', (
+      tester,
+    ) async {
       await _pumpCard(
         tester,
         consumed: 2450,
@@ -642,19 +649,20 @@ void main() {
         surfaceHeight: 600,
       );
 
-      final trackWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_track')),
-      ).width;
-      final fillWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_fill')),
-      ).width;
+      final trackWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_track')))
+          .width;
+      final fillWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_fill')))
+          .width;
       // The fill clamps to trackWidth (no overflow past the
       // track).
       expect(fillWidth, lessThanOrEqualTo(trackWidth));
       expect(
         fillWidth,
         trackWidth,
-        reason: 'S-105: fill must clamp to 100% of the track when '
+        reason:
+            'S-105: fill must clamp to 100% of the track when '
             'consumed > goal.',
       );
     });
@@ -677,14 +685,13 @@ void main() {
         find.byKey(const Key('nutrition_card_headline_text')),
       );
       final errorColor = Theme.of(
-        tester.element(
-          find.byKey(const Key('nutrition_card_headline_text')),
-        ),
+        tester.element(find.byKey(const Key('nutrition_card_headline_text'))),
       ).colorScheme.error;
       expect(
         headlineWidget.style?.color,
         errorColor,
-        reason: 'S-105: the headline text color must switch to the '
+        reason:
+            'S-105: the headline text color must switch to the '
             'theme\'s warning tone when consumed > goal.',
       );
     });
@@ -736,8 +743,7 @@ void main() {
   // ═══════════════════════════════════════════════════════════════════════
   group('NutritionSummaryCard — training tiles unchanged (S-106)', () {
     testWidgets('HomeScreen mounts six EnergyTile widgets and the new '
-        'card sits below them as a peer with a 16 px top gap',
-        (tester) async {
+        'card sits below them as a peer with a 16 px top gap', (tester) async {
       SharedPreferences.setMockInitialValues({});
       // Use a tall surface so the three-row tile grid lays
       // out fully and all six EnergyTile widgets are
@@ -765,22 +771,20 @@ void main() {
       // card is a peer in the body `Column` — NOT a docked
       // bottom bar — so it sits directly below the grid with
       // the same spacing the grid uses between its own rows.
-      final cardRect = tester.getRect(
-        find.byKey(const Key('nutrition_card')),
-      );
-      final lastTileRect = tester.getRect(
-        find.byType(EnergyTile).last,
-      );
+      final cardRect = tester.getRect(find.byKey(const Key('nutrition_card')));
+      final lastTileRect = tester.getRect(find.byType(EnergyTile).last);
       expect(
         cardRect.top,
         greaterThan(lastTileRect.bottom),
-        reason: 'S-106: the card must sit below the tile grid, '
+        reason:
+            'S-106: the card must sit below the tile grid, '
             'not on top of it.',
       );
       expect(
         cardRect.top - lastTileRect.bottom,
         greaterThanOrEqualTo(16),
-        reason: 'S-106: the SizedBox(16) peer gap between the '
+        reason:
+            'S-106: the SizedBox(16) peer gap between the '
             'grid and the card is the design contract — it '
             'must never be collapsed below 16 px.',
       );
@@ -837,21 +841,22 @@ void main() {
           .byKey(const Key('nutrition_card_gauge_fill'))
           .evaluate()
           .isNotEmpty) {
-        final fillWidth = tester.getSize(
-          find.byKey(const Key('nutrition_card_gauge_fill')),
-        ).width;
+        final fillWidth = tester
+            .getSize(find.byKey(const Key('nutrition_card_gauge_fill')))
+            .width;
         expect(
           fillWidth,
           0,
-          reason: 'S-200: with no target set the gauge fill must '
+          reason:
+              'S-200: with no target set the gauge fill must '
               'have zero width — there is no goal to fill against.',
         );
       }
       // The track still renders at full width so the card layout
       // stays stable.
-      final trackWidth = tester.getSize(
-        find.byKey(const Key('nutrition_card_gauge_track')),
-      ).width;
+      final trackWidth = tester
+          .getSize(find.byKey(const Key('nutrition_card_gauge_track')))
+          .width;
       expect(trackWidth, greaterThan(0));
     });
 
@@ -893,7 +898,8 @@ void main() {
       expect(
         taps,
         1,
-        reason: 'S-200: the card surface remains tappable even when '
+        reason:
+            'S-200: the card surface remains tappable even when '
             'the gauge is hidden — the "no target" state is not a '
             'disabled state.',
       );
@@ -983,9 +989,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final nutrition = homeScreen.nutritionState;
-      await nutrition.saveNutritionTarget(
-        NutritionTarget(calories: 2000),
-      );
+      await nutrition.saveNutritionTarget(NutritionTarget(calories: 2000));
       await tester.pumpAndSettle();
 
       // Cold start with a target but no logs: still empty.

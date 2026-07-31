@@ -22,6 +22,8 @@ import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/exercise/exercise_library_state.dart';
+import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
@@ -105,6 +107,10 @@ void main() {
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
         nutritionPrimerState: nutritionPrimerState,
+        exerciseLibraryState: ExerciseLibraryState(
+          service: ExerciseLibraryService(repo),
+          workoutState: workoutState,
+        ),
       );
 
       return (screen: screen, workoutState: workoutState, sessionId: sessionId);
@@ -142,6 +148,10 @@ void main() {
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
         nutritionPrimerState: nutritionPrimerState,
+        exerciseLibraryState: ExerciseLibraryState(
+          service: ExerciseLibraryService(repo),
+          workoutState: workoutState,
+        ),
       );
     }
 

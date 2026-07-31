@@ -57,8 +57,19 @@ class _MaintenanceTileState extends State<MaintenanceTile> {
         ],
       ),
       padding: const EdgeInsets.all(18),
+      // `Flexible` lets the title `Text` shrink to fit when the system
+      // text scale is large enough that the natural Column height would
+      // overflow the grid cell (tile aspect ratio 1.1, fixed by the
+      // parent `SliverGridDelegate`). `maxLines: 2` + ellipsis is the
+      // visible-fallback for any remaining overflow. At normal scales
+      // the text fits at its natural height so the visual layout is
+      // unchanged. The grid delegate owns the outer tile size; this
+      // change only affects the internal flex distribution. See
+      // `hub-sheet-gap-and-logo-clip-plan.md` for the layout test that
+      // depends on this resilience.
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.max,
         children: [
           Icon(
             widget.icon,
@@ -66,14 +77,18 @@ class _MaintenanceTileState extends State<MaintenanceTile> {
             color: themeColors.textMuted,
           ),
           const SizedBox(height: 16),
-          Text(
-            widget.title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: themeColors.textMuted,
-              fontWeight: FontWeight.w600,
-              letterSpacing: OmniTheme.titleLetterSpacing,
-              height: 1.1,
+          Flexible(
+            child: Text(
+              widget.title,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: themeColors.textMuted,
+                fontWeight: FontWeight.w600,
+                letterSpacing: OmniTheme.titleLetterSpacing,
+                height: 1.1,
+              ),
             ),
           ),
         ],

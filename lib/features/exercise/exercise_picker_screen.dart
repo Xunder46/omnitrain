@@ -550,6 +550,13 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
     );
 
     return ListTile(
+      // titleAlignment.top anchors the leading + trailing widgets to the
+      // top of the row instead of vertically centering them. Without
+      // this, the info control floats in the middle of empty space on
+      // rows whose chip Wrap expands the row to two lines. The title and
+      // subtitle positions are computed independently of titleAlignment
+      // so this change does not affect the title-line baseline.
+      titleAlignment: ListTileTitleAlignment.top,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       title: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -605,46 +612,53 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
             ),
           ],
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              if (discipline.name.isNotEmpty)
-                Chip(
-                  label: Text(
-                    discipline.name,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: themeColors.textMuted,
+          // Wrap in SizedBox(width: double.infinity) so the chip Wrap
+          // uses the full subtitle column width (otherwise it computes
+          // an intrinsic width and wraps earlier than the available
+          // budget would allow).
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                if (discipline.name.isNotEmpty)
+                  Chip(
+                    label: Text(
+                      discipline.name,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: themeColors.textMuted,
+                      ),
                     ),
-                  ),
-                  backgroundColor: Colors.transparent,
-                  side: BorderSide(color: themeColors.surfaceBorder),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ...muscleGroups.map(
-                (mg) => Chip(
-                  label: Text(
-                    mg.name,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: themeColors.textMuted,
+                    backgroundColor: Colors.transparent,
+                    side: BorderSide(color: themeColors.surfaceBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
                     ),
+                    padding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
                   ),
-                  backgroundColor: Colors.transparent,
-                  side: BorderSide(color: themeColors.surfaceBorder),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+                ...muscleGroups.map(
+                  (mg) => Chip(
+                    label: Text(
+                      mg.name,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: themeColors.textMuted,
+                      ),
+                    ),
+                    backgroundColor: Colors.transparent,
+                    side: BorderSide(color: themeColors.surfaceBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    padding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
                   ),
-                  padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -653,9 +667,21 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
         icon: Icon(
           Icons.info_outline,
           color: theme.colorScheme.primary,
-          size: 24,
+          size: 20,
         ),
         tooltip: 'View exercise details',
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(
+          width: 44,
+          height: 44,
+        ),
+        style: IconButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(
+              OmniTheme.buttonIconRadius,
+            ),
+          ),
+        ),
         onPressed: () => _openDetails(context, exercise),
       ),
       onTap: () => Navigator.of(context).pop(exercise),

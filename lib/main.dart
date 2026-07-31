@@ -6,6 +6,7 @@ import 'app/startup_root.dart';
 import 'core/models/app_version_info.dart';
 import 'core/services/bundled_catalog_source.dart';
 import 'core/services/catalog_refresh_service.dart';
+import 'core/services/exercise_library_service.dart';
 import 'core/services/image_storage_service.dart';
 import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
@@ -23,6 +24,7 @@ import 'state/settings/settings_state.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
+import 'state/exercise/exercise_library_state.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/services/crash_reporting_service.dart';
 import 'core/utils/rest_notification_service.dart';
@@ -35,15 +37,13 @@ final _startupDiagnosticWriter = StartupFailureDiagnosticWriter.create();
 typedef StartupRepositoryFactory = Future<WorkoutRepository> Function();
 typedef StartupPreferencesServiceFactory = PreferencesService Function();
 typedef StartupTimerAlertServiceFactory = TimerAlertService Function();
-typedef StartupRestNotificationServiceFactory = RestNotificationService
-    Function();
-typedef StartupImageStorageServiceFactory = Future<ImageStorageService?>
-    Function();
+typedef StartupRestNotificationServiceFactory =
+    RestNotificationService Function();
+typedef StartupImageStorageServiceFactory =
+    Future<ImageStorageService?> Function();
 typedef StartupAppVersionInfoLoader = Future<AppVersionInfo> Function();
-typedef StartupNonFatalIssueHandler = Future<void> Function(
-  Object error,
-  StackTrace stackTrace,
-);
+typedef StartupNonFatalIssueHandler =
+    Future<void> Function(Object error, StackTrace stackTrace);
 
 class StartupNotificationInitializationError implements Exception {
   StartupNotificationInitializationError(this.cause);
@@ -233,10 +233,10 @@ Future<Widget> runStartup({
   // once at app start; the same instance is shared by every
   // state and screen that needs it (D-8).
   // On web, skip initialization as it's not supported there.
-    final imageStorageServiceFactory =
+  final imageStorageServiceFactory =
       createImageStorageService ??
       () async => kIsWeb ? null : ImageStorageService.create();
-    final imageStorageService = await imageStorageServiceFactory();
+  final imageStorageService = await imageStorageServiceFactory();
 
   // Create state with repository
   final workoutState = WorkoutState(repository);
@@ -273,6 +273,11 @@ Future<Widget> runStartup({
   // Create service with repository
   final routineSessionService = RoutineSessionService(repository);
   final sessionSummaryService = SessionSummaryService(repository);
+  final exerciseLibraryService = ExerciseLibraryService(repository);
+  final exerciseLibraryState = ExerciseLibraryState(
+    service: exerciseLibraryService,
+    workoutState: workoutState,
+  );
 
   // Build-metadata for the Settings footer.
   //
@@ -301,6 +306,7 @@ Future<Widget> runStartup({
     nutritionState: nutritionState,
     foodLibraryState: foodLibraryState,
     nutritionPrimerState: nutritionPrimerState,
+    exerciseLibraryState: exerciseLibraryState,
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,

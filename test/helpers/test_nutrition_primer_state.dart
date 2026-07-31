@@ -10,6 +10,8 @@
 
 import 'package:omnitrain/data/repositories/workout_repository.dart';
 import 'package:omnitrain/state/nutrition/nutrition_primer_state.dart';
+import 'package:omnitrain/state/exercise/exercise_library_state.dart';
+import 'package:omnitrain/core/services/exercise_library_service.dart';
 
 /// Build a hydrated [NutritionPrimerState] from [repo]. Calls
 /// `init()` so the persisted seen flag is read before the

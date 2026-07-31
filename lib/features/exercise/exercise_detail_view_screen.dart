@@ -12,6 +12,10 @@
 // flow. The single Add action here returns the [Exercise] to its caller
 // via `Navigator.pop` exactly once, with rapid-tap idempotency enforced
 // by a private boolean guard.
+//
+// The body content is exposed separately as `ExerciseDetailViewBody`
+// so other screens (e.g. `ExerciseLibraryDetailScreen`) can reuse it
+// without nesting a second `Scaffold` / `OmniBackHeader`.
 
 import 'package:flutter/material.dart';
 import 'package:omnitrain/core/constants/capability.dart';
@@ -103,155 +107,242 @@ class _ExerciseDetailViewScreenState extends State<ExerciseDetailViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final exercise = widget.exercise;
-    final discipline = _resolveDiscipline(exercise.disciplineId);
-    final muscleGroups = _muscleGroupsForExercise;
-    final hasDescription =
-        exercise.description != null && exercise.description!.trim().isNotEmpty;
-    final hasDiscipline = discipline != null;
-    final hasCapabilities = exercise.capabilities.isNotEmpty;
-    final hasMuscles = muscleGroups.isNotEmpty;
-    final isCustom = exercise.isCustomExercise;
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
       appBar: OmniBackHeader(title: widget.title ?? 'Exercise Details'),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        child: ExerciseDetailViewBody(
+          exercise: widget.exercise,
+          discipline: _resolveDiscipline(widget.exercise.disciplineId),
+          muscleGroups: _muscleGroupsForExercise,
+        ),
+      ),
+      bottomNavigationBar: widget.showAddAction
+          ? _ExerciseDetailAddBar(onPressed: _onAddPressed)
+          : null,
+    );
+  }
+}
+
+/// Body content of the read-only details surface — name, optional
+/// description, discipline, capabilities, muscles. Renders inside a
+/// `SingleChildScrollView` so a long body scrolls cleanly. Has no
+/// `Scaffold` / `OmniBackHeader`; the owning screen provides those.
+///
+/// Reused by:
+///   - `ExerciseDetailViewScreen` (full screen with app bar + Add button)
+///   - `ExerciseLibraryDetailScreen` (library management surface; the
+///     library supplies its own app bar and management action bar).
+class ExerciseDetailViewBody extends StatelessWidget {
+  /// Capabilities that describe how a user records what they did —
+  /// the things the workout screen asks for via metric editors. These
+  /// are the only chips that belong under "Tracking Methods".
+  static const Set<String> _trackingCapabilities = {
+    ExerciseCapability.time,
+    ExerciseCapability.hold,
+    ExerciseCapability.reps,
+    ExerciseCapability.sets,
+    ExerciseCapability.load,
+    ExerciseCapability.distance,
+    ExerciseCapability.rounds,
+  };
+
+  /// Capabilities that describe how the movement is performed rather
+  /// than how it is measured. They are shown to the user, but under
+  /// "Movement Properties", not "Tracking Methods" — telling someone
+  /// they can "track by bilateral" is meaningless because bilateral
+  /// describes the limb pairing, not a measurement.
+  static const Set<String> _movementCapabilities = {
+    ExerciseCapability.bilateral,
+  };
+
+  final Exercise exercise;
+  final Discipline? discipline;
+  final List<MuscleGroup> muscleGroups;
+
+  const ExerciseDetailViewBody({
+    super.key,
+    required this.exercise,
+    required this.discipline,
+    required this.muscleGroups,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasDescription =
+        exercise.description != null && exercise.description!.trim().isNotEmpty;
+    final hasDiscipline = discipline != null;
+    final trackingCaps = exercise.capabilities
+        .where(_trackingCapabilities.contains)
+        .toList();
+    final movementCaps = exercise.capabilities
+        .where(_movementCapabilities.contains)
+        .toList();
+    final hasTracking = trackingCaps.isNotEmpty;
+    final hasMovement = movementCaps.isNotEmpty;
+    final hasMuscles = muscleGroups.isNotEmpty;
+    final isCustom = exercise.isCustomExercise;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title row + optional custom marker.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Title row + optional custom marker.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      exercise.name,
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: OmniTheme.colors.textDominant,
-                      ),
-                    ),
+              Expanded(
+                child: Text(
+                  exercise.name,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: OmniTheme.colors.textDominant,
                   ),
-                  if (isCustom)
-                    Container(
-                      key: const Key('exercise_detail_custom_marker'),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: 0.15,
-                        ),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.5,
-                          ),
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        'Custom',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                ],
+                ),
               ),
-              const SizedBox(height: 16),
-
-              // Description (collapsed when absent).
-              if (hasDescription)
-                OmniSurface(
-                  key: const Key('exercise_detail_description_section'),
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    exercise.description!.trim(),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textDominant,
-                      height: 1.4,
+              if (isCustom)
+                Container(
+                  key: const Key('exercise_detail_custom_marker'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                      width: 1,
                     ),
                   ),
-                ),
-              if (hasDescription) const SizedBox(height: 16),
-
-              // Discipline (collapsed when absent).
-              if (hasDiscipline)
-                _DetailRow(
-                  key: const Key('exercise_detail_discipline_section'),
-                  label: 'Discipline',
-                  child: _MetaChip(label: discipline.name),
-                ),
-              if (hasDiscipline) const SizedBox(height: 12),
-
-              // Tracking methods = capabilities.
-              if (hasCapabilities)
-                _DetailRow(
-                  key: const Key('exercise_detail_capabilities_section'),
-                  label: 'Tracking Methods',
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final cap in exercise.capabilities)
-                        _MetaChip(
-                          label: ExerciseCapability.getDisplayName(cap),
-                        ),
-                    ],
-                  ),
-                ),
-              if (hasCapabilities) const SizedBox(height: 12),
-
-              // Muscles (collapsed when absent).
-              if (hasMuscles)
-                _DetailRow(
-                  key: const Key('exercise_detail_muscles_section'),
-                  label: 'Muscles',
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final mg in muscleGroups) _MetaChip(label: mg.name),
-                    ],
+                  child: Text(
+                    'Custom',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
             ],
           ),
-        ),
-      ),
-      bottomNavigationBar: widget.showAddAction
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: SizedBox(
-                  height: OmniTheme.buttonPrimaryHeight,
-                  width: double.infinity,
-                  child: FilledButton(
-                    key: const Key('exercise_detail_add_button'),
-                    onPressed: _onAddPressed,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: theme.colorScheme.primary,
-                      foregroundColor: theme.colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          OmniTheme.buttonBorderRadius,
-                        ),
-                      ),
-                    ),
-                    child: const Text('Add'),
-                  ),
+          const SizedBox(height: 16),
+
+          // Description (collapsed when absent).
+          if (hasDescription)
+            OmniSurface(
+              key: const Key('exercise_detail_description_section'),
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                exercise.description!.trim(),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: OmniTheme.colors.textDominant,
+                  height: 1.4,
                 ),
               ),
-            )
-          : null,
+            ),
+          if (hasDescription) const SizedBox(height: 16),
+
+          // Discipline (collapsed when absent).
+          if (hasDiscipline)
+            _DetailRow(
+              key: const Key('exercise_detail_discipline_section'),
+              label: 'Discipline',
+              child: _MetaChip(label: discipline!.name),
+            ),
+          if (hasDiscipline) const SizedBox(height: 12),
+
+          // Tracking Methods — only chips that describe how the
+          // exercise is measured. Movement properties (e.g. bilateral)
+          // do NOT appear here; they are shown in the section below.
+          if (hasTracking)
+            _DetailRow(
+              key: const Key('exercise_detail_capabilities_section'),
+              label: 'Tracking Methods',
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final cap in trackingCaps)
+                    _MetaChip(label: ExerciseCapability.getDisplayName(cap)),
+                ],
+              ),
+            ),
+          if (hasTracking) const SizedBox(height: 12),
+
+          // Movement Properties — chips that describe how the movement
+          // is performed (e.g. bilateral). Rendered under its own
+          // heading so the user can distinguish measurement methods
+          // from movement characteristics. Omitted when the exercise
+          // has no movement-property capabilities.
+          if (hasMovement)
+            _DetailRow(
+              key: const Key('exercise_detail_movement_section'),
+              label: 'Movement Properties',
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final cap in movementCaps)
+                    _MetaChip(label: ExerciseCapability.getDisplayName(cap)),
+                ],
+              ),
+            ),
+          if (hasMovement) const SizedBox(height: 12),
+
+          // Muscles (collapsed when absent).
+          if (hasMuscles)
+            _DetailRow(
+              key: const Key('exercise_detail_muscles_section'),
+              label: 'Muscles',
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final mg in muscleGroups) _MetaChip(label: mg.name),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom navigation bar for `ExerciseDetailViewScreen` that hosts
+/// the Add action. Extracted as a small widget so the screen can
+/// stay focused on app-bar / body / action-bar composition.
+class _ExerciseDetailAddBar extends StatelessWidget {
+  final VoidCallback onPressed;
+  const _ExerciseDetailAddBar({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: SizedBox(
+          height: OmniTheme.buttonPrimaryHeight,
+          width: double.infinity,
+          child: FilledButton(
+            key: const Key('exercise_detail_add_button'),
+            onPressed: onPressed,
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: theme.colorScheme.onPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  OmniTheme.buttonBorderRadius,
+                ),
+              ),
+            ),
+            child: const Text('Add'),
+          ),
+        ),
+      ),
     );
   }
 }

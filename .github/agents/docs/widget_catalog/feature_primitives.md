@@ -193,7 +193,8 @@ Circular menu/avatar control for the home-screen AppBar that hosts the brand log
 - Reduced-motion users get the scale applied instantly without animation
 
 **Hit target & accessibility**:
-- 8px horizontal + 4px vertical transparent `Padding` around the visible circle brings the gesture bounds to 72×64 — well above the 44×44pt minimum
+- 8 px transparent `Padding` (`EdgeInsets.all(8)`) on every side of the visible circle brings the gesture bounds to 71×71 — symmetric insets keep the circle visually centred inside the AppBar's `toolbarHeight` slot and ensure the soft shadow has full room to render on every side. Well above the 44×44 pt minimum
+- The symmetric padding is also what keeps the visible circle off the Hub sheet's top edge when the sheet is fully expanded (the sheet top lands at `padding.top + toolbarHeight`; the symmetric bottom padding guarantees the circle is fully inside the AppBar regardless of the actual `toolbarHeight` configured on the host Scaffold). See `hub-sheet-gap-and-logo-clip-plan.md` for the clipping fix that motivated the symmetry change
 - Explicit `ConstrainedBox(minWidth: 44, minHeight: 44)` + `HitTestBehavior.opaque` keep the guarantee even if `tileSize` is later reduced
 - `Semantics(button: true, label: 'Open menu')` wraps the whole control; the ring is decorative and the screen reader only hears the parent's label
 

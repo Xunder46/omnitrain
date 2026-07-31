@@ -56,7 +56,25 @@ Circular icon widget inside `EnergyTile`. Radial gradient background with glow s
 
 **File**: `lib/widgets/cards/maintenance_tile.dart`
 
-Small tile used inside the home screen's maintenance bottom sheet for system features (Profile, Stats, Settings). Simpler styling than `EnergyTile`.
+Small tile used inside the home screen's maintenance bottom sheet (the Hub
+sheet) for system features (Calendar, Stats, Exercise Library, Profile,
+Settings — five tiles in a 2-column grid; the last row leaves one tile
+alone, by design). Simpler styling than `EnergyTile`.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `title` | `String` | required | Tile label (e.g., "Calendar") |
+| `icon` | `IconData` | required | Tile icon |
+| `onTap` | `VoidCallback` | required | Tap handler |
+| `activeTheme` | `AppTheme` | `abyssalNeon` | Active theme for surface fill, border, text |
+
+**Behavior**:
+- Press scale: `OmniTheme.pressedScale` (0.96) with `OmniTheme.animationDuration` animation.
+- Outer chrome: `OmniTheme.surfaceBorderRadius` rounded corners, `themeColors.surface` fill, `themeColors.surfaceBorder` hairline, `OmniTheme.deepShadow` lift. No rim highlight, no inner shadow, no accent fill — distinguishable from `EnergyTile` at a glance.
+- Inner padding: 18 px on every side; an `Icon` (42 px) + 16 px gap + `Text` (`bodyLarge`, weight w600, `OmniTheme.titleLetterSpacing`, height 1.1) inside a centered `Column`.
+- Large-text-scale resilience: the title `Text` is wrapped in `Flexible` with `maxLines: 2` and `overflow: TextOverflow.ellipsis`, so when the system text scale is large enough that the natural Column height would overflow the grid cell (tile aspect ratio 1.1, fixed by the parent `SliverGridDelegate`), the title truncates with ellipsis instead of overflowing. The grid delegate owns the outer tile size; this only affects internal flex distribution. See `hub-sheet-gap-and-logo-clip-plan.md` for the layout that depends on this resilience.
+- Hit target: the entire tile body is the tap region; press state is local (`_isPressed`).
+- Presentation-only: no repository, service, or state access.
 
 ### Removed tile implementations
 
