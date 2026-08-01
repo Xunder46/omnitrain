@@ -2,7 +2,7 @@
 # TODO: confirm dart MCP tool names from Claude Code config
 # Source dart tools: dart-sdk-mcp-server/connect_dart_tooling_daemon, dart-sdk-mcp-server/create_project, dart-sdk-mcp-server/flutter_driver, dart-sdk-mcp-server/get_active_location, dart-sdk-mcp-server/get_app_logs, dart-sdk-mcp-server/get_runtime_errors, dart-sdk-mcp-server/get_selected_widget, dart-sdk-mcp-server/get_widget_tree, dart-sdk-mcp-server/hot_reload, dart-sdk-mcp-server/hot_restart, dart-sdk-mcp-server/hover, dart-sdk-mcp-server/launch_app, dart-sdk-mcp-server/list_devices, dart-sdk-mcp-server/list_running_apps, dart-sdk-mcp-server/pub, dart-sdk-mcp-server/pub_dev_search, dart-sdk-mcp-server/read_package_uris, dart-sdk-mcp-server/resolve_workspace_symbol, dart-sdk-mcp-server/set_widget_selection_mode, dart-sdk-mcp-server/signature_help, dart-sdk-mcp-server/stop_app, dart-code.dart-code/get_dtd_uri, dart-code.dart-code/dart_format, dart-code.dart-code/dart_fix
 name: dba
-description: Database architect - implements schema, models, and repositories for BOTH web (mock) and production (SQLite) environments.
+description: Database architect - implements schema, models, and repositories against the WorkoutRepository interface (Hive runtime + in-memory mock); keeps the SQL schema contract in step with the models.
 tools: Read, Write, Edit, Bash, Grep, Glob, WebFetch, TodoWrite
 model: haiku
 ---
@@ -47,13 +47,13 @@ Every data change must work in BOTH environments:
 - **Location**: `lib/data/repositories/hive_workout_repository.dart`
 - **Note**: `MockWorkoutRepository` (`lib/data/repositories/mock_workout_repository.dart`) also exists for in-memory testing
 
-### 2. Production Optimization (Mobile/Desktop) - FUTURE
-- **Platform**: Native (iOS/Android/Desktop)
-- **Implementation**: `SqliteWorkoutRepository` (not yet created)
-- **Storage**: SQLite via sqflite package
-- **Data**: Loaded from `scripts/sqlite_seed.sql`
-- **Persistence**: Full local storage with indexed queries
-- **Schema**: `scripts/sqlite_schema.sql`
+### 2. The SQL files are a contract, not a runtime
+- The SQLite **runtime is retired**. `sqflite` is not a dependency, the
+  datasource files were deleted, and there is no `SqliteWorkoutRepository`.
+- `scripts/sqlite_schema.sql` and `scripts/sqlite_seed.sql` are the canonical
+  **data-model documentation**, executed by `test/db_seed_test.dart` to prove
+  they stay valid SQL. Keep them in step with `lib/data/models/models.dart`.
+- Hive is the persistence engine on every platform, web included.
 
 ### The Strategy
 ```
@@ -204,7 +204,7 @@ When you receive a handoff from @conductor:
 
 ### Step 6: Document SQLite Changes
 - [ ] Update `scripts/sqlite_schema.sql` with table changes
-- [ ] Add comments for future SqliteWorkoutRepository implementation
+- [ ] Keep `scripts/sqlite_schema.sql` in step with the models
 - [ ] Keep schema synchronized with models
 
 ### Step 7: Verify
@@ -216,6 +216,16 @@ When you receive a handoff from @conductor:
 ### Step 8: Update Docs
 
 Before handing off, update the following docs if the current feature touched their coverage area. Only update what changed — do not rewrite entire documents.
+
+**Before editing any document, read `docs/documentation_standard.md`.** It
+defines what these documents may contain. In short: update a document only
+where the change made an existing claim **false**, or changed **structure**,
+**rationale**, or an **invariant**. Never add user-flow walkthroughs, control
+or gesture inventories, visual/presentation detail, values already defined in
+source, copied code or field tables, or roadmap sections — the reviewer rejects
+all of these. Where behaviour changed, **delete the stale prose and point at the
+test** that verifies it; do not rewrite it into a corrected version.
+
 
 - **`docs/data_models.md`** — update if any model class was added, fields were added or removed, or fromMap/toMap contracts changed
 - **`docs/db_integration.md`** — update if new repository methods were added to the interface, or Hive implementation changed its storage key conventions
@@ -406,10 +416,7 @@ Then hand off to @developer with a summary:
 - If blocked, mark phase as **Blocked**, add `## Feedback` to the plan file, and notify the user to re-run the Coordinator
 - Update docs before handing off — state explicitly if no update was needed
 - Implement for web (HiveWorkoutRepository) NOW
-- Plan for SQLite (SqliteWorkoutRepository) LATER
+- Keep the SQL schema contract in step with the models
 - Keep models pure Dart (no Flutter imports)
 - Use repository pattern to abstract storage
 - Test that changes work on web
-
-
-================================================================================

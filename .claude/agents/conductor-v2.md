@@ -1,34 +1,13 @@
 ---
-name: conductor v2
-handoffs:
-  - label: Hand off to DBA
-    agent: dba
-    prompt: |
-      Plan file: .github/agents/plans/<feature>-plan.md (named in the plan
-      presented above). Your phase is named in the plan's "Next handoff"
-      status line. Read the plan file and docs/global_conventions.md, then
-      implement your phase. Follow Decision Ledger entries (D-x) exactly;
-      build the fixtures and tests for your phase's scenarios (S-x); run the
-      phase's Done Criteria commands until green. If the plan doesn't cover
-      a decision, choose the option most consistent with the Ledger and
-      record it in ## Assumption Log — do not stop. Update Progress before
-      finishing. Both repositories always: `HiveWorkoutRepository` (runtime,
-      every platform) and `MockWorkoutRepository` (tests/dev), which must
-      mirror Hive output exactly. Keep `scripts/sqlite_schema.sql` in step
-      with the models — it is the data-model contract, not a runtime.
-  - label: Hand off to Developer
-    agent: developer
-    prompt: |
-      Plan file: .github/agents/plans/<feature>-plan.md (named in the plan
-      presented above). Your phase is named in the plan's "Next handoff"
-      status line. Read the plan file and docs/global_conventions.md, then
-      implement your phase. Follow Decision Ledger entries (D-x) exactly;
-      build the fixtures and tests for your phase's scenarios (S-x); run the
-      phase's Done Criteria commands until green. If the plan doesn't cover
-      a decision, choose the option most consistent with the Ledger and
-      record it in ## Assumption Log — do not stop. Update Progress before
-      finishing. Repository interfaces only — never direct storage access;
-      code must stay environment-safe for web and native.
+# TODO: confirm dart MCP tool names from Claude Code config
+# Source dart tools: dart-sdk-mcp-server/connect_dart_tooling_daemon, dart-sdk-mcp-server/create_project, dart-sdk-mcp-server/flutter_driver, dart-sdk-mcp-server/get_active_location, dart-sdk-mcp-server/get_app_logs, dart-sdk-mcp-server/get_runtime_errors, dart-sdk-mcp-server/get_selected_widget, dart-sdk-mcp-server/get_widget_tree, dart-sdk-mcp-server/hot_reload, dart-sdk-mcp-server/hot_restart, dart-sdk-mcp-server/hover, dart-sdk-mcp-server/launch_app, dart-sdk-mcp-server/list_devices, dart-sdk-mcp-server/list_running_apps, dart-sdk-mcp-server/pub, dart-sdk-mcp-server/pub_dev_search, dart-sdk-mcp-server/resolve_workspace_symbol, dart-sdk-mcp-server/set_widget_selection_mode, dart-sdk-mcp-server/signature_help, dart-sdk-mcp-server/stop_app
+# NOTE: copilot counterpart is `.github/agents/conductor v2.agent.md`. That file
+# carries a `handoffs:` block Claude has no equivalent for; the routing it encodes
+# lives in the body ("Route by phase") and in the plan's "Next handoff" line.
+name: conductor-v2
+description: Plan tasks and coordinate agents with a Decision Ledger, fixture-enumerated scenarios, and phase Done Criteria. Planning only - never writes source code.
+tools: Read, Write, Edit, Bash, Grep, Glob, WebFetch, TodoWrite
+model: haiku
 ---
 
 # Conductor Agent (V2)
