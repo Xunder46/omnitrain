@@ -232,13 +232,13 @@ Defines the 6-tile grid as `HomeTileConfig` objects. Each tile's `accentColor` i
 
 > **Single source of truth** for modality accent colors. All modality-specific UI must import from this file instead of redefining color hex values.
 
-| Constant | Color | Used for |
-|----------|-------|----------|
-| `ModalityColors.cardioEndurance` | `#43A047` (grass green) | Cardio sessions, calendar dots, chips |
-| `ModalityColors.resistanceLifting` | `#5B9BD5` (steel blue) | Strength sessions, calendar dots, chips |
-| `ModalityColors.sports` | `#E63946` (ember red) | Sports/martial arts sessions, calendar dots, chips |
-| `ModalityColors.isometricStretching` | `#FFA726` (amber) | Isometric sessions, calendar dots, chips |
-| `ModalityColors.freeTraining` | `#7E57C2` (violet) | Free Training / fallback |
+| Constant | Used for |
+|----------|----------|
+| `ModalityColors.cardioEndurance` | Cardio sessions, calendar dots, chips |
+| `ModalityColors.resistanceLifting` | Strength sessions, calendar dots, chips |
+| `ModalityColors.sports` | Sports sessions, calendar dots, chips |
+| `ModalityColors.isometricStretching` | Isometric sessions, calendar dots, chips |
+| `ModalityColors.freeTraining` | Free Training / fallback |
 
 **Helper methods**:
 - `ModalityColors.forModality(String? modality)` — returns accent for a modality key; null → `freeTraining`

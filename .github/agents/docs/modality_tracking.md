@@ -60,40 +60,17 @@ Internal classification for UI rendering:
 
 ---
 
-## User Workflows
+## Resolving an Effort Kind
 
-### 1. Structured Workout (Modality-Driven)
-```
-User → Selects "Resistance / Lifting" tile
-     → Creates new session with modality=resistance_lifting
-     → Adds "Barbell Squat" from exercise picker
-     → System shows "Recommended for this workout" section
-     → Tracks as 3 sets × 10 reps @ 135 lbs
-```
+A session started from a modality tile resolves its effort kind from
+`ModalityConfig` directly. A null-modality session (Free Training, or a routine
+without a focus modality) resolves it in two steps: `ModalityPickerDialog` picks
+a modality, and only if the user picks "General" does `MetricChooserDialog` ask
+for a tracking method. Cancelling adds nothing.
 
-### 2. Free Training / Routine (User-Driven)
-```
-User → Selects "Free Training" tile (modality=null) or starts a Routine session
-     → Adds an exercise from the picker
-     → System opens ModalityPickerDialog
-          Specific modality picked:
-              effortKind derived from ModalityConfig (no MetricChooserDialog needed)
-          "General" / null picked:
-              System shows MetricChooserDialog → user picks tracking method
-          Cancelled:
-              Exercise not added
-     → Tracks with the derived effort kind
-```
-
-### 3. Modality Change Mid-Session
-```
-User → Has active Resistance session
-     → Taps "Cardio / Endurance" tile
-     → System shows warning dialog:
-        "Changing modality will start a new session.
-         Current session will not be saved."
-     → User confirms → New cardio session created
-```
+Changing modality while a session is active starts a **new** session rather than
+re-mapping the existing one — re-mapping would leave the logged efforts in an
+ambiguous state. See [Key Design Decisions](#key-design-decisions).
 
 ---
 
@@ -131,13 +108,6 @@ abstract class WorkoutRepository {
   );
 }
 ```
-
-**Exercise Ranking Logic**:
-- If modality is set (e.g., `cardio_endurance`), get its primary metric (`time`)
-- Partition exercises into:
-  - **Recommended**: Supports primary metric (e.g., squat supports `time`)
-  - **Others**: All other exercises
-- Return recommended exercises first, then others (both sorted alphabetically)
 
 ### State Layer
 
@@ -232,27 +202,6 @@ Important behavior:
 - New rounds created after this change use the duration resolution order above.
 
 ### UI Layer
-
-#### Exercise Picker with Ranking
-```dart
-class ExercisePickerScreen extends StatefulWidget {
-  final String? sessionModality;  // Pass current session modality
-  
-  Widget _buildExerciseList() {
-    if (hasModality && primaryMetric != null) {
-      // Partition into recommended vs others
-      for (exercise in exercises) {
-        if (exercise.supports(primaryMetric)) {
-          recommended.add(exercise);
-        } else {
-          others.add(exercise);
-        }
-      }
-    }
-    // Render with section headers
-  }
-}
-```
 
 #### Metric Chooser (Free Training)
 ```dart
@@ -414,43 +363,6 @@ static final Map<String, List<String>> exerciseCapabilityRelationships = {
 
 The current implementation uses `HiveWorkoutRepository` (Hive boxes) for persistence across all platforms. A `MockWorkoutRepository` also exists for in-memory testing.
 
-```dart
-class HiveWorkoutRepository implements WorkoutRepository {
-  final Map<String, List<String>> _exerciseCapabilities = {};
-  
-  Future<void> initialize() async {
-    // Load from SeedData.exerciseCapabilityRelationships
-    for (final entry in SeedData.exerciseCapabilityRelationships.entries) {
-      _exerciseCapabilities[entry.key] = List.from(entry.value);
-    }
-  }
-  
-  Future<List<Exercise>> getExercisesRankedForModality(String? modality, ...) async {
-    // In-memory ranking logic
-    final primaryMetric = _getModalityConfig(modality)?['primaryMetric'];
-    
-    for (exercise in exercises) {
-      final caps = _exerciseCapabilities[exercise.id] ?? [];
-      final exerciseWithCaps = exercise.copyWith(capabilities: caps);
-      
-      if (caps.contains(primaryMetric)) {
-        recommended.add(exerciseWithCaps);
-      } else {
-        others.add(exerciseWithCaps);
-      }
-    }
-    
-    return [...recommended, ...others];
-  }
-}
-```
-
-### Future SQLite Repository (Native — Planned)
-Schema is ready. Implementation will:
-1. Join `app_exercise` with `app_exercise_capability` table
-2. Use same ranking algorithm as mock
-3. Zero UI changes needed - repository interface abstraction provides compatibility
-
 ---
 
 ## Key Design Decisions
@@ -514,38 +426,6 @@ Would require duplicate exercises for different contexts (e.g., "Cardio Squats" 
 
 ---
 
-## Future Enhancements
-
-### Phase 2 (Completed — February 2026)
-✅ **Round-Based Tracking Refactor**: `round` efforts store `RoundInstance` records (not observations). Full lifecycle methods in `WorkoutState`. Wall-clock timestamps for background resilience.
-✅ **RoundState Enum + Strict Transitions**: `RoundInstance` carries a `RoundState` field (`notStarted` → `active` ⇄ `paused` → `finished`). `finished` is terminal. `WorkoutState._isValidRoundTransition()` enforces all transitions. Elapsed time is derived from timestamps at read time via `RoundInstance.elapsedMs` — never stored as a counter.
-✅ **Pause Support for Rounds**: `pauseRound()` and `resumeRound()` added to `WorkoutState`. Each pause start is stamped to `pausedAtMs`; on resume, `(now - pausedAtMs)` is folded into `totalPausedDurationMs` and `pausedAtMs` is cleared. The elapsed formula subtracts `totalPausedDurationMs` so paused time is never counted as work. UI-level rapid-tap guard (`_pendingRoundTransitions` set) prevents concurrent duplicate transitions.
-✅ **Delete Exercise from Session**: `removeExerciseFromSession` implemented in `WorkoutState`.
-
-### Phase 2 (Completed — since shipped)
-✅ **User-Created Exercise Capabilities**: `ExerciseEditorScreen`
-(`lib/features/exercise/exercise_editor_screen.dart`) lets the user tag a
-custom exercise with capabilities. The selectable set is filtered per modality
-via `ModalityConfig.formCapabilities`, selections outside the chosen modality
-are dropped on modality change, and save is blocked unless at least one of
-`ModalityConfig.formRequiredCapabilities` is selected. See
-[Create New Exercise](create_new_exercise.md).
-
-> **Corrected 2026-07-26 (docs audit).** This item was listed under
-> "Phase 2 (Still Deferred)" while the capability-tagging UI was already
-> shipped.
-
-### Phase 2 (Still Deferred)
-1. **Mid-Session Modality Re-mapping**: Preserve exercises when changing modality, prompt for new tracking method
-2. **Capability Auto-Detection**: Suggest capabilities based on exercise name/description (ML-assisted)
-
-### Phase 3 (Research)
-1. **Hybrid Modalities**: Mix effort kinds in one session (e.g., "Crossfit" with both timed and set-based)
-2. **Progressive Overload Tracking**: Detect when user increases weight/time/reps over sessions
-3. **Template Modality Hints**: Templates suggest ideal modality based on exercise composition
-
----
-
 ## Testing & Validation
 
 ### Acceptance Criteria (All Met)
@@ -557,29 +437,11 @@ are dropped on modality change, and save is blocked unless at least one of
 ✅ Warning dialog on modality change with active session  
 ✅ Zero errors across entire codebase  
 ✅ Web-compatible (MockWorkoutRepository)  
-✅ Schema ready for native (SqliteWorkoutRepository)  
 ✅ No platform-specific code in shared layer  
-
-### Manual Test Scenarios
-1. **Resistance Workout**: Add "Barbell Squat" → Verify tracks as reps/sets/weight
-2. **Cardio Workout**: Add same "Barbell Squat" → Verify appears in "Recommended" → Tracks as time/distance
-3. **Free Training**: Add "Plank Hold" → Choose "Track by Hold Time" → Verify 3×30s holds tracked
-4. **Modality Switch**: Start resistance session → Add exercise → Tap cardio tile → Verify warning → Confirm → New session created
-5. **Exercise Ranking**: Open picker in cardio session → Verify running exercises in "Recommended", strength exercises in "Others"
 
 ---
 
 ## Deployment Notes
-
-### Environment Requirements
-- **Web**: MockWorkoutRepository (in-memory storage)
-- **iOS/Android**: SqliteWorkoutRepository (future - schema ready)
-
-### Migration Path
-1. Deploy web version with mock repository (current)
-2. Implement SqliteWorkoutRepository with same interface
-3. Update app initialization to inject SQLite repository on native platforms
-4. Zero UI changes needed - repository abstraction ensures compatibility
 
 ### Performance Considerations
 - Exercise capability lookups are O(1) map operations

@@ -19,80 +19,24 @@ The replacement architecture stores a per-entry rest record in the repository at
 
 ## `EntryRest` Model
 
-**File**: `lib/data/models/models.dart`
+**File**: `lib/data/models/models.dart` — see [Data Models](data_models.md) for the record's place
+in the model graph.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | Deterministic key: `'rest-{effortId}-{entryIndex}'` |
-| `effortId` | `String` | Parent `SegmentEffort` id |
-| `entryIndex` | `int` | 0-based; identifies the set/round **this rest precedes** |
-| `restStartMs` | `int` | Wall-clock epoch ms when the previous set was logged |
-| `restEndMs` | `int?` | Wall-clock epoch ms when the next set/round was started; `null` while still resting |
-| `restIsPaused` | `bool` | PR 4: `true` while the rest window is in the paused state. PR 4 hides the running elapsed count until resumed. |
-| `restPausedAtMs` | `int?` | PR 4: wall-clock instant when the rest was paused; `elapsedSeconds` freezes at this value. `null` when not paused. |
-| `restPausedDurationMs` | `int` | PR 4: cumulative paused time across all pause/resume cycles for this rest. Subtracted from the running duration so the recorded rest excludes stopped intervals. |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
+One rest record per `(effortId, entryIndex)` pair, identified by a deterministic id so the same
+entry always maps to the same record. The record stores wall-clock instants, not a counter: when
+the rest started, when it ended (`null` while still resting), whether it is currently paused, when
+it was paused, and how much paused time has accumulated.
 
-### Computed Helper
+Elapsed rest is **derived at read time**, never stored. A paused rest freezes at its pause instant;
+a running rest reads from now; accumulated paused time is subtracted so the recorded rest excludes
+stopped intervals.
 
-```dart
-// Returns elapsed rest seconds; paused freezes at restPausedAtMs,
-// running reads from nowMs. Subtracts restPausedDurationMs so the
-// recorded rest excludes stopped intervals.
-int elapsedSeconds(int nowMs) {
-  final effectiveEndMs = restEndMs ??
-      (restIsPaused ? (restPausedAtMs ?? nowMs) : nowMs);
-  return ((effectiveEndMs - restStartMs - restPausedDurationMs) / 1000)
-      .round()
-      .clamp(0, 99999);
-}
-```
+## Schema
 
----
-
-## SQLite Schema
-
-**File**: `scripts/sqlite_schema.sql`
-
-```sql
-CREATE TABLE app_entry_rest (
-  id                       TEXT    NOT NULL PRIMARY KEY,
-  effort_id                TEXT    NOT NULL,
-  entry_index              INTEGER NOT NULL,
-  rest_start_ms            INTEGER NOT NULL,
-  rest_end_ms              INTEGER,           -- NULL while athlete is still resting
-  rest_is_paused           INTEGER NOT NULL DEFAULT 0, -- PR 4: 1 = paused, 0 = running
-  rest_paused_at_ms        INTEGER,                    -- PR 4: wall-clock pause time
-  rest_paused_duration_ms  INTEGER NOT NULL DEFAULT 0, -- PR 4: cumulative paused duration
-  created_at_ms            INTEGER NOT NULL,
-  updated_at_ms            INTEGER NOT NULL,
-  FOREIGN KEY(effort_id) REFERENCES app_segment_effort(id) ON DELETE CASCADE
-);
-CREATE UNIQUE INDEX IF NOT EXISTS UX_entry_rest_effort_index
-    ON app_entry_rest(effort_id, entry_index);
-
--- PR 4 migration: add pause/resume columns on existing installs.
-ALTER TABLE app_entry_rest ADD COLUMN rest_is_paused INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE app_entry_rest ADD COLUMN rest_paused_at_ms INTEGER;
-ALTER TABLE app_entry_rest ADD COLUMN rest_paused_duration_ms INTEGER NOT NULL DEFAULT 0;
-```
-```
-
-The `ON DELETE CASCADE` constraint ensures rest records are removed automatically when their parent effort is deleted.
-
-### Migration
-
-`scripts/sqlite_schema.sql` contains the `CREATE TABLE IF NOT EXISTS
-app_entry_rest` statement.
-
-> **Corrected 2026-07-26 (docs audit).** This line pointed at
-> `lib/data/datasources/migrations.dart`. That file was deleted when the
-> SQLite runtime was retired; schema statements now live in
-> `scripts/sqlite_schema.sql` itself. See
-> [DB Integration](db_integration.md#sqlite-schema-versioning).
-
----
+The `app_entry_rest` table is defined in `scripts/sqlite_schema.sql`, which
+`test/db_seed_test.dart` executes to prove it stays valid SQL. Two constraints matter beyond the
+column list: rest records are unique per `(effort_id, entry_index)`, and they cascade on delete
+with their parent effort so cleanup is automatic rather than something callers must remember.
 
 ## Repository Contract
 
@@ -172,16 +116,7 @@ For the **first set** of an exercise (`entryIndex == 0`), no rest record is crea
 
 **File**: `lib/features/session/workout_session_screen.dart`
 
-The old `Stopwatch`-based rest state has been removed:
-
-```dart
-// REMOVED:
-Timer? _restTimer;
-Stopwatch? _restStopwatch;
-int _restElapsedSeconds = 0;
-String _restFormatted = '00:00';
-// _startRestTimer() method removed entirely
-```
+The old `Stopwatch`-based rest state has been removed from the session screen entirely.
 
 ### Wiring
 
@@ -196,70 +131,18 @@ All calls use the existing `unawaited()` fire-and-forget pattern used throughout
 
 ### Overlay Display
 
-The rest overlay chip is rendered on **every** surface by `_buildRestOverlayChip`
-inside `lib/features/session/workout_session_list_view.dart` (rolling list view,
-standard list view, detail view). Visibility is governed by the single helper
-`_shouldShowRestOverlay()` defined on `_SessionGlobalTimerExt` in
-`lib/features/session/workout_session_global_timer.dart`:
+The rest overlay chip renders on **every** session surface — rolling list view, standard list view,
+and detail view — and all of them gate visibility through a **single shared helper**. This is the
+invariant: the two surfaces can never disagree about whether a rest timer is counting, because
+neither owns the decision. A cross-effort rest (open for exercise A while a timer runs on exercise
+B) is hidden everywhere while that timer is active, and edit mode hides the chip outright.
 
-```dart
-// Session-wide visibility rule shared by every rest-chip Positioned(...) site.
-bool _shouldShowRestOverlay() {
-  if (widget.editMode) return false;
-  if (_getMostRecentOpenRestKey() == null) return false;
-  // Any effort active in the session hides the chip.
-  for (final entry in _effortRunning.entries) {
-    if (entry.value == true) return false;
-  }
-  return true;
-}
-```
+Verified by `test/unified_rest_overlay_test.dart` (`Unified rest overlay rule`).
 
-Both the **list view** (session-detail) and the **detail view** (per-exercise)
-route through this helper, so the two surfaces can never disagree about whether
-to show a counting rest timer. Even a cross-effort rest (a rest open for
-exercise A's entry while a timer is running on exercise B) is hidden on every
-surface while that timer is active.
+The chip is tappable across its whole tile, so pausing or resuming rest never requires aiming at a small icon.
 
-Elapsed time is rendered by:
-
-```dart
-String _formatRestElapsed(String effortId, int entryIndex) {
-  final secs = widget.workoutState.getRestElapsedSeconds(effortId, entryIndex);
-  final mm = (secs ~/ 60).toString().padLeft(2, '0');
-  final ss = (secs % 60).toString().padLeft(2, '0');
-  return '$mm:$ss';
-}
-```
-
-The overlay refreshes on every `_ticker` tick (1 second, already exists for round timers) — no additional `Timer.periodic` is required.
-
-The current chip is **tappable**. PR 4 wraps the chip in `Material` + `InkWell`
-whose `onTap` calls `_toggleRestChip`, which dispatches to `workoutState.pauseRest`
-or `workoutState.resumeRest` based on the current `isRestPaused` flag. The chip
-has a 48-dp touch-target floor (vertical padding 12 + minHeight 48) so the
-whole tile is hittable without aiming for a small icon.
-
-Three visually distinct states (PR 4 spec: "Three rest states are visually
-distinct without reading the number"):
-
-| State | Background tint | Icon | Extra chrome |
-|-------|-----------------|------|--------------|
-| **Running** (default, rest just opened) | Primary-tinted | `Icons.self_improvement` (meditation) | (none) |
-| **Paused** (after tap) | Muted surface tint | `Icons.pause` | (none) |
-| **Not started** (no open rest for the session) | — (chip hidden entirely) | — | — |
-
-`_shouldShowRestOverlay()` (above) hides the chip in the not-started case.
-The running/paused branches share the same chip widget; the icon swap is
-the sole differentiator (background tint + icon). The chip's bounding
-rect is intentionally identical in both states — no shadow, no border —
-so the user can read the same timer without layout jumping.
-
-> **Removed 2026-07-27 (PR 4 refinement).** Earlier drafts of PR 4 carried
-> a "Paused · tap to resume" caption under the timer in the paused state.
-> That caption made the chip 2dp taller than the running chip (because of
-> the wrapped `Column`) and the feedback was deemed redundant with the
-> icon swap. The chip is now single-line in both states.
+The chip distinguishes its states without requiring the user to read the number, and its bounding
+rect is identical in every state so the timer never jumps as it changes.
 
 Pause/resume behaviour:
 

@@ -55,35 +55,6 @@ Note: the precise numeric weights live in `ModalityConfig.forModality` / `calcul
 - The UI (`ExercisePickerScreen`) requests `getExercisesRankedForModality(modality, ...)` and receives a sorted list.
 - Previously the dialog partitioned results into "Recommended" (exercises supporting the modality's primary metric) and "Other exercises"; that partitioning has been removed and the list is displayed in the repository's sorted order.
 
-## Example pseudocode
-
-```dart
-// Repository-side
-final candidates = applyFilters(allExercises, searchText, disciplineId, muscleGroupIds);
-if (modality == null) return candidates..sort((a,b) => a.name.compareTo(b.name));
-
-final config = ModalityConfig.forModality(modality);
-final scored = candidates.map((ex) {
-  final caps = exerciseCapabilities[ex.id] ?? [];
-  final categoryId = disciplines[ex.disciplineId]?.categoryId;
-  final score = config.calculateRelevanceScore(exerciseCapabilities: caps, exerciseCategoryId: categoryId);
-  return (ex.copyWith(capabilities: caps), score);
-}).toList();
-
-scored.sort((a, b) {
-  final scoreDiff = b.score.compareTo(a.score);
-  return scoreDiff != 0 ? scoreDiff : a.exercise.name.compareTo(b.exercise.name);
-});
-
-return scored.map((s) => s.exercise).toList();
-```
-
-## Recommended extension points
-
-- Expose the numeric score on the `Exercise` model (transient field) for UI display (badges, thresholds).
-- Persist computed scores (or use SQL window functions) in a production SQLite implementation for faster ranking.
-- Add configuration flags or per-modality thresholds for multi-tiered UI grouping (e.g., Best/Compatible/Others).
-
 ## Files to update when tuning behavior
 
 - `lib/core/constants/modality_config.dart` — adjust primary/secondary/anti capability lists and weights.

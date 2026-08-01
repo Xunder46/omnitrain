@@ -16,46 +16,23 @@ This feature is intentionally scoped for MVP planning workflows:
 
 ---
 
-## User Workflows
+## Behaviour Rules
 
-### 1. Open Calendar
+### Session Indicators
 
-```
-HomeScreen -> Maintenance sheet -> Calendar
-  -> CalendarScreen
-```
+Each day renders an indicator per session: filled for completed, outlined for planned, coloured by
+modality through `ModalityColorUtils`. Indicator count is capped, with the remainder shown as an
+overflow count, so a heavy day never overruns its cell.
 
-The existing maintenance-menu Calendar entry is reused (no duplicate navigation entry).
+### Monthly Stats Strip
 
-### 2. Month View + Session Indicators
+A strip below the grid reports four figures for the **displayed month**: completed session count,
+total training time, the current streak (computed from up to 90 days of history, not just the
+displayed month), and a per-modality breakdown. Values render as an em dash rather than a zero
+when the month has no data, and the strip stays blank while the month is loading rather than
+flashing placeholder values.
 
-Each day can render indicators for all sessions on that date:
-- **Completed session**: filled circle
-- **Planned session**: outlined circle
-- **Color**: resolved from modality via `ModalityColorUtils` (delegates to `ModalityColors.forModality`)
-
-Rendering rules:
-- Up to 2 circles visible.
-- Overflow shown as `+N` where `N = total - 2`.
-
-### 3. Monthly Stats Strip
-
-A compact stats strip sits below the calendar grid and fills the remaining vertical space, keeping the entire screen non-scrollable. It shows four stats for the **currently displayed month**:
-
-| Stat | Description |
-|------|-------------|
-| **SESSIONS** | Count of completed sessions in the month; `—` if none |
-| **TIME** | Sum of `endedAtMs − startedAtMs` for completed sessions, formatted as `Xh Ym`, `Xm`, or `Xs`; `—` if zero |
-| **STREAK** | Consecutive-day streak ending today (or yesterday if no session today), computed from up to 90 days of history (not just the current month); 🔥 shown for streaks ≥ 3 |
-| **Modality dots** | One colored dot + count per modality with ≥1 completed session, sorted by count descending; uses `ModalityColorUtils.colorForModality` |
-
-Layout rules:
-- Divider separates grid from strip.
-- Strip fills all remaining vertical space below the grid via `Expanded`.
-- While the month is loading, the strip area shows `SizedBox.shrink()` to avoid flashing `—` values.
-- No scroll — grid uses `shrinkWrap: true` / `NeverScrollableScrollPhysics` so total height is bounded.
-
-### 3. Tap a Day
+### Day Routing
 
 Routing behavior is date-sensitive:
 - **Past day + exactly 1 entry**:
@@ -64,38 +41,17 @@ Routing behavior is date-sensitive:
 - **Past day + multiple entries** -> `DaySessionListScreen`
 - **Today/Future** -> `DaySessionListScreen`
 
-### 4. Day Session List
+### Day Session List
 
-`DaySessionListScreen` groups entries into:
-1. **Completed**
-2. **Planned**
+`DaySessionListScreen` groups entries into Completed first, then Planned.
 
-Behavior by date:
-- **Past day**: read-only
-- **Today/Future**:
-  - Add planned session
-  - Edit planned session
-  - Delete planned session
-  - Tap planned session to start workout
+**Past days are read-only.** Today and future days allow adding, editing, deleting, and starting a
+planned session; a past day allows none of those. Tapping a completed entry opens its summary;
+tapping a planned entry starts the workout via the routine build flow or the free/modality flow
+depending on whether it is routine-linked.
 
-Planned session form behavior (Add + Edit):
-- Shared bottom sheet (`_PlannedSessionForm`) is used for both add and edit entry points.
-- A contextual label `Session Type` appears above mode controls.
-- Mode selector uses two full-width segmented actions with exact labels:
-  - `Free Training`
-  - `Routine`
-- `Free Training` mode shows a Modality dropdown.
-- `Routine` mode shows a Routine dropdown.
-- Dropdown fields expand to available width in the sheet to avoid clipped text on narrow devices.
-- Existing form logic remains unchanged: only one mode is active and mode-specific fields swap in-place.
-
-Tap behavior:
-- Tap completed entry -> opens `SessionSummaryScreen` (with `openedFromCalendar: true`)
-- Tap planned entry -> starts workout:
-  - Routine-linked planned session -> routine build flow
-  - Modality-only planned session -> free/modality workout flow
-
-When workout is saved from summary, the originating `PlannedSession` is marked completed and linked via `linkedSessionId`.
+When a workout is saved from the summary, the originating `PlannedSession` is marked completed and
+linked via `linkedSessionId`.
 
 #### Historical-session summary behavior
 
@@ -119,12 +75,7 @@ unlocks three pieces of historical-aware behavior:
    indicator disappears from the grid). The confirmation dialog copy
    reflects the destructive + "return to previous screen" semantics.
 
-### 5. Periods
-
-From `CalendarScreen` app bar:
-```
-Periods button -> PeriodListScreen -> Create/Edit Period
-```
+### Periods
 
 Period capabilities:
 - List name + date range
@@ -287,10 +238,10 @@ Supporting flows:
 
 ---
 
-## Current Limitations
+## Invariants
 
-1. Recurrence is not implemented; `recurrenceRule` is placeholder-only.
-2. End-to-end smoke test checklist should be run after major calendar/period changes.
+**`recurrenceRule` is a placeholder field that is never read.** It exists on `PlannedSession` as a
+model extension point; no code branches on it. Do not assume scheduling recurrence works.
 
 ---
 

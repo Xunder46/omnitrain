@@ -1,48 +1,5 @@
 # My Routines — Feature Documentation
 
-> **2026-07-27 PR 6 (Tier 3 intent correction — shipped):** routine-card
-> bodies open the existing routine editor instead of starting a session;
-> a distinct, non-overlapping **Start** glyph on the card creates the
-> session in one tap. The card no longer renders an overflow menu — the
-> destructive delete action lives in the editor's app bar (`Icons.delete_outline`)
-> where the dialog can name the routine and state permanence. **S-006
-> contract (2026-07-28):** the start control is a *bare play triangle*,
-> not a filled button with a "Start" label. The glyph uses the theme
-> accent colour, has no fill or border, is vertically centred in the
-> row, and has a ≥ 48 dp touch target — but is no longer the largest
-> hit region on the card. The "Demo" pill lives on the metadata line
-> next to the creation date, not on the title line. Between these two
-> changes routine names of typical length render in full on narrow
-> viewports (320 dp) instead of being truncated to "Bodyweight \u2026" or
-> "Easy Run \u2014 3\u2026". **S-007 contract (2026-07-28):** the play glyph's
-> tappable region is *comfortably larger* than the visible glyph (≥ 44
-> dp in both dimensions — the implementation pins the tap region to
-> 56 dp without changing the 28 dp glyph itself). The tap region
-> never overlaps the row body and no point in a row is unresponsive.
-> The Demo badge sits at a fixed horizontal position on every row
-> regardless of date text length (the metadata line uses a `Stack` to
-> pin the badge to the right edge), while user rows render the date
-> line with no visible gap (the date reserves
-> `OmniTheme.demoBadgeReservedWidth` of right padding only when the
-> badge is present). **S-008 contract (2026-07-28):** the Demo badge
-> is moved BACK onto the title row next to the routine name and
-> vertically centred with the title text. The metadata line returns
-> to a simple `Row` with just the date text — no Stack and no
-> reserved space. The S-008 design reverts the metadata-line placement
-> from S-006 / S-007 now that the start control is small enough (56-dp
-> tap region around a 28-dp glyph) for the title row to host the badge
-> without crowding the routine name.
->
-> **S-005 contract:** on the `WorkoutSessionScreen`,
-> Add Exercise and Add Block are *always*-secondary OutlinedButtons
-> regardless of whether the session is empty or already has content —
-> adding a block or an exercise must never flip Add Exercise to primary.
-> The bottom Finish Workout CTA is the only `FilledButton` in the
-> session screen. PR 2 (Launch Quality Hotfix) already removed the
-> legacy horizontal/vertical swipe navigation from the routine detail
-> view. **PR 5 (Tier 3 data-loss guard — shipped) lands the
-> unsaved-changes guard described in `Editing a Routine` below.**
-
 ## Overview
 
 **My Routines** allows users to create, save, edit, and replay reusable workout templates. A routine defines a list of exercises with per-set target values (reps, weight, duration, etc.) that can be loaded into a live workout session with a single tap. This eliminates repetitive setup for recurring training patterns.
@@ -63,87 +20,11 @@ A **template system** that lets users design a workout once and replay it as man
 
 ---
 
-## User Workflows
+## Editing and Deleting
 
-### 1. Accessing My Routines
-```
-HomeScreen → Tap "My Routines" tile (bottom-right, grey)
-  → MyRoutinesScreen (list of saved routines)
-```
+### Editing a Routine
 
-The "My Routines" tile is a **special tile** on the home screen — it is not a modality tile. It navigates to the routine management screen rather than creating a session.
-
-If the user has an active routine session (intent = `'routine'`), tapping the My Routines tile navigates directly to the active `WorkoutSessionScreen` instead.
-
-### 2. Creating a Routine
-```
-MyRoutinesScreen → Tap "+ New Routine" (shared primary bottom CTA)
-  → RoutineSetupScreen (new routine, no name)
-    → Enter routine name
-    → Optionally set "Focus Modality" (Resistance, Cardio, Sports, Isometric)
-    → Tap (+) to add exercise
-      → ExercisePickerScreen (no modality filter — full library)
-      → IF Focus Modality is set: exercise is added immediately with that
-        modality's effort kind — no further prompt.
-      → IF Focus Modality is "Mixed / Not set" (null): ModalityPickerDialog
-        opens; user picks modality → exercise added with that effort kind.
-    → Configure targets (reps, weight, duration, etc.)
-    → Add/remove sets per exercise
-    → Reorder exercises via drag handles
-    → Per-exercise "Change Tracking" still opens ModalityPickerDialog
-      (override) in both focus-set and Mixed routines.
-    → Tap "Save"
-  → Returns to MyRoutinesScreen (routine appears in list)
-```
-
-> **Focus Modality inheritance rule**: when a routine has a Focus Modality,
-> new exercises silently inherit it. Changing the focus on a routine with
-> already-added exercises does NOT retroactively alter them — only exercises
-> added after the change inherit the new focus.
-
-### 3. Starting a Routine as a Session
-```
-MyRoutinesScreen → Tap a routine card
-  → System builds session manifest via RoutineSessionService
-    → Service queries repository for template + segments + efforts + targets + exercises
-    → Returns RoutineSessionManifest (pure data structure)
-  → WorkoutState creates new TrainingSession (intent: 'routine')
-  → WorkoutState populates session from manifest
-    → Pre-populates all exercises, sets, and target values
-  → Navigates to WorkoutSessionScreen
-  → User tracks workout as normal (log sets, adjust values)
-```
-
-If an active session exists, a confirmation dialog appears:
-> "Starting a routine will start a new session. Current session will not be saved."
-
-### 4. Editing a Routine
-
-> **PR 6 / S-006 / S-007 / S-008 contract:** tapping the card body
-> opens `RoutineSetupScreen` with no session created. The card's bare
-> **play glyph** (`Icons.play_arrow`, accent colour, no fill or
-> border, 56 dp tap region around a 28 dp visible glyph) on the
-> trailing edge is the only path that triggers the manifest +
-> active-session flow above. The card never renders an overflow menu.
-> Routine names of typical length render in full on a 320-dp
-> viewport; the "Demo" pill sits on the TITLE row next to the
-> routine name (vertically centred with the title text) and its
-> right edge is pinned to the title row's right edge regardless of
-> name length via an `Expanded` (FlexFit.tight) wrapper around the
-> title text.
-
-```
-MyRoutinesScreen → Tap ⋮ menu on routine card → "Edit"
-  → RoutineSetupScreen (pre-loaded with existing data)
-    → Modify name, add/remove exercises, adjust targets
-    → Tap "Save"
-  → Returns to MyRoutinesScreen (updated)
-```
-
-Current routine-detail screen gestures use the same `200` velocity threshold as
-workout detail: right/left selects the previous/next set and up/down selects the
-next/previous exercise. Feedback-pack PR 2 removes these screen-level gestures
-without changing metric scrollers or explicit controls.
+Tapping a routine card body opens `RoutineSetupScreen` without creating a session. The card's play control is the only path that builds the manifest and starts an active session. The card renders no overflow menu; the destructive delete action lives in the editor header.
 
 Header back, system back, and bottom Cancel all funnel through the same
 `_attemptExit` guard. The guard compares the working state against the
@@ -163,29 +44,11 @@ header-bar close icon is the "Keep editing" affordance. When detail is
 open, system back first returns to the list (same as the AppBar's back
 arrow) before the guard engages.
 
-### 5. Deleting a Routine
+### Deleting a Routine
 
-> **PR 6 contract:** the destructive delete action lives in the routine
-> editor's app bar (an `IconButton` with `Icons.delete_outline`, keyed
-> `routine-delete-action`). The card no longer has an overflow menu.
-> The confirmation dialog names the routine in both the title
-> (`Delete "<name>"?`) and body and explicitly states permanence
-> (`This action cannot be undone.`). If the routine has any
-> `PlannedSession` rows, the body also notes that they will be removed.
-> On confirm, the template and any planned-session rows are removed
-> from the repository; **completed sessions, their
-> `routineTemplateId`, all efforts, observations, rest records, and
-> analytics / PRs are preserved by design** — analytics read from
-> `TrainingSession` and its child rows directly and never join through
-> the template.
+Deleting a routine removes the template and any `PlannedSession` rows that reference it. **Completed sessions, their `routineTemplateId`, all efforts, observations, rest records, and analytics / PRs are preserved by design** — analytics read from `TrainingSession` and its child rows directly and never join through the template.
 
-```
-MyRoutinesScreen → Tap card body → RoutineSetupScreen
-  → Tap header delete icon (Icons.delete_outline)
-    → Confirmation dialog names the routine and states permanence
-    → Confirm → template (and any planned-session rows) removed
-      → Completed sessions, history, stats, and PRs unchanged
-```
+Verified by `test/pr6_routine_session_entry_navigation_test.dart` (`S-002 routine delete preserves history`).
 
 ---
 
@@ -213,57 +76,9 @@ WorkoutTemplate (routine)
 | `TemplateEffort` | `SegmentEffort` | Single exercise with tracking type |
 | `TemplateTarget` | `EffortObservation` | Per-set metric values |
 
-#### Model Fields
+### Database Schema
 
-**WorkoutTemplate**
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `ownerUserId` | `String?` | Future: user ownership |
-| `name` | `String` | Routine name (e.g., "Push Day") |
-| `primaryDisciplineId` | `String?` | Optional discipline filter |
-| `note` | `String?` | Optional notes |
-| `createdAtMs` | `int` | Timestamp |
-| `updatedAtMs` | `int` | Timestamp |
-
-**TemplateEffort**
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `templateSegmentId` | `String` | Parent segment |
-| `orderIndex` | `int` | Display order (supports reordering) |
-| `effortKind` | `String` | `set`, `timed`, `round`, or `drill` |
-| `modality` | `String?` | Optional modality context |
-| `exerciseId` | `String?` | References Exercise |
-| `note` | `String?` | Optional notes |
-| `createdAtMs` | `int` | Timestamp |
-
-**TemplateTarget**
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `templateEffortId` | `String` | Parent effort |
-| `metricId` | `String` | e.g., `metric-reps`, `metric-weight`, `metric-duration` |
-| `setIndex` | `int?` | Which set (0-based) |
-| `unitId` | `String?` | e.g., `unit-kg`, `unit-seconds` |
-| `targetMin` | `double?` | Used for weight values |
-| `targetMax` | `double?` | Range targets (unused currently) |
-| `targetInt` | `int?` | Used for reps, duration (seconds) |
-| `targetText` | `String?` | Text-based targets (unused currently) |
-| `createdAtMs` | `int` | Timestamp |
-
-### Database Schema (SQLite)
-
-```sql
-app_workout_template
-  ├── app_template_segment     (FK: template_id)
-  │     └── app_template_effort  (FK: template_segment_id, exercise_id)
-  │           └── app_template_target (FK: template_effort_id, metric_id, unit_id)
-```
-
-Foreign key cascade: deleting a template cascades through segments → efforts → targets.
-
-Additionally, `app_plan_day_template` is a join table for future training plan scheduling.
+The template hierarchy cascades on delete: removing a template removes its segments, their efforts, and those efforts' targets. `app_plan_day_template` is a join table reserved for training-plan scheduling. The canonical schema lives in `scripts/sqlite_schema.sql`.
 
 ### State Management
 
@@ -416,10 +231,6 @@ HomeScreen
 - **List state**: `ListView.builder` with `Card` widgets per routine
   - Each card shows: exercise icon, routine name, creation date (relative: "today", "3 days ago")
   - Built-in demo routines carry a subtle "Demo" badge (via `DemoRoutineBadge`) sourced from `OmniTheme` typography + `colorScheme.primary` tokens. The badge is purely informational; demo rows are still editable, startable, and deletable like user rows.
-  - Tap card → starts routine as session
-  - ⋮ menu → Edit or Delete
-  - No current unsaved-changes prompt protects routine setup exits
-  - Routine detail currently navigates sets/exercises with horizontal/vertical swipes at a `200` velocity threshold
 - **Primary bottom CTA**: `OmniBottomCTA(label: '+ New Routine', ...)` anchored via `Scaffold.bottomNavigationBar` — the shared full-width, safe-area-anchored footer action (see [widget_catalog.md → OmniBottomCTA](widget_catalog.md)). The list's bottom padding uses `OmniTheme.formBottomCTAClearance` so the last routine card clears the CTA. Replaces the legacy `FloatingActionButton` so the routines screen matches the unified bottom-CTA pattern used by the calendar day list, food library, etc.
 - **Active session indicator**: If current session is a routine session (`intent == 'routine'`), the My Routines home tile glows active
 
@@ -452,36 +263,12 @@ and the food catalog:
 Dual-view screen for building/editing a routine.
 
 #### List View (default)
-- **Routine name field**: `TextField` at the top
-- **Exercise list**: `ReorderableListView.builder` with drag handles
-  - Each `ExerciseCard` shows: drag handle, exercise name, tracking label (e.g., "Track by Reps & Sets")
-  - ⋮ menu: "Change Tracking" or "Remove"
-  - Tap card → opens detail view for that exercise
-- **Add button**: (+) in bottom-right corner
-- **Bottom actions**: Cancel / Save buttons
+
+Lists the routine's segments and their exercises, supports reordering, and opens the detail view for a chosen exercise. Per-exercise tracking can be overridden here.
 
 #### Detail View (per-exercise)
-- Navigated to by tapping an exercise card in list view
-- Shows: exercise name, tracking label chip, metric editors, previous-set stats, set progress, and navigation controls
-- **Metric editors**: Same `InlineMetricEditor` widget used in live sessions
-  - `set` → Reps + Weight scrollers
-  - `timed` → Extra Weight scroller only when the effort carries an extra-weight target; no duration editor is shown in routine setup
-  - `round` → Round counter + Duration scroller
-  - `drill` → Extra Weight scroller only; no hold-time editor is shown in routine setup
-- Weight labels respect the active `SettingsState` unit preference when available
-- **Set navigation**: Previous Set / Next Set arrows, set dots indicator
-- **Set management**: inline controls now flank the centered progress label
-  - remove-set button on the left
-  - `Set/Interval/Round/Hold X of Y` label in the middle
-  - add-set button on the right
-- Remove-set is only enabled on the final entry when more than one set exists; add-set is capped by `WorkoutConstants.maxEntriesPerEffort`
-- **Previous set stats**: Shows last set's values for reference (e.g., "Previous: 10 reps @ 135.0 lbs")
-- **Current screen-level swipe gestures** (absolute primary-velocity threshold `200`):
-  - Horizontal: right/left navigates to previous/next set
-  - Vertical: up/down navigates to next/previous exercise
-  - Feedback-pack PR 2 removes these handlers without replacement; metric scrollers and explicit arrows remain
 
-This detail view was intentionally brought into closer parity with the live `WorkoutSessionScreen` so routine editing and live execution share the same mental model.
+Edits per-set target values for one exercise using the same `InlineMetricEditor` primitive the live session uses, so routine editing and live execution share one mental model. Which editors appear depends on effort kind: routine setup exposes no duration target for `timed` and no hold-time target for `drill`. Weight labels respect the active `SettingsState` unit preference. Remove-set is enabled only on the final entry when more than one set exists; add-set is capped by `WorkoutConstants.maxEntriesPerEffort`.
 
 #### Smart Defaults for Targets
 When adding a set, targets auto-fill from the previous set:
@@ -498,13 +285,12 @@ When adding a new exercise, default targets depend on effort kind:
 
 ### Exercise Addition Flow (Routine Context)
 
-Routines have an optional Focus Modality and do not filter the picker library:
+> **Focus Modality inheritance rule**: when a routine has a Focus Modality,
+> new exercises silently inherit it. Changing the focus on a routine with
+> already-added exercises does NOT retroactively alter them — only exercises
+> added after the change inherit the new focus.
 
-1. Tap (+) → `ExercisePickerScreen` with the full library.
-2. Select an exercise.
-3. If Focus Modality is set, add immediately with that modality's effort kind.
-4. If Focus Modality is null (Mixed), open `ModalityPickerDialog`; the selected modality determines the effort kind.
-5. "Change Tracking" remains an explicit per-exercise override in either case.
+Routines have an optional Focus Modality and do not filter the picker library. When a focus is set, a newly added exercise takes that modality's effort kind directly; when the routine is Mixed (`null`), `ModalityPickerDialog` resolves it. "Change Tracking" remains an explicit per-exercise override in either case.
 
 Changing Focus Modality does not rewrite existing efforts; only exercises added afterward inherit the new value.
 
@@ -519,18 +305,6 @@ The "My Routines" tile is positioned in the bottom-right of the home screen grid
 | 1 | Cardio / Endurance | Resistance / Lifting |
 | 2 | Sports | Isometric / Stretching |
 | 3 | Free Training | **My Routines** |
-
-### Tile Configuration
-```dart
-HomeTileConfig(
-  key: 'my_routines',
-  label: 'My Routines',
-  iconData: Icons.folder_open,
-  gradientColors: [Color(0xFF252525), Color(0xFF1C1C1C)],  // Neutral grey
-  accentColor: Color(0xFF9E9E9E),
-  modality: null,  // Special tile, not a workout modality
-)
-```
 
 ### Active State Detection
 The My Routines tile glows active when the current session's `intent == 'routine'` (regardless of what modality any of the exercises may have been mapped to).
@@ -620,25 +394,6 @@ and `RoutineState.addSegment({String? name, String segmentType = 'main'})`.
 
 ---
 
-## Future Enhancements
-
-### Phase 2
-
-1. **Routine duplication**: Clone an existing routine to create a variation
-2. **Segment grouping**: Split routine into Warm-up / Main / Cool-down segments
-3. **Routine categories/tags**: Organize routines by type (Push, Pull, Legs, etc.)
-4. **Last-used values**: Display what the user actually lifted last time vs. what the target says
-5. **Routine scheduling**: Assign routines to days of the week via training plans (`app_plan_day_template`)
-
-### Phase 3
-
-1. **Shared routines**: Export/import routines between users
-2. **Coach-assigned routines**: Coaches create routines for athletes
-3. **Progressive overload suggestions**: Auto-suggest target increases based on history
-4. **Routine analytics**: Track completion rate and adherence per routine
-
----
-
 ## Related Documentation
 
 - [App Philosophy](app_philosophy.md) — Core design principles and entity model
@@ -649,23 +404,9 @@ and `RoutineState.addSegment({String? name, String segmentType = 'main'})`.
 
 ---
 
-## Architecture Evolution
+## Architecture Invariant — Template / Session Decoupling
 
-### Phase 1: Service Layer Decoupling (Feb 15, 2026)
-
-**Problem**: `RoutineState` directly imported and orchestrated `WorkoutState` methods, creating tight coupling that made testing difficult and violated separation of concerns.
-
-**Solution**: Introduced `RoutineSessionService` as an intermediary:
-- **RoutineState**: Template CRUD only (no session creation logic)
-- **RoutineSessionService**: Template → manifest conversion (pure business logic)
-- **WorkoutState**: Manifest → session population (session management only)
-- **UI**: Orchestrates service + state (explicit flow)
-
-**Benefits**:
-- ✅ Clean separation of concerns (templates vs. sessions)
-- ✅ Improved testability (no state mocking required)
-- ✅ Web/native compatibility (service uses repository interface)
-- ✅ Reusable manifest structures (can be used for APIs, exports, etc.)
+`RoutineState` must not depend on `WorkoutState`. Template CRUD belongs to `RoutineState`; template-to-manifest conversion belongs to `RoutineSessionService`; manifest-to-session population belongs to `WorkoutState`. The UI orchestrates the three. Violating this reintroduces the state-to-state coupling that made routine session creation untestable.
 
 ---
 

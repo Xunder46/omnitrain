@@ -216,7 +216,7 @@ void main() {
   });
 
   group('InlineMetricEditor interactions', () {
-    // Crown is dormant in InlineMetricEditor — value changes via tap-to-edit modal.
+    // Value changes go through the tap-to-edit modal.
 
     testWidgets(
       'weight tap-to-edit: entering 10.5 confirms to onValueChanged(10.5)',
@@ -278,81 +278,6 @@ void main() {
       },
     );
 
-    // The following tests drive MetricCrownWidget directly (dormant in
-    // InlineMetricEditor but still constructible) to verify that the crown's
-    // step-math is intact and has not been deleted.
-
-    testWidgets(
-      'fast weight drag on dormant crown widget still snaps to 0.5 increments',
-      (WidgetTester tester) async {
-        double? updatedValue;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MetricCrownWidget(
-                metricType: 'weight',
-                currentValue: 10.0,
-                onValueChanged: (value) => updatedValue = value as double,
-              ),
-            ),
-          ),
-        );
-
-        // Drive the crown's drag handler directly (same step-math as before).
-        final crownGd = tester.widget<GestureDetector>(
-          find.descendant(
-            of: find.byType(MetricCrownWidget),
-            matching: find.byType(GestureDetector),
-          ),
-        );
-        crownGd.onVerticalDragUpdate!(
-          DragUpdateDetails(
-            delta: const Offset(0, -13),
-            globalPosition: Offset.zero,
-          ),
-        );
-        await tester.pump();
-
-        expect(updatedValue, 10.5);
-      },
-    );
-
-    testWidgets(
-      'fast extra-weight drag on dormant crown widget still snaps to 0.5 increments',
-      (WidgetTester tester) async {
-        double? updatedValue;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MetricCrownWidget(
-                metricType: 'extra-weight',
-                currentValue: 0.0,
-                onValueChanged: (value) => updatedValue = value as double,
-              ),
-            ),
-          ),
-        );
-
-        // Drive the crown's drag handler directly.
-        final crownGd = tester.widget<GestureDetector>(
-          find.descendant(
-            of: find.byType(MetricCrownWidget),
-            matching: find.byType(GestureDetector),
-          ),
-        );
-        crownGd.onVerticalDragUpdate!(
-          DragUpdateDetails(
-            delta: const Offset(0, -13),
-            globalPosition: Offset.zero,
-          ),
-        );
-        await tester.pump();
-
-        expect(updatedValue, 0.5);
-      },
-    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -224,25 +224,11 @@ same time window. The HOW DID IT FEEL card never tells the user to rest.
   ticks (1, 2, 3, 4, 5; interval = 1). The y-axis is not auto-scaled;
   feeling is ordinal, not continuous, so no padding above 5 (which
   would produce a misleading 6th tick) and no zero-baseline below 1.
-  Renders inside the same `ScrollableTrendChart` wrapper as the other
-  on-card charts with `LineTouchData.enabled = false`. The connecting
-  line is one fixed color (`themeColors.primary`) — the same single-
-  color convention every other chart on the screen already uses — so
-  the line is always legible regardless of which rating was most
-  recently logged. Each point is painted in its own session's feeling
+  Each point is painted in its own session's feeling
   color via `feelingColor(feeling, themeColors)`, the same shared helper
   the post-session survey tile and the day-session-list border tint
   already use; the three surfaces stay in lockstep from one palette
-  source. Y-axis labels are bare integers (no unit suffix). The card
-  itself carries no in-card title — the `HOW DID IT FEEL` section
-  header above it is the only label. The chart renders with the
-  **same width conventions every other chart on the screen already
-  uses**: a 2dp line (`barWidth: 2`), 3dp-radius dots (`radius: 3`),
-  1.5dp dot stroke (`strokeWidth: 1.5`), no glow shadow, no halo
-  ring, straight segments (`isCurved: false`), and no area fill —
-  so the feeling chart reads at the same visual weight as the
-  e1RM, volume, cardio, and nutrition charts and never looks
-  louder than the trends around it.
+  source.
 - **Empty state** — when the resolved window contains zero sessions with
   a recorded feeling, an explicit empty-state card renders
   ("No feeling logged in this window yet"). Not a chart, not a flat line
@@ -295,25 +281,9 @@ day present for all series — so toggling never changes the x-domain.
 - **No-sessions branch** — when `_totalSessions == 0`, the global
   empty-state card is shown and the nutrition trend is not loaded.
 
-#### Per-day math (pure-Dart, in `StatsProgressService`)
+#### Per-day aggregation
 
-```
-calories = Σ ConsumedFood.caloriesConsumed          // per-row, already rounded
-protein  = Σ (protein × amountConsumed / referenceAmount)  accumulated as double, rounded once per day
-carbs    = Σ (carbs   × amountConsumed / referenceAmount)  accumulated as double, rounded once per day (total carbs, not net)
-fat      = Σ (fat     × amountConsumed / referenceAmount)  accumulated as double, rounded once per day
-```
-
-The carbs line plots **total** carbs grams (not net carbs), matching
-the home strip's "total carbs for blue" semantics. The color token
-is named `netCarbs` because the donut reuses that slot, but the value
-plotted here is total carbs.
-
-The aggregation is computed by
-`StatsProgressService.computeNutritionTrend({int? days})` and is the
-same on Hive (web) and any future native SQLite implementation — it
-depends only on `WorkoutRepository.getConsumedFoodsInRange` and the
-`ConsumedFood` model, both environment-agnostic.
+Computed by `StatsProgressService.computeNutritionTrend({int? days})`. The carbs line plots **total** carbs grams, not net carbs — the colour token is named `netCarbs` because the donut reuses that slot, but the plotted value is total carbs. The aggregation depends only on `WorkoutRepository.getConsumedFoodsInRange` and the `ConsumedFood` model, so it is environment-agnostic.
 
 ---
 
@@ -392,8 +362,7 @@ ago can't occupy a card while the user's current focus never appears.
 **Only the selection is windowed**: every selected exercise's trend
 chart continues to use that exercise's FULL history, and the Recent
 PRs card stays all-time (a PR's whole point is being a lifetime high).
-The ALL TIME pills, the 30-day Activity bar chart, the Streak, and the
-Rest Time chart are unaffected.
+The ALL TIME pills and the Streak are unaffected.
 
 ### Resolution Rule
 
@@ -431,21 +400,11 @@ one window in a given load.
 | Cardio pace / distance / duration trend | No | Always full history for the selected exercise |
 | Recent PRs | No | Always all-time (Epley, `effortKind == 'set'`) |
 | ALL TIME pills (Sessions / Time / Streak) | No | Unchanged |
-| 30-day Activity bar chart | No | Unchanged |
-| Rest Time chart | No | Unchanged |
 | NUTRITION card | No | Always full history (`days: null`) |
 
 ### On-screen Window Label
 
-Each section header is followed by an inline italic chip with the
-window's `label`:
-
-- Period-scoped: `"· <period.name>"` (e.g., `· Off-Season Strength Block`).
-- Recent-days: `"· Last <N> training days"` (e.g., `· Last 14 training days`).
-
-The chip explains the readout — a Strength or Cardio card that
-shows the user's current focus and a label that says
-`· Off-Season Strength Block` makes the scope obvious.
+Each section header carries an inline chip naming the resolved window — the training period's name when one is active, otherwise the recent-training-days fallback. The chip exists so the scope of the readout is never ambiguous.
 
 ---
 
@@ -469,22 +428,16 @@ final data = await StatsProgressService(
 
 ## Key Constants (StatsProgressService)
 
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `kTopLiftCount` | 3 | Max lifts shown in Strength section |
-| `kTopCardioCount` | 2 | Max cardio activities shown |
-| `kRecentPRCount` | 5 | Max PR rows in the Recent PRs card |
-| `kRecentTrainingDaysWindow` | 14 | Single tunable: number of recent "training days" used for the Strength/Cardio selection window when no period qualifies. See [Selection Window](#selection-window-current-state-window). |
-| `kTopExerciseRecencyDays` | 30 | Recency floor (calendar days) for Strength and Cardio top-slot selection. An exercise whose most-recent training day is older than this drops out of the displayed top slots regardless of its historical frequency. Applied symmetrically to Strength and Cardio. See `.github/agents/plans/stats-summary-fix-pack-plan.md` Item 3. |
-| `kNutritionTrendDays` | 10 | Soft "default visible window" hint; the NUTRITION card uses `days: null` for full history |
+Values live in `lib/core/services/stats_progress_service.dart`; this document names them and says what each governs.
 
-## Key Constants (`ScrollableTrendChart`)
-
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `kScrollableTrendPerPointWidth` | 48 px | Fixed horizontal slot per plotted point |
-| `kScrollableTrendPinnedAxisWidth` | 64 px | Width of the static y-axis label column |
-| `kScrollableTrendChartHeight` | 120 px | Standard on-card chart height |
+| Constant | Meaning |
+|----------|---------|
+| `kTopLiftCount` | Max lifts shown in the Strength section |
+| `kTopCardioCount` | Max cardio activities shown |
+| `kRecentPRCount` | Max PR rows in the Recent PRs card |
+| `kRecentTrainingDaysWindow` | Number of recent training days used for the Strength/Cardio selection window when no period qualifies |
+| `kTopExerciseRecencyDays` | Recency floor for top-slot selection; an exercise whose most-recent training day is older than this drops out regardless of historical frequency. Applied symmetrically to Strength and Cardio |
+| `kNutritionTrendDays` | Soft default-window hint; the NUTRITION card passes `days: null` for full history |
 
 ---
 
@@ -515,133 +468,6 @@ final data = await StatsProgressService(
 
 **Document Version**: 2.3
 **Last Updated**: June 25, 2026
-
-
----
-
-## Navigation Entry Point
-
-```
-HomeScreen
-  └── Maintenance sheet (swipe up or tap hint)
-        └── Stats → StatsScreen
-```
-
----
-
-## What the Screen Displays
-
-The screen is organized into three sections, each rendered as an `OmniSurface` card:
-
-### ALL TIME
-A row of three stat pills:
-
-| Stat | Source |
-|------|--------|
-| **Sessions** | Count of completed sessions across all time (sessions where `endedAtMs != null`) |
-| **Total Time** | Sum of `endedAtMs − startedAtMs` for all completed sessions, formatted as h:mm |
-| **Streak** | Current consecutive-day training streak, delegated to `CalendarState.streakDays`; a flame icon appears when streak ≥ 3 days |
-
-### ACTIVITY
-A **30-day session activity bar chart** built with `fl_chart`:
-
-- Index 0 = 29 days ago; index 29 = today (window anchored at load time, never re-evaluated on rebuild)
-- Bar height = number of completed sessions that day
-- Bar color = `themeColors.primary` (current theme accent; not per-modality)
-- X-axis labels appear at indices 0, 7, 14, 21, 28 in `"Mon DD"` format (short month name + day)
-- Empty days render as zero-height bars
-
-### REST TIME
-A **multi-line chart** showing average rest duration (seconds) per day, one line per modality. Only visible when closed rest records exist in the 30-day window.
-
-- Each line uses the modality accent color from `ModalityColors.forModality(modality)`
-- Modalities displayed in order: `cardio_endurance`, `resistance_lifting`, `sports`, `isometric_stretching`, Free Training (`null`)
-- Null-modality (Free Training) is included if rest records exist for it
-- Days with no rest data for a modality are skipped (no gap-fill)
-
----
-
-## Streak Calculation
-
-Streak is not computed inside `StatsScreen`. A temporary `CalendarState` is created internally using the repository from `WorkoutState`, initialized, and its `streakDays` getter is read. The calculation logic lives in `CalendarState._computeStreak()` (up to 90 days of history). See [Calendar & Periods](calendar_periods.md) for full streak logic.
-
----
-
-## How the 30-Day Chart Works
-
-- `_dayCounts` is a 30-element `List<int>` initialized to zero, indexed `[0..29]` where 0 = 29 days ago and 29 = today
-- Sessions in the 30-day window are iterated; each session contributes +1 to the `dayIndex` computed from `sessionDay.difference(thirtyDaysAgo).inDays`
-- Only completed sessions (`endedAtMs != null`) are counted
-- The date window is anchored at load time (`_thirtyDaysAgo`, `_today`) so that a midnight rebuild (e.g. triggered by a theme change) does not shift bar indices while `_dayCounts` still represents the original window
-
----
-
-## Data Loading
-
-All data is loaded in `_loadData()`, called once on first frame via `addPostFrameCallback`. Two repository calls are made in parallel:
-
-```dart
-final results = await Future.wait([
-  widget.workoutState.getAllSessions(),           // all-time aggregates
-  widget.workoutState.getSessionsByDateRange(fromMs, toMs),  // 30-day chart
-]);
-```
-
-Rest averages are fetched via:
-```dart
-workoutState.repository.getEntryRestsByModalityInDateRange(fromMs, toMs)
-```
-
-The screen shows a `CircularProgressIndicator` while loading and an empty-state message when no completed sessions exist.
-
----
-
-## What Is Intentionally Not in v1
-
-- No per-modality session count breakdown
-- No date range selector or filter controls
-- No week / month / year toggle
-- Those three remain deferred to post-launch iteration
-
-> **Corrected 2026-07-26 (docs audit).** This list also claimed "No
-> per-exercise or per-exercise-type stats". That is no longer true and it
-> contradicted this document's own overview. `StatsScreen` renders
-> **per-exercise** trend cards: each Strength entry shows an exercise name with
-> its e1RM / volume / reps trends, each Cardio entry shows an exercise name
-> with pace and distance-or-duration trends, and Recent PRs are listed per
-> exercise. Source: `lib/features/stats/stats_screen.dart` (`lift.exerciseName`,
-> `cardio.exerciseName`, `pr.exerciseName`).
->
-> The other three items were re-verified against source on the same date and
-> still hold: there is no modality breakdown, no date-range/filter control, and
-> no week/month/year toggle. The only `SegmentedButton` on the screen is the
-> NUTRITION card's Calories / Macros view switch, which is not a time-range
-> control.
-
----
-
-## Core Files
-
-| File | Role |
-|------|------|
-| `lib/features/stats/stats_screen.dart` | Full screen implementation |
-| `lib/state/workout/workout_state.dart` | `getAllSessions()`, `getSessionsByDateRange()`, repository access |
-| `lib/state/calendar/calendar_state.dart` | `streakDays` getter (created internally by `StatsScreen`) |
-| `lib/state/settings/settings_state.dart` | Theme colors for the chart and layout |
-| `lib/core/constants/modality_colors.dart` | Per-modality accent colors for the rest time chart |
-
----
-
-## Related Documentation
-
-- [Calendar & Periods](calendar_periods.md) — streak calculation details
-- [State Management & Services](state_management.md)
-- [Navigation & Screens](navigation_and_screens.md)
-
----
-
-**Document Version**: 1.0
-**Last Updated**: April 11, 2026
 
 
 ---

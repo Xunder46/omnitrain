@@ -80,6 +80,11 @@ The shared plan file at `.github/agents/plans/[feature]-plan.md` is the single s
   - Button / styling → `docs/design_system.md`
 - Do not read feature docs unrelated to the change under review
 
+**This limit governs intent-gathering only** — what you read to understand the
+change before reviewing code. It does **not** apply to Step 5c, which derives its
+own scope from the changed files and reads every document implicated by them,
+however many that is. Do not carry the one-doc cap into that step.
+
 See `docs/README.md` for the full index if you need to locate something specific.
 
 ## Global Conventions (CRITICAL)
@@ -132,19 +137,169 @@ If `## Scenarios` exists in the plan file:
 
 If no `## Scenarios` section exists, note as **WARNING** and flag to Developer to add retroactively.
 
-### Step 5c — Doc Hygiene Verification
+### Step 5c — Documentation Falsification Check (BLOCKING)
 
-Read the handoff summary. Report as a compact table — one row per doc, status only:
+**Run this on every change, including changes that touch no documentation at
+all.** A code-only change is the *normal* way documentation becomes false: the
+code moves and the prose stays behind. Every false claim in
+`.github/agents/docs-standard-audit-2026-07-30.md` was produced by a change that
+added nothing to any document and was approved for exactly that reason. If you
+skip this step because there is no documentation diff, you have reproduced the
+bug this step exists to catch.
 
-| Doc | Status |
-|---|---|
-| navigation_and_screens.md | ✅ / ❌ Stale / N/A |
-| state_management.md | ✅ / ❌ Stale / N/A |
-| widget_catalog.md | ✅ / ❌ Stale / N/A |
-| data_models.md | ✅ / ❌ Stale / N/A |
-| db_integration.md | ✅ / ❌ Stale / N/A |
+**How this differs from Step 5c-2.** The two are separate and neither substitutes
+for the other:
 
-For each doc listed as updated, read it and verify it reflects actual post-implementation state. Flag missing or stale doc updates as **WARNING**.
+- **5c-2 rejects prohibited content being *added* to a document.** It runs when
+  a change touches documentation. It is about what the diff puts in.
+- **5c (this step) rejects a document a change has made *false*.** It runs on
+  every change regardless of whether documentation was touched. It is about what
+  the code did to prose nobody edited.
+
+Do not apply 5c-2's prohibited-content list here, and do not restate it. A
+document can be fully standard-conformant and still be false; that is a 5c
+rejection, not a 5c-2 one.
+
+#### Deriving scope — start from the code, not the summary
+
+1. List the files the change actually touched.
+2. Read the **scope declaration** at the top of each document under
+   `.github/agents/docs/`. Every document states which parts of the codebase it
+   covers. That declaration is your mapping.
+3. A document is **implicated** when any changed file falls inside its declared
+   scope.
+4. **A document with no scope declaration, or one you cannot parse, is treated as
+   covering everything and is implicated by every change.** Read it. The absence
+   has to cost something, or it will be omitted.
+5. **A scope declaration that under-claims is worse than a missing one.** If a
+   document's declared scope looks narrower than what the document actually
+   talks about, treat the document as implicated anyway and report the
+   mismatch. A missing block fails safe; an under-claiming block fails
+   silently — it makes you skip a document you should have read, and the
+   fallback in (4) never fires.
+
+Most documents do not yet carry a scope declaration, so rule (4) currently
+implicates the whole set on most changes. That is the correct conservative
+behaviour, not a defect — narrow it by adding scope declarations, never by
+guessing which documents to skip.
+
+**The handoff summary is not the source of scope.** Derive scope from changed
+files, then use the summary only as corroborating evidence — it is useful for
+spotting a claimed documentation update that did not actually happen, and for
+nothing else. A document nobody mentioned is implicated if the code says so.
+
+There is no fixed list of documents to check. Scope is derived per change and may
+name any document in the set.
+
+#### Reading limit
+
+The "one feature doc" limit under **Feature Documentation** governs
+*intent-gathering before reviewing code*. It does **not** limit this step. Read
+every implicated document. Verification is not capped.
+
+#### What to check in each implicated document
+
+For each implicated document, verify its claims against the **post-change** state
+of the code:
+
+- [ ] Does any claim describe behaviour the change altered or removed?
+- [ ] Does any named file, class, method, constant, or test still exist?
+- [ ] Does any structural claim (what owns what, what a component is responsible
+      for, what routes where) still hold?
+- [ ] Does any stated invariant still hold, or did the change break it?
+
+**Conflicts between documents.** If two implicated documents make conflicting
+claims about the same area, report the conflict and **do not pick a winner**.
+Where two documents disagree, at least one is wrong and no reader can tell
+which — resolving it silently hides that from the person who can.
+
+#### Severity — false blocks, incomplete warns
+
+Distinguish these explicitly; they are not the same failure:
+
+| Finding | Severity | Why |
+|---|---|---|
+| Document asserts something **untrue** about the current product | ❌ **REJECT** — blocking, same severity as 5c-2 | It actively misleads an agent into wrong work |
+| Document is **incomplete** — silent about something new, but says nothing false | 🟡 WARNING | It only fails to help; it does not mislead |
+
+A false claim is a rejection. It does not matter that the change is otherwise
+correct, that the document was already wrong before this change, or that no one
+asked for a documentation update.
+
+#### The required remedy for stale behavioural prose
+
+Where the change alters behaviour an existing document *describes*, the fix is to
+**delete the prose and point at the test that verifies the new behaviour** — not
+to edit the description into a corrected version.
+
+State this in the finding. Editing behavioural prose into a corrected version is
+precisely how these documents decayed: the corrected version is just as unable to
+fail when it goes stale again. It would also be rejected by 5c-2 on the way in.
+If the changed behaviour has no test, the remedy is a test, then a pointer.
+
+#### Output
+
+One line per implicated document. Expand only on failure.
+
+```
+DOC FALSIFICATION: ✅ PASS (N implicated) — doc1.md, doc2.md
+DOC FALSIFICATION: ❌ REJECT — <doc>:<line> — <the false claim> — now <actual state> → delete prose, point at <test>
+DOC FALSIFICATION: 🟡 WARNING — <doc> — incomplete: <what is unmentioned>
+DOC FALSIFICATION: ⚠️ CONFLICT — <docA>:<line> vs <docB>:<line> — <the disagreement> → resolve before either is trusted
+DOC FALSIFICATION: 🟡 SCOPE — <doc> — declared scope narrower than content; verified anyway
+```
+
+A zero-implicated result is not currently reachable: until documents carry scope
+declarations, rule (4) implicates all of them. If you find yourself reporting
+zero, you have skipped the step rather than completed it.
+
+Do not print a row for a document that is not implicated.
+
+### Step 5c-2 — Documentation Standard Enforcement (HARD REJECTION)
+
+**This is a rejection criterion, not a suggestion.** Any change that adds
+prohibited content to a document under `.github/agents/docs/` **MUST be rejected
+as ❌ Critical**, regardless of how accurate the added content is. Accuracy is
+not the test — accuracy decays silently, which is the entire reason these
+classes are banned. `.github/agents/docs/documentation_standard.md` is the
+authority; read it before reviewing any documentation diff.
+
+Reject the change if it adds, to any reference document, content in any of these
+seven classes:
+
+| # | Prohibited class | Reject on sight |
+|---|---|---|
+| 1 | **Step-by-step user flow** | Numbered walkthroughs, arrow chains (`X → Y → Z`), "User Workflow" sequences |
+| 2 | **Visual presentation** | Sizes, colours, hex literals, icons, positions, spacing, opacity, typography, layout |
+| 3 | **Control / gesture inventory** | Tables or lists of buttons, taps, swipes, drags, long-presses and what each triggers |
+| 4 | **Numeric value defined in source** | Any threshold, duration, default, dimension, cap, or count restated from a constant |
+| 5 | **Copied implementation content** | Pasted code blocks, method bodies, per-class field tables, SQL reproduced from schema |
+| 6 | **Roadmap / planned work** | "Future Enhancements", "Planned Features", "Phase 2/3", "Deferred", "not yet implemented" |
+| 7 | **Unshipped-change note** | Any note describing behaviour a pending PR will add or remove ("Scheduled, not current") |
+
+Two exceptions exist and are **exhaustive**, scoped in standard §6:
+`design_system.md` may carry visual *rules* but **no values and no hex
+literals**; `data_models.md` may carry model *relationships* but **no per-class
+field tables**. Anything outside those scopes is rejected in those documents
+too.
+
+**Additionally reject** a documentation change touching a behavioural area that
+describes the behaviour instead of pointing at where it is verified. The
+required form is a named test file (and group or test name where it helps), not
+prose restating what the code does. If the behaviour has no test, the correct
+outcome is a test, not a paragraph.
+
+Report as:
+
+```
+DOC STANDARD: ❌ REJECT — <doc>:<line> — class <N> (<name>) — remove, or replace with a test pointer
+DOC STANDARD: ✅ PASS — no prohibited content added
+```
+
+Three guard tests in `test/docs_indexing_contract_test.dart` catch the most
+mechanical cases (hex literals, arrow-chain walkthroughs, roadmap headings). A
+green suite is **not** sufficient — the guards do not detect control
+inventories, copied code, or restated numerics. Those are yours to catch.
 
 ### Step 5d — Global Conventions Verification
 
@@ -350,8 +505,10 @@ Read `.github/agents/plans/[feature]-plan.md` for original intent, acceptance cr
 ### Step 2: Read Changed Files
 Read only files in touched layers and their corresponding test files.
 
-### Step 3: Acceptance Criteria + Scenario Register + Doc Hygiene
-Run Steps 5a, 5b, 5c, and 5d. Behavioural correctness before code quality.
+### Step 3: Acceptance Criteria + Scenario Register + Doc Verification
+Run Steps 5a, 5b, 5c, 5c-2, and 5d. Behavioural correctness before code quality.
+Step 5c runs on every change, including code-only changes with no documentation
+diff; 5c-2 runs when the change touches documentation.
 
 ### Step 4: Check Architecture
 Run only checklist sections for in-scope layers.

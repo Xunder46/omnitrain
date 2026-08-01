@@ -24,71 +24,14 @@ TrainingSession
 
 ### TrainingSession
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `title` | `String?` | Session name (e.g., "Morning Lift") |
-| `modality` | `String?` | e.g., `cardio_endurance`, `resistance_lifting`, `null` (Free Training) |
-| `intent` | `String?` | Session purpose: `routine`, or intent constants like `strength`, `hypertrophy` |
-| `startedAtMs` | `int` | Epoch milliseconds when session began |
-| `endedAtMs` | `int?` | Epoch ms when session ended (`null` while active) |
-| `note` | `String?` | User-added session note |
-| `routineTemplateId` | `String?` | Links to source `WorkoutTemplate` if started from a routine |
-| `sessionFeeling` | `int?` | Optional 1-5 post-session feeling score |
-| `qualityRating` | `int?` | Reserved nullable quality field |
-| `isRolling` | `bool` | Marks the session as using the rolling/continuous format. Exercises are grouped into named time-stamped segment blocks; session duration display is suppressed. Defaults to `false`. |
-| `ownerUserId` | `String` | Owning user id |
-| `locationText` | `String?` | Optional free-text location for the session |
-| `perceivedSessionRpe` | `double?` | Optional whole-session perceived exertion; distinct from the 1-5 `sessionFeeling` |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
-
 Active session persistence semantics:
 - A session is considered in-progress when `endedAtMs == null`.
 - Cold-start resume flow reads these in-progress rows and surfaces only the most recent session.
 - No model changes were required for resume behavior.
 
-### SessionSegment
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `sessionId` | `String` | Parent session |
-| `segmentType` | `String` | Block type (e.g., `mixed`) |
-| `orderIndex` | `int` | Display ordering |
-| `disciplineId` | `String?` | Optional FK to `Discipline` |
-| `name` | `String?` | Optional segment label |
-| `note` | `String?` | Optional segment note |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
-
-### SessionBlock
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `sessionId` | `String` | Parent session |
-| `name` | `String` | User-facing block label |
-| `orderIndex` | `int` | Legacy block ordering field (kept for compatibility) |
-| `topLevelOrderIndex` | `int?` | Canonical top-level active-session order (shared with standalone efforts) |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last update timestamp |
+Models with no behaviour beyond their fields: SessionSegment, SessionBlock.
 
 ### SegmentEffort
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `segmentId` | `String` | Parent segment |
-| `exerciseId` | `String?` | References `Exercise` |
-| `effortKind` | `String` | `set`, `timed`, `round`, or `drill` |
-| `orderIndex` | `int` | Display ordering |
-| `topLevelOrderIndex` | `int?` | Canonical top-level order for standalone efforts; aligns block members to their block's top-level slot |
-| `blockOrderIndex` | `int?` | Canonical local order inside a block; null for standalone efforts |
-| `blockId` | `String?` | FK to the owning `SessionBlock`; `null` for standalone efforts. Deleting a block nulls this rather than deleting the effort |
-| `note` | `String?` | Per-exercise note |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
 
 > **Corrected 2026-07-26 (docs audit).** `modality` was listed as a field but
 > does not exist on `SegmentEffort` (nor as a column on
@@ -102,21 +45,6 @@ Ordering contract:
 - `createdAtMs` is a tie-breaker only, never the primary ordering source.
 
 ### EffortObservation
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID. **Also carries the entry index** — see the note below |
-| `effortId` | `String` | Parent effort |
-| `metricId` | `String` | e.g., `metric-reps`, `metric-weight`, `metric-duration` |
-| `valueReal` | `double?` | Decimal value (weight, distance) |
-| `valueInt` | `int?` | Integer value (reps, duration seconds) |
-| `valueText` | `String?` | Text value |
-| `valueBool` | `bool?` | Skip marker: `true` when set was explicitly skipped (with `valueInt: 0`); used by `_isSetLogged` to restore skip state on reload |
-| `unitId` | `String?` | Unit reference (e.g., `unit-kg`) |
-| `rpeRating` | `int?` | Optional RPE 1-10 value for richer observation payloads |
-| `restDurationMs` | `int?` | Legacy field — superseded by `EntryRest` for all effort kinds; currently unpopulated |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
 
 > **Corrected 2026-07-26 (docs audit).** This table previously listed two
 > fields that do not exist on the model or in the schema:
@@ -155,22 +83,6 @@ Observations are persisted one-per-entry and grouped by effort kind:
 
 ### RoundInstance
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `effortId` | `String` | Parent effort |
-| `roundIndex` | `int` | 0-based position (ordering) |
-| `plannedDurationSecs` | `int` | Target round length (default: 180) |
-| `actualDurationSecs` | `int` | How long round actually ran (capped) |
-| `state` | `RoundState` | Current lifecycle state |
-| `startedAtMs` | `int` | Wall-clock epoch ms when started (0 = not started) |
-| `pausedAtMs` | `int?` | Epoch ms of most recent pause |
-| `totalPausedDurationMs` | `int` | Cumulative pause time |
-| `finishedAtMs` | `int` | Epoch ms when round ended (0 = not finished) |
-| `completed` | `bool` | `true` only when ended via natural countdown |
-| `id` | `String` | UUID |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
-
 **Computed getters:**
 - `elapsedMs` — derived from timestamps; 0 for notStarted; frozen when paused
 - `remainingMs` — `(plannedDurationSecs * 1000 - elapsedMs).clamp(0, planned)`
@@ -180,19 +92,6 @@ Observations are persisted one-per-entry and grouped by effort kind:
 ### EntryRest
 
 Wall-clock-persisted rest record created when a set/round is logged. Tracks recovery time between entries for any effort kind. See [Rest Tracking](rest_tracking.md) for full architecture.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | Deterministic key: `'rest-{effortId}-{entryIndex}'` |
-| `effortId` | `String` | Parent `SegmentEffort` id |
-| `entryIndex` | `int` | 0-based; identifies the set/round this rest precedes |
-| `restStartMs` | `int` | Wall-clock epoch ms when the previous set was logged |
-| `restEndMs` | `int?` | Wall-clock epoch ms when the next set/round was started; `null` while still resting |
-| `restIsPaused` | `bool` | PR 4: `true` while the rest window is in the paused state. While paused, `elapsedSeconds` freezes at `restPausedAtMs`. |
-| `restPausedAtMs` | `int?` | PR 4: wall-clock instant when the rest was paused; `null` when not paused |
-| `restPausedDurationMs` | `int` | PR 4: cumulative paused time across all pause/resume cycles. Subtracted from the recorded duration so stopped intervals never count. |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
 
 **Computed helper:**
 - `elapsedSeconds(int nowMs)` — `((effectiveEndMs - restStartMs - restPausedDurationMs) / 1000).round()`, clamped to `[0, 99999]`. `effectiveEndMs` is `restEndMs` if closed, otherwise `restPausedAtMs` while paused or `nowMs` while running.
@@ -208,21 +107,6 @@ The timed counterpart to `RoundInstance`. One record per timed entry within a
 It **replaces the old duration `EffortObservation`** for these effort kinds —
 companion metrics (distance for timed, extra weight for drill) remain as
 `EffortObservation` rows. SQLite table: `app_timed_instance`.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `effortId` | `String` | Parent `SegmentEffort` id |
-| `entryIndex` | `int` | 0-based entry number within the effort |
-| `targetDurationSecs` | `int` | Target length for alert/expiry. `0` means open-ended (no alert, no expiry) |
-| `actualDurationSecs` | `int` | Elapsed time at finish, derived from timestamps — never accumulated as a counter |
-| `startedAtMs` | `int` | Wall-clock epoch ms when started (`0` = not started) |
-| `finishedAtMs` | `int?` | Wall-clock epoch ms when finished; `null` until terminal |
-| `state` | `TimedState` | Current lifecycle state |
-| `pausedAtMs` | `int?` | Epoch ms of the most recent pause; cleared on resume |
-| `totalPausedDurationMs` | `int` | Cumulative paused time, subtracted from elapsed |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
 
 **Computed helper:**
 - `elapsedMs` — `now - startedAtMs - totalPausedDurationMs`. Always derived
@@ -243,34 +127,7 @@ One persistent note per exercise, surviving across sessions. SQLite table:
 `app_exercise_note`, with a unique index on `exercise_id` enforcing the
 one-note-per-exercise rule.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `exerciseId` | `String` | FK to `Exercise` — unique; one note per exercise |
-| `note` | `String` | The note body |
-| `lastSessionId` | `String?` | Session in which the note was last edited |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
-
 ### Exercise
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `ownerUserId` | `String?` | Set to `'user-1'` by `ExerciseLibrary.createExercise` for user-created exercises; bundled seed exercises leave it `null`. See the caveat below |
-| `name` | `String` | Display name |
-| `modality` | `String?` | Exercise modality key: `cardio_endurance`, `resistance_lifting`, `isometric_stretching`, `sports`; nullable for pre-feature legacy/custom exercises |
-| `description` | `String?` | Optional description |
-| `disciplineId` | `String?` | FK to `Discipline` |
-| `movementPattern` | `String?` | Movement-pattern classification (e.g. hinge, squat, press) |
-| `isArchived` | `bool` | Soft-delete flag |
-| `capabilities` | `List<String>` | Capability flags (populated at query time, not stored on model) |
-| `defaultRoundDurationSecs` | `int?` | Sport-specific default round/period length in seconds. `null` = use `WorkoutConstants.defaultRoundDurationSecs` (180). Only meaningful for `effortKind == 'round'` exercises — e.g. Soccer Match = 2700 (45-min half), Ice Hockey = 1200 (20-min period) |
-| `howToSteps` | `List<String>?` | Ordered how-to instructions shown in the exercise-info sheet (added in migration v5) |
-| `imageAssetPath` | `String?` | Bundled illustration asset path (added in migration v5) |
-| `relevanceScore` | `double?` | Transient field for ranked sorting; populated only by ranked queries, never persisted |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
 
 > **Corrected 2026-07-26 (docs audit).** This table listed `isCustom`
 > (`bool`, "user-created vs seed data"). **No such field exists** — not on
@@ -321,67 +178,15 @@ one-note-per-exercise rule.
 - `supportsAny(List<String>)` — any-of check
 - `copyWith({...})` — full copy constructor including `relevanceScore` and nullable `modality` (sentinel-backed)
 
-### Discipline
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `name` | `String` | e.g., "Running", "Boxing" |
-| `categoryId` | `String?` | FK to `SportCategory` |
-| `key` | `String` | Stable lookup key |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
-
-### SportCategory
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | e.g., `category-cardio`, `category-sports` |
-| `name` | `String` | Display name |
-| `key` | `String` | Stable lookup key |
-| `description` | `String?` | Optional description |
-| `iconName` | `String?` | Optional icon identifier |
-| `sortOrder` | `int` | Display ordering; defaults to `0` |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
-| `deletedAtMs` | `int?` | Soft-delete timestamp; `null` when active |
+Models with no behaviour beyond their fields: Discipline, SportCategory.
 
 ### MuscleGroup
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `name` | `String` | e.g., "Quads", "Chest" |
-| `createdAtMs` | `int` | Creation timestamp |
 
 > **Corrected 2026-07-26 (docs audit).** `bodyRegion` was listed but does not
 > exist on the model or as a column on `app_muscle_group`. `createdAtMs` was
 > missing.
 
-### Equipment
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `name` | `String` | e.g., "Barbell", "Dumbbell" |
-| `createdAtMs` | `int` | Creation timestamp |
-
-### Tag
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `name` | `String` | Freeform tag |
-| `createdAtMs` | `int` | Creation timestamp |
-
-### ExerciseAlias
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `exerciseId` | `String` | FK to Exercise |
-| `alias` | `String` | Alternative name for search matching |
-| `id` | `String` | UUID |
-| `createdAtMs` | `int` | Creation timestamp |
+Models with no behaviour beyond their fields: Equipment, Tag, ExerciseAlias.
 
 ---
 
@@ -396,40 +201,12 @@ one-note-per-exercise rule.
 A session the user has scheduled on the calendar but has not necessarily
 performed. SQLite table: `app_planned_session`.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `ownerUserId` | `String` | Owning user id |
-| `scheduledDateMs` | `int` | Intended training day. Stored as **start-of-day (midnight local time)** for reliable day-level grouping |
-| `modality` | `String?` | Modality key, or `null` for Free Training |
-| `title` | `String?` | Optional short title |
-| `note` | `String?` | Optional notes |
-| `isCompleted` | `bool` | `true` once performed; `false` while still planned |
-| `linkedSessionId` | `String?` | FK to the `TrainingSession` created when the plan was executed |
-| `routineTemplateId` | `String?` | FK to a `WorkoutTemplate` when the plan is based on a routine |
-| `recurrenceRule` | `String?` | **Placeholder only.** No recurrence engine exists — the field is copied through `copyWith` and persisted, but nothing expands it into repeated occurrences |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
-
 ### TrainingPeriod
 
 A named, non-overlapping block of training days (e.g. "Off-Season Strength
 Block"). Drives the calendar's period banding and the Stats screen's
 "current-state window". Managed by `PeriodState`; SQLite table:
 `app_training_period`.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `ownerUserId` | `String?` | Owning user id |
-| `name` | `String` | User-facing period name |
-| `startDateMs` | `int` | First day of the period (start-of-day, local) |
-| `endDateMs` | `int` | Last day of the period (start-of-day, local) |
-| `focusModalities` | `List<String>` | Modality keys this period focuses on |
-| `notes` | `String?` | Optional notes |
-| `colorHex` | `String?` | Optional band colour override |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
 
 Overlap between periods is rejected at the state layer by
 `PeriodState.validate`, which returns an `overlapError` rather than throwing.
@@ -438,56 +215,11 @@ Overlap between periods is rejected at the state layer by
 
 ## Measurement Models
 
-### UserProfile
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | Profile id (`local-user` for current single-user flow) |
-| `displayName` | `String?` | Optional display name |
-| `avatarPath` | `String?` | Native-first local file path for avatar |
-| `createdAtMs` | `int` | Creation timestamp |
-
-### BodyMeasurementEntry
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | Entry UUID |
-| `measurementType` | `String` | e.g., `bodyweight`, `height`, `body_fat_pct` |
-| `value` | `double` | Numeric measurement value |
-| `unitId` | `String` | Unit id (`unit-kg`, `unit-cm`, `unit-pct`) |
-| `recordedAtMs` | `int` | Entry timestamp (save-time by default in current UI flow) |
-
-### MetricDefinition
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | e.g., `metric-reps`, `metric-weight` |
-| `key` | `String` | Stable metric key |
-| `name` | `String` | Display name |
-| `dataType` | `String` | `int`, `real`, `text` |
-| `defaultUnitId` | `String?` | FK to `UnitModel` |
-| `isCore` | `bool` | Whether metric is part of core tracking vocabulary |
-| `appliesToEffortKind` | `String?` | Optional effort-kind hint |
-| `createdAtMs` | `int` | Creation timestamp |
-
-### UnitModel
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | e.g., `unit-kg`, `unit-cm`, `unit-pct` |
-| `key` | `String` | Stable short unit key (`kg`, `cm`, `pct`) |
-| `name` | `String` | Display name |
-| `unitType` | `String?` | Optional grouping (`weight`, `length`, `ratio`) |
-| `createdAtMs` | `int` | Creation timestamp |
+Models with no behaviour beyond their fields: UserProfile, BodyMeasurementEntry, MetricDefinition, UnitModel.
 
 ### MetricApplicability
 
 Junction model mapping which metrics apply to which effort kinds.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `metricId` | `String` | FK to MetricDefinition |
-| `effortKind` | `String` | `set`, `timed`, `round`, `drill` |
 
 > **Corrected 2026-07-26 (docs audit).** `isRequired` and `displayOrder` were
 > listed but exist on neither the model nor `app_metric_applicability` — the
@@ -507,65 +239,7 @@ WorkoutTemplate (routine)
          └─ TemplateTarget (one per metric per set)
 ```
 
-### WorkoutTemplate
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID. Demo templates use the `demo-template-…` namespace to keep the prefix unambiguous against the user prefix (`template-{ms}`). |
-| `ownerUserId` | `String?` | Future: user ownership |
-| `name` | `String` | Routine name (e.g., "Push Day") |
-| `primaryDisciplineId` | `String?` | Optional discipline filter |
-| `focusModality` | `String?` | Optional modality hint |
-| `note` | `String?` | Optional notes |
-| `isBuiltInDemo` | `bool` | `true` when this template shipped as a built-in demo via the versioned catalog refresh pipeline. Edit/delete gating is enforced by the per-entry tombstone returned by `WorkoutRepository.isSeedEntryTouched` for `SeedEntryType.routineTemplate`; this flag is informational only. |
-| `createdAtMs` | `int` | Timestamp |
-| `updatedAtMs` | `int` | Timestamp |
-| `description` | `String?` | Optional template description, separate from `note` |
-
-### TemplateSegment
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `templateId` | `String` | Parent template |
-| `segmentType` | `String` | Usually `mixed` |
-| `orderIndex` | `int` | Display ordering |
-| `disciplineId` | `String?` | Optional FK to `Discipline` |
-| `name` | `String?` | Optional segment label |
-| `note` | `String?` | Optional segment note |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
-
-### TemplateEffort
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `templateSegmentId` | `String` | Parent segment |
-| `orderIndex` | `int` | Display order (supports drag reordering) |
-| `effortKind` | `String` | `set`, `timed`, `round`, or `drill` |
-| `modality` | `String?` | Optional modality context |
-| `exerciseId` | `String?` | FK to Exercise |
-| `restSeconds` | `int?` | Rest duration between sets |
-| `restType` | `String?` | Rest type classification |
-| `note` | `String?` | Optional notes |
-| `createdAtMs` | `int` | Timestamp |
-
-### TemplateTarget
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String` | UUID |
-| `templateEffortId` | `String` | Parent effort |
-| `metricId` | `String` | e.g., `metric-reps`, `metric-weight` |
-| `setIndex` | `int?` | Which set (0-based) |
-| `unitId` | `String?` | Optional unit |
-| `targetMin` | `double?` | Used for weight values |
-| `targetMax` | `double?` | Range targets (unused currently) |
-| `targetInt` | `int?` | Used for reps, duration (seconds) |
-| `targetText` | `String?` | Text-based targets (unused currently) |
-| `createdAtMs` | `int` | Timestamp |
-| `updatedAtMs` | `int` | Last modified timestamp |
+Models with no behaviour beyond their fields: WorkoutTemplate, TemplateSegment, TemplateEffort, TemplateTarget.
 
 ---
 
@@ -599,14 +273,6 @@ Represents the user's daily nutrition goals. Targets are stored per day and
 roll over from the most recent ancestor day when no explicit entry exists
 for the queried date (see [Daily targets persistence](db_integration.md#nutrition-targets-daily-rollover)).
 
-| Field | Type | Description |
-|---|---|---|
-| `calories` | `double` (default `0.0`) | Daily calorie target. `0` means "no goal". |
-| `protein` | `double` (default `0.0`) | Daily protein target in grams. `0` means "no goal". |
-| `carbs` | `double` (default `0.0`) | Daily carbohydrate target in grams. `0` means "no goal". |
-| `fat` | `double` (default `0.0`) | Daily fat target in grams. `0` means "no goal". |
-| `dateMs` | `int?` | Start-of-day timestamp (ms since epoch, local midnight) that this target set belongs to. `null` for legacy single-row targets. |
-
 Derived:
 
 | Getter | Returns |
@@ -635,15 +301,6 @@ Methods: `fromString(String?)` parses storage format (`'count'` or `'grams'`, de
 
 User-created grouping category for foods (e.g., "Proteins", "Vegetables"). Foods with `groupId == null` render in a trailing "Ungrouped" section.
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `String` | UUID |
-| `name` | `String` | Group display name |
-| `color` | `String?` | Optional hex color (e.g., "#FF5722") |
-| `isArchived` | `bool` | Soft-delete flag |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last update timestamp |
-
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
 
 ### Food
@@ -651,28 +308,6 @@ Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
 A food item with macronutrient metadata. Foods exist in two collections:
 - **Catalog** (`isCatalog == true`): the **global managed library** of foods. Mutated at runtime — the user can edit any catalog food (row tap in the **Library** tab of `AddFoodScreen`) and create new catalog foods (**+ New Item** tab). The bundled seed (`FoodCatalogSeed` / `assets/data/food_catalog.json`) is loaded once on first install and is then mutable.
 - **Library** (`isCatalog == false`): user-owned foods, the personal logging library. Catalog copies land here via the **Add** button on a catalog row.
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | `String` | UUID |
-| `name` | `String` | Food display name |
-| `groupId` | `String?` | Optional `FoodGroup.id`, null = Ungrouped |
-| `unitType` | `FoodUnitType` | `count` or `grams` |
-| `referenceAmount` | `double` | Quantity the macros are expressed per (e.g., 100.0 for "per 100 g") |
-| `referenceLabel` | `String` | Display unit (e.g., "g", "egg", "tbsp") |
-| `isCatalog` | `bool` | `true` = bundled catalog, `false` = user library |
-| `protein` | `double` | Grams of protein per reference amount. `double` (S-001 — see [food-form-decimals-and-autofocus-plan.md](../plans/food-form-decimals-and-autofocus-plan.md)) so the food form can persist fractional grams like `0.5`. Display sites that want whole-gram rendering go through `formatGrams()` in `lib/core/utils/food_helpers.dart`. |
-| `carbs` | `double` | Grams of carbs per reference amount. `double` for the same fractional-gram reason as `protein`. |
-| `fiber` | `double?` | Optional grams of fiber. `double` for parity. |
-| `fat` | `double` | Grams of fat per reference amount. `double` for the same reason as `protein` — the v1.5 form lets the user type `0.5` g of fat. |
-| `sodium` | `double?` | Optional milligrams of sodium. `double` for parity. |
-| `isArchived` | `bool` | Soft-delete flag |
-| `notes` | `String?` | **Info** — optional free-form user notes. **Not** used to carry the catalog's category label; the category is stored on `groupId` instead. Catalog rows are seeded with `notes = null`; user-typed notes live on library rows. |
-| `imagePath` | `String?` | Optional native-first local file path to a food photo. Mirrors the `UserProfile.avatarPath` contract: the path is opaque to the repository and only the OS / user can keep the file alive. Web has no persistent file API, so the picker is a no-op there and the field stays `null`. Legacy rows (pre-image) deserialize to `null`. |
-| `lastAmountConsumed` | `double?` | Remembered "last amount" the user logged for this food, in the food's own unit (grams for `grams`-type, count for `count`-type). `null` when the food has never been logged. Drives the `LogFoodRow` pre-fill (June 2026, `food-last-amount-plan.md`): when the food is not logged today, the amount input is pre-filled with this value so the user does not have to retype the same portion every day. Overwritten on every successful `NutritionState.logConsumedFoodAt`; never mutated by an unsaved UI edit. Stored on the food row (not on `ConsumedFood`) so a remove-then-re-add via `addCatalogFoodToLibrary` (with `catalogId` linkage, per `food-durable-identity-plan.md`) reuses the same library food and therefore the same remembered amount. Legacy rows (pre-feature) deserialize to `null`. |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last update timestamp |
-| `catalogId` | `String?` | Durable link back to the catalog row this library food was copied from. Older library rows may lack it and fall back to value-based identity matching, which upgrades to durable linkage on the next propagation |
 
 Derived getters:
 - `calories`: computed as `(protein * 4 + carbs * 4 + fat * 9).round()` — the macro math is now `double`-precision (so `0.5 g` of fat survives storage), then rounded to `int` at the display boundary because the calorie UI shows whole kcal.
@@ -715,31 +350,6 @@ the matching `FoodGroup.id` from `SeedData.defaultFoodGroups`
 ### ConsumedFood
 
 A frozen snapshot of a logged food for a specific day. Stores complete state at log time to ensure historical accuracy even if the source food or targets are later edited or deleted.
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | `String` | UUID |
-| `loggedAtMs` | `int` | Wall-clock timestamp when logged |
-| `dateMs` | `int` | Day key (local midnight ms) this entry counts toward |
-| `sourceFoodId` | `String?` | Original `Food.id` at log time (nullable if food was deleted) |
-| `name` | `String` | **FROZEN** food name |
-| `unitType` | `FoodUnitType` | **FROZEN** unit type |
-| `referenceAmount` | `double` | **FROZEN** reference amount |
-| `referenceLabel` | `String` | **FROZEN** reference label |
-| `protein` | `double` | **FROZEN** protein per reference. `double` so the log-time snapshot can capture fractional grams like `0.5` (S-001). |
-| `carbs` | `double` | **FROZEN** carbs per reference. `double` for parity. |
-| `fiber` | `double?` | **FROZEN** fiber (nullable). `double` for parity. |
-| `fat` | `double` | **FROZEN** fat per reference. `double` for parity. |
-| `sodium` | `double?` | **FROZEN** sodium (nullable). `double` for parity. |
-| `amountConsumed` | `double` | Amount consumed in the food's own unit (g for grams-type foods, count for count-type foods) |
-| `groupIdSnapshot` | `String?` | **FROZEN** group ID |
-| `groupNameSnapshot` | `String?` | **FROZEN** group name |
-| `targetCalories` | `double` | **FROZEN** daily calorie target |
-| `targetProtein` | `double` | **FROZEN** daily protein target |
-| `targetCarbs` | `double` | **FROZEN** daily carbs target |
-| `targetFat` | `double` | **FROZEN** daily fat target |
-| `createdAtMs` | `int` | Creation timestamp |
-| `updatedAtMs` | `int` | Last update timestamp |
 
 Derived getters:
 - `caloriesConsumed`: computed as
@@ -792,14 +402,6 @@ fields were added to the model, this section documents state-side caching only.
 One row per calendar day, keyed by `dateMs` (local midnight). The day's water volume is stored as a real volume in milliliters so the historical record stays unit-clean — the on-screen glass count is derived at the display boundary (`volumeMl ~/ kWaterGlassMl`), not stored.
 
 Water has no goal — like macros and sodium, it is tracked and stored for the historical record only. Each new day starts at 0; logging takes effect immediately and survives closing and reopening the app on the same day. Prior days are never modified automatically.
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | `String` | Deterministic storage key (`'water-<dateMs>'`), derived via `WaterLogEntry.idForDate(dateMs)`. |
-| `dateMs` | `int` | Day key (local midnight ms) this row counts toward. |
-| `volumeMl` | `int` | Stored volume in milliliters. Always `>= 0` (state layer floors at 0). |
-| `createdAtMs` | `int` | First-write timestamp. |
-| `updatedAtMs` | `int` | Last-write timestamp. Advances on every increment / decrement. |
 
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`, and the static helper `WaterLogEntry.idForDate(int dateMs)`.
 
@@ -868,7 +470,6 @@ MetricDefinition ←── UnitModel
 
 **Document Version**: 1.4
 **Last Updated**: July 27, 2026
-
 
 ---
 

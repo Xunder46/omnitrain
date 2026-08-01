@@ -2,14 +2,13 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import 'metric_crown_widget.dart';
 
-export 'metric_crown_widget.dart' show MetricStepCalc, MetricCrownWidget, showMetricEditPopup;
+export 'metric_crown_widget.dart' show MetricStepCalc, showMetricEditPopup;
 
 enum MetricEmphasisTier { dominant, secondary, muted }
 
 /// Metric editor with tap-to-edit popup as the sole value-change mechanism.
 ///
-/// The crown scrub control (`MetricCrownWidget`) is present in the codebase but
-/// not rendered.  It can be re-enabled here without rebuilding it.
+/// The number itself is the only value-change affordance.
 ///
 /// **Interaction model:**
 /// - Number tap:
@@ -20,8 +19,7 @@ enum MetricEmphasisTier { dominant, secondary, muted }
 ///   - When [isReadOnly] is true: no tap or drag affordances are shown.
 ///
 /// The outer [GestureDetector] retains [onTap] for backward-compatible
-/// callers that attach timer-toggle handlers.  Crown is not rendered for
-/// read-only editors.
+/// callers that attach timer-toggle handlers.
 class InlineMetricEditor extends StatefulWidget {
   /// The metric type: 'reps', 'weight', 'duration', 'rpe', 'extra-weight'
   final String metricType;
@@ -32,9 +30,9 @@ class InlineMetricEditor extends StatefulWidget {
   /// Unit label to display (e.g., 'lbs', 'seconds')
   final String unitLabel;
 
-  /// Whether user interaction (drag and tap-to-edit) is disabled.
-  /// When true the widget renders as read-only: drags are ignored, no crown
-  /// is shown, and tapping the value does nothing.
+  /// Whether tap-to-edit is disabled.
+  /// When true the widget renders as read-only and tapping the value does
+  /// nothing.
   final bool isReadOnly;
 
   /// Optional override color for the unit label.
@@ -223,10 +221,6 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
           );
 
     // ── Row: [value+unit] ────────────────────────────────────────────────────
-    //
-    // Crown is dormant (not rendered). MetricCrownWidget and its scrub logic
-    // remain in the codebase at lib/widgets/session/metric_crown_widget.dart
-    // and can be re-enabled here without rebuilding it.
 
     final contentRow = Row(
       mainAxisSize: MainAxisSize.min,

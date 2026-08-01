@@ -315,11 +315,12 @@ void main() {
       await tester.tap(find.byType(Image));
       await tester.pumpAndSettle();
 
-      // Five tiles, in this order — Calendar, Stats, Exercise Library,
-      // Profile, Settings — exactly the documented arrangement. A 2-column
-      // grid over 5 tiles leaves the last row with a single tile alone;
-      // this is expected and asserted here so the iteration that tightens
-      // the HUB-to-grid gap does not silently change the count or order.
+      // Five tiles, in the order `_buildMaintenanceGrid` declares them. The
+      // grid in lib/ is the source of truth for this order; if it changes
+      // deliberately, update this expectation to match. A 2-column grid over
+      // 5 tiles leaves the last row with a single tile alone; that is
+      // expected and asserted here so a layout change cannot silently alter
+      // the count or the order.
       final tiles = tester
           .widgetList<MaintenanceTile>(find.byType(MaintenanceTile))
           .toList(growable: false);
@@ -327,15 +328,14 @@ void main() {
       expect(
         tiles.map((t) => t.title).toList(growable: false),
         <String>[
-          'Calendar',
-          'Stats',
-          'Exercise Library',
           'Profile',
+          'Stats',
+          'Calendar',
           'Settings',
+          'Exercise Library',
         ],
         reason:
-            'Hub tile order is Calendar → Stats → Exercise Library → '
-            'Profile → Settings.',
+            'Maintenance tile order must match _buildMaintenanceGrid.',
       );
     });
 

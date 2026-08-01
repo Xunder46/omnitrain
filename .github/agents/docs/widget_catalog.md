@@ -93,7 +93,6 @@ so the gap is visible rather than silent.
 
 | Widget | File | Note |
 |--------|------|------|
-| `HubSheet` | `lib/widgets/hub/hub_sheet.dart` | ⚠️ Built and unit-tested, but **never instantiated in production code**. See the flag in [Navigation & Screens](navigation_and_screens.md#hub-discrepancy). |
 | `InteractiveLogo` | `lib/widgets/common/interactive_logo.dart` | Undocumented. |
 | `ScrollableTrendChart` | `lib/features/stats/widgets/scrollable_trend_chart.dart` | Behavior is documented in [Stats Screen](stats_screen.md) and [Profile & Measurements](profile_and_measurements.md), but it has no catalog entry. |
 | `FoodThumbnailImage` | `lib/features/nutrition/widgets/food_thumbnail_io.dart` | Platform-conditional implementation behind `FoodThumbnail`. |
@@ -108,7 +107,6 @@ lib/widgets/
 ├── cards/                # Tile and card components for the home screen
 ├── chart/                # Chart primitives shared by stats and profile
 ├── common/               # Cross-feature odds and ends (InteractiveLogo)
-├── hub/                  # HubSheet (built, not wired — see note above)
 ├── icons/                # Custom icon widgets
 ├── inputs/               # Reusable input field wrappers (select-all, done bar)
 ├── layout/               # Foundational layout primitives
@@ -144,7 +142,7 @@ GestureDetector (press tracking)
   (a "Daily Targets" goal-line card). That file does not exist in the source
   tree and nothing references it. The surviving `NutritionSummaryCard` is the
   home gauge card at `lib/features/home/widgets/nutrition_summary_card.dart`.
-- The `Directory Structure` block gained the `chart/`, `common/`, `hub/`, and
+- The `Directory Structure` block gained the `chart/`, `common/`, and
   `icons/` directories, which exist in `lib/widgets/` but were missing.
 - The **Not yet catalogued** table above is new.
 

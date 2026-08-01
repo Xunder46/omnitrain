@@ -55,20 +55,6 @@ These methods keep feature screens on the state boundary and avoid direct reposi
 
 Handles all session lifecycle and CRUD concerns (Cluster A of the original `WorkoutState`). Calls `timerManager.addRound` / `addTimedEntry` when creating timer-based entries; calls `exerciseLibrary.clearNoteCache()` from `clearSession()`.
 
-#### SyncService Integration Surface (forward-looking)
-
-When cloud sync is added, `SyncService` will be injected into `SessionCore` at construction time:
-
-```dart
-// SessionCore(_repository, syncService: SyncService?, notify: ..., ...)
-//
-// After each successful repository write:
-// await _repository.createSession(session);
-// syncService?.queueCreate(SyncEntity.session, session);
-```
-
-The same pattern applies to `TimerManager` for `RoundInstance`/`TimedInstance` records and to `ExerciseLibrary` for exercise and note writes.
-
 #### Key State Fields
 
 | Field | Type | Purpose |
@@ -112,17 +98,8 @@ The same pattern applies to `TimerManager` for `RoundInstance`/`TimedInstance` r
 
 | Method | Purpose |
 |--------|---------|
-| `addEntry(effortId, {previousValues})` | Creates a new set/interval/round/drill. The optional `previousValues` map carries forward metrics from the prior entry into the new observation rows / round instance — see the per-effort-kind table below. Keys not present fall back to the app-wide defaults (`reps=10`, `weight=0.0`, `extra-weight=0.0`, `round-duration=WorkoutConstants.defaultRoundDurationSecs` or the exercise's `defaultRoundDurationSecs`). The carry-forward is read-only on the prior entry — `previousValues` only seeds the new entry's defaults, it does not mutate prior observations. The `_addSet` caller in `workout_session_screen.dart` populates `previousValues` from the prior entry in `getExercisesWithEntries()` so each new set/interval/round/drill pre-fills with the prior values (June 2026, exercise-set-last-value-plan). |
+| `addEntry(effortId, {previousValues})` | Creates a new set/interval/round/drill. The optional `previousValues` map carries forward metrics from the prior entry into the new observation rows / round instance — see the per-effort-kind table below. Keys not present fall back to the app-wide defaults in `lib/core/constants/effort_defaults.dart` and `workout_constants.dart`. The carry-forward is read-only on the prior entry — `previousValues` only seeds the new entry's defaults, it does not mutate prior observations. The `_addSet` caller in `workout_session_screen.dart` populates `previousValues` from the prior entry in `getExercisesWithEntries()` so each new set/interval/round/drill pre-fills with the prior values (June 2026, exercise-set-last-value-plan). |
 
-##### `previousValues` carry-forward keys per effort kind
-
-| Effort kind | Keys accepted | Default if absent |
-|---|---|---|
-| `set` (load-capable) | `reps` (int), `weight` (double) | `reps=10`, `weight=0.0` |
-| `set` (no load) | `reps` (int), `extra-weight` (double) | `reps=10`, `extra-weight=0.0` |
-| `timed` | `extra-weight` (double) | `extra-weight=0.0` |
-| `drill` | `extra-weight` (double) | `extra-weight=0.0` |
-| `round` | `round-duration` (int seconds) | `WorkoutConstants.defaultRoundDurationSecs` (or the exercise's `defaultRoundDurationSecs` if set) |
 | `updateEntryValue(effortId, entryIndex, metricKey, value)` | Persists metric value immediately; preserves all existing fields including `rpeRating` and `restDurationMs` |
 | `deleteLastEntry(effortId)` | Removes last set |
 | `markSetSkipped(effortId, entryIndex)` | Marks set as explicitly skipped with `valueInt: 0, valueBool: true`; survives reload via `_isSetLogged` check |

@@ -739,34 +739,6 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
-  Future<Map<String?, List<EntryRest>>> getEntryRestsByModalityInDateRange(
-    int fromMs,
-    int toMs,
-  ) async {
-    final result = <String?, List<EntryRest>>{};
-    for (final restList in _entryRests.values) {
-      for (final rest in restList) {
-        if (rest.restEndMs == null) continue;
-        if (rest.restStartMs < fromMs || rest.restStartMs > toMs) continue;
-
-        final effort = _efforts[rest.effortId];
-        if (effort == null) continue;
-        final segment = _segments[effort.segmentId];
-        if (segment == null) continue;
-        final session = _sessions[segment.sessionId];
-        if (session == null) continue;
-
-        final modality = session.modality;
-
-        result.putIfAbsent(modality, () => []).add(rest);
-      }
-    }
-    return result;
-  }
-
-  // ===== EXERCISE NOTES =====
-
-  @override
   Future<ExerciseNote?> getExerciseNote(String exerciseId) async {
     return _exerciseNotes[exerciseId];
   }

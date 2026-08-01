@@ -10,41 +10,11 @@
 
 **File**: `lib/features/routine/my_routines_screen.dart`
 
-PR 6 routine card with two distinct, non-overlapping hit regions
-(S-006 + S-007 + S-008 — PR 6 / S-001 / S-006 / S-007 / S-008):
-
-- **Card body** (`Key('routine-card-body')`) — wraps the icon, name,
-  creation-date metadata, and the optional `DemoRoutineBadge` on
-  the TITLE row (S-008). Tap opens `RoutineSetupScreen` for the
-  existing routine; no session is created. The body's right edge
-  sits flush with the start control's left edge so there is no dead
-  zone between the two regions (S-007 contract).
-- **Play glyph** (`Key('routine-card-start')`, tooltip `Start routine`)
-  — a bare `IconButton` with `Icons.play_arrow` on the trailing edge.
-  PR 6 / S-006 reduced this control from a 96-dp filled `TextButton`
-  with a "Start" label to a single glyph; PR 6 / S-007 increased the
-  tappable region to `SizedBox(width: 56, height: 56)` so the hit
-  area is comfortably larger than the 28-dp visible glyph without
-  changing the glyph itself. Tap creates the session in one tap
-  using the existing `RoutineSessionService.buildSessionFromTemplate`
-  + active-session warning flow.
-
-The card deliberately renders **no overflow menu** — destructive
-delete is gated to the editor's app bar (see
-`OmniBackHeader.actions` below and the `routine-delete-action` key)
-so the user can see the routine name they are about to remove when
-the confirmation dialog opens.
-
-The `DemoRoutineBadge(compact: true)` sits on the TITLE row as a
-Row sibling of the title text. The title text is wrapped in an
-`Expanded` (FlexFit.tight) so the badge's right edge is pinned to the
-title row's right edge regardless of how long the routine name
-happens to be — using `Flexible` (loose) instead would shrink-fit
-the row to the Text's natural width and pull the badge inwards on
-short names. The Row's default `CrossAxisAlignment.center` keeps
-the badge pill vertically centred with the title text, and the
-badge's own symmetric vertical padding keeps the "Demo" text
-vertically centred within the pill.
+One row per saved routine. The row body and the start control are **separate, non-overlapping tap
+targets with different destinations**: the body opens the editor, the start control creates the
+session. This split is the point of the widget — a single tap target that both edits and starts is
+what it replaced. The start control's tap region is larger than its visible glyph, and no point in
+a row is unresponsive.
 
 ### `DemoRoutineBadge`
 
@@ -135,78 +105,24 @@ before committing.
 
 ### `MeasurementSparkline`
 
-**File**: `lib/features/profile/widgets/measurement_sparkline.dart`
+**File**: `lib/widgets/chart/measurement_sparkline.dart`
 
-Small history visualization for a single body measurement on the Profile screen. Renders one of three branches based on the entry count read from `ProfileState.getMeasurementHistory`:
+Compact trend preview inside each profile measurement card. Renders a single-value fallback when
+only one entry exists and a line-with-dots chart otherwise.
 
-- **0 entries** — centered muted text `"No history yet"` at the sparkline's full height.
-- **1 entry** — the same full chart frame as the 2+ branch (Y-axis line, X-axis line, Y-axis scale labels, X-axis date strip) with **a single horizontal line** crossing **a single filled dot** at the entry's value. Both Y-axis labels show the same value (since `minV == maxV`); both X-axis labels show the same date (since `minMs == maxMs`). The line and dot both render at the chart's visual centre via the existing `xForTimestamp` / `yForValue` fallbacks (`timeRange == 0` → data-area mid; `range == 0` → `xAxisLineY / 2`). Replaces the legacy `Divider`-only hairline so the chart frame stays visually stable across the 0/1/2+ branch transitions.
-- **2+ entries** — a compact chart inside a **60 dp** container:
-  - **Axes**: a vertical Y-axis line on the **left** (boundary between the y-axis label column and the data area) and a horizontal X-axis line at the **bottom** of the chart area (boundary between the data area and the x-axis date strip). Both are 1 dp `theme.dividerColor` strokes drawn by the painter inside the same `CustomPaint` as the data line + dots.
-  - **Y-axis scale**: a max value label at top-LEFT and a min value label at bottom-LEFT of the chart area, in a 38 dp wide LEFT column to the left of the Y-axis line. Right-aligned so the rendered text visually anchors to the line. Rendered in `labelSmall` + `textMuted` + 9 pt. Format is the raw numeric value via `toStringAsFixed(1)` — the unit is intentionally **dropped** (the header above names the measurement and the value column shows the unit), so the LEFT column fits at the same font size as the X-axis labels. `overflow: TextOverflow.ellipsis` clips gracefully for edge cases.
-  - **X-axis scale**: a first date label at bottom-left and a last date label at bottom-right via `ChartAxisHelper.formatDateLabel` (`MMM d`, e.g. `Jun 17`). The labels live in the bottom 22 dp of the container; the data + axes live in the top 38 dp.
-  - **Line + dots**: `theme.colorScheme.primary` 1.5 dp stroke line through the points with a 2 dp filled dot at **every** entry. X positioning is **time-based** (each entry's `recordedAtMs` is mapped linearly across the chart width) so two entries months apart sit at the chart's leftmost and rightmost x positions while many entries clustered in time sit close together. Falls back to chart mid when all timestamps are equal.
+X positioning is **time-based** (each entry's `recordedAtMs` is mapped linearly across the chart width) so two entries months apart sit at the chart's leftmost and rightmost x positions while many entries clustered in time sit close together. Falls back to chart mid when all timestamps are equal.
 
-The whole sparkline area is wrapped in an `InkWell` whose `onTap` opens the existing `MeasurementHistoryChartSheet` for the measurement.
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `definition` | `ProfileMeasurementDefinition` | required | Which measurement to read history for (e.g. `ProfileMeasurements.bodyweight`). Drives the entry-fetch and the title-key. |
-| `profileState` | `ProfileState` | required | Source of the measurement history (`getMeasurementHistory`). |
-| `settingsState` | `SettingsState` | required | Injected for symmetry with the surrounding surface chrome. No longer used internally (A18 dropped the unit suffix from the y-axis labels). Reserved for future hooks. |
-| `onTap` | `VoidCallback?` | `null` | Tapping anywhere inside the sparkline area fires this callback. The host wires it to `_showMeasurementHistory(definition)`. |
-
-**Behavior**:
-- Sized at **60 dp tall** (A19; was 56 dp intermediate A18, 38 dp with axes but smaller, 40 dp in A17, 60 dp pre-A17). The chart now **fills** the entire 60 dp card row — the user wants the chart to use the available vertical space rather than sit with breathing room. The host card padding (`EdgeInsets.symmetric(horizontal: 18, vertical: 14)`) wraps the sparkline; total card height stays 88 dp (60 dp chart + 28 dp padding).
-- **Refresh model**: the entry list is loaded asynchronously in `initState` via `profileState.getMeasurementHistory(definition.type)`; the widget subscribes to `profileState` (added in `initState`, removed in `dispose`) and re-fetches on every `notifyListeners`; `didUpdateWidget` also reloads when the `definition.type` changes. The listener is the only reliable way to refresh the chart after a new measurement is added via the log sheet — `didUpdateWidget` does not fire when the parent rebuilds with the same `definition` (the common case after a save).
-- Keys (for testability): `Key('measurement_sparkline')` on the container `SizedBox`; `Key('measurement_sparkline_tap')` on the `InkWell` gesture area; `Key('measurement_sparkline_y_max')` / `Key('measurement_sparkline_y_min')` on the y-axis value `Positioned`s (LEFT column); `Key('measurement_sparkline_x_first')` / `Key('measurement_sparkline_x_last')` on the x-axis date label `Positioned`s (BOTTOM strip).
-- Presentation-only: no repository access of its own (delegates to the injected `ProfileState`), no service access, no business logic. All chart math is local; the painter is a small private class inside the same file. Scale math delegates to the canonical `ChartAxisHelper` and `UnitFormatter` owners (per `docs/global_conventions.md` "Reuse the canonical owner").
-- Host layout (per A16, Phase 4 refinement, updated by A17): the per-measurement card body is a 3-section row `[chart rectangle | current value | + button]`. The chart rectangle occupies the available width (`Expanded`), the value column is a fixed 90 dp wide text centred horizontally (`textAlign: TextAlign.center`, `maxLines: 1`, `overflow: TextOverflow.ellipsis`), and the `+` button is the standard 60 × 60 dp outlined `OutlinedButton`. The `OmniCardHeader` is **title-only — no actions cluster** and **uppercased** (A17: `definitions[index].label.toUpperCase()`, so the rendered eyebrow reads e.g. `BODY WEIGHT` not `Body Weight`). Tapping the chart rectangle opens the existing history sheet; tapping the `+` button opens the existing log sheet. Only the titles (`MEASUREMENTS` / `ADDITIONAL` section eyebrows) were extracted into the header in Phase 4; the card body's column structure stays intact.
-
----
-
----
+Tapping the chart opens the measurement's history sheet; the `+` control opens the log sheet.
 
 ## Logo & Brand
 
 ### `HomeLogoButton`
 
-**File**: `lib/widgets/common/home_logo_button.dart`
+**File**: `lib/features/home/widgets/home_logo_button.dart`
 
-Circular menu/avatar control for the home-screen AppBar that hosts the brand logo. Tapping opens the Hub sheet (Calendar / Stats / Profile / Nutrition / Settings).
-
-**Visual chrome** (rendered in this order, back to front):
-- 56×56 circular surface with a subtle ~6% white overlay (`Color(0x0FFFFFFF)`, matching the `OmniTheme.colors.surfaceBorder` token value) so the button has presence on the dark navy header
-- 1px `surfaceBorder` ring (~6% white) reinforcing the circle edge — stays monochrome
-- `OmniTheme.softShadow` for a low-elevation drop that gives the button its 3D feel against the dark header
-- Brand logo artwork (`assets/icon/omnitrain_logo.png`) centered inside, sized to fill the circle (default 55×55 in a 55×55 circle)
-
-**Theme tint** (logo recolor):
-- The brand logo's own aqua-cyan matches the **Abyssal Neon** primary (`0xFF2DE2E6`), so on Abyssal Neon the logo is rendered untouched
-- On every other theme the logo is recolored to that theme's `OmniTheme.colors.primary` via a `ColorFiltered` with `BlendMode.srcATop` (preserves the alpha mask, replaces RGB with the tint color — silhouette stays crisp)
-- Tint comes from an existing `OmniTheme` token, so the button stays in-palette without introducing a new color
-
-**Press reaction**:
-- AnimatedScale to `OmniTheme.pressedScale` (0.9) on finger-down; settles back on release / cancel
-- Subtle white `ColorFilter` highlight (~10% white) on the logo while pressed
-- `HapticFeedback.lightImpact()` fires on `onTapUp`, guarded by `!kIsWeb`
-- Reduced-motion users get the scale applied instantly without animation
-
-**Hit target & accessibility**:
-- 8 px transparent `Padding` (`EdgeInsets.all(8)`) on every side of the visible circle brings the gesture bounds to 71×71 — symmetric insets keep the circle visually centred inside the AppBar's `toolbarHeight` slot and ensure the soft shadow has full room to render on every side. Well above the 44×44 pt minimum
-- The symmetric padding is also what keeps the visible circle off the Hub sheet's top edge when the sheet is fully expanded (the sheet top lands at `padding.top + toolbarHeight`; the symmetric bottom padding guarantees the circle is fully inside the AppBar regardless of the actual `toolbarHeight` configured on the host Scaffold). See `hub-sheet-gap-and-logo-clip-plan.md` for the clipping fix that motivated the symmetry change
-- Explicit `ConstrainedBox(minWidth: 44, minHeight: 44)` + `HitTestBehavior.opaque` keep the guarantee even if `tileSize` is later reduced
-- `Semantics(button: true, label: 'Open menu')` wraps the whole control; the ring is decorative and the screen reader only hears the parent's label
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `onTap` | `VoidCallback` | required | Fires on tap (after the gesture is released) |
-| `size` | `double` | `55` | Logo artwork side length in logical pixels |
-| `tileSize` | `double` | `55` | Outer circle diameter; matches `kToolbarHeight` (56) exactly so the AppBar toolbar height stays unchanged |
-
-**Constraints**:
-- Body-centered "TRAIN" title in the home `Column` is unaffected — the button is in the AppBar `title:` slot and its visible circle (56px) matches `kToolbarHeight` (56) exactly
-- The control is a presentation-only widget: no repository or service access; only local `_isPressed` state
+The home-screen logo, which doubles as the maintenance-sheet opener. Its transparent padding
+extends the gesture bounds beyond the visible circle so the target clears the platform minimum
+without enlarging the mark itself.
 
 ### `AnimatedZenHalo`
 

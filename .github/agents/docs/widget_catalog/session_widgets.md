@@ -60,30 +60,10 @@ Touch-optimized value input for workout environments. Tap the number to open a n
 
 **File**: `lib/widgets/session/metric_crown_widget.dart`
 
-**Status: dormant.** The widget is fully implemented and constructible but is not rendered by `InlineMetricEditor` in the default interaction path. It can be re-enabled by adding it to the `InlineMetricEditor` row without any other changes.
-
-A rotatable thumb-wheel (crown) control painted as a thick vertical wheel edge-on.
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `metricType` | `String` | Metric type (forwarded to `MetricStepCalc`) |
-| `currentValue` | `dynamic` | Current metric value; read on each drag tick |
-| `onValueChanged` | `Function(dynamic)` | Fires on each 10px drag step |
-
-**Behavior**: drag fires `onValueChanged` via `MetricStepCalc.apply`. Crown rotates `2π / 120px` radians per pixel. Rotation accumulates for the widget's lifetime but stops immediately on drag release (no momentum). No `AnimationController` or `Timer`.
-
-**Style**: `44×60` touch target; `CustomPaint` centred inside; all colours from `OmniTheme.colors.textMuted`/`textSecondary` with opacity overlays.
-
-**Drag step sensitivity** (from `MetricStepCalc.apply`):
-| Metric | Increment per 10px | Range |
-|--------|-------------------|-------|
-| `reps` | ±1 | 0–999 |
-| `weight` | ±0.5 | 0.0–999.0 |
-| `duration` | ±5 sec | 0–3600 |
-| `rpe` | ±1 | 1–10 |
-| `extra-weight` | ±0.5 | -100.0–200.0 |
-
----
+**Status: dormant — not rendered anywhere in `lib/`.** A rotatable thumb-wheel control that
+`InlineMetricEditor` does not use in any interaction path. Its value-step maths live in
+`MetricStepCalc`, which *is* live (see below). Whether this widget should be wired up or deleted
+is an open product decision, not a documented behaviour.
 
 ### `showMetricEditPopup`
 
@@ -147,29 +127,21 @@ Shared utility for value-adjustment math and popup parsing. Used by both `Metric
 
 **File**: `lib/widgets/session/pr_toast.dart`
 
-Static factory for the in-session "Congrats! New PR" celebration `SnackBar` that fires when a strength set beats the user's all-time best e1RM (per the Stats screen's PR definition). Non-blocking, auto-dismissing, theme-token-only. Two axis variants share the same visual treatment — the only difference is which `SnackBar` builder the caller picks:
+Static factory for the in-session "new PR" celebration `SnackBar`. Two axis variants share one
+visual treatment: a weight-axis toast for loaded-exercise e1RM records and a reps-axis toast for
+bodyweight max-reps records.
 
-- `PRToast.buildPRSnackBar(ThemeData theme)` → weight-axis `SnackBar` (loaded-exercise e1RM PR), and
-- `PRToast.buildRepPRSnackBar(ThemeData theme, {int? reps})` → reps-axis `SnackBar` (bodyweight max-reps PR).
+**The toast never asks the user to dismiss it.** There is no `action:` field, it auto-dismisses,
+and it floats rather than displacing the bottom controls — the user can keep logging through it.
+A celebration that interrupts logging would defeat the point of celebrating.
 
-Both factories build a `SnackBar` with:
-  - `duration: 4.0 s` — auto-dismisses; never blocks the rest timer or the next set.
-  - `behavior: SnackBarBehavior.floating` — does not push the bottom controls up; the user can keep typing in the numeric editor.
-  - `margin: EdgeInsets.only(bottom: 150, left: 16, right: 16)` — the 150 px bottom lift clears `WorkoutSessionScreen._kBottomControlsClearance` (140 px CTA + scroll padding) with a small tolerance.
-  - `backgroundColor: theme.colorScheme.surface` — derived from the active theme, never hardcoded.
-  - `content`: trophy `Icon(Icons.emoji_events, size: 36, color: theme.colorScheme.primary)` (2× the default 18 px icon) + `SizedBox(width: 8)` + `Flexible(child: Text('Congrats! New PR', softWrap: false, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface, fontSize: 18.0)))` (2× `bodyMedium`'s default 14 px text, truncated with `ellipsis` so the toast never overflows on narrow phones).
-  - **No `action:`** field — the user is never asked to tap "Dismiss" or anything similar. The reps variant accepts the `reps` value but currently renders the same minimal copy per D-11 (the in-session toast is intentionally value-free) — the parameter is part of the public API so a future call-site that wants to surface the value has it available without a signature change.
+**PR definition is shared, not local.** The in-session check uses the same
+`StatsProgressService.epley1RM` / `getAllTimeBestE1RM` helpers for the weight axis and
+`getAllTimeBestReps` for the reps axis that the Stats screen and the Session Summary use. There is
+exactly one PR definition per axis; all three surfaces change together.
 
-> **Note on plan vs source drift:** the in-session PR toast plan (Decision Ledger D-9 / D-10 / D-12) recorded 4.0 s / `top: 100` / 28 px text; the actual source evolved to 4.0 s / `bottom: 150` / 18 px text. This doc now matches source. The plan is preserved under `.github/agents/plans/in-session-pr-toast-plan.md` as the historical spec; the binding contract for any future tweak is the source in `lib/widgets/session/pr_toast.dart`.
-
-**Where it is triggered**: `WorkoutSessionScreen._logSet()` calls `_maybeShowPRToast()` after `_persistEntryValues(...)` and before the rest-timer / advance logic. The check is gated on `effortKind == 'set' && !isSkippedSetKindEntry`, and the helper additionally blocks in `widget.editMode` (edit-mode suppression) and on non-positive reps. Inside the helper:
-
-- When the set has added external weight (`weight > 0`): weight-axis path. Uses `StatsProgressService.epley1RM(weight, reps)` and `StatsProgressService.getAllTimeBestE1RM(exerciseId)`. Fires `buildPRSnackBar` on strict `>` against both the standing best and the session's running best.
-- When the set has no added weight (`weight == 0`) and positive reps: reps-axis path. Uses `StatsProgressService.getAllTimeBestReps(exerciseId)`. Fires `buildRepPRSnackBar` on strict `>` against both the standing best and the session's running best. New for the bodyweight-inclusion plan (`.github/agents/plans/stats-summary-fix-pack-plan.md` Item 2).
-
-The SnackBar call is fire-and-forget — `showSnackBar` is synchronous and the call chain continues immediately to `recordRestStart` and the set advance.
-
-**PR definition source of truth**: the in-session check uses `StatsProgressService.epley1RM(weight, reps)` + `StatsProgressService.getAllTimeBestE1RM(exerciseId)` for the weight axis and `StatsProgressService.getAllTimeBestReps(exerciseId)` for the reps axis — the same helpers the Stats screen's PR detection loop and the Session Summary's `computePRs` use. There is exactly one PR definition per axis; all three surfaces change together.
+Triggered from `WorkoutSessionScreen._logSet()`, gated on `set`-kind efforts, suppressed in edit
+mode, and fired on a strict `>` against both the standing best and the session's running best.
 
 ---
 

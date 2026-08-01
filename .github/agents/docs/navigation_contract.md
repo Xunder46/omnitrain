@@ -46,7 +46,7 @@ However, `MaterialPageRoute` sets `opaque = false` by default. With every `Scaff
 
 ### Visual tradeoff (accepted)
 
-During the ~300 ms slide, both routes paint their own `OmniGradientBackground`. The overlap zone shows a brief doubling of the 5%-opacity radial highlight. At that opacity level, during motion, this is below the perceptual threshold. Removing the route-level highlight to avoid this would regress the steady-state aesthetic on every screen permanently — an unacceptable tradeoff. The transient doubling is accepted and documented here.
+During the slide, both routes paint their own `OmniGradientBackground`. The overlap zone shows a brief doubling of the radial highlight. At that opacity, during motion, this is below the perceptual threshold. Removing the route-level highlight to avoid this would regress the steady-state aesthetic on every screen permanently — an unacceptable tradeoff. The transient doubling is accepted and documented here.
 
 ---
 

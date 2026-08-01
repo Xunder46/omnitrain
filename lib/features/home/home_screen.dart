@@ -1091,17 +1091,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
       _MaintenanceItem(
-        title: 'Exercise Library',
-        icon: Icons.library_books_outlined,
-        onTap: () => OmniNavigator.push(
-          context,
-          (_) => ExerciseLibraryScreen(
-            exerciseLibraryState: widget.exerciseLibraryState,
-            workoutState: widget.workoutState,
-          ),
-        ),
-      ),
-      _MaintenanceItem(
         title: 'Settings',
         icon: Icons.tune,
         onTap: () => OmniNavigator.push(
@@ -1114,6 +1103,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             appVersionInfo:
                 widget.appVersionInfo ??
                 const AppVersionInfo(version: '0.0.0', build: '0'),
+          ),
+        ),
+      ),
+      _MaintenanceItem(
+        title: 'Exercise Library',
+        icon: Icons.library_books_outlined,
+        onTap: () => OmniNavigator.push(
+          context,
+          (_) => ExerciseLibraryScreen(
+            exerciseLibraryState: widget.exerciseLibraryState,
+            workoutState: widget.workoutState,
           ),
         ),
       ),

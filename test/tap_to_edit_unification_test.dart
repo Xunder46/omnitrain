@@ -128,7 +128,7 @@ void main() {
       'U-03: reps InlineMetricEditor (routine set effort) opens AlertDialog; Ok applies',
       (tester) async {
         // Test the reps editor widget directly — same widget used in RoutineSetupScreen
-        // set effort _buildMetricWidget. No crown rendered; AlertDialog opens on tap.
+        // set effort _buildMetricWidget. AlertDialog opens on tap.
         dynamic result;
 
         await tester.pumpWidget(_buildEditor(
@@ -143,7 +143,6 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(AlertDialog), findsOneWidget);
-        expect(find.byType(MetricCrownWidget), findsNothing);
 
         await tester.enterText(find.byType(TextField), '15');
         await tester.tap(find.text('Ok'));

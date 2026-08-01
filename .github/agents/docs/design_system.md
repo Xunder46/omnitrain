@@ -39,58 +39,9 @@ The aesthetic is **spacecraft interior** — not cosmic/outer-space, but the con
 
 ### Theme Roster
 
-| Theme | Enum | Primary | Character |
-|-------|------|---------|-----------|
-| Abyssal Neon | `abyssalNeon` | `#2DE2E6` Neon cyan | Deep cosmic, high-contrast blue-teal |
-| Forge & Ember | `forgeEmber` | `#FF7B45` Ember orange | Hot molten steel, industrial warm |
-| Obsidian Volt | `obsidianVolt` | `#E8B420` Amber volt | Dark electric, controlled amber |
-| Void Pulse | `voidPulse` | `#A478FF` Deep violet | Cosmic meditative, purple-galaxy |
-| Crimson Dojo | `crimsonDojo` | `#FF4C47` Crimson red | Martial aggression, deep red |
-| Malachite Core | `malachiteCore` | `#24B85A` Deep emerald | Industrial, geological, mineral-veined rock face |
+Six themes ship: Abyssal Neon, Forge & Ember, Obsidian Volt, Void Pulse, Crimson Dojo, and Malachite Core. Each is a distinct character rather than a hue swap — Abyssal Neon is deep and high-contrast, Forge & Ember is industrial warmth, Obsidian Volt is controlled amber, Void Pulse is cosmic and meditative, Crimson Dojo is martial, and Malachite Core is grounded and mineral (the only green in the permanent roster, deliberately clear of the teal boundary so it never reads as a second Abyssal Neon).
 
----
-
-### Theme: Abyssal Neon Dark
-
-| Token | Hex | Role |
-|-------|-----|------|
-| Background Top | `#0F1F33` | Deep navy gradient start |
-| Background Bottom | `#060B14` | Near-black gradient end |
-| Surface | `#0E223A` | Card/panel background |
-| Surface Border | `#FFFFFF` @ 6% | Subtle boundary definition |
-| Primary (Neon Cyan) | `#2DE2E6` | Interactive elements, accents |
-| Secondary (Muted Teal) | `#1B9AAA` | Supporting accents |
-| Zen Core Glow | `#00CFFF` | Logo/brand element glow |
-| Text Primary | `#FFFFFF` @ 90% | Main content text |
-| Text Secondary | `#FFFFFF` @ 70% | Supporting text, labels |
-| Material Background | `#0B0F14` | Material theme scaffold |
-| Material Surface | `#121826` | Material component surfaces |
-| Text Muted | `#9BA4B5` | Tertiary text |
-| Divider | `#1F2937` | Separators |
-
-### Theme: Malachite Core
-
-Character: deep emerald, geological, industrial — a mineral-veined rock face under tungsten light. Closest mood sibling to Void Pulse but grounded and earthy rather than cosmic. Primary hue ≈ 147° HSL, unambiguously green (well clear of the teal boundary at ~170°). Sole green theme in the permanent roster.
-
-| Token | Hex | Role |
-|-------|-----|------|
-| Background Top | `#0D1F10` | Dark warm green-black gradient start |
-| Background Bottom | `#060C08` | Near-black gradient end, slightly warmer |
-| Surface | `#122214` | Warm dark green-black card surface |
-| Surface Border | `#FFFFFF` @ 5% | Subtle boundary (matches Forge & Ember weight) |
-| Primary (Deep Emerald) | `#24B85A` | Bright emerald accent — CTAs, active states |
-| Secondary (Forest Emerald) | `#128A40` | Supporting accent, clears 3:1 on surface |
-| Text Muted | `#7FAA7F` | Darker metadata green for stronger emphasis-tier separation |
-| Divider | `#172A18` | Warm dark green separator |
-
-### Color Usage Rules
-1. **Background** is always the cosmic gradient — never flat
-2. **Surfaces** float above the background with depth (shadow + border)
-3. **Cyan/teal accents** indicate interactivity or active state — never decorative filler
-4. **White text** with opacity levels creates hierarchy without introducing new hues
-5. **Home tiles** use a solid low-opacity accent fill (primary ~18%, secondary ~8%) with a 1px white top rim highlight and 1px black bottom inner shadow on primary tiles; secondary tiles (Free, Routines) have no rim or inner shadow. Tile gradients are intentionally not used — see `EnergyTile` and `HomeTileConfig.isSecondary`.
-6. **Glow effects** are reserved for active/selected states and brand elements
-7. **Modality accent colors** must come from `lib/core/constants/modality_colors.dart` (single source of truth) and must not be hardcoded in screens/components
+**Values live in `lib/core/constants/omni_theme.dart` and nowhere else.** This document names tokens and says what each is for; it does not restate what any of them equal.
 
 ### Emphasis Tiers
 
@@ -105,64 +56,18 @@ OmniTrain’s shared text hierarchy is expressed through `OmniTheme.colors`:
 
 `primary` remains the primary-action accent used for CTAs and active indicators.
 
-### Phase 1B Tier Values
-
-| Theme | `textDominant` | `textSecondary` | `textMuted` | `textDisabled` | `primary` |
-|-------|----------------|-----------------|-------------|----------------|-----------|
-| Abyssal Neon | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#7A8899` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#2DE2E6` |
-| Forge & Ember | `#FFF5EA` @ 94% (`0xF0FFF5EA`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#8A5C4E` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#FF7B45` |
-| Obsidian Volt | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#6E6240` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#E8B420` |
-| Void Pulse | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#6B5B8A` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#A478FF` |
-| Crimson Dojo | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#A07060` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#FF4C47` |
-| Malachite Core | `#FFFFFF` @ 95% (`0xF2FFFFFF`) | `#FFFFFF` @ 60% (`0x99FFFFFF`) | `#7FAA7F` | `#FFFFFF` @ 30% (`0x4DFFFFFF`) | `#24B85A` |
-
 ### Macro Chart Palette
 
-`OmniTheme.colors.macroChart` is a five-slot palette for the daily
-nutrition macro-distribution donut (`MacroDonutChart`). The first
-four slots map 1:1 to the four arc sections drawn by the chart;
-the fifth slot, `chartLabelDark`, is the dark text color used for
-in-band labels on **light** section backgrounds (the light
-counterpart is the theme's existing `textDominant` token, used
-for labels on dark section backgrounds). Each theme defines a
-value tuned for contrast on its background:
+`OmniTheme.colors.macroChart` is a five-slot palette for the daily nutrition macro-distribution donut: `protein`, `netCarbs`, `fiber`, and `fat` map to the four arc sections, and `chartLabelDark` is the label colour used on light section backgrounds (the light counterpart is the theme’s `textDominant`). The palette lives on `OmniTheme` so the "theme tokens only" rule is honoured and themes can override slots without touching the chart.
 
-| Slot | Role | Abyssal Neon | Forge & Ember | Obsidian Volt | Void Pulse | Crimson Dojo | Malachite Core |
-|------|------|--------------|---------------|---------------|------------|--------------|----------------|
-| `protein` | Protein slice | `#EDEDED` | `#EDE3D2` | `#EDEDED` | `#EDEAFA` | `#EDE3DE` | `#EDEDE7` |
-| `netCarbs` | Net Carbs slice (`carbs − fiber`) | `#4F8DF7` | `#5BA8F2` | `#4F8DF7` | `#6E94F2` | `#5BA8F2` | `#4F8DF7` |
-| `fiber` | Fiber slice | `#3FBF67` | `#54C97A` | `#3FBF67` | `#5BC982` | `#54C97A` | `#3FBF67` |
-| `fat` | Fat slice | `#E8B420` | `#F2C84B` | `#E8B420` | `#E8B420` | `#F2C84B` | `#E8B420` |
-| `chartLabelDark` | In-band label color on light section backgrounds | `#0B1424` | `#1A0B05` | `#0B0B0B` | `#0A071A` | `#1A0606` | `#0C0F0A` |
-
-The palette lives on `OmniTheme` so the "theme tokens only" rule is
-honoured; themes can override slots later without touching the chart.
-
-> **Iteration 2 (`.github/agents/plans/daily-nutrition-macro-chart-plan.md`):**
-> The donut's external labels were removed. The same four palette slots
-> are now applied as the **band's arc colors**; the per-macro label
-> content (name + grams + %) was moved into the calorie ring's center
-> on tap. See `MacroDonutChart` and `MacroFocusContent` in
-> `docs/widget_catalog.md`.
->
-> **Iteration 3 (`.github/agents/plans/daily-nutrition-macro-chart-plan.md`):**
-> The donut now also draws **in-band labels** (`"<initial> <N>g"`,
-> e.g. `"N 22g"`) at each section's mid-angle, upright on the band's
-> mid-radius. A luminance check via
-> `ThemeData.estimateBrightnessForColor` picks the label color per
-> section: light section colors (protein, fat) get
-> `macroChart.chartLabelDark`; dark section colors (net carbs,
-> fiber) get `textDominant`. The new `chartLabelDark` slot is the
-> only addition to the palette in this iteration. A section's
-> label is hidden when the painted text width exceeds the section's
-> arc length at mid-radius minus an 8 px pad, and the label's alpha
-> inherits the section's focus opacity (so an unfocused 0.4 section
-> also has a 0.4-alpha label). The Iteration 3 polish also fixed
-> the 12 o'clock seam notch — every inter-section gap (including
-> the wrap-around seam) is now exactly `gapDegrees` wide. See
-> `MacroDonutChart` in `docs/widget_catalog.md`.
-
----
+### Color Usage Rules
+1. **Background** is always the cosmic gradient — never flat
+2. **Surfaces** float above the background with depth (shadow + border)
+3. **Cyan/teal accents** indicate interactivity or active state — never decorative filler
+4. **White text** with opacity levels creates hierarchy without introducing new hues
+5. **Home tiles** use a solid low-opacity accent fill (primary ~18%, secondary ~8%) with a 1px white top rim highlight and 1px black bottom inner shadow on primary tiles; secondary tiles (Free, Routines) have no rim or inner shadow. Tile gradients are intentionally not used — see `EnergyTile` and `HomeTileConfig.isSecondary`.
+6. **Glow effects** are reserved for active/selected states and brand elements
+7. **Modality accent colors** must come from `lib/core/constants/modality_colors.dart` (single source of truth) and must not be hardcoded in screens/components
 
 ## Typography
 
@@ -381,17 +286,7 @@ Destructive buttons (delete, discard) use `FilledButton` with `backgroundColor: 
 
 ### OmniTheme Tokens
 
-```dart
-OmniTheme.buttonBorderRadius                // 12.0 — primary, row-pair
-OmniTheme.buttonUtilityRadius               // 8.0  — utility, dialog
-OmniTheme.buttonIconRadius                  // 10.0 — icon-only square
-OmniTheme.buttonPrimaryHeight               // 56.0 — full-width and row-pair height
-OmniTheme.buttonIconSize                    // 60.0 — icon-only button size
-OmniTheme.bottomCTAHorizontalPadding        // 16.0 — left/right inset for the shared bottom CTA
-OmniTheme.bottomCTAVerticalTopPadding       // 24.0 — top inset inside the shared bottom CTA footer
-OmniTheme.bottomCTAVerticalBottomPadding    // 16.0 — bottom inset above the device safe area
-OmniTheme.formBottomCTAClearance            // 112.0 — scroll view bottom padding to clear the shared bottom CTA
-```
+Button geometry is tokenised on `OmniTheme`: `buttonBorderRadius` (primary and row-pair), `buttonUtilityRadius` (utility and dialog), `buttonIconRadius` (icon-only square), `buttonPrimaryHeight`, `buttonIconSize`, and the shared bottom-CTA insets `bottomCTAHorizontalPadding`, `bottomCTAVerticalTopPadding`, `bottomCTAVerticalBottomPadding`, and `formBottomCTAClearance`. Reference the token; never restate or hardcode its value.
 
 ### Primary Bottom CTA — shared width and vertical anchor (MANDATORY)
 
@@ -472,11 +367,6 @@ GestureDetector (press tracking)
 6. **Readability at distance** — text sizes must be legible at arm's length in gym lighting
 
 ---
-
-## Known Inconsistencies (To Resolve)
-
-1. **Dual color definitions** — `OmniTheme` surface/text colors diverge slightly from Material `buildTheme()` values. Custom widgets use `OmniTheme` directly; Material components use the theme. These should be unified.
-2. **Hardcoded icon sizes** — 70px tile icon, 40% core percentage. Should become `OmniTheme` tokens.
 
 
 ---

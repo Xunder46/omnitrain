@@ -31,56 +31,21 @@ Create flow typically passes `contextModality` and leaves `initialExercise` null
 
 ---
 
-## Form Structure
+## Modality-First Form
 
-### 1. Modality (required)
+The chosen modality drives everything else in the form: which disciplines are offered, which
+capability chips are selectable, and whether muscle groups appear at all.
 
-The form starts with four modality chips:
-
-- `Cardio / Endurance`
-- `Resistance / Lifting`
-- `Sports`
-- `Isometric / Stretching`
-
-Behavior:
-
-- create mode can prefill the modality from `contextModality`
-- edit mode locks the modality if the existing exercise already has a non-null modality
-- changing modality clears capabilities that are no longer valid for the new modality
-- changing modality resets the selected discipline and may hide muscle groups
-
-### 2. Name and Description
-
-- `Exercise name` is required and uses `TextCapitalization.words`
-- `Description` is optional and uses `TextCapitalization.sentences`
-
-### 3. Discipline
-
-The discipline dropdown is filtered by the selected modality's category affinity through `ModalityConfig.disciplinesForModality(...)`.
-
-If no modality is selected yet, the dropdown is disabled.
-
-### 4. Capabilities
-
-Capabilities are rendered from `ModalityConfig.formCapabilities`, not from the full global capability list.
-
-| Modality | Capability Chips | Save Requires One Of | Muscle Groups | Discipline Scope |
-|----------|------------------|----------------------|---------------|------------------|
-| `cardio_endurance` | `time`, `distance`, `rounds` | `time`, `distance` | Hidden | `category-cardio` |
-| `resistance_lifting` | `reps`, `sets`, `load`, `time` | `reps`, `load` | Shown | `category-resistance` |
-| `sports` | `time`, `rounds`, `distance` | `time`, `rounds` | Hidden | `category-sports` |
-| `isometric_stretching` | `hold`, `time`, `sets` | `hold` | Shown | `category-isometric` |
-
-### 5. Muscle Groups
-
-Muscle-group chips are only shown when `ModalityConfig.showMuscleGroupsInForm` is true.
-
-That currently means:
-
-- `resistance_lifting`
-- `isometric_stretching`
-
----
+- Create mode may prefill the modality from `contextModality`; edit mode **locks** it once the
+  exercise already has one, because changing it would invalidate the capabilities already saved
+  against the exercise.
+- Changing the modality clears capabilities that are not valid for the new one, and resets the
+  selected discipline.
+- Capability chips come from `ModalityConfig.formCapabilities` — never the full global capability
+  list — and save is blocked until at least one of `ModalityConfig.formRequiredCapabilities` is
+  selected. Both live in `lib/core/constants/modality_config.dart`; that file is the only place
+  the per-modality sets are defined.
+- Muscle groups appear only when `ModalityConfig.showMuscleGroupsInForm` is true.
 
 ## Validation Rules
 
@@ -109,20 +74,12 @@ This behavior is driven by `ModalityConfig.legacyCapabilitiesForEdit(...)`.
 
 ---
 
-## Save Flow
+## Save
 
-1. The editor loads disciplines and muscle groups through `WorkoutState`.
-2. The user fills the form and taps `Save exercise`.
-3. The screen validates modality, name, and required capabilities.
-4. On success, the screen calls one of:
-   - `WorkoutState.createCustomExercise(...)`
-   - `WorkoutState.updateCustomExercise(...)`
-5. Capabilities and muscle-group ids are sorted before persistence.
-6. The saved `Exercise` is popped as the route result.
-
-If persistence fails, the screen shows a `SnackBar` with the `WorkoutState.error` message or a fallback error string.
-
----
+Save routes through `WorkoutState.createCustomExercise` or `updateCustomExercise` and pops the
+saved `Exercise` as the route result; the picker re-ranks its results on return. Capabilities and
+muscle-group ids are sorted before persistence so stored order is deterministic. A persistence
+failure leaves the form open with the error surfaced rather than discarding the user's input.
 
 ## Persistence Notes
 
