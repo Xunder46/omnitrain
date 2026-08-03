@@ -410,23 +410,58 @@ class OmniTheme {
   /// `bottomCTAVerticalBottomPadding` + breathing room).
   static const double formBottomCTAClearance = 112.0;
 
-  /// Bottom offset for the rest-timer overlay chip. The chip is the
-  /// single rest indicator used on the session list view and the
-  /// exercise detail view, so this value is the **shared vertical
-  /// anchor** for both screens — the rest indicator must feel like
-  /// it lives in one consistent spot.
+  /// Reserved height of the docked rest-timer strip on every workout
+  /// surface (the list views and the exercise detail view). When
+  /// the strip is visible it always occupies exactly this many
+  /// dp above the primary bottom action button, regardless of
+  /// which surface is foregrounded. The chip's intrinsic height
+  /// is `restOverlayChipHeight`; the rest of the strip is the
+  /// breathing room above and below the chip.
   ///
-  /// Tuned to sit `kRestOverlayToCTAGap` dp above the top edge of
-  /// the bottom CTA (CTA footprint is
-  /// `bottomCTAVerticalTopPadding` + `buttonPrimaryHeight` +
-  /// `bottomCTAVerticalBottomPadding` = 96 dp before SafeArea), so
-  /// the chip never crowds the Log Set / Finish Workout button.
+  /// The strip lives in its own reserved horizontal strip so it
+  /// never overlaps any other widget; the rest timer reads as a
+  /// passive readout that does not compete with primary actions
+  /// for the same pixels.
+  static const double restStripHeight = 72.0;
+
+  /// Horizontal padding around the rest-timer chip inside the
+  /// docked strip. Symmetric — left and right margins match the
+  /// bottom CTA's horizontal padding so the chip's bounding box
+  /// sits visually aligned with the CTA's footprint.
+  static const double restStripHorizontalPadding = 20.0;
+
+  /// Intrinsic rendered height of the rest-overlay chip. The chip
+  /// is 48 dp tall (the touch-target floor) plus its own internal
+  /// vertical padding, so this matches the chip's own
+  /// `constraints(minHeight: 48)` plus its vertical inset.
+  static const double restOverlayChipHeight = 48.0;
+
+  /// Bottom offset for the rest-timer overlay chip. The chip is
+  /// the single rest indicator used on the session list view and
+  /// the exercise detail view.
+  ///
+  /// **Deprecated** — the chip is no longer a floating overlay.
+  /// It is hosted by `RestTimerStrip` (see
+  /// `lib/features/session/rest_timer_strip.dart`), which docks
+  /// it directly above the primary bottom action button on every
+  /// workout surface. Retained so existing imports keep
+  /// resolving; new code should use `RestTimerStrip` instead.
+  @Deprecated(
+    'Use RestTimerStrip (lib/features/session/rest_timer_strip.dart) — '
+    'the rest timer is now docked, not floating.',
+  )
   static const double restOverlayBottomOffset = 176.0;
 
   /// Minimum vertical gap between the rest overlay chip and the
-  /// top edge of the bottom CTA. 80 dp — leaves a clear, calm
-  /// separation on the smallest supported screen heights without
-  /// pushing the chip into the metric content on larger phones.
+  /// top edge of the bottom CTA.
+  ///
+  /// **Deprecated** — the chip is no longer floating above the
+  /// CTA; the docked strip replaces this fixed gap with an
+  /// in-flow reserved strip.
+  @Deprecated(
+    'Use RestTimerStrip (lib/features/session/rest_timer_strip.dart) — '
+    'the rest timer is now docked, not floating.',
+  )
   static const double kRestOverlayToCTAGap = 80.0;
 
   // ═══════════════════════════════════════════════════════════

@@ -347,6 +347,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         ? widget.workoutState.segments.first.id
         : null;
 
+    final showRestStrip = _shouldShowRestOverlay();
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
@@ -360,9 +361,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Expanded(
                   child: blocks.isEmpty
                       ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.only(
-                              bottom: _kBottomControlsClearance,
+                          child: AnimatedPadding(
+                            duration: _kRestStripAnimationDuration,
+                            curve: Curves.easeOut,
+                            padding: EdgeInsets.only(
+                              bottom: _kBottomControlsClearance +
+                                  (showRestStrip
+                                      ? OmniTheme.restStripHeight
+                                      : 0),
                             ),
                             child: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 480),
@@ -375,11 +381,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                         )
                       : ListView(
                           controller: _listScrollController,
-                          padding: const EdgeInsets.fromLTRB(
+                          padding: EdgeInsets.fromLTRB(
                             0,
                             0,
                             0,
-                            _kBottomControlsClearance,
+                            _kBottomControlsClearance +
+                                (showRestStrip
+                                    ? OmniTheme.restStripHeight
+                                    : 0),
                           ),
                           children: [
                             for (int i = 0; i < blocks.length; i++)
@@ -396,24 +405,27 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ],
             ),
           ),
-          if (_shouldShowRestOverlay())
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: OmniTheme.restOverlayBottomOffset,
-              child: Center(
-                child: _buildRestOverlayChip(theme, _formatGlobalRestElapsed()),
-              ),
-            ),
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: OmniBottomCTA(
-              label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-              onPressed: widget.editMode
-                  ? _saveEditChanges
-                  : _showFinishSessionDialog,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RestTimerStrip(
+                  visible: showRestStrip,
+                  child: _buildRestOverlayChip(
+                    theme,
+                    _formatGlobalRestElapsed(),
+                  ),
+                ),
+                OmniBottomCTA(
+                  label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+                  onPressed: widget.editMode
+                      ? _saveEditChanges
+                      : _showFinishSessionDialog,
+                ),
+              ],
             ),
           ),
         ],
@@ -493,6 +505,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     }
 
     final items = _buildNonRollingTopLevelItems(_exercises);
+    final showRestStrip = _shouldShowRestOverlay();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -511,11 +524,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Expanded(
                   child: ListView(
                     controller: _listScrollController,
-                    padding: const EdgeInsets.fromLTRB(
+                    padding: EdgeInsets.fromLTRB(
                       0,
                       8,
                       0,
-                      _kBottomControlsClearance,
+                      _kBottomControlsClearance +
+                          (showRestStrip
+                              ? OmniTheme.restStripHeight
+                              : 0),
                     ),
                     children: [
                       for (final item in items)
@@ -535,24 +551,27 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ],
             ),
           ),
-          if (_shouldShowRestOverlay())
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: OmniTheme.restOverlayBottomOffset,
-              child: Center(
-                child: _buildRestOverlayChip(theme, _formatGlobalRestElapsed()),
-              ),
-            ),
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: OmniBottomCTA(
-              label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-              onPressed: widget.editMode
-                  ? _saveEditChanges
-                  : _showFinishSessionDialog,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RestTimerStrip(
+                  visible: showRestStrip,
+                  child: _buildRestOverlayChip(
+                    theme,
+                    _formatGlobalRestElapsed(),
+                  ),
+                ),
+                OmniBottomCTA(
+                  label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+                  onPressed: widget.editMode
+                      ? _saveEditChanges
+                      : _showFinishSessionDialog,
+                ),
+              ],
             ),
           ),
         ],
@@ -783,6 +802,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         ? entries[_currentSet - 1]
         : (effortKind == 'set' ? {'reps': 0, 'weight': 0.0} : {'duration': 0});
 
+    final showRestStrip = _shouldShowRestOverlay();
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
@@ -809,36 +829,66 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     child: Column(
                       children: [
                         Expanded(
-                          child: SingleChildScrollView(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _buildMetricWidget(
-                                    exercise,
-                                    currentEntry,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _buildSetProgress(
-                                    entries.length,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _buildSetIndicator(
-                                    entries.length,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  SizedBox(
-                                    height: 24 + _kSessionScrollBottomExtra,
-                                  ),
-                                ],
+                          child: AnimatedPadding(
+                            duration: _kRestStripAnimationDuration,
+                            curve: Curves.easeOut,
+                            padding: EdgeInsets.only(
+                              bottom: showRestStrip
+                                  ? OmniTheme.restStripHeight
+                                  : 0,
+                            ),
+                            child: SingleChildScrollView(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    _buildMetricWidget(
+                                      exercise,
+                                      currentEntry,
+                                      effortKind,
+                                      theme,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _buildSetProgress(
+                                      entries.length,
+                                      effortKind,
+                                      theme,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _buildSetIndicator(
+                                      entries.length,
+                                      effortKind,
+                                      theme,
+                                    ),
+                                    SizedBox(
+                                      height:
+                                          24 + _kSessionScrollBottomExtra,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
+                          ),
+                        ),
+
+                        // Docked rest-timer strip directly above the
+                        // set controls. Visibility is governed by the
+                        // shared _shouldShowRestOverlay() helper
+                        // (covers edit-mode, running effort, and
+                        // cross-effort rest scenarios in one rule).
+                        // The strip's height animates in sync with
+                        // the scrollable's bottom padding so the
+                        // content can scroll clear of it and the
+                        // strip collapses to zero when no rest is
+                        // open.
+                        RestTimerStrip(
+                          visible: showRestStrip,
+                          child: _buildRestOverlayChip(
+                            theme,
+                            _formatGlobalRestElapsed(),
                           ),
                         ),
 
@@ -854,23 +904,6 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 ],
               ),
             ),
-            // Rest timer overlay in lower half. Visibility is governed by the
-            // shared _shouldShowRestOverlay() helper (covers edit-mode, running
-            // effort, and cross-effort rest scenarios in one rule). The overlay
-            // persists after crossing an exercise boundary because the helper
-            // looks at the session-wide most-recent open rest.
-            if (_shouldShowRestOverlay())
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: OmniTheme.restOverlayBottomOffset,
-                child: Center(
-                  child: _buildRestOverlayChip(
-                    theme,
-                    _formatGlobalRestElapsed(),
-                  ),
-                ),
-              ),
           ],
         ),
     );

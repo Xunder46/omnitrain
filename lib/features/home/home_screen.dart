@@ -993,6 +993,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           ),
                                     ),
                                   ),
+                                  SizedBox(height: 60),
                                   _buildMaintenanceGrid(context),
                                 ],
                               ),
@@ -1119,9 +1120,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
     ];
 
+    // `padding: EdgeInsets.zero` is required: `BoxScrollView.buildSlivers`
+    // auto-injects `MediaQuery.padding` as a `SliverPadding` around the
+    // grid when `padding` is null. That phantom sliver sits between the
+    // HUB header and the first tile row, creating a ~60 px floating
+    // band that pushed the grid into the visual middle of the
+    // oversized sheet. Pinning the padding to zero keeps the content
+    // anchored to the top of the sheet. The sheet itself positions the
+    // grid via the surrounding `SliverPadding(fromLTRB(16, 0, 16, 4))`,
+    // so we do not lose any system inset handling.
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         mainAxisSpacing: 16,

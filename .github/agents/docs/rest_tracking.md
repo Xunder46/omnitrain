@@ -131,18 +131,45 @@ All calls use the existing `unawaited()` fire-and-forget pattern used throughout
 
 ### Overlay Display
 
-The rest overlay chip renders on **every** session surface — rolling list view, standard list view,
-and detail view — and all of them gate visibility through a **single shared helper**. This is the
-invariant: the two surfaces can never disagree about whether a rest timer is counting, because
-neither owns the decision. A cross-effort rest (open for exercise A while a timer runs on exercise
-B) is hidden everywhere while that timer is active, and edit mode hides the chip outright.
+The rest overlay chip is hosted by the `RestTimerStrip` widget
+(`lib/features/session/rest_timer_strip.dart`), which docks the chip
+into a reserved horizontal strip directly above the primary bottom
+action button on every session surface — the rolling list view,
+the standard list view, and the detail view. The strip replaces
+the previous floating overlay, which sat at a fixed pixel offset
+above the bottom edge of the screen and landed on top of
+interactive controls on small viewports (covering the Add
+Exercise / Add Block bar on the list view and the weight-adjustment
+controls on the detail view for the entire rest period).
 
-Verified by `test/unified_rest_overlay_test.dart` (`Unified rest overlay rule`).
+Every workout surface routes visibility through a **single shared
+helper** — `_shouldShowRestOverlay()` in
+`workout_session_global_timer.dart` — and passes the result as a
+`visible:` flag to the strip. The invariant is that the surfaces
+can never disagree about whether a rest timer is counting,
+because none of them owns the decision. A cross-effort rest
+(open for exercise A while a timer runs on exercise B) is hidden
+everywhere while that timer is active, and edit mode hides the
+chip outright.
 
-The chip is tappable across its whole tile, so pausing or resuming rest never requires aiming at a small icon.
+Verified by:
 
-The chip distinguishes its states without requiring the user to read the number, and its bounding
-rect is identical in every state so the timer never jumps as it changes.
+- `test/unified_rest_overlay_test.dart` (`Unified rest overlay rule`)
+  — visibility contract is unchanged.
+- `test/rest_timer_docked_strip_test.dart` (`Docked strip — no
+  overlap with interactive controls`, `… height collapse + scroll
+  stability`, `… cross-surface parity`, `… viewport overflow
+  sweep`) — the docked placement satisfies the no-overlap,
+  scroll-stability, and cross-surface-parity invariants.
+
+The chip itself is unchanged from the previous floating
+implementation: it is tappable across its whole tile, distinguishes
+its states without requiring the user to read the number, and
+keeps an identical bounding rect across running and paused
+states. The strip's empty area around the chip absorbs taps via
+a transparent `GestureDetector`, so a tap that lands on the
+padding around the chip does not reach the scrollable beneath;
+the chip's own tap-to-pause/resume handler is unaffected.
 
 Pause/resume behaviour:
 

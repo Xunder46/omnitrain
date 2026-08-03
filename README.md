@@ -1,5 +1,9 @@
 # OmniTrain
 
+## Supported viewport
+
+The minimum supported portrait viewport is **360 × 640 logical pixels**, defined by `SupportedViewport.minimumSize` in `lib/core/constants/supported_viewport.dart`. Smaller screens are explicitly unsupported; contributors must not add special-case handling for them. The floor contract and layout regression coverage are verified by `test/supported_viewport_test.dart` and the screen-specific floor test groups.
+
 OmniTrain is a multimodal fitness tracking app built in Flutter, targeting iOS and Android. It adapts its interface to the type of training being performed — resistance, cardio, sports, isometric, and free training — so the right metrics and controls are always visible without manual configuration.
 
 ## What makes it different

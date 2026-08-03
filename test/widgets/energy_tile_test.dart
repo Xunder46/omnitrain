@@ -43,58 +43,63 @@ void main() {
     // because the surface border radius token is theme-independent.
   });
 
-  Widget host(Widget child) =>
-      MaterialApp(home: Scaffold(body: Center(child: child)));
+  Widget host(Widget child) => MaterialApp(
+    home: Scaffold(body: Center(child: child)),
+  );
 
   group('S-001: resting home grid render', () {
-    testWidgets(
-      'primary tile has no gradient on base decoration',
-      (tester) async {
-        await tester.pumpWidget(
-          host(
-            EnergyTile(
-              title: 'Cardio',
-              icon: Icons.directions_run,
-              accentColor: const Color(0xFF24B85A),
-              onTap: () {},
-            ),
+    testWidgets('primary tile has no gradient on base decoration', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          EnergyTile(
+            title: 'Cardio',
+            icon: Icons.directions_run,
+            accentColor: const Color(0xFF24B85A),
+            onTap: () {},
           ),
-        );
+        ),
+      );
 
-        final base = _surface(tester).decoration! as BoxDecoration;
-        expect(base.gradient, isNull,
-            reason: 'primary tile base decoration must not have a gradient');
-      },
-    );
+      final base = _surface(tester).decoration! as BoxDecoration;
+      expect(
+        base.gradient,
+        isNull,
+        reason: 'primary tile base decoration must not have a gradient',
+      );
+    });
 
-    testWidgets(
-      'primary tile has no gradient on foreground decoration',
-      (tester) async {
-        await tester.pumpWidget(
-          host(
-            EnergyTile(
-              title: 'Resistance',
-              iconWidget: const Icon(Icons.fitness_center),
-              accentColor: const Color(0xFF2DE2E6),
-              onTap: () {},
-            ),
+    testWidgets('primary tile has no gradient on foreground decoration', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          EnergyTile(
+            title: 'Resistance',
+            iconWidget: const Icon(Icons.fitness_center),
+            accentColor: const Color(0xFF2DE2E6),
+            onTap: () {},
           ),
-        );
+        ),
+      );
 
-        final fg = _surface(tester).foregroundDecoration;
-        // No gradient overlay means either no foregroundDecoration OR one
-        // that is purely a rim/shadow overlay (no LinearGradient).
-        if (fg != null) {
-          // foregroundDecoration is a Decoration; cast to BoxDecoration to
-          // check for a gradient (LinearGradient is only on BoxDecoration).
-          if (fg is BoxDecoration) {
-            expect(fg.gradient, isNull,
-                reason:
-                    'primary tile foreground decoration must not have a gradient');
-          }
+      final fg = _surface(tester).foregroundDecoration;
+      // No gradient overlay means either no foregroundDecoration OR one
+      // that is purely a rim/shadow overlay (no LinearGradient).
+      if (fg != null) {
+        // foregroundDecoration is a Decoration; cast to BoxDecoration to
+        // check for a gradient (LinearGradient is only on BoxDecoration).
+        if (fg is BoxDecoration) {
+          expect(
+            fg.gradient,
+            isNull,
+            reason:
+                'primary tile foreground decoration must not have a gradient',
+          );
         }
-      },
-    );
+      }
+    });
 
     testWidgets(
       'primary tile resting boxShadow is empty (no drop shadow at rest)',
@@ -111,10 +116,13 @@ void main() {
         );
 
         final base = _surface(tester).decoration! as BoxDecoration;
-        expect(base.boxShadow, isNull,
-            reason:
-                'primary tile resting state must not have a drop shadow '
-                '(use an empty list or null)');
+        expect(
+          base.boxShadow,
+          isNull,
+          reason:
+              'primary tile resting state must not have a drop shadow '
+              '(use an empty list or null)',
+        );
       },
     );
 
@@ -135,11 +143,17 @@ void main() {
 
         final base = _surface(tester).decoration! as BoxDecoration;
         final color = base.color;
-        expect(color, isNotNull,
-            reason: 'primary tile base must have a solid color fill');
+        expect(
+          color,
+          isNotNull,
+          reason: 'primary tile base must have a solid color fill',
+        );
         // 18% of alpha 0xFF == 0x2E
-        expect((color!.a * 255).round(), inInclusiveRange(44, 48),
-            reason: 'primary fill opacity should be ~18%');
+        expect(
+          (color!.a * 255).round(),
+          inInclusiveRange(44, 48),
+          reason: 'primary fill opacity should be ~18%',
+        );
       },
     );
 
@@ -161,11 +175,17 @@ void main() {
 
         final base = _surface(tester).decoration! as BoxDecoration;
         final color = base.color;
-        expect(color, isNotNull,
-            reason: 'secondary tile base must have a solid color fill');
+        expect(
+          color,
+          isNotNull,
+          reason: 'secondary tile base must have a solid color fill',
+        );
         // 8% of alpha 0xFF == 0x14
-        expect((color!.a * 255).round(), inInclusiveRange(18, 22),
-            reason: 'secondary fill opacity should be ~8%');
+        expect(
+          (color!.a * 255).round(),
+          inInclusiveRange(18, 22),
+          reason: 'secondary fill opacity should be ~8%',
+        );
       },
     );
 
@@ -196,73 +216,77 @@ void main() {
       },
     );
 
-    testWidgets(
-      'primary tile shows a 1px top rim highlight (white @ ~8%)',
-      (tester) async {
-        await tester.pumpWidget(
-          host(
-            EnergyTile(
-              title: 'Cardio',
-              icon: Icons.directions_run,
-              accentColor: const Color(0xFF24B85A),
-              onTap: () {},
-            ),
+    testWidgets('primary tile shows a 1px top rim highlight (white @ ~8%)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          EnergyTile(
+            title: 'Cardio',
+            icon: Icons.directions_run,
+            accentColor: const Color(0xFF24B85A),
+            onTap: () {},
           ),
-        );
+        ),
+      );
 
-        // Look for a positioned 1px-tall white-strip widget near the top.
-        // We assert by walking the widget tree for a DecoratedBox with
-        // a white color near the top edge.
-        final rimStrips = find.byWidgetPredicate((w) {
-          if (w is! DecoratedBox) return false;
-          final d = w.decoration;
-          if (d is! BoxDecoration) return false;
-          final c = d.color;
-          if (c == null) return false;
-          // White-ish at ~8% alpha
-          return (c.r - 1.0).abs() < 0.01 &&
-              (c.g - 1.0).abs() < 0.01 &&
-              (c.b - 1.0).abs() < 0.01 &&
-              (c.a * 255).round() >= 18 &&
-              (c.a * 255).round() <= 22;
-        });
-        expect(rimStrips, findsWidgets,
-            reason:
-                'primary tile must render a 1px white @ ~8% rim strip at the top');
-      },
-    );
+      // Look for a positioned 1px-tall white-strip widget near the top.
+      // We assert by walking the widget tree for a DecoratedBox with
+      // a white color near the top edge.
+      final rimStrips = find.byWidgetPredicate((w) {
+        if (w is! DecoratedBox) return false;
+        final d = w.decoration;
+        if (d is! BoxDecoration) return false;
+        final c = d.color;
+        if (c == null) return false;
+        // White-ish at ~8% alpha
+        return (c.r - 1.0).abs() < 0.01 &&
+            (c.g - 1.0).abs() < 0.01 &&
+            (c.b - 1.0).abs() < 0.01 &&
+            (c.a * 255).round() >= 18 &&
+            (c.a * 255).round() <= 22;
+      });
+      expect(
+        rimStrips,
+        findsWidgets,
+        reason:
+            'primary tile must render a 1px white @ ~8% rim strip at the top',
+      );
+    });
 
-    testWidgets(
-      'primary tile shows a 1px bottom inner shadow (black @ ~20%)',
-      (tester) async {
-        await tester.pumpWidget(
-          host(
-            EnergyTile(
-              title: 'Cardio',
-              icon: Icons.directions_run,
-              accentColor: const Color(0xFF24B85A),
-              onTap: () {},
-            ),
+    testWidgets('primary tile shows a 1px bottom inner shadow (black @ ~20%)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          EnergyTile(
+            title: 'Cardio',
+            icon: Icons.directions_run,
+            accentColor: const Color(0xFF24B85A),
+            onTap: () {},
           ),
-        );
+        ),
+      );
 
-        final shadowStrips = find.byWidgetPredicate((w) {
-          if (w is! DecoratedBox) return false;
-          final d = w.decoration;
-          if (d is! BoxDecoration) return false;
-          final c = d.color;
-          if (c == null) return false;
-          return c.r < 0.05 &&
-              c.g < 0.05 &&
-              c.b < 0.05 &&
-              (c.a * 255).round() >= 48 &&
-              (c.a * 255).round() <= 52;
-        });
-        expect(shadowStrips, findsWidgets,
-            reason:
-                'primary tile must render a 1px black @ ~20% inner-shadow strip at the bottom');
-      },
-    );
+      final shadowStrips = find.byWidgetPredicate((w) {
+        if (w is! DecoratedBox) return false;
+        final d = w.decoration;
+        if (d is! BoxDecoration) return false;
+        final c = d.color;
+        if (c == null) return false;
+        return c.r < 0.05 &&
+            c.g < 0.05 &&
+            c.b < 0.05 &&
+            (c.a * 255).round() >= 48 &&
+            (c.a * 255).round() <= 52;
+      });
+      expect(
+        shadowStrips,
+        findsWidgets,
+        reason:
+            'primary tile must render a 1px black @ ~20% inner-shadow strip at the bottom',
+      );
+    });
 
     testWidgets(
       'secondary tile has no rim highlight strip and no inner shadow strip',
@@ -292,8 +316,11 @@ void main() {
               (c.a * 255).round() >= 18 &&
               (c.a * 255).round() <= 22;
         });
-        expect(rimStrips, findsNothing,
-            reason: 'secondary tile must NOT render a top-rim highlight');
+        expect(
+          rimStrips,
+          findsNothing,
+          reason: 'secondary tile must NOT render a top-rim highlight',
+        );
 
         final shadowStrips = find.byWidgetPredicate((w) {
           if (w is! DecoratedBox) return false;
@@ -307,8 +334,11 @@ void main() {
               (c.a * 255).round() >= 48 &&
               (c.a * 255).round() <= 52;
         });
-        expect(shadowStrips, findsNothing,
-            reason: 'secondary tile must NOT render a bottom inner shadow');
+        expect(
+          shadowStrips,
+          findsNothing,
+          reason: 'secondary tile must NOT render a bottom inner shadow',
+        );
       },
     );
 
@@ -327,8 +357,11 @@ void main() {
         );
 
         final text = tester.widget<Text>(find.text('Cardio'));
-        expect(text.style?.fontWeight, FontWeight.w600,
-            reason: 'primary label must use Semibold (w600)');
+        expect(
+          text.style?.fontWeight,
+          FontWeight.w600,
+          reason: 'primary label must use Semibold (w600)',
+        );
         // textDominant on abyssalNeon is 0xF2FFFFFF — accept any near-white.
         final c = text.style?.color;
         expect(c, isNotNull);
@@ -352,8 +385,11 @@ void main() {
         );
 
         final text = tester.widget<Text>(find.text('Free'));
-        expect(text.style?.fontWeight, FontWeight.w500,
-            reason: 'secondary label must use Medium (w500)');
+        expect(
+          text.style?.fontWeight,
+          FontWeight.w500,
+          reason: 'secondary label must use Medium (w500)',
+        );
         final c = text.style?.color;
         expect(c, isNotNull);
         // White-ish
@@ -363,54 +399,55 @@ void main() {
       },
     );
 
-    testWidgets(
-      'primary tile icon is size 70 and uses textDominant color',
-      (tester) async {
-        await tester.pumpWidget(
-          host(
-            EnergyTile(
-              title: 'Sports',
-              icon: Icons.sports_martial_arts,
-              accentColor: const Color(0xFFFF4C47),
-              onTap: () {},
-            ),
+    testWidgets('primary tile icon is size 70 and uses textDominant color', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          EnergyTile(
+            title: 'Sports',
+            icon: Icons.sports_martial_arts,
+            accentColor: const Color(0xFFFF4C47),
+            onTap: () {},
           ),
-        );
+        ),
+      );
 
-        final icon = tester.widget<Icon>(find.byIcon(Icons.sports_martial_arts));
-        expect(icon.size, 70.0, reason: 'primary icon size must be 70');
-        final c = icon.color;
-        expect(c, isNotNull);
-        expect(c!.r, greaterThan(0.9),
-            reason: 'primary icon must use textDominant (near-white)');
-      },
-    );
+      final icon = tester.widget<Icon>(find.byIcon(Icons.sports_martial_arts));
+      expect(icon.size, 70.0, reason: 'primary icon size must be 70');
+      final c = icon.color;
+      expect(c, isNotNull);
+      expect(
+        c!.r,
+        greaterThan(0.9),
+        reason: 'primary icon must use textDominant (near-white)',
+      );
+    });
 
-    testWidgets(
-      'secondary tile icon is size 56 and uses white @ ~75%',
-      (tester) async {
-        await tester.pumpWidget(
-          host(
-            EnergyTile(
-              title: 'Routines',
-              icon: Icons.folder_open,
-              accentColor: const Color(0xFF9E9E9E),
-              isSecondary: true,
-              onTap: () {},
-            ),
+    testWidgets('secondary tile icon is size 56 and uses white @ ~75%', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          EnergyTile(
+            title: 'Routines',
+            icon: Icons.folder_open,
+            accentColor: const Color(0xFF9E9E9E),
+            isSecondary: true,
+            onTap: () {},
           ),
-        );
+        ),
+      );
 
-        final icon = tester.widget<Icon>(find.byIcon(Icons.folder_open));
-        expect(icon.size, 56.0, reason: 'secondary icon size must be 56');
-        final c = icon.color;
-        expect(c, isNotNull);
-        // White-ish
-        expect(c!.r, greaterThan(0.9));
-        // 75% alpha
-        expect((c.a * 255).round(), inInclusiveRange(188, 195));
-      },
-    );
+      final icon = tester.widget<Icon>(find.byIcon(Icons.folder_open));
+      expect(icon.size, 56.0, reason: 'secondary icon size must be 56');
+      final c = icon.color;
+      expect(c, isNotNull);
+      // White-ish
+      expect(c!.r, greaterThan(0.9));
+      // 75% alpha
+      expect((c.a * 255).round(), inInclusiveRange(188, 195));
+    });
   });
 
   group('S-002: active-session tile (edge of S-001)', () {
@@ -433,8 +470,11 @@ void main() {
         final shadows = base.boxShadow;
         // The isActive branch must still render at least one accent glow.
         expect(shadows, isNotNull);
-        expect(shadows!.length, greaterThanOrEqualTo(1),
-            reason: 'isActive glow must be preserved');
+        expect(
+          shadows!.length,
+          greaterThanOrEqualTo(1),
+          reason: 'isActive glow must be preserved',
+        );
 
         // Verify the accent color is present in one of the glow shadows.
         // The accent here is cyan #2DE2E6 (r=0x2D, g=0xE2, b=0xE6), so the
@@ -448,9 +488,11 @@ void main() {
               (c.g - 0.886).abs() < 0.15 &&
               (c.b - 0.902).abs() < 0.15;
         });
-        expect(hasAccentGlow, isTrue,
-            reason:
-                'active glow must include the accent-color shadow branch');
+        expect(
+          hasAccentGlow,
+          isTrue,
+          reason: 'active glow must include the accent-color shadow branch',
+        );
       },
     );
 
@@ -481,9 +523,11 @@ void main() {
               (c.a * 255).round() >= 18 &&
               (c.a * 255).round() <= 22;
         });
-        expect(rimStrips, findsWidgets,
-            reason:
-                'an active primary tile must still render the 1px top rim');
+        expect(
+          rimStrips,
+          findsWidgets,
+          reason: 'an active primary tile must still render the 1px top rim',
+        );
       },
     );
   });
@@ -516,10 +560,7 @@ void main() {
           'Free': Icons.play_arrow,
           'Routines': Icons.folder_open,
         };
-        const secondary = <String>{
-          'Free',
-          'Routines',
-        };
+        const secondary = <String>{'Free', 'Routines'};
 
         await tester.pumpWidget(
           host(
@@ -549,17 +590,24 @@ void main() {
         );
 
         for (final title in titles.keys) {
-          final tileRect = tester.getRect(find.byType(EnergyTile).at(
-            titles.keys.toList().indexOf(title),
-          ));
-          final iconCenter = tester.getCenter(find.descendant(
-            of: find.byType(EnergyTile).at(titles.keys.toList().indexOf(title)),
-            matching: find.byIcon(titles[title]!),
-          ));
+          final tileRect = tester.getRect(
+            find.byType(EnergyTile).at(titles.keys.toList().indexOf(title)),
+          );
+          final iconCenter = tester.getCenter(
+            find.descendant(
+              of: find
+                  .byType(EnergyTile)
+                  .at(titles.keys.toList().indexOf(title)),
+              matching: find.byIcon(titles[title]!),
+            ),
+          );
           final dx = (iconCenter.dx - tileRect.center.dx).abs();
-          expect(dx, lessThanOrEqualTo(1.0),
-              reason:
-                  '$title icon center (${iconCenter.dx}) is offset from tile center (${tileRect.center.dx}) by ${dx.toStringAsFixed(2)}px');
+          expect(
+            dx,
+            lessThanOrEqualTo(1.0),
+            reason:
+                '$title icon center (${iconCenter.dx}) is offset from tile center (${tileRect.center.dx}) by ${dx.toStringAsFixed(2)}px',
+          );
         }
       },
     );
@@ -618,17 +666,24 @@ void main() {
         // (The label's bounding-box left edge varies with text width, so
         // it is the wrong metric; the *center* is what users perceive.)
         for (final title in titles.keys) {
-          final tileRect = tester.getRect(find.byType(EnergyTile).at(
-            titles.keys.toList().indexOf(title),
-          ));
-          final labelRect = tester.getRect(find.descendant(
-            of: find.byType(EnergyTile).at(titles.keys.toList().indexOf(title)),
-            matching: find.text(title),
-          ));
+          final tileRect = tester.getRect(
+            find.byType(EnergyTile).at(titles.keys.toList().indexOf(title)),
+          );
+          final labelRect = tester.getRect(
+            find.descendant(
+              of: find
+                  .byType(EnergyTile)
+                  .at(titles.keys.toList().indexOf(title)),
+              matching: find.text(title),
+            ),
+          );
           final dx = (labelRect.center.dx - tileRect.center.dx).abs();
-          expect(dx, lessThanOrEqualTo(1.0),
-              reason:
-                  '$title label center (${labelRect.center.dx}) is offset from tile center (${tileRect.center.dx}) by ${dx.toStringAsFixed(2)}px');
+          expect(
+            dx,
+            lessThanOrEqualTo(1.0),
+            reason:
+                '$title label center (${labelRect.center.dx}) is offset from tile center (${tileRect.center.dx}) by ${dx.toStringAsFixed(2)}px',
+          );
         }
       },
     );
@@ -676,9 +731,12 @@ void main() {
         final secondaryLabelRect = tester.getRect(find.text('Free'));
 
         final dy = (primaryLabelRect.bottom - secondaryLabelRect.bottom).abs();
-        expect(dy, lessThanOrEqualTo(1.0),
-            reason:
-                'label bottom shifted by ${dy.toStringAsFixed(2)}px when icon size changed — label must be anchored to a fixed bottom offset');
+        expect(
+          dy,
+          lessThanOrEqualTo(1.0),
+          reason:
+              'label bottom shifted by ${dy.toStringAsFixed(2)}px when icon size changed — label must be anchored to a fixed bottom offset',
+        );
       },
     );
   });
@@ -719,8 +777,11 @@ void main() {
               (c.g - 1.0).abs() < 0.01 &&
               (c.b - 1.0).abs() < 0.01;
         });
-        expect(dotFinder, findsOneWidget,
-            reason: 'active tile must render a single white circular dot');
+        expect(
+          dotFinder,
+          findsOneWidget,
+          reason: 'active tile must render a single white circular dot',
+        );
 
         // Validate position: dot's right edge should be ~10pt from the
         // tile's right edge (PLUS the outer Container's 20-pt padding),
@@ -734,12 +795,18 @@ void main() {
         // The outer Container has padding 20, the dot is at Positioned
         // (top: 10, right: 10) inside the Stack, so from the tile's edge
         // the inset is 20+10 = 30 logical px.
-        expect(rightInset, inInclusiveRange(20, 32),
-            reason:
-                'dot right inset should be ~30pt (20 outer + 10 Positioned), got $rightInset');
-        expect(topInset, inInclusiveRange(20, 32),
-            reason:
-                'dot top inset should be ~30pt (20 outer + 10 Positioned), got $topInset');
+        expect(
+          rightInset,
+          inInclusiveRange(20, 32),
+          reason:
+              'dot right inset should be ~30pt (20 outer + 10 Positioned), got $rightInset',
+        );
+        expect(
+          topInset,
+          inInclusiveRange(20, 32),
+          reason:
+              'dot top inset should be ~30pt (20 outer + 10 Positioned), got $topInset',
+        );
         // 8pt diameter
         expect(dotRect.width, inInclusiveRange(7, 9));
         expect(dotRect.height, inInclusiveRange(7, 9));
@@ -781,8 +848,9 @@ void main() {
         // the dot. The dot is rendered as a small white DecoratedBox inside
         // an Opacity wrapper; find the first Opacity in the tree.
         double readDotOpacity() {
-          final opacityWidgets =
-              tester.widgetList<Opacity>(find.byType(Opacity));
+          final opacityWidgets = tester.widgetList<Opacity>(
+            find.byType(Opacity),
+          );
           if (opacityWidgets.isEmpty) return 1.0;
           // Use the first Opacity wrapper, which is the one immediately
           // around the dot (the dot is the deepest visually, so the
@@ -799,12 +867,21 @@ void main() {
         }
         final maxOp = samples.reduce((a, b) => a > b ? a : b);
         final minOp = samples.reduce((a, b) => a < b ? a : b);
-        expect(maxOp, greaterThanOrEqualTo(0.95),
-            reason: 'peak opacity should approach 1.0 (got $maxOp)');
-        expect(minOp, lessThanOrEqualTo(0.85),
-            reason: 'trough opacity should approach 0.1 (got $minOp)');
-        expect((maxOp - minOp).abs(), greaterThan(0.05),
-            reason: 'opacity must oscillate (delta=${(maxOp - minOp).abs()})');
+        expect(
+          maxOp,
+          greaterThanOrEqualTo(0.95),
+          reason: 'peak opacity should approach 1.0 (got $maxOp)',
+        );
+        expect(
+          minOp,
+          lessThanOrEqualTo(0.85),
+          reason: 'trough opacity should approach 0.1 (got $minOp)',
+        );
+        expect(
+          (maxOp - minOp).abs(),
+          greaterThan(0.05),
+          reason: 'opacity must oscillate (delta=${(maxOp - minOp).abs()})',
+        );
         // Suppress unused warning for the placeholder helper above.
         expect(opacityAt(Duration.zero), 0.0);
       },
@@ -839,151 +916,161 @@ void main() {
         for (var i = 0; i < 18; i++) {
           await tester.pump(const Duration(milliseconds: 100));
         }
-        final afterShadows = (_surface(tester).decoration! as BoxDecoration)
-            .boxShadow;
-        expect(afterShadows!.length, firstCount,
-            reason: 'glow boxShadow count must remain stable');
+        final afterShadows =
+            (_surface(tester).decoration! as BoxDecoration).boxShadow;
+        expect(
+          afterShadows!.length,
+          firstCount,
+          reason: 'glow boxShadow count must remain stable',
+        );
       },
     );
   });
 
   group('S-104: resting tile has no dot', () {
-    testWidgets(
-      'resting tile renders no pulsing dot',
-      (tester) async {
-        const tileSize = 200.0;
-        await tester.pumpWidget(
-          host(
-            SizedBox(
-              width: tileSize,
-              height: tileSize,
-              child: EnergyTile(
-                title: 'Cardio',
-                icon: Icons.directions_run,
-                accentColor: const Color(0xFF24B85A),
-                // isActive: false (default)
-                onTap: () {},
-              ),
-            ),
-          ),
-        );
-
-        // Distinguish the dot (Container with BoxShape.circle, white) from
-        // the rim highlight strip (1-px-tall DecoratedBox, white @ 0.08).
-        final dotFinder = find.byWidgetPredicate((w) {
-          if (w is! Container) return false;
-          final d = w.decoration;
-          if (d is! BoxDecoration) return false;
-          if (d.shape != BoxShape.circle) return false;
-          final c = d.color;
-          if (c == null) return false;
-          return (c.r - 1.0).abs() < 0.01 &&
-              (c.g - 1.0).abs() < 0.01 &&
-              (c.b - 1.0).abs() < 0.01;
-        });
-        expect(dotFinder, findsNothing,
-            reason: 'resting tile must NOT render a white circular dot');
-      },
-    );
-  });
-
-  group('S-105: active tile accessibility', () {
-    testWidgets(
-      'active tile announces "Resistance, Workout in progress"',
-      (tester) async {
-        const tileSize = 200.0;
-        await tester.pumpWidget(
-          host(
-            SizedBox(
-              width: tileSize,
-              height: tileSize,
-              child: EnergyTile(
-                title: 'Resistance',
-                icon: Icons.fitness_center,
-                accentColor: const Color(0xFF2DE2E6),
-                isActive: true,
-                onTap: () {},
-              ),
-            ),
-          ),
-        );
-
-        // Use SemanticsTester to find the merged label.
-        final handle = tester.ensureSemantics();
-        // Wait for the SemanticsCallback to fire.
-        await tester.pump();
-        final node = tester
-            .getSemantics(find.byType(EnergyTile))
-            .toStringDeep()
-            .toLowerCase();
-        expect(node.contains('workout in progress'), isTrue,
-            reason:
-                'active tile must announce "Workout in progress" via Semantics '
-                '(got: $node)');
-        handle.dispose();
-      },
-    );
-
-    testWidgets(
-      'dot is excluded from semantics (decorative)',
-      (tester) async {
-        const tileSize = 200.0;
-        await tester.pumpWidget(
-          host(
-            SizedBox(
-              width: tileSize,
-              height: tileSize,
-              child: EnergyTile(
-                title: 'Resistance',
-                icon: Icons.fitness_center,
-                accentColor: const Color(0xFF2DE2E6),
-                isActive: true,
-                onTap: () {},
-              ),
-            ),
-          ),
-        );
-
-        // Find ExcludeSemantics widget in the tree.
-        expect(find.byType(ExcludeSemantics), findsWidgets,
-            reason: 'dot must be wrapped in ExcludeSemantics');
-      },
-    );
-  });
-
-  group('S-106: secondary icons are more visible (opacity lift)', () {
-    testWidgets(
-      'secondary icon opacity is ~0.75 (lifted from 0.60)',
-      (tester) async {
-        await tester.pumpWidget(
-          host(
-            EnergyTile(
-              title: 'Routines',
-              icon: Icons.folder_open,
-              accentColor: const Color(0xFF9E9E9E),
-              isSecondary: true,
+    testWidgets('resting tile renders no pulsing dot', (tester) async {
+      const tileSize = 200.0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: tileSize,
+            height: tileSize,
+            child: EnergyTile(
+              title: 'Cardio',
+              icon: Icons.directions_run,
+              accentColor: const Color(0xFF24B85A),
+              // isActive: false (default)
               onTap: () {},
             ),
           ),
-        );
+        ),
+      );
 
-        final icon = tester.widget<Icon>(find.byIcon(Icons.folder_open));
-        final c = icon.color;
-        expect(c, isNotNull);
-        // 75% alpha
-        expect((c!.a * 255).round(), inInclusiveRange(188, 195),
-            reason: 'secondary icon opacity should be ~0.75 (was 0.60)');
-        // White-ish
-        expect(c.r, greaterThan(0.9));
-      },
-    );
+      // Distinguish the dot (Container with BoxShape.circle, white) from
+      // the rim highlight strip (1-px-tall DecoratedBox, white @ 0.08).
+      final dotFinder = find.byWidgetPredicate((w) {
+        if (w is! Container) return false;
+        final d = w.decoration;
+        if (d is! BoxDecoration) return false;
+        if (d.shape != BoxShape.circle) return false;
+        final c = d.color;
+        if (c == null) return false;
+        return (c.r - 1.0).abs() < 0.01 &&
+            (c.g - 1.0).abs() < 0.01 &&
+            (c.b - 1.0).abs() < 0.01;
+      });
+      expect(
+        dotFinder,
+        findsNothing,
+        reason: 'resting tile must NOT render a white circular dot',
+      );
+    });
+  });
 
-    testWidgets(
-      'secondary icon size remains 56 (no size change)',
-      (tester) async {
-        await tester.pumpWidget(
-          host(
-            EnergyTile(
+  group('S-105: active tile accessibility', () {
+    testWidgets('active tile announces "Resistance, Workout in progress"', (
+      tester,
+    ) async {
+      const tileSize = 200.0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: tileSize,
+            height: tileSize,
+            child: EnergyTile(
+              title: 'Resistance',
+              icon: Icons.fitness_center,
+              accentColor: const Color(0xFF2DE2E6),
+              isActive: true,
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+
+      // Use SemanticsTester to find the merged label.
+      final handle = tester.ensureSemantics();
+      // Wait for the SemanticsCallback to fire.
+      await tester.pump();
+      final node = tester
+          .getSemantics(find.byType(EnergyTile))
+          .toStringDeep()
+          .toLowerCase();
+      expect(
+        node.contains('workout in progress'),
+        isTrue,
+        reason:
+            'active tile must announce "Workout in progress" via Semantics '
+            '(got: $node)',
+      );
+      handle.dispose();
+    });
+
+    testWidgets('dot is excluded from semantics (decorative)', (tester) async {
+      const tileSize = 200.0;
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: tileSize,
+            height: tileSize,
+            child: EnergyTile(
+              title: 'Resistance',
+              icon: Icons.fitness_center,
+              accentColor: const Color(0xFF2DE2E6),
+              isActive: true,
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+
+      // Find ExcludeSemantics widget in the tree.
+      expect(
+        find.byType(ExcludeSemantics),
+        findsWidgets,
+        reason: 'dot must be wrapped in ExcludeSemantics',
+      );
+    });
+  });
+
+  group('S-106: secondary icons are more visible (opacity lift)', () {
+    testWidgets('secondary icon opacity is ~0.75 (lifted from 0.60)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          EnergyTile(
+            title: 'Routines',
+            icon: Icons.folder_open,
+            accentColor: const Color(0xFF9E9E9E),
+            isSecondary: true,
+            onTap: () {},
+          ),
+        ),
+      );
+
+      final icon = tester.widget<Icon>(find.byIcon(Icons.folder_open));
+      final c = icon.color;
+      expect(c, isNotNull);
+      // 75% alpha
+      expect(
+        (c!.a * 255).round(),
+        inInclusiveRange(188, 195),
+        reason: 'secondary icon opacity should be ~0.75 (was 0.60)',
+      );
+      // White-ish
+      expect(c.r, greaterThan(0.9));
+    });
+
+    testWidgets('secondary icon uses its full configured size in a tall tile', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        host(
+          SizedBox(
+            width: 200,
+            height: 200,
+            child: EnergyTile(
               title: 'Free',
               icon: Icons.play_arrow,
               accentColor: const Color(0xFFA478FF),
@@ -991,11 +1078,205 @@ void main() {
               onTap: () {},
             ),
           ),
+        ),
+      );
+
+      final artwork = tester.getRect(
+        find.byKey(const ValueKey('energy_tile_artwork_Free')),
+      );
+      expect(
+        artwork.height,
+        56,
+        reason: 'a tall secondary tile keeps its configured artwork size',
+      );
+    });
+  });
+
+  group('height-responsive artwork regression', () {
+    Widget constrainedTile({
+      required String title,
+      required double width,
+      required double height,
+      bool isSecondary = false,
+      bool isActive = false,
+      double textScale = 1,
+    }) {
+      return MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+        child: host(
+          SizedBox(
+            width: width,
+            height: height,
+            child: EnergyTile(
+              title: title,
+              icon: Icons.fitness_center,
+              accentColor: const Color(0xFF2DE2E6),
+              isSecondary: isSecondary,
+              isActive: isActive,
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+    }
+
+    Rect keyedRect(WidgetTester tester, String key) =>
+        tester.getRect(find.byKey(ValueKey(key)));
+
+    testWidgets(
+      'S-001: minimum-height primary and secondary tiles keep artwork clear of labels at maximum text scale',
+      (tester) async {
+        for (final secondary in [false, true]) {
+          final title = secondary ? 'Free' : 'Resistance';
+          await tester.pumpWidget(
+            constrainedTile(
+              title: title,
+              width: 156,
+              height: 84,
+              isSecondary: secondary,
+              textScale: 1.6,
+            ),
+          );
+
+          expect(
+            find.byKey(ValueKey('energy_tile_label_$title')),
+            findsOneWidget,
+          );
+          final artworkFinder = find.byKey(
+            ValueKey('energy_tile_artwork_$title'),
+          );
+          if (artworkFinder.evaluate().isNotEmpty) {
+            final artwork = tester.getRect(artworkFinder);
+            final label = keyedRect(tester, 'energy_tile_label_$title');
+            expect(artwork.overlaps(label), isFalse);
+            final region = keyedRect(
+              tester,
+              'energy_tile_artwork_region_$title',
+            );
+            expect(artwork.height, lessThanOrEqualTo(region.height));
+          }
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
+
+    testWidgets(
+      'S-002: artwork size increases monotonically with tile height',
+      (tester) async {
+        final heights = <double>[96, 120, 160, 200];
+        final artworkHeights = <double>[];
+
+        for (final height in heights) {
+          await tester.pumpWidget(
+            constrainedTile(title: 'Resistance', width: 180, height: height),
+          );
+          final artwork = find.byKey(
+            const ValueKey('energy_tile_artwork_Resistance'),
+          );
+          artworkHeights.add(
+            artwork.evaluate().isEmpty ? 0 : tester.getRect(artwork).height,
+          );
+        }
+
+        for (var i = 1; i < artworkHeights.length; i++) {
+          expect(
+            artworkHeights[i] + 0.001,
+            greaterThanOrEqualTo(artworkHeights[i - 1]),
+          );
+        }
+        expect(artworkHeights.toSet().length, greaterThan(1));
+      },
+    );
+
+    testWidgets(
+      'S-003: very short tile omits artwork and vertically centres full-size label',
+      (tester) async {
+        await tester.pumpWidget(
+          constrainedTile(title: 'Resistance', width: 180, height: 64),
         );
 
-        final icon = tester.widget<Icon>(find.byIcon(Icons.play_arrow));
-        expect(icon.size, 56.0,
-            reason: 'secondary icon size must remain 56 (opacity only)');
+        expect(
+          find.byKey(const ValueKey('energy_tile_artwork_Resistance')),
+          findsNothing,
+        );
+        final tile = tester.getRect(find.byType(EnergyTile));
+        final label = keyedRect(tester, 'energy_tile_label_Resistance');
+        expect((label.center.dy - tile.center.dy).abs(), lessThanOrEqualTo(1));
+        final text = tester.widget<Text>(find.text('Resistance'));
+        expect(text.style?.fontSize, isNotNull);
+      },
+    );
+
+    testWidgets(
+      'S-004: width-only variation does not change artwork visibility',
+      (tester) async {
+        final visibility = <bool>[];
+        for (final width in <double>[120, 180, 260]) {
+          await tester.pumpWidget(
+            constrainedTile(title: 'Resistance', width: width, height: 84),
+          );
+          visibility.add(
+            find
+                .byKey(const ValueKey('energy_tile_artwork_Resistance'))
+                .evaluate()
+                .isNotEmpty,
+          );
+        }
+        expect(visibility.toSet(), hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'S-005: active indicator intersects neither artwork nor label on a compressed tile',
+      (tester) async {
+        await tester.pumpWidget(
+          constrainedTile(
+            title: 'Resistance',
+            width: 156,
+            height: 84,
+            isActive: true,
+            textScale: 1.6,
+          ),
+        );
+
+        final status = keyedRect(tester, 'energy_tile_status_Resistance');
+        final label = keyedRect(tester, 'energy_tile_label_Resistance');
+        expect(status.overlaps(label), isFalse);
+        final artworkFinder = find.byKey(
+          const ValueKey('energy_tile_artwork_Resistance'),
+        );
+        if (artworkFinder.evaluate().isNotEmpty) {
+          expect(status.overlaps(tester.getRect(artworkFinder)), isFalse);
+        }
+      },
+    );
+
+    testWidgets(
+      'S-006: representative supported tile dimensions report no overflow',
+      (tester) async {
+        for (final size in <Size>[
+          const Size(156, 64),
+          const Size(156, 84),
+          const Size(180, 120),
+          const Size(224, 200),
+        ]) {
+          for (final scale in <double>[1, 1.6]) {
+            await tester.pumpWidget(
+              constrainedTile(
+                title: 'Resistance',
+                width: size.width,
+                height: size.height,
+                isActive: true,
+                textScale: scale,
+              ),
+            );
+            expect(
+              tester.takeException(),
+              isNull,
+              reason: 'overflow at $size and text scale $scale',
+            );
+          }
+        }
       },
     );
   });

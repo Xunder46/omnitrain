@@ -128,7 +128,7 @@ The home screen's `HUB` eyebrow and body-centered `TRAIN` title are sheet / titl
 
 ### Layout Rules
 1. **Mobile-first, watch-aware** — design for the smallest screen, then scale up
-2. Tiles use `LayoutBuilder` to adapt — labels hide below 100px width
+2. Home training tiles derive artwork bounds and spacing from rendered tile height; artwork is decorative and is omitted when the height budget cannot accommodate it alongside the label. The label remains the identifying content. This contract is verified by the height-responsive artwork regression group in `test/widgets/energy_tile_test.dart`.
 3. Generous padding and touch targets — minimum 48dp tap areas (gym gloves, sweaty fingers)
 4. Vertical scrolling preferred — horizontal swipe only for carousel/peek patterns
 5. Information density scales with screen size, never with complexity

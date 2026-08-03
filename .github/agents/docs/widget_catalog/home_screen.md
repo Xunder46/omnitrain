@@ -19,10 +19,9 @@
 
 The home-screen modality tile, and the only home tile implementation. Renders one of two visual
 tiers — primary for the four modality tiles, secondary for Free Training and My Routines — and an
-active state when the current session matches the tile. The active state is announced to screen
-readers via `Semantics`; its pulsing dot is decorative and excluded from semantics.
-
-### `EnergyCore`
+ active state when the current session matches the tile. Artwork is height-responsive decoration:
+ it is constrained to its allotted region and omitted on short tiles when the label needs the space.
+ The active state is announced to screen readers via `Semantics`; its pulsing dot is decorative and excluded from semantics.
 
 **File**: `lib/widgets/cards/energy_core.dart`
 

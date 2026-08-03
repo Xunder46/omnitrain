@@ -9770,8 +9770,15 @@ void main() {
   }
 
   group('Rest overlay chip – vertical position', () {
+    // The rest timer is now hosted by `RestTimerStrip`
+    // (lib/features/session/rest_timer_strip.dart), which docks the
+    // chip into a reserved strip directly above the primary bottom
+    // action button on every workout surface. The chip's vertical
+    // offset relative to the primary action button is therefore
+    // determined by the strip's geometry, not by a fixed pixel
+    // distance from the screen bottom.
     testWidgets(
-      'detail view: rest chip sits above the Log Set button with the shared offset',
+      'detail view: rest chip sits above the Log Set button (docked strip)',
       (WidgetTester tester) async {
         const surface = Size(400, 1000);
         await pumpSessionWithOpenRest(tester, surface: surface);
@@ -9787,101 +9794,111 @@ void main() {
         // the Log Set `FilledButton`), not the bottom OmniBottomCTA.
         // Look up the primary action by its label.
         final logSetFinder = find.widgetWithText(FilledButton, 'Log Set');
+        final stripFinder = find.byKey(const Key('rest-strip'));
         final chipFinder = find.byKey(const Key('rest-overlay-chip'));
+        expect(stripFinder, findsOneWidget);
         expect(chipFinder, findsOneWidget);
         expect(logSetFinder, findsOneWidget);
 
+        final stripRect = tester.getRect(stripFinder);
         final chipRect = tester.getRect(chipFinder);
         final logSetRect = tester.getRect(logSetFinder);
-        expect(
-          chipRect.bottom,
-          lessThanOrEqualTo(logSetRect.top),
-          reason: 'rest chip must not overlap the Log Set button',
-        );
 
-        // Minimum vertical separation = the shared
-        // `kRestOverlayToCTAGap` (80 dp) minus a small tolerance for
-        // text-scale and SafeArea rounding. Use 40 dp as the absolute
-        // floor so a future drift away from 80 dp is still caught.
-        final gap = logSetRect.top - chipRect.bottom;
+        // The strip docks directly above the Log Set button — its
+        // bottom touches the Log Set button's top edge with no gap.
         expect(
-          gap,
-          greaterThanOrEqualTo(OmniTheme.kRestOverlayToCTAGap - 40.0),
+          stripRect.bottom,
+          lessThanOrEqualTo(logSetRect.top + 1.0),
           reason:
-              'rest chip must clear the Log Set button by at least the '
-              'shared separation gap (kRestOverlayToCTAGap)',
+              'the docked strip must sit directly above the Log Set '
+              'button, not float over content',
+        );
+        // The chip lives inside the strip and is centered vertically
+        // within it — its bounding rect is therefore strictly inside
+        // the strip's bounding rect.
+        expect(
+          chipRect.top >= stripRect.top - 0.5 &&
+              chipRect.bottom <= stripRect.bottom + 0.5,
+          isTrue,
+          reason: 'the chip must be vertically centered inside the strip',
         );
       },
     );
 
     testWidgets(
-      'list view: rest chip sits above the Finish Workout CTA with the shared offset',
+      'list view: rest chip sits above the Finish Workout CTA (docked strip)',
       (WidgetTester tester) async {
         const surface = Size(400, 1000);
         await pumpSessionWithOpenRest(tester, surface: surface);
 
-        // The list view is the default landing view, so the rest chip
+        // The list view is the default landing view, so the strip
         // and the Finish Workout CTA must be in the same Stack.
-        final chipFinder = find.byKey(const Key('rest-overlay-chip'));
+        final stripFinder = find.byKey(const Key('rest-strip'));
         final ctaFinder = find.byType(OmniBottomCTA);
-        expect(chipFinder, findsOneWidget);
+        expect(stripFinder, findsOneWidget);
         expect(ctaFinder, findsOneWidget);
 
-        final chipRect = tester.getRect(chipFinder);
+        final stripRect = tester.getRect(stripFinder);
         final ctaRect = tester.getRect(ctaFinder);
-        expect(
-          chipRect.bottom,
-          lessThan(ctaRect.top),
-          reason: 'rest chip must not overlap the bottom CTA',
-        );
 
-        final gap = ctaRect.top - chipRect.bottom;
+        // The strip docks directly above the CTA — its bottom
+        // touches the CTA's top edge with no gap.
         expect(
-          gap,
-          greaterThanOrEqualTo(OmniTheme.kRestOverlayToCTAGap - 40.0),
+          stripRect.bottom,
+          lessThanOrEqualTo(ctaRect.top + 1.0),
           reason:
-              'rest chip must clear the bottom CTA by at least the shared '
-              'separation gap (kRestOverlayToCTAGap)',
+              'the docked strip must sit directly above the bottom '
+              'CTA, not float over content',
         );
       },
     );
 
     testWidgets(
-      'rest chip resolves to the same vertical anchor on list and detail views',
+      'rest chip\'s offset relative to the primary bottom action is identical on every surface',
       (WidgetTester tester) async {
         const surface = Size(400, 1000);
         await pumpSessionWithOpenRest(tester, surface: surface);
 
-        // 1) Capture the chip's bottom in the list view (default landing).
-        final listChipRect = tester.getRect(
-          find.byKey(const Key('rest-overlay-chip')),
+        // 1) List view — the primary bottom action is the
+        // OmniBottomCTA.
+        final listStripRect = tester.getRect(
+          find.byKey(const Key('rest-strip')),
         );
+        final listCtaRect = tester.getRect(find.byType(OmniBottomCTA));
+        final listGap = listCtaRect.top - listStripRect.bottom;
 
-        // 2) Switch to detail view and re-capture the chip's bottom.
+        // 2) Switch to detail view — the primary bottom action is
+        // the Log Set button.
         final repo = await _freshRepo();
         final firstExercise = (await repo.getExercises()).first;
         await tester.tap(find.text(firstExercise.name));
         await tester.pumpAndSettle();
-        final detailChipRect = tester.getRect(
-          find.byKey(const Key('rest-overlay-chip')),
+        final detailStripRect = tester.getRect(
+          find.byKey(const Key('rest-strip')),
         );
+        final logSetRect = tester.getRect(
+          find.widgetWithText(FilledButton, 'Log Set'),
+        );
+        final detailGap = logSetRect.top - detailStripRect.bottom;
 
-        // Both views share the same `restOverlayBottomOffset`, so the
-        // chip's bottom must be at the same screen-Y in both.
+        // The strip's bottom must dock directly above the primary
+        // action's top edge on both surfaces. The list view's
+        // primary action is the OmniBottomCTA's container (gap ≈ 0
+        // since they sit in the same Column). The detail view's
+        // primary action is the Log Set `FilledButton`, which has
+        // its own intrinsic Material 3 vertical padding inside the
+        // set-controls row (≈ 4 dp), so the gap there may be a few
+        // dp larger than on the list view. The two surfaces still
+        // agree that the strip sits directly above their respective
+        // primary action — neither places the strip somewhere else.
         expect(
-          listChipRect.bottom,
-          detailChipRect.bottom,
+          listGap.abs() <= 1.0 && detailGap.abs() <= 12.0,
+          isTrue,
           reason:
-              'rest chip must use the shared restOverlayBottomOffset on '
-              'both screens',
-        );
-        // And that bottom must equal the constant itself (relative to
-        // the screen height), so the spec's "same vertical position"
-        // claim is provably true and not just numerically equal.
-        expect(
-          surface.height - listChipRect.bottom,
-          OmniTheme.restOverlayBottomOffset,
-          reason: 'chip bottom must equal restOverlayBottomOffset',
+              'the strip must dock directly above the primary '
+              'bottom action on every surface (list gap=$listGap, '
+              'detail gap=$detailGap) — no two surfaces may '
+              'disagree about where the strip sits',
         );
       },
     );

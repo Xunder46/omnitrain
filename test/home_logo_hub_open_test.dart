@@ -523,6 +523,167 @@ void main() {
       expect(find.text('HUB'), findsOneWidget);
       expect(find.byType(MaintenanceTile), findsNWidgets(5));
     });
+
+    testWidgets(
+      'HUB header sits a fixed gap above the first tile row (anchored to top)',
+      (WidgetTester tester) async {
+        // The content group — `HUB` header + maintenance grid — must
+        // anchor to the top of the sheet, directly below the handle,
+        // with an intentional gap between the header and the first
+        // tile row. The gap is owned by the `SizedBox(height: 60)` in
+        // `_buildMaintenanceSheet`'s content `Column` (no sliver
+        // wrapper, no MediaQuery padding, no GridView top inset — so
+        // the rendered gap equals the SizedBox height). The test pins
+        // both the upper bound (so a 60+ px floating band can never
+        // creep in again — that was the original bug this iteration
+        // fixed) AND the lower bound (so the SizedBox never silently
+        // drops to zero, which would make the grid feel jammed
+        // against the header).
+        await tester.binding.setSurfaceSize(const Size(432, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final screen = await buildHomeScreen(repo);
+        await tester.pumpWidget(MaterialApp(home: screen));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(Image));
+        await tester.pumpAndSettle();
+
+        const gapMinPx = 50.0; // SizedBox is 60; allow 10 px tolerance
+        const gapMaxPx = 70.0; // SizedBox is 60; allow 10 px tolerance
+        final hubRect = tester.getRect(find.text('HUB'));
+        final firstTileRect = tester.getRect(
+          find.byType(MaintenanceTile).first,
+        );
+        final gap = firstTileRect.top - hubRect.bottom;
+        expect(
+          gap,
+          greaterThanOrEqualTo(gapMinPx),
+          reason:
+              'HUB header must sit a deliberate gap above the first '
+              'tile row — gap was ${gap.toStringAsFixed(2)} px, lower '
+              'bound $gapMinPx px. A smaller gap means the '
+              'SizedBox(height: 60) was removed and the grid is '
+              'jammed against the header.',
+        );
+        expect(
+          gap,
+          lessThanOrEqualTo(gapMaxPx),
+          reason:
+              'HUB header must sit flush above the first tile row — '
+              'gap was ${gap.toStringAsFixed(2)} px, upper bound '
+              '$gapMaxPx px. A larger gap means the content group is '
+              'floating inside the sheet instead of anchoring to the '
+              'top directly below the drag handle.',
+        );
+      },
+    );
+
+    testWidgets(
+      'HUB-to-grid gap stays in range across screen heights',
+      (WidgetTester tester) async {
+        // Two viewports: the minimum supported (360 × 640) and a tall
+        // phone-class surface. The gap should be the SAME constant
+        // (the SizedBox is height-agnostic) on both surfaces — proves
+        // the content does not drift with screen height.
+        const viewports = <Size>[
+          Size(360, 640), // minimum supported
+          Size(432, 900), // tall phone-class
+        ];
+
+        for (final size in viewports) {
+          await tester.binding.setSurfaceSize(size);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+
+          final screen = await buildHomeScreen(repo);
+          await tester.pumpWidget(MaterialApp(home: screen));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byType(Image));
+          await tester.pumpAndSettle();
+
+          const gapMinPx = 50.0;
+          const gapMaxPx = 70.0;
+          final hubRect = tester.getRect(find.text('HUB'));
+          final firstTileRect = tester.getRect(
+            find.byType(MaintenanceTile).first,
+          );
+          final gap = firstTileRect.top - hubRect.bottom;
+          expect(
+            gap,
+            inInclusiveRange(gapMinPx, gapMaxPx),
+            reason:
+                'At ${size.width.toInt()}×${size.height.toInt()} px, '
+                'the HUB-to-grid gap must stay in '
+                '[$gapMinPx, $gapMaxPx] px — was '
+                '${gap.toStringAsFixed(2)} px. The SizedBox is '
+                'height-agnostic so the gap must not drift with '
+                'screen height.',
+          );
+
+          // Reset surface between iterations.
+          await tester.binding.setSurfaceSize(null);
+        }
+      },
+    );
+
+    testWidgets(
+      'last tile row sits above the sheet content bottom (leftover space below)',
+      (WidgetTester tester) async {
+        // On a viewport that gives the sheet more vertical room than
+        // the HUB + 5-tile grid needs, the leftover space must collect
+        // BELOW the last row of tiles — never above it. This pins the
+        // "content anchored to top" guarantee from the other side: the
+        // bottom row cannot overflow the sheet, and there is always
+        // empty space below it.
+        await tester.binding.setSurfaceSize(const Size(432, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final screen = await buildHomeScreen(repo);
+        await tester.pumpWidget(MaterialApp(home: screen));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(Image));
+        await tester.pumpAndSettle();
+
+        // The sheet's visible content area is the rounded-top
+        // `Container` returned by the `DraggableScrollableSheet`
+        // builder. Its decoration carries `BorderRadius.only(topLeft,
+        // topRight: Radius.circular(24))` — that distinguishes it from
+        // every other rounded-corner Container in the tree (handle,
+        // tile surfaces).
+        final sheetContainer = find.byWidgetPredicate((w) {
+          if (w is! Container) return false;
+          final d = w.decoration;
+          if (d is! BoxDecoration) return false;
+          final br = d.borderRadius;
+          return br is BorderRadius &&
+              br.topLeft == const Radius.circular(24) &&
+              br.topRight == const Radius.circular(24);
+        });
+        expect(
+          sheetContainer,
+          findsOneWidget,
+          reason: 'The sheet container (24 px top-only border radius) '
+              'must be present once the sheet is open.',
+        );
+        final sheetRect = tester.getRect(sheetContainer);
+
+        final lastTileRect = tester.getRect(
+          find.byType(MaintenanceTile).last,
+        );
+        expect(
+          lastTileRect.bottom,
+          lessThanOrEqualTo(sheetRect.bottom + 0.5),
+          reason:
+              'Last tile row bottom (${lastTileRect.bottom}) must not '
+              'exceed the sheet content area bottom '
+              '(${sheetRect.bottom}). The grid must anchor to the top '
+              'of the sheet, with leftover space landing BELOW the '
+              'grid, not above or between rows.',
+        );
+      },
+    );
   });
 }
 

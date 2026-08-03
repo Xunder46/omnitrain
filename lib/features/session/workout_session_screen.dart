@@ -24,6 +24,7 @@ import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/models/session_edit_snapshot.dart';
+import 'rest_timer_strip.dart';
 import 'session_summary_screen.dart';
 
 part 'workout_session_timer_mixin.dart';
@@ -38,6 +39,12 @@ const double _kSessionScrollBottomExtra = 24.0;
 const double _kBottomControlsClearance = 140.0 + _kSessionScrollBottomExtra;
 const double _kBackFromDetailBottomPeekFraction = 0.05;
 const Duration _kTimerUpdateInterval = Duration(seconds: 1);
+/// Animation duration used to coordinate the rest-timer strip's
+/// appearance and disappearance with the scrollable's bottom
+/// padding so the content does not jolt underneath the user. The
+/// strip itself uses the same duration via
+/// [RestTimerStrip.animationDuration].
+const Duration _kRestStripAnimationDuration = RestTimerStrip.animationDuration;
 
 Future<T?> _pushSessionReplacement<T, TO>(
   BuildContext context,
