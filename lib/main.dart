@@ -149,7 +149,10 @@ void main() async {
   // every emitted event carries the same canonical value. A plugin
   // failure (rare on supported platforms) falls back to "0.0.0" — the
   // reporting layer prefers a known-but-imprecise value over no value.
-  var appVersion = '0.0.0+0';
+  // 'version-unavailable+0' is the designated fallback: it is greppable
+  // in the Sentry dashboard and visibly not a real version string, so
+  // it is distinguishable from a genuine build (unlike '0.0.0+0').
+  var appVersion = 'version-unavailable+0';
   try {
     final pkg = await PackageInfo.fromPlatform();
     appVersion = '${pkg.version}+${pkg.buildNumber}';
