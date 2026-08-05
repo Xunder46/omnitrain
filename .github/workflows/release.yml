@@ -43,44 +43,59 @@ jobs:
     - run: flutter pub get
     - run: pod install --project-directory=ios
 
-    - name: Build IPA (manual signing)
+    # The iOS build uses `flutter build ipa` (the tooling-driven
+    # build) rather than calling `xcodebuild` directly. `flutter
+    # build ipa` invokes xcodebuild internally with the arguments
+    # Flutter knows to be correct, including forwarding
+    # `--dart-define=SENTRY_DSN=$SENTRY_DSN` to the Dart front-end
+    # via `--ExtraFrontEndOptions`. The previous bespoke xcodebuild
+    # invocation relied on `EXTRA_FRONT_END_OPTIONS` to inject the
+    # DSN; the gate (§11p) now requires `flutter build ipa` so the
+    # DSN-forwarding path is the standard, end-to-end one. Signing
+    # and archiving continue to work — `ExportOptions.plist` and
+    # the imported certificate in the temporary keychain are both
+    # honoured by `flutter build ipa`.
+    #
+    # The cert-import and provisioning-profile steps above remain
+    # because the GitHub-Actions keychain is temporary; the
+    # certificate is not at the standard keychain location, so
+    # `flutter build ipa` would otherwise fail to resolve the
+    # signing identity. The cert is available to `flutter build
+    # ipa` from the temporary keychain we created above.
+    - name: Build IPA with Sentry baked in
       env:
         SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-        # Disable automatic signing; Xcode reads the profile we just dropped in.
+        SENTRY_PROJECT: omnitrain
         FLUTTER_BUILD_MODE: release
       run: |
-        # Switch the project to manual signing before building.
-        /usr/libexec/PlistBuddy -c "Set :TargetAttributes:1D6058900D05DD5D00689F52:DevelopmentTeam:S3976AA7K8" \
-          ios/Runner.xcodeproj/project.pbxproj || true
-        xcodebuild -workspace ios/Runner.xcworkspace \
-                   -scheme Runner \
-                   -configuration Release \
-                   -allowProvisioningUpdates \
-                   DEVELOPMENT_TEAM=S3976AA7K8 \
-                   CODE_SIGN_STYLE=Manual \
-                   CODE_SIGN_IDENTITY="Apple Distribution" \
-                   PROVISIONING_PROFILE_SPECIFIER="$(ls $HOME/Library/MobileDevice/Provisioning\ Profiles/ | head -1 | sed 's/.mobileprovision//')" \
-                   -archivePath $RUNNER_TEMP/Runner.xcarchive \
-                   archive
-        xcodebuild -exportArchive \
-                   -archivePath $RUNNER_TEMP/Runner.xcarchive \
-                   -exportPath $RUNNER_TEMP/ipa \
-                   -exportOptionsPlist ios/ExportOptions.plist
-        ls $RUNNER_TEMP/ipa
+        # `--export-options-plist` tells `flutter build ipa` how to
+        # archive and export the build for distribution. `flutter
+        # build ipa` invokes xcodebuild internally, runs the
+        # `sentry_dart_plugin` iOS build phase (so dSYMs and
+        # mapping uploads land in the Sentry project named by
+        # `SENTRY_PROJECT`), and resolves signing from the
+        # keychain. `--dart-define=SENTRY_DSN=$SENTRY_DSN` is
+        # forwarded to the Dart front-end so the Sentry SDK
+        # initialises against the real DSN at runtime.
+        flutter build ipa \
+          --release \
+          --export-options-plist=ios/ExportOptions.plist \
+          --dart-define=SENTRY_DSN=$SENTRY_DSN
+        ls build/ios/ipa
 
     - uses: actions/upload-artifact@v4
       with:
         name: ipa
-        path: ${{ runner.temp }}/ipa/*.ipa
+        path: build/ios/ipa/*.ipa
 
   android:
     runs-on: ubuntu-latest
     # Android build runs in parallel with iOS (separate runner).
-    # Same three secrets are reused; only SENTRY_PROJECT differs
-    # because dSYMs go to `omnitrain-ios` and ProGuard mappings go
-    # to `omnitrain-android` (assuming two Sentry projects).
+    # Same three secrets are reused. There is a single Sentry
+    # project named `omnitrain`; both iOS dSYMs and Android
+    # ProGuard mappings upload to it.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -96,12 +111,16 @@ jobs:
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: omnitrain
         run: |
+          # Only SENTRY_DSN is passed to the Flutter build as a
+          # --dart-define. SENTRY_AUTH_TOKEN, SENTRY_ORG, and
+          # SENTRY_PROJECT are build-machine secrets consumed by the
+          # Sentry Android Gradle plugin via Gradle's environment
+          # (the `env:` block above); they must never be compiled
+          # into the shipped Android application binary.
           flutter build appbundle --release \
-            --dart-define=SENTRY_DSN=$SENTRY_DSN \
-            --dart-define=SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN \
-            --dart-define=SENTRY_ORG=$SENTRY_ORG \
-            --dart-define=SENTRY_PROJECT=omnitrain-android
+            --dart-define=SENTRY_DSN=$SENTRY_DSN
       - uses: actions/upload-artifact@v4
         with:
           name: aab

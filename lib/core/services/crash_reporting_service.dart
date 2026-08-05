@@ -322,6 +322,26 @@ class SentryCrashReporter implements CrashReporter {
       return;
     }
 
+    if (dsn.isEmpty) {
+      // The pre-release gate (§11p, §11q) is the primary defense
+      // against shipping a release without a reporting destination.
+      // This guard is defensive: if a future regression slips past
+      // the gate (e.g. a new iOS build-invocation shape the gate
+      // does not yet cover), the runtime still surfaces a
+      // diagnosable condition rather than silently dropping events.
+      // The log line is intentionally distinct from the
+      // kReleaseMode-gated disable above so an on-call engineer
+      // can tell the two failure modes apart from a single log line.
+      debugPrint(
+        'Sentry reporting disabled: DSN is empty. The release build '
+        'was not compiled with --dart-define=SENTRY_DSN=<value>. '
+        'This differs from a debug/profile build, which is '
+        'deliberately disabled at the call site via kReleaseMode.',
+      );
+      _enabled = false;
+      return;
+    }
+
     try {
       await SentryFlutter.init(
         (SentryFlutterOptions options) {

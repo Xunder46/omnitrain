@@ -132,17 +132,35 @@ flutter_launcher_icons:
   min_sdk_android: 26
 
 # Sentry symbol-upload config. The dev_dependency `sentry_dart_plugin`
-# above reads this block at build time. The two tokens (auth_token and
-# org/project) are intentionally env-driven so the same pubspec.yaml
-# works for local builds (where the token is unset and the plugin is a
-# no-op) and for CI release builds. `release` and `debug` blocks let
-# the plugin upload on archive builds only.
+# above reads this block at build time. The three upload-side values
+# (auth_token, org, project) are intentionally env-driven so the same
+# pubspec.yaml works for local builds (where the token is unset and
+# the plugin is a no-op) and for CI release builds.
+#
+# These three values are build-machine ONLY. They must be exported
+# in the release workflow's `env:` block (where the Sentry Android
+# Gradle plugin and the sentry_dart_plugin iOS build phase can read
+# them) and must NEVER be passed to `flutter build` as a
+# `--dart-define`. Passing them as `--dart-define` compiles them
+# into the shipped application binary, where they are extractable
+# from any published artifact. The pre-release gate enforces this;
+# see `scripts/pre_release_check.sh` §11l, §11m.
 #
 # Set the following in your release environment (`.xcode.env`,
 # `android/local.properties`, or your CI secret store):
 #   SENTRY_AUTH_TOKEN=<project token>
 #   SENTRY_ORG=<your-sentry-org-slug>
-#   SENTRY_PROJECT=omnitrain-ios   (and ...-android for Android)
+#   SENTRY_PROJECT=omnitrain
+#
+# Both iOS dSYMs and Android ProGuard mappings upload to the single
+# `omnitrain` Sentry project. Per-platform destinations
+# (`omnitrain-ios` / `omnitrain-android`) do not exist and are
+# rejected by the pre-release gate (§11n / §11o).
+#
+# The only Sentry value the application itself reads is the DSN, via
+# `--dart-define=SENTRY_DSN=...` (consumed at runtime by
+# `lib/main.dart` via `String.fromEnvironment('SENTRY_DSN', ...)`).
+# The DSN is a public endpoint URL, not a credential.
 sentry_dart_plugin:
   upload_sources: true
   upload_native_symbols: true

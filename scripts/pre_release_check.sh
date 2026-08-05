@@ -330,11 +330,203 @@ fi
 
 # The sentry_dart_plugin pubspec block must declare the Android mapping
 # upload hook. A future refactor that drops the block from pubspec.yaml
-# must fail the gate.
+# must fail the gate. The hook's presence is necessary but not
+# sufficient — the upload destination must also be resolvable. That
+# check lives in 11n below (SENTRY_PROJECT exported in the Android
+# workflow job); a release that keeps the hook but loses the env
+# var will fail there, not here.
 if grep -q 'uploadSentryMapping' "$PUBSPEC"; then
   log_ok "Android mapping upload hook (:app:uploadSentryMapping) is configured in pubspec.yaml"
 else
   log_err "Android mapping upload hook (uploadSentryMapping) is missing from pubspec.yaml. JVM stack traces will not symbolicate."
+fi
+
+# 11l. SENTRY_AUTH_TOKEN must never appear as a --dart-define value.
+# A previous release pipeline passed it this way, which compiled the
+# privileged credential into the shipped Android application binary
+# (extractable from any published artifact). The rotated credential
+# closes the exposure; this check closes the mechanism so a future
+# agent cannot re-introduce the same leak. The full check (any
+# credential-shaped name) is 11m; this is the named-credential
+# fast-path so the failure message is sharp.
+RELEASE_WORKFLOW=".github/workflows/release.yml"
+if [[ -f "$RELEASE_WORKFLOW" ]]; then
+  if grep -qE '^[[:space:]]*--dart-define=.*SENTRY_AUTH_TOKEN' "$RELEASE_WORKFLOW"; then
+    log_err "SENTRY_AUTH_TOKEN appears as a --dart-define in $RELEASE_WORKFLOW. This value is compiled into the shipped Android application and extractable from any published artifact. Use the workflow's env: block so it stays on the build machine."
+  else
+    log_ok "SENTRY_AUTH_TOKEN is not compiled into the shipped Android binary"
+  fi
+else
+  log_warn "$RELEASE_WORKFLOW is missing — cannot verify --dart-define hygiene."
+fi
+
+# 11m. Any credential-shaped --dart-define key (TOKEN, SECRET, KEY,
+# PASSWORD) must be rejected. The named check (11l) catches
+# SENTRY_AUTH_TOKEN with a precise message; this catches every
+# other future addition of the same shape (e.g. FRESHDESK_TOKEN,
+# STRIPE_KEY, ROLLBAR_SECRET) before a release ships with a
+# credential in the binary.
+if [[ -f "$RELEASE_WORKFLOW" ]]; then
+  bad_defines=$(grep -nE '^[[:space:]]*--dart-define=[A-Z_]*(TOKEN|SECRET|KEY|PASSWORD)[A-Z_]*=' "$RELEASE_WORKFLOW" || true)
+  if [[ -n "$bad_defines" ]]; then
+    while IFS= read -r line; do
+      key=$(echo "$line" | sed -nE 's/.*--dart-define=([A-Z_]+)=.*/\1/p')
+      log_err "--dart-define=$key=... appears in $RELEASE_WORKFLOW. A credential-shaped key would be compiled into the shipped Android application and extractable from any published artifact. Pass such values through the workflow's env: block instead."
+    done <<< "$bad_defines"
+  else
+    log_ok "No credential-shaped --dart-define keys in the release workflow"
+  fi
+fi
+
+# 11n. Android upload destination must be `omnitrain`. The Sentry
+# Android Gradle plugin (the upload step) reads SENTRY_PROJECT from
+# the Gradle environment, which the workflow provides via the
+# Android job's env: block. Only the `omnitrain` Sentry project
+# exists; both iOS and Android uploads land there. Per-platform
+# destinations (`omnitrain-android`) and the empty / blank / missing
+# cases all fail this check.
+if [[ -f "$RELEASE_WORKFLOW" ]]; then
+  android_block=$(awk '/name: Build AAB with Sentry baked in/{flag=1} flag{print} /^      - uses: actions\/upload-artifact/{if (flag) {flag=0; exit}}' "$RELEASE_WORKFLOW")
+  android_project=$(echo "$android_block" \
+    | sed -nE 's/^[[:space:]]+SENTRY_PROJECT:[[:space:]]+([^[:space:]#]+).*/\1/p' \
+    | head -1)
+  if [[ "$android_project" == "omnitrain" ]]; then
+    log_ok "Android upload destination is 'omnitrain' (SENTRY_PROJECT in the Android job's env: block)"
+  else
+    log_err "Android upload destination is wrong: SENTRY_PROJECT in the release workflow's Android job is '${android_project:-<unset>}' but must be exactly 'omnitrain' (the single Sentry project). ProGuard mappings will not reach the correct Sentry project."
+  fi
+else
+  log_warn "$RELEASE_WORKFLOW is missing — cannot verify Android upload destination."
+fi
+
+# 11o. iOS upload destination must be `omnitrain`. The
+# `sentry_dart_plugin` iOS build phase (run by `flutter build ipa`)
+# reads SENTRY_PROJECT from the environment. Only the `omnitrain`
+# Sentry project exists; per-platform destinations (`omnitrain-ios`)
+# are rejected so the regression that previously shipped iOS dSYMs
+# to a non-existent project cannot reappear.
+if [[ -f "$RELEASE_WORKFLOW" ]]; then
+  ios_block=$(awk '/name: Build IPA/{flag=1} flag{print} /^    - uses: actions\/upload-artifact/{if (flag) {flag=0; exit}}' "$RELEASE_WORKFLOW")
+  ios_project=$(echo "$ios_block" \
+    | sed -nE 's/^[[:space:]]+SENTRY_PROJECT:[[:space:]]+([^[:space:]#]+).*/\1/p' \
+    | head -1)
+  if [[ "$ios_project" == "omnitrain" ]]; then
+    log_ok "iOS upload destination is 'omnitrain' (SENTRY_PROJECT in the iOS job's env: block)"
+  else
+    log_err "iOS upload destination is wrong: SENTRY_PROJECT in the release workflow's iOS job is '${ios_project:-<unset>}' but must be exactly 'omnitrain' (the single Sentry project). dSYMs will not reach the correct Sentry project."
+  fi
+else
+  log_warn "$RELEASE_WORKFLOW is missing — cannot verify iOS upload destination."
+fi
+
+# 11p. iOS build must use `flutter build ipa` (the tooling-driven
+# build). The previous bespoke `xcodebuild` invocation relied on
+# `EXTRA_FRONT_END_OPTIONS` to inject the DSN; the DSN-forwarding
+# path was not verified end-to-end, and iOS shipped unmonitored.
+# `flutter build ipa` is the supported, end-to-end invocation that
+# forwards `--dart-define=SENTRY_DSN=...` to the Dart front-end via
+# the standard mechanism. A workflow that reverts to a raw
+# `xcodebuild` invocation fails this check so the regression
+# cannot reappear.
+if [[ -f "$RELEASE_WORKFLOW" ]]; then
+  if grep -qE 'flutter[[:space:]]+build[[:space:]]+ipa' "$RELEASE_WORKFLOW"; then
+    log_ok 'iOS build uses flutter build ipa so --dart-define=SENTRY_DSN is forwarded to the Dart front-end via the supported mechanism'
+  else
+    log_err 'iOS build does not use flutter build ipa. The previous bespoke xcodebuild invocation relied on EXTRA_FRONT_END_OPTIONS to inject the DSN; that path is not verified end-to-end and iOS shipped unmonitored. Use "flutter build ipa --release --export-options-plist=ios/ExportOptions.plist --dart-define=SENTRY_DSN=\$SENTRY_DSN" in the iOS job so the Flutter Xcode build phase forwards the DSN to the Dart front-end.'
+  fi
+else
+  log_warn "$RELEASE_WORKFLOW is missing — cannot verify iOS build invocation shape."
+fi
+
+# 11q. iOS reporting destination must reach the produced iOS
+# artifact. The previous check (§11p / §11q in older revisions)
+# inspected the workflow file and passed today while iOS shipped
+# unmonitored. This check inspects the produced IPA: it extracts
+# the IPA (an `unzip` step), reads the `Runner.app/Runner` (or
+# `App.framework/App` for Flutter-on-iOS) binary, and greps for
+# the literal DSN value. Passes only when the DSN is present in
+# the binary. Mirrors how §11r inspects the produced Android AAB
+# for the notification keep rules.
+#
+# The `PRE_RELEASE_GATE_FAKE_IP_BUILD` hook (test-only) mirrors
+# the Android `PRE_RELEASE_GATE_FAKE_BUILD` hook: when set, the
+# build helper is skipped and instead the helper writes whatever
+# artifacts the variable describes directly into the build output
+# paths. Live (non-test) mode runs the actual `flutter build ipa`
+# invocation and inspects the resulting IPA.
+FAKE_IP_BUILD="${PRE_RELEASE_GATE_FAKE_IP_BUILD:-}"
+IPA_BUILD_ARTIFACT_PATH=""
+if [[ -n "$FAKE_IP_BUILD" ]]; then
+  if [[ "$FAKE_IP_BUILD" == ok ]]; then
+    log_ok "iOS release build completed (test faked)"
+    # Trust whatever artifacts are already on disk for §11q to
+    # inspect. The test is responsible for laying down the IPA
+    # before invoking the gate.
+  elif [[ "$FAKE_IP_BUILD" == fail:* ]]; then
+    log_err "iOS release build could not be produced: ${FAKE_IP_BUILD#fail:}. A broken iOS configuration just slipped past the previous gate, which read files rather than exercising them. Fix the iOS build so it produces an IPA before archiving."
+  else
+    log_err "PRE_RELEASE_GATE_FAKE_IP_BUILD has an unexpected value: $FAKE_IP_BUILD. The test-only hook must be 'ok' or 'fail:<error text>'."
+  fi
+else
+  # Live mode: the gate does NOT invoke `flutter build ipa`
+  # itself. The upstream CI workflow has already produced the
+  # IPA at the canonical output path
+  # (`build/ios/ipa/*.ipa`) — that is the right separation of
+  # concerns. The gate's job is to verify the artifact, not
+  # reproduce the build. If no IPA exists, the gate fails
+  # (refusing to pass by default — the same rule §11r enforces
+  # for Android seeds.txt / AAB).
+  log_ok 'iOS artifact check expects an IPA at build/ios/ipa/*.ipa (produced by the upstream flutter build ipa invocation)'
+fi
+
+# Locate the produced IPA. Either `build/ios/ipa/*.ipa` (the
+# canonical `flutter build ipa` output) or a custom path set by
+# the upstream CI job. The gate accepts whichever exists.
+for candidate in build/ios/ipa/*.ipa; do
+  if [[ -f "$candidate" ]]; then
+    IPA_BUILD_ARTIFACT_PATH="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$IPA_BUILD_ARTIFACT_PATH" ]]; then
+  log_err "iOS reporting destination cannot be verified: expected build output is missing — no IPA at build/ios/ipa/*.ipa. The iOS build either did not run or did not produce an IPA at the canonical path. Refusing to pass by default — pass-by-default when build output is absent is exactly the regression this check exists to prevent."
+else
+  if ! command -v unzip >/dev/null 2>&1; then
+    log_err "iOS reporting destination cannot be verified: unzip is not on PATH. Install unzip and re-run — the artifact check needs it to inspect the produced IPA."
+  else
+    # The Dart front-end compiles `--dart-define=SENTRY_DSN=<value>`
+    # into the App binary as a string constant. The string lives in
+    # `Runner.app/Runner` (legacy Xcode build) or `App.framework/App`
+    # (Flutter on iOS, the modern path). `unzip -l` shows the
+    # central directory; we pipe the binary through `strings`-equivalent
+    # grep. `tr` strips NULs so the grep matches across string
+    # boundaries (the DSN may not be word-aligned).
+    ipa_dsn_match=$(unzip -p "$IPA_BUILD_ARTIFACT_PATH" \
+      'Runner.app/Runner' 2>/dev/null \
+      | tr '\0' '\n' \
+      | grep -E 'https://[A-Za-z0-9_-]+@[A-Za-z0-9.-]+/[0-9]+' \
+      | head -1 \
+      || true)
+    if [[ -n "$ipa_dsn_match" ]]; then
+      log_ok "iOS reporting destination is in the produced artifact (Runner.app/Runner contains a Sentry DSN string: ${ipa_dsn_match})"
+    else
+      # Fall back to App.framework/App (Flutter-on-iOS path). The
+      # Dart front-end compiles to native code and embeds the DSN
+      # there.
+      app_dsn_match=$(unzip -p "$IPA_BUILD_ARTIFACT_PATH" \
+        'Runner.app/Frameworks/App.framework/App' 2>/dev/null \
+        | tr '\0' '\n' \
+        | grep -E 'https://[A-Za-z0-9_-]+@[A-Za-z0-9.-]+/[0-9]+' \
+        | head -1 \
+        || true)
+      if [[ -n "$app_dsn_match" ]]; then
+        log_ok "iOS reporting destination is in the produced artifact (Runner.app/Frameworks/App.framework/App contains a Sentry DSN string: ${app_dsn_match})"
+      else
+        log_err "iOS reporting destination is absent: the produced IPA at $IPA_BUILD_ARTIFACT_PATH does not contain a Sentry DSN string in either Runner.app/Runner or Runner.app/Frameworks/App.framework/App. The iOS artifact would ship with no reporting destination and silently never report — iOS would appear monitored but produce nothing. Inspect the build invocation: --dart-define=SENTRY_DSN must reach the Dart front-end, which requires flutter build ipa (the supported mechanism), not a bespoke xcodebuild invocation. The empty-DSN runtime guard in lib/core/services/crash_reporting_service.dart is a defensive second line; the artifact check is the primary defense."
+      fi
+    fi
+  fi
 fi
 
 # iOS: the Xcode project must keep dSYMs (COPY_PHASE_STRIP=NO and
@@ -348,6 +540,174 @@ if [[ -f "$PBXPROJ" ]]; then
   fi
 else
   log_err "ios/Runner.xcodeproj/project.pbxproj is missing — cannot verify iOS dSYM config."
+fi
+
+# ── 11r. Android notification protections must take effect in the
+#       produced release artifact, not just the configuration files.
+#
+# The Android release build applies two configurations to prevent a
+# known notification-schedule failure that floods the crash-reporting
+# service in production:
+#
+#   (a) `android/app/proguard-rules.pro` keeps
+#       `com.dexterous.flutterlocalnotifications.**` so R8 cannot
+#       strip the Gson `TypeToken` generic that the plugin's
+#       `loadScheduledNotifications()` reads back. Without the keep,
+#       every Android schedule / cancel call throws
+#       `Missing type parameter.` (flutter_local_notifications #2014)
+#       and a cluster of in-workout timer alerts becomes a sustained
+#       crash-report flood.
+#
+#   (b) `android/app/src/main/res/raw/keep.xml` keeps the five raw
+#       sound resources used by `RawResourceAndroidNotificationSound()`
+#       in `lib/core/utils/rest_notification_service.dart`. Without
+#       the resource keep, R8's resource shrinker strips them from the
+#       release APK and every schedule call throws
+#       `PlatformException(invalid_sound, …)`, again producing a
+#       crash-report flood in active workouts.
+#
+# The previous gate only verified the configuration text was present
+# in the source files. Both protections can be silently bypassed by an
+# edit to the configuration that does not take effect in the produced
+# artifact (e.g. the wrong ProGuard rule, a typo in the package name,
+# a R8 version that no longer honours the keep directive). This check
+# inspects the artifact the release build produced, so the contract is
+# verified at the level that actually reaches users.
+#
+# Both subchecks run only against release-build output and MUST fail
+# (not pass by default) when expected output is missing — the
+# acceptance criterion explicitly rejects "passes when absent" because
+# a quiet pass would let a missing build hide a regression.
+echo ""
+echo "  — Release-build artifact checks (§11r / §11s) —"
+
+# §11s first — the build must succeed. §11r reads its output. A
+# build that does not complete makes both artifact checks
+# meaningless, so we fail loudly here and let the §11r subchecks
+# report "expected build output absent" so the reader can see both
+# problems at once.
+#
+# `flutter build appbundle --release` is the canonical Android
+# release invocation. When AAB is not the goal (e.g. the release is
+# distributed as APK instead), `flutter build apk --release`
+# produces the same R8 outputs (seeds.txt, mapping.txt) and an APK
+# at `build/app/outputs/flutter-apk/app-release.apk` which is also
+# a valid zip whose resource entries §11r can inspect. We try the
+# AAB first; if it does not produce the artifact (older Flutter
+# versions, or a release pipeline that only builds APK), fall back
+# to the APK. Either is acceptable.
+#
+# `--dart-define=SENTRY_DSN=development` mirrors production shape
+# without requiring a real secret on PATH. The Sentry upload step
+# in pubspec.yaml's sentry_dart_plugin block requires SENTRY_DSN
+# (and SENTRY_AUTH_TOKEN + SENTRY_PROJECT) to be present, but those
+# come from the release workflow's env: block — not from a
+# --dart-define on the build itself. We use the literal string
+# `development` so any code path that checks the format of the DSN
+# still works.
+#
+# `PRE_RELEASE_GATE_FAKE_BUILD` is a test-only hook: when set,
+# §11s skips the actual `flutter build` and either reports success
+# (`=ok`) or failure (`=fail:<error text>`) with the surfaced
+# error. This lets the unit test inject green / red build results
+# without paying the minute-long Flutter build cost on every CI run.
+FAKE_BUILD="${PRE_RELEASE_GATE_FAKE_BUILD:-}"
+BUILD_ARTIFACT_KIND=""
+BUILD_ARTIFACT_PATH=""
+BUILD_ERR_LOG=""
+if [[ -n "$FAKE_BUILD" ]]; then
+  # Test mode. Honour the hook; do not invoke flutter build.
+  if [[ "$FAKE_BUILD" == ok ]]; then
+    log_ok "release build completed (test faked)"
+    # Trust whatever artifacts are already on disk for §11r to
+    # inspect. The test is responsible for laying down the green /
+    # red seeds.txt + AAB / APK before invoking the gate.
+  elif [[ "$FAKE_BUILD" == fail:* ]]; then
+    BUILD_ERR_LOG="${FAKE_BUILD#fail:}"
+    log_err "release build could not be produced: $BUILD_ERR_LOG. A broken configuration change just slipped past the previous gate, which read files rather than exercising them. Fix the configuration changes so a release build completes successfully before archiving — do not ship a release whose configuration could not compile."
+  else
+    log_err "PRE_RELEASE_GATE_FAKE_BUILD has an unexpected value: $FAKE_BUILD. The test-only hook must be 'ok' or 'fail:<error text>'."
+  fi
+else
+  if ! command -v flutter >/dev/null 2>&1; then
+    log_err "flutter not found on PATH — the release build (§11s) cannot run. Install Flutter or invoke the gate from a machine with the toolchain."
+  else
+    echo "    Running flutter build appbundle --release (this can take several minutes)..."
+    # Capture stderr separately so the underlying diagnostic is
+    # surfaced verbatim when the build fails.
+    if BUILD_ERR_LOG=$(flutter build appbundle --release \
+          --dart-define=SENTRY_DSN=development 2>&1); then
+      log_ok "release build (flutter build appbundle --release) completed"
+    else
+      log_err "release build could not be produced (flutter build appbundle --release exited non-zero). The build configuration has an error that the previous gate could not detect because it read files rather than exercising them. Underlying build output (verbatim — do not mask): $(echo "$BUILD_ERR_LOG" | tail -40 | tr '\n' ' ')"
+    fi
+  fi
+fi
+
+# Locate the produced artifact. §11r uses whichever exists.
+# Either path is acceptable; AAB is the canonical release format
+# for Play Store uploads. APK is the local-test fallback.
+if [[ -f "build/app/outputs/bundle/release/app-release.aab" ]]; then
+  BUILD_ARTIFACT_KIND="aab"
+  BUILD_ARTIFACT_PATH="build/app/outputs/bundle/release/app-release.aab"
+elif [[ -f "build/app/outputs/flutter-apk/app-release.apk" ]]; then
+  BUILD_ARTIFACT_KIND="apk"
+  BUILD_ARTIFACT_PATH="build/app/outputs/flutter-apk/app-release.apk"
+fi
+
+SEEDS_PATH="android/app/build/outputs/mapping/release/seeds.txt"
+
+# §11r (a) — code protection. R8 writes `seeds.txt` recording every
+# class matched by a `-keep` rule. If the kept notification classes
+# are absent, the protection did not apply. The file is text; a
+# simple grep is the canonical signal.
+if [[ -f "$SEEDS_PATH" ]]; then
+  if grep -q 'com\.dexterous\.flutterlocalnotifications\.' "$SEEDS_PATH"; then
+    log_ok "Android notification code protection is in the produced artifact (R8 seeds.txt contains com.dexterous.flutterlocalnotifications.**)"
+  else
+    log_err "Android notification code protection did not apply: the release build's R8 seeds.txt at $SEEDS_PATH does not contain any com.dexterous.flutterlocalnotifications.** entry. ProGuard was meant to keep these classes so flutter_local_notifications #2014 (TypeToken generic stripped) cannot break every Android schedule/cancel call in release. Without the keep, every notification schedule call will throw Missing type parameter. and flood the crash-reporting service with a notification-failure signature that takes weeks to surface from telemetry. Restore the -keep directive in android/app/proguard-rules.pro and re-run."
+  fi
+else
+  log_err "Android notification code protection cannot be verified: expected build output is missing — $SEEDS_PATH does not exist. The release build either did not run (failed in §11s above) or did not produce R8 mapping output. Refusing to pass by default — pass-by-default when build output is absent is exactly the regression this check exists to prevent."
+fi
+
+# §11r (b) — resource protection. The `keep.xml` declarations must
+# survive into the produced AAB / APK. Extract the expected raw
+# resource names from keep.xml (one declaration per
+# `@raw/<name>`), then verify each is present in the artifact's
+# zip central directory.
+if [[ -f "$BUILD_ARTIFACT_PATH" ]]; then
+  if ! command -v unzip >/dev/null 2>&1; then
+    log_err "Android notification resource protection cannot be verified: unzip is not on PATH. Install unzip and re-run — the resource-protection check needs it to inspect the produced $BUILD_ARTIFACT_KIND."
+  else
+    # Parse keep.xml for `@raw/<name>` declarations. The file uses
+    # `tools:keep="@mipmap/ic_launcher,@raw/boxing_bell,..."` so a
+    # regex over `@raw/([a-z0-9_]+)` is sufficient.
+    expected_raw_resources=$(grep -oE '@raw/[a-z0-9_]+' android/app/src/main/res/raw/keep.xml 2>/dev/null | sed 's:@raw/::' | sort -u || true)
+    if [[ -z "$expected_raw_resources" ]]; then
+      log_err "Android notification resource protection cannot be verified: android/app/src/main/res/raw/keep.xml does not declare any @raw/* resources. Either the keep file is missing or its declarations were removed; without them, R8's resource shrinker strips the timer-alert sounds and every Android notification schedule call throws PlatformException(invalid_sound, …)."
+    else
+      missing_resources=""
+      while IFS= read -r res; do
+        # The zip entry path is `res/raw/<name>` (no extension).
+        # `unzip -l` prefixes the path with whitespace, so a word
+        # boundary is the simplest way to match `res/raw/<name>` as
+        # a path component. Using `\<` / `\>` ensures we match
+        # `res/raw/boxing_bell` but not `res/raw/boxing_belle`.
+        if ! unzip -l "$BUILD_ARTIFACT_PATH" 2>/dev/null \
+             | grep -qE "(^|[[:space:]]|/)res/raw/${res}([[:space:]]|\$)"; then
+          missing_resources+="$res "
+        fi
+      done <<< "$expected_raw_resources"
+      if [[ -z "$missing_resources" ]]; then
+        log_ok "Android notification resource protection is in the produced artifact ($BUILD_ARTIFACT_KIND contains all keep.xml-declared raw resources)"
+      else
+        log_err "Android notification resource protection did not apply: the produced $BUILD_ARTIFACT_KIND at $BUILD_ARTIFACT_PATH is missing the raw resource(s) declared in keep.xml: $missing_resources. Without the keep, R8's resource shrinker strips the timer-alert sounds from the release APK and every Android notification schedule call throws PlatformException(invalid_sound, …), flooding the crash-reporting service with a notification-failure signature that takes weeks to surface from telemetry. Restore the @raw/<name> declarations in android/app/src/main/res/raw/keep.xml and re-run."
+      fi
+    fi
+  fi
+else
+  log_err "Android notification resource protection cannot be verified: expected build output is missing — $BUILD_ARTIFACT_KIND not produced at $BUILD_ARTIFACT_PATH. The release build either did not run (failed in §11s above) or did not produce an AAB/APK at the canonical path. Refusing to pass by default — pass-by-default when build output is absent is exactly the regression this check exists to prevent."
 fi
 
 # ── 12–13. Analyzer and test suite (the actual code gate) ────────────────────

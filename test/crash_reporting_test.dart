@@ -293,6 +293,140 @@ void main() {
         expect(reporter.capturedErrors.first, isA<StateError>());
       },
     );
+
+    test(
+      'SentryCrashReporter detects an empty DSN and disables itself '
+      'with a diagnosable log (defensive second-line guard)',
+      () async {
+        // The pre-release gate (§11p, §11q in
+        // `scripts/pre_release_check.sh`) is the primary defense
+        // against shipping a release without a reporting destination.
+        // This test asserts the runtime second-line guard: if a
+        // future regression slips past the gate (e.g. a new build
+        // invocation shape the gate does not yet cover), the
+        // wrapper still surfaces a diagnosable condition rather
+        // than silently dropping events. The log line is
+        // intentionally distinct from the kReleaseMode-gated
+        // disable path so an on-call engineer can tell the two
+        // failure modes apart.
+        final logs = <String>[];
+        final previousDebugPrint = debugPrint;
+        debugPrint = (String? message, {int? wrapWidth}) {
+          logs.add(message ?? '');
+        };
+        addTearDown(() => debugPrint = previousDebugPrint);
+
+        final reporter = SentryCrashReporter(dsn: '');
+        await reporter.init(
+          enabled: true,
+          metadata: _stubMetadata(),
+        );
+
+        expect(reporter.isEnabled, isFalse,
+            reason: 'Empty DSN must disable the reporter');
+        expect(
+          logs,
+          isNotEmpty,
+          reason: 'A diagnostic message must be logged when DSN is '
+              'empty, so this failure mode is diagnosable rather '
+              'than silent',
+        );
+        // The log must name the cause (DSN + empty) so an on-call
+        // engineer can tell the empty-DSN failure mode apart from
+        // the kReleaseMode-gated debug-build disable, which logs
+        // nothing at all.
+        expect(
+          logs.any(
+              (l) => l.contains('DSN') && l.toLowerCase().contains('empty')),
+          isTrue,
+          reason:
+              'The diagnostic message must name both the DSN and the '
+              'empty state. A log line that does not name the cause is '
+              'indistinguishable from a successful run in some tooling.',
+        );
+      },
+    );
+
+    test(
+      'bootstrap completes when the reporter is constructed with an '
+      'empty DSN — startup never blocks on reporting',
+      () async {
+        // Mirrors the production scenario where the iOS build does
+        // not compile the DSN into the binary (the original bug).
+        // The reporter is disabled by the empty-DSN guard; bootstrap
+        // still installs the error sinks (because `enabled: true`
+        // was passed at the call site), and any subsequent
+        // recordError call is a no-op. Startup completes normally.
+        final reporter = SentryCrashReporter(dsn: '');
+        await CrashReportingService.bootstrap(
+          reporter: reporter,
+          enabled: true,
+          buildMetadata: _stubMetadata,
+        );
+
+        expect(reporter.isEnabled, isFalse,
+            reason: 'Reporter must be disabled when DSN is empty');
+        // Sinks are installed (because the call site passed
+        // enabled: true), so framework errors are routed through
+        // the wrapper — which then short-circuits to a no-op
+        // because the reporter is disabled. Startup completes
+        // normally rather than crashing or hanging.
+        expect(FlutterError.onError, isNotNull,
+            reason: 'Sinks must still be installed; the wrapper '
+                'short-circuits per-event when the reporter is '
+                'disabled, but framework errors are still routed.');
+        expect(PlatformDispatcher.instance.onError, isNotNull);
+        // And no exception thrown — the bootstrap returned
+        // successfully.
+      },
+    );
+
+    test(
+      'empty-DSN disable log is distinguishable from the '
+      'kReleaseMode-gated disable (which logs nothing)',
+      () async {
+        // Two scenarios, two log signatures:
+        //   1. `enabled: false` (debug/profile build) → no log
+        //      line at all. The disable is intentional.
+        //   2. `enabled: true` with empty DSN → a single log line
+        //      naming the cause. The disable is an unintended
+        //      failure mode that an on-call engineer needs to be
+        //      able to recognise in production logs.
+        // Without this distinction, the two failure modes look
+        // identical from outside — which is the exact failure mode
+        // the iOS reporting bug demonstrated.
+        final logs = <String>[];
+        final previousDebugPrint = debugPrint;
+        debugPrint = (String? message, {int? wrapWidth}) {
+          logs.add(message ?? '');
+        };
+        addTearDown(() => debugPrint = previousDebugPrint);
+
+        // Case 1: kReleaseMode-gated disable.
+        await CrashReportingService.bootstrap(
+          reporter: FakeCrashReporter(),
+          enabled: false,
+          buildMetadata: _stubMetadata,
+        );
+        final logsAfterDisable = logs.length;
+
+        // Case 2: empty-DSN disable.
+        CrashReportingService.resetForTests();
+        await CrashReportingService.bootstrap(
+          reporter: SentryCrashReporter(dsn: ''),
+          enabled: true,
+          buildMetadata: _stubMetadata,
+        );
+
+        expect(logsAfterDisable, 0,
+            reason: 'The kReleaseMode-gated disable must NOT log '
+                'anything — it is the expected behaviour.');
+        expect(logs.length, greaterThan(logsAfterDisable),
+            reason: 'The empty-DSN disable MUST log at least once, '
+                'so the failure mode is diagnosable rather than '
+                'silent.');
+      },
+    );
   });
 
   group('CrashReportingService.buildMetadata (allow-list)', () {
