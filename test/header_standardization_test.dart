@@ -1351,7 +1351,7 @@ void main() {
                   unitType: FoodUnitType.grams,
                   groupId: 'g-1',
                   referenceAmount: 100.0,
-                  referenceLabel: '100 g',
+                  referenceLabel: 'g',
                   protein: 0,
                   carbs: 0,
                   fat: 0,

@@ -1973,6 +1973,28 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
   }
 
+  @override
+  Future<void> reassignCatalogFoodsToGroup(
+    List<String> catalogFoodIds,
+    String? targetGroupId,
+  ) async {
+    if (catalogFoodIds.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final id in catalogFoodIds) {
+      final raw = _foodCatalogBox.get(id);
+      if (raw == null) continue;
+      final food = Food.fromMap(_asStringMap(raw));
+      // Safety: bundled catalog foods are never passed here (the
+      // bundled-food guard at the state layer rejects them), but
+      // double-check defensively in case a future caller forgets.
+      // The bundled id set lives in `FoodLibraryState._bundledCatalogFoodIds`
+      // which the repository does not import; the state layer is
+      // the only caller and filters before invoking this method.
+      final updated = food.copyWith(groupId: targetGroupId, updatedAtMs: now);
+      await _foodCatalogBox.put(id, updated.toMap());
+    }
+  }
+
   // ===== FOODS =====
 
   @override

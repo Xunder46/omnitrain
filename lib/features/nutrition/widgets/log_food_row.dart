@@ -556,16 +556,27 @@ class _ThumbToggleState extends State<_ThumbToggle> {
         ),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(7),
-        child: FoodThumbnail(
-          imagePath: widget.food.imagePath,
-          imageStorage: widget.imageStorage,
-          size: _ThumbToggle._thumbSize,
-          // The thumbnail widget paints its own border for the
-          // placeholder (0.2-alpha muted outline) and none when an
-          // image is present. We render OUR border on the
-          // AnimatedContainer so the two don't double up.
+      child: Padding(
+        // Keep the outer 40 dp toggle fixed while reserving a surface-colored
+        // ring between its outline and every image source.
+        padding: const EdgeInsets.all(_ThumbToggle._thumbBorderWidth),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: AnimatedOpacity(
+            opacity: isLogged ? 1.0 : 0.72,
+            duration: OmniTheme.animationDuration,
+            curve: OmniTheme.animationCurve,
+            child: FoodThumbnail(
+              imagePath: widget.food.imagePath,
+              imageStorage: widget.imageStorage,
+              foodId: widget.food.id,
+              catalogId: widget.food.catalogId,
+              size: _ThumbToggle._thumbSize -
+                  (_ThumbToggle._thumbBorderWidth * 2),
+              // BoxFit.cover in each image renderer crops into the inset area;
+              // the placeholder receives the same geometry and dimming.
+            ),
+          ),
         ),
       ),
     );

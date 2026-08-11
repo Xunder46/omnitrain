@@ -17,10 +17,22 @@
 ///   we bumped to `2` so every existing install runs a one-time refresh on
 ///   next launch (catching everyone who installed at v1). When the bundled
 ///   demo routines shipped, we bumped to `3` so existing installs receive
-///   them exactly once on next launch.
+///   them exactly once on next launch. When the food catalog expanded from 107
+///   to 150 items (adding 43 new foods to close high-traffic gaps), we bumped
+///   to `4` to deliver all new foods to existing users on next launch. When
+///   the food catalog expanded from 150 to 166 items (adding 16 new foods to
+///   close high-frequency gaps that force hand-entry: wings, ground chicken,
+///   beef patty, roast beef deli,5cabbage, jalapeño, green onion, sourdough,
+///   croissant, blueberry muffin, pepperoni pizza, vanilla ice cream,
+///   California roll, half and half, whipped cream, diet cola), we bumped to
+///   `5` to deliver all new foods to existing users on next launch.
+///   When `beer_regular` and `red_wine` were retired (published with
+///   `hidden: true` because the calorie-derivation model does not represent
+///   alcohol — see `food_catalog_load_test.dart` S-007), we bumped to `8`
+///   so existing installs receive the new hidden state on next launch.
 library;
 
-const int bundledCatalogVersion = 3;
+const int bundledCatalogVersion = 8;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

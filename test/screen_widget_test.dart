@@ -19,6 +19,8 @@ import 'package:omnitrain/features/home/home_screen.dart';
 import 'package:omnitrain/features/nutrition/add_food_screen.dart';
 import 'package:omnitrain/features/nutrition/edit_food_screen.dart';
 import 'package:omnitrain/features/nutrition/widgets/food_form.dart';
+import 'package:omnitrain/features/nutrition/widgets/food_thumbnail.dart';
+import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
 import 'package:omnitrain/features/onboarding/onboarding_screen.dart';
 import 'package:omnitrain/features/period/create_period_screen.dart';
 import 'package:omnitrain/features/period/period_list_screen.dart';
@@ -60,6 +62,8 @@ import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/test_nutrition_primer_state.dart';
 import 'helpers/fake_preferences_service.dart';
 import 'helpers/test_content_column.dart';
+import 'helpers/fake_asset_bundle.dart';
+import 'helpers/test_image_helper.dart';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -68,6 +72,16 @@ Future<MockWorkoutRepository> _freshRepo() async {
   await repo.initialize();
   return repo;
 }
+
+/// The vertically-scrolling list on a screen.
+///
+/// Screens that carry a horizontal tab strip or chip row above their content
+/// contain several [Scrollable]s, and the horizontal ones come first in the
+/// tree — so `find.byType(Scrollable).first` grabs the wrong one and dragging
+/// it reveals nothing. Match on axis instead of position.
+final Finder _verticalScrollable = find.byWidgetPredicate(
+  (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+);
 
 void main() {
   group('OmniBottomCTA', () {
@@ -9346,6 +9360,184 @@ void main() {
       },
     );
 
+    testWidgets(
+      'FoodForm shows no "Add photo" text when a bundled photo resolves '
+      'successfully (form context, shipped-photo path)',
+      (WidgetTester tester) async {
+        // Tall surface so the full form is visible without scrolling.
+        await tester.binding.setSurfaceSize(const Size(800, 1800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        // Pre-fix this path was unreachable: the helper always threw
+        // for AssetManifest.bin, so the bundled tier's Image.asset
+        // errorBuilder always fired and the caption was always
+        // visible. With the helper fix, declaring the photo bytes
+        // here lets the bundled tier render the photo and the
+        // caption must NOT appear.
+        //
+        // We drive this path through EditFoodScreen with the bundled
+        // `chicken_breast` food so the bundled tier is reached and a
+        // declared photo resolves. Tier 3 (no foodId) would always
+        // show the caption; that case is covered by S-008.
+        final fakeBundle = FakeAssetBundle({
+          'assets/images/food_chicken_breast.webp':
+              TestImageHelper.testWebp1x1Red,
+        });
+
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadCatalogFoods();
+        final chicken = foodLibraryState.catalogFoods
+            .firstWhere((f) => f.id == 'chicken_breast');
+
+        await tester.pumpWidget(
+          DefaultAssetBundle(
+            bundle: fakeBundle,
+            child: MaterialApp(
+              home: EditFoodScreen(
+                food: chicken,
+                foodLibraryState: foodLibraryState,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The image tile is present.
+        expect(find.byKey(const Key('food_form_image_tile')), findsOneWidget);
+        // No "Add photo" caption — the bundled photo is rendering,
+        // not the placeholder.
+        expect(find.text('Add photo'), findsNothing,
+            reason: 'a photo is rendering in the form — the caption '
+                'belongs only to the empty placeholder');
+        // The bundled tier's Image.asset is present and rendered
+        // (non-zero size).
+        final imageRenderBox =
+            tester.renderObject<RenderBox>(find.byType(Image));
+        expect(imageRenderBox.size.width, greaterThan(0),
+            reason: 'bundled photo must render with non-zero width');
+      },
+    );
+
+    testWidgets(
+      'FoodForm shows "Add photo" caption for an existing food with no photo '
+      '(edit mode, empty edit state)',
+      (WidgetTester tester) async {
+        // Tall surface so the full form (image tile + name field)
+        // is visible without scrolling.
+        await tester.binding.setSurfaceSize(const Size(800, 1800));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final repo = await _freshRepo();
+        final foodLibraryState = FoodLibraryState(repo);
+        await foodLibraryState.loadCatalogFoods();
+        // Custom food (no bundled photo resolves for this id).
+        await foodLibraryState.createCatalogFood(
+          const FoodDraft(
+            name: 'Custom Without Photo',
+            groupId: null,
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            protein: 10,
+            carbs: 5,
+            fiber: 0,
+            fat: 2,
+            sodium: null,
+            notes: null,
+            imagePath: null,
+          ),
+        );
+        await foodLibraryState.loadCatalogFoods();
+        final food = foodLibraryState.catalogFoods.firstWhere(
+          (f) => f.name == 'Custom Without Photo',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: EditFoodScreen(
+              food: food,
+              foodLibraryState: foodLibraryState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Image tile is rendered.
+        expect(find.byKey(const Key('food_form_image_tile')), findsOneWidget);
+        // "Add photo" caption is shown for the empty edit state.
+        // The custom food has no bundled photo asset; the bundled
+        // tier's errorBuilder falls through to the placeholder
+        // body, and the form opts into the caption.
+        expect(
+          find.text('Add photo'),
+          findsOneWidget,
+          reason: 'edit-mode empty photo state must surface the '
+              '"Add photo" caption',
+        );
+      },
+    );
+
+    testWidgets(
+      'LogFoodRow thumbnail (list-row context) does NOT show "Add photo" '
+      'caption when the food has no photo',
+      (WidgetTester tester) async {
+        // The "Add photo" caption must be opt-in by the food form
+        // only. List-row thumbnails (library rows, log rows, and
+        // any other small thumbnail consumer) must NOT inherit the
+        // caption. This test locks that scoping down so a future
+        // refactor that lifts the caption into FoodThumbnail
+        // unconditionally is caught immediately.
+        final repo = await _freshRepo();
+        final nutrition = NutritionState(repo);
+        final foodLib = FoodLibraryState(repo);
+        await nutrition.loadConsumedToday();
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LogFoodRow(
+                key: const Key('row_no_image_caption'),
+                food: const Food(
+                  id: 'f-no-image-caption',
+                  name: 'No-image list food',
+                  unitType: FoodUnitType.grams,
+                  referenceAmount: 100.0,
+                  referenceLabel: 'g',
+                  protein: 0,
+                  carbs: 0,
+                  fat: 0,
+                  createdAtMs: 1,
+                  updatedAtMs: 1,
+                ),
+                nutritionState: nutrition,
+                foodLibraryState: foodLib,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Placeholder icon is rendered (no image was set).
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('log_food_thumb_f-no-image-caption')),
+            matching: find.byIcon(Icons.restaurant_outlined),
+          ),
+          findsOneWidget,
+          reason: 'placeholder icon must render when no image is set',
+        );
+        // "Add photo" caption is NOT rendered in list-row context.
+        expect(
+          find.text('Add photo'),
+          findsNothing,
+          reason: 'list-row thumbnail must not surface the form caption',
+        );
+      },
+    );
+
     testWidgets('FoodForm no longer renders an inline save button (S-010)', (
       WidgetTester tester,
     ) async {
@@ -9353,6 +9545,15 @@ void main() {
       // is rendered by the host scaffold's bottomNavigationBar.
       // When FoodForm is mounted without a host scaffold CTA
       // (the test harness), the food_form_save key is absent.
+
+      // Tall surface, as in the sibling EditFoodScreen test below. The form
+      // body is a lazy `ListView`, so at the default 600pt surface the macro
+      // rows below the fold are never built and the assertions below read as
+      // "the field is missing" when it is only off-screen. This test is about
+      // which widgets the form body contains, not which ones fit.
+      await tester.binding.setSurfaceSize(const Size(800, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
       final repo = await _freshRepo();
       final foodLibraryState = FoodLibraryState(repo);
       await foodLibraryState.loadCatalogFoods();
@@ -9438,67 +9639,99 @@ void main() {
     testWidgets(
       'Catalog row on the Library tab shows a FoodThumbnail slot (S-006)',
       (WidgetTester tester) async {
-        // Tall surface so the bundled catalog's first few rows
-        // are visible without scrolling.
-        await tester.binding.setSurfaceSize(const Size(800, 1800));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final repo = await _freshRepo();
-        final foodLibraryState = FoodLibraryState(repo);
-        final nutritionState = NutritionState(repo);
-        await foodLibraryState.loadCatalogFoods();
-        // Add a catalog food with an image so the thumbnail is
-        // exercised in the "image present" branch.
-        final foods = foodLibraryState.catalogFoods;
-        final chickenId = foods
-            .firstWhere((f) => f.name == 'Chicken breast, skinless')
-            .id;
-        await foodLibraryState.updateCatalogFood(
-          foods.firstWhere((f) => f.id == chickenId),
-          FoodDraft(
-            name: 'Chicken breast, skinless',
-            groupId: null,
-            unitType: FoodUnitType.grams,
-            referenceAmount: 100,
-            referenceLabel: 'g',
-            protein: 31,
-            carbs: 0,
-            fiber: 0,
-            fat: 4,
-            sodium: null,
-            notes: null,
-            imagePath:
-                '/tmp/native-only.jpg', // file does not exist on the test runner; the row still renders the slot
-          ),
-        );
-        await foodLibraryState.loadCatalogFoods();
+        // Pre-fix: this test pumped AddFoodScreen with a food whose
+        // `imagePath` pointed at a non-existent file, then asserted
+        // only that the thumbnail slot was in the widget tree. The
+        // image could not decode (the file did not exist), the
+        // tier-1 `Image.file` errorBuilder fell through to the
+        // placeholder, and the assertion passed — confirming only
+        // that the code path was entered, not that the photo
+        // rendered. The helper fix lets us test the bundled-photo
+        // tier directly: render `FoodThumbnail` with a
+        // `foodId` that resolves to a declared bundled asset,
+        // pump it inside a `DefaultAssetBundle` so `Image.asset`
+        // can read the manifest, and assert on what is actually
+        // drawn.
+        final fakeBundle = FakeAssetBundle({
+          'assets/images/food_chicken_breast.webp':
+              TestImageHelper.testWebp1x1Red,
+        });
 
         await tester.pumpWidget(
-          MaterialApp(
-            home: AddFoodScreen(
-              foodLibraryState: foodLibraryState,
-              nutritionState: nutritionState,
+          DefaultAssetBundle(
+            bundle: fakeBundle,
+            child: MaterialApp(
+              home: Scaffold(
+                body: Center(
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: FoodThumbnail(
+                      key: const Key('food_catalog_thumb_chicken_breast'),
+                      // No user photo (imagePath null) → tier 1
+                      // skipped, tier 2 (bundled) reached.
+                      imagePath: null,
+                      foodId: 'chicken_breast',
+                      catalogId: 'chicken_breast',
+                      // No caption — the catalog list row must
+                      // not show the form's "Add photo" caption.
+                      placeholderCaption: null,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         );
         await tester.pumpAndSettle();
 
-        // The Library tab is the default. The catalog row's
-        // thumbnail slot is keyed by food id and is always
-        // present (placeholder when no image, image when set).
+        // The slot is present.
         expect(
-          find.byKey(Key('food_catalog_thumb_$chickenId')),
+          find.byKey(const Key('food_catalog_thumb_chicken_breast')),
           findsOneWidget,
         );
+
+        // The bundled photo must render with non-zero size — a
+        // genuine image, not the placeholder.
+        final imageFinder = find.descendant(
+          of: find.byKey(const Key('food_catalog_thumb_chicken_breast')),
+          matching: find.byType(Image),
+        );
+        expect(imageFinder, findsOneWidget,
+            reason: 'bundled-photo Image must be in the slot tree');
+        final imageRenderBox =
+            tester.renderObject<RenderBox>(imageFinder);
+        expect(imageRenderBox.size.width, greaterThan(0),
+            reason: 'bundled photo must render with non-zero width');
+        expect(imageRenderBox.size.height, greaterThan(0),
+            reason: 'bundled photo must render with non-zero height');
+
+        // No icon-only placeholder visible — the photo is real,
+        // not the fallback.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('food_catalog_thumb_chicken_breast')),
+            matching: find.byIcon(Icons.restaurant_outlined),
+          ),
+          findsNothing,
+          reason: 'icon-only fallback must NOT be visible when '
+              'the bundled photo rendered',
+        );
+
+        // No "Add photo" caption — the catalog row must not
+        // inherit the form's caption opt-in.
+        expect(find.text('Add photo'), findsNothing,
+            reason: 'list-row thumbnail must not surface the '
+                'form\'s caption');
       },
     );
 
     testWidgets(
       'Catalog row on the Library tab opens EditFoodScreen on row tap (S-001)',
       (WidgetTester tester) async {
-        // Tall surface so the catalog list fits and the
-        // "Chicken breast, skinless" row is visible without
-        // scrolling.
+        // Tall surface to provide room for the expanded catalog
+        // (150 foods). The "Chicken breast, skinless" row is
+        // scrolled into view before tapping.
         await tester.binding.setSurfaceSize(const Size(800, 1800));
         addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -9523,8 +9756,15 @@ void main() {
         await tester.pumpAndSettle();
 
         // The bundled catalog ships a "Chicken breast, skinless"
-        // row. Tapping its name (not the Add button) opens the
-        // Edit Food screen.
+        // row. The list is lazily built, so scroll until the row is
+        // constructed, then tap its name (not the Add button) to
+        // open the Edit Food screen.
+        await tester.scrollUntilVisible(
+          find.text('Chicken breast, skinless'),
+          200,
+          scrollable: _verticalScrollable,
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Chicken breast, skinless'));
         await tester.pumpAndSettle();
 

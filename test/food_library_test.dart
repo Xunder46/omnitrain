@@ -359,7 +359,7 @@ void main() {
           expect(afterCatalog.name, 'Frozen Catalog Item');
           expect(afterCatalog.protein, 10);
 
-          // The full catalog must still be intact (107 bundled + 1 seeded test entry)
+          // The full catalog must still be intact (150 bundled + 1 seeded test entry)
           final allCatalog = await repo.getCatalogFoods(includeArchived: true);
           expect(allCatalog, isNotEmpty);
           expect(
@@ -683,7 +683,7 @@ void main() {
         final repo = await _freshRepo();
         final state = FoodLibraryState(repo);
         await state.loadCatalogFoods();
-        // Catalog is seeded with 107 bundled foods; we use the real
+        // Catalog is seeded with 150 bundled foods; we use the real
         // catalog so the assertion is realistic.
         final all = state.catalogFoods;
         expect(all, isNotEmpty);
@@ -736,5 +736,69 @@ void main() {
         );
       }
     });
+
+    // S-005: searchCatalogFoods filters out hidden catalog rows.
+    // The two retired rows (beer_regular, red_wine) are bundled
+    // with `hidden: true`; the search must return zero matches
+    // for any query that resolves to those rows (or to any
+    // hidden row added later). The empty-query full-list result
+    // also excludes them — only 166 visible rows surface.
+    test(
+      'S-005: searchCatalogFoods filters out hidden catalog rows',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+
+        // The two retired terms return nothing — they were hidden
+        // at the bundled catalog layer because the app's calorie
+        // model cannot represent their alcohol-derived energy.
+        final beer = await state.searchCatalogFoods('beer');
+        expect(
+          beer,
+          isEmpty,
+          reason:
+              'beer_regular must not appear in catalog search; the row '
+              'is hidden by the bundled catalog',
+        );
+
+        final wine = await state.searchCatalogFoods('wine');
+        expect(
+          wine,
+          isEmpty,
+          reason:
+              'red_wine must not appear in catalog search; the row is '
+              'hidden by the bundled catalog',
+        );
+
+        // The empty-query full list drops the hidden rows too.
+        final all = await state.searchCatalogFoods('');
+        expect(
+          all.length,
+          166,
+          reason: 'empty-query search returns the 166 visible rows only',
+        );
+        expect(
+          all.any((f) => f.id == 'beer_regular'),
+          isFalse,
+        );
+        expect(
+          all.any((f) => f.id == 'red_wine'),
+          isFalse,
+        );
+
+        // A close-but-not-equal query still matches unrelated rows.
+        // Sanity check that the search predicate is not degenerate.
+        final beerish = await state.searchCatalogFoods('beef');
+        expect(
+          beerish,
+          isNotEmpty,
+          reason: 'non-hidden rows must still match normally',
+        );
+        for (final f in beerish) {
+          expect(f.id, isNot('beer_regular'));
+        }
+      },
+    );
   });
 }

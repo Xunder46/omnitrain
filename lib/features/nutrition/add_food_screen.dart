@@ -829,6 +829,8 @@ class _UserFoodRowState extends State<_UserFoodRow> {
               key: Key('food_user_thumb_${widget.food.id}'),
               imagePath: widget.food.imagePath,
               imageStorage: widget.foodLibraryState.imageStorageOrNull,
+              foodId: widget.food.id,
+              catalogId: widget.food.catalogId,
             ),
             const SizedBox(width: 12),
             // Name + macros
@@ -1116,6 +1118,8 @@ class _CatalogRowState extends State<_CatalogRow> {
               key: Key('food_catalog_thumb_${widget.food.id}'),
               imagePath: widget.food.imagePath,
               imageStorage: widget.foodLibraryState.imageStorageOrNull,
+              foodId: widget.food.id,
+              catalogId: widget.food.catalogId,
             ),
             const SizedBox(width: 12),
             // ── Name + macros (takes remaining space) ───────────
@@ -1418,11 +1422,19 @@ class _GroupsTabState extends State<_GroupsTab> {
   ) async {
     if (foodCount == 0) {
       // Silent no-confirm delete; foodCount is already 0 so the
-      // reassignment is a no-op too.
+      // reassignment is a no-op too. The bundled-food guard can
+      // still fire here (a category can have zero *library* foods
+      // but still be referenced by bundled catalog foods), so we
+      // run the typed catch the same way as the non-empty path.
       try {
         await widget.foodLibraryState.deleteFoodGroupReassigningFoods(
           group.id,
           null,
+        );
+      } on FoodGroupHasBundledFoodsError catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          _bundledSnackbar(e),
         );
       } catch (_) {
         if (!context.mounted) return;
@@ -1454,11 +1466,33 @@ class _GroupsTabState extends State<_GroupsTab> {
         group.id,
         destination,
       );
+    } on FoodGroupHasBundledFoodsError catch (e) {
+      // S-006 / S-009: deletion is refused when bundled catalog
+      // foods still point at the group. The catalog refresh
+      // restores bundled categories on every launch, so rewriting
+      // them would silently revert — we surface the block instead.
+      messenger.showSnackBar(_bundledSnackbar(e));
     } catch (_) {
       messenger.showSnackBar(
         SnackBar(content: Text('Could not delete ${group.name}')),
       );
     }
+  }
+
+  /// Snackbar copy for a refused deletion. Surfaces the category
+  /// name and the count of bundled catalog foods that would be
+  /// stranded, so the user understands why the action was blocked
+  /// and can pick a different category to delete first.
+  SnackBar _bundledSnackbar(FoodGroupHasBundledFoodsError e) {
+    final count = e.bundledFoodIds.length;
+    final noun = count == 1 ? 'food' : 'foods';
+    return SnackBar(
+      content: Text(
+        'Cannot delete "${e.groupName}" — $count bundled catalog '
+        '$noun still reference it. Move those $noun to another '
+        'category first, or delete the foods you don\'t need.',
+      ),
+    );
   }
 
   /// Sorts groups alphabetically, but keeps the newly created group

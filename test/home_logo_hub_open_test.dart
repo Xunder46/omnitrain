@@ -265,43 +265,67 @@ void main() {
       expect(find.byType(EnergyTile), findsNWidgets(6));
     });
 
-    testWidgets('logo tile has even margin from the AppBar edges', (
-      WidgetTester tester,
-    ) async {
-      final screen = await buildHomeScreen(repo);
+    testWidgets(
+      'logo tile has correct asymmetric margin from the AppBar edges',
+      (WidgetTester tester) async {
+        final screen = await buildHomeScreen(repo);
 
-      await tester.pumpWidget(MaterialApp(home: screen));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(MaterialApp(home: screen));
+        await tester.pumpAndSettle();
 
-      // Tolerance for the "symmetric padding" assertion, in logical pixels.
-      // The expected widget size is exactly 71×71 (8 px × 2 + 55 tile);
-      // the tolerance accounts for sub-pixel rounding when Flutter lays
-      // out `EdgeInsets.all(8)` around a `tileSize: 55` circle. Anything
-      // wider than this would indicate the padding is no longer
-      // symmetric (e.g. one side dropped back to 1 px).
-      const symmetryTolerancePx = 0.5;
+        // Tolerance for sub-pixel rounding when Flutter lays out
+        // `EdgeInsets.only(top: 8, right: 8, bottom: 8)` around a
+        // `tileSize: 55` circle.
+        const tolerancePx = 0.5;
 
-      // The widget's bounding box is the 55×55 visible circle wrapped in a
-      // symmetric 8 px `Padding` on every side. Asserting the bounding box
-      // is at least 70×70 confirms the padding is present and even
-      // (8 px horizontal × 2 + 55 = 71 wide, 8 px vertical × 2 + 55 = 71
-      // tall). The symmetric padding is what keeps the visible circle off
-      // the AppBar's left edge and above the sheet's top edge after the
-      // gap tightening.
-      final size = tester.getSize(find.byType(HomeLogoButton));
-      expect(size.width, greaterThanOrEqualTo(70.0));
-      expect(size.height, greaterThanOrEqualTo(70.0));
-      // The padding is symmetric (8 px on every side).
-      expect(
-        size.width - size.height,
-        lessThan(symmetryTolerancePx),
-        reason:
-            'Widget bounding box must be square within '
-            '\$symmetryTolerancePx logical px; an asymmetric width/height '
-            'indicates the padding dropped back to its pre-fix asymmetric '
-            'shape (e.g. 1 px left, 4 px bottom).',
-      );
-    });
+        // The widget's bounding box is the 55×55 visible circle wrapped in
+        // an ASYMMETRIC `Padding` (0 left, 8 right, 8 top, 8 bottom).
+        // The width is therefore the visible circle (55) plus only the
+        // right padding (8) = 63 px, while the height is the visible
+        // circle (55) plus top + bottom padding (8 + 8) = 71 px.
+        //
+        // The 0 left padding is what makes the visible circle's left
+        // edge land at exactly `AppBar.titleSpacing` (16) from the
+        // AppBar's content-start — the same x-coordinate the home-screen
+        // training tiles start at (their outer
+        // `Padding(fromLTRB(16, 0, 16, 0))`). An 8 px left padding would
+        // shift the visible circle to x=24, visibly offset from the
+        // leftmost tile edge.
+        final size = tester.getSize(find.byType(HomeLogoButton));
+
+        // Width: 55 (visible circle) + 0 (left padding) + 8 (right padding)
+        // ≈ 63 px.
+        expect(
+          size.width,
+          closeTo(63.0, tolerancePx),
+          reason:
+              'Logo button width must be ≈63 px (55 visible circle + 8 px '
+              'right padding); any larger value means a left padding has '
+              'been re-introduced and the visible circle is no longer flush '
+              'with the home-screen training tiles.',
+        );
+        // Height: 55 (visible circle) + 8 (top) + 8 (bottom) = 71 px.
+        expect(
+          size.height,
+          closeTo(71.0, tolerancePx),
+          reason:
+              'Logo button height must be ≈71 px (55 visible circle + 8 px '
+              'top + 8 px bottom padding); changes here affect vertical '
+              'centering inside the AppBar toolbar and shadow room.',
+        );
+        // The visible circle's left edge sits at x=0 within the widget
+        // bounding box (no left padding). Width < height is the asymmetry
+        // signature.
+        expect(
+          size.width,
+          lessThan(size.height - 1.0),
+          reason:
+              'Width must be at least 1 px less than height to confirm the '
+              'left padding is 0. A symmetric bounding box indicates the '
+              'old `EdgeInsets.all(8)` shape has crept back.',
+        );
+      },
+    );
 
     testWidgets('Hub sheet grid exposes 5 tiles in a 2-column grid', (
       WidgetTester tester,

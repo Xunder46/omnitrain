@@ -55,7 +55,7 @@ Food _chicken({
     groupId: groupId,
     unitType: FoodUnitType.grams,
     referenceAmount: 100.0,
-    referenceLabel: '100 g',
+    referenceLabel: 'g',
     protein: protein,
     carbs: carbs,
     fat: fat,

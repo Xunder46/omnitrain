@@ -1203,6 +1203,23 @@ class MockWorkoutRepository implements WorkoutRepository {
     }
   }
 
+  @override
+  Future<void> reassignCatalogFoodsToGroup(
+    List<String> catalogFoodIds,
+    String? targetGroupId,
+  ) async {
+    if (catalogFoodIds.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final id in catalogFoodIds) {
+      final existing = _catalogFoods[id];
+      if (existing == null) continue;
+      _catalogFoods[id] = existing.copyWith(
+        groupId: targetGroupId,
+        updatedAtMs: now,
+      );
+    }
+  }
+
   // ===== FOODS =====
 
   @override

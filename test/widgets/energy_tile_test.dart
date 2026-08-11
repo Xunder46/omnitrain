@@ -77,7 +77,8 @@ void main() {
         host(
           EnergyTile(
             title: 'Resistance',
-            iconWidget: const Icon(Icons.fitness_center),
+            artworkBuilder: (size, color) =>
+                Icon(Icons.fitness_center, size: size, color: color),
             accentColor: const Color(0xFF2DE2E6),
             onTap: () {},
           ),
@@ -404,11 +405,15 @@ void main() {
     ) async {
       await tester.pumpWidget(
         host(
-          EnergyTile(
-            title: 'Sports',
-            icon: Icons.sports_martial_arts,
-            accentColor: const Color(0xFFFF4C47),
-            onTap: () {},
+          SizedBox(
+            width: 200,
+            height: 200,
+            child: EnergyTile(
+              title: 'Sports',
+              icon: Icons.sports_martial_arts,
+              accentColor: const Color(0xFFFF4C47),
+              onTap: () {},
+            ),
           ),
         ),
       );
@@ -429,12 +434,16 @@ void main() {
     ) async {
       await tester.pumpWidget(
         host(
-          EnergyTile(
-            title: 'Routines',
-            icon: Icons.folder_open,
-            accentColor: const Color(0xFF9E9E9E),
-            isSecondary: true,
-            onTap: () {},
+          SizedBox(
+            width: 200,
+            height: 200,
+            child: EnergyTile(
+              title: 'Routines',
+              icon: Icons.folder_open,
+              accentColor: const Color(0xFF9E9E9E),
+              isSecondary: true,
+              onTap: () {},
+            ),
           ),
         ),
       );
@@ -1252,29 +1261,46 @@ void main() {
     );
 
     testWidgets(
-      'S-006: representative supported tile dimensions report no overflow',
+      'S-006: representative supported tile dimensions report no overflow and keep the label present',
       (tester) async {
         for (final size in <Size>[
+          const Size(130, 56),
+          const Size(156, 56),
           const Size(156, 64),
           const Size(156, 84),
           const Size(180, 120),
           const Size(224, 200),
         ]) {
           for (final scale in <double>[1, 1.6]) {
-            await tester.pumpWidget(
-              constrainedTile(
-                title: 'Resistance',
-                width: size.width,
-                height: size.height,
-                isActive: true,
-                textScale: scale,
-              ),
-            );
-            expect(
-              tester.takeException(),
-              isNull,
-              reason: 'overflow at $size and text scale $scale',
-            );
+            for (final isActive in <bool>[false, true]) {
+              for (final isSecondary in <bool>[false, true]) {
+                final title = isSecondary ? 'Free' : 'Resistance';
+                await tester.pumpWidget(
+                  constrainedTile(
+                    title: title,
+                    width: size.width,
+                    height: size.height,
+                    isActive: isActive,
+                    isSecondary: isSecondary,
+                    textScale: scale,
+                  ),
+                );
+                expect(
+                  find.byKey(ValueKey('energy_tile_label_$title')),
+                  findsOneWidget,
+                  reason:
+                      'label must be present at $size, scale $scale, '
+                      'active=$isActive, secondary=$isSecondary',
+                );
+                expect(
+                  tester.takeException(),
+                  isNull,
+                  reason:
+                      'overflow at $size, scale $scale, '
+                      'active=$isActive, secondary=$isSecondary',
+                );
+              }
+            }
           }
         }
       },

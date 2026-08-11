@@ -91,6 +91,14 @@ String _renderFood(Map<String, dynamic> f) {
   buf.writeln('        referenceAmount: $referenceAmount,');
   buf.writeln("        referenceLabel: '$referenceLabel',");
   buf.writeln('        isCatalog: true,');
+  // Optional `hidden: true` on the JSON row → publish as archived in
+  // the seed so the loader, the refresh, and the display paths all
+  // see the same `isArchived: true` value. Absent → visible; the
+  // field is omitted from the seed to keep visible rows identical
+  // to their pre-`hidden` shape.
+  if (f['hidden'] == true) {
+    buf.writeln('        isArchived: true,');
+  }
   buf.writeln('        protein: $protein,');
   buf.writeln('        carbs: $carbs,');
   buf.writeln('        fiber: $fiber,');

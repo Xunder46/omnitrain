@@ -10,10 +10,14 @@ import '../../../core/services/image_storage_service.dart';
 import '../../../data/models/models.dart';
 import '../../../state/food_library_state.dart';
 import '../../../widgets/inputs/select_all_on_focus.dart';
-// Conditional import: reuses the platform-aware image renderer
-// from the `FoodThumbnail` widget.
-import 'food_thumbnail_stub.dart'
-    if (dart.library.io) 'food_thumbnail_io.dart';
+// The form's `FoodFormImageTile` now delegates its image body
+// to the shared `FoodThumbnail` widget so the editor and the
+// library list render photos through the same three-tier
+// precedence (user photo → shipped photo → placeholder). The
+// `FoodThumbnail` import is unconditional; it pulls in the
+// platform-aware `FoodThumbnailImage` (native `Image.file`
+// with `errorBuilder`, web stub) via its own conditional import.
+import 'food_thumbnail.dart';
 
 export '../../../core/models/food_draft.dart' show FoodDraft;
 
@@ -555,6 +559,16 @@ class _FoodFormState extends State<FoodForm> {
                 key: const Key('food_form_image_tile'),
                 imagePath: _imagePath,
                 imageStorage: widget.foodLibraryState.imageStorageOrNull,
+                // Thread the form's initial food's id and
+                // catalogId into the tile so the bundled-photo
+                // tier can resolve a shipped photograph the
+                // same way the library list's `FoodThumbnail`
+                // does. The tier is render-only — it never
+                // writes to `Food.imagePath`; the user's
+                // imagePath stays at whatever it was when the
+                // editor opened.
+                foodId: widget.initial?.id,
+                catalogId: widget.initial?.catalogId,
                 onPickGallery: () => _pickImage(ImageSource.gallery),
                 onPickCamera: () => _pickImage(ImageSource.camera),
                 onClear: clearImage,
@@ -584,17 +598,7 @@ class _FoodFormState extends State<FoodForm> {
                   labelText: 'Category',
                   border: OutlineInputBorder(),
                 ),
-                items: [
-                  const DropdownMenuItem<String?>(
-                    value: null,
-                    child: Text('Ungrouped'),
-                  ),
-                  for (final g in groups)
-                    DropdownMenuItem<String?>(
-                      value: g.id,
-                      child: Text(g.name),
-                    ),
-                ],
+                items: _categoryDropdownItems(groups),
                 onChanged: (v) => setState(() => _groupId = v),
               ),
               const SizedBox(height: 12),
@@ -811,15 +815,177 @@ class _FoodFormState extends State<FoodForm> {
     copy.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return copy;
   }
+
+  /// Build the items list for the category dropdown (S-001 / S-002).
+  ///
+  /// The list is `Ungrouped` + the active groups, in alphabetical
+  /// order. When the food's stored `_groupId` is **not** in the
+  /// active list (it points at a deleted category, or one that was
+  /// never created because the user pre-created their own), we
+  /// synthesise an extra item so the dropdown's `initialValue` is
+  /// satisfied and the food's original filing is visible to the
+  /// user. The synthesised item is rendered with a muted
+  /// [OmniTheme.colors.textMuted] style and labelled
+  /// " (no longer available)" — the user can keep it (save
+  /// leaves `groupId` unchanged) or pick an active group.
+  ///
+  /// When the food's `_groupId` IS in the **full** group cache
+  /// (the `foodGroups` getter, which includes archived groups) but
+  /// the group has `isArchived = true`, we render the actual
+  /// archived group row labelled " (archived)" — the name is
+  /// recoverable from the cache so the user sees what they filed
+  /// it under. Again, muted style.
+  ///
+  /// Items are listed in this order: synthesised (if any) →
+  /// `Ungrouped` → active groups. The synthesised item is
+  /// prepended so the user sees it at the top of the menu (or as
+  /// the selected value when it matches `_groupId`).
+  List<DropdownMenuItem<String?>> _categoryDropdownItems(
+    List<FoodGroup> activeGroups,
+  ) {
+    final muted = OmniTheme.colors.textMuted;
+    final items = <DropdownMenuItem<String?>>[];
+
+    // Synthesise the orphan / archived item when needed.
+    final orphan = _synthesiseOrphanCategoryItem(
+      mutedStyle: muted,
+      activeGroups: activeGroups,
+    );
+    if (orphan != null) items.add(orphan);
+
+    items.add(
+      const DropdownMenuItem<String?>(
+        value: null,
+        child: Text('Ungrouped'),
+      ),
+    );
+    for (final g in activeGroups) {
+      items.add(
+        DropdownMenuItem<String?>(
+          value: g.id,
+          child: Text(g.name),
+        ),
+      );
+    }
+    return items;
+  }
+
+  /// When the food's stored `_groupId` is not in the active
+  /// groups list, build a selectable item so the dropdown's
+  /// `initialValue` is satisfied (S-001 / S-002). The item is
+  /// either:
+  ///   * the actual archived group row, with a "(archived)"
+  ///     suffix and muted style (resolvable from
+  ///     [FoodLibraryState.foodGroups], the full cache), or
+  ///   * a synthesised "(no longer available)" item carrying the
+  ///     stored id but no resolvable name.
+  ///
+  /// Returns `null` when `_groupId` is null (Ungrouped) or when
+  /// it is in the active list (no synthesis needed).
+  DropdownMenuItem<String?>? _synthesiseOrphanCategoryItem({
+    required Color mutedStyle,
+    required List<FoodGroup> activeGroups,
+  }) {
+    final groupId = _groupId;
+    if (groupId == null) return null;
+
+    // If the id IS in the active list, the regular items list
+    // already covers it — synthesising an extra "orphan" item
+    // would create a duplicate `value`, which `DropdownButton`'s
+    // "exactly one item with the value" assertion rejects. This
+    // can happen transiently right after the user picks an
+    // active category from the dropdown: the build re-runs with
+    // the new `_groupId` set to an active id, and we must NOT
+    // synthesise a second row for it.
+    for (final g in activeGroups) {
+      if (g.id == groupId) return null;
+    }
+
+    // Look it up in the full group cache (active + archived). The
+    // active list already filtered `isArchived == false`, so a
+    // hit here means either the group is archived OR there is a
+    // state-cache lag — we still synthesise the item rather than
+    // rely on the lag resolving.
+    final allGroups = widget.foodLibraryState.foodGroups;
+    FoodGroup? group;
+    for (final g in allGroups) {
+      if (g.id == groupId) {
+        group = g;
+        break;
+      }
+    }
+
+    if (group != null) {
+      // Resolvable: archived group row.
+      final suffix = group.isArchived ? ' (archived)' : '';
+      return DropdownMenuItem<String?>(
+        value: groupId,
+        child: Text(
+          '${group.name}$suffix',
+          style: TextStyle(color: mutedStyle),
+        ),
+      );
+    }
+
+    // Not in any cache: truly orphaned (deleted, or a default
+    // we never created). Render the raw id so the user can see
+    // it's there, with a "(no longer available)" hint.
+    return DropdownMenuItem<String?>(
+      value: groupId,
+      child: Text(
+        '$groupId (no longer available)',
+        style: TextStyle(color: mutedStyle),
+      ),
+    );
+  }
 }
 
 /// The image tile rendered at the very top of [FoodForm]. Square
-/// 96×96 by default. When an image is set, renders the photo with
-/// small × (clear) and edit (change) overlays; when no image is
-/// set, renders a dashed placeholder with an "Add photo"
-/// affordance.
+/// 96×96 by default. Resolves the displayed photo through the
+/// same three-tier precedence the library list's
+/// [FoodThumbnail] uses, so a user opening the editor for a
+/// bundled food sees the same photo they saw on the list they
+/// tapped from:
+///
+///   1. **User-picked photo** ([imagePath]) — always wins if set.
+///   2. **Shipped photo** — derived by
+///      [FoodPhotoService.bundledPhotoAssetPath] from [foodId] or,
+///      for a library copy, from [catalogId].
+///   3. **Placeholder** — shown when neither source has a photo.
+///
+/// The bundled tier is render-only: it never writes to
+/// `Food.imagePath`. The shipped photo is the food's baseline,
+/// not a one-time default — clearing a user photo over a shipped
+/// one returns the display to the shipped photo rather than to
+/// the empty placeholder.
+///
+/// **Overlay chrome**:
+///   * The × (clear) overlay appears **only when a user photo is
+///     the displayed source** — there is nothing for the user to
+///     clear when only a shipped photo is shown. A user who never
+///     picked a photo must not be offered a delete affordance
+///     against a photo that isn't theirs.
+///   * The edit (replace) overlay appears whenever any photo is
+///     displayed (user photo or shipped), so the user can pick
+///     their own photo over a shipped one.
+///   * Tapping the placeholder opens the same Camera / Gallery
+///     picker sheet as the edit overlay.
 class FoodFormImageTile extends StatelessWidget {
+  /// The food's stored photo reference (user-picked photo
+  /// basename under the post-relocation-fix contract, or
+  /// `null`/empty when no user photo is set). Tier 1.
   final String? imagePath;
+
+  /// The food's id (or, for a library copy, the library copy's
+  /// id — the bundled tier keys off `catalogId` first if set).
+  final String? foodId;
+
+  /// The catalog food id for a library food copied from the
+  /// catalog. Used by the bundled tier to resolve the shipped
+  /// photo path so a library copy of a bundled food renders the
+  /// same shipped photo as the original.
+  final String? catalogId;
+
   final VoidCallback onPickGallery;
   final VoidCallback onPickCamera;
   final VoidCallback onClear;
@@ -832,13 +998,52 @@ class FoodFormImageTile extends StatelessWidget {
     required this.onPickGallery,
     required this.onPickCamera,
     required this.onClear,
+    this.foodId,
+    this.catalogId,
     this.imageStorage,
     this.size = 96,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hasImage = imagePath != null && imagePath!.isNotEmpty;
+    // The clear affordance only makes sense when the user has
+    // actually set a photo. When the displayed source is the
+    // shipped photo (no user `imagePath`), the × (clear)
+    // overlay is hidden — the user cannot delete a photo that
+    // isn't theirs. The edit overlay is shown whenever any photo
+    // is rendered, so the user can still pick their own over
+    // the shipped one.
+    final hasUserImage = imagePath != null && imagePath!.isNotEmpty;
+    final hasFoodIdentity = foodId != null || catalogId != null;
+
+    // The bundled tier is reachable when the food resolves to
+    // a shipped asset. We delegate the entire image body to
+    // `FoodThumbnail` so the form and the library list share
+    // one implementation of the three-tier precedence — the
+    // only thing the form owns beyond the rendering decision is
+    // its overlay chrome and the tap-to-pick gesture. The
+    // body itself is wrapped in an `InkWell` so tapping
+    // anywhere on the image (user photo, shipped photo, or
+    // placeholder) opens the picker sheet — this matches the
+    // pre-fix behaviour where tapping the placeholder opened
+    // the picker and matches what users expect from a photo
+    // editor (one tap to change). The overlay buttons do not
+    // bubble taps up to the InkWell (they have their own
+    // `Material`/`InkWell` wrappers).
+    final body = FoodThumbnail(
+      imagePath: imagePath,
+      imageStorage: imageStorage,
+      foodId: foodId,
+      catalogId: catalogId,
+      size: size,
+      radius: 12,
+      // Opt into the empty-state caption so the form's tile
+      // surfaces "Add photo" when no photo is rendering.
+      // List-row consumers do not pass this — only the form
+      // ever does.
+      placeholderCaption: 'Add photo',
+    );
+
     return Center(
       child: SizedBox(
         width: size,
@@ -846,18 +1051,25 @@ class FoodFormImageTile extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: hasImage
-                  ? _ImageBody(
-                      reference: imagePath!,
-                      size: size,
-                      imageStorage: imageStorage,
-                    )
-                  : _PlaceholderBody(
-                      size: size,
-                      onTap: () => _showPickerSheet(context),
-                    ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _showPickerSheet(context),
+                  borderRadius: BorderRadius.circular(12),
+                  child: body,
+                ),
+              ),
             ),
-            if (hasImage) ...[
+            // The shipped-photo / placeholder distinction is
+            // surfaced through the overlay chrome: when the
+            // displayed source is the shipped photo (no user
+            // `imagePath`), we still want the edit overlay (the
+            // user can pick their own photo over the shipped
+            // one) but we hide the × clear overlay (there is
+            // nothing for the user to clear). When the user
+            // picks a photo, `hasUserImage` flips to true and
+            // the clear overlay appears.
+            if (hasUserImage)
               Positioned(
                 top: 0,
                 right: 0,
@@ -867,6 +1079,14 @@ class FoodFormImageTile extends StatelessWidget {
                   tooltip: 'Remove photo',
                 ),
               ),
+            // Edit overlay: shown whenever any photo is displayed
+            // (user photo or shipped). When the tile is purely
+            // a placeholder (no photo at all and no food
+            // identity to resolve a bundled photo from), the
+            // placeholder's own tap-to-pick InkWell handles
+            // opening the picker; the overlay is not stacked
+            // on top.
+            if (hasUserImage || hasFoodIdentity)
               Positioned(
                 bottom: 0,
                 right: 0,
@@ -876,7 +1096,6 @@ class FoodFormImageTile extends StatelessWidget {
                   tooltip: 'Change photo',
                 ),
               ),
-            ],
           ],
         ),
       ),
@@ -917,88 +1136,6 @@ class FoodFormImageTile extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-/// Image body. Uses the platform-aware [FoodThumbnailImage] (native
-/// `Image.file` with `errorBuilder`, web stub) — reuses the
-/// conditional import at the top of the file.
-class _ImageBody extends StatelessWidget {
-  final String reference;
-  final double size;
-  final ImageStorageService? imageStorage;
-
-  const _ImageBody({
-    required this.reference,
-    required this.size,
-    this.imageStorage,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: FoodThumbnailImage(
-          reference: reference,
-          imageStorage: imageStorage,
-          size: size,
-          radius: 12,
-          placeholder: const SizedBox.shrink(),
-        ),
-      ),
-    );
-  }
-}
-
-/// Placeholder body (no image). Shows a dashed border, a camera
-/// icon, and an "Add photo" label.
-class _PlaceholderBody extends StatelessWidget {
-  final double size;
-  final VoidCallback onTap;
-
-  const _PlaceholderBody({required this.size, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final themeColors = OmniTheme.colors;
-    return Material(
-      color: themeColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: themeColors.textMuted.withValues(alpha: 0.4),
-        ),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.add_a_photo_outlined,
-                color: themeColors.textSecondary,
-                size: size * 0.32,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Add photo',
-                style: TextStyle(
-                  color: themeColors.textSecondary,
-                  fontSize: size * 0.12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

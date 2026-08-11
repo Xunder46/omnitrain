@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/services/routine_session_service.dart';
 import '../../core/services/session_summary_service.dart';
@@ -32,6 +33,38 @@ import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
 import '../nutrition/nutrition_screen.dart';
 import '../nutrition/widgets/nutrition_primer_sheet.dart';
+
+/// Hub-sheet layout constants used to size the destination grid against the
+/// sheet's fully-open height.
+///
+/// These describe the sheet's own chrome — the parts of the open sheet that
+/// are not grid. They are not tile dimensions: tile *content* sizing lives in
+/// `TileArtworkMetrics`, and hub tile height is derived here, never fixed.
+
+/// Gap between the sheet's top edge and the drag handle bar.
+const double hubHandleTopPadding = 20.0;
+
+/// Handle block: [hubHandleTopPadding] + 6pt bar + 0pt bottom padding.
+const double hubHandleBlockHeight = hubHandleTopPadding + 6.0;
+
+/// `HUB` eyebrow (labelMedium, 12pt) at its rendered line height, before
+/// text scaling. Rounded up so the reserve is never short.
+const double hubHeaderHeight = 20.0;
+
+/// Deliberate breathing room between the HUB eyebrow and the first tile row.
+/// Pinned by `home_logo_hub_open_test.dart`.
+const double hubHeaderToGridGap = 60.0;
+
+/// Bottom of the sheet's `SliverPadding(fromLTRB(16, 0, 16, 4))`.
+const double hubGridBottomPadding = 4.0;
+
+/// The square-ish proportion the hub grid uses when the sheet is tall enough
+/// to afford it (width / height).
+const double hubTileNaturalAspectRatio = 1.1;
+
+/// Floor for a hub tile, mirroring the Home grid's 56pt tile floor. Below
+/// this the tile has no room for a label at all.
+const double hubMinTileHeight = 56.0;
 
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -469,7 +502,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                     return EnergyTile(
                                       title: tile.label,
                                       icon: tile.iconData,
-                                      iconWidget: tile.iconWidget,
+                                      artworkBuilder: tile.artworkBuilder,
                                       accentColor: tile.accentColor,
                                       isSecondary: tile.isSecondary,
                                       isActive: isActive,
@@ -550,7 +583,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               },
             ),
           ),
-          _buildMaintenanceSheet(context),
+          // The sheet's own available height, not `MediaQuery.size.height`.
+          // `DraggableScrollableSheet` sizes its extent as a fraction of the
+          // height its parent gives it, so this is the number the hub grid
+          // must be measured against.
+          //
+          // The OUTER `context` is passed on deliberately, not the builder's.
+          // Inside the Scaffold body `MediaQuery.padding.top` already carries
+          // the 60pt AppBar (the Scaffold extends the body behind it), so
+          // reading it there would subtract the toolbar twice and open the
+          // sheet 60pt short of the logo.
+          LayoutBuilder(
+            builder: (_, constraints) =>
+                _buildMaintenanceSheet(context, constraints.maxHeight),
+          ),
         ],
       ),
     );
@@ -881,7 +927,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  Widget _buildMaintenanceSheet(BuildContext context) {
+  Widget _buildMaintenanceSheet(BuildContext context, double availableHeight) {
     final mq = MediaQuery.of(context);
     // `context` here is the outer Scaffold context, so `padding.top` is the
     // status-bar safe-area only.  Subtract the AppBar's actual toolbar
@@ -905,6 +951,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ((mq.size.height - mq.padding.top - appBarToolbarHeight) /
                 mq.size.height)
             .clamp(0.5, hubSheetMaxExtent);
+
+    // The height the sheet occupies when fully open: the extent fraction
+    // applied to the height its parent offers. Every hub tile is sized
+    // against this, never against the live extent — see the note at the
+    // grid call site.
+    final openSheetHeight = _maxSheetExtent * availableHeight;
 
     return NotificationListener<DraggableScrollableNotification>(
       onNotification: (notification) {
@@ -972,12 +1024,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             child: Transform.translate(
                               offset: Offset(0, slideOffset),
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Padding(
-                                    padding:
-                                        const EdgeInsets.only(bottom: 0),
+                                    padding: const EdgeInsets.only(bottom: 0),
                                     child: Text(
                                       'HUB',
                                       style: Theme.of(context)
@@ -993,8 +1043,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                           ),
                                     ),
                                   ),
-                                  SizedBox(height: 60),
-                                  _buildMaintenanceGrid(context),
+                                  SizedBox(height: hubHeaderToGridGap),
+                                  // Tiles size against the sheet's
+                                  // FULLY-OPEN height, not its current
+                                  // extent. Sizing against the current
+                                  // extent would resize the whole grid
+                                  // continuously during a drag — visually
+                                  // unstable, and it draws attention to
+                                  // the chrome instead of the
+                                  // destinations. Against the open height
+                                  // the grid is laid out once, holds
+                                  // still while dragging, and is
+                                  // guaranteed to fit in the state the
+                                  // user ends up in.
+                                  _buildMaintenanceGrid(
+                                    context,
+                                    openSheetHeight: openSheetHeight,
+                                    bottomInset: mq.padding.bottom,
+                                    textScale: MediaQuery.textScalerOf(
+                                      context,
+                                    ).scale(1.0),
+                                  ),
                                 ],
                               ),
                             ),
@@ -1021,7 +1090,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // the handle bar flush against the HUB section header below.
       // See plan `hub-sheet-gap-and-logo-clip-plan.md` for the
       // full chain of cuts.
-      padding: const EdgeInsets.only(top: 20, bottom: 0),
+      padding: const EdgeInsets.only(top: hubHandleTopPadding, bottom: 0),
       child: Center(
         child: GestureDetector(
           onTap: () => _snapSheet(_maxSheetExtent),
@@ -1049,9 +1118,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildMaintenanceGrid(BuildContext context) {
+  Widget _buildMaintenanceGrid(
+    BuildContext context, {
+    required double openSheetHeight,
+    required double bottomInset,
+    required double textScale,
+  }) {
     final items = [
-       _MaintenanceItem(
+      _MaintenanceItem(
         title: 'Profile',
         icon: Icons.person_outline,
         onTap: () => OmniNavigator.push(
@@ -1129,24 +1203,71 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // anchored to the top of the sheet. The sheet itself positions the
     // grid via the surrounding `SliverPadding(fromLTRB(16, 0, 16, 4))`,
     // so we do not lose any system inset handling.
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.zero,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
-        childAspectRatio: 1.1,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return MaintenanceTile(
-          title: item.title,
-          icon: item.icon,
-          onTap: item.onTap,
-          activeTheme: widget.settingsState.appTheme,
+    const crossAxisCount = 2;
+    const gridSpacing = 16.0;
+    final rowCount = (items.length + crossAxisCount - 1) ~/ crossAxisCount;
+
+    // Everything inside the fully-open sheet that sits above or below the
+    // grid. Deliberately a slight over-estimate: over-reserving costs a few
+    // points of tile height, under-reserving lets the last row run past the
+    // sheet's bottom edge.
+    final chromeHeight =
+        hubHandleBlockHeight +
+        hubHeaderHeight * textScale +
+        hubHeaderToGridGap +
+        hubGridBottomPadding +
+        bottomInset;
+
+    final fittedTileHeight =
+        (openSheetHeight - chromeHeight - gridSpacing * (rowCount - 1)) /
+        rowCount;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The natural (pre-responsive) tile height: the square-ish
+        // proportion the grid has always used. On a tall sheet this still
+        // wins, so the hub renders exactly as it does today; only when the
+        // sheet is too short to seat three rows does the fitted height take
+        // over.
+        final tileWidth =
+            (constraints.maxWidth - gridSpacing * (crossAxisCount - 1)) /
+            crossAxisCount;
+        final naturalTileHeight = tileWidth / hubTileNaturalAspectRatio;
+
+        final tileHeight = math.max(
+          hubMinTileHeight,
+          math.min(naturalTileHeight, fittedTileHeight),
+        );
+
+        // `padding: EdgeInsets.zero` is required: `BoxScrollView.buildSlivers`
+        // auto-injects `MediaQuery.padding` as a `SliverPadding` around the
+        // grid when `padding` is null. That phantom sliver sits between the
+        // HUB header and the first tile row, creating a ~60 px floating
+        // band that pushed the grid into the visual middle of the
+        // oversized sheet. Pinning the padding to zero keeps the content
+        // anchored to the top of the sheet. The sheet itself positions the
+        // grid via the surrounding `SliverPadding(fromLTRB(16, 0, 16, 4))`,
+        // so we do not lose any system inset handling.
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            mainAxisSpacing: gridSpacing,
+            crossAxisSpacing: gridSpacing,
+            mainAxisExtent: tileHeight,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return MaintenanceTile(
+              title: item.title,
+              icon: item.icon,
+              onTap: item.onTap,
+              activeTheme: widget.settingsState.appTheme,
+            );
+          },
         );
       },
     );

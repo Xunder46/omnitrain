@@ -93,7 +93,7 @@ Manages the user's food library: food groups and food items with macronutrient m
 | `updateFoodGroup(FoodGroup group)` | Updates an existing food group and persists changes |
 | `archiveFoodGroup(String id)` | Archives (soft-deletes) a food group by setting `isArchived = true` |
 | `renameFoodGroup(String id, String newName)` | Renames a food group in place (preserves id / color / createdAtMs / isArchived). Used by the Groups tab's inline `TextField`. No-ops on empty / unchanged names; throws if the group is not in the cache. |
-| `deleteFoodGroupReassigningFoods(String id, String? toGroupId)` | Archives the group while reassigning all of its non-archived, user-owned foods to `toGroupId` (or `null` for "Ungrouped"). Foods are never deleted. Used by the Groups tab's trash affordance. |
+| `deleteFoodGroupReassigningFoods(String id, String? toGroupId)` | Archives the group while reassigning its non-archived, user-owned foods (library and user-created catalog foods) to `toGroupId` (or `null` for "Ungrouped"). Foods are never deleted. **Refuses the deletion** by throwing `FoodGroupHasBundledFoodsError` when at least one bundled catalog food still points at the group — rewriting a bundled food's `groupId` would silently revert on the next catalog refresh. See `test/food_library_state_delete_guard_test.dart` (S-006 / S-007). |
 | `getFoodGroupById(String id)` | Retrieves a food group from cache or repository; returns null if not found |
 | `createFood(Food food)` | Creates a new food item, persists, and notifies (forces `isCatalog = false`) |
 | `updateFood(Food food)` | Updates an existing food and persists changes |

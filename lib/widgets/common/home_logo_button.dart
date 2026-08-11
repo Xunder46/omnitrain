@@ -14,10 +14,15 @@ import '../../../core/constants/omni_theme.dart';
 /// from the existing `OmniTheme.softShadow` drop on the dark navy header —
 /// no inner border, no glyph, no chevron, no label.
 ///
-/// The outer transparent Padding insets the visible circle from the AppBar's
-/// left edge and the status bar, and reserves room for the shadow's blur. It
-/// also guarantees a tappable hit region of at least 44×44pt, supplemented by
-/// an explicit `ConstrainedBox` minimum on the gesture bounds.
+/// The outer transparent Padding insets the visible circle from the top,
+/// right, and bottom edges of the AppBar and from the status bar, and
+/// reserves room for the shadow's blur. It also guarantees a tappable hit
+/// region of at least 44×44pt, supplemented by an explicit `ConstrainedBox`
+/// minimum on the gesture bounds. The left side carries NO padding so the
+/// visible 55 px circle's left edge is exactly at `titleSpacing` (16) from
+/// the AppBar's content-start — the same x-coordinate the home-screen
+/// training tiles start at (their outer `Padding(fromLTRB(16, 0, 16, 0))`).
+/// This keeps the logo button visually aligned with the leftmost tile edge.
 ///
 /// The press reaction (AnimatedScale to `OmniTheme.pressedScale`, light haptic
 /// on non-web, reduced-motion fallback) is preserved unchanged.
@@ -140,22 +145,33 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
 
     // Internal margin so the circle's soft shadow has full room to render
     // and the visible button reads with breathing room inside the AppBar.
-    // Symmetric 8 px `EdgeInsets.all(8)` insets the visible circle from
-    // the widget's left, top, right, and bottom edges — the widget's
-    // bounding box becomes 71×71 (8 px × 2 + 55 tile). This sits cleanly
-    // inside the AppBar's `toolbarHeight: 60` slot (the visible 55 px
-    // circle has 8 px above and 8 px below within the bounding box,
-    // keeping it visually centred while leaving room for the soft
-    // shadow's blur on every side). The padding is transparent and does
-    // not change the visible circle's shape, size, fill, or logo.
-    // The symmetric inset is also what keeps the visible circle off the
+    // The padding is intentionally ASYMMETRIC: 0 on the left, 8 px on
+    // top/right/bottom.
+    //
+    // The visible 55×55 circle's left edge lands at
+    // `AppBar.titleSpacing` (16) from the AppBar's content-start, which
+    // is the same x-coordinate the home-screen training tiles start at
+    // (their outer `Padding(fromLTRB(16, 0, 16, 0))`). With 0 left
+    // padding inside the logo button, the visible circle sits flush with
+    // the leftmost tile edge instead of 8 px to the right of them.
+    //
+    // 8 px top + 8 px bottom keep the circle vertically centred and
+    // reserve room for the soft shadow's blur above and below. 8 px
+    // right insets the visible circle from any future AppBar trailing
+    // widget. The padding is transparent and does not change the
+    // visible circle's shape, size, fill, or logo. The widget's
+    // bounding box becomes (55 + 8 + 8) wide × (55 + 8 + 8) tall = 63×71
+    // on the horizontal — width is less than height because the left
+    // padding is 0.
+    //
+    // The bottom padding is also what keeps the visible circle off the
     // sheet's top edge when the Hub sheet is fully expanded (the sheet
     // top lands at `padding.top + toolbarHeight`, just below the
-    // AppBar's bottom edge; the symmetric bottom padding guarantees the
+    // AppBar's bottom edge; the 8 px bottom padding guarantees the
     // circle is fully inside the AppBar regardless of the actual
     // `toolbarHeight` configured on the host Scaffold).
     final padded = Padding(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.only(top: 8, right: 8, bottom: 8),
       child: tile,
     );
 
@@ -185,8 +201,10 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
 
     // Hit target guarantee: ensure the gesture region is at least 44×44pt
     // even if `tileSize` is later reduced below 44. The Padding above
-    // already provides 72×64, but ConstrainedBox + opaque hit-test
-    // behaviour make the guarantee explicit and resilient.
+    // already provides 63×71 (0 left + 8 right + 8 top + 8 bottom around
+    // the 55 px circle, well above the 44 pt hit target on every side
+    // except the left), but ConstrainedBox + opaque hit-test behaviour
+    // make the guarantee explicit and resilient.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,

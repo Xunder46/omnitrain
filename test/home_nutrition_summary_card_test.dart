@@ -102,7 +102,7 @@ Food _chicken() => Food(
   name: 'Chicken Breast',
   unitType: FoodUnitType.grams,
   referenceAmount: 100.0,
-  referenceLabel: '100 g',
+  referenceLabel: 'g',
   protein: 31,
   carbs: 0,
   fat: 3,

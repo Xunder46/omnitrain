@@ -432,6 +432,26 @@ abstract class WorkoutRepository {
     String? targetGroupId,
   );
 
+  /// Reassign a list of **catalog** foods to a new group in a single
+  /// transaction.
+  ///
+  /// Parallel to [reassignFoodsToGroup] but targets the catalog box
+  /// (`_foodCatalogBox`) instead of the library box. Used by
+  /// `FoodLibraryState.deleteFoodGroupReassigningFoods` so that
+  /// user-owned catalog foods (those created via the **+ New Item**
+  /// flow) are moved off a deleted category just like library foods
+  /// are. Bundled catalog foods are never passed here — the
+  /// bundled-food guard runs before this method is called and refuses
+  /// the entire deletion if any bundled food points at the source
+  /// group (the catalog refresh would otherwise undo the rewrite).
+  ///
+  /// Unknown food ids are silently skipped (idempotent). An empty
+  /// list is a no-op.
+  Future<void> reassignCatalogFoodsToGroup(
+    List<String> catalogFoodIds,
+    String? targetGroupId,
+  );
+
   /// Get all non-archived foods.
   /// Pass [includeArchived] = true to include archived foods.
   Future<List<Food>> getFoods({bool includeArchived = false});

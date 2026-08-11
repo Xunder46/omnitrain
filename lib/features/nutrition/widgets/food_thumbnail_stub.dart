@@ -3,10 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:omnitrain/core/services/image_storage_service.dart';
 
 /// Web/stub fallback for [FoodThumbnailImage]. On web, the parent
-/// [FoodThumbnail] already short-circuits to the placeholder when
-/// `kIsWeb` is true, but this stub exists to keep the import
-/// contract the same on every platform (so the public
-/// [FoodThumbnail] widget can do a single conditional import).
+/// [FoodThumbnail] already checks `kIsWeb` when [imagePath] is set,
+/// so the user-photo branch of [FoodThumbnailImage] is never reached
+/// on web. This stub exists to keep the import contract the same on
+/// every platform (so the public [FoodThumbnail] widget can do a
+/// single conditional import).
+///
+/// Note: On web, the public [FoodThumbnail] widget handles bundled
+/// photos directly via [_BundledPhotoImage], so this stub class is
+/// primarily for backward compatibility with the import pattern.
 class FoodThumbnailImage extends StatelessWidget {
   /// Unused on web.
   final String reference;

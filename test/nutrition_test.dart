@@ -23,6 +23,7 @@ import 'package:omnitrain/features/nutrition/add_food_screen.dart';
 import 'package:omnitrain/features/nutrition/nutrition_target_screen.dart';
 import 'package:omnitrain/features/nutrition/widgets/calorie_ring_card.dart';
 import 'package:omnitrain/features/nutrition/widgets/log_food_row.dart';
+import 'package:omnitrain/features/nutrition/widgets/food_thumbnail.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/widgets/layout/omni_bottom_cta.dart';
@@ -287,7 +288,7 @@ void main() {
           name: 'Chicken Breast',
           unitType: FoodUnitType.grams,
           referenceAmount: 100.0,
-          referenceLabel: '100 g',
+          referenceLabel: 'g',
           protein: 31,
           carbs: 0,
           fat: 4,
@@ -300,7 +301,7 @@ void main() {
           name: 'Avocado',
           unitType: FoodUnitType.grams,
           referenceAmount: 100.0,
-          referenceLabel: '100 g',
+          referenceLabel: 'g',
           protein: 2,
           carbs: 9,
           fat: 15,
@@ -345,7 +346,7 @@ void main() {
         name: 'Cured Meat',
         unitType: FoodUnitType.grams,
         referenceAmount: 100.0,
-        referenceLabel: '100 g',
+        referenceLabel: 'g',
         protein: 20,
         carbs: 0,
         fat: 10,
@@ -1895,6 +1896,55 @@ void main() {
   });
 
   group('LogFoodRow — log from library (S-001 / S-008)', () {
+    testWidgets('catalog serving lines contain one quantity and unit', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final nutrition = NutritionState(repo);
+      final foodLib = FoodLibraryState(repo);
+      await nutrition.loadConsumedToday();
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
+
+      final chicken = (await repo.getCatalogFoodById('chicken_breast'))!;
+      final jerky = (await repo.getCatalogFoodById('beef_jerky'))!;
+      final juice = (await repo.getCatalogFoodById('orange_juice'))!;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListView(
+              children: [
+                LogFoodRow(
+                  food: chicken,
+                  nutritionState: nutrition,
+                  foodLibraryState: foodLib,
+                ),
+                LogFoodRow(
+                  food: jerky,
+                  nutritionState: nutrition,
+                  foodLibraryState: foodLib,
+                ),
+                LogFoodRow(
+                  food: juice,
+                  nutritionState: nutrition,
+                  foodLibraryState: foodLib,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('100 g'), findsOneWidget);
+      expect(find.text('28 g'), findsOneWidget);
+      expect(find.text('100 ml'), findsOneWidget);
+      expect(find.text('100 100 g'), findsNothing);
+      expect(find.text('28 28 g'), findsNothing);
+      expect(find.text('100 100 ml'), findsNothing);
+    });
+
     /// Read the thumb's `Semantics.checked` flag (replaces the old
     /// `tester.widget<Checkbox>(...)` cast after the Iteration 1
     /// thumb-toggle migration).
@@ -1933,7 +1983,7 @@ void main() {
           unitType: FoodUnitType.grams,
           groupId: 'g-pro-log',
           referenceAmount: 100.0,
-          referenceLabel: '100 g',
+          referenceLabel: 'g',
           protein: 31,
           carbs: 0,
           fat: 3,
@@ -2119,7 +2169,7 @@ void main() {
                 name: 'No-image food',
                 unitType: FoodUnitType.grams,
                 referenceAmount: 100.0,
-                referenceLabel: '100 g',
+                referenceLabel: 'g',
                 protein: 0,
                 carbs: 0,
                 fat: 0,
@@ -2169,7 +2219,7 @@ void main() {
                   name: 'Sem food',
                   unitType: FoodUnitType.grams,
                   referenceAmount: 100.0,
-                  referenceLabel: '100 g',
+                  referenceLabel: 'g',
                   protein: 10,
                   carbs: 10,
                   fat: 10,
@@ -2258,7 +2308,7 @@ void main() {
                 name: 'Macro sample',
                 unitType: FoodUnitType.grams,
                 referenceAmount: 100.0,
-                referenceLabel: '100 g',
+                referenceLabel: 'g',
                 protein: 10,
                 carbs: 10,
                 fat: 10,
@@ -2320,7 +2370,7 @@ void main() {
             unitType: FoodUnitType.grams,
             groupId: 'g-div',
             referenceAmount: 100.0,
-            referenceLabel: '100 g',
+            referenceLabel: 'g',
             protein: 0,
             carbs: 0,
             fat: 0,
@@ -2389,7 +2439,7 @@ void main() {
           name: 'Chicken (last amount)',
           unitType: FoodUnitType.grams,
           referenceAmount: 100.0,
-          referenceLabel: '100 g',
+          referenceLabel: 'g',
           protein: 31,
           carbs: 0,
           fat: 3,
@@ -2437,7 +2487,7 @@ void main() {
           name: 'Chicken (never logged)',
           unitType: FoodUnitType.grams,
           referenceAmount: 100.0,
-          referenceLabel: '100 g',
+          referenceLabel: 'g',
           protein: 31,
           carbs: 0,
           fat: 3,
@@ -2482,7 +2532,7 @@ void main() {
           name: 'Chicken (unsaved edit)',
           unitType: FoodUnitType.grams,
           referenceAmount: 100.0,
-          referenceLabel: '100 g',
+          referenceLabel: 'g',
           protein: 31,
           carbs: 0,
           fat: 3,
@@ -2543,7 +2593,7 @@ void main() {
           name: 'Chicken (today wins)',
           unitType: FoodUnitType.grams,
           referenceAmount: 100.0,
-          referenceLabel: '100 g',
+          referenceLabel: 'g',
           protein: 31,
           carbs: 0,
           fat: 3,
@@ -3407,4 +3457,39 @@ void main() {
       },
     );
   });
+
+  group('LogFoodRow thumbnail contrast', () {
+    testWidgets('keeps outer and tap dimensions while insetting content', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final nutrition = NutritionState(repo);
+      final foodLib = FoodLibraryState(repo);
+      await nutrition.loadConsumedToday();
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: LogFoodRow(
+            food: const Food(
+              id: 'f-contrast', name: 'Contrast food',
+              unitType: FoodUnitType.grams, referenceAmount: 100,
+              referenceLabel: 'g', protein: 10, carbs: 10, fat: 10,
+              createdAtMs: 1, updatedAtMs: 1,
+            ),
+            nutritionState: nutrition,
+            foodLibraryState: foodLib,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      final thumb = find.byKey(const Key('log_food_thumb_f-contrast'));
+      expect(tester.getSize(thumb), const Size(48, 48));
+      expect(tester.getSize(find.byType(FoodThumbnail)), const Size(32, 32));
+      expect(find.byType(AnimatedOpacity), findsOneWidget);
+    });
+  });
+
 }
