@@ -5,6 +5,20 @@ on:
 jobs:
   ios:
     runs-on: macos-14
+    # Job-level Sentry env. Declared ONCE per job so every step (build and
+    # symbol upload) inherits the same values. Repeating these per-step
+    # would mean a job could keep a stale SENTRY_PROJECT in one step while
+    # another was corrected — the pre-release gate's §11o check reads this
+    # block as the single source of truth for the job's upload destination.
+    #
+    # SENTRY_DSN is the only value that reaches the app binary, and only
+    # via the explicit --dart-define in the build step. The token, org, and
+    # project are build-machine-only and must never be --dart-define'd.
+    env:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: omnitrain
     steps:
     - uses: actions/checkout@v4
 
@@ -64,26 +78,35 @@ jobs:
     # ipa` from the temporary keychain we created above.
     - name: Build IPA with Sentry baked in
       env:
-        SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-        SENTRY_PROJECT: omnitrain
         FLUTTER_BUILD_MODE: release
       run: |
         # `--export-options-plist` tells `flutter build ipa` how to
         # archive and export the build for distribution. `flutter
-        # build ipa` invokes xcodebuild internally, runs the
-        # `sentry_dart_plugin` iOS build phase (so dSYMs and
-        # mapping uploads land in the Sentry project named by
-        # `SENTRY_PROJECT`), and resolves signing from the
-        # keychain. `--dart-define=SENTRY_DSN=$SENTRY_DSN` is
-        # forwarded to the Dart front-end so the Sentry SDK
-        # initialises against the real DSN at runtime.
+        # build ipa` invokes xcodebuild internally and resolves
+        # signing from the keychain.
+        # `--dart-define=SENTRY_DSN=$SENTRY_DSN` is forwarded to the
+        # Dart front-end so the Sentry SDK initialises against the
+        # real DSN at runtime.
+        #
+        # Deliberately NOT using `--split-debug-info`/`--obfuscate`.
+        # Both strip Dart symbol names out of the binary, which would
+        # make readable Dart stack traces depend on the upload step
+        # below succeeding. Today Dart traces symbolicate with no
+        # upload at all; that unconditional guarantee is worth more
+        # than the binary-size saving. Revisit once symbol upload has
+        # a few green releases behind it.
         flutter build ipa \
           --release \
           --export-options-plist=ios/ExportOptions.plist \
           --dart-define=SENTRY_DSN=$SENTRY_DSN
         ls build/ios/ipa
+
+    # Symbol upload is a SEPARATE step. `sentry_dart_plugin` is a Dart
+    # CLI — it installs no Xcode build phase and no Gradle task, so the
+    # build alone uploads nothing. This step is what makes iOS crash
+    # reports symbolicate.
+    - name: Upload iOS debug symbols to Sentry
+      run: dart run sentry_dart_plugin
 
     - uses: actions/upload-artifact@v4
       with:
@@ -94,8 +117,14 @@ jobs:
     runs-on: ubuntu-latest
     # Android build runs in parallel with iOS (separate runner).
     # Same three secrets are reused. There is a single Sentry
-    # project named `omnitrain`; both iOS dSYMs and Android
-    # ProGuard mappings upload to it.
+    # project named `omnitrain`; both platforms upload to it.
+    #
+    # Job-level env, declared once — see the note on the iOS job.
+    env:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: omnitrain
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -107,20 +136,30 @@ jobs:
           flutter-version: '3.41.9'
       - run: flutter pub get
       - name: Build AAB with Sentry baked in
-        env:
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: omnitrain
         run: |
           # Only SENTRY_DSN is passed to the Flutter build as a
           # --dart-define. SENTRY_AUTH_TOKEN, SENTRY_ORG, and
           # SENTRY_PROJECT are build-machine secrets consumed by the
-          # Sentry Android Gradle plugin via Gradle's environment
-          # (the `env:` block above); they must never be compiled
+          # symbol-upload step below; they must never be compiled
           # into the shipped Android application binary.
+          #
+          # As on iOS, deliberately NOT using `--split-debug-info` /
+          # `--obfuscate`: keeping Dart symbols in the binary means Dart
+          # stack traces stay readable even if symbol upload fails.
           flutter build appbundle --release \
             --dart-define=SENTRY_DSN=$SENTRY_DSN
+
+      # As on iOS, symbol upload is its own step — `sentry_dart_plugin`
+      # is a CLI, not a Gradle plugin, so the build does not upload
+      # anything on its own.
+      #
+      # This uploads Dart and native (.so) symbols. It does NOT upload
+      # the R8 `mapping.txt`; that needs the `io.sentry.android.gradle`
+      # plugin, which is not applied yet. JVM frames therefore arrive
+      # obfuscated — tracked as a follow-up.
+      - name: Upload Android debug symbols to Sentry
+        run: dart run sentry_dart_plugin
+
       - uses: actions/upload-artifact@v4
         with:
           name: aab

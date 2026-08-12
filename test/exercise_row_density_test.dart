@@ -399,7 +399,6 @@ void main() {
         const surface = Size(800, 1200);
         await tester.binding.setSurfaceSize(surface);
         final repo = await _freshRepo();
-        const exerciseName = 'Density InfoOpensDetails';
         await _seedExercise(
           repo,
           nameToken: 'InfoOpensDetails',

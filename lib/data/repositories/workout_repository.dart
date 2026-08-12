@@ -45,6 +45,18 @@ abstract class WorkoutRepository {
   Future<List<SessionSegment>> getSessionSegments(String sessionId);
   Future<String> createSegment(SessionSegment segment);
 
+  /// Every segment on the device, grouped by `sessionId`.
+  ///
+  /// Semantically identical to calling [getSessionSegments] once per
+  /// session, but costs a single pass instead of one full scan per
+  /// session. Each group carries the same ordering [getSessionSegments]
+  /// guarantees.
+  ///
+  /// Intended for whole-history analytics (see `StatsProgressService`).
+  /// Screens that need one session's segments should keep using
+  /// [getSessionSegments].
+  Future<Map<String, List<SessionSegment>>> getSegmentsBySession();
+
   // Efforts
   /// Returns efforts in deterministic active-session display order.
   ///
@@ -53,6 +65,13 @@ abstract class WorkoutRepository {
   /// - block-local order for efforts inside the same block
   /// - stable tie-breakers for legacy rows
   Future<List<SegmentEffort>> getSegmentEfforts(String segmentId);
+
+  /// Every effort on the device, grouped by `segmentId`.
+  ///
+  /// The bulk counterpart to [getSegmentEfforts]; each group is sorted
+  /// by the same ordering contract documented there. One pass over the
+  /// effort store instead of one full scan per segment.
+  Future<Map<String, List<SegmentEffort>>> getEffortsBySegment();
 
   /// Persist a new effort.
   ///
@@ -63,6 +82,19 @@ abstract class WorkoutRepository {
 
   // Observations
   Future<List<EffortObservation>> getEffortObservations(String effortId);
+
+  /// Every observation on the device, grouped by `effortId`.
+  ///
+  /// The bulk counterpart to [getEffortObservations]. Like that method
+  /// the groups carry no ordering guarantee — callers that need a
+  /// stable order must sort.
+  Future<Map<String, List<EffortObservation>>> getObservationsByEffort();
+
+  /// Every timed instance on the device, grouped by `effortId`.
+  ///
+  /// The bulk counterpart to [getTimedInstances]; each group carries the
+  /// same `entryIndex` ordering.
+  Future<Map<String, List<TimedInstance>>> getTimedInstancesByEffort();
   Future<String> createObservation(EffortObservation observation);
   Future<void> updateObservation(EffortObservation observation);
   Future<void> deleteObservation(String id);

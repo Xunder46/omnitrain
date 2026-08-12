@@ -517,6 +517,18 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<Map<String, List<SessionSegment>>> getSegmentsBySession() async {
+    final grouped = <String, List<SessionSegment>>{};
+    for (final segment in _segments.values) {
+      (grouped[segment.sessionId] ??= <SessionSegment>[]).add(segment);
+    }
+    for (final segments in grouped.values) {
+      segments.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    }
+    return grouped;
+  }
+
+  @override
   Future<String> createSegment(SessionSegment segment) async {
     _segments[segment.id] = segment;
     return segment.id;
@@ -529,28 +541,45 @@ class MockWorkoutRepository implements WorkoutRepository {
     final efforts = _efforts.values
         .where((e) => e.segmentId == segmentId)
         .toList();
-    efforts.sort((a, b) {
-      final topCompare = _effectiveEffortTopLevelOrder(
-        a,
-      ).compareTo(_effectiveEffortTopLevelOrder(b));
-      if (topCompare != 0) return topCompare;
-
-      if (a.blockId != null && b.blockId != null && a.blockId == b.blockId) {
-        final blockCompare = _effectiveEffortBlockOrder(
-          a,
-        ).compareTo(_effectiveEffortBlockOrder(b));
-        if (blockCompare != 0) return blockCompare;
-      }
-
-      final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
-      if (legacyCompare != 0) return legacyCompare;
-
-      final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
-      if (createdCompare != 0) return createdCompare;
-
-      return a.id.compareTo(b.id);
-    });
+    efforts.sort(_compareEfforts);
     return efforts;
+  }
+
+  /// The canonical effort ordering. Extracted so [getSegmentEfforts] and
+  /// [getEffortsBySegment] cannot drift apart — the bulk path must sort
+  /// exactly the way the per-segment path does.
+  int _compareEfforts(SegmentEffort a, SegmentEffort b) {
+    final topCompare = _effectiveEffortTopLevelOrder(
+      a,
+    ).compareTo(_effectiveEffortTopLevelOrder(b));
+    if (topCompare != 0) return topCompare;
+
+    if (a.blockId != null && b.blockId != null && a.blockId == b.blockId) {
+      final blockCompare = _effectiveEffortBlockOrder(
+        a,
+      ).compareTo(_effectiveEffortBlockOrder(b));
+      if (blockCompare != 0) return blockCompare;
+    }
+
+    final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
+    if (legacyCompare != 0) return legacyCompare;
+
+    final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+    if (createdCompare != 0) return createdCompare;
+
+    return a.id.compareTo(b.id);
+  }
+
+  @override
+  Future<Map<String, List<SegmentEffort>>> getEffortsBySegment() async {
+    final grouped = <String, List<SegmentEffort>>{};
+    for (final effort in _efforts.values) {
+      (grouped[effort.segmentId] ??= <SegmentEffort>[]).add(effort);
+    }
+    for (final efforts in grouped.values) {
+      efforts.sort(_compareEfforts);
+    }
+    return grouped;
   }
 
   @override
@@ -598,6 +627,16 @@ class MockWorkoutRepository implements WorkoutRepository {
   @override
   Future<List<EffortObservation>> getEffortObservations(String effortId) async {
     return _observations.values.where((o) => o.effortId == effortId).toList();
+  }
+
+  @override
+  Future<Map<String, List<EffortObservation>>> getObservationsByEffort() async {
+    final grouped = <String, List<EffortObservation>>{};
+    for (final observation in _observations.values) {
+      (grouped[observation.effortId] ??= <EffortObservation>[])
+          .add(observation);
+    }
+    return grouped;
   }
 
   @override
@@ -682,6 +721,16 @@ class MockWorkoutRepository implements WorkoutRepository {
     // Return a sorted copy so entryIndex ordering is always guaranteed
     return List<TimedInstance>.from(list)
       ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+  }
+
+  @override
+  Future<Map<String, List<TimedInstance>>> getTimedInstancesByEffort() async {
+    final grouped = <String, List<TimedInstance>>{};
+    for (final entry in _timedInstances.entries) {
+      grouped[entry.key] = List<TimedInstance>.from(entry.value)
+        ..sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+    }
+    return grouped;
   }
 
   @override

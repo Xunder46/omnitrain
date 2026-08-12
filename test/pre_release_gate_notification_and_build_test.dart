@@ -229,7 +229,12 @@ io.sentry.Sentry: pi:io.sentry.Sentry
     };
     return Process.run(
       'bash',
-      <String>[script, '--fast'],
+      // `--all` forces both platform sections into scope regardless of
+      // the host toolchain — see the matching note in
+      // `pre_release_gate_ios_artifact_test.dart`. These tests are ABOUT
+      // the Android sections, so letting host auto-detection scope them
+      // out would turn every assertion here into a false green.
+      <String>[script, '--fast', '--all'],
       workingDirectory: path,
       environment: env,
     );

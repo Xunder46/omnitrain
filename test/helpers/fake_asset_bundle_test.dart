@@ -13,7 +13,6 @@
 // Without this file, the failure mode is invisible: the bundled-photo tests
 // would still pass, just for the wrong reason.
 
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

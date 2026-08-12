@@ -87,10 +87,16 @@ class _TempRepo {
     final script = '$path/scripts/pre_release_check.sh';
     return Process.run(
       'bash',
-      <String>[script, '--fast'],
+      // `--all` forces both platform sections into scope so these
+      // §11n / §11o expectations do not depend on which toolchains the
+      // host happens to have. The fake-build hooks below stand in for
+      // the real build artifacts, so no actual build is attempted.
+      <String>[script, '--fast', '--all'],
       workingDirectory: path,
       environment: <String, String>{
         ...Platform.environment,
+        'PRE_RELEASE_GATE_FAKE_BUILD': 'ok',
+        'PRE_RELEASE_GATE_FAKE_IP_BUILD': 'ok',
       },
     );
   }

@@ -13,6 +13,24 @@
 #                 of the July 2026 pre-launch fix pack. These are meant to
 #                 FAIL until the fix pack has landed. Do not soften to warnings.
 # Sections 12–13: flutter analyze + full test suite (skipped by --fast)
+#
+# ── Platform scoping ────────────────────────────────────────────────────────
+# Some sections need a real build artifact: the iOS checks need an IPA, the
+# Android checks need an AAB plus R8 mapping output. No single developer
+# machine can produce both (macOS cannot build the AAB without the Android
+# SDK; Windows cannot build an IPA at all), so a host-scoped run is the
+# normal case, not an exception.
+#
+#   --ios       run iOS platform sections, scope OUT Android
+#   --android   run Android platform sections, scope OUT iOS
+#   --all       force BOTH (fails if a toolchain is missing)
+#   (default)   auto-detect from the host toolchain
+#
+# A scoped-out platform is reported as SKIPPED and the final verdict becomes
+# PARTIAL — never a green "all clear". This preserves the script's core
+# principle: a missing artifact for an IN-SCOPE platform is still a hard
+# error. Scoping changes what is claimed, never whether an absent artifact
+# can pass by default.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -23,16 +41,62 @@ PBXPROJ="ios/Runner.xcodeproj/project.pbxproj"
 PRIVACY_MANIFEST="ios/Runner/PrivacyInfo.xcprivacy"
 
 SKIP_HEAVY=0
-if [[ "${1:-}" == "--fast" ]]; then
-  SKIP_HEAVY=1
-fi
+PLATFORM_SCOPE="auto"
+for arg in "$@"; do
+  case "$arg" in
+    --fast)    SKIP_HEAVY=1 ;;
+    --ios)     PLATFORM_SCOPE="ios" ;;
+    --android) PLATFORM_SCOPE="android" ;;
+    --all)     PLATFORM_SCOPE="all" ;;
+    *)
+      echo "ERROR: unknown argument '$arg'."
+      echo "Usage: bash scripts/pre_release_check.sh [--fast] [--ios|--android|--all]"
+      exit 1
+      ;;
+  esac
+done
 
 errors=0
 failed_checks=()
+skipped_platforms=()
 
 log_ok()   { echo "  ✓  $*"; }
 log_err()  { echo "  ✗  $*"; failed_checks+=("$*"); (( errors++ )) || true; }
 log_warn() { echo "  ⚠  $*"; }
+log_skip() { echo "  ⊘  $*"; }
+
+# ── Resolve which platform sections are in scope ────────────────────────────
+# Auto-detection asks the host what it can actually build. `xcodebuild` only
+# exists on a Mac with Xcode; the Android SDK is located the same way Gradle
+# locates it (ANDROID_HOME / ANDROID_SDK_ROOT, or `adb` on PATH).
+host_has_ios_toolchain() {
+  [[ "$(uname -s)" == "Darwin" ]] && command -v xcodebuild >/dev/null 2>&1
+}
+host_has_android_toolchain() {
+  [[ -n "${ANDROID_HOME:-}" ]] || [[ -n "${ANDROID_SDK_ROOT:-}" ]] \
+    || command -v adb >/dev/null 2>&1 || command -v sdkmanager >/dev/null 2>&1
+}
+
+case "$PLATFORM_SCOPE" in
+  ios)     IOS_IN_SCOPE=1; ANDROID_IN_SCOPE=0 ;;
+  android) IOS_IN_SCOPE=0; ANDROID_IN_SCOPE=1 ;;
+  all)     IOS_IN_SCOPE=1; ANDROID_IN_SCOPE=1 ;;
+  auto)
+    IOS_IN_SCOPE=0; ANDROID_IN_SCOPE=0
+    host_has_ios_toolchain     && IOS_IN_SCOPE=1
+    host_has_android_toolchain && ANDROID_IN_SCOPE=1
+    if (( IOS_IN_SCOPE == 0 && ANDROID_IN_SCOPE == 0 )); then
+      echo "ERROR: no mobile toolchain detected on this host (no Xcode, no Android SDK)."
+      echo "Nothing platform-specific can be verified here. Run this on a build machine,"
+      echo "or pass --ios / --android explicitly if you know better than the detection."
+      exit 1
+    fi
+    ;;
+esac
+
+(( IOS_IN_SCOPE == 0 ))     && skipped_platforms+=("iOS")
+(( ANDROID_IN_SCOPE == 0 )) && skipped_platforms+=("Android")
+true  # keep the `set -e` guard happy after the arithmetic tests above
 
 # ── Guard: must be run from repo root ───────────────────────────────────────
 if [[ ! -f "$PUBSPEC" ]]; then
@@ -54,6 +118,10 @@ echo "  Build number:  $build_number"
 if [[ $SKIP_HEAVY -eq 1 ]]; then
   echo "  Mode:          --fast (analyzer and tests SKIPPED)"
 fi
+scope_label=""
+(( IOS_IN_SCOPE == 1 ))     && scope_label="iOS"
+(( ANDROID_IN_SCOPE == 1 )) && scope_label="${scope_label:+$scope_label + }Android"
+echo "  Platforms:     $scope_label$([[ "$PLATFORM_SCOPE" == "auto" ]] && echo "  (auto-detected from host toolchain)")"
 echo ""
 
 # ── 2. Version must not be the default placeholder ──────────────────────────
@@ -328,17 +396,36 @@ else
   log_err "android/app/build.gradle.kts is missing — cannot verify Android symbol-upload config."
 fi
 
-# The sentry_dart_plugin pubspec block must declare the Android mapping
-# upload hook. A future refactor that drops the block from pubspec.yaml
-# must fail the gate. The hook's presence is necessary but not
-# sufficient — the upload destination must also be resolvable. That
-# check lives in 11n below (SENTRY_PROJECT exported in the Android
-# workflow job); a release that keeps the hook but loses the env
-# var will fail there, not here.
-if grep -q 'uploadSentryMapping' "$PUBSPEC"; then
-  log_ok "Android mapping upload hook (:app:uploadSentryMapping) is configured in pubspec.yaml"
+# The symbol-upload config must be under the `sentry:` key and the CLI
+# must actually be invoked by the release workflow.
+#
+# This check previously grepped the pubspec for `uploadSentryMapping` and
+# passed. That was validating a fiction: `sentry_dart_plugin` reads
+# `pubspec['sentry']`, so a block keyed `sentry_dart_plugin:` was ignored
+# entirely, `buildscripts:` was never a real option, and the plugin has
+# no Gradle integration that could run such a task. The gate reported a
+# working symbol pipeline while nothing was uploaded at all.
+#
+# What is verified now is what actually has to be true:
+#   (a) the config lives under the `sentry:` key the plugin reads, and
+#   (b) the release workflow explicitly runs `dart run sentry_dart_plugin`
+#       (a CLI — no build hook invokes it implicitly).
+if grep -qE '^sentry:' "$PUBSPEC"; then
+  log_ok "Sentry symbol-upload config is under the 'sentry:' key the plugin actually reads"
 else
-  log_err "Android mapping upload hook (uploadSentryMapping) is missing from pubspec.yaml. JVM stack traces will not symbolicate."
+  log_err "Sentry symbol-upload config is missing or misnamed in pubspec.yaml. sentry_dart_plugin reads pubspec['sentry'] — a block keyed anything else (e.g. 'sentry_dart_plugin:') is silently ignored and NOTHING is uploaded."
+fi
+
+# The config alone uploads nothing — the CLI has to be run. Both release
+# jobs must invoke it after their build step, or symbols never leave the
+# runner. One invocation per platform job; require at least two so a
+# refactor cannot drop one platform silently.
+SENTRY_CLI_INVOCATIONS=$(grep -c 'dart run sentry_dart_plugin' ".github/workflows/release.yml" 2>/dev/null || true)
+SENTRY_CLI_INVOCATIONS=${SENTRY_CLI_INVOCATIONS:-0}
+if (( SENTRY_CLI_INVOCATIONS >= 2 )); then
+  log_ok "Release workflow runs 'dart run sentry_dart_plugin' in both platform jobs ($SENTRY_CLI_INVOCATIONS invocations)"
+else
+  log_err "Release workflow invokes 'dart run sentry_dart_plugin' $SENTRY_CLI_INVOCATIONS time(s); both the iOS and Android jobs need it. sentry_dart_plugin is a CLI — no Gradle task and no Xcode build phase runs it implicitly, so a job without this step ships that platform with no debug symbols and unsymbolicated crash reports."
 fi
 
 # 11l. SENTRY_AUTH_TOKEN must never appear as a --dart-define value.
@@ -385,8 +472,26 @@ fi
 # exists; both iOS and Android uploads land there. Per-platform
 # destinations (`omnitrain-android`) and the empty / blank / missing
 # cases all fail this check.
+# Extract one job's full YAML block by job key. Scanning the WHOLE job —
+# rather than anchoring on the build step, as this check used to — means
+# SENTRY_PROJECT is found whether it is declared at job level (the
+# preferred form: one declaration inherited by every step) or repeated on
+# an individual step. Anchoring on the build step made a correct
+# job-level declaration read as '<unset>'.
+#
+# A job block runs from `  <job>:` to the next key at the same (2-space)
+# indentation, or EOF.
+extract_workflow_job_block() {
+  local job="$1"
+  awk -v job="$job" '
+    $0 ~ "^  " job ":[[:space:]]*$" { flag=1; next }
+    flag && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { exit }
+    flag { print }
+  ' "$RELEASE_WORKFLOW"
+}
+
 if [[ -f "$RELEASE_WORKFLOW" ]]; then
-  android_block=$(awk '/name: Build AAB with Sentry baked in/{flag=1} flag{print} /^      - uses: actions\/upload-artifact/{if (flag) {flag=0; exit}}' "$RELEASE_WORKFLOW")
+  android_block=$(extract_workflow_job_block android)
   android_project=$(echo "$android_block" \
     | sed -nE 's/^[[:space:]]+SENTRY_PROJECT:[[:space:]]+([^[:space:]#]+).*/\1/p' \
     | head -1)
@@ -406,7 +511,7 @@ fi
 # are rejected so the regression that previously shipped iOS dSYMs
 # to a non-existent project cannot reappear.
 if [[ -f "$RELEASE_WORKFLOW" ]]; then
-  ios_block=$(awk '/name: Build IPA/{flag=1} flag{print} /^    - uses: actions\/upload-artifact/{if (flag) {flag=0; exit}}' "$RELEASE_WORKFLOW")
+  ios_block=$(extract_workflow_job_block ios)
   ios_project=$(echo "$ios_block" \
     | sed -nE 's/^[[:space:]]+SENTRY_PROJECT:[[:space:]]+([^[:space:]#]+).*/\1/p' \
     | head -1)
@@ -454,9 +559,15 @@ fi
 # artifacts the variable describes directly into the build output
 # paths. Live (non-test) mode runs the actual `flutter build ipa`
 # invocation and inspects the resulting IPA.
+#
+# Scoped out by `--android` (or by auto-detection on a host with no
+# Xcode). Skipping is NOT the same as passing: the run's final verdict
+# becomes PARTIAL and names iOS as unverified.
 FAKE_IP_BUILD="${PRE_RELEASE_GATE_FAKE_IP_BUILD:-}"
 IPA_BUILD_ARTIFACT_PATH=""
-if [[ -n "$FAKE_IP_BUILD" ]]; then
+if (( IOS_IN_SCOPE == 0 )); then
+  log_skip "§11q iOS artifact checks SKIPPED — iOS is not in scope for this run. The iOS reporting destination is NOT verified. Run 'bash scripts/pre_release_check.sh --ios' on a macOS host with the IPA built before you ship an iOS release."
+elif [[ -n "$FAKE_IP_BUILD" ]]; then
   if [[ "$FAKE_IP_BUILD" == ok ]]; then
     log_ok "iOS release build completed (test faked)"
     # Trust whatever artifacts are already on disk for §11q to
@@ -489,7 +600,9 @@ for candidate in build/ios/ipa/*.ipa; do
   fi
 done
 
-if [[ -z "$IPA_BUILD_ARTIFACT_PATH" ]]; then
+if (( IOS_IN_SCOPE == 0 )); then
+  : # iOS scoped out — already reported above as SKIPPED.
+elif [[ -z "$IPA_BUILD_ARTIFACT_PATH" ]]; then
   log_err "iOS reporting destination cannot be verified: expected build output is missing — no IPA at build/ios/ipa/*.ipa. The iOS build either did not run or did not produce an IPA at the canonical path. Refusing to pass by default — pass-by-default when build output is absent is exactly the regression this check exists to prevent."
 else
   if ! command -v unzip >/dev/null 2>&1; then
@@ -578,8 +691,16 @@ fi
 # (not pass by default) when expected output is missing — the
 # acceptance criterion explicitly rejects "passes when absent" because
 # a quiet pass would let a missing build hide a regression.
+#
+# Scoped out by `--ios` (or by auto-detection on a host with no Android
+# SDK). Skipping is NOT the same as passing: the run's final verdict
+# becomes PARTIAL and names Android as unverified.
 echo ""
 echo "  — Release-build artifact checks (§11r / §11s) —"
+
+if (( ANDROID_IN_SCOPE == 0 )); then
+  log_skip "§11r / §11s Android artifact checks SKIPPED — Android is not in scope for this run. The notification keep rules and the release build itself are NOT verified. Run 'bash scripts/pre_release_check.sh --android' on a host with the Android SDK before you ship an Android release."
+else
 
 # §11s first — the build must succeed. §11r reads its output. A
 # build that does not complete makes both artifact checks
@@ -710,6 +831,8 @@ else
   log_err "Android notification resource protection cannot be verified: expected build output is missing — $BUILD_ARTIFACT_KIND not produced at $BUILD_ARTIFACT_PATH. The release build either did not run (failed in §11s above) or did not produce an AAB/APK at the canonical path. Refusing to pass by default — pass-by-default when build output is absent is exactly the regression this check exists to prevent."
 fi
 
+fi  # end ANDROID_IN_SCOPE guard (§11r / §11s)
+
 # ── 12–13. Analyzer and test suite (the actual code gate) ────────────────────
 echo ""
 if [[ $SKIP_HEAVY -eq 1 ]]; then
@@ -719,10 +842,20 @@ else
     log_err "flutter not found on PATH — cannot run analyzer or tests."
   else
     echo "  — flutter analyze —"
-    if flutter analyze; then
-      log_ok "Analyzer passed"
+    # `--no-fatal-infos` keeps errors AND warnings blocking while letting
+    # style-level infos through. Those infos are overwhelmingly lint
+    # preferences in `test/` (leading underscores on locals, deprecated
+    # test-only APIs) that do not affect shipped code. Gating the release
+    # on them meant the gate was permanently red, which trains people to
+    # ignore it — a gate nobody trusts blocks nothing.
+    #
+    # Errors and warnings still fail here. If you want the infos clean
+    # too, run plain `flutter analyze` yourself; do not re-tighten this
+    # line without clearing them first.
+    if flutter analyze --no-fatal-infos; then
+      log_ok "Analyzer passed (no errors, no warnings)"
     else
-      log_err "flutter analyze failed. Fix analyzer errors before archiving."
+      log_err "flutter analyze reported errors or warnings. Fix them before archiving. (Style-level infos are not fatal here — see the comment in this script.)"
     fi
 
     echo ""
@@ -739,7 +872,26 @@ fi
 echo ""
 echo "────────────────────────────────────────"
 if [[ $errors -eq 0 ]]; then
-  echo "  All checks passed. Ready to Archive."
+  if (( ${#skipped_platforms[@]} > 0 )); then
+    # A scoped run is a PARTIAL pass. Saying "all checks passed" here
+    # would let a half-verified release read as fully verified — the
+    # exact pass-by-default failure mode the artifact checks exist to
+    # prevent, just relocated to the summary line.
+    echo "  PARTIAL PASS — every in-scope check passed, but not every platform ran."
+    echo ""
+    echo "  NOT verified on this host: ${skipped_platforms[*]}"
+    for p in "${skipped_platforms[@]}"; do
+      case "$p" in
+        iOS)     echo "    • iOS      → run 'bash scripts/pre_release_check.sh --ios' on macOS with build/ios/ipa/*.ipa present" ;;
+        Android) echo "    • Android  → run 'bash scripts/pre_release_check.sh --android' on a host with the Android SDK" ;;
+      esac
+    done
+    echo ""
+    echo "  Do NOT ship a platform whose sections did not run."
+    echo ""
+    exit 0
+  fi
+  echo "  All checks passed (iOS + Android). Ready to Archive."
   echo ""
   echo "  Next step: open Xcode → Product → Archive"
   echo ""

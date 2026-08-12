@@ -209,10 +209,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   int? _originalDurationSecs;
   int _focusRequestId = 0;
 
-  // Track if auto-open exercise picker was attempted on first load.
-  // Prevents re-opening on subsequent _loadExercises() calls.
-  bool _autoOpenAttempted = false;
-
   // Guard against concurrent add/delete-set operations triggered by rapid taps.
   bool _isStructuralOp = false;
 
@@ -1415,10 +1411,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   bool _shouldAutoOpenPicker() => false;
 
   /// Schedule the exercise picker to open after the current frame renders.
-  /// PR 6: no-op — see [_shouldAutoOpenPicker].
-  void _scheduleAutoOpenPicker() {
-    _autoOpenAttempted = true;
-  }
+  /// PR 6: no-op — see [_shouldAutoOpenPicker]. Unreachable while
+  /// [_shouldAutoOpenPicker] returns false; kept so restoring the
+  /// behaviour is a one-line change at the predicate.
+  void _scheduleAutoOpenPicker() {}
 
   Future<void> _addExercise({String? segmentId, String? blockId}) async {
     // Capture before the dialog so we can detect when this is the first exercise.

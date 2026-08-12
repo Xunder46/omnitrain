@@ -11,10 +11,6 @@ class StartupFailureDiagnosticWriter {
 
   final _BaseDirectoryResolver _resolveBaseDirectory;
 
-  StartupFailureDiagnosticWriter._({
-    required _BaseDirectoryResolver resolveBaseDirectory,
-  }) : _resolveBaseDirectory = resolveBaseDirectory;
-
   StartupFailureDiagnosticWriter.create()
       : _resolveBaseDirectory = _defaultBaseDirectory;
 

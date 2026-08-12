@@ -133,10 +133,11 @@ Future<NutritionScreen> _buildNutritionScreen(
   final foodLibraryState = FoodLibraryState(repo);
   final nutritionPrimerState = NutritionPrimerState(repo);
   await nutritionPrimerState.init();
-  final workoutState = WorkoutState(repo);
-  // PR 8: created but unused on this surface — NutritionScreen does not
-  // route to the exercise library. Retained for consistency with the
-  // rest of the harness set.
+  // PR 8: constructed for harness parity but intentionally unused here —
+  // NutritionScreen does not route to the exercise library. Kept as a
+  // bare construction (no binding) so the analyzer stays clean while the
+  // harness still exercises the same wiring as its sibling helpers.
+  WorkoutState(repo);
 
   return NutritionScreen(
     nutritionState: nutritionState,

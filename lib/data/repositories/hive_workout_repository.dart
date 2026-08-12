@@ -1197,6 +1197,19 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<Map<String, List<SessionSegment>>> getSegmentsBySession() async {
+    final grouped = <String, List<SessionSegment>>{};
+    for (final raw in _segmentsBox.values) {
+      final segment = SessionSegment.fromMap(_asStringMap(raw));
+      (grouped[segment.sessionId] ??= <SessionSegment>[]).add(segment);
+    }
+    for (final segments in grouped.values) {
+      segments.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    }
+    return grouped;
+  }
+
+  @override
   Future<String> createSegment(SessionSegment segment) async {
     await _segmentsBox.put(segment.id, segment.toMap());
     return segment.id;
@@ -1211,28 +1224,46 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .where((e) => e.segmentId == segmentId)
         .toList();
 
-    efforts.sort((a, b) {
-      final topCompare = _effectiveEffortTopLevelOrder(
-        a,
-      ).compareTo(_effectiveEffortTopLevelOrder(b));
-      if (topCompare != 0) return topCompare;
-
-      if (a.blockId != null && b.blockId != null && a.blockId == b.blockId) {
-        final blockCompare = _effectiveEffortBlockOrder(
-          a,
-        ).compareTo(_effectiveEffortBlockOrder(b));
-        if (blockCompare != 0) return blockCompare;
-      }
-
-      final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
-      if (legacyCompare != 0) return legacyCompare;
-
-      final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
-      if (createdCompare != 0) return createdCompare;
-
-      return a.id.compareTo(b.id);
-    });
+    efforts.sort(_compareEfforts);
     return efforts;
+  }
+
+  /// The canonical effort ordering. Extracted so [getSegmentEfforts] and
+  /// [getEffortsBySegment] cannot drift apart — the bulk path must sort
+  /// exactly the way the per-segment path does.
+  int _compareEfforts(SegmentEffort a, SegmentEffort b) {
+    final topCompare = _effectiveEffortTopLevelOrder(
+      a,
+    ).compareTo(_effectiveEffortTopLevelOrder(b));
+    if (topCompare != 0) return topCompare;
+
+    if (a.blockId != null && b.blockId != null && a.blockId == b.blockId) {
+      final blockCompare = _effectiveEffortBlockOrder(
+        a,
+      ).compareTo(_effectiveEffortBlockOrder(b));
+      if (blockCompare != 0) return blockCompare;
+    }
+
+    final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
+    if (legacyCompare != 0) return legacyCompare;
+
+    final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+    if (createdCompare != 0) return createdCompare;
+
+    return a.id.compareTo(b.id);
+  }
+
+  @override
+  Future<Map<String, List<SegmentEffort>>> getEffortsBySegment() async {
+    final grouped = <String, List<SegmentEffort>>{};
+    for (final raw in _effortsBox.values) {
+      final effort = SegmentEffort.fromMap(_asStringMap(raw));
+      (grouped[effort.segmentId] ??= <SegmentEffort>[]).add(effort);
+    }
+    for (final efforts in grouped.values) {
+      efforts.sort(_compareEfforts);
+    }
+    return grouped;
   }
 
   @override
@@ -1283,6 +1314,17 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .map((raw) => EffortObservation.fromMap(_asStringMap(raw)))
         .where((o) => o.effortId == effortId)
         .toList();
+  }
+
+  @override
+  Future<Map<String, List<EffortObservation>>> getObservationsByEffort() async {
+    final grouped = <String, List<EffortObservation>>{};
+    for (final raw in _observationsBox.values) {
+      final observation = EffortObservation.fromMap(_asStringMap(raw));
+      (grouped[observation.effortId] ??= <EffortObservation>[])
+          .add(observation);
+    }
+    return grouped;
   }
 
   @override
@@ -1374,6 +1416,19 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .toList();
     instances.sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
     return instances;
+  }
+
+  @override
+  Future<Map<String, List<TimedInstance>>> getTimedInstancesByEffort() async {
+    final grouped = <String, List<TimedInstance>>{};
+    for (final raw in _timedInstancesBox.values) {
+      final instance = TimedInstance.fromMap(_asStringMap(raw));
+      (grouped[instance.effortId] ??= <TimedInstance>[]).add(instance);
+    }
+    for (final instances in grouped.values) {
+      instances.sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+    }
+    return grouped;
   }
 
   @override

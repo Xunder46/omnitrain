@@ -97,17 +97,19 @@ class _StatsScreenState extends State<StatsScreen> {
       await calendarState.init();
       final streak = calendarState.streakDays;
 
+      // One service instance for the whole load. The service caches its
+      // history snapshot per instance, so every `compute*` call below
+      // shares a single read of the repository — constructing a second
+      // instance here would silently double that cost.
+      final service = StatsProgressService(widget.workoutState.repository);
+
       // Compute progress data (e1RM trends, volume trends, cardio trends,
       // PRs, and the nutrition trend — all in one call so we don't
       // double-walk the repository for the same screen).
-      final progressData = await StatsProgressService(
-        widget.workoutState.repository,
-      ).computeProgressData();
+      final progressData = await service.computeProgressData();
 
-      // PR 2b descriptive analytics. Computed here so the
-      // repository is walked once per load; the toggles below
-      // just pick which precomputed series renders.
-      final service = StatsProgressService(widget.workoutState.repository);
+      // PR 2b descriptive analytics. The toggles below just pick which
+      // precomputed series renders.
       final records = await service.computeExerciseRecords();
       final tonnage = await service.computeVolumeTonnage();
       final duration = await service.computeTimedDuration();
@@ -1962,9 +1964,20 @@ class _StatsScreenState extends State<StatsScreen> {
                     if (value == 0 || value == (emptyPointCount - 1).toDouble()) {
                       return buildEdgeAwareDateLabel(
                         meta: meta,
+                        // Calendar arithmetic, not `subtract(Duration(...))`
+                        // — across a DST transition a Duration lands on the
+                        // wrong wall-clock day. Cosmetic here (empty-state
+                        // axis) but kept consistent with the service so the
+                        // pattern does not get copied back out.
                         text: ChartAxisHelper.formatDateLabel(
-                          DateTime.now()
-                              .subtract(Duration(days: ((emptyPointCount - 1) - value).toInt())),
+                          () {
+                            final now = DateTime.now();
+                            return DateTime(
+                              now.year,
+                              now.month,
+                              now.day - ((emptyPointCount - 1) - value).toInt(),
+                            );
+                          }(),
                         ),
                         style: TextStyle(
                           fontSize: 9,

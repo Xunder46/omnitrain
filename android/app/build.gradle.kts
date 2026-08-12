@@ -6,11 +6,22 @@ plugins {
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
-    // The `io.sentry.android.gradle` plugin is injected automatically by
-    // the `sentry_dart_plugin` build hook (see pubspec.yaml and
-    // `.github/agents/plans/crash-reporting-plan.md`) on release
-    // builds. It is responsible for uploading the ProGuard/R8
-    // `mapping.txt` to Sentry so JVM stack traces symbolicate.
+    // NOTE: `io.sentry.android.gradle` is NOT applied here, and is NOT
+    // injected by `sentry_dart_plugin` — that package is a standalone
+    // Dart CLI with no Gradle integration whatsoever. An earlier comment
+    // in this file claimed otherwise, which hid the gap.
+    //
+    // Consequence: the R8 `mapping.txt` this build produces is never
+    // uploaded, so JVM stack traces arrive in Sentry obfuscated. Dart
+    // stack traces — the large majority of Flutter crashes — are
+    // unaffected, and native/dSYM symbols DO upload via the
+    // `dart run sentry_dart_plugin` step in the release workflow.
+    //
+    // To close the gap, apply the plugin here and configure it:
+    //     id("io.sentry.android.gradle") version "<latest>"
+    // Left unapplied deliberately for now: it changes the Android build
+    // graph and must be validated on a machine with the Android SDK
+    // before it goes anywhere near a release.
 }
 
 val keystoreProperties = Properties()

@@ -29,6 +29,12 @@ class _FakeCatalogSource implements CatalogSource {
     required this.exerciseCapabilities,
     required this.exerciseMuscleGroups,
     required this.foodCatalog,
+    // No test stages demo routines through this fake yet, so the analyzer
+    // sees the parameter as dead. Kept so the fake mirrors the full
+    // CatalogSource surface — `routineTemplates` is a required interface
+    // member, and a fake that cannot express it would quietly block the
+    // first test that needs a demo-routine refresh scenario.
+    // ignore: unused_element_parameter
     this.routineTemplates = const [],
   });
 

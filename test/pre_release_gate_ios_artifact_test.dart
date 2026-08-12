@@ -291,7 +291,14 @@ com.google.gson.reflect.TypeToken: pi:com.google.gson.reflect.TypeToken
     };
     return Process.run(
       'bash',
-      <String>[script, '--fast'],
+      // `--all` forces BOTH platform sections into scope. Without it the
+      // gate auto-detects from the host toolchain, so these assertions
+      // would silently become no-ops on a machine that cannot build the
+      // other platform (a Mac has no Android SDK; a PC has no Xcode).
+      // The fake-build hooks above stand in for the real artifacts, so
+      // forcing both platforms costs nothing and keeps the expectations
+      // host-independent.
+      <String>[script, '--fast', '--all'],
       workingDirectory: path,
       environment: env,
     );
@@ -598,19 +605,19 @@ void main() {
           return;
         }
         // Sanity: the unmodified workflow has the post-fix value.
+        //
+        // The block is delimited by the JOB key, not by the build step.
+        // SENTRY_PROJECT is declared once at job level so every step
+        // inherits it; anchoring this assertion on the build step (as it
+        // once did) would miss a correct job-level declaration and fail
+        // for the wrong reason. This mirrors how the gate itself parses
+        // the workflow — see `extract_workflow_job_block` in
+        // `scripts/pre_release_check.sh`.
         final preOriginal = await repo.workflow().readAsString();
-        final androidBlockStart =
-            preOriginal.indexOf('name: Build AAB with Sentry baked in');
+        final androidBlockStart = preOriginal.indexOf('\n  android:');
         expect(androidBlockStart, isNonNegative,
-            reason: 'Sanity: Android step must exist');
-        final afterBlock = preOriginal.indexOf(
-          '\n      - uses: actions/upload-artifact',
-          androidBlockStart,
-        );
-        final blockEnd = afterBlock == -1
-            ? preOriginal.length
-            : afterBlock;
-        final androidBlock = preOriginal.substring(androidBlockStart, blockEnd);
+            reason: 'Sanity: Android job must exist');
+        final androidBlock = preOriginal.substring(androidBlockStart);
         expect(
           androidBlock,
           contains('SENTRY_PROJECT: omnitrain'),

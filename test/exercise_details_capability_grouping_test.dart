@@ -263,7 +263,7 @@ void main() {
         'Movement Properties with no Tracking Methods heading', (
       WidgetTester tester,
     ) async {
-      final repo = await _freshRepo();
+      await _freshRepo();
       await _pumpBody(
         tester,
         _bareExercise(
@@ -292,7 +292,7 @@ void main() {
     testWidgets('S-004: capability-less exercise renders neither heading', (
       WidgetTester tester,
     ) async {
-      final repo = await _freshRepo();
+      await _freshRepo();
       await _pumpBody(
         tester,
         _bareExercise(id: 'synthetic-empty', capabilities: const []),
