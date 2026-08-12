@@ -22,10 +22,14 @@ HomeScreen
 ## What the Screen Displays
 
 The screen renders an empty-state card when no completed sessions exist;
-otherwise it shows five sections. Every on-card chart is a
-horizontally scrollable `ScrollableTrendChart` (pinned y-axis, full
-history, opens scrolled to the newest point). See
-[Scrollable Charts](#scrollable-charts) below.
+otherwise it shows the sections below. The exact count of sections on
+screen is verified by `test/screen_widget_test.dart` (every
+`OmniCardHeader` is a section) and the per-section contracts are
+verified by `test/stats_progress_test.dart` (the underlying
+`StatsProgressService` tests) and the screen widget tests in
+`test/screen_widget_test.dart`. Every on-card chart is a horizontally
+scrollable `ScrollableTrendChart` (pinned y-axis, full history, opens
+scrolled to the newest point). See [Scrollable Charts](#scrollable-charts) below.
 
 ### ALL TIME
 A row of three stat pills (unchanged from v1):
@@ -201,6 +205,71 @@ For each activity:
 
 Empty state: "No cardio history yet." when `topCardio` is empty.
 
+### RECORDS
+Per-exercise best observed values with the date each was set. Aggregated by
+`StatsProgressService.computeExerciseRecords()`, which walks every completed
+session once and produces one `ExerciseRecord` per exercise. Verified by
+`test/stats_progress_test.dart` (`computeExerciseRecords` group, scenarios
+S-001…S-008). Metrics surface on the section are the ones the exercise has
+ever been logged against:
+
+- **Heaviest load** — max `load × reps` across the exercise's loaded
+  sets (the set with the heaviest single `weight` value carries its
+  tonnage as the record). Date is the day that set was performed.
+  Null for bodyweight-only exercises (`0 × N = 0` is not a record).
+- **Most reps at load** — the single set with the highest rep count,
+  plus the load (kg) it was performed at and the date. Bodyweight
+  sets are included with `loadKg: 0.0`.
+- **Longest duration** — total `actualDurationSecs` of timed efforts on
+  the longest day for this exercise. Per-day sum so a day with two
+  1 km runs shows 2 km, not 1.
+- **Longest distance** — same per-day-sum contract as duration but for
+  the sum of `metric-distance` observations on timed efforts.
+
+Each row renders the value in the user's preferred units
+(`UnitFormatter.convertWeight` for kg, `formatDistanceValue` for km/mi)
+and the date as `"Mon DD, YYYY"`. Empty state: when the service
+returns an empty list, the section hides itself — the same shape
+every other section uses.
+
+### VOLUME TRENDS
+Three buckets of effort, each on its own tab in a segmented toggle that
+swaps the chart without re-querying the repository:
+
+- **Tonnage** — Σ `load × reps` across load-based (`effortKind == 'set'`,
+  `weight > 0`) sets, bucketed by ISO week. One line per present
+  modality plus an "Overall" line; legend below the chart.
+  `computeVolumeTonnage()`.
+- **Time** — Σ `actualDurationSecs` across `TimedState.finished` timed
+  instances, bucketed by ISO week. `computeTimedDuration()`. y-axis
+  formatted as h:mm.
+- **Distance** — Σ `metric-distance` observations on timed efforts,
+  bucketed by ISO week. `computeTimedDistance()`. y-axis converted to
+  the user's preferred distance unit (`km` / `mi`) through
+  `UnitFormatter`.
+
+All three share the same multi-line chart primitive
+(`_buildMultiLineScrollableChart` in `stats_screen.dart`): one
+`LineChartBarData` per present modality plus an Overall line. Unit
+labels respect `SettingsState.preferredWeightUnit` /
+`preferredDistanceUnit`. Empty per-tab state: "No Tonnage data yet.
+Log a session to see this trend here." — descriptive only, no advice
+copy. Sections with no data across all three tabs hide themselves.
+
+### CONSISTENCY
+Sessions per period, per modality + overall. Two tabs in a segmented
+toggle:
+
+- **Week** — sessions per ISO week (Monday-start), aggregated by
+  `StatsProgressService.computeConsistencyWeekly()`.
+- **Month** — sessions per calendar month, aggregated by
+  `StatsProgressService.computeConsistencyMonthly()`.
+
+Same multi-line chart primitive as VOLUME TRENDS (Overall + per-modality
+lines). Empty per-tab state: "No Week data yet. Log a session to see
+this trend here." — descriptive only. Section hides itself when both
+tabs are empty.
+
 ### HOW DID IT FEEL
 A **passive readout** of the post-session feeling captured by the summary
 sheet. Surface purpose: the user reads how their feeling has drifted over
@@ -285,13 +354,43 @@ day present for all series — so toggling never changes the x-domain.
 
 Computed by `StatsProgressService.computeNutritionTrend({int? days})`. The carbs line plots **total** carbs grams, not net carbs — the colour token is named `netCarbs` because the donut reuses that slot, but the plotted value is total carbs. The aggregation depends only on `WorkoutRepository.getConsumedFoodsInRange` and the `ConsumedFood` model, so it is environment-agnostic.
 
+#### Target-line overlay
+
+The Calories / Macros views overlay a piecewise **target line** on top
+of the actuals so the user can see their consumption against the
+configured macro targets. Aggregated by
+`StatsProgressService.computeNutritionAdherence()`, which walks
+`WorkoutRepository.getNutritionTargetForDate` for every saved target
+change and projects the resulting step line onto the actuals'
+x-axis. The dashed line uses `dashArray: [4, 4]` in `themeColors.primary`
+at half opacity on the calories view and the matching
+`macroChart.<slot>` color on the macros view. When no target has
+ever been saved, the dashed line is omitted entirely. Historical
+actuals are never rewritten — the target line steps at every
+saved target change and extends the new value forward only.
+
+- **Step at the change date** — the target line carries the
+  post-change value from the saved date onward, so a save on day 10
+  steps the line at day 10; historical days keep their earlier
+  target value.
+- **Empty adherence** — when no target has ever been saved, the
+  target line is empty (no defaults inferred from absent data).
+- **No actuals** — when no food has been logged, both actuals and
+  the target line are empty and the NUTRITION card hides itself,
+  matching the existing "no food logged" rule.
+- **Legend** — the macros chart's legend adds a "Target" entry
+  (rendered as a dashed swatch) when the target line is present;
+  the calories chart's legend adds a "Target (kcal)" entry.
+
 ---
 
 ## Scrollable Charts
 
 Every on-card line chart on this screen — strength e1RM, strength volume,
 cardio pace + distance, cardio duration, nutrition calories, nutrition
-macros — renders inside a `ScrollableTrendChart` wrapper
+macros, volume trends (tonnage / time / distance), consistency
+(week / month), and the target-line overlay on the nutrition card —
+renders inside a `ScrollableTrendChart` wrapper
 ([`lib/features/stats/widgets/scrollable_trend_chart.dart`](../../../lib/features/stats/widgets/scrollable_trend_chart.dart))
 that combines:
 
@@ -447,8 +546,8 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 |------|------|
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
 | `lib/features/stats/widgets/scrollable_trend_chart.dart` | Scrollable chart wrapper (pinned y-axis, horizontal scroll, newest-first jump) |
-| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `FeelingTrendPoint`, `StatsWindow` |
-| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})` and the feeling trend via `computeFeelingTrend({required StatsWindow window})`) |
+| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `FeelingTrendPoint`, `ExerciseRecord`, `VolumeTrend`, `ConsistencyTrend`, `NutritionAdherence`, `StatsWindow` |
+| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the feeling trend via `computeFeelingTrend({required StatsWindow window})`, the records via `computeExerciseRecords()`, the volume / time / distance trends via `computeVolumeTonnage` / `computeTimedDuration` / `computeTimedDistance`, the consistency trends via `computeConsistencyWeekly` / `computeConsistencyMonthly`, and the nutrition adherence via `computeNutritionAdherence()`) |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |
@@ -466,10 +565,10 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 
 ---
 
-**Document Version**: 2.3
-**Last Updated**: June 25, 2026
+**Document Version**: 2.4
+**Last Updated**: August 10, 2026
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-08-10. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

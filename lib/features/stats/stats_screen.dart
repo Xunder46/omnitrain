@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/constants/modality.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/models/stats_progress.dart';
 import '../../core/services/stats_progress_service.dart';
@@ -22,6 +23,14 @@ import 'widgets/scrollable_trend_chart.dart';
 /// share the same plotted-day set; switching just swaps the
 /// chart area, never re-queries the repository.
 enum _NutritionView { calories, macros }
+
+/// Segmented toggle state for the VOLUME TRENDS card. Local
+/// widget state only — the three series are computed once at
+/// load time and the toggle just chooses which one renders.
+enum _VolumeView { tonnage, time, distance }
+
+/// Segmented toggle state for the CONSISTENCY card.
+enum _ConsistencyView { week, month }
 
 class StatsScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -47,6 +56,18 @@ class _StatsScreenState extends State<StatsScreen> {
 
   StatsProgressData? _progressData;
   _NutritionView _nutritionView = _NutritionView.calories;
+
+  // PR 2b descriptive analytics — loaded alongside the
+  // existing progress data, never re-queried on tab switch.
+  List<ExerciseRecord> _exerciseRecords = const [];
+  VolumeTrend? _tonnageTrend;
+  VolumeTrend? _durationTrend;
+  VolumeTrend? _distanceTrend;
+  ConsistencyTrend? _weeklyConsistency;
+  ConsistencyTrend? _monthlyConsistency;
+  NutritionAdherence? _nutritionAdherence;
+  _VolumeView _volumeView = _VolumeView.tonnage;
+  _ConsistencyView _consistencyView = _ConsistencyView.week;
 
   @override
   void initState() {
@@ -83,6 +104,18 @@ class _StatsScreenState extends State<StatsScreen> {
         widget.workoutState.repository,
       ).computeProgressData();
 
+      // PR 2b descriptive analytics. Computed here so the
+      // repository is walked once per load; the toggles below
+      // just pick which precomputed series renders.
+      final service = StatsProgressService(widget.workoutState.repository);
+      final records = await service.computeExerciseRecords();
+      final tonnage = await service.computeVolumeTonnage();
+      final duration = await service.computeTimedDuration();
+      final distance = await service.computeTimedDistance();
+      final weekly = await service.computeConsistencyWeekly();
+      final monthly = await service.computeConsistencyMonthly();
+      final adherence = await service.computeNutritionAdherence();
+
       if (!mounted) return;
 
       setState(() {
@@ -90,6 +123,13 @@ class _StatsScreenState extends State<StatsScreen> {
         _totalDurationMs = totalMs;
         _streakDays = streak;
         _progressData = progressData;
+        _exerciseRecords = records;
+        _tonnageTrend = tonnage;
+        _durationTrend = duration;
+        _distanceTrend = distance;
+        _weeklyConsistency = weekly;
+        _monthlyConsistency = monthly;
+        _nutritionAdherence = adherence;
         _isLoading = false;
       });
     } catch (_) {
@@ -124,8 +164,19 @@ class _StatsScreenState extends State<StatsScreen> {
                             _buildAggregateCard(context, themeColors),
                             const SizedBox(height: 24),
                             ..._buildStrengthSection(context, themeColors),
+                            ..._buildRecordsSection(context, themeColors),
+                            const SizedBox(height: 24),
+                            ..._buildVolumeTrendsSection(
+                              context,
+                              themeColors,
+                            ),
                             const SizedBox(height: 24),
                             ..._buildCardioSection(context, themeColors),
+                            const SizedBox(height: 24),
+                            ..._buildConsistencySection(
+                              context,
+                              themeColors,
+                            ),
                             ..._buildFeelingSection(context, themeColors),
                             ..._buildNutritionSection(context, themeColors),
                           ],
@@ -842,6 +893,696 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
+  // ── Records section (per-exercise best values) ────────────────────────
+
+  /// Renders one row per exercise that has at least one
+  /// record (heaviest load, most reps at a load, longest
+  /// duration, or longest distance). Empty state: factual
+  /// "no records yet" copy with no advice.
+  List<Widget> _buildRecordsSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    if (_exerciseRecords.isEmpty) {
+      return const <Widget>[];
+    }
+    return [
+      const OmniCardHeader(title: 'RECORDS'),
+      _buildRecordsCard(context, themeColors),
+    ];
+  }
+
+  Widget _buildRecordsCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final theme = Theme.of(context);
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final record in _exerciseRecords) ...[
+            _buildRecordRow(theme, themeColors, record),
+            if (record != _exerciseRecords.last)
+              Divider(
+                color: themeColors.divider,
+                height: 1,
+                thickness: 1,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecordRow(
+    ThemeData theme,
+    OmniThemeColors themeColors,
+    ExerciseRecord record,
+  ) {
+    final weightLabel = UnitFormatter.weightLabel(widget.settingsState);
+    final distUnit = UnitFormatter.distanceLabel(widget.settingsState);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            record.exerciseName,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.colors.textDominant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (record.heaviestLoad != null)
+            _buildRecordLine(
+              theme,
+              themeColors,
+              'Heaviest load',
+              '${UnitFormatter.convertWeight(record.heaviestLoad!.value, widget.settingsState).toStringAsFixed(0)} $weightLabel',
+              record.heaviestLoad!.date,
+            ),
+          if (record.mostRepsAtLoad != null)
+            _buildRecordLine(
+              theme,
+              themeColors,
+              'Most reps',
+              '${record.mostRepsAtLoad!.reps} reps'
+              '${record.mostRepsAtLoad!.loadKg > 0 ? " @ ${UnitFormatter.convertWeight(record.mostRepsAtLoad!.loadKg, widget.settingsState).toStringAsFixed(0)} $weightLabel" : ""}',
+              record.mostRepsAtLoad!.date,
+            ),
+          if (record.longestDuration != null)
+            _buildRecordLine(
+              theme,
+              themeColors,
+              'Longest session',
+              OmniDateUtils.formatDurationHoursMins(
+                record.longestDuration!.durationSecs * 1000,
+              ),
+              record.longestDuration!.date,
+            ),
+          if (record.longestDistance != null)
+            _buildRecordLine(
+              theme,
+              themeColors,
+              'Longest distance',
+              '${UnitFormatter.formatDistanceValue(record.longestDistance!.distanceM / 1000.0, widget.settingsState, decimals: 2)} $distUnit',
+              record.longestDistance!.date,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecordLine(
+    ThemeData theme,
+    OmniThemeColors themeColors,
+    String label,
+    String value,
+    DateTime date,
+  ) {
+    final dateStr =
+        '${OmniDateUtils.shortMonthName(date.month)} ${date.day}, ${date.year}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: OmniTheme.colors.textDominant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Text(
+            dateStr,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: themeColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Volume trends section (tonnage / time / distance tabs) ──────────────
+
+  List<Widget> _buildVolumeTrendsSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final trends = <(String, VolumeTrend?)>[
+      ('Tonnage', _tonnageTrend),
+      ('Time', _durationTrend),
+      ('Distance', _distanceTrend),
+    ];
+    if (trends.every((t) => (t.$2?.overall.isEmpty ?? true))) {
+      return const <Widget>[];
+    }
+    return [
+      const OmniCardHeader(title: 'VOLUME TRENDS'),
+      _buildVolumeTrendsCard(context, themeColors),
+    ];
+  }
+
+  Widget _buildVolumeTrendsCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSegmentedToggle<_VolumeView>(
+            context: context,
+            themeColors: themeColors,
+            current: _volumeView,
+            labels: const {
+              _VolumeView.tonnage: 'Tonnage',
+              _VolumeView.time: 'Time',
+              _VolumeView.distance: 'Distance',
+            },
+            onChanged: (v) => setState(() => _volumeView = v),
+          ),
+          const SizedBox(height: 12),
+          _buildVolumeTrendChart(context, themeColors, _volumeView),
+        ],
+      ),
+    );
+  }
+
+  /// Renders the active volume-trend tab as a multi-line
+  /// chart (one line per present modality + an Overall
+  /// line) with a legend below.
+  Widget _buildVolumeTrendChart(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    _VolumeView view,
+  ) {
+    final trend = switch (view) {
+      _VolumeView.tonnage => _tonnageTrend,
+      _VolumeView.time => _durationTrend,
+      _VolumeView.distance => _distanceTrend,
+    };
+    if (trend == null || trend.overall.isEmpty) {
+      return _buildEmptyChartPlaceholder(themeColors, view.name);
+    }
+    final values = trend.overall.map((p) => p.value).toList();
+    final bounds = ChartAxisHelper.computeBounds(values);
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildMultiLineScrollableChart(
+          themeColors: themeColors,
+          bounds: bounds,
+          unitLabel: _volumeUnitLabel(view),
+          periodPoints: trend.overall,
+          series: _buildModalitySeries(themeColors, trend),
+        ),
+        const SizedBox(height: 8),
+        _buildLineLegend(
+          theme,
+          themeColors,
+          _buildModalityLegendEntries(context, themeColors, trend),
+        ),
+      ],
+    );
+  }
+
+  String _volumeUnitLabel(_VolumeView view) {
+    switch (view) {
+      case _VolumeView.tonnage:
+        return UnitFormatter.weightLabel(widget.settingsState);
+      case _VolumeView.time:
+        return 'h:mm';
+      case _VolumeView.distance:
+        return UnitFormatter.distanceLabel(widget.settingsState);
+    }
+  }
+
+  // ── Consistency section (week / month tabs) ──────────────────────────────
+
+  List<Widget> _buildConsistencySection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    if ((_weeklyConsistency?.overall.isEmpty ?? true) &&
+        (_monthlyConsistency?.overall.isEmpty ?? true)) {
+      return const <Widget>[];
+    }
+    return [
+      const OmniCardHeader(title: 'CONSISTENCY'),
+      _buildConsistencyCard(context, themeColors),
+    ];
+  }
+
+  Widget _buildConsistencyCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSegmentedToggle<_ConsistencyView>(
+            context: context,
+            themeColors: themeColors,
+            current: _consistencyView,
+            labels: const {
+              _ConsistencyView.week: 'Week',
+              _ConsistencyView.month: 'Month',
+            },
+            onChanged: (v) => setState(() => _consistencyView = v),
+          ),
+          const SizedBox(height: 12),
+          _buildConsistencyChart(context, themeColors, _consistencyView),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConsistencyChart(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    _ConsistencyView view,
+  ) {
+    final trend = view == _ConsistencyView.week
+        ? _weeklyConsistency
+        : _monthlyConsistency;
+    if (trend == null || trend.overall.isEmpty) {
+      return _buildEmptyChartPlaceholder(themeColors, view.name);
+    }
+    final values = trend.overall.map((p) => p.count.toDouble()).toList();
+    final bounds = ChartAxisHelper.computeBounds(values);
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildMultiLineScrollableChart(
+          themeColors: themeColors,
+          bounds: bounds,
+          unitLabel: '',
+          periodPoints: trend.overall
+              .map(
+                (p) => VolumeTrendPoint(
+                  periodStart: p.periodStart,
+                  value: p.count.toDouble(),
+                ),
+              )
+              .toList(),
+          series: _buildConsistencySeries(themeColors, trend),
+          integerYAxis: true,
+        ),
+        const SizedBox(height: 8),
+        _buildLineLegend(
+          theme,
+          themeColors,
+          _buildModalityLegendEntries(
+            context,
+            themeColors,
+            null,
+            consistencyTrend: trend,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Shared multi-line chart primitive ───────────────────────────────────
+
+  /// Build a multi-line `ScrollableTrendChart` for the
+  /// supplied [periodPoints] (the overall x-axis) and
+  /// [series] (one per modality / the overall). Used by both
+  /// VOLUME TRENDS and CONSISTENCY — every series shares the
+  /// same x-axis, so the points are indexed against the
+  /// [periodPoints] list directly.
+  Widget _buildMultiLineScrollableChart({
+    required OmniThemeColors themeColors,
+    required ChartAxisBounds bounds,
+    required String unitLabel,
+    required List<VolumeTrendPoint> periodPoints,
+    required List<_ChartSeries> series,
+    bool integerYAxis = false,
+  }) {
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: unitLabel,
+      pointCount: periodPoints.length,
+      chartBuilder: (plotWidth) {
+        final maxIdx = (periodPoints.length - 1).toDouble();
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: maxIdx,
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: const LineTouchData(enabled: false),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: 0,
+                ),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.round();
+                    if (idx < 0 || idx >= periodPoints.length) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!ChartAxisHelper.shouldShowDateLabel(
+                      idx,
+                      periodPoints.length,
+                    )) {
+                      return const SizedBox.shrink();
+                    }
+                    return buildEdgeAwareDateLabel(
+                      meta: meta,
+                      text: ChartAxisHelper.formatDateLabel(
+                        periodPoints[idx].periodStart,
+                      ),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: themeColors.textMuted,
+                      ),
+                      isFirst: idx == 0,
+                      isLast: idx == periodPoints.length - 1,
+                    );
+                  },
+                ),
+              ),
+            ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) => FlLine(
+                color: themeColors.divider,
+                strokeWidth: 1,
+              ),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              for (final s in series)
+                LineChartBarData(
+                  spots: s.spots,
+                  color: s.color,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                      radius: 3,
+                      color: s.color,
+                      strokeWidth: 1.5,
+                      strokeColor: themeColors.surface,
+                    ),
+                  ),
+                  belowBarData: BarAreaData(show: false),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Build the list of series for the active VOLUME TRENDS
+  /// tab: an "Overall" line first, then one line per
+  /// present modality. The modality key comes from
+  /// `TrainingSession.modality` (a null modality is bucketed
+  /// under the `<null>` key, rendered as "Free Training").
+  List<_ChartSeries> _buildModalitySeries(
+    OmniThemeColors themeColors,
+    VolumeTrend trend,
+  ) {
+    final series = <_ChartSeries>[];
+    series.add(_ChartSeries(
+      color: themeColors.primary,
+      spots: _indexSpots(trend.overall),
+      legendLabel: 'Overall',
+    ));
+    final colors = <Color>[
+      themeColors.secondary,
+      themeColors.macroChart.protein,
+      themeColors.macroChart.carbs,
+      themeColors.macroChart.fat,
+    ];
+    var i = 0;
+    final entries = trend.byModality.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    for (final entry in entries) {
+      if (entry.value.isEmpty) continue;
+      series.add(_ChartSeries(
+        color: colors[i % colors.length],
+        spots: _indexSpots(entry.value),
+        legendLabel: _modalityDisplayName(entry.key),
+      ));
+      i++;
+    }
+    return series;
+  }
+
+  /// Same as [_buildModalitySeries] but for the
+  /// CONSISTENCY chart.
+  List<_ChartSeries> _buildConsistencySeries(
+    OmniThemeColors themeColors,
+    ConsistencyTrend trend,
+  ) {
+    final series = <_ChartSeries>[];
+    series.add(_ChartSeries(
+      color: themeColors.primary,
+      spots: _indexSpotsFromConsistency(trend.overall),
+      legendLabel: 'Overall',
+    ));
+    final colors = <Color>[
+      themeColors.secondary,
+      themeColors.macroChart.protein,
+      themeColors.macroChart.carbs,
+      themeColors.macroChart.fat,
+    ];
+    var i = 0;
+    final entries = trend.byModality.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    for (final entry in entries) {
+      if (entry.value.isEmpty) continue;
+      series.add(_ChartSeries(
+        color: colors[i % colors.length],
+        spots: _indexSpotsFromConsistency(entry.value),
+        legendLabel: _modalityDisplayName(entry.key),
+      ));
+      i++;
+    }
+    return series;
+  }
+
+  /// Project a list of `VolumeTrendPoint` into a list of
+  /// `FlSpot` with x = index in the overall list. The x-axis
+  /// is shared across all series in the same chart, so we
+  /// use the index in the trend's overall list as the x
+  /// value.
+  List<FlSpot> _indexSpots(List<VolumeTrendPoint> points) {
+    return List.generate(
+      points.length,
+      (i) => FlSpot(i.toDouble(), points[i].value),
+    );
+  }
+
+  List<FlSpot> _indexSpotsFromConsistency(List<ConsistencyPoint> points) {
+    return List.generate(
+      points.length,
+      (i) => FlSpot(i.toDouble(), points[i].count.toDouble()),
+    );
+  }
+
+  /// Build the per-line legend for a multi-line chart. The
+  /// first row carries the line color and the modality label.
+  /// A second row for the dashed target line is appended when
+  /// [trend] is non-null (consistency legend only).
+  List<Widget> _buildModalityLegendEntries(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    VolumeTrend? trend, {
+    ConsistencyTrend? consistencyTrend,
+  }) {
+    final entries = <Widget>[];
+    if (trend != null) {
+      entries.add(_buildLegendItem(
+        Theme.of(context),
+        themeColors.primary,
+        'Overall',
+        themeColors,
+      ));
+      final colors = <Color>[
+        themeColors.secondary,
+        themeColors.macroChart.protein,
+        themeColors.macroChart.carbs,
+        themeColors.macroChart.fat,
+      ];
+      var i = 0;
+      final sorted = trend.byModality.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      for (final entry in sorted) {
+        if (entry.value.isEmpty) continue;
+        entries.add(_buildLegendItem(
+          Theme.of(context),
+          colors[i % colors.length],
+          _modalityDisplayName(entry.key),
+          themeColors,
+        ));
+        i++;
+      }
+    } else if (consistencyTrend != null) {
+      entries.add(_buildLegendItem(
+        Theme.of(context),
+        themeColors.primary,
+        'Overall',
+        themeColors,
+      ));
+      final colors = <Color>[
+        themeColors.secondary,
+        themeColors.macroChart.protein,
+        themeColors.macroChart.carbs,
+        themeColors.macroChart.fat,
+      ];
+      var i = 0;
+      final sorted = consistencyTrend.byModality.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      for (final entry in sorted) {
+        if (entry.value.isEmpty) continue;
+        entries.add(_buildLegendItem(
+          Theme.of(context),
+          colors[i % colors.length],
+          _modalityDisplayName(entry.key),
+          themeColors,
+        ));
+        i++;
+      }
+    }
+    return entries;
+  }
+
+  Widget _buildLineLegend(
+    ThemeData theme,
+    OmniThemeColors themeColors,
+    List<Widget> entries,
+  ) {
+    return SizedBox(
+      height: 24,
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 4,
+        children: entries,
+      ),
+    );
+  }
+
+  /// Renders a small empty-chart placeholder inside the
+  /// active tab when that tab's data is empty (e.g. no
+  /// tonnage on the device yet). The placeholder text is
+  /// descriptive only — no advice, no motivational copy.
+  Widget _buildEmptyChartPlaceholder(
+    OmniThemeColors themeColors,
+    String tab,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+      child: Text(
+        'No $tab data yet. Log a session to see this trend here.',
+        style: TextStyle(
+          fontSize: 12,
+          color: themeColors.textMuted,
+        ),
+      ),
+    );
+  }
+
+  /// Segmented toggle shared by the VOLUME TRENDS and
+  /// CONSISTENCY cards. Same Material 3 `SegmentedButton`
+  /// pattern the existing NUTRITION card uses, with
+  /// `OmniTheme.buttonUtilityRadius` for the shape and
+  /// `theme.colorScheme` for the colors (no hardcoded
+  /// values).
+  Widget _buildSegmentedToggle<T>({
+    required BuildContext context,
+    required OmniThemeColors themeColors,
+    required T current,
+    required Map<T, String> labels,
+    required ValueChanged<T> onChanged,
+  }) {
+    return SegmentedButton<T>(
+      segments: [
+        for (final entry in labels.entries)
+          ButtonSegment<T>(value: entry.key, label: Text(entry.value)),
+      ],
+      selected: {current},
+      onSelectionChanged: (selection) {
+        if (selection.isNotEmpty && selection.first != current) {
+          onChanged(selection.first);
+        }
+      },
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return themeColors.primary;
+          }
+          return themeColors.surface;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return themeColors.surface;
+          }
+          return themeColors.textSecondary;
+        }),
+        shape: WidgetStateProperty.all(
+          RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Convert a modality key (e.g. `'resistance_lifting'`,
+  /// `null`, or the `<null>` bucket sentinel) to a
+  /// human-readable label for the chart legend.
+  String _modalityDisplayName(String key) {
+    if (key == '<null>') return 'Free Training';
+    return Modality.getDisplayName(key);
+  }
+
   // ── Nutrition section (last 10-day kcal + macros trend) ──────────────────
 
   /// Returns the widgets for the NUTRITION section. Returns an
@@ -874,7 +1615,6 @@ class _StatsScreenState extends State<StatsScreen> {
     List<NutritionTrendPoint> trend,
   ) {
     final theme = Theme.of(context);
-    final macroColors = themeColors.macroChart;
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
       child: Column(
@@ -887,32 +1627,7 @@ class _StatsScreenState extends State<StatsScreen> {
             const SizedBox(height: _kNutritionLegendGap),
             SizedBox(
               height: _kNutritionLegendRowHeight,
-              child: _nutritionView == _NutritionView.macros
-                  ? Wrap(
-                      spacing: 12,
-                      runSpacing: 4,
-                      children: [
-                        _buildLegendItem(
-                          theme,
-                          macroColors.protein,
-                          'Protein (g)',
-                          themeColors,
-                        ),
-                        _buildLegendItem(
-                          theme,
-                          macroColors.carbs,
-                          'Carbs (g)',
-                          themeColors,
-                        ),
-                        _buildLegendItem(
-                          theme,
-                          macroColors.fat,
-                          'Fat (g)',
-                          themeColors,
-                        ),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+              child: _buildNutritionLegend(theme, themeColors),
             ),
           ] else if (trend.length >= 2) ...[
             if (_nutritionView == _NutritionView.calories)
@@ -924,32 +1639,7 @@ class _StatsScreenState extends State<StatsScreen> {
             // Calories ↔ Macros does not change the card's height.
             SizedBox(
               height: _kNutritionLegendRowHeight,
-              child: _nutritionView == _NutritionView.macros
-                  ? Wrap(
-                      spacing: 12,
-                      runSpacing: 4,
-                      children: [
-                        _buildLegendItem(
-                          theme,
-                          macroColors.protein,
-                          'Protein (g)',
-                          themeColors,
-                        ),
-                        _buildLegendItem(
-                          theme,
-                          macroColors.carbs,
-                          'Carbs (g)',
-                          themeColors,
-                        ),
-                        _buildLegendItem(
-                          theme,
-                          macroColors.fat,
-                          'Fat (g)',
-                          themeColors,
-                        ),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+              child: _buildNutritionLegend(theme, themeColors),
             ),
           ] else
             // S-004: exactly 1 logged day → inline single-point card.
@@ -1026,6 +1716,14 @@ class _StatsScreenState extends State<StatsScreen> {
       (i) => FlSpot(i.toDouble(), trend[i].calories.toDouble()),
     );
 
+    // Dashed target line. Steps at every saved target change —
+    // each `NutritionAdherenceTargetPoint` extends forward to
+    // the next point. We project the steps onto the actuals'
+    // x-axis (one y-value per actuals index) and let fl_chart
+    // draw the dashed segments between them. Empty when no
+    // target has ever been saved.
+    final targetSeries = _buildTargetCaloriesSeries(themeColors, trend);
+
     return ScrollableTrendChart(
       themeColors: themeColors,
       bounds: bounds,
@@ -1090,6 +1788,9 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
             borderData: FlBorderData(show: false),
             lineBarsData: [
+              // Target line first so the actuals draw on top.
+              // `dotData.show: false` keeps the dashed line clean.
+              ?targetSeries,
               LineChartBarData(
                 spots: spots,
                 color: themeColors.primary,
@@ -1116,6 +1817,103 @@ class _StatsScreenState extends State<StatsScreen> {
         );
       },
     );
+  }
+
+  /// Projects the piecewise `NutritionAdherenceTargetPoint`
+  /// list onto the actuals' x-axis (one y-value per actuals
+  /// index) and returns a dashed `LineChartBarData` ready to
+  /// drop into the calories chart's `lineBarsData`. Returns
+  /// `null` when no target has ever been saved (so the dashed
+  /// line is not drawn at all).
+  LineChartBarData? _buildTargetCaloriesSeries(
+    OmniThemeColors themeColors,
+    List<NutritionTrendPoint> trend,
+  ) {
+    final targetLine = _nutritionAdherence?.targetLine ?? const [];
+    if (targetLine.isEmpty) return null;
+    final spots = <FlSpot>[];
+    var currentTarget = targetLine.first;
+    var currentTargetIdx = 0;
+    for (var i = 0; i < trend.length; i++) {
+      // Find the most recent target whose date is on or before
+      // this actuals day.
+      while (currentTargetIdx < targetLine.length - 1 &&
+          !targetLine[currentTargetIdx + 1].date.isAfter(trend[i].date)) {
+        currentTargetIdx++;
+        currentTarget = targetLine[currentTargetIdx];
+      }
+      spots.add(FlSpot(i.toDouble(), currentTarget.calories));
+    }
+    return LineChartBarData(
+      spots: spots,
+      color: themeColors.primary.withAlpha(120),
+      isCurved: false,
+      barWidth: 1.5,
+      isStrokeCapRound: true,
+      dashArray: const [4, 4],
+      dotData: FlDotData(show: false),
+      belowBarData: BarAreaData(show: false),
+    );
+  }
+
+  /// Same as [_buildTargetCaloriesSeries] but for the macros
+  /// view: returns up to three dashed `LineChartBarData` for
+  /// protein, carbs, and fat. Empty list when no target has
+  /// ever been saved.
+  List<LineChartBarData> _buildTargetMacroSeries(
+    OmniThemeColors themeColors,
+    List<NutritionTrendPoint> trend,
+  ) {
+    final targetLine = _nutritionAdherence?.targetLine ?? const [];
+    if (targetLine.isEmpty) return const [];
+    final macroColors = themeColors.macroChart;
+    final series = <_MacroTargetSeries>[];
+    void seriesFor({
+      required Color color,
+      required double Function(NutritionAdherenceTargetPoint) value,
+    }) {
+      final spots = <FlSpot>[];
+      var currentTarget = targetLine.first;
+      var currentTargetIdx = 0;
+      for (var i = 0; i < trend.length; i++) {
+        while (currentTargetIdx < targetLine.length - 1 &&
+            !targetLine[currentTargetIdx + 1].date.isAfter(trend[i].date)) {
+          currentTargetIdx++;
+          currentTarget = targetLine[currentTargetIdx];
+        }
+        spots.add(FlSpot(i.toDouble(), value(currentTarget)));
+      }
+      series.add(_MacroTargetSeries(
+        color: color,
+        spots: spots,
+      ));
+    }
+
+    seriesFor(
+      color: macroColors.protein,
+      value: (t) => t.protein,
+    );
+    seriesFor(
+      color: macroColors.carbs,
+      value: (t) => t.carbs,
+    );
+    seriesFor(
+      color: macroColors.fat,
+      value: (t) => t.fat,
+    );
+    return [
+      for (final s in series)
+        LineChartBarData(
+          spots: s.spots,
+          color: s.color.withAlpha(120),
+          isCurved: false,
+          barWidth: 1.5,
+          isStrokeCapRound: true,
+          dashArray: const [4, 4],
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+    ];
   }
 
   /// Builds an empty chart showing zero values when there's no
@@ -1370,6 +2168,9 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
             borderData: FlBorderData(show: false),
             lineBarsData: [
+              // Target lines first (drawn behind the actuals so
+              // they read as a baseline reference, not as data).
+              ..._buildTargetMacroSeries(themeColors, trend),
               // NOTE: the carbs line plots **total** carbs grams
               // (not net carbs), matching the home strip's "total
               // carbs for blue" semantics.
@@ -1970,6 +2771,153 @@ class _StatsScreenState extends State<StatsScreen> {
     final km = distanceM / 1000.0;
     return distUnit == 'mi' ? km * 0.621371 : km;
   }
+
+  /// Build the NUTRITION card's legend row. Carries the
+  /// active view's macro / calorie markers plus a "Target"
+  /// marker whenever the adherence series has a target
+  /// line. The dashed line is rendered with a 2-pixel solid
+  /// swatch followed by a 2-pixel gap so the legend swatch
+  /// matches the on-chart dash pattern.
+  Widget _buildNutritionLegend(
+    ThemeData theme,
+    OmniThemeColors themeColors,
+  ) {
+    final macroColors = themeColors.macroChart;
+    final hasTarget = (_nutritionAdherence?.targetLine.isNotEmpty ?? false);
+    if (_nutritionView == _NutritionView.calories) {
+      return Wrap(
+        spacing: 12,
+        runSpacing: 4,
+        children: [
+          _buildLegendItem(
+            theme,
+            themeColors.primary,
+            'Calories (kcal)',
+            themeColors,
+          ),
+          if (hasTarget)
+            _buildDashedLegendItem(
+              theme,
+              themeColors.primary.withAlpha(120),
+              'Target (kcal)',
+              themeColors,
+            ),
+        ],
+      );
+    }
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        _buildLegendItem(
+          theme,
+          macroColors.protein,
+          'Protein (g)',
+          themeColors,
+        ),
+        _buildLegendItem(
+          theme,
+          macroColors.carbs,
+          'Carbs (g)',
+          themeColors,
+        ),
+        _buildLegendItem(
+          theme,
+          macroColors.fat,
+          'Fat (g)',
+          themeColors,
+        ),
+        if (hasTarget)
+          _buildDashedLegendItem(
+            theme,
+            themeColors.textMuted,
+            'Target',
+            themeColors,
+          ),
+      ],
+    );
+  }
+
+  /// Like `_buildLegendItem` but renders the color swatch as
+  /// a 2-pixel-on / 2-pixel-off dash so the legend reads as
+  /// the same dashed target line the chart draws.
+  Widget _buildDashedLegendItem(
+    ThemeData theme,
+    Color color,
+    String label,
+    OmniThemeColors themeColors,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CustomPaint(
+          size: const Size(12, 8),
+          painter: _DashedLegendSwatchPainter(color: color),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: themeColors.textMuted,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Renders the dashed legend swatch for the nutrition
+/// target line. Two pixels on, two pixels off — same dash
+/// pattern the chart line uses (`dashArray: [4, 4]`).
+class _DashedLegendSwatchPainter extends CustomPainter {
+  final Color color;
+  _DashedLegendSwatchPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final y = size.height / 2;
+    // 2-pixel dashes with 2-pixel gaps, repeating across
+    // the 12-pixel swatch width.
+    var x = 0.0;
+    while (x < size.width) {
+      final end = (x + 2).clamp(0, size.width).toDouble();
+      canvas.drawLine(Offset(x, y), Offset(end, y), paint);
+      x += 4;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedLegendSwatchPainter old) =>
+      old.color != color;
+}
+
+/// PR 2b macros-target-series helper. Carries the color and
+/// spots for one macro's target line; projected from the
+/// adherence series by `_buildTargetMacroSeries`.
+class _MacroTargetSeries {
+  final Color color;
+  final List<FlSpot> spots;
+  const _MacroTargetSeries({required this.color, required this.spots});
+}
+
+/// Holds one chart series for the multi-line VOLUME TRENDS
+/// and CONSISTENCY charts: the line color, the x-indexed
+/// data points, and the legend label. Indexed against the
+/// shared period-points x-axis so every series can share one
+/// `ScrollableTrendChart`.
+class _ChartSeries {
+  final Color color;
+  final List<FlSpot> spots;
+  final String legendLabel;
+  const _ChartSeries({
+    required this.color,
+    required this.spots,
+    required this.legendLabel,
+  });
 }
 
 class _LinearScale {

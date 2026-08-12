@@ -3611,11 +3611,18 @@ void main() {
 
         await pumpStatsScreen(tester, repo);
 
-        // The feeling chart exists. Count the spots on the
-        // feeling line — they must be exactly 2 (the two with
-        // feelings), not 3 with a fabricated middle point.
-        final feelingSpots = tester
+        // The feeling chart exists. Filter to single-series
+        // charts so we don't accidentally pick up the
+        // consistency card's multi-line series (which can have
+        // session counts in the 1..5 range). The feeling chart
+        // always has exactly one LineChartBarData; the new
+        // consistency / volume sections have multiple.
+        final feelingCharts = tester
             .widgetList<LineChart>(find.byType(LineChart))
+            .where((c) => c.data.lineBarsData.length == 1)
+            .toList();
+        expect(feelingCharts, isNotEmpty);
+        final feelingSpots = feelingCharts
             .expand((c) => c.data.lineBarsData)
             .expand((bar) => bar.spots)
             .where((spot) => spot.y >= 1 && spot.y <= 5)
