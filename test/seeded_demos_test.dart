@@ -133,6 +133,97 @@ void main() {
     );
 
     test(
+      'D-007: a below-template change reaches a device that already has the demo',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        await repo.setCatalogVersion(0);
+        await CatalogRefreshService(repo, _bundledSource()).refresh();
+
+        // Stand in for a device carrying an older shape of the routine:
+        // an effort that still has a rest interval the bundle has dropped.
+        const templateId = 'demo-template-hit-full-body';
+        final segments = await repo.getTemplateSegments(templateId);
+        final efforts = await repo.getTemplateEfforts(segments.first.id);
+        final stale = efforts.first;
+        await repo.updateTemplateEffort(
+          TemplateEffort(
+            id: stale.id,
+            templateSegmentId: stale.templateSegmentId,
+            orderIndex: stale.orderIndex,
+            effortKind: stale.effortKind,
+            exerciseId: stale.exerciseId,
+            restSeconds: 180,
+            createdAtMs: stale.createdAtMs,
+          ),
+        );
+
+        // The user has not edited the routine, so no tombstone exists and
+        // the refresh owns the body.
+        expect(
+          await repo.isSeedEntryTouched(
+            SeedEntryType.routineTemplate,
+            templateId,
+          ),
+          isFalse,
+        );
+
+        await repo.setCatalogVersion(bundledCatalogVersion - 1);
+        await CatalogRefreshService(repo, _bundledSource()).refresh();
+
+        final refreshedSegments = await repo.getTemplateSegments(templateId);
+        final refreshedEfforts = await repo.getTemplateEfforts(
+          refreshedSegments.first.id,
+        );
+        expect(
+          refreshedEfforts.every((e) => e.restSeconds == null),
+          isTrue,
+          reason:
+              'a template-row-only patch cannot deliver this; the refresh '
+              'must rewrite the body of an untouched demo',
+        );
+        expect(
+          refreshedEfforts.length,
+          equals(6),
+          reason: 'Compound block must still hold its six efforts',
+        );
+      },
+    );
+
+    test(
+      'D-008: a user-edited demo keeps its body across the refresh',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        await repo.setCatalogVersion(0);
+        await CatalogRefreshService(repo, _bundledSource()).refresh();
+
+        const templateId = 'demo-template-hit-full-body';
+        final segments = await repo.getTemplateSegments(templateId);
+        final firstSegmentId = segments.first.id;
+
+        // The user edits the routine — the state layer tombstones it.
+        await repo.markSeedEntryTouched(
+          SeedEntryType.routineTemplate,
+          templateId,
+        );
+        await repo.deleteTemplateSegment(firstSegmentId);
+
+        await repo.setCatalogVersion(bundledCatalogVersion - 1);
+        await CatalogRefreshService(repo, _bundledSource()).refresh();
+
+        final after = await repo.getTemplateSegments(templateId);
+        expect(
+          after.any((s) => s.id == firstSegmentId),
+          isFalse,
+          reason:
+              'the body rewrite must not resurrect a segment the user '
+              'deleted from a demo they have taken ownership of',
+        );
+      },
+    );
+
+    test(
       'D-003: deleting a seeded demo does NOT resurrect it on the next refresh',
       () async {
         final repo = MockWorkoutRepository();

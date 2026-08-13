@@ -149,8 +149,13 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _RoutineCard(
                     routine: routine,
-                    formattedDate:
-                        'Created ${_formatDate(DateTime.fromMillisecondsSinceEpoch(routine.createdAtMs))}',
+                    // Demo routines ship with the app, so their createdAtMs
+                    // is whenever the catalog happened to seed on this
+                    // device. Showing it reads as "you created this on
+                    // <date>", which the user never did.
+                    formattedDate: routine.isBuiltInDemo
+                        ? null
+                        : 'Created ${_formatDate(DateTime.fromMillisecondsSinceEpoch(routine.createdAtMs))}',
                     onOpen: () => _editRoutine(context, routine.id),
                     onStart: () => _startRoutine(context, routine.id),
                   ),
@@ -376,7 +381,10 @@ class _RoutineCard extends StatelessWidget {
   });
 
   final WorkoutTemplate routine;
-  final String formattedDate;
+
+  /// Metadata line under the title, or `null` to omit it entirely — demo
+  /// routines have no meaningful creation date to show.
+  final String? formattedDate;
   final VoidCallback onOpen;
   final VoidCallback onStart;
 
@@ -463,20 +471,24 @@ class _RoutineCard extends StatelessWidget {
                                 ],
                               ],
                             ),
-                            const SizedBox(height: 4),
                             // Metadata line — simple Row with just the
                             // date text. No Stack, no Positioned, no
                             // reserved space — the badge lives on the
-                            // title row now (S-008).
-                            Text(
-                              formattedDate,
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.7),
+                            // title row now (S-008). Omitted entirely for
+                            // demo routines, spacing included, so the card
+                            // closes up instead of leaving a blank line.
+                            if (formattedDate != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                formattedDate!,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: theme.colorScheme.onSurface
+                                      .withOpacity(0.7),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
                               ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
+                            ],
                           ],
                         ),
                       ),

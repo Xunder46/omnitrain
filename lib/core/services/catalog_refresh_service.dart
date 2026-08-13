@@ -195,23 +195,111 @@ class CatalogRefreshService {
       }
 
       if (_demoBundleTemplateDiffers(existing, bundle.template)) {
-        // Patch the template row in place and let the existing
-        // segments/efforts/targets stay (they are managed by the
-        // routine editor; the user may have edited them too).
         await _repository.updateTemplate(bundle.template);
       }
+
+      // Reaching here means the demo is untouched: the state layer sets the
+      // tombstone on the first user edit or delete, so an untouched demo is
+      // still exactly as the app authored it. Its body is therefore ours to
+      // correct, and it has to be — a template-row-only patch cannot deliver
+      // a change to an exercise, a target, or a rest interval, so any fix
+      // below the template row would never reach a device that already has
+      // the routine.
+      await _replaceDemoBundleBody(bundle);
     }
+  }
+
+  /// Rewrite an untouched demo's segments / efforts / targets from the bundle.
+  ///
+  /// Delete-then-write rather than a field-by-field diff: the body is a tree
+  /// whose shape can change between versions (efforts added, reordered, or
+  /// dropped), and re-deriving a minimal patch for that buys nothing when the
+  /// rows are wholly app-authored. Segment deletion cascades to efforts and
+  /// targets in both repository implementations.
+  Future<void> _replaceDemoBundleBody(DemoRoutineBundle bundle) async {
+    final existingSegments = await _repository.getTemplateSegments(
+      bundle.template.id,
+    );
+    if (!await _demoBundleBodyDiffers(bundle, existingSegments)) return;
+
+    for (final segment in existingSegments) {
+      await _repository.deleteTemplateSegment(segment.id);
+    }
+    await _writeDemoBundleBody(bundle);
   }
 
   Future<void> _writeFullDemoBundle(DemoRoutineBundle bundle) async {
     // Templates first — segments/efforts/targets reference it.
     await _repository.createTemplate(bundle.template);
+    await _writeDemoBundleBody(bundle);
+  }
 
-    // Map source-segment ids → freshly-created device-segment ids so the
-    // effort / target rows reference the ones we just persisted. We use
-    // the source ids verbatim here because the refresh is the only
-    // writer of demo segments and the routine editor never edits them
-    // (the user's edits apply only to the *top-level* template fields).
+  /// `true` when the stored body no longer matches the bundled one.
+  ///
+  /// Compares the shape and every seed-owned field an effort or target can
+  /// carry, so dropping a value (a rest interval, a target) counts as a
+  /// difference just as much as changing one.
+  Future<bool> _demoBundleBodyDiffers(
+    DemoRoutineBundle bundle,
+    List<TemplateSegment> existingSegments,
+  ) async {
+    if (existingSegments.length != bundle.segments.length) return true;
+
+    final bySegmentId = {for (final s in existingSegments) s.id: s};
+
+    for (final segmentSpec in bundle.segments) {
+      final segment = bySegmentId[segmentSpec.segment.id];
+      if (segment == null) return true;
+      if (segment.orderIndex != segmentSpec.segment.orderIndex ||
+          segment.name != segmentSpec.segment.name ||
+          segment.segmentType != segmentSpec.segment.segmentType) {
+        return true;
+      }
+
+      final efforts = await _repository.getTemplateEfforts(segment.id);
+      if (efforts.length != segmentSpec.efforts.length) return true;
+
+      final byEffortId = {for (final e in efforts) e.id: e};
+      for (final effortSpec in segmentSpec.efforts) {
+        final effort = byEffortId[effortSpec.effort.id];
+        if (effort == null) return true;
+        if (effort.orderIndex != effortSpec.effort.orderIndex ||
+            effort.effortKind != effortSpec.effort.effortKind ||
+            effort.exerciseId != effortSpec.effort.exerciseId ||
+            effort.restSeconds != effortSpec.effort.restSeconds ||
+            effort.restType != effortSpec.effort.restType) {
+          return true;
+        }
+
+        final targets = await _repository.getTemplateTargets(effort.id);
+        if (targets.length != effortSpec.targets.length) return true;
+
+        for (final targetSpec in effortSpec.targets) {
+          final match = targets.where(
+            (t) =>
+                t.metricId == targetSpec.metricId &&
+                (t.setIndex ?? 0) == (targetSpec.setIndex ?? 0),
+          );
+          if (match.isEmpty) return true;
+          final target = match.first;
+          if (target.targetMin != targetSpec.targetMin ||
+              target.targetMax != targetSpec.targetMax ||
+              target.targetInt != targetSpec.targetInt ||
+              target.targetText != targetSpec.targetText ||
+              target.unitId != targetSpec.unitId) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  Future<void> _writeDemoBundleBody(DemoRoutineBundle bundle) async {
+    // Source segment ids are used verbatim: the refresh is the only writer
+    // of demo segments, and once the user edits a demo the tombstone stops
+    // us from reaching this code at all.
     for (final segmentSpec in bundle.segments) {
       await _repository.createTemplateSegment(segmentSpec.segment);
 

@@ -35,9 +35,14 @@
 ///   and `muscle-legs` finally defined rather than only referenced; the
 ///   exercise→muscle mappings swept), we bumped to `9` so existing installs
 ///   pick up the new groups and corrected mappings on next launch.
+///   When rest intervals were removed from HIT Full Body we bumped to `10`.
+///   That bump only reaches the routine because the same change taught
+///   `_refreshDemoRoutines` to rewrite an *untouched* demo's segments /
+///   efforts / targets; before it, the refresh patched the template row
+///   alone, so no version bump could ever deliver a change below it.
 library;
 
-const int bundledCatalogVersion = 9;
+const int bundledCatalogVersion = 10;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///
