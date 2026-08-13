@@ -71,7 +71,6 @@ class DemoRoutineSeed {
     required int orderIndex,
     required String effortKind,
     required String? exerciseId,
-    int? restSeconds,
   }) {
     return TemplateEffort(
       id: id,
@@ -79,7 +78,6 @@ class DemoRoutineSeed {
       orderIndex: orderIndex,
       effortKind: effortKind,
       exerciseId: exerciseId,
-      restSeconds: restSeconds,
       createdAtMs: _now(),
     );
   }
@@ -663,7 +661,6 @@ class DemoRoutineSeed {
     required String exerciseId,
     required String suffix,
     required int targetReps,
-    required int restSeconds,
   }) {
     final effortId = 'demo-teff-$templateId-$suffix';
     return DemoRoutineEffortSpec(
@@ -673,7 +670,6 @@ class DemoRoutineSeed {
         orderIndex: effortIndex,
         effortKind: 'set',
         exerciseId: exerciseId,
-        restSeconds: restSeconds,
       ),
       targets: [
         DemoRoutineTargetSpec(
@@ -698,7 +694,6 @@ class DemoRoutineSeed {
     required int effortIndex,
     required String exerciseId,
     required String suffix,
-    required int restSeconds,
   }) {
     final effortId = 'demo-teff-$templateId-$suffix';
     return DemoRoutineEffortSpec(
@@ -708,7 +703,6 @@ class DemoRoutineSeed {
         orderIndex: effortIndex,
         effortKind: 'drill',
         exerciseId: exerciseId,
-        restSeconds: restSeconds,
       ),
       targets: const [],
     );
@@ -749,7 +743,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-barbell-squat',
               suffix: '01-squat',
               targetReps: 5,
-              restSeconds: 180,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -758,7 +751,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-romanian-deadlift-barbell',
               suffix: '02-rdl',
               targetReps: 5,
-              restSeconds: 180,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -767,7 +759,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-pullup',
               suffix: '03-pullup',
               targetReps: 5,
-              restSeconds: 180,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -776,7 +767,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-bench-press',
               suffix: '04-bench',
               targetReps: 5,
-              restSeconds: 180,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -785,7 +775,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-overhead-press',
               suffix: '05-ohp',
               targetReps: 5,
-              restSeconds: 180,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -794,7 +783,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-barbell-row',
               suffix: '06-row',
               targetReps: 5,
-              restSeconds: 180,
             ),
           ],
         ),
@@ -815,7 +803,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-barbell-hip-thrust',
               suffix: '07-hip-thrust',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -824,7 +811,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-machine-hip-adduction',
               suffix: '08-hip-add',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -833,7 +819,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-cable-hip-abduction',
               suffix: '09-hip-abd',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -842,7 +827,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-barbell-shrug',
               suffix: '10-shrug',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -851,7 +835,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-prone-y-raise',
               suffix: '11-y-raise',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -860,7 +843,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-lateral-raise',
               suffix: '12-lat-raise',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -869,7 +851,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-face-pull',
               suffix: '13-face-pull',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -878,7 +859,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-cable-external-rotation',
               suffix: '14-ext-rot',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -887,7 +867,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-dumbbell-pullover',
               suffix: '15-pullover',
               targetReps: 8,
-              restSeconds: 90,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -896,7 +875,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-back-extension',
               suffix: '16-back-ext',
               targetReps: 8,
-              restSeconds: 90,
             ),
           ],
         ),
@@ -917,7 +895,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-barbell-curl',
               suffix: '17-curl',
               targetReps: 10,
-              restSeconds: 60,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -926,7 +903,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-hammer-curl',
               suffix: '18-hammer',
               targetReps: 10,
-              restSeconds: 60,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -935,7 +911,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-overhead-triceps-extension',
               suffix: '19-tri-ext',
               targetReps: 10,
-              restSeconds: 60,
             ),
           ],
         ),
@@ -956,7 +931,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-hanging-leg-raise',
               suffix: '20-leg-raise',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _holdEffortSpec(
               templateId: id,
@@ -964,7 +938,6 @@ class DemoRoutineSeed {
               effortIndex: 1,
               exerciseId: 'exercise-side-plank',
               suffix: '21-side-plank',
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -973,7 +946,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-standing-calf-raise',
               suffix: '22-calf-stand',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -982,7 +954,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-seated-calf-raise',
               suffix: '23-calf-sit',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -991,7 +962,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-tibialis-raise',
               suffix: '24-tibialis',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -1000,7 +970,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-wrist-curl',
               suffix: '25-wrist-curl',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -1009,7 +978,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-reverse-wrist-curl',
               suffix: '26-wrist-rev',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -1018,7 +986,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-hammer-pronation-supination',
               suffix: '27-hammer-pro',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _holdEffortSpec(
               templateId: id,
@@ -1026,7 +993,6 @@ class DemoRoutineSeed {
               effortIndex: 8,
               exerciseId: 'exercise-plate-pinch-hold',
               suffix: '28-pinch-hold',
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -1035,7 +1001,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-neck-extension',
               suffix: '29-neck-ext',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -1044,7 +1009,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-neck-flexion',
               suffix: '30-neck-flex',
               targetReps: 15,
-              restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
               templateId: id,
@@ -1053,7 +1017,6 @@ class DemoRoutineSeed {
               exerciseId: 'exercise-lateral-neck-flexion',
               suffix: '31-neck-lat',
               targetReps: 15,
-              restSeconds: 45,
             ),
           ],
         ),

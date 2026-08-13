@@ -215,6 +215,26 @@ void main() {
     return DateTime(now.year, now.month, now.day - n);
   }
 
+  // Local-midnight day inside the ISO week [weeksAgo] weeks before the
+  // current one, [dayOffset] days after that week's Monday.
+  //
+  // Use this instead of [daysAgo] whenever a test asserts how many ISO-week
+  // buckets a set of sessions produces. `daysAgo` counts back from today, so
+  // which week a day lands in depends on what weekday today is: seeding at
+  // `daysAgo(10)` and `daysAgo(9)` puts both in one week on most days, but on
+  // a Wednesday `daysAgo(10)` is the preceding Sunday — the final day of the
+  // *previous* ISO week — and the bucket count silently goes from 2 to 3.
+  // Anchoring to the week's Monday makes week membership explicit and the
+  // assertion true on every weekday.
+  DateTime dayInWeeksAgo(int weeksAgo, {int dayOffset = 0}) {
+    final now = DateTime.now();
+    return DateTime(
+      now.year,
+      now.month,
+      now.day - (now.weekday - DateTime.monday) - (7 * weeksAgo) + dayOffset,
+    );
+  }
+
   // Creates a training period that covers today (default) and an
   // optional explicit range. Anchored to local midnight.
   Future<TrainingPeriod> seedActivePeriod(
@@ -3908,12 +3928,12 @@ void main() {
         ),
       );
 
-      // Week A (daysAgo 10, 9): Squat 100×5=500 + 80×8=640 = 1140.
+      // Week A (two weeks back): Squat 100×5=500 + 80×8=640 = 1140.
       // Bench 60×10=600.
       await _seedSession(
         repo,
         id: 'va-1',
-        day: daysAgo(10),
+        day: dayInWeeksAgo(2),
         modality: Modality.resistanceLifting,
       );
       await _addSetEffort(
@@ -3925,7 +3945,7 @@ void main() {
       await _seedSession(
         repo,
         id: 'va-2',
-        day: daysAgo(9),
+        day: dayInWeeksAgo(2, dayOffset: 1),
         modality: Modality.resistanceLifting,
       );
       await _addSetEffort(
@@ -3937,7 +3957,7 @@ void main() {
       await _seedSession(
         repo,
         id: 'va-3',
-        day: daysAgo(9),
+        day: dayInWeeksAgo(2, dayOffset: 1),
         modality: Modality.resistanceLifting,
       );
       await _addSetEffort(
@@ -3947,12 +3967,12 @@ void main() {
         sets: [(60.0, 10)],
       );
 
-      // Week B (daysAgo 3, 2): Squat 120×5=600 + 110×5=550 = 1150.
+      // Week B (one week back): Squat 120×5=600 + 110×5=550 = 1150.
       // Bench 70×8=560.
       await _seedSession(
         repo,
         id: 'vb-1',
-        day: daysAgo(3),
+        day: dayInWeeksAgo(1),
         modality: Modality.resistanceLifting,
       );
       await _addSetEffort(
@@ -3964,7 +3984,7 @@ void main() {
       await _seedSession(
         repo,
         id: 'vb-2',
-        day: daysAgo(2),
+        day: dayInWeeksAgo(1, dayOffset: 1),
         modality: Modality.resistanceLifting,
       );
       await _addSetEffort(
@@ -3976,7 +3996,7 @@ void main() {
       await _seedSession(
         repo,
         id: 'vb-3',
-        day: daysAgo(2),
+        day: dayInWeeksAgo(1, dayOffset: 1),
         modality: Modality.resistanceLifting,
       );
       await _addSetEffort(
@@ -4084,11 +4104,11 @@ void main() {
         ),
       );
 
-      // Week A (daysAgo 10, 9): Run 1500 + 900 = 2400. Bike 1200.
+      // Week A (two weeks back): Run 1500 + 900 = 2400. Bike 1200.
       await _seedSession(
         repo,
         id: 'tda-1',
-        day: daysAgo(10),
+        day: dayInWeeksAgo(2),
         modality: Modality.cardioEndurance,
       );
       await _addTimedEffort(
@@ -4100,7 +4120,7 @@ void main() {
       await _seedSession(
         repo,
         id: 'tda-2',
-        day: daysAgo(9),
+        day: dayInWeeksAgo(2, dayOffset: 1),
         modality: Modality.cardioEndurance,
       );
       await _addTimedEffort(
@@ -4112,7 +4132,7 @@ void main() {
       await _seedSession(
         repo,
         id: 'tda-3',
-        day: daysAgo(9),
+        day: dayInWeeksAgo(2, dayOffset: 1),
         modality: Modality.cardioEndurance,
       );
       await _addTimedEffort(
@@ -4122,11 +4142,11 @@ void main() {
         durationSecs: 1200,
       );
 
-      // Week B (daysAgo 3): Run 1800. Bike 0 (no session).
+      // Week B (one week back): Run 1800. Bike 0 (no session).
       await _seedSession(
         repo,
         id: 'tdb-1',
-        day: daysAgo(3),
+        day: dayInWeeksAgo(1),
         modality: Modality.cardioEndurance,
       );
       await _addTimedEffort(
@@ -4178,11 +4198,11 @@ void main() {
         ),
       );
 
-      // Week A (daysAgo 10, 9): 4000 + 6000 = 10000.
+      // Week A (two weeks back): 4000 + 6000 = 10000.
       await _seedSession(
         repo,
         id: 'dist-a1',
-        day: daysAgo(10),
+        day: dayInWeeksAgo(2),
         modality: Modality.cardioEndurance,
       );
       await _addTimedEffort(
@@ -4195,7 +4215,7 @@ void main() {
       await _seedSession(
         repo,
         id: 'dist-a2',
-        day: daysAgo(9),
+        day: dayInWeeksAgo(2, dayOffset: 1),
         modality: Modality.cardioEndurance,
       );
       await _addTimedEffort(
@@ -4205,11 +4225,11 @@ void main() {
         durationSecs: 1500,
         distanceM: 6000,
       );
-      // Week B (daysAgo 3): 5000.
+      // Week B (one week back): 5000.
       await _seedSession(
         repo,
         id: 'dist-b1',
-        day: daysAgo(3),
+        day: dayInWeeksAgo(1),
         modality: Modality.cardioEndurance,
       );
       await _addTimedEffort(
@@ -4351,26 +4371,26 @@ void main() {
       await _seedSession(
         repo,
         id: 'cw-a1',
-        day: daysAgo(10),
+        day: dayInWeeksAgo(2),
         modality: Modality.cardioEndurance,
       );
       await _seedSession(
         repo,
         id: 'cw-a2',
-        day: daysAgo(9),
+        day: dayInWeeksAgo(2, dayOffset: 1),
         modality: Modality.cardioEndurance,
       );
       // Week B: 1 lifting + 1 sports.
       await _seedSession(
         repo,
         id: 'cw-b1',
-        day: daysAgo(3),
+        day: dayInWeeksAgo(1),
         modality: Modality.resistanceLifting,
       );
       await _seedSession(
         repo,
         id: 'cw-b2',
-        day: daysAgo(2),
+        day: dayInWeeksAgo(1, dayOffset: 1),
         modality: Modality.sports,
       );
 
