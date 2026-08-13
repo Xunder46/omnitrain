@@ -3851,6 +3851,217 @@ class SeedData {
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
+    // ─── HIT Full Body routine new exercises (Phase 1) ──────────────────────
+    Exercise(
+      id: 'exercise-machine-hip-adduction',
+      name: 'Machine Hip Adduction',
+      description:
+          'A seated machine movement that isolates the hip adductors (inner thighs). The machine guides the motion while you squeeze your legs together against resistance.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Sit with your back against the pad and position your knees/thighs against or inside the contact pads.',
+        'Grip the handles for stability but let your inner thighs do the work.',
+        'Squeeze your legs together in a controlled motion, stopping just before lockout.',
+        'Release with control, stopping before your legs fully open.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-cable-hip-abduction',
+      name: 'Cable Hip Abduction',
+      description:
+          'A single-leg hip abduction using a cable machine. Targets the gluteus medius and hip stabilizers. Performed standing with one leg moving away from the body against cable resistance.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand perpendicular to the cable machine with one leg nearest the stack.',
+        'Attach an ankle cuff to your far leg and grip the machine for balance.',
+        'Lift your leg out to the side against the cable resistance, maintaining a slight forward lean in your torso.',
+        'Control the descent without letting the weight stack crash down.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-barbell-shrug',
+      name: 'Barbell Shrug',
+      description:
+          'A shoulder isolation exercise performed with a barbell at the sides. Load the upper traps and neck by pulling your shoulders up toward your ears.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand with feet hip-width apart, holding the barbell with a neutral grip at arm\'s length.',
+        'Keep your arms straight and your torso still throughout the movement.',
+        'Pull your shoulders straight up as high as possible, thinking about leading with your elbows.',
+        'Pause briefly at the top and lower under control without momentum.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-prone-y-raise',
+      name: 'Prone Y Raise',
+      description:
+          'An incline or prone bench posterior shoulder exercise. Lying face down with dumbbells, raise your arms overhead in a Y shape to target the rear delts and upper back.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Lie face down on an incline bench (30–45 degrees) holding a dumbbell in each hand.',
+        'Arms hang naturally below your shoulders with a slight bend in the elbows.',
+        'Raise both arms overhead in a Y shape, squeezing your rear shoulders and traps.',
+        'Lower with control back to the starting position.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-cable-external-rotation',
+      name: 'Cable External Rotation',
+      description:
+          'A rotator cuff exercise using a cable machine. Performed standing with the elbow bent at 90 degrees, rotating the forearm outward against cable resistance.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand perpendicular to a cable machine with your elbow bent 90 degrees and tucked to your side.',
+        'Grip the cable handle with a neutral grip and keep your upper arm stationary.',
+        'Rotate your forearm away from your body, leading with your wrist.',
+        'Control the motion back to the start without momentum.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-dumbbell-pullover',
+      name: 'Dumbbell Pullover',
+      description:
+          'A chest and back exercise performed on a bench, pulling a dumbbell from over your chest to behind your head in an arc. Targets the pectorals and lats.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Lie perpendicular on a bench with only your upper back and shoulders supported.',
+        'Hold a single dumbbell vertically above your chest with both hands cupping one end.',
+        'Lower the dumbbell in an arc toward the floor behind your head, feeling a stretch across your chest.',
+        'Pull the dumbbell back over your chest in a smooth arc.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-tibialis-raise',
+      name: 'Tibialis Raise',
+      description:
+          'An anterior shin exercise targeting the tibialis anterior muscle. Performed seated or standing, flexing the toes/foot toward your shin against gravity or added resistance.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Sit on a bench or chair with your feet dangling, or stand with feet on the ground.',
+        'If seated, loop a light dumbbell or band around your toes.',
+        'Pull your toes toward your shin (dorsiflexion) in a controlled motion.',
+        'Slowly lower back to the start without letting them drop.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-wrist-curl',
+      name: 'Wrist Curl',
+      description:
+          'A forearm flexor isolation exercise using dumbbells. Performed seated with forearms resting on thighs, palms facing up, curling the dumbbells toward the forearms.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Sit on a bench with dumbbells resting on your thighs, palms facing up.',
+        'Rest your forearms on your thighs so only your hands hang past your knees.',
+        'Curl the dumbbells upward using only your wrists and forearms.',
+        'Lower under control without momentum.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-reverse-wrist-curl',
+      name: 'Reverse Wrist Curl',
+      description:
+          'A forearm extensor isolation exercise using dumbbells. The reverse of a standard wrist curl, performed with palms facing down.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Sit on a bench with dumbbells resting on your thighs, palms facing down.',
+        'Rest your forearms on your thighs so only your hands hang past your knees.',
+        'Curl the dumbbells upward using only your wrists and forearms (dorsiflexion).',
+        'Lower under control without momentum.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-hammer-pronation-supination',
+      name: 'Hammer Curl (Pronation/Supination)',
+      description:
+          'A dumbbell curl variation with the hands in a neutral (hammer) grip. Targets the biceps and brachialis with reduced elbow joint stress.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Stand upright holding dumbbells at your sides with a neutral grip (palms facing each other).',
+        'Bend your elbows and curl the dumbbells up toward your shoulders.',
+        'Keep your upper arms stationary — movement should only come from the elbows.',
+        'Lower under control back to the start.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-plate-pinch-hold',
+      name: 'Plate Pinch Hold',
+      description:
+          'An isometric grip strength and forearm exercise. Hold weight plates pinched between your fingers and thumb, or rest a plate on one hand and support it with the other.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Hold two weight plates smooth-side out, pinched between your fingers and thumb.',
+        'Alternatively, place a single plate on an open palm and hold it level without the plate tilting.',
+        'Maintain the grip for time, focusing on a strong squeeze.',
+        'Rest fully between sets to avoid hand fatigue.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-neck-extension',
+      name: 'Neck Extension',
+      description:
+          'A cervical extension exercise targeting the neck extensors. Performed seated or standing, resisting manual resistance applied by the trainer or the lifter\'s own hand.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Start bodyweight or manual resistance, 3-second eccentric, no ballistic movement.',
+        'Sit upright and place one hand behind your head for resistance.',
+        'Extend your neck backward, pressing your head against your hand, then control the return.',
+        'Move slowly — do not jerk or bounce.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-neck-flexion',
+      name: 'Neck Flexion',
+      description:
+          'A cervical flexion exercise targeting the neck flexors. Performed seated or standing with manual resistance applied by hand or trainer.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Start bodyweight or manual resistance, 3-second eccentric, no ballistic movement.',
+        'Sit upright and place one hand on your forehead.',
+        'Flex your neck forward, pressing your head against your hand, then control the return.',
+        'Move slowly and avoid jerky, ballistic motion.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Exercise(
+      id: 'exercise-lateral-neck-flexion',
+      name: 'Lateral Neck Flexion',
+      description:
+          'A cervical lateral flexion exercise targeting the lateral neck muscles. Performed with manual resistance applied by hand, moving the head side to side.',
+      disciplineId: 'discipline-bodybuilding',
+      howToSteps: [
+        'Start bodyweight or manual resistance, 3-second eccentric, no ballistic movement.',
+        'Sit upright and place one hand against the side of your head.',
+        'Flex your neck laterally toward the resisting hand while applying resistance.',
+        'Control the return without momentum or ballistic movement.',
+      ],
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
   ];
 
   static final List<Equipment> sampleEquipment = [
@@ -3892,6 +4103,16 @@ class SeedData {
     Equipment(
       id: 'equipment-bodyweight',
       name: 'Body Weight',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Equipment(
+      id: 'equipment-cable',
+      name: 'Cable Machine',
+      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+    ),
+    Equipment(
+      id: 'equipment-machine',
+      name: 'Machine',
       createdAtMs: DateTime.now().millisecondsSinceEpoch,
     ),
   ];
@@ -4653,6 +4874,22 @@ class SeedData {
       'muscle-glutes',
       'muscle-core',
     ],
+
+    // HIT Full Body routine new exercises — Phase 1
+    'exercise-machine-hip-adduction': ['muscle-quads', 'muscle-glutes'],
+    'exercise-cable-hip-abduction': ['muscle-glutes'],
+    'exercise-barbell-shrug': ['muscle-shoulders', 'muscle-back'],
+    'exercise-prone-y-raise': ['muscle-shoulders', 'muscle-back'],
+    'exercise-cable-external-rotation': ['muscle-shoulders'],
+    'exercise-dumbbell-pullover': ['muscle-chest', 'muscle-back'],
+    'exercise-tibialis-raise': ['muscle-quads'],
+    'exercise-wrist-curl': [],
+    'exercise-reverse-wrist-curl': [],
+    'exercise-hammer-pronation-supination': ['muscle-biceps'],
+    'exercise-plate-pinch-hold': [],
+    'exercise-neck-extension': [],
+    'exercise-neck-flexion': [],
+    'exercise-lateral-neck-flexion': [],
   };
 
   /// Maps exercise IDs to equipment IDs
@@ -4841,6 +5078,22 @@ class SeedData {
     'exercise-jump-rope-steady': [],
     'exercise-jump-rope-intervals': [],
     'exercise-rowing-sprints': [],
+
+    // HIT Full Body routine new exercises — Phase 1
+    'exercise-machine-hip-adduction': [],
+    'exercise-cable-hip-abduction': ['equipment-cable'],
+    'exercise-barbell-shrug': ['equipment-barbell'],
+    'exercise-prone-y-raise': ['equipment-dumbbell'],
+    'exercise-cable-external-rotation': ['equipment-cable'],
+    'exercise-dumbbell-pullover': ['equipment-dumbbell'],
+    'exercise-tibialis-raise': ['equipment-bodyweight'],
+    'exercise-wrist-curl': ['equipment-dumbbell'],
+    'exercise-reverse-wrist-curl': ['equipment-dumbbell'],
+    'exercise-hammer-pronation-supination': ['equipment-dumbbell'],
+    'exercise-plate-pinch-hold': ['equipment-bodyweight'],
+    'exercise-neck-extension': ['equipment-bodyweight'],
+    'exercise-neck-flexion': ['equipment-bodyweight'],
+    'exercise-lateral-neck-flexion': ['equipment-bodyweight'],
   };
 
   /// Maps exercise IDs to capability flags
@@ -5130,6 +5383,22 @@ class SeedData {
     'exercise-climbing-projecting': ['time', 'rounds'],
     'exercise-climbing-volume': ['time', 'rounds'],
     'exercise-climbing-hangboard-session': ['time', 'rounds'],
+
+    // HIT Full Body routine new exercises — Phase 1
+    'exercise-machine-hip-adduction': ['reps', 'sets', 'load', 'time'],
+    'exercise-cable-hip-abduction': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-barbell-shrug': ['reps', 'sets', 'load', 'time'],
+    'exercise-prone-y-raise': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-cable-external-rotation': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-dumbbell-pullover': ['reps', 'sets', 'load', 'time'],
+    'exercise-tibialis-raise': ['reps', 'sets', 'load', 'time'],
+    'exercise-wrist-curl': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-reverse-wrist-curl': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-hammer-pronation-supination': ['reps', 'sets', 'load', 'bilateral', 'time'],
+    'exercise-plate-pinch-hold': ['hold', 'time', 'sets'],
+    'exercise-neck-extension': ['reps', 'sets', 'load', 'time'],
+    'exercise-neck-flexion': ['reps', 'sets', 'load', 'time'],
+    'exercise-lateral-neck-flexion': ['reps', 'sets', 'load', 'time'],
   };
 
   /// Template segments for sample templates

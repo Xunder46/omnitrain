@@ -71,6 +71,7 @@ class DemoRoutineSeed {
     required int orderIndex,
     required String effortKind,
     required String? exerciseId,
+    int? restSeconds,
   }) {
     return TemplateEffort(
       id: id,
@@ -78,6 +79,7 @@ class DemoRoutineSeed {
       orderIndex: orderIndex,
       effortKind: effortKind,
       exerciseId: exerciseId,
+      restSeconds: restSeconds,
       createdAtMs: _now(),
     );
   }
@@ -94,6 +96,7 @@ class DemoRoutineSeed {
     _easyRun(),
     _boxingRounds(),
     _mobilityFlow(),
+    _hitFullBody(),
   ];
 
   // ─── Routine 1: Push Day (resistance / barbell) ────────────────────────
@@ -648,6 +651,422 @@ class DemoRoutineSeed {
             unitId: MetricIds.unitSeconds,
             targetInt: durationSec,
           ),
+      ],
+    );
+  }
+
+  /// Helper for HIT Full Body: single rep-target per effort (no weight).
+  static DemoRoutineEffortSpec _repsOnlyEffortSpec({
+    required String templateId,
+    required String segmentId,
+    required int effortIndex,
+    required String exerciseId,
+    required String suffix,
+    required int targetReps,
+    required int restSeconds,
+  }) {
+    final effortId = 'demo-teff-$templateId-$suffix';
+    return DemoRoutineEffortSpec(
+      effort: _effort(
+        id: effortId,
+        templateSegmentId: segmentId,
+        orderIndex: effortIndex,
+        effortKind: 'set',
+        exerciseId: exerciseId,
+        restSeconds: restSeconds,
+      ),
+      targets: [
+        DemoRoutineTargetSpec(
+          metricId: MetricIds.reps,
+          setIndex: 0,
+          targetInt: targetReps,
+        ),
+      ],
+    );
+  }
+
+  /// Helper for HIT Full Body isometric holds.
+  ///
+  /// TODO(muscle-taxonomy): a hold runs on a count-up timer until the lifter
+  /// stops, so the duration target below is a placeholder the exercise cannot
+  /// actually enforce. It exists only because [DemoRoutinesValidator] requires
+  /// every demo effort to declare at least one target. Drop the target once
+  /// that rule is relaxed for isometric holds.
+  static DemoRoutineEffortSpec _holdEffortSpec({
+    required String templateId,
+    required String segmentId,
+    required int effortIndex,
+    required String exerciseId,
+    required String suffix,
+    required int targetSec,
+    required int restSeconds,
+  }) {
+    final effortId = 'demo-teff-$templateId-$suffix';
+    return DemoRoutineEffortSpec(
+      effort: _effort(
+        id: effortId,
+        templateSegmentId: segmentId,
+        orderIndex: effortIndex,
+        effortKind: 'drill',
+        exerciseId: exerciseId,
+        restSeconds: restSeconds,
+      ),
+      targets: [
+        DemoRoutineTargetSpec(
+          metricId: MetricIds.duration,
+          setIndex: 0,
+          unitId: MetricIds.unitSeconds,
+          targetInt: targetSec,
+        ),
+      ],
+    );
+  }
+
+  // ─── Routine 9: HIT Full Body (resistance / mixed compounds + isolation) ──
+
+  static DemoRoutineBundle _hitFullBody() {
+    const id = 'demo-template-hit-full-body';
+    const compoundSegId = 'demo-tseg-hit-full-body-compound';
+    const semiIsolatedSegId = 'demo-tseg-hit-full-body-semi-isolated';
+    const armsSegId = 'demo-tseg-hit-full-body-arms';
+    const isolationSegId = 'demo-tseg-hit-full-body-isolation';
+
+    return DemoRoutineBundle(
+      template: _template(
+        id: id,
+        name: 'HIT Full Body',
+        description:
+            'One working set per muscle, whole body in a single session. Ordered from largest compound movements to the smallest isolation work. Frequency: 2–3× per week. Progression: hit the top of the rep range, add load next session. Effort: 0–2 reps in reserve on every working set.',
+        modality: Modality.resistanceLifting,
+      ),
+      segments: [
+        // Segment 0: Compound (6 exercises, 5-8 reps, 180s rest)
+        DemoRoutineSegmentSpec(
+          segment: _segment(
+            id: compoundSegId,
+            templateId: id,
+            name: 'Compound',
+            segmentType: 'strength_sets',
+            orderIndex: 0,
+          ),
+          efforts: [
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: compoundSegId,
+              effortIndex: 0,
+              exerciseId: 'exercise-barbell-squat',
+              suffix: '01-squat',
+              targetReps: 5,
+              restSeconds: 180,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: compoundSegId,
+              effortIndex: 1,
+              exerciseId: 'exercise-romanian-deadlift-barbell',
+              suffix: '02-rdl',
+              targetReps: 5,
+              restSeconds: 180,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: compoundSegId,
+              effortIndex: 2,
+              exerciseId: 'exercise-pullup',
+              suffix: '03-pullup',
+              targetReps: 5,
+              restSeconds: 180,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: compoundSegId,
+              effortIndex: 3,
+              exerciseId: 'exercise-bench-press',
+              suffix: '04-bench',
+              targetReps: 5,
+              restSeconds: 180,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: compoundSegId,
+              effortIndex: 4,
+              exerciseId: 'exercise-overhead-press',
+              suffix: '05-ohp',
+              targetReps: 5,
+              restSeconds: 180,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: compoundSegId,
+              effortIndex: 5,
+              exerciseId: 'exercise-barbell-row',
+              suffix: '06-row',
+              targetReps: 5,
+              restSeconds: 180,
+            ),
+          ],
+        ),
+        // Segment 1: Semi-isolated (10 exercises, 8-12 reps, 90s rest)
+        DemoRoutineSegmentSpec(
+          segment: _segment(
+            id: semiIsolatedSegId,
+            templateId: id,
+            name: 'Semi-isolated',
+            segmentType: 'strength_sets',
+            orderIndex: 1,
+          ),
+          efforts: [
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 0,
+              exerciseId: 'exercise-barbell-hip-thrust',
+              suffix: '07-hip-thrust',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 1,
+              exerciseId: 'exercise-machine-hip-adduction',
+              suffix: '08-hip-add',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 2,
+              exerciseId: 'exercise-cable-hip-abduction',
+              suffix: '09-hip-abd',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 3,
+              exerciseId: 'exercise-barbell-shrug',
+              suffix: '10-shrug',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 4,
+              exerciseId: 'exercise-prone-y-raise',
+              suffix: '11-y-raise',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 5,
+              exerciseId: 'exercise-lateral-raise',
+              suffix: '12-lat-raise',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 6,
+              exerciseId: 'exercise-face-pull',
+              suffix: '13-face-pull',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 7,
+              exerciseId: 'exercise-cable-external-rotation',
+              suffix: '14-ext-rot',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 8,
+              exerciseId: 'exercise-dumbbell-pullover',
+              suffix: '15-pullover',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: semiIsolatedSegId,
+              effortIndex: 9,
+              exerciseId: 'exercise-back-extension',
+              suffix: '16-back-ext',
+              targetReps: 8,
+              restSeconds: 90,
+            ),
+          ],
+        ),
+        // Segment 2: Arms (3 exercises, 12-15 reps, 60s rest)
+        DemoRoutineSegmentSpec(
+          segment: _segment(
+            id: armsSegId,
+            templateId: id,
+            name: 'Arms',
+            segmentType: 'strength_sets',
+            orderIndex: 2,
+          ),
+          efforts: [
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: armsSegId,
+              effortIndex: 0,
+              exerciseId: 'exercise-barbell-curl',
+              suffix: '17-curl',
+              targetReps: 10,
+              restSeconds: 60,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: armsSegId,
+              effortIndex: 1,
+              exerciseId: 'exercise-hammer-curl',
+              suffix: '18-hammer',
+              targetReps: 10,
+              restSeconds: 60,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: armsSegId,
+              effortIndex: 2,
+              exerciseId: 'exercise-overhead-triceps-extension',
+              suffix: '19-tri-ext',
+              targetReps: 10,
+              restSeconds: 60,
+            ),
+          ],
+        ),
+        // Segment 3: Isolation (12 exercises, 15-25 reps, 45s rest)
+        DemoRoutineSegmentSpec(
+          segment: _segment(
+            id: isolationSegId,
+            templateId: id,
+            name: 'Isolation',
+            segmentType: 'strength_sets',
+            orderIndex: 3,
+          ),
+          efforts: [
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 0,
+              exerciseId: 'exercise-hanging-leg-raise',
+              suffix: '20-leg-raise',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _holdEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 1,
+              exerciseId: 'exercise-side-plank',
+              suffix: '21-side-plank',
+              targetSec: 30,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 2,
+              exerciseId: 'exercise-standing-calf-raise',
+              suffix: '22-calf-stand',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 3,
+              exerciseId: 'exercise-seated-calf-raise',
+              suffix: '23-calf-sit',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 4,
+              exerciseId: 'exercise-tibialis-raise',
+              suffix: '24-tibialis',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 5,
+              exerciseId: 'exercise-wrist-curl',
+              suffix: '25-wrist-curl',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 6,
+              exerciseId: 'exercise-reverse-wrist-curl',
+              suffix: '26-wrist-rev',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 7,
+              exerciseId: 'exercise-hammer-pronation-supination',
+              suffix: '27-hammer-pro',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _holdEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 8,
+              exerciseId: 'exercise-plate-pinch-hold',
+              suffix: '28-pinch-hold',
+              targetSec: 20,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 9,
+              exerciseId: 'exercise-neck-extension',
+              suffix: '29-neck-ext',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 10,
+              exerciseId: 'exercise-neck-flexion',
+              suffix: '30-neck-flex',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+            _repsOnlyEffortSpec(
+              templateId: id,
+              segmentId: isolationSegId,
+              effortIndex: 11,
+              exerciseId: 'exercise-lateral-neck-flexion',
+              suffix: '31-neck-lat',
+              targetReps: 15,
+              restSeconds: 45,
+            ),
+          ],
+        ),
       ],
     );
   }
