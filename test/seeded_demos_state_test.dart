@@ -29,6 +29,9 @@ class _RoutinesFakeCatalogSource implements CatalogSource {
   final Map<String, List<String>> exerciseCapabilities;
 
   @override
+  List<MuscleGroup> get muscleGroups => SeedData.sampleMuscleGroups;
+
+  @override
   final Map<String, List<String>> exerciseMuscleGroups;
 
   @override

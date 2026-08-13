@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/constants/catalog_version.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/models/demo_routine_spec.dart';
@@ -31,6 +32,9 @@ class _RoutinesFakeCatalogSource implements CatalogSource {
 
   @override
   final Map<String, List<String>> exerciseCapabilities;
+
+  @override
+  List<MuscleGroup> get muscleGroups => SeedData.sampleMuscleGroups;
 
   @override
   final Map<String, List<String>> exerciseMuscleGroups;
@@ -251,11 +255,13 @@ void main() {
 
   group('Seeded Demo Routines — Validator', () {
     final exerciseIds = SeedData.sampleExercises.map((e) => e.id).toSet();
+    final capabilities = SeedData.exerciseCapabilityRelationships;
 
     test('V-001: every demo exerciseId resolves to the bundled catalog', () {
       final result = DemoRoutinesValidator.validate(
         SeedData.sampleDemoRoutineBundles,
         exerciseIds,
+        exerciseCapabilities: capabilities,
       );
       expect(
         result.isValid,
@@ -270,6 +276,7 @@ void main() {
       final result = DemoRoutinesValidator.validate(
         SeedData.sampleDemoRoutineBundles,
         exerciseIds,
+        exerciseCapabilities: capabilities,
       );
       expect(
         result.isValid,
@@ -278,6 +285,67 @@ void main() {
             'every demo effort must declare its kind-appropriate targets; '
             'failures: ${result.failures.join(", ")}',
       );
+    });
+
+    test('V-005: a hold-capable drill may declare no targets at all', () {
+      final hold = _syntheticOneExerciseDemo(
+        exerciseId: 'exercise-side-plank',
+        effortKind: 'drill',
+        metrics: const [],
+      );
+
+      // exercise-side-plank carries the `hold` capability, so a count-up
+      // hold with nothing to preset is valid.
+      expect(
+        capabilities['exercise-side-plank'],
+        contains(ExerciseCapability.hold),
+        reason: 'fixture assumption: side plank must be hold-capable',
+      );
+
+      final result = DemoRoutinesValidator.validate(
+        [hold],
+        exerciseIds,
+        exerciseCapabilities: capabilities,
+      );
+      expect(
+        result.isValid,
+        isTrue,
+        reason: 'failures: ${result.failures.join(", ")}',
+      );
+    });
+
+    test('V-006: a drill that is not a hold still requires a duration', () {
+      final drill = _syntheticOneExerciseDemo(
+        exerciseId: 'exercise-bjj-drilling',
+        effortKind: 'drill',
+        metrics: const [],
+      );
+
+      expect(
+        capabilities['exercise-bjj-drilling'] ?? const <String>[],
+        isNot(contains(ExerciseCapability.hold)),
+        reason: 'fixture assumption: bjj drilling must not be hold-capable',
+      );
+
+      final result = DemoRoutinesValidator.validate(
+        [drill],
+        exerciseIds,
+        exerciseCapabilities: capabilities,
+      );
+      expect(result.isValid, isFalse);
+    });
+
+    test('V-007: without capabilities, every drill needs a duration', () {
+      final hold = _syntheticOneExerciseDemo(
+        exerciseId: 'exercise-side-plank',
+        effortKind: 'drill',
+        metrics: const [],
+      );
+
+      // The exemption is opt-in: a caller that cannot supply capabilities
+      // keeps the stricter rule rather than silently relaxing it.
+      final result = DemoRoutinesValidator.validate([hold], exerciseIds);
+      expect(result.isValid, isFalse);
     });
 
     test('V-003: validator flags a dangling exercise reference', () {

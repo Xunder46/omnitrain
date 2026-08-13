@@ -685,20 +685,19 @@ class DemoRoutineSeed {
     );
   }
 
-  /// Helper for HIT Full Body isometric holds.
+  /// Helper for HIT Full Body isometric holds: no target.
   ///
-  /// TODO(muscle-taxonomy): a hold runs on a count-up timer until the lifter
-  /// stops, so the duration target below is a placeholder the exercise cannot
-  /// actually enforce. It exists only because [DemoRoutinesValidator] requires
-  /// every demo effort to declare at least one target. Drop the target once
-  /// that rule is relaxed for isometric holds.
+  /// A hold runs on a count-up timer until the lifter stops, so there is
+  /// nothing to preset — a duration target would assert a countdown the
+  /// exercise does not have. Load stays adjustable via the drill editor.
+  /// [DemoRoutinesValidator] exempts `hold`-capable exercises from the
+  /// drill duration-target rule for exactly this reason.
   static DemoRoutineEffortSpec _holdEffortSpec({
     required String templateId,
     required String segmentId,
     required int effortIndex,
     required String exerciseId,
     required String suffix,
-    required int targetSec,
     required int restSeconds,
   }) {
     final effortId = 'demo-teff-$templateId-$suffix';
@@ -711,14 +710,7 @@ class DemoRoutineSeed {
         exerciseId: exerciseId,
         restSeconds: restSeconds,
       ),
-      targets: [
-        DemoRoutineTargetSpec(
-          metricId: MetricIds.duration,
-          setIndex: 0,
-          unitId: MetricIds.unitSeconds,
-          targetInt: targetSec,
-        ),
-      ],
+      targets: const [],
     );
   }
 
@@ -972,7 +964,6 @@ class DemoRoutineSeed {
               effortIndex: 1,
               exerciseId: 'exercise-side-plank',
               suffix: '21-side-plank',
-              targetSec: 30,
               restSeconds: 45,
             ),
             _repsOnlyEffortSpec(
@@ -1035,7 +1026,6 @@ class DemoRoutineSeed {
               effortIndex: 8,
               exerciseId: 'exercise-plate-pinch-hold',
               suffix: '28-pinch-hold',
-              targetSec: 20,
               restSeconds: 45,
             ),
             _repsOnlyEffortSpec(

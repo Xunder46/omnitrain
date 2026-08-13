@@ -47,6 +47,11 @@ class _FakeCatalogSource implements CatalogSource {
   @override
   final Map<String, List<String>> exerciseCapabilities;
 
+  // No test varies the group list, so the fake mirrors the bundled one
+  // directly rather than threading it through the constructor.
+  @override
+  List<MuscleGroup> get muscleGroups => SeedData.sampleMuscleGroups;
+
   @override
   final Map<String, List<String>> exerciseMuscleGroups;
 

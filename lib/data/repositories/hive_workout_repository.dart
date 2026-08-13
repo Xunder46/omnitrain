@@ -1583,6 +1583,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<void> upsertMuscleGroup(MuscleGroup group) async {
+    await _muscleGroupsBox.put(group.id, group.toMap());
+  }
+
+  @override
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
     final muscleGroupIds = _asStringList(
       _exerciseMuscleGroupsBox.get(exerciseId),

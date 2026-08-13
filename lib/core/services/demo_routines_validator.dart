@@ -1,3 +1,4 @@
+import '../../core/constants/capability.dart';
 import '../../core/constants/metric_ids.dart';
 import '../../core/models/demo_routine_spec.dart';
 
@@ -51,11 +52,19 @@ class DemoRoutinesValidator {
   ///   - `set` effort → at least one `reps` target
   ///   - `timed` effort → at least one `duration` target
   ///   - `round` effort → both `rounds` and `round-duration` targets
-  ///   - `drill` effort → at least one `duration` target
+  ///   - `drill` effort → at least one `duration` target, *unless* its
+  ///     exercise carries the `hold` capability
+  ///
+  /// The hold exemption exists because an isometric hold runs on a count-up
+  /// timer until the lifter stops. There is nothing to preset, so a duration
+  /// target would assert a countdown the exercise does not have. Pass
+  /// [exerciseCapabilities] (`exerciseId → capability keys`) to enable the
+  /// exemption; omitting it keeps the stricter rule for every drill.
   static DemoRoutinesValidationResult validate(
     List<DemoRoutineBundle> bundles,
-    Set<String> exerciseIds,
-  ) {
+    Set<String> exerciseIds, {
+    Map<String, List<String>> exerciseCapabilities = const {},
+  }) {
     final failures = <String>[];
 
     for (final bundle in bundles) {
@@ -126,6 +135,11 @@ class DemoRoutinesValidator {
             effortId: effort.id,
             effortKind: effort.effortKind,
             targets: effortSpec.targets,
+            isHold:
+                exerciseCapabilities[effort.exerciseId]?.contains(
+                  ExerciseCapability.hold,
+                ) ??
+                false,
             failures: failures,
           );
         }
@@ -143,8 +157,15 @@ class DemoRoutinesValidator {
     required String effortId,
     required String effortKind,
     required List<DemoRoutineTargetSpec> targets,
+    required bool isHold,
     required List<String> failures,
   }) {
+    // An isometric hold is measured by a count-up timer, so a targetless
+    // hold is correct rather than incomplete.
+    if (targets.isEmpty && isHold && effortKind == 'drill') {
+      return;
+    }
+
     if (targets.isEmpty) {
       failures.add(
         '$templateId / $segmentId / $effortId: $effortKind effort must '
@@ -184,7 +205,7 @@ class DemoRoutinesValidator {
         }
         break;
       case 'drill':
-        if (!metricIds.contains(MetricIds.duration)) {
+        if (!isHold && !metricIds.contains(MetricIds.duration)) {
           failures.add(
             '$templateId / $segmentId / $effortId: drill effort must declare '
             'a metric-duration target',

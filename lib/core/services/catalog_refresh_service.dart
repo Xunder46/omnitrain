@@ -58,6 +58,7 @@ class CatalogRefreshService {
 
     await _refreshExercises();
     await _refreshExerciseCapabilities();
+    await _refreshMuscleGroups();
     await _refreshExerciseMuscleGroups();
     await _refreshFoodCatalog();
     await _refreshDemoRoutines();
@@ -101,6 +102,22 @@ class CatalogRefreshService {
       final bundled = List<String>.from(entry.value);
       if (!_listEqualsIgnoreOrder(existing, bundled)) {
         await _repository.setExerciseCapabilities(exerciseId, bundled);
+      }
+    }
+  }
+
+  /// Add muscle groups the device is missing and patch renamed ones.
+  ///
+  /// Runs before [_refreshExerciseMuscleGroups] so a relationship written by
+  /// that step always resolves. There is no touched-entry check here: muscle
+  /// groups are app-authored reference data with no user-editing surface.
+  Future<void> _refreshMuscleGroups() async {
+    final existing = {for (final g in await _repository.getMuscleGroups()) g.id: g};
+
+    for (final bundled in _source.muscleGroups) {
+      final current = existing[bundled.id];
+      if (current == null || current.name != bundled.name) {
+        await _repository.upsertMuscleGroup(bundled);
       }
     }
   }

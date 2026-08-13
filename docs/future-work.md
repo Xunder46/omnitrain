@@ -26,13 +26,13 @@ trains legs" impossible to answer correctly, and it makes per-muscle volume
 analytics unreliable — a session mixing both levels double-counts or
 under-counts depending on how the exercises happen to be tagged.
 
-### What is being done instead
+### What was done instead (2026-08-12)
 
-The flat list is being completed rather than restructured: missing groups added
+The flat list was completed rather than restructured: missing groups added
 (calves, forearms, adductors, neck, traps), `muscle-arms` and `muscle-legs`
-given real definitions, and the catalog's exercise→muscle mappings swept and
-corrected. That fixes the immediate gap — several exercises have no
-anatomically correct group to point at — without touching the model.
+given real definitions, and 28 exercise→muscle mappings corrected. That fixed
+the immediate gap — several exercises had no anatomically correct group to
+point at — without touching the model.
 
 Chosen deliberately: the flat fix is contained to seed data plus a catalog
 refresh step, while the hierarchy change reaches into exercise ranking,

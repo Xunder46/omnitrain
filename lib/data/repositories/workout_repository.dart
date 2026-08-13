@@ -115,6 +115,13 @@ abstract class WorkoutRepository {
 
   // Muscle Groups
   Future<List<MuscleGroup>> getMuscleGroups();
+
+  /// Insert [group] if absent, or update it in place when the bundled
+  /// definition differs. Used by the catalog refresh so groups added after
+  /// a device's first launch still reach it; without this, an exercise can
+  /// reference a group the device has never heard of.
+  Future<void> upsertMuscleGroup(MuscleGroup group);
+
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId);
   Future<void> setExerciseMuscleGroups(
     String exerciseId,

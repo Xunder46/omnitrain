@@ -30,9 +30,14 @@
 ///   `hidden: true` because the calorie-derivation model does not represent
 ///   alcohol — see `food_catalog_load_test.dart` S-007), we bumped to `8`
 ///   so existing installs receive the new hidden state on next launch.
+///   When the HIT Full Body routine shipped and the muscle-group taxonomy was
+///   completed (calves, forearms, adductors, neck, traps added; `muscle-arms`
+///   and `muscle-legs` finally defined rather than only referenced; the
+///   exercise→muscle mappings swept), we bumped to `9` so existing installs
+///   pick up the new groups and corrected mappings on next launch.
 library;
 
-const int bundledCatalogVersion = 8;
+const int bundledCatalogVersion = 9;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

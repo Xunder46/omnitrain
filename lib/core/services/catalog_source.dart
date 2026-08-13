@@ -22,6 +22,12 @@ abstract class CatalogSource {
   /// Bundled exercise capabilities: `exerciseId → list of capability keys`.
   Map<String, List<String>> get exerciseCapabilities;
 
+  /// Bundled muscle groups (`MuscleGroup.id` is the storage key).
+  ///
+  /// Refreshed before [exerciseMuscleGroups] so a relationship never points
+  /// at a group the device does not yet have.
+  List<MuscleGroup> get muscleGroups;
+
   /// Bundled exercise / muscle-group relationships: `exerciseId → muscleGroupIds`.
   Map<String, List<String>> get exerciseMuscleGroups;
 

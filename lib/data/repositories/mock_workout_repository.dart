@@ -861,6 +861,11 @@ class MockWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<void> upsertMuscleGroup(MuscleGroup group) async {
+    _muscleGroups[group.id] = group;
+  }
+
+  @override
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId) async {
     final muscleGroupIds = _exerciseMuscleGroups[exerciseId] ?? [];
     return muscleGroupIds
