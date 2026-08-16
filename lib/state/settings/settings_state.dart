@@ -190,14 +190,32 @@ class SettingsState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Resolves a persisted theme name to an [AppTheme], falling back to the
+  /// canonical theme for a missing or unrecognised value.
+  static AppTheme _parseTheme(String? savedTheme) {
+    if (savedTheme == null) return AppTheme.abyssalNeon;
+    return AppTheme.values.firstWhere(
+      (t) => t.name == savedTheme,
+      orElse: () => AppTheme.abyssalNeon,
+    );
+  }
+
+  /// Reads the saved theme straight from the repository, without
+  /// constructing a [SettingsState].
+  ///
+  /// The startup path uses this to adopt the user's theme as soon as the
+  /// repository is up — before the slow part of startup (the catalog
+  /// refresh, which can hit the network) — so the preparing screen renders
+  /// in their palette instead of flashing the default. It shares the key
+  /// and the parsing with [_loadFromPrefs] so the two cannot drift.
+  static Future<AppTheme> readPersistedTheme(WorkoutRepository repository) async {
+    return _parseTheme(await repository.getPreferenceString(_themeKey));
+  }
+
   Future<void> _loadFromPrefs() async {
-    final savedTheme = await _repository.getPreferenceString(_themeKey);
-    if (savedTheme != null) {
-      _appTheme = AppTheme.values.firstWhere(
-        (t) => t.name == savedTheme,
-        orElse: () => AppTheme.abyssalNeon,
-      );
-    }
+    _appTheme = _parseTheme(
+      await _repository.getPreferenceString(_themeKey),
+    );
 
     final savedWeightUnit = await _repository.getPreferenceString(
       _preferredWeightUnitKey,

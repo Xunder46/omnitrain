@@ -2214,6 +2214,10 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
 
         expect(find.text('Start New Session?'), findsOneWidget);
+        expect(
+          find.text('Your current session will be discarded and cannot be recovered.'),
+          findsOneWidget,
+        );
         expect(find.byType(MyRoutinesScreen), findsNothing);
       },
     );

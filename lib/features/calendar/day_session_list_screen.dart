@@ -369,8 +369,9 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
   Future<void> _deletePlanned(BuildContext context, PlannedSession ps) async {
     final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      title: 'Delete Session',
-      body: Text('Delete "${ps.title ?? 'this planned session'}"?'),
+      title: ps.title != null
+          ? 'Delete "${ps.title}"?'
+          : 'Delete this planned session?',
       dismissLabel: 'Cancel',
       confirmLabel: 'Delete',
       dismissKey: const Key('day-session-delete-cancel'),

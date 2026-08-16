@@ -229,9 +229,12 @@ void main() {
                     onPressed: () async {
                       await showDialog<bool>(
                         context: context,
+                        // `body` is omitted entirely, not passed as null.
+                        // Passing `body: null` would still compile if the
+                        // parameter were `required Widget?`, so omission is
+                        // what actually proves the parameter is optional.
                         builder: (context) => ConfirmationDialog.twoChoice(
                           title: 'Confirm Action?',
-                          body: null, // No body
                           dismissLabel: 'Cancel',
                           confirmLabel: 'Proceed',
                           dismissKey: const Key('test-dismiss'),

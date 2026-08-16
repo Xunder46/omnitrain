@@ -266,22 +266,19 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                 icon: const Icon(Icons.delete_outline),
                                 onPressed: () async {
                                   final effortId = exercise['id'] as String;
-                                  final confirmed = await showDialog<bool>(
+                                  final confirmed = await ConfirmationDialog.showTwoChoice(
                                     context: context,
-                                    barrierDismissible: true,
-                                    builder: (context) => ConfirmationDialog.twoChoice(
-                                      title: 'Remove Exercise',
-                                      body: Text(
-                                        'Remove ${exercise['name']} from this workout?',
-                                      ),
-                                      dismissLabel: 'Cancel',
-                                      confirmLabel: 'Remove',
-                                      dismissKey: const Key('session-overview-remove-exercise-cancel'),
-                                      confirmKey: const Key('session-overview-remove-exercise-confirm'),
-                                      isDestructive: true,
+                                    title: 'Remove Exercise',
+                                    body: Text(
+                                      'Remove ${exercise['name']} from this workout?',
                                     ),
+                                    dismissLabel: 'Cancel',
+                                    confirmLabel: 'Remove',
+                                    dismissKey: const Key('session-overview-remove-exercise-cancel'),
+                                    confirmKey: const Key('session-overview-remove-exercise-confirm'),
+                                    isDestructive: true,
                                   );
-                                  if (confirmed == true && mounted) {
+                                  if (confirmed && mounted) {
                                     await widget.workoutState
                                         .removeExerciseFromSession(effortId);
                                     await _initializeSession();

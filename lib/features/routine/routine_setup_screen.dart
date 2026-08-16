@@ -750,23 +750,18 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   }
 
   Future<void> _removeExercise(String templateEffortId) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      barrierDismissible: true,
-      builder: (context) {
-        return ConfirmationDialog.twoChoice(
-          title: 'Remove Exercise?',
-          body: const Text('This exercise will be removed from the routine.'),
-          dismissLabel: 'Cancel',
-          confirmLabel: 'Remove',
-          dismissKey: const Key('routine-setup-remove-exercise-cancel'),
-          confirmKey: const Key('routine-setup-remove-exercise-confirm'),
-          isDestructive: true,
-        );
-      },
+      title: 'Remove Exercise?',
+      body: const Text('This exercise will be removed from the routine.'),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Remove',
+      dismissKey: const Key('routine-setup-remove-exercise-cancel'),
+      confirmKey: const Key('routine-setup-remove-exercise-confirm'),
+      isDestructive: true,
     );
 
-    if (confirmed == true) {
+    if (confirmed) {
       widget.routineState.removeExerciseFromRoutine(templateEffortId);
       if (!mounted) return;
       final remaining = widget.routineState.currentEfforts.length;

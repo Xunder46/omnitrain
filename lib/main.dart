@@ -20,6 +20,7 @@ import 'state/routine/routine_state.dart';
 import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
+import 'core/constants/omni_theme.dart';
 import 'state/settings/settings_state.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
@@ -205,6 +206,13 @@ Future<Widget> runStartup({
   // Initialize repository (injectable, can be swapped per environment)
   final repository = await createRepository();
   await repository.initialize();
+
+  // Adopt the user's saved theme as soon as it is readable — before the
+  // catalog refresh below, which can hit the network. `MyApp` sets this
+  // again from `SettingsState`; doing it here only moves the moment
+  // earlier, so the preparing screen renders in the user's palette
+  // instead of flashing the default theme for the length of startup.
+  OmniTheme.activeTheme = await SettingsState.readPersistedTheme(repository);
 
   // Reconcile the device's stored catalog against the bundled
   // catalog. Runs at app start (after repository.initialize, before

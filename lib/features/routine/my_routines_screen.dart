@@ -296,22 +296,16 @@ Future<bool> showDeleteRoutineDialog(
             '${plannedCount == 1 ? '' : 's'} that will also be removed. This action cannot be undone.'
       : 'This action cannot be undone.';
 
-  final confirmed = await showDialog<bool>(
+  return await ConfirmationDialog.showTwoChoice(
     context: context,
-    barrierDismissible: true,
-    builder: (dialogContext) {
-      return ConfirmationDialog.twoChoice(
-        title: 'Delete "$routineName"?',
-        body: Text(bodyText),
-        dismissLabel: 'Cancel',
-        confirmLabel: 'Delete',
-        dismissKey: const Key('routine-delete-cancel'),
-        confirmKey: const Key('routine-delete-confirm'),
-        isDestructive: true,
-      );
-    },
+    title: 'Delete "$routineName"?',
+    body: Text(bodyText),
+    dismissLabel: 'Cancel',
+    confirmLabel: 'Delete',
+    dismissKey: const Key('routine-delete-cancel'),
+    confirmKey: const Key('routine-delete-confirm'),
+    isDestructive: true,
   );
-  return confirmed == true;
 }
 
 /// Renders a single routine card with a body hit-region that opens the

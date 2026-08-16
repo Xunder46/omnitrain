@@ -55,7 +55,20 @@ typedef OmniThemeColors = ({
 /// Core theme constants for OMNITRAIN biomechanical training system
 /// Centralized color palette and design tokens
 class OmniTheme {
-  static AppTheme activeTheme = AppTheme.abyssalNeon;
+  /// The active theme, exposed as a listenable so surfaces that render
+  /// *before* `MyApp` mounts can adopt the user's saved theme mid-startup
+  /// rather than sitting on the default until the whole runner finishes.
+  /// [StartupPreparingScreen] is the only such surface today.
+  ///
+  /// Assignment stays source-compatible: `OmniTheme.activeTheme = x` works
+  /// exactly as it did when this was a plain field.
+  static final ValueNotifier<AppTheme> activeThemeListenable =
+      ValueNotifier<AppTheme>(AppTheme.abyssalNeon);
+
+  static AppTheme get activeTheme => activeThemeListenable.value;
+
+  static set activeTheme(AppTheme theme) =>
+      activeThemeListenable.value = theme;
 
   // Unified macro palette colors (abyssalNeon stripMacros base values)
   // Applied to both macroChart and stripMacros across all themes

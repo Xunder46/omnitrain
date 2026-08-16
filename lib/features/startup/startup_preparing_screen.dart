@@ -25,7 +25,18 @@ class StartupPreparingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = OmniTheme.colorsForTheme(OmniTheme.activeTheme).primary;
+    // This screen is already mounted when startup adopts the user's saved
+    // theme, so it has to listen rather than read once — otherwise it would
+    // stay on the default palette for the whole run. The listenable also
+    // covers the gradient below, which resolves its own tokens.
+    return ValueListenableBuilder<AppTheme>(
+      valueListenable: OmniTheme.activeThemeListenable,
+      builder: (context, activeTheme, _) => _build(activeTheme),
+    );
+  }
+
+  Widget _build(AppTheme activeTheme) {
+    final accent = OmniTheme.colorsForTheme(activeTheme).primary;
 
     return Scaffold(
       // The gradient covers the status bar and any safe-area insets,

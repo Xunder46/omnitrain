@@ -367,7 +367,7 @@ void main() {
 
   test('Malachite Core secondary contrast is verified by palette contract', () {
     // D-16: Re-pinned at 3.0 per product ruling.
-    // Malachite Core's secondary (#0F7A38 from D-14) sits at 3.11:1 vs surface.
+    // Malachite Core's secondary (#10863E per D-14) sits at 3.11:1 vs surface.
     // Contrast thresholds for secondary vs surface are covered by the
     // authoritative palette_legibility_contract_test.dart (check 8), which applies
     // to all themes uniformly. This test remains as a sanity check that
@@ -375,6 +375,36 @@ void main() {
     final colors = OmniTheme.colorsForTheme(AppTheme.malachiteCore);
     final contrast = _contrastRatio(colors.secondary, colors.surface);
     expect(contrast, greaterThanOrEqualTo(3.0));
+  });
+
+  // ─── Startup theme adoption ───────────────────────────────────────────────
+
+  group('readPersistedTheme', () {
+    test('returns the saved theme without constructing a SettingsState', () async {
+      final repo = MockWorkoutRepository();
+      await repo.initialize();
+
+      final settings = SettingsState(repo, fakePreferencesService());
+      await settings.initialize();
+      await settings.setAppTheme(AppTheme.crimsonDojo);
+
+      // The startup path reads through this before any SettingsState exists,
+      // so it must resolve the same key and value the state writes.
+      expect(
+        await SettingsState.readPersistedTheme(repo),
+        AppTheme.crimsonDojo,
+      );
+    });
+
+    test('falls back to the canonical theme when nothing is saved', () async {
+      final repo = MockWorkoutRepository();
+      await repo.initialize();
+
+      expect(
+        await SettingsState.readPersistedTheme(repo),
+        AppTheme.abyssalNeon,
+      );
+    });
   });
 
   // ─── Sound preferences — defaults ─────────────────────────────────────────

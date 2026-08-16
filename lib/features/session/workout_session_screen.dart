@@ -1163,8 +1163,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           title: 'Remove Exercise?',
           body: Text(
             'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
-            'Deleting it will remove the entire exercise from your session.\n\n'
-            'Continue?',
+            'Deleting it will remove the entire exercise from your session.',
           ),
           dismissLabel: 'Cancel',
           confirmLabel: 'Remove',

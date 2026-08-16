@@ -99,16 +99,13 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
       return;
     }
 
-    final action = await showDialog<UnsavedChangesAction>(
+    final action = await ConfirmationDialog.showUnsavedChanges(
       context: context,
-      barrierDismissible: true,
-      builder: (context) => ConfirmationDialog.threeChoice(
-        title: 'Unsaved changes',
-        body: 'You have unsaved edits. Save them or discard to return to the summary.',
-        keepEditingKey: const Key('session-edit-unsaved-keep'),
-        discardKey: const Key('session-edit-unsaved-discard'),
-        saveKey: const Key('session-edit-unsaved-save'),
-      ),
+      title: 'Unsaved changes',
+      body: 'You have unsaved edits. Save them or discard to return to the summary.',
+      keepEditingKey: const Key('session-edit-unsaved-keep'),
+      discardKey: const Key('session-edit-unsaved-discard'),
+      saveKey: const Key('session-edit-unsaved-save'),
     );
 
     if (!mounted) return;
@@ -117,7 +114,6 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
         await _saveEditChanges();
       case UnsavedChangesAction.discard:
         await _discardEditChanges();
-      case null:
       case UnsavedChangesAction.keepEditing:
         break; // stay on screen
     }

@@ -29,7 +29,7 @@ class ConfirmationDialog {
   static Future<bool> showTwoChoice({
     required BuildContext context,
     required String title,
-    required Widget? body,
+    Widget? body,
     required String dismissLabel,
     required String confirmLabel,
     required Key dismissKey,
@@ -84,7 +84,7 @@ class ConfirmationDialog {
   /// This builder is primarily for testing.
   static Widget twoChoice({
     required String title,
-    required Widget? body,
+    Widget? body,
     required String dismissLabel,
     required String confirmLabel,
     required Key dismissKey,
@@ -127,7 +127,7 @@ class ConfirmationDialog {
 class _TwoChoiceDialog extends StatelessWidget {
   const _TwoChoiceDialog({
     required this.title,
-    required this.body,
+    this.body,
     required this.dismissLabel,
     required this.confirmLabel,
     required this.dismissKey,
