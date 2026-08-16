@@ -122,11 +122,11 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
     // centered in the circle.
     final innerPadding = (widget.tileSize - widget.size) / 2;
 
-    // Circle surface: subtle white overlay (matches the
-    // `OmniTheme.colors.surfaceBorder` token value, 0x0FFFFFFF = ~6% white)
-    // so the button has presence on the dark navy header without
-    // introducing a new color. The 1px `surfaceBorder` ring reinforces the
-    // circle edge. The 3D feel comes from `OmniTheme.softShadow` underneath.
+    // Circle edge: a single-width `surfaceBorder` ring, the same weight every
+    // other surface in the app draws its border at. It was previously drawn at
+    // double width, which read as heavy once the theme re-anchoring raised the
+    // `surfaceBorder` token's opacity. The 3D feel comes from
+    // `OmniTheme.softShadow` underneath.
     final tile = Container(
       width: widget.tileSize,
       height: widget.tileSize,
@@ -135,7 +135,7 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
         color: const Color.fromARGB(0, 0, 0, 0),
         border: Border.all(
           color: themeColors.surfaceBorder,
-          width: OmniTheme.surfaceBorderWidth * 2,
+          width: OmniTheme.surfaceBorderWidth,
         ),
         boxShadow: [OmniTheme.softShadow],
       ),

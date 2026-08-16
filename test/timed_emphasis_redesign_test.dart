@@ -37,6 +37,8 @@ Widget _themeWrappedApp({required Widget home, required AppTheme theme}) {
       textPrimary: colors.textDominant,
       textSecondary: colors.textSecondary,
       divider: colors.divider,
+      onPrimary: getOnPrimaryForTheme(theme),
+      onSecondary: getOnSecondaryForTheme(theme),
     ),
     home: home,
   );

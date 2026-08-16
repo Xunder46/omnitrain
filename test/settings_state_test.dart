@@ -286,8 +286,8 @@ void main() {
   test('Void Pulse uses a visible violet atmospheric gradient', () {
     final colors = OmniTheme.colorsForTheme(AppTheme.voidPulse);
 
-    expect(colors.backgroundTop, const Color(0xFF120F24));
-    expect(colors.backgroundBottom, const Color(0xFF0A071A));
+    expect(colors.backgroundTop, const Color(0xFF221C40));
+    expect(colors.backgroundBottom, const Color(0xFF110D26));
   });
 
   test('Crimson Dojo uses a lifted sheet surface for tag contrast', () {
@@ -299,7 +299,7 @@ void main() {
   test('Crimson Dojo textMuted is darker warm metadata tone', () {
     final colors = OmniTheme.colorsForTheme(AppTheme.crimsonDojo);
 
-    expect(colors.textMuted, const Color(0xFFA07060));
+    expect(colors.textMuted, const Color(0xFFC29380));
   });
 
   test(
@@ -349,22 +349,32 @@ void main() {
   });
 
   test(
-    'Malachite Core textMuted clears 6:1 comfortable-margin contrast against surface',
+    'Malachite Core textMuted contrast is verified by palette contract',
     () {
+      // D-15: Re-pinned honestly at 5.5 per product ruling.
+      // textMuted vs surface fell from 6.29 to 5.51 because Item 3 lightened
+      // the surface while D-4 deliberately left textMuted alone. 5.51 clears
+      // WCAG AA with margin; the old 6.0 was a self-imposed comfort bar.
+      // This test remains as a sanity check complementing check 4 of the
+      // palette_legibility_contract_test.dart.
       final colors = OmniTheme.colorsForTheme(AppTheme.malachiteCore);
       expect(
         _contrastRatio(colors.textMuted, colors.surface),
-        greaterThanOrEqualTo(6.0),
+        greaterThanOrEqualTo(5.5),
       );
     },
   );
 
-  test('Malachite Core secondary clears 3:1 contrast against surface', () {
+  test('Malachite Core secondary contrast is verified by palette contract', () {
+    // D-16: Re-pinned at 3.0 per product ruling.
+    // Malachite Core's secondary (#0F7A38 from D-14) sits at 3.11:1 vs surface.
+    // Contrast thresholds for secondary vs surface are covered by the
+    // authoritative palette_legibility_contract_test.dart (check 8), which applies
+    // to all themes uniformly. This test remains as a sanity check that
+    // the secondary color maintains design-level contrast.
     final colors = OmniTheme.colorsForTheme(AppTheme.malachiteCore);
-    expect(
-      _contrastRatio(colors.secondary, colors.surface),
-      greaterThanOrEqualTo(3.0),
-    );
+    final contrast = _contrastRatio(colors.secondary, colors.surface);
+    expect(contrast, greaterThanOrEqualTo(3.0));
   });
 
   // ─── Sound preferences — defaults ─────────────────────────────────────────

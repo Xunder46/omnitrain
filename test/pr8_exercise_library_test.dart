@@ -378,6 +378,37 @@ void main() {
       );
     });
 
+    testWidgets('custom-only toggle carries no local colour overrides', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Every colour resolves through the theme's ColorScheme roles. The
+      // constructor variant is pinned separately by the switch-consistency
+      // contract in test/switch_consistency_contract_test.dart — widget-type
+      // assertions cannot see it, because `SwitchListTile.adaptive` and
+      // `SwitchListTile` build the same widget tree on every platform.
+      final tile = tester.widget<SwitchListTile>(
+        find.byKey(const Key('exercise_library_custom_only_toggle')),
+      );
+      expect(tile.activeColor, isNull);
+      expect(tile.activeTrackColor, isNull);
+      expect(tile.inactiveThumbColor, isNull);
+      expect(tile.inactiveTrackColor, isNull);
+    });
+
     testWidgets('custom-only toggle filters the list', (
       WidgetTester tester,
     ) async {

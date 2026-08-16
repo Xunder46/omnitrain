@@ -6229,6 +6229,8 @@ void main() {
           textPrimary: const Color(0xFFE6EDF3),
           textSecondary: forgeTokens.textMuted,
           divider: forgeTokens.divider,
+          onPrimary: getOnPrimaryForTheme(AppTheme.forgeEmber),
+          onSecondary: getOnSecondaryForTheme(AppTheme.forgeEmber),
         );
 
         await tester.pumpWidget(
@@ -6397,6 +6399,8 @@ void main() {
           textPrimary: const Color(0xFFE6EDF3),
           textSecondary: forgeTokens.textMuted,
           divider: forgeTokens.divider,
+          onPrimary: getOnPrimaryForTheme(AppTheme.forgeEmber),
+          onSecondary: getOnSecondaryForTheme(AppTheme.forgeEmber),
         );
 
         await tester.pumpWidget(
@@ -9487,6 +9491,8 @@ void main() {
                 textPrimary: const Color(0xFFE6EDF3),
                 textSecondary: colors.textMuted,
                 divider: colors.divider,
+                onPrimary: getOnPrimaryForTheme(appTheme),
+                onSecondary: getOnSecondaryForTheme(appTheme),
               ),
               home: WorkoutSessionScreen(
                 workoutState: workoutState,

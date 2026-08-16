@@ -1709,7 +1709,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       filledButtonTheme: FilledButtonThemeData(
         style: ButtonStyle(
           backgroundColor: WidgetStatePropertyAll(themeColors.primary),
-          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          foregroundColor: WidgetStatePropertyAll(theme.colorScheme.onPrimary),
         ),
       ),
     );

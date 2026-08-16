@@ -70,15 +70,15 @@ class OmniTheme {
         return (
           backgroundTop: Color(0xFF0F1F33),
           backgroundBottom: Color(0xFF060B14),
-          surface: Color(0xFF0E223A),
+          surface: Color(0xFF102842),
           primary: Color(0xFF2DE2E6),
           secondary: Color(0xFF1B9AAA),
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
-          textMuted: Color(0xFF7A8899),
+          textMuted: Color(0xFF8B98A9),
           textDisabled: Color(0x4DFFFFFF),
-          divider: Color(0xFF1F2937),
-          surfaceBorder: Color(0x0FFFFFFF),
+          divider: Color(0xFF36455E),
+          surfaceBorder: Color(0x30FFFFFF),
           macroChart: (
             protein: _baseProtein,
             carbs: _baseCarbs,
@@ -94,17 +94,17 @@ class OmniTheme {
         );
       case AppTheme.forgeEmber:
         return (
-          backgroundTop: Color(0xFF1C1008),
-          backgroundBottom: Color(0xFF0A0603),
-          surface: Color(0xFF211407),
+          backgroundTop: Color(0xFF33210F),
+          backgroundBottom: Color(0xFF120B06),
+          surface: Color(0xFF3A2712),
           primary: Color(0xFFFF7B45),
           secondary: Color(0xFFCC4A1A),
           textDominant: Color(0xF0FFF5EA),
           textSecondary: Color(0x99FFFFFF),
-          textMuted: Color(0xFF8A5C4E),
+          textMuted: Color(0xFFB4907E),
           textDisabled: Color(0x4DFFFFFF),
-          divider: Color(0xFF2A1C10),
-          surfaceBorder: Color(0x0DFFFFFF),
+          divider: Color(0xFF574029),
+          surfaceBorder: Color(0x30FFFFFF),
           macroChart: (
             protein: _baseProtein,
             carbs: _baseCarbs,
@@ -120,17 +120,17 @@ class OmniTheme {
         );
       case AppTheme.obsidianVolt:
         return (
-          backgroundTop: Color(0xFF111111),
-          backgroundBottom: Color(0xFF050505),
-          surface: Color(0xFF161616),
+          backgroundTop: Color(0xFF1E1E1E),
+          backgroundBottom: Color(0xFF0D0D0D),
+          surface: Color(0xFF262626),
           primary: Color(0xFFE8B420),
-          secondary: Color(0xFF9C7400),
+          secondary: Color(0xFF8A6600),
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
-          textMuted: Color(0xFF6E6240),
+          textMuted: Color(0xFFA99868),
           textDisabled: Color(0x4DFFFFFF),
-          divider: Color(0xFF1F1F1F),
-          surfaceBorder: Color(0x12FFFFFF),
+          divider: Color(0xFF3A3A3A),
+          surfaceBorder: Color(0x30FFFFFF),
           macroChart: (
             protein: _baseProtein,
             carbs: _baseCarbs,
@@ -146,17 +146,17 @@ class OmniTheme {
         );
       case AppTheme.voidPulse:
         return (
-          backgroundTop: Color(0xFF120F24),
-          backgroundBottom: Color(0xFF0A071A),
-          surface: Color(0xFF110D20),
+          backgroundTop: Color(0xFF221C40),
+          backgroundBottom: Color(0xFF110D26),
+          surface: Color(0xFF2A2350),
           primary: Color(0xFFA478FF),
           secondary: Color(0xFF6D3FD4),
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
-          textMuted: Color(0xFF6B5B8A),
+          textMuted: Color(0xFFA091C6),
           textDisabled: Color(0x4DFFFFFF),
-          divider: Color(0xFF1A1230),
-          surfaceBorder: Color(0x0FFFFFFF),
+          divider: Color(0xFF474078),
+          surfaceBorder: Color(0x30FFFFFF),
           macroChart: (
             protein: _baseProtein,
             carbs: _baseCarbs,
@@ -172,17 +172,17 @@ class OmniTheme {
         );
       case AppTheme.crimsonDojo:
         return (
-          backgroundTop: Color(0xFF1A0806),
-          backgroundBottom: Color(0xFF080302),
+          backgroundTop: Color(0xFF331612),
+          backgroundBottom: Color(0xFF130806),
           surface: Color(0xFF3A1A16),
           primary: Color(0xFFFF4C47),
           secondary: Color(0xFFD32F2F),
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
-          textMuted: Color(0xFFA07060),
+          textMuted: Color(0xFFC29380),
           textDisabled: Color(0x4DFFFFFF),
-          divider: Color(0xFF2A0F0C),
-          surfaceBorder: Color(0x0DFFFFFF),
+          divider: Color(0xFF5A2E26),
+          surfaceBorder: Color(0x30FFFFFF),
           macroChart: (
             protein: _baseProtein,
             carbs: _baseCarbs,
@@ -198,17 +198,17 @@ class OmniTheme {
         );
       case AppTheme.malachiteCore:
         return (
-          backgroundTop: Color(0xFF0D1F10),
+          backgroundTop: Color(0xFF102613),
           backgroundBottom: Color(0xFF060C08),
-          surface: Color(0xFF122214),
+          surface: Color(0xFF182E1B),
           primary: Color(0xFF24B85A),
-          secondary: Color(0xFF128A40),
+          secondary: Color(0xFF10863E), // D-14: Corrected to 3.11:1 vs surface, 4.66:1 white label
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
           textMuted: Color(0xFF7FAA7F),
           textDisabled: Color(0x4DFFFFFF),
-          divider: Color(0xFF172A18),
-          surfaceBorder: Color(0x0DFFFFFF),
+          divider: Color(0xFF2E4A32),
+          surfaceBorder: Color(0x30FFFFFF),
           macroChart: (
             protein: _baseProtein,
             carbs: _baseCarbs,
@@ -605,5 +605,40 @@ class OmniTheme {
         color: textSecondary,
       ),
     );
+  }
+}
+
+/// Per-theme dark on-primary label colors (D-1).
+/// These are the authoritative mappings; all theme references derive from here.
+Color getOnPrimaryForTheme(AppTheme theme) {
+  switch (theme) {
+    case AppTheme.abyssalNeon:
+      return const Color(0xFF0B1424);
+    case AppTheme.forgeEmber:
+      return const Color(0xFF1A0B05);
+    case AppTheme.obsidianVolt:
+      return const Color(0xFF0B0B0B);
+    case AppTheme.voidPulse:
+      return const Color(0xFF0A071A);
+    case AppTheme.crimsonDojo:
+      return const Color(0xFF1A0606);
+    case AppTheme.malachiteCore:
+      return const Color(0xFF0C0F0A);
+  }
+}
+
+/// Per-theme on-secondary label colors (D-2).
+/// Dark for Abyssal Neon; white for all other themes.
+/// These are the authoritative mappings; all theme references derive from here.
+Color getOnSecondaryForTheme(AppTheme theme) {
+  switch (theme) {
+    case AppTheme.abyssalNeon:
+      return const Color(0xFF0B1424);
+    case AppTheme.forgeEmber:
+    case AppTheme.obsidianVolt:
+    case AppTheme.voidPulse:
+    case AppTheme.crimsonDojo:
+    case AppTheme.malachiteCore:
+      return Colors.white;
   }
 }

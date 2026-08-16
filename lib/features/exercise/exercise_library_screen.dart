@@ -153,7 +153,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  SwitchListTile.adaptive(
+                  SwitchListTile(
                     key: const Key('exercise_library_custom_only_toggle'),
                     contentPadding: EdgeInsets.zero,
                     title: Text(

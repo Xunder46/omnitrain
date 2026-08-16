@@ -120,6 +120,8 @@ ThemeData _defaultFailureTheme() {
     textPrimary: tokens.textDominant,
     textSecondary: tokens.textSecondary,
     divider: tokens.divider,
+    onPrimary: getOnPrimaryForTheme(AppTheme.abyssalNeon),
+    onSecondary: getOnSecondaryForTheme(AppTheme.abyssalNeon),
   );
 }
 

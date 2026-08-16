@@ -269,10 +269,10 @@ GestureDetector(
 
 | Variant | Fill | Border | Text/Icon |
 |---------|------|--------|-----------|
-| Primary / Row-pair `FilledButton` | `theme.colorScheme.primary` (neon cyan) | — | `Colors.black` (auto via `onPrimary`) |
+| Primary / Row-pair `FilledButton` | `theme.colorScheme.primary` | — | per-theme dark label (from `onPrimary`) |
 | Row-pair `OutlinedButton` | Transparent | `theme.colorScheme.primary` | `theme.colorScheme.primary` |
 | Utility `OutlinedButton.icon` | Transparent | `theme.colorScheme.primary` | `theme.colorScheme.primary` |
-| Icon-only `FilledButton` | `theme.colorScheme.primary` | — | `Colors.black` |
+| Icon-only `FilledButton` | `theme.colorScheme.primary` | — | per-theme dark label (from `onPrimary`) |
 
 Never hardcode button colours. Always derive from `theme.colorScheme`.
 
@@ -322,6 +322,29 @@ food library `Key('food_form_save')`) use the `buttonKey` prop on
 `OmniBottomCTA` to forward a `Key` to the rendered `FilledButton`.
 The width, height, and vertical anchor remain shared; only the
 test surface key is custom.
+
+---
+
+## Surface Boundaries: Decorative vs Interactive
+
+The Material ColorScheme provides two outline roles to distinguish boundary purposes:
+
+| Role | Intent | Construction | Usage |
+|------|--------|-------------|-------|
+| `outline` | **Interactive** — control strokes, focus rings | The stronger of the two boundary tints | Form control borders, button outlines, interactive element boundaries |
+| `outlineVariant` | **Decorative** — subtle dividers, surface separation | The same subtle tint as the surface border token | Dividers between sections, card borders, passive structural separation |
+
+Both roles sit at uniform alpha values across all six themes, measured to satisfy contrast requirements:
+- `outline` (40% white) achieves ≥3:1 against every theme surface, ensuring interactive controls remain visibly bounded
+- `outlineVariant` (19% white) achieves ≥1.8:1, providing clear but quiet structural separation
+
+**Where to apply**:
+- Interactive control borders (switches, radio buttons, checkboxes in focused state) → `outline`
+- Card/surface division borders (exercise lists, section dividers) → `outlineVariant`
+- Form field focus rings → `outline`
+- Passive tile / card separation → `outlineVariant`
+
+Never hardcode these values. Always derive from `theme.colorScheme.outline` and `theme.colorScheme.outlineVariant`.
 
 ---
 
