@@ -276,9 +276,19 @@ GestureDetector(
 
 Never hardcode button colours. Always derive from `theme.colorScheme`.
 
-### Destructive Actions
+### Destructive vs Routine Confirmation Dialogs
 
-Destructive buttons (delete, discard) use `FilledButton` with `backgroundColor: Colors.red.shade700`, same radius rules, never a different shape.
+The app implements a two-tier classification for confirmation dialogs, enforced by the shared `ConfirmationDialog` component in `lib/widgets/dialogs/confirmation_dialog.dart`:
+
+**Destructive** confirmations (delete, discard, remove — 20 sites) render the confirming action as a `FilledButton` filled with `theme.colorScheme.error` (not hardcoded colors) and foreground `theme.colorScheme.onError`. Examples: delete session, delete exercise, discard unsaved edits.
+
+**Routine** confirmations (2 sites) render the confirming action as a `FilledButton` in standard primary styling (`theme.colorScheme.primary`). Examples: finish workout, enable notifications.
+
+**Ordering rule**: dismissal action first (left or top), confirming action last (right or bottom) on all 22 sites. Both use `OmniTheme.buttonUtilityRadius` (8.0) — never framework default shapes.
+
+**Barrier dismissal**: `barrierDismissible: true` on all confirmations. Tapping the barrier produces the same outcome as tapping the dismissal button and mutates no state.
+
+The two-tier classification serves the UX goal of drawing the eye to potentially destructive actions while normalizing routine confirmations. Styling is machine-enforced by the component; individual screens do not vary the treatment.
 
 ### Dialog Buttons
 

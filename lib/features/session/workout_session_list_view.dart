@@ -911,54 +911,23 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   // ── Discard Session ────────────────────────────────────────────────────
 
-  /// Confirmation dialog: states permanence. Matches the dismiss button
-  /// styling used by the Session Summary's "Discard" dialog (TextButton
-  /// + utility radius + error color tint) so the two flows feel like
-  /// one feature.
+  /// Confirmation dialog: states permanence.
   Future<void> _showDiscardDialog() async {
     if (!mounted) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Discard session?'),
-        content: const Text(
-          'This will permanently delete this session and all its data. '
-          'You will return to Home.',
-        ),
-        actions: [
-          TextButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-              foregroundColor: WidgetStateProperty.all(
-                Theme.of(ctx).colorScheme.error,
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Discard'),
-          ),
-        ],
+      title: 'Discard session?',
+      body: const Text(
+        'This will permanently delete this session and all its data. '
+        'You will return to Home.',
       ),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Discard',
+      dismissKey: const Key('session-list-discard-cancel'),
+      confirmKey: const Key('session-list-discard-confirm'),
+      isDestructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await _discardCurrentSession();
     }
   }

@@ -384,8 +384,8 @@ void main() {
         }
 
         // Confirm in the dialog. The discard confirm button is a
-        // `TextButton` (not `FilledButton`) in the existing dialog.
-        await tester.tap(find.widgetWithText(TextButton, 'Discard').last);
+        // `FilledButton` (not `TextButton`) in the consolidated dialog.
+        await tester.tap(find.widgetWithText(FilledButton, 'Discard').last);
         for (var i = 0; i < 6; i++) {
           await tester.pump(const Duration(milliseconds: 200));
         }
@@ -467,7 +467,7 @@ void main() {
         }
 
         // Confirm in the dialog.
-        await tester.tap(find.widgetWithText(TextButton, 'Discard').last);
+        await tester.tap(find.widgetWithText(FilledButton, 'Discard').last);
         for (var i = 0; i < 6; i++) {
           await tester.pump(const Duration(milliseconds: 200));
         }

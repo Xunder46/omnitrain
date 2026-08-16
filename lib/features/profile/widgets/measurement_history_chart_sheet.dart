@@ -10,6 +10,7 @@ import '../../stats/widgets/scrollable_trend_chart.dart';
 import '../../../widgets/chart/edge_aware_date_label.dart';
 import '../../../state/profile/profile_state.dart';
 import '../../../state/settings/settings_state.dart';
+import '../../../widgets/dialogs/confirmation_dialog.dart';
 
 class MeasurementHistoryChartSheet extends StatefulWidget {
   final ProfileState profileState;
@@ -456,46 +457,19 @@ class _MeasurementHistoryChartSheetState
     final valueLabel = _formatSelectedValueLabel(entry);
 
     if (!mounted) return;
-    final theme = Theme.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete entry?'),
-        content: Text(
+      barrierDismissible: true,
+      builder: (dialogContext) => ConfirmationDialog.twoChoice(
+        title: 'Delete entry?',
+        body: Text(
           '$dateLabel \u00b7 $valueLabel will be removed from your history.',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.all(theme.colorScheme.error),
-              foregroundColor: WidgetStateProperty.all(
-                theme.colorScheme.onError,
-              ),
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Delete',
+        dismissKey: const Key('measurement-delete-cancel'),
+        confirmKey: const Key('measurement-delete-confirm'),
+        isDestructive: true,
       ),
     );
 

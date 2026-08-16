@@ -28,6 +28,7 @@ import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import '../../widgets/common/home_logo_button.dart';
 import '../../state/nutrition_state.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
@@ -630,39 +631,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         if (widget.workoutState.hasActiveSession) {
           final confirmed = await showDialog<bool>(
             context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Start New Session?'),
-              content: const Text(
-                'Opening a routine will start a new session. Current session will be saved.',
+            barrierDismissible: true,
+            builder: (context) => ConfirmationDialog.twoChoice(
+              title: 'Start New Session?',
+              body: const Text(
+                'Your current session will be discarded and cannot be recovered.',
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  style: ButtonStyle(
-                    shape: WidgetStateProperty.all(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          OmniTheme.buttonUtilityRadius,
-                        ),
-                      ),
-                    ),
-                  ),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  style: ButtonStyle(
-                    shape: WidgetStateProperty.all(
-                      RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          OmniTheme.buttonUtilityRadius,
-                        ),
-                      ),
-                    ),
-                  ),
-                  child: const Text('Continue'),
-                ),
-              ],
+              dismissLabel: 'Cancel',
+              confirmLabel: 'Continue',
+              dismissKey: const Key('home-routine-open-cancel'),
+              confirmKey: const Key('home-routine-open-confirm'),
+              isDestructive: true,
             ),
           );
           if (confirmed != true) return;
@@ -727,39 +706,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       // Non-rolling: show conflict dialog before switching session.
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Start New Session?'),
-          content: const Text(
-            'Changing modality will start a new session. Current session will be saved.',
+        barrierDismissible: true,
+        builder: (context) => ConfirmationDialog.twoChoice(
+          title: 'Start New Session?',
+          body: const Text(
+            'Your current session will be discarded and cannot be recovered.',
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Start New'),
-            ),
-          ],
+          dismissLabel: 'Cancel',
+          confirmLabel: 'Start New',
+          dismissKey: const Key('home-modality-change-cancel'),
+          confirmKey: const Key('home-modality-change-confirm'),
+          isDestructive: true,
         ),
       );
 

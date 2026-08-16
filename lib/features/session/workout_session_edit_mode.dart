@@ -99,82 +99,26 @@ extension _SessionEditModeExt on _WorkoutSessionScreenState {
       return;
     }
 
-    final action = await showDialog<_EditBackAction>(
+    final action = await showDialog<UnsavedChangesAction>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Expanded(child: Text('Unsaved changes')),
-            IconButton(
-              onPressed: () => Navigator.pop(context, _EditBackAction.close),
-              tooltip: 'Keep editing',
-              icon: const Icon(Icons.close),
-            ),
-          ],
-        ),
-        content: const Text(
-          'You have unsaved edits. Save them or discard to return to the summary.',
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Tooltip(
-                    message: 'Discard changes',
-                    child: OutlinedButton(
-                      onPressed: () =>
-                          Navigator.pop(context, _EditBackAction.discard),
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonUtilityRadius,
-                            ),
-                          ),
-                        ),
-                      ),
-                      child: const Text('Discard'),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Tooltip(
-                    message: 'Save changes',
-                    child: FilledButton(
-                      onPressed: () =>
-                          Navigator.pop(context, _EditBackAction.save),
-                      style: ButtonStyle(
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              OmniTheme.buttonUtilityRadius,
-                            ),
-                          ),
-                        ),
-                      ),
-                      child: const Text('Save'),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+      barrierDismissible: true,
+      builder: (context) => ConfirmationDialog.threeChoice(
+        title: 'Unsaved changes',
+        body: 'You have unsaved edits. Save them or discard to return to the summary.',
+        keepEditingKey: const Key('session-edit-unsaved-keep'),
+        discardKey: const Key('session-edit-unsaved-discard'),
+        saveKey: const Key('session-edit-unsaved-save'),
       ),
     );
 
     if (!mounted) return;
     switch (action) {
-      case _EditBackAction.save:
+      case UnsavedChangesAction.save:
         await _saveEditChanges();
-      case _EditBackAction.discard:
+      case UnsavedChangesAction.discard:
         await _discardEditChanges();
       case null:
-      case _EditBackAction.close:
+      case UnsavedChangesAction.keepEditing:
         break; // stay on screen
     }
   }

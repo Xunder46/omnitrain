@@ -26,6 +26,7 @@ import '../../core/navigation/navigation.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import 'rest_timer_strip.dart';
 import 'session_summary_screen.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 part 'workout_session_timer_mixin.dart';
 part 'workout_session_list_view.dart';
@@ -53,10 +54,6 @@ Future<T?> _pushSessionReplacement<T, TO>(
 }) {
   return OmniNavigator.pushReplacement<T, TO>(context, builder, result: result);
 }
-
-/// Actions surfaced by the "Unsaved changes" dialog shown when the user
-/// tries to leave edit mode without saving.
-enum _EditBackAction { save, discard, close }
 
 class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -1161,47 +1158,22 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
       // If this is the last entry, always warn since it removes the entire exercise
       if (entries.length == 1) {
-        final confirmed = await showDialog<bool>(
+        final confirmed = await ConfirmationDialog.showTwoChoice(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Remove Exercise?'),
-            content: Text(
-              'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
-              'Deleting it will remove the entire exercise from your session.\n\n'
-              'Continue?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Confirm'),
-              ),
-            ],
+          title: 'Remove Exercise?',
+          body: Text(
+            'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
+            'Deleting it will remove the entire exercise from your session.\n\n'
+            'Continue?',
           ),
+          dismissLabel: 'Cancel',
+          confirmLabel: 'Remove',
+          dismissKey: const Key('workout-remove-exercise-cancel'),
+          confirmKey: const Key('workout-remove-exercise-confirm'),
+          isDestructive: true,
         );
 
-        if (confirmed != true) return;
+        if (!confirmed) return;
 
         // Delete the entry and remove the exercise
         if (widget.editMode) _hasStructuralChanges = true;
@@ -1223,43 +1195,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
       // Multi-set: only confirm if the set has been logged
       if (isLogged) {
-        final confirmed = await showDialog<bool>(
+        final confirmed = await ConfirmationDialog.showTwoChoice(
           context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Delete logged $setLabel?'),
-            content: const Text('This cannot be undone.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Delete'),
-              ),
-            ],
-          ),
+          title: 'Delete logged $setLabel?',
+          body: const Text('This cannot be undone.'),
+          dismissLabel: 'Cancel',
+          confirmLabel: 'Delete',
+          dismissKey: const Key('workout-delete-logged-entry-cancel'),
+          confirmKey: const Key('workout-delete-logged-entry-confirm'),
+          isDestructive: true,
         );
 
-        if (confirmed != true) return;
+        if (!confirmed) return;
       }
 
       if (widget.editMode) _hasStructuralChanges = true;
@@ -1602,45 +1549,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     }
 
     // Non-empty block — confirm before cascade-deleting all exercises.
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Block?'),
-        content: Text(
-          'This block contains $count exercise${count != 1 ? 's' : ''}. '
-          'All exercises inside will be permanently deleted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
+      title: 'Delete Block?',
+      body: Text(
+        'This block contains $count exercise${count != 1 ? 's' : ''}. '
+        'All exercises inside will be permanently deleted.',
       ),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Delete',
+      dismissKey: const Key('session-delete-block-cancel'),
+      confirmKey: const Key('session-delete-block-confirm'),
+      isDestructive: true,
     );
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       await widget.workoutState.deleteSessionBlock(block.id);
       await _loadExercises();
     }

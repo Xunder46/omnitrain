@@ -14,6 +14,7 @@ import 'widgets/demo_routine_badge.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
 import '../session/workout_session_screen.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 /// Screen displaying list of saved workout routines
 /// Allows user to view, start, edit, or delete routines
@@ -204,43 +205,20 @@ class _MyRoutinesScreenState extends State<MyRoutinesScreen> {
     }
 
     if (widget.workoutState!.hasActiveSession) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await ConfirmationDialog.showTwoChoice(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Start New Session?'),
-          content: const Text(
-            'Starting a routine will start a new session. Current session will not be saved.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-              child: const Text('Start New'),
-            ),
-          ],
+        title: 'Start New Session?',
+        body: const Text(
+          'Your current session will be discarded and cannot be recovered.',
         ),
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Start New',
+        dismissKey: const Key('routine-start-new-cancel'),
+        confirmKey: const Key('routine-start-new-confirm'),
+        isDestructive: true,
       );
 
-      if (confirmed != true) return;
+      if (!confirmed) return;
     }
 
     try {
@@ -313,55 +291,23 @@ Future<bool> showDeleteRoutineDialog(
       await routineState.countPlannedSessionsForTemplate(templateId);
   if (!context.mounted) return false;
 
-  final plannedWarning = plannedCount > 0
-      ? ' This routine has $plannedCount planned session'
-            '${plannedCount == 1 ? '' : 's'} that will also be removed.'
-      : '';
-  final contentText =
-      'Delete "$routineName"?$plannedWarning This action cannot be undone.';
+  final bodyText = plannedCount > 0
+      ? 'This routine has $plannedCount planned session'
+            '${plannedCount == 1 ? '' : 's'} that will also be removed. This action cannot be undone.'
+      : 'This action cannot be undone.';
 
   final confirmed = await showDialog<bool>(
     context: context,
+    barrierDismissible: true,
     builder: (dialogContext) {
-      final theme = Theme.of(dialogContext);
-      return AlertDialog(
-        backgroundColor: theme.colorScheme.surface,
-        title: Text('Delete "$routineName"?'),
-        content: Text(contentText),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('routine-delete-confirm'),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style: ButtonStyle(
-              backgroundColor:
-                  WidgetStateProperty.all(theme.colorScheme.error),
-              foregroundColor: WidgetStateProperty.all(
-                theme.colorScheme.onError,
-              ),
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
+      return ConfirmationDialog.twoChoice(
+        title: 'Delete "$routineName"?',
+        body: Text(bodyText),
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Delete',
+        dismissKey: const Key('routine-delete-cancel'),
+        confirmKey: const Key('routine-delete-confirm'),
+        isDestructive: true,
       );
     },
   );

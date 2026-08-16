@@ -13,6 +13,7 @@ import 'edit_food_screen.dart';
 import 'widgets/food_form.dart';
 import 'widgets/food_thumbnail.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 /// Sentinel used by [_DeleteGroupDialog] to distinguish "user
 /// tapped Cancel" from "user picked Ungrouped (which is a legitimate
@@ -952,25 +953,18 @@ class _UserFoodRowState extends State<_UserFoodRow> {
     // Show confirmation dialog for user-created foods
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Food?'),
-        content: Text(
+      barrierDismissible: true,
+      builder: (context) => ConfirmationDialog.twoChoice(
+        title: 'Delete Food?',
+        body: Text(
           'Are you sure you want to delete "${widget.food.name}"? '
           'Your past nutrition logs will remain unchanged.',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Delete',
+        dismissKey: const Key('food-delete-cancel'),
+        confirmKey: const Key('food-delete-confirm'),
+        isDestructive: true,
       ),
     );
 

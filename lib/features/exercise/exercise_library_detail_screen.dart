@@ -24,6 +24,7 @@ import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
 import 'exercise_detail_view_screen.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 class ExerciseLibraryDetailScreen extends StatefulWidget {
   final Exercise exercise;
@@ -348,7 +349,6 @@ class _RemoveDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final hasRefs = plan.totalReferences > 0;
     final explanation = hasRefs
         ? 'This exercise is referenced in ${plan.totalReferences} place'
@@ -359,37 +359,14 @@ class _RemoveDialog extends StatelessWidget {
         : 'This custom exercise is not used in any active session or '
               'routine. Removing it will delete the row permanently.';
 
-    return AlertDialog(
-      title: const Text('Remove exercise?'),
-      content: Text(explanation),
-      actions: [
-        TextButton(
-          key: const Key('exercise_library_remove_cancel_button'),
-          onPressed: () => Navigator.pop(context, false),
-          style: TextButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                OmniTheme.buttonUtilityRadius,
-              ),
-            ),
-          ),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const Key('exercise_library_remove_confirm_button'),
-          onPressed: () => Navigator.pop(context, true),
-          style: FilledButton.styleFrom(
-            backgroundColor: theme.colorScheme.error,
-            foregroundColor: theme.colorScheme.onError,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                OmniTheme.buttonUtilityRadius,
-              ),
-            ),
-          ),
-          child: Text(hasRefs ? 'Retire' : 'Delete'),
-        ),
-      ],
+    return ConfirmationDialog.twoChoice(
+      title: 'Remove exercise?',
+      body: Text(explanation),
+      dismissLabel: 'Cancel',
+      confirmLabel: hasRefs ? 'Retire' : 'Delete',
+      dismissKey: const Key('exercise_library_remove_cancel_button'),
+      confirmKey: const Key('exercise_library_remove_confirm_button'),
+      isDestructive: true,
     );
   }
 }

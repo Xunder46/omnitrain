@@ -28,6 +28,7 @@ import '../../core/utils/rest_notification_service.dart';
 import '../calendar/calendar_screen.dart';
 import 'workout_session_screen.dart';
 import '../../core/navigation/navigation.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 class SessionSummaryScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -286,48 +287,23 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Future<void> _showDiscardDialog() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Discard session?'),
-        content: Text(
-          _isHistoricalView
-              ? 'This will permanently delete this session from your history '
-                  'and return to the previous screen.'
-              : 'This will remove all session data and return to Home.',
-        ),
-        actions: [
-          TextButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Discard'),
-          ),
-        ],
+      title: 'Discard session?',
+      body: Text(
+        _isHistoricalView
+            ? 'This will permanently delete this session from your history '
+                'and return to the previous screen.'
+            : 'This will remove all session data and return to Home.',
       ),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Discard',
+      dismissKey: const Key('session-summary-discard-cancel'),
+      confirmKey: const Key('session-summary-discard-confirm'),
+      isDestructive: true,
     );
 
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       await _discardSession();
     }
   }
