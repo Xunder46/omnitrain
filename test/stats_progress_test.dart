@@ -201,6 +201,106 @@ Future<String> _addTimedEffort(
   return effId;
 }
 
+/// Seed a drill effort (isometric) with one finished [TimedInstance].
+Future<String> _addDrillEffort(
+  MockWorkoutRepository repo, {
+  required String sessionId,
+  required String exerciseId,
+  required int durationSecs,
+}) async {
+  final segId = 'seg-$sessionId-$exerciseId';
+  // Only create segment if it doesn't already exist.
+  try {
+    await repo.createSegment(
+      SessionSegment(
+        id: segId,
+        sessionId: sessionId,
+        orderIndex: 0,
+        segmentType: 'main',
+        createdAtMs: 1000,
+        updatedAtMs: 1000,
+      ),
+    );
+  } catch (_) {}
+
+  final effId = 'eff-$sessionId-$exerciseId-drill';
+  await repo.createEffort(
+    SegmentEffort(
+      id: effId,
+      segmentId: segId,
+      orderIndex: 0,
+      effortKind: 'drill',
+      exerciseId: exerciseId,
+      createdAtMs: 1000,
+      updatedAtMs: 1000,
+    ),
+  );
+
+  await repo.createTimedInstance(
+    TimedInstance(
+      id: 'ti-$effId',
+      effortId: effId,
+      entryIndex: 0,
+      actualDurationSecs: durationSecs,
+      state: TimedState.finished,
+      createdAtMs: 1000,
+      updatedAtMs: 1000,
+    ),
+  );
+
+  return effId;
+}
+
+/// Seed a round effort (sports) with one finished [TimedInstance].
+Future<String> _addRoundEffort(
+  MockWorkoutRepository repo, {
+  required String sessionId,
+  required String exerciseId,
+  required int durationSecs,
+}) async {
+  final segId = 'seg-$sessionId-$exerciseId';
+  // Only create segment if it doesn't already exist.
+  try {
+    await repo.createSegment(
+      SessionSegment(
+        id: segId,
+        sessionId: sessionId,
+        orderIndex: 0,
+        segmentType: 'main',
+        createdAtMs: 1000,
+        updatedAtMs: 1000,
+      ),
+    );
+  } catch (_) {}
+
+  final effId = 'eff-$sessionId-$exerciseId-round';
+  await repo.createEffort(
+    SegmentEffort(
+      id: effId,
+      segmentId: segId,
+      orderIndex: 0,
+      effortKind: 'round',
+      exerciseId: exerciseId,
+      createdAtMs: 1000,
+      updatedAtMs: 1000,
+    ),
+  );
+
+  await repo.createTimedInstance(
+    TimedInstance(
+      id: 'ti-$effId',
+      effortId: effId,
+      entryIndex: 0,
+      actualDurationSecs: durationSecs,
+      state: TimedState.finished,
+      createdAtMs: 1000,
+      updatedAtMs: 1000,
+    ),
+  );
+
+  return effId;
+}
+
 void main() {
   // Local-midnight `[n]` days before today. Used by the
   // windowed-selection tests below to anchor seeded sessions
@@ -217,24 +317,6 @@ void main() {
 
   // Local-midnight day inside the ISO week [weeksAgo] weeks before the
   // current one, [dayOffset] days after that week's Monday.
-  //
-  // Use this instead of [daysAgo] whenever a test asserts how many ISO-week
-  // buckets a set of sessions produces. `daysAgo` counts back from today, so
-  // which week a day lands in depends on what weekday today is: seeding at
-  // `daysAgo(10)` and `daysAgo(9)` puts both in one week on most days, but on
-  // a Wednesday `daysAgo(10)` is the preceding Sunday — the final day of the
-  // *previous* ISO week — and the bucket count silently goes from 2 to 3.
-  // Anchoring to the week's Monday makes week membership explicit and the
-  // assertion true on every weekday.
-  DateTime dayInWeeksAgo(int weeksAgo, {int dayOffset = 0}) {
-    final now = DateTime.now();
-    return DateTime(
-      now.year,
-      now.month,
-      now.day - (now.weekday - DateTime.monday) - (7 * weeksAgo) + dayOffset,
-    );
-  }
-
   // Creates a training period that covers today (default) and an
   // optional explicit range. Anchored to local midnight.
   Future<TrainingPeriod> seedActivePeriod(
@@ -3314,1185 +3396,6 @@ void main() {
     );
   });
 
-  // ── Per-exercise records (PR 2b records section) ────────────────────────
-  //
-  // Plan: `.github/agents/plans/2026-07-13-03-pr2b-descriptive-log-analytics-plan.md`,
-  // S-001 … S-004.
-  //
-  // For every exercise with at least one logged effort, the
-  // service returns an `ExerciseRecord` carrying the best observed
-  // value per metric (heaviest load, most reps at a load, longest
-  // duration, longest distance) with the date that value was set.
-  // Zero values are valid records (a true best is still a best);
-  // missing metrics are simply absent from the record (no
-  // zero-fill). The `extraWeightKg` annotation on bodyweight
-  // efforts is irrelevant to records (a 0 kg belt on a pull-up
-  // does not count as "load" for the heaviest-load metric).
-
-  group('computeExerciseRecords', () {
-    test('S-001: heaviest-load record equals the max load × reps set',
-        () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-sq',
-          name: 'Squat',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Day 1: 100 kg × 5 → load 100.
-      await _seedSession(
-        repo,
-        id: 'sq-d1',
-        day: daysAgo(2),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'sq-d1',
-        exerciseId: 'ex-sq',
-        sets: [(100.0, 5)],
-      );
-      // Day 2: 120 kg × 3 → load 120 (the heaviest).
-      await _seedSession(
-        repo,
-        id: 'sq-d2',
-        day: daysAgo(1),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'sq-d2',
-        exerciseId: 'ex-sq',
-        sets: [(120.0, 3)],
-      );
-      // Day 3: 110 kg × 8 → load 110 (not a new heaviest).
-      await _seedSession(
-        repo,
-        id: 'sq-d3',
-        day: daysAgo(0),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'sq-d3',
-        exerciseId: 'ex-sq',
-        sets: [(110.0, 8)],
-      );
-
-      final records = await StatsProgressService(repo)
-          .computeExerciseRecords();
-
-      expect(records, hasLength(1));
-      final r = records.first;
-      expect(r.exerciseName, 'Squat');
-      expect(r.heaviestLoad, isNotNull);
-      // Heaviest load value is the kg × reps of the heaviest set
-      // (120 × 3 = 360), NOT the raw weight (120). This matches
-      // the e1RM-on-the-weight-axis convention: the record carries
-      // the full strength figure, not the input weight.
-      expect(r.heaviestLoad!.value, closeTo(360.0, 0.01));
-      expect(r.heaviestLoad!.date, daysAgo(1));
-    });
-
-    test(
-      'S-001b: heaviestLoad keeps updating after the most-reps record moves '
-      'to a different day (comparison uses weight, not tonnage)',
-      () async {
-        final repo = await _freshRepo();
-        await repo.createExercise(
-          Exercise(
-            id: 'ex-bp',
-            name: 'Bench Press',
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-
-        // NOTE ON ORDER: `getAllSessions()` returns sessions NEWEST
-        // FIRST, so the records accumulator walks recent → old. The
-        // fixture is built around that traversal — the heavier set has
-        // to be on the OLDEST day so it is processed while an incumbent
-        // is already in place.
-
-        // Processed 1st (newest): 100 kg × 5 → incumbent
-        // {value: 500, weight: 100, reps: 5}. mostReps also lands here.
-        await _seedSession(
-          repo,
-          id: 'bp-new',
-          day: daysAgo(2),
-          modality: Modality.resistanceLifting,
-        );
-        await _addSetEffort(
-          repo,
-          sessionId: 'bp-new',
-          exerciseId: 'ex-bp',
-          sets: [(100.0, 5)],
-        );
-
-        // Processed 2nd: 60 kg × 12 → moves the most-reps record onto a
-        // DIFFERENT day than the heaviest record. That divergence is the
-        // trigger: the old comparison rebuilt the incumbent's weight as
-        // `value / _recordRepsFor(...)`, and that helper returns 1 once
-        // the two records live on different days — so the incumbent's
-        // "weight" became its tonnage (500) instead of 100.
-        await _seedSession(
-          repo,
-          id: 'bp-mid',
-          day: daysAgo(3),
-          modality: Modality.resistanceLifting,
-        );
-        await _addSetEffort(
-          repo,
-          sessionId: 'bp-mid',
-          exerciseId: 'ex-bp',
-          sets: [(60.0, 12)],
-        );
-
-        // Processed 3rd (oldest): 120 kg × 2 — unambiguously heavier
-        // than the 100 kg incumbent, so it MUST take the record. Under
-        // the bug this was compared against 500 and silently discarded.
-        await _seedSession(
-          repo,
-          id: 'bp-old',
-          day: daysAgo(4),
-          modality: Modality.resistanceLifting,
-        );
-        await _addSetEffort(
-          repo,
-          sessionId: 'bp-old',
-          exerciseId: 'ex-bp',
-          sets: [(120.0, 2)],
-        );
-
-        final records =
-            await StatsProgressService(repo).computeExerciseRecords();
-        final r = records.firstWhere((e) => e.exerciseId == 'ex-bp');
-
-        expect(r.heaviestLoad, isNotNull);
-        expect(
-          r.heaviestLoad!.date,
-          daysAgo(4),
-          reason: 'The 120 kg set is the heaviest lift and must own the '
-              'record regardless of which day it happened on. Getting the '
-              'newest day back means the comparison is still measuring '
-              'weight against tonnage.',
-        );
-        // value is kg × reps of the heaviest-weight set: 120 × 2.
-        expect(r.heaviestLoad!.value, closeTo(240.0, 0.01));
-      },
-    );
-
-    test('S-002: most-reps-at-load record = the single set with the '
-        'highest rep count, plus the load it was performed at', () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-bp',
-          name: 'Bench Press',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Day 1: 80 kg × 5 = 400 tonnage, 5 reps.
-      await _seedSession(
-        repo,
-        id: 'bp-d1',
-        day: daysAgo(2),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'bp-d1',
-        exerciseId: 'ex-bp',
-        sets: [(80.0, 5)],
-      );
-      // Day 2: 60 kg × 12 = 720 tonnage, but 12 reps wins the
-      // "most reps" verdict regardless of the lighter load.
-      await _seedSession(
-        repo,
-        id: 'bp-d2',
-        day: daysAgo(1),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'bp-d2',
-        exerciseId: 'ex-bp',
-        sets: [(60.0, 12)],
-      );
-      // Day 3: 100 kg × 1 = 100 tonnage, single rep.
-      await _seedSession(
-        repo,
-        id: 'bp-d3',
-        day: daysAgo(0),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'bp-d3',
-        exerciseId: 'ex-bp',
-        sets: [(100.0, 1)],
-      );
-
-      final records = await StatsProgressService(repo)
-          .computeExerciseRecords();
-
-      expect(records, hasLength(1));
-      final r = records.first;
-      expect(r.mostRepsAtLoad, isNotNull);
-      // 12 reps at 60 kg is the single best-rep set.
-      expect(r.mostRepsAtLoad!.reps, 12);
-      expect(r.mostRepsAtLoad!.loadKg, closeTo(60.0, 0.01));
-      expect(r.mostRepsAtLoad!.date, daysAgo(1));
-    });
-
-    test('S-003: longest-duration record = the per-day Σ duration for '
-        'timed efforts, with the day that sum was set', () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-run',
-          name: 'Run',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Day 1: one 1500 s run.
-      await _seedSession(
-        repo,
-        id: 'run-d1',
-        day: daysAgo(2),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'run-d1',
-        exerciseId: 'ex-run',
-        durationSecs: 1500,
-      );
-      // Day 2: two runs (900 s + 1200 s) = 2100 s — the longest day.
-      await _seedSession(
-        repo,
-        id: 'run-d2',
-        day: daysAgo(1),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'run-d2',
-        exerciseId: 'ex-run',
-        durationSecs: 900,
-      );
-      // Add a second timed effort on day 2 via a new segment.
-      await repo.createSegment(
-        SessionSegment(
-          id: 'seg-run-d2-b',
-          sessionId: 'run-d2',
-          orderIndex: 1,
-          segmentType: 'main',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createEffort(
-        SegmentEffort(
-          id: 'eff-run-d2-b',
-          segmentId: 'seg-run-d2-b',
-          orderIndex: 0,
-          effortKind: 'timed',
-          exerciseId: 'ex-run',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createTimedInstance(
-        TimedInstance(
-          id: 'ti-eff-run-d2-b',
-          effortId: 'eff-run-d2-b',
-          entryIndex: 0,
-          actualDurationSecs: 1200,
-          state: TimedState.finished,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      // Day 3: 1800 s run.
-      await _seedSession(
-        repo,
-        id: 'run-d3',
-        day: daysAgo(0),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'run-d3',
-        exerciseId: 'ex-run',
-        durationSecs: 1800,
-      );
-
-      final records = await StatsProgressService(repo)
-          .computeExerciseRecords();
-
-      expect(records, hasLength(1));
-      final r = records.first;
-      expect(r.longestDuration, isNotNull);
-      // Day 3 has 1800 s, which beats day 2's 2100 s — wait, 2100 > 1800,
-      // so day 2 is the longest. Verify: 1500 < 2100 < 1800 → day 2 wins.
-      expect(r.longestDuration!.durationSecs, 2100);
-      expect(r.longestDuration!.date, daysAgo(1));
-    });
-
-    test('S-004: longest-distance record = the per-day Σ distance for '
-        'timed efforts, with the day that sum was set', () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-row',
-          name: 'Row',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Day 1: 4000 m.
-      await _seedSession(
-        repo,
-        id: 'row-d1',
-        day: daysAgo(2),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'row-d1',
-        exerciseId: 'ex-row',
-        durationSecs: 1200,
-        distanceM: 4000,
-      );
-      // Day 2: 2500 m + 3000 m = 5500 m — the longest day. Two
-      // separate timed efforts on the same session (so the
-      // per-day Σ contract is exercised, not the
-      // single-effort path).
-      await _seedSession(
-        repo,
-        id: 'row-d2',
-        day: daysAgo(1),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'row-d2',
-        exerciseId: 'ex-row',
-        durationSecs: 600,
-        distanceM: 2500,
-      );
-      await repo.createSegment(
-        SessionSegment(
-          id: 'seg-row-d2-b',
-          sessionId: 'row-d2',
-          orderIndex: 1,
-          segmentType: 'main',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createEffort(
-        SegmentEffort(
-          id: 'eff-row-d2-b',
-          segmentId: 'seg-row-d2-b',
-          orderIndex: 0,
-          effortKind: 'timed',
-          exerciseId: 'ex-row',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createTimedInstance(
-        TimedInstance(
-          id: 'ti-row-d2-b',
-          effortId: 'eff-row-d2-b',
-          entryIndex: 0,
-          actualDurationSecs: 720,
-          state: TimedState.finished,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createObservation(
-        EffortObservation(
-          id: 'obs-row-d2-b-distance',
-          effortId: 'eff-row-d2-b',
-          metricId: MetricIds.distance,
-          unitId: MetricIds.unitMeters,
-          valueReal: 3000.0,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      // Day 3: 5000 m.
-      await _seedSession(
-        repo,
-        id: 'row-d3',
-        day: daysAgo(0),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'row-d3',
-        exerciseId: 'ex-row',
-        durationSecs: 1500,
-        distanceM: 5000,
-      );
-
-      final records = await StatsProgressService(repo)
-          .computeExerciseRecords();
-
-      expect(records, hasLength(1));
-      final r = records.first;
-      expect(r.longestDistance, isNotNull);
-      // Day 2 wins (5500 m > 5000 m > 4000 m).
-      expect(r.longestDistance!.distanceM, closeTo(5500.0, 0.01));
-      expect(r.longestDistance!.date, daysAgo(1));
-    });
-
-    test('S-005: empty repo → empty records list (no exceptions)', () async {
-      final repo = await _freshRepo();
-      final records = await StatsProgressService(repo)
-          .computeExerciseRecords();
-      expect(records, isEmpty);
-    });
-
-    test('S-006: a set effort that is only bodyweight contributes to '
-        'mostRepsAtLoad but NOT to heaviestLoad (heaviestLoad carries '
-        'the kg × reps figure; 0 kg × N reps is 0, not a record)', () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-pu',
-          name: 'Pull-Up',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      await _seedSession(
-        repo,
-        id: 'pu-d1',
-        day: daysAgo(0),
-        modality: Modality.resistanceLifting,
-      );
-      // 15 reps bodyweight — most-reps record, but no heaviest-load
-      // (0 kg × 15 = 0 would be a meaningless record).
-      await _addSetEffort(
-        repo,
-        sessionId: 'pu-d1',
-        exerciseId: 'ex-pu',
-        sets: [(0.0, 15)],
-      );
-
-      final records = await StatsProgressService(repo)
-          .computeExerciseRecords();
-
-      expect(records, hasLength(1));
-      final r = records.first;
-      expect(r.mostRepsAtLoad, isNotNull);
-      expect(r.mostRepsAtLoad!.reps, 15);
-      expect(r.mostRepsAtLoad!.loadKg, 0.0);
-      // Heaviest-load: the kg×reps of the heaviest set is 0×15=0,
-      // so no record is set. Most-reps still carries the value
-      // (15 reps is a legitimate bodyweight record).
-      expect(r.heaviestLoad, isNull);
-    });
-
-    test('S-007: a set with weight>0 always populates heaviestLoad, even '
-        'when the user also has bodyweight-only sessions for the same '
-        'exercise (records are not mutually exclusive across metrics)',
-        () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-pu2',
-          name: 'Weighted Pull-Up',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Day 1: bodyweight pull-up 12 reps.
-      await _seedSession(
-        repo,
-        id: 'wpu-d1',
-        day: daysAgo(1),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'wpu-d1',
-        exerciseId: 'ex-pu2',
-        sets: [(0.0, 12)],
-      );
-      // Day 2: 10 kg × 8 = 80 tonnage — heaviest.
-      await _seedSession(
-        repo,
-        id: 'wpu-d2',
-        day: daysAgo(0),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'wpu-d2',
-        exerciseId: 'ex-pu2',
-        sets: [(10.0, 8)],
-      );
-
-      final records = await StatsProgressService(repo)
-          .computeExerciseRecords();
-
-      expect(records, hasLength(1));
-      final r = records.first;
-      expect(r.heaviestLoad, isNotNull);
-      expect(r.heaviestLoad!.value, closeTo(80.0, 0.01));
-      // Most-reps still 12 (from day 1, the bodyweight session),
-      // not 8 (the heaviest-load set's reps).
-      expect(r.mostRepsAtLoad, isNotNull);
-      expect(r.mostRepsAtLoad!.reps, 12);
-    });
-
-    test('S-008: modality is propagated onto the record (for per-modality '
-        'grouping on the screen)', () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-rs',
-          name: 'Back Squat',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      // Seed in a non-null modality to verify the modality field
-      // is copied from the session.
-      await _seedSession(
-        repo,
-        id: 'rs-1',
-        day: daysAgo(0),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'rs-1',
-        exerciseId: 'ex-rs',
-        sets: [(100.0, 5)],
-      );
-
-      final records = await StatsProgressService(repo)
-          .computeExerciseRecords();
-      expect(records, hasLength(1));
-      expect(records.first.modality, Modality.resistanceLifting);
-    });
-  });
-
-  // ── Volume trends (PR 2b volume-trends section) ─────────────────────────
-  //
-  // Plan: `.github/agents/plans/2026-07-13-03-pr2b-descriptive-log-analytics-plan.md`,
-  // S-002 (tonnage), S-003 (time / distance).
-  //
-  // Volume trends are bucketed by ISO week inside the
-  // current-state window. Per modality + overall. Empty when
-  // the data has zero qualifying efforts. Mixed-modality
-  // efforts (a `set` effort in a cardio session, a `timed`
-  // effort in a lifting session) are routed to the right
-  // series by effortKind, never by session modality.
-
-  group('computeVolumeTonnage', () {
-    test('S-201: Σ (load × reps) bucketed by week, per-modality + overall',
-        () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-sq',
-          name: 'Squat',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-bp',
-          name: 'Bench Press',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Week A (two weeks back): Squat 100×5=500 + 80×8=640 = 1140.
-      // Bench 60×10=600.
-      await _seedSession(
-        repo,
-        id: 'va-1',
-        day: dayInWeeksAgo(2),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'va-1',
-        exerciseId: 'ex-sq',
-        sets: [(100.0, 5)],
-      );
-      await _seedSession(
-        repo,
-        id: 'va-2',
-        day: dayInWeeksAgo(2, dayOffset: 1),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'va-2',
-        exerciseId: 'ex-sq',
-        sets: [(80.0, 8)],
-      );
-      await _seedSession(
-        repo,
-        id: 'va-3',
-        day: dayInWeeksAgo(2, dayOffset: 1),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'va-3',
-        exerciseId: 'ex-bp',
-        sets: [(60.0, 10)],
-      );
-
-      // Week B (one week back): Squat 120×5=600 + 110×5=550 = 1150.
-      // Bench 70×8=560.
-      await _seedSession(
-        repo,
-        id: 'vb-1',
-        day: dayInWeeksAgo(1),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'vb-1',
-        exerciseId: 'ex-sq',
-        sets: [(120.0, 5)],
-      );
-      await _seedSession(
-        repo,
-        id: 'vb-2',
-        day: dayInWeeksAgo(1, dayOffset: 1),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'vb-2',
-        exerciseId: 'ex-sq',
-        sets: [(110.0, 5)],
-      );
-      await _seedSession(
-        repo,
-        id: 'vb-3',
-        day: dayInWeeksAgo(1, dayOffset: 1),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'vb-3',
-        exerciseId: 'ex-bp',
-        sets: [(70.0, 8)],
-      );
-
-      final trend =
-          await StatsProgressService(repo).computeVolumeTonnage();
-
-      // Overall series: 2 weekly points; both weeks' Σ tonnage
-      // summed across both modalities.
-      // Week A: 1140 (squat) + 600 (bench) = 1740.
-      // Week B: 1150 (squat) + 560 (bench) = 1710.
-      expect(trend.overall, hasLength(2));
-      final weekAOverall = trend.overall.firstWhere(
-        (p) => (p.value - 1740.0).abs() < 0.01,
-      );
-      final weekBOverall = trend.overall.firstWhere(
-        (p) => (p.value - 1710.0).abs() < 0.01,
-      );
-      expect(weekAOverall, isNotNull);
-      expect(weekBOverall, isNotNull);
-
-      // Per-modality series.
-      expect(
-        trend.byModality[Modality.resistanceLifting],
-        hasLength(2),
-      );
-      final resLifting = trend.byModality[Modality.resistanceLifting]!;
-      // Week A: 1140 (squat) + 600 (bench) = 1740 (same as overall
-      // because only one modality contributed).
-      expect(
-        resLifting.any((p) => (p.value - 1740.0).abs() < 0.01),
-        isTrue,
-      );
-      expect(
-        resLifting.any((p) => (p.value - 1710.0).abs() < 0.01),
-        isTrue,
-      );
-    });
-
-    test('S-202: zero-rep sets and zero-weight sets do not contribute to '
-        'tonnage (defensive — already-skipped upstream)', () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-skip',
-          name: 'Skipped',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await _seedSession(
-        repo,
-        id: 'skip-1',
-        day: daysAgo(2),
-        modality: Modality.resistanceLifting,
-      );
-      await _addSetEffort(
-        repo,
-        sessionId: 'skip-1',
-        exerciseId: 'ex-skip',
-        sets: [(0.0, 5), (50.0, 0)],
-      );
-
-      final trend =
-          await StatsProgressService(repo).computeVolumeTonnage();
-      // Both rows contribute 0 tonnage (0×5=0 and 50×0=0). The
-      // day has no qualifying effort, so the weekly bucket is
-      // empty (no point is emitted).
-      expect(trend.overall, isEmpty);
-    });
-
-    test('S-203: empty repo → empty tonnage trend (no exceptions)',
-        () async {
-      final repo = await _freshRepo();
-      final trend =
-          await StatsProgressService(repo).computeVolumeTonnage();
-      expect(trend.overall, isEmpty);
-      expect(trend.byModality, isEmpty);
-    });
-  });
-
-  group('computeTimedDuration', () {
-    test('S-301: Σ actualDurationSecs bucketed by week, per-modality + overall',
-        () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-run',
-          name: 'Run',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-bike',
-          name: 'Bike',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Week A (two weeks back): Run 1500 + 900 = 2400. Bike 1200.
-      await _seedSession(
-        repo,
-        id: 'tda-1',
-        day: dayInWeeksAgo(2),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'tda-1',
-        exerciseId: 'ex-run',
-        durationSecs: 1500,
-      );
-      await _seedSession(
-        repo,
-        id: 'tda-2',
-        day: dayInWeeksAgo(2, dayOffset: 1),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'tda-2',
-        exerciseId: 'ex-run',
-        durationSecs: 900,
-      );
-      await _seedSession(
-        repo,
-        id: 'tda-3',
-        day: dayInWeeksAgo(2, dayOffset: 1),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'tda-3',
-        exerciseId: 'ex-bike',
-        durationSecs: 1200,
-      );
-
-      // Week B (one week back): Run 1800. Bike 0 (no session).
-      await _seedSession(
-        repo,
-        id: 'tdb-1',
-        day: dayInWeeksAgo(1),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'tdb-1',
-        exerciseId: 'ex-run',
-        durationSecs: 1800,
-      );
-
-      final trend =
-          await StatsProgressService(repo).computeTimedDuration();
-
-      // Overall: 2 weeks. Week A: 2400+1200=3600. Week B: 1800.
-      expect(trend.overall, hasLength(2));
-      expect(
-        trend.overall.any((p) => p.value == 3600),
-        isTrue,
-      );
-      expect(
-        trend.overall.any((p) => p.value == 1800),
-        isTrue,
-      );
-      // Per-modality: cardio_endurance has 2 weekly points.
-      expect(
-        trend.byModality[Modality.cardioEndurance],
-        hasLength(2),
-      );
-    });
-
-    test('S-302: empty repo → empty time trend', () async {
-      final repo = await _freshRepo();
-      final trend =
-          await StatsProgressService(repo).computeTimedDuration();
-      expect(trend.overall, isEmpty);
-      expect(trend.byModality, isEmpty);
-    });
-  });
-
-  group('computeTimedDistance', () {
-    test('S-401: Σ distance observations bucketed by week, per-modality + overall',
-        () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-row',
-          name: 'Row',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-
-      // Week A (two weeks back): 4000 + 6000 = 10000.
-      await _seedSession(
-        repo,
-        id: 'dist-a1',
-        day: dayInWeeksAgo(2),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'dist-a1',
-        exerciseId: 'ex-row',
-        durationSecs: 1200,
-        distanceM: 4000,
-      );
-      await _seedSession(
-        repo,
-        id: 'dist-a2',
-        day: dayInWeeksAgo(2, dayOffset: 1),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'dist-a2',
-        exerciseId: 'ex-row',
-        durationSecs: 1500,
-        distanceM: 6000,
-      );
-      // Week B (one week back): 5000.
-      await _seedSession(
-        repo,
-        id: 'dist-b1',
-        day: dayInWeeksAgo(1),
-        modality: Modality.cardioEndurance,
-      );
-      await _addTimedEffort(
-        repo,
-        sessionId: 'dist-b1',
-        exerciseId: 'ex-row',
-        durationSecs: 1500,
-        distanceM: 5000,
-      );
-
-      final trend =
-          await StatsProgressService(repo).computeTimedDistance();
-
-      expect(trend.overall, hasLength(2));
-      expect(
-        trend.overall.any((p) => (p.value - 10000.0).abs() < 0.01),
-        isTrue,
-      );
-      expect(
-        trend.overall.any((p) => (p.value - 5000.0).abs() < 0.01),
-        isTrue,
-      );
-    });
-
-    test('S-402: timed effort with no distance observation does not '
-        'contribute to the distance trend', () async {
-      final repo = await _freshRepo();
-      await repo.createExercise(
-        Exercise(
-          id: 'ex-bike',
-          name: 'Bike',
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await _seedSession(
-        repo,
-        id: 'b-1',
-        day: daysAgo(2),
-        modality: Modality.cardioEndurance,
-      );
-      // No distanceM.
-      await _addTimedEffort(
-        repo,
-        sessionId: 'b-1',
-        exerciseId: 'ex-bike',
-        durationSecs: 1200,
-      );
-
-      final trend =
-          await StatsProgressService(repo).computeTimedDistance();
-      // No distance logged → the week has no qualifying effort →
-      // the bucket emits no point.
-      expect(trend.overall, isEmpty);
-    });
-
-    test('S-403: empty repo → empty distance trend', () async {
-      final repo = await _freshRepo();
-      final trend =
-          await StatsProgressService(repo).computeTimedDistance();
-      expect(trend.overall, isEmpty);
-      expect(trend.byModality, isEmpty);
-    });
-  });
-
-  // ── Consistency (PR 2b consistency section) ──────────────────────────────
-  //
-  // Plan: `.github/agents/plans/2026-07-13-03-pr2b-descriptive-log-analytics-plan.md`,
-  // S-004.
-  //
-  // Sessions per ISO week and per calendar month, per-modality
-  // + overall. The overall count includes every completed
-  // session regardless of modality, while per-modality counts
-  // only the sessions whose `TrainingSession.modality` matches.
-
-  group('computeConsistencyWeekly', () {
-    test(
-      'S-500: all 7 days of one ISO week land in a SINGLE bucket keyed to '
-      'local-midnight Monday (DST regression guard)',
-      () async {
-        final repo = await _freshRepo();
-
-        // Fixed historical week: Mon 2026-03-30 .. Sun 2026-04-05.
-        //
-        // Deliberately not relative to "today". This exact week is what
-        // reproduces the bug: in America/Santiago the DST transition
-        // falls inside it, and Sunday 2026-04-05 resolved to Monday
-        // 01:00 under the old Duration-based arithmetic while Mon–Sat
-        // resolved to Monday 00:00. A floating anchor almost never lands
-        // on a transition week, so the guard would be vacuous.
-        //
-        // `_computeConsistency` walks ALL completed sessions with no
-        // window restriction, so a fixed past date stays in range
-        // permanently.
-        final monday = DateTime(2026, 3, 30);
-
-        for (var i = 0; i < 7; i++) {
-          final day = DateTime(monday.year, monday.month, monday.day + i);
-          await _seedSession(repo, id: 'dst-$i', day: day);
-        }
-
-        final trend =
-            await StatsProgressService(repo).computeConsistencyWeekly();
-
-        // The bug this guards: `_startOfIsoWeek` used
-        // `subtract(Duration(days: weekday - 1))`. A Duration is an exact
-        // hour span, so in a timezone whose DST transition shifts local
-        // midnight (verified in America/Santiago) the Sunday of a week
-        // resolved to Monday 01:00 while Mon–Sat resolved to Monday
-        // 00:00. Two distinct map keys → the week split into two buckets
-        // and Sunday's training was pulled out of its own week.
-        expect(
-          trend.overall,
-          hasLength(1),
-          reason: 'All 7 days belong to one ISO week, so the weekly trend '
-              'must produce exactly one bucket. More than one means the '
-              'week-start key is not stable across the week — check '
-              'StatsProgressService._startOfIsoWeek for Duration-based '
-              'date arithmetic.',
-        );
-        expect(trend.overall.single.count, 7);
-
-        final key = trend.overall.single.periodStart;
-        expect(key.weekday, DateTime.monday,
-            reason: 'Week buckets must be keyed to Monday');
-        expect(
-          [key.hour, key.minute, key.second, key.millisecond],
-          [0, 0, 0, 0],
-          reason: 'Week bucket key must be exactly local midnight; a '
-              'non-midnight key is the DST-shift signature.',
-        );
-      },
-    );
-
-    test('S-501: sessions per ISO week, per-modality + overall', () async {
-      final repo = await _freshRepo();
-
-      // Week A: 2 sessions (both cardio).
-      await _seedSession(
-        repo,
-        id: 'cw-a1',
-        day: dayInWeeksAgo(2),
-        modality: Modality.cardioEndurance,
-      );
-      await _seedSession(
-        repo,
-        id: 'cw-a2',
-        day: dayInWeeksAgo(2, dayOffset: 1),
-        modality: Modality.cardioEndurance,
-      );
-      // Week B: 1 lifting + 1 sports.
-      await _seedSession(
-        repo,
-        id: 'cw-b1',
-        day: dayInWeeksAgo(1),
-        modality: Modality.resistanceLifting,
-      );
-      await _seedSession(
-        repo,
-        id: 'cw-b2',
-        day: dayInWeeksAgo(1, dayOffset: 1),
-        modality: Modality.sports,
-      );
-
-      final trend =
-          await StatsProgressService(repo).computeConsistencyWeekly();
-
-      // Overall: 2 weeks → 2 points. Week A: 2 sessions. Week B: 2.
-      expect(trend.overall, hasLength(2));
-      expect(
-        trend.overall.any((p) => p.count == 2),
-        isTrue,
-      );
-
-      // Per-modality: cardio has 1 weekly point (week A: 2).
-      // resistance_lifting has 1 weekly point (week B: 1).
-      // sports has 1 weekly point (week B: 1).
-      expect(
-        trend.byModality[Modality.cardioEndurance]!
-            .any((p) => p.count == 2),
-        isTrue,
-      );
-      expect(
-        trend.byModality[Modality.resistanceLifting]!
-            .any((p) => p.count == 1),
-        isTrue,
-      );
-      expect(
-        trend.byModality[Modality.sports]!.any((p) => p.count == 1),
-        isTrue,
-      );
-    });
-
-    test('S-502: empty repo → empty weekly trend', () async {
-      final repo = await _freshRepo();
-      final trend =
-          await StatsProgressService(repo).computeConsistencyWeekly();
-      expect(trend.overall, isEmpty);
-      expect(trend.byModality, isEmpty);
-    });
-  });
-
-  group('computeConsistencyMonthly', () {
-    test('S-601: sessions per calendar month, per-modality + overall',
-        () async {
-      final repo = await _freshRepo();
-
-      // Current month: 2 lifting + 1 cardio.
-      await _seedSession(
-        repo,
-        id: 'cm-1',
-        day: daysAgo(0),
-        modality: Modality.resistanceLifting,
-      );
-      await _seedSession(
-        repo,
-        id: 'cm-2',
-        day: daysAgo(1),
-        modality: Modality.resistanceLifting,
-      );
-      await _seedSession(
-        repo,
-        id: 'cm-3',
-        day: daysAgo(2),
-        modality: Modality.cardioEndurance,
-      );
-
-      final trend =
-          await StatsProgressService(repo).computeConsistencyMonthly();
-
-      // Overall: 1 month point with count=3.
-      expect(trend.overall, hasLength(1));
-      expect(trend.overall.first.count, 3);
-
-      // Per-modality: 1 monthly point each.
-      expect(
-        trend.byModality[Modality.resistanceLifting]!.first.count,
-        2,
-      );
-      expect(
-        trend.byModality[Modality.cardioEndurance]!.first.count,
-        1,
-      );
-    });
-
-    test('S-602: empty repo → empty monthly trend', () async {
-      final repo = await _freshRepo();
-      final trend =
-          await StatsProgressService(repo).computeConsistencyMonthly();
-      expect(trend.overall, isEmpty);
-      expect(trend.byModality, isEmpty);
-    });
-  });
-
-  // ── Nutrition adherence (PR 2b nutrition adherence section) ─────────────
-  //
-  // Plan: `.github/agents/plans/2026-07-13-03-pr2b-descriptive-log-analytics-plan.md`,
-  // S-005.
-  //
-  // A piecewise target line that steps at every saved target
-  // change. Historical actuals are never rewritten. The
-  // `targetLine` is empty when no target has ever been saved.
-
   group('computeNutritionAdherence', () {
     test('S-701: target line steps at every saved target change, and '
         'historical actuals are unchanged', () async {
@@ -4652,6 +3555,536 @@ void main() {
   // source file this iteration introduces and asserts none of
   // the banned strings appear in user-visible copy. Test
   // comments and code identifiers are excluded.
+
+  group('Isometric drill aggregation (Phase D)', () {
+    test('T-17: Three 30-second holds on same day sum to 90 seconds', () async {
+      final repo = await _freshRepo();
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-plank',
+          name: 'Plank',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final today = daysAgo(0);
+      await _seedSession(repo, id: 's1', day: today, modality: 'isometric_stretching');
+
+      final segId = 'seg-s1-ex-plank';
+      await repo.createSegment(
+        SessionSegment(
+          id: segId,
+          sessionId: 's1',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Create three separate drill efforts, each 30 seconds
+      for (var i = 0; i < 3; i++) {
+        final effId = 'eff-s1-ex-plank-$i';
+        await repo.createEffort(
+          SegmentEffort(
+            id: effId,
+            segmentId: segId,
+            orderIndex: i,
+            effortKind: 'drill',
+            exerciseId: 'ex-plank',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        await repo.createTimedInstance(
+          TimedInstance(
+            id: 'ti-$effId',
+            effortId: effId,
+            entryIndex: 0,
+            actualDurationSecs: 30,
+            state: TimedState.finished,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+      }
+
+      final data = await StatsProgressService(repo).computeProgressData();
+
+      // Should have 1 exercise in topIsometric
+      expect(data.topIsometric, hasLength(1));
+      expect(data.topIsometric.first.exerciseName, 'Plank');
+
+      // Should have one trend point for today with 90 seconds
+      expect(data.topIsometric.first.trend, hasLength(1));
+      expect(data.topIsometric.first.trend.first.durationSecs, 90);
+      expect(data.topIsometric.first.trend.first.date.year, today.year);
+      expect(data.topIsometric.first.trend.first.date.month, today.month);
+      expect(data.topIsometric.first.trend.first.date.day, today.day);
+    });
+
+    test('T-18: Drill exercises filtered by effortKind==drill (excludes set/timed)', () async {
+      final repo = await _freshRepo();
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-hold',
+          name: 'Wall Hold',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-squat',
+          name: 'Squat',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-run',
+          name: 'Running',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final today = daysAgo(0);
+      await _seedSession(repo, id: 's1', day: today, modality: 'isometric_stretching');
+
+      // Add a drill effort for Wall Hold (should appear in topIsometric)
+      await _addDrillEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-hold',
+        durationSecs: 60,
+      );
+
+      // Add a set effort for Squat in same session (should NOT appear in topIsometric)
+      await _addSetEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-squat',
+        sets: [(100.0, 5)],
+      );
+
+      // Add a timed effort for Running in same session (should NOT appear in topIsometric)
+      await _addTimedEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-run',
+        durationSecs: 1800,
+      );
+
+      final data = await StatsProgressService(repo).computeProgressData();
+
+      // Only the drill effort should appear in topIsometric
+      expect(data.topIsometric, hasLength(1));
+      expect(data.topIsometric.first.exerciseName, 'Wall Hold');
+      expect(data.topIsometric.first.trend.first.durationSecs, 60);
+
+      // Set and timed efforts should NOT be in topIsometric
+      final isometricNames = data.topIsometric.map((p) => p.exerciseName).toList();
+      expect(isometricNames.contains('Squat'), isFalse, reason: 'Set efforts must not appear in topIsometric');
+      expect(isometricNames.contains('Running'), isFalse, reason: 'Timed efforts must not appear in topIsometric');
+    });
+  });
+
+  group('Sports round aggregation (Phase D)', () {
+    test('T-19: Three 2-minute rounds on same day sum to 6 minutes (360 seconds)', () async {
+      final repo = await _freshRepo();
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-boxing',
+          name: 'Boxing',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final today = daysAgo(0);
+      await _seedSession(repo, id: 's1', day: today, modality: 'sports');
+
+      final segId = 'seg-s1-ex-boxing';
+      await repo.createSegment(
+        SessionSegment(
+          id: segId,
+          sessionId: 's1',
+          orderIndex: 0,
+          segmentType: 'main',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Create three separate round efforts, each 120 seconds (2 minutes)
+      for (var i = 0; i < 3; i++) {
+        final effId = 'eff-s1-ex-boxing-$i';
+        await repo.createEffort(
+          SegmentEffort(
+            id: effId,
+            segmentId: segId,
+            orderIndex: i,
+            effortKind: 'round',
+            exerciseId: 'ex-boxing',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+
+        await repo.createTimedInstance(
+          TimedInstance(
+            id: 'ti-$effId',
+            effortId: effId,
+            entryIndex: 0,
+            actualDurationSecs: 120,
+            state: TimedState.finished,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+      }
+
+      final data = await StatsProgressService(repo).computeProgressData();
+
+      // Should have 1 exercise in topSports
+      expect(data.topSports, hasLength(1));
+      expect(data.topSports.first.exerciseName, 'Boxing');
+
+      // Should have one trend point for today with 360 seconds (3 × 120)
+      expect(data.topSports.first.trend, hasLength(1));
+      expect(data.topSports.first.trend.first.durationSecs, 360);
+      expect(data.topSports.first.trend.first.date.year, today.year);
+      expect(data.topSports.first.trend.first.date.month, today.month);
+      expect(data.topSports.first.trend.first.date.day, today.day);
+    });
+
+    test('T-20: Round exercises filtered by effortKind==round (excludes set/timed/drill)', () async {
+      final repo = await _freshRepo();
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-tennis',
+          name: 'Tennis',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-squat',
+          name: 'Squat',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-run',
+          name: 'Running',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-plank',
+          name: 'Plank',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final today = daysAgo(0);
+      await _seedSession(repo, id: 's1', day: today, modality: 'sports');
+
+      // Add a round effort for Tennis (should appear in topSports)
+      await _addRoundEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-tennis',
+        durationSecs: 1800,
+      );
+
+      // Add a set effort for Squat in same session (should NOT appear in topSports)
+      await _addSetEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-squat',
+        sets: [(100.0, 5)],
+      );
+
+      // Add a timed effort for Running in same session (should NOT appear in topSports)
+      await _addTimedEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-run',
+        durationSecs: 900,
+      );
+
+      // Add a drill effort for Plank in same session (should NOT appear in topSports)
+      await _addDrillEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-plank',
+        durationSecs: 45,
+      );
+
+      final data = await StatsProgressService(repo).computeProgressData();
+
+      // Only the round effort should appear in topSports
+      expect(data.topSports, hasLength(1));
+      expect(data.topSports.first.exerciseName, 'Tennis');
+      expect(data.topSports.first.trend.first.durationSecs, 1800);
+
+      // Set, timed, and drill efforts should NOT be in topSports
+      final sportsNames = data.topSports.map((p) => p.exerciseName).toList();
+      expect(sportsNames.contains('Squat'), isFalse, reason: 'Set efforts must not appear in topSports');
+      expect(sportsNames.contains('Running'), isFalse, reason: 'Timed efforts must not appear in topSports');
+      expect(sportsNames.contains('Plank'), isFalse, reason: 'Drill efforts must not appear in topSports');
+    });
+  });
+
+  group('Exercise selection: isometric and sports (Phase D)', () {
+    test('topIsometric selected by training frequency with recency floor',
+        () async {
+      final repo = await _freshRepo();
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-plank',
+          name: 'Plank',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-hold',
+          name: 'Wall Hold',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-isometric-squat',
+          name: 'Isometric Squat',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Create 3 sessions with plank (recent)
+      for (var i = 0; i < 3; i++) {
+        final day = daysAgo(i);
+        final sessionId = 's-plank-$i';
+        await _seedSession(
+          repo,
+          id: sessionId,
+          day: day,
+          modality: 'isometric_stretching',
+        );
+        await _addDrillEffort(
+          repo,
+          sessionId: sessionId,
+          exerciseId: 'ex-plank',
+          durationSecs: 30,
+        );
+      }
+
+      // Create 2 sessions with wall hold (recent)
+      for (var i = 0; i < 2; i++) {
+        final day = daysAgo(i);
+        final sessionId = 's-hold-$i';
+        await _seedSession(
+          repo,
+          id: sessionId,
+          day: day,
+          modality: 'isometric_stretching',
+        );
+        await _addDrillEffort(
+          repo,
+          sessionId: sessionId,
+          exerciseId: 'ex-hold',
+          durationSecs: 45,
+        );
+      }
+
+      // Create 1 session with isometric squat (very old, outside recency floor)
+      final veryOldDay = daysAgo(35);
+      await _seedSession(
+        repo,
+        id: 's-iso-squat',
+        day: veryOldDay,
+        modality: 'isometric_stretching',
+      );
+      await _addDrillEffort(
+        repo,
+        sessionId: 's-iso-squat',
+        exerciseId: 'ex-isometric-squat',
+        durationSecs: 60,
+      );
+
+      final data = await StatsProgressService(repo).computeProgressData();
+
+      // Should select top 2 by frequency: plank (3 days) and hold (2 days)
+      // Isometric squat should be dropped due to recency floor (> 30 days old)
+      expect(data.topIsometric, hasLength(2));
+      final names = data.topIsometric.map((p) => p.exerciseName).toList();
+      expect(names.contains('Plank'), isTrue);
+      expect(names.contains('Wall Hold'), isTrue);
+      expect(names.contains('Isometric Squat'), isFalse);
+    });
+
+    test('topSports selected by training frequency with recency floor',
+        () async {
+      final repo = await _freshRepo();
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-boxing',
+          name: 'Boxing',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-tennis',
+          name: 'Tennis',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Create 2 sessions with boxing (recent)
+      for (var i = 0; i < 2; i++) {
+        final day = daysAgo(i);
+        final sessionId = 's-boxing-$i';
+        await _seedSession(
+          repo,
+          id: sessionId,
+          day: day,
+          modality: 'sports',
+        );
+        await _addRoundEffort(
+          repo,
+          sessionId: sessionId,
+          exerciseId: 'ex-boxing',
+          durationSecs: 180,
+        );
+      }
+
+      // Create 1 session with tennis (recent)
+      final day = daysAgo(0);
+      await _seedSession(repo, id: 's-tennis', day: day, modality: 'sports');
+      await _addRoundEffort(
+        repo,
+        sessionId: 's-tennis',
+        exerciseId: 'ex-tennis',
+        durationSecs: 3600,
+      );
+
+      final data = await StatsProgressService(repo).computeProgressData();
+
+      // Should select top 2 by frequency: boxing (2 days) and tennis (1 day)
+      expect(data.topSports, hasLength(2));
+      final names = data.topSports.map((p) => p.exerciseName).toList();
+      expect(names.contains('Boxing'), isTrue);
+      expect(names.contains('Tennis'), isTrue);
+    });
+
+    test('T-21: Same exercise in two modalities appears in both sections with separate efforts',
+        () async {
+      final repo = await _freshRepo();
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-squat',
+          name: 'Squat',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      // Day 1: Log squat as a timed effort (cardio-style, e.g., timed for reps)
+      final day1 = daysAgo(1);
+      await _seedSession(repo, id: 's1', day: day1, modality: 'cardio_endurance');
+      await _addTimedEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-squat',
+        durationSecs: 600,
+      );
+
+      // Day 0 (today): Log squat as a drill effort (isometric hold at bottom)
+      final day0 = daysAgo(0);
+      await _seedSession(repo, id: 's2', day: day0, modality: 'isometric_stretching');
+      await _addDrillEffort(
+        repo,
+        sessionId: 's2',
+        exerciseId: 'ex-squat',
+        durationSecs: 120,
+      );
+
+      final data = await StatsProgressService(repo).computeProgressData();
+
+      // Squat should appear in topCardio (from the timed effort)
+      expect(data.topCardio, hasLength(1));
+      expect(data.topCardio.first.exerciseName, 'Squat');
+      expect(data.topCardio.first.trend.first.durationSecs, 600);
+
+      // Squat should ALSO appear in topIsometric (from the drill effort)
+      expect(data.topIsometric, hasLength(1));
+      expect(data.topIsometric.first.exerciseName, 'Squat');
+      expect(data.topIsometric.first.trend.first.durationSecs, 120);
+
+      // Verify they are separate trend series (different times)
+      expect(data.topCardio.first.trend.first.durationSecs,
+          isNot(data.topIsometric.first.trend.first.durationSecs),
+          reason: 'Each section should contain only its own effort kind');
+    });
+
+    test('T-22: Drill effort in resistance_lifting session still appears in topIsometric',
+        () async {
+      // Effort-kind classification rule: drills are classified as isometric
+      // regardless of session modality. A drill in a resistance_lifting session
+      // should still land in topIsometric, not topLifts.
+      final repo = await _freshRepo();
+      await repo.createExercise(
+        Exercise(
+          id: 'ex-pause-squat',
+          name: 'Pause Squat',
+          createdAtMs: 1000,
+          updatedAtMs: 1000,
+        ),
+      );
+
+      final today = daysAgo(0);
+      // Session is marked as resistance_lifting, not isometric
+      await _seedSession(repo, id: 's1', day: today, modality: 'resistance_lifting');
+
+      // But the effort inside is a drill (isometric hold)
+      await _addDrillEffort(
+        repo,
+        sessionId: 's1',
+        exerciseId: 'ex-pause-squat',
+        durationSecs: 90,
+      );
+
+      final data = await StatsProgressService(repo).computeProgressData();
+
+      // The drill should appear in topIsometric, not influenced by session modality
+      expect(data.topIsometric, hasLength(1));
+      expect(data.topIsometric.first.exerciseName, 'Pause Squat');
+      expect(data.topIsometric.first.trend.first.durationSecs, 90);
+
+      // Verify it does NOT appear in topLifts (which would be wrong classification)
+      final liftNames = data.topLifts.map((p) => p.exerciseName).toList();
+      expect(liftNames.contains('Pause Squat'), isFalse,
+          reason: 'Drill efforts must not appear in topLifts; effort-kind is authoritative, not session modality');
+    });
+  });
 
   group('Banned-framings audit', () {
     test('S-901: no banned strings appear in NEW user-facing copy',

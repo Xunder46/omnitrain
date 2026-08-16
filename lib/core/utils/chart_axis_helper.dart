@@ -27,11 +27,17 @@ class ChartAxisHelper {
 
   /// Compute padded axis bounds from a list of data values.
   ///
+  /// Per D-2 (Y-axis label rounding):
   /// - Pads each side by [paddingFraction] × range.
   /// - Clamps min to 0.
   /// - Adds a floor of 1.0 to the range so flat/single-value series still
   ///   produce a visible, non-zero range.
   /// - Rounds the tick interval to a "nice" power-of-10-based step.
+  /// - Rounds the minimum DOWN to the nearest multiple of the interval that's
+  ///   at or below the padded minimum.
+  /// - Rounds the maximum UP to the nearest multiple of the interval that's
+  ///   at or above the padded maximum.
+  /// - Ensures at least 2 distinct labels with visible range.
   static ChartAxisBounds computeBounds(
     List<double> values, {
     double paddingFraction = 0.15,
@@ -56,9 +62,26 @@ class ChartAxisHelper {
     final rawInterval = (paddedMax - paddedMin) / 4.0;
     final niceInterval = _niceNumber(rawInterval);
 
+    // Round minimum DOWN to nearest multiple of interval (at or below paddedMin).
+    final roundedMin = (paddedMin / niceInterval).floor() * niceInterval;
+
+    // Round maximum UP to nearest multiple of interval (at or above paddedMax).
+    final roundedMax = (paddedMax / niceInterval).ceil() * niceInterval;
+
+    // Ensure at least 2 distinct labels with visible range.
+    // If rounding collapses the range to zero, expand it.
+    if (roundedMax <= roundedMin) {
+      // Flat data or rounding artifact: expand to at least one interval.
+      return ChartAxisBounds(
+        min: roundedMin,
+        max: roundedMin + niceInterval,
+        interval: niceInterval,
+      );
+    }
+
     return ChartAxisBounds(
-      min: paddedMin,
-      max: paddedMax,
+      min: roundedMin,
+      max: roundedMax,
       interval: niceInterval,
     );
   }

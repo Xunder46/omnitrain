@@ -1,7 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/constants/modality.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/models/stats_progress.dart';
 import '../../core/services/stats_progress_service.dart';
@@ -23,14 +22,6 @@ import 'widgets/scrollable_trend_chart.dart';
 /// share the same plotted-day set; switching just swaps the
 /// chart area, never re-queries the repository.
 enum _NutritionView { calories, macros }
-
-/// Segmented toggle state for the VOLUME TRENDS card. Local
-/// widget state only — the three series are computed once at
-/// load time and the toggle just chooses which one renders.
-enum _VolumeView { tonnage, time, distance }
-
-/// Segmented toggle state for the CONSISTENCY card.
-enum _ConsistencyView { week, month }
 
 class StatsScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -57,17 +48,7 @@ class _StatsScreenState extends State<StatsScreen> {
   StatsProgressData? _progressData;
   _NutritionView _nutritionView = _NutritionView.calories;
 
-  // PR 2b descriptive analytics — loaded alongside the
-  // existing progress data, never re-queried on tab switch.
-  List<ExerciseRecord> _exerciseRecords = const [];
-  VolumeTrend? _tonnageTrend;
-  VolumeTrend? _durationTrend;
-  VolumeTrend? _distanceTrend;
-  ConsistencyTrend? _weeklyConsistency;
-  ConsistencyTrend? _monthlyConsistency;
   NutritionAdherence? _nutritionAdherence;
-  _VolumeView _volumeView = _VolumeView.tonnage;
-  _ConsistencyView _consistencyView = _ConsistencyView.week;
 
   @override
   void initState() {
@@ -103,19 +84,11 @@ class _StatsScreenState extends State<StatsScreen> {
       // instance here would silently double that cost.
       final service = StatsProgressService(widget.workoutState.repository);
 
-      // Compute progress data (e1RM trends, volume trends, cardio trends,
-      // PRs, and the nutrition trend — all in one call so we don't
+      // Compute progress data (e1RM trends, cardio trends, isometric trends,
+      // sports trends, PRs, and the nutrition trend — all in one call so we don't
       // double-walk the repository for the same screen).
       final progressData = await service.computeProgressData();
 
-      // PR 2b descriptive analytics. The toggles below just pick which
-      // precomputed series renders.
-      final records = await service.computeExerciseRecords();
-      final tonnage = await service.computeVolumeTonnage();
-      final duration = await service.computeTimedDuration();
-      final distance = await service.computeTimedDistance();
-      final weekly = await service.computeConsistencyWeekly();
-      final monthly = await service.computeConsistencyMonthly();
       final adherence = await service.computeNutritionAdherence();
 
       if (!mounted) return;
@@ -125,12 +98,6 @@ class _StatsScreenState extends State<StatsScreen> {
         _totalDurationMs = totalMs;
         _streakDays = streak;
         _progressData = progressData;
-        _exerciseRecords = records;
-        _tonnageTrend = tonnage;
-        _durationTrend = duration;
-        _distanceTrend = distance;
-        _weeklyConsistency = weekly;
-        _monthlyConsistency = monthly;
         _nutritionAdherence = adherence;
         _isLoading = false;
       });
@@ -166,20 +133,15 @@ class _StatsScreenState extends State<StatsScreen> {
                             _buildAggregateCard(context, themeColors),
                             const SizedBox(height: 24),
                             ..._buildStrengthSection(context, themeColors),
-                            ..._buildRecordsSection(context, themeColors),
-                            const SizedBox(height: 24),
-                            ..._buildVolumeTrendsSection(
-                              context,
-                              themeColors,
-                            ),
                             const SizedBox(height: 24),
                             ..._buildCardioSection(context, themeColors),
                             const SizedBox(height: 24),
-                            ..._buildConsistencySection(
-                              context,
-                              themeColors,
-                            ),
+                            ..._buildIsometricSection(context, themeColors),
+                            const SizedBox(height: 24),
+                            ..._buildSportsSection(context, themeColors),
+                            const SizedBox(height: 24),
                             ..._buildFeelingSection(context, themeColors),
+                            const SizedBox(height: 24),
                             ..._buildNutritionSection(context, themeColors),
                           ],
                   ),
@@ -688,6 +650,317 @@ class _StatsScreenState extends State<StatsScreen> {
     return widgets;
   }
 
+  // ── Isometric section ─────────────────────────────────────────────────────
+
+  List<Widget> _buildIsometricSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final data = _progressData;
+    final widgets = <Widget>[
+      OmniCardHeader(
+        title: 'ISOMETRIC',
+        actions: [
+          if (data != null)
+            _buildWindowChip(context, themeColors, data.window),
+        ],
+      ),
+    ];
+
+    if (data == null || data.topIsometric.isEmpty) {
+      widgets.add(
+        _buildSectionEmptyState(
+          context,
+          themeColors,
+          'No isometric history yet. Log hold exercises to see trends here.',
+        ),
+      );
+      return widgets;
+    }
+
+    for (final drill in data.topIsometric) {
+      widgets.add(_buildDrillCard(context, themeColors, drill));
+      widgets.add(const SizedBox(height: 12));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildDrillCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    DrillProgress drill,
+  ) {
+    final theme = Theme.of(context);
+
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            drill.exerciseName,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.colors.textDominant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (drill.trend.length >= 2) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Duration (sec)',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildDurationChart(
+              themeColors,
+              drill.trend,
+              unitLabel: 'sec',
+              color: themeColors.primary,
+            ),
+          ] else if (drill.trend.length == 1) ...[
+            const SizedBox(height: 8),
+            _buildSingleDurationPointCard(
+              theme: theme,
+              themeColors: themeColors,
+              point: drill.trend.first,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDurationChart(
+    OmniThemeColors themeColors,
+    List<CardioTrendPoint> points, {
+    required String unitLabel,
+    required Color color,
+    double divisor = 1.0,
+  }) {
+    final durationValues = points
+        .map((p) => p.durationSecs.toDouble() / divisor)
+        .toList();
+    final spots = List.generate(
+      points.length,
+      (i) => FlSpot(i.toDouble(), durationValues[i]),
+    );
+
+    final bounds = ChartAxisHelper.computeBounds(durationValues);
+
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: unitLabel,
+      pointCount: points.length,
+      chartBuilder: (plotWidth) {
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (points.length - 1).toDouble(),
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: const LineTouchData(enabled: false),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: 0,
+                ),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.round();
+                    if (idx < 0 || idx >= points.length) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!ChartAxisHelper.shouldShowDateLabel(
+                      idx,
+                      points.length,
+                    )) {
+                      return const SizedBox.shrink();
+                    }
+                    return buildEdgeAwareDateLabel(
+                      meta: meta,
+                      text: ChartAxisHelper.formatDateLabel(points[idx].date),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: themeColors.textMuted,
+                      ),
+                      isFirst: idx == 0,
+                      isLast: idx == points.length - 1,
+                    );
+                  },
+                ),
+              ),
+            ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: themeColors.divider, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: spots,
+                color: color,
+                isCurved: true,
+                curveSmoothness: 0.3,
+                barWidth: 2,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                    radius: 3,
+                    color: color,
+                    strokeWidth: 1.5,
+                    strokeColor: themeColors.surface,
+                  ),
+                ),
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: color.withAlpha(25),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSingleDurationPointCard({
+    required ThemeData theme,
+    required OmniThemeColors themeColors,
+    required CardioTrendPoint point,
+  }) {
+    final secs = point.durationSecs;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: themeColors.divider.withAlpha(30),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$secs sec',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: OmniTheme.colors.textDominant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '1 session — log more to see a trend',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: themeColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Sports section ────────────────────────────────────────────────────────
+
+  List<Widget> _buildSportsSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final data = _progressData;
+    final widgets = <Widget>[
+      OmniCardHeader(
+        title: 'SPORTS',
+        actions: [
+          if (data != null)
+            _buildWindowChip(context, themeColors, data.window),
+        ],
+      ),
+    ];
+
+    if (data == null || data.topSports.isEmpty) {
+      widgets.add(
+        _buildSectionEmptyState(
+          context,
+          themeColors,
+          'No sports history yet. Log sports rounds to see trends here.',
+        ),
+      );
+      return widgets;
+    }
+
+    for (final round in data.topSports) {
+      widgets.add(_buildRoundCard(context, themeColors, round));
+      widgets.add(const SizedBox(height: 12));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildRoundCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    RoundProgress round,
+  ) {
+    final theme = Theme.of(context);
+
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            round.exerciseName,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.colors.textDominant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (round.trend.length >= 2) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Duration (sec)',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildDurationChart(
+              themeColors,
+              round.trend,
+              unitLabel: 'sec',
+              color: themeColors.secondary,
+            ),
+          ] else if (round.trend.length == 1) ...[
+            const SizedBox(height: 8),
+            _buildSingleDurationPointCard(
+              theme: theme,
+              themeColors: themeColors,
+              point: round.trend.first,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+
+
   // ── Feeling section ───────────────────────────────────────────────────────
 
   /// The HOW DID IT FEEL section surfaces the post-session feeling
@@ -712,7 +985,6 @@ class _StatsScreenState extends State<StatsScreen> {
     final data = _progressData;
     final trend = data?.feelingTrend ?? const <FeelingTrendPoint>[];
     final widgets = <Widget>[
-      const SizedBox(height: 24),
       OmniCardHeader(
         title: 'HOW DID IT FEEL',
         actions: [
@@ -895,696 +1167,6 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  // ── Records section (per-exercise best values) ────────────────────────
-
-  /// Renders one row per exercise that has at least one
-  /// record (heaviest load, most reps at a load, longest
-  /// duration, or longest distance). Empty state: factual
-  /// "no records yet" copy with no advice.
-  List<Widget> _buildRecordsSection(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    if (_exerciseRecords.isEmpty) {
-      return const <Widget>[];
-    }
-    return [
-      const OmniCardHeader(title: 'RECORDS'),
-      _buildRecordsCard(context, themeColors),
-    ];
-  }
-
-  Widget _buildRecordsCard(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    final theme = Theme.of(context);
-    return OmniSurface(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final record in _exerciseRecords) ...[
-            _buildRecordRow(theme, themeColors, record),
-            if (record != _exerciseRecords.last)
-              Divider(
-                color: themeColors.divider,
-                height: 1,
-                thickness: 1,
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecordRow(
-    ThemeData theme,
-    OmniThemeColors themeColors,
-    ExerciseRecord record,
-  ) {
-    final weightLabel = UnitFormatter.weightLabel(widget.settingsState);
-    final distUnit = UnitFormatter.distanceLabel(widget.settingsState);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            record.exerciseName,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: OmniTheme.colors.textDominant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          if (record.heaviestLoad != null)
-            _buildRecordLine(
-              theme,
-              themeColors,
-              'Heaviest load',
-              '${UnitFormatter.convertWeight(record.heaviestLoad!.value, widget.settingsState).toStringAsFixed(0)} $weightLabel',
-              record.heaviestLoad!.date,
-            ),
-          if (record.mostRepsAtLoad != null)
-            _buildRecordLine(
-              theme,
-              themeColors,
-              'Most reps',
-              '${record.mostRepsAtLoad!.reps} reps'
-              '${record.mostRepsAtLoad!.loadKg > 0 ? " @ ${UnitFormatter.convertWeight(record.mostRepsAtLoad!.loadKg, widget.settingsState).toStringAsFixed(0)} $weightLabel" : ""}',
-              record.mostRepsAtLoad!.date,
-            ),
-          if (record.longestDuration != null)
-            _buildRecordLine(
-              theme,
-              themeColors,
-              'Longest session',
-              OmniDateUtils.formatDurationHoursMins(
-                record.longestDuration!.durationSecs * 1000,
-              ),
-              record.longestDuration!.date,
-            ),
-          if (record.longestDistance != null)
-            _buildRecordLine(
-              theme,
-              themeColors,
-              'Longest distance',
-              '${UnitFormatter.formatDistanceValue(record.longestDistance!.distanceM / 1000.0, widget.settingsState, decimals: 2)} $distUnit',
-              record.longestDistance!.date,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecordLine(
-    ThemeData theme,
-    OmniThemeColors themeColors,
-    String label,
-    String value,
-    DateTime date,
-  ) {
-    final dateStr =
-        '${OmniDateUtils.shortMonthName(date.month)} ${date.day}, ${date.year}';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: themeColors.textMuted,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: OmniTheme.colors.textDominant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Text(
-            dateStr,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: themeColors.textMuted,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Volume trends section (tonnage / time / distance tabs) ──────────────
-
-  List<Widget> _buildVolumeTrendsSection(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    final trends = <(String, VolumeTrend?)>[
-      ('Tonnage', _tonnageTrend),
-      ('Time', _durationTrend),
-      ('Distance', _distanceTrend),
-    ];
-    if (trends.every((t) => (t.$2?.overall.isEmpty ?? true))) {
-      return const <Widget>[];
-    }
-    return [
-      const OmniCardHeader(title: 'VOLUME TRENDS'),
-      _buildVolumeTrendsCard(context, themeColors),
-    ];
-  }
-
-  Widget _buildVolumeTrendsCard(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    return OmniSurface(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSegmentedToggle<_VolumeView>(
-            context: context,
-            themeColors: themeColors,
-            current: _volumeView,
-            labels: const {
-              _VolumeView.tonnage: 'Tonnage',
-              _VolumeView.time: 'Time',
-              _VolumeView.distance: 'Distance',
-            },
-            onChanged: (v) => setState(() => _volumeView = v),
-          ),
-          const SizedBox(height: 12),
-          _buildVolumeTrendChart(context, themeColors, _volumeView),
-        ],
-      ),
-    );
-  }
-
-  /// Renders the active volume-trend tab as a multi-line
-  /// chart (one line per present modality + an Overall
-  /// line) with a legend below.
-  Widget _buildVolumeTrendChart(
-    BuildContext context,
-    OmniThemeColors themeColors,
-    _VolumeView view,
-  ) {
-    final trend = switch (view) {
-      _VolumeView.tonnage => _tonnageTrend,
-      _VolumeView.time => _durationTrend,
-      _VolumeView.distance => _distanceTrend,
-    };
-    if (trend == null || trend.overall.isEmpty) {
-      return _buildEmptyChartPlaceholder(themeColors, view.name);
-    }
-    final values = trend.overall.map((p) => p.value).toList();
-    final bounds = ChartAxisHelper.computeBounds(values);
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildMultiLineScrollableChart(
-          themeColors: themeColors,
-          bounds: bounds,
-          unitLabel: _volumeUnitLabel(view),
-          periodPoints: trend.overall,
-          series: _buildModalitySeries(themeColors, trend),
-        ),
-        const SizedBox(height: 8),
-        _buildLineLegend(
-          theme,
-          themeColors,
-          _buildModalityLegendEntries(context, themeColors, trend),
-        ),
-      ],
-    );
-  }
-
-  String _volumeUnitLabel(_VolumeView view) {
-    switch (view) {
-      case _VolumeView.tonnage:
-        return UnitFormatter.weightLabel(widget.settingsState);
-      case _VolumeView.time:
-        return 'h:mm';
-      case _VolumeView.distance:
-        return UnitFormatter.distanceLabel(widget.settingsState);
-    }
-  }
-
-  // ── Consistency section (week / month tabs) ──────────────────────────────
-
-  List<Widget> _buildConsistencySection(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    if ((_weeklyConsistency?.overall.isEmpty ?? true) &&
-        (_monthlyConsistency?.overall.isEmpty ?? true)) {
-      return const <Widget>[];
-    }
-    return [
-      const OmniCardHeader(title: 'CONSISTENCY'),
-      _buildConsistencyCard(context, themeColors),
-    ];
-  }
-
-  Widget _buildConsistencyCard(
-    BuildContext context,
-    OmniThemeColors themeColors,
-  ) {
-    return OmniSurface(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildSegmentedToggle<_ConsistencyView>(
-            context: context,
-            themeColors: themeColors,
-            current: _consistencyView,
-            labels: const {
-              _ConsistencyView.week: 'Week',
-              _ConsistencyView.month: 'Month',
-            },
-            onChanged: (v) => setState(() => _consistencyView = v),
-          ),
-          const SizedBox(height: 12),
-          _buildConsistencyChart(context, themeColors, _consistencyView),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildConsistencyChart(
-    BuildContext context,
-    OmniThemeColors themeColors,
-    _ConsistencyView view,
-  ) {
-    final trend = view == _ConsistencyView.week
-        ? _weeklyConsistency
-        : _monthlyConsistency;
-    if (trend == null || trend.overall.isEmpty) {
-      return _buildEmptyChartPlaceholder(themeColors, view.name);
-    }
-    final values = trend.overall.map((p) => p.count.toDouble()).toList();
-    final bounds = ChartAxisHelper.computeBounds(values);
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildMultiLineScrollableChart(
-          themeColors: themeColors,
-          bounds: bounds,
-          unitLabel: '',
-          periodPoints: trend.overall
-              .map(
-                (p) => VolumeTrendPoint(
-                  periodStart: p.periodStart,
-                  value: p.count.toDouble(),
-                ),
-              )
-              .toList(),
-          series: _buildConsistencySeries(themeColors, trend),
-          integerYAxis: true,
-        ),
-        const SizedBox(height: 8),
-        _buildLineLegend(
-          theme,
-          themeColors,
-          _buildModalityLegendEntries(
-            context,
-            themeColors,
-            null,
-            consistencyTrend: trend,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Shared multi-line chart primitive ───────────────────────────────────
-
-  /// Build a multi-line `ScrollableTrendChart` for the
-  /// supplied [periodPoints] (the overall x-axis) and
-  /// [series] (one per modality / the overall). Used by both
-  /// VOLUME TRENDS and CONSISTENCY — every series shares the
-  /// same x-axis, so the points are indexed against the
-  /// [periodPoints] list directly.
-  Widget _buildMultiLineScrollableChart({
-    required OmniThemeColors themeColors,
-    required ChartAxisBounds bounds,
-    required String unitLabel,
-    required List<VolumeTrendPoint> periodPoints,
-    required List<_ChartSeries> series,
-    bool integerYAxis = false,
-  }) {
-    return ScrollableTrendChart(
-      themeColors: themeColors,
-      bounds: bounds,
-      unitLabel: unitLabel,
-      pointCount: periodPoints.length,
-      chartBuilder: (plotWidth) {
-        final maxIdx = (periodPoints.length - 1).toDouble();
-        return LineChart(
-          LineChartData(
-            minX: 0,
-            maxX: maxIdx,
-            minY: bounds.min,
-            maxY: bounds.max,
-            lineTouchData: const LineTouchData(enabled: false),
-            titlesData: FlTitlesData(
-              topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
-              ),
-              rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: _kBottomAxisReservedSize,
-                  interval: 1,
-                  getTitlesWidget: (value, meta) {
-                    final idx = value.round();
-                    if (idx < 0 || idx >= periodPoints.length) {
-                      return const SizedBox.shrink();
-                    }
-                    if (!ChartAxisHelper.shouldShowDateLabel(
-                      idx,
-                      periodPoints.length,
-                    )) {
-                      return const SizedBox.shrink();
-                    }
-                    return buildEdgeAwareDateLabel(
-                      meta: meta,
-                      text: ChartAxisHelper.formatDateLabel(
-                        periodPoints[idx].periodStart,
-                      ),
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: themeColors.textMuted,
-                      ),
-                      isFirst: idx == 0,
-                      isLast: idx == periodPoints.length - 1,
-                    );
-                  },
-                ),
-              ),
-            ),
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              getDrawingHorizontalLine: (_) => FlLine(
-                color: themeColors.divider,
-                strokeWidth: 1,
-              ),
-            ),
-            borderData: FlBorderData(show: false),
-            lineBarsData: [
-              for (final s in series)
-                LineChartBarData(
-                  spots: s.spots,
-                  color: s.color,
-                  isCurved: true,
-                  curveSmoothness: 0.3,
-                  barWidth: 2,
-                  isStrokeCapRound: true,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                      radius: 3,
-                      color: s.color,
-                      strokeWidth: 1.5,
-                      strokeColor: themeColors.surface,
-                    ),
-                  ),
-                  belowBarData: BarAreaData(show: false),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  /// Build the list of series for the active VOLUME TRENDS
-  /// tab: an "Overall" line first, then one line per
-  /// present modality. The modality key comes from
-  /// `TrainingSession.modality` (a null modality is bucketed
-  /// under the `<null>` key, rendered as "Free Training").
-  List<_ChartSeries> _buildModalitySeries(
-    OmniThemeColors themeColors,
-    VolumeTrend trend,
-  ) {
-    final series = <_ChartSeries>[];
-    series.add(_ChartSeries(
-      color: themeColors.primary,
-      spots: _indexSpots(trend.overall),
-      legendLabel: 'Overall',
-    ));
-    final colors = <Color>[
-      themeColors.secondary,
-      themeColors.macroChart.protein,
-      themeColors.macroChart.carbs,
-      themeColors.macroChart.fat,
-    ];
-    var i = 0;
-    final entries = trend.byModality.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    for (final entry in entries) {
-      if (entry.value.isEmpty) continue;
-      series.add(_ChartSeries(
-        color: colors[i % colors.length],
-        spots: _indexSpots(entry.value),
-        legendLabel: _modalityDisplayName(entry.key),
-      ));
-      i++;
-    }
-    return series;
-  }
-
-  /// Same as [_buildModalitySeries] but for the
-  /// CONSISTENCY chart.
-  List<_ChartSeries> _buildConsistencySeries(
-    OmniThemeColors themeColors,
-    ConsistencyTrend trend,
-  ) {
-    final series = <_ChartSeries>[];
-    series.add(_ChartSeries(
-      color: themeColors.primary,
-      spots: _indexSpotsFromConsistency(trend.overall),
-      legendLabel: 'Overall',
-    ));
-    final colors = <Color>[
-      themeColors.secondary,
-      themeColors.macroChart.protein,
-      themeColors.macroChart.carbs,
-      themeColors.macroChart.fat,
-    ];
-    var i = 0;
-    final entries = trend.byModality.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    for (final entry in entries) {
-      if (entry.value.isEmpty) continue;
-      series.add(_ChartSeries(
-        color: colors[i % colors.length],
-        spots: _indexSpotsFromConsistency(entry.value),
-        legendLabel: _modalityDisplayName(entry.key),
-      ));
-      i++;
-    }
-    return series;
-  }
-
-  /// Project a list of `VolumeTrendPoint` into a list of
-  /// `FlSpot` with x = index in the overall list. The x-axis
-  /// is shared across all series in the same chart, so we
-  /// use the index in the trend's overall list as the x
-  /// value.
-  List<FlSpot> _indexSpots(List<VolumeTrendPoint> points) {
-    return List.generate(
-      points.length,
-      (i) => FlSpot(i.toDouble(), points[i].value),
-    );
-  }
-
-  List<FlSpot> _indexSpotsFromConsistency(List<ConsistencyPoint> points) {
-    return List.generate(
-      points.length,
-      (i) => FlSpot(i.toDouble(), points[i].count.toDouble()),
-    );
-  }
-
-  /// Build the per-line legend for a multi-line chart. The
-  /// first row carries the line color and the modality label.
-  /// A second row for the dashed target line is appended when
-  /// [trend] is non-null (consistency legend only).
-  List<Widget> _buildModalityLegendEntries(
-    BuildContext context,
-    OmniThemeColors themeColors,
-    VolumeTrend? trend, {
-    ConsistencyTrend? consistencyTrend,
-  }) {
-    final entries = <Widget>[];
-    if (trend != null) {
-      entries.add(_buildLegendItem(
-        Theme.of(context),
-        themeColors.primary,
-        'Overall',
-        themeColors,
-      ));
-      final colors = <Color>[
-        themeColors.secondary,
-        themeColors.macroChart.protein,
-        themeColors.macroChart.carbs,
-        themeColors.macroChart.fat,
-      ];
-      var i = 0;
-      final sorted = trend.byModality.entries.toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
-      for (final entry in sorted) {
-        if (entry.value.isEmpty) continue;
-        entries.add(_buildLegendItem(
-          Theme.of(context),
-          colors[i % colors.length],
-          _modalityDisplayName(entry.key),
-          themeColors,
-        ));
-        i++;
-      }
-    } else if (consistencyTrend != null) {
-      entries.add(_buildLegendItem(
-        Theme.of(context),
-        themeColors.primary,
-        'Overall',
-        themeColors,
-      ));
-      final colors = <Color>[
-        themeColors.secondary,
-        themeColors.macroChart.protein,
-        themeColors.macroChart.carbs,
-        themeColors.macroChart.fat,
-      ];
-      var i = 0;
-      final sorted = consistencyTrend.byModality.entries.toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
-      for (final entry in sorted) {
-        if (entry.value.isEmpty) continue;
-        entries.add(_buildLegendItem(
-          Theme.of(context),
-          colors[i % colors.length],
-          _modalityDisplayName(entry.key),
-          themeColors,
-        ));
-        i++;
-      }
-    }
-    return entries;
-  }
-
-  Widget _buildLineLegend(
-    ThemeData theme,
-    OmniThemeColors themeColors,
-    List<Widget> entries,
-  ) {
-    return SizedBox(
-      height: 24,
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 4,
-        children: entries,
-      ),
-    );
-  }
-
-  /// Renders a small empty-chart placeholder inside the
-  /// active tab when that tab's data is empty (e.g. no
-  /// tonnage on the device yet). The placeholder text is
-  /// descriptive only — no advice, no motivational copy.
-  Widget _buildEmptyChartPlaceholder(
-    OmniThemeColors themeColors,
-    String tab,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-      child: Text(
-        'No $tab data yet. Log a session to see this trend here.',
-        style: TextStyle(
-          fontSize: 12,
-          color: themeColors.textMuted,
-        ),
-      ),
-    );
-  }
-
-  /// Segmented toggle shared by the VOLUME TRENDS and
-  /// CONSISTENCY cards. Same Material 3 `SegmentedButton`
-  /// pattern the existing NUTRITION card uses, with
-  /// `OmniTheme.buttonUtilityRadius` for the shape and
-  /// `theme.colorScheme` for the colors (no hardcoded
-  /// values).
-  Widget _buildSegmentedToggle<T>({
-    required BuildContext context,
-    required OmniThemeColors themeColors,
-    required T current,
-    required Map<T, String> labels,
-    required ValueChanged<T> onChanged,
-  }) {
-    return SegmentedButton<T>(
-      segments: [
-        for (final entry in labels.entries)
-          ButtonSegment<T>(value: entry.key, label: Text(entry.value)),
-      ],
-      selected: {current},
-      onSelectionChanged: (selection) {
-        if (selection.isNotEmpty && selection.first != current) {
-          onChanged(selection.first);
-        }
-      },
-      style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return themeColors.primary;
-          }
-          return themeColors.surface;
-        }),
-        foregroundColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return themeColors.surface;
-          }
-          return themeColors.textSecondary;
-        }),
-        shape: WidgetStateProperty.all(
-          RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(OmniTheme.buttonUtilityRadius),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Convert a modality key (e.g. `'resistance_lifting'`,
-  /// `null`, or the `<null>` bucket sentinel) to a
-  /// human-readable label for the chart legend.
-  String _modalityDisplayName(String key) {
-    if (key == '<null>') return 'Free Training';
-    return Modality.getDisplayName(key);
-  }
-
   // ── Nutrition section (last 10-day kcal + macros trend) ──────────────────
 
   /// Returns the widgets for the NUTRITION section. Returns an
@@ -1598,7 +1180,6 @@ class _StatsScreenState extends State<StatsScreen> {
   ) {
     final trend = _progressData?.nutritionTrend ?? const [];
     return [
-      const SizedBox(height: 24),
       const OmniCardHeader(title: 'NUTRITION'),
       _buildNutritionCard(context, themeColors, trend),
     ];
@@ -2310,7 +1891,13 @@ class _StatsScreenState extends State<StatsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            _buildCardioDurationChart(themeColors, cardio.trend),
+            _buildDurationChart(
+              themeColors,
+              cardio.trend,
+              unitLabel: 'min',
+              color: themeColors.secondary,
+              divisor: 60.0,
+            ),
           ] else if (cardio.trend.length == 1) ...[
             const SizedBox(height: 8),
             _buildSingleCardioPointCard(
@@ -2510,109 +2097,6 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _buildCardioDurationChart(
-    OmniThemeColors themeColors,
-    List<CardioTrendPoint> points,
-  ) {
-    final durationValues = points.map((p) => p.durationSecs / 60.0).toList();
-    final spots = List.generate(
-      points.length,
-      (i) => FlSpot(i.toDouble(), durationValues[i]),
-    );
-
-    final bounds = ChartAxisHelper.computeBounds(durationValues);
-
-    return ScrollableTrendChart(
-      themeColors: themeColors,
-      bounds: bounds,
-      unitLabel: 'min',
-      pointCount: points.length,
-      chartBuilder: (plotWidth) {
-        return LineChart(
-          LineChartData(
-            minX: 0,
-            maxX: (points.length - 1).toDouble(),
-            minY: bounds.min,
-            maxY: bounds.max,
-            lineTouchData: const LineTouchData(enabled: false),
-            titlesData: FlTitlesData(
-              topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
-              ),
-              rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: _kBottomAxisReservedSize,
-                  interval: 1,
-                  getTitlesWidget: (value, meta) {
-                    final idx = value.round();
-                    if (idx < 0 || idx >= points.length) {
-                      return const SizedBox.shrink();
-                    }
-                    if (!ChartAxisHelper.shouldShowDateLabel(
-                      idx,
-                      points.length,
-                    )) {
-                      return const SizedBox.shrink();
-                    }
-                    return buildEdgeAwareDateLabel(
-                      meta: meta,
-                      text: ChartAxisHelper.formatDateLabel(points[idx].date),
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: themeColors.textMuted,
-                      ),
-                      isFirst: idx == 0,
-                      isLast: idx == points.length - 1,
-                    );
-                  },
-                ),
-              ),
-            ),
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              getDrawingHorizontalLine: (_) =>
-                  FlLine(color: themeColors.divider, strokeWidth: 1),
-            ),
-            borderData: FlBorderData(show: false),
-            lineBarsData: [
-              LineChartBarData(
-                spots: spots,
-                color: themeColors.secondary,
-                isCurved: true,
-                curveSmoothness: 0.3,
-                barWidth: 2,
-                isStrokeCapRound: true,
-                dotData: FlDotData(
-                  show: true,
-                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                    radius: 3,
-                    color: themeColors.secondary,
-                    strokeWidth: 1.5,
-                    strokeColor: themeColors.surface,
-                  ),
-                ),
-                belowBarData: BarAreaData(
-                  show: true,
-                  color: themeColors.secondary.withAlpha(25),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 
   /// Deliberate single-point card for a lift metric (e1RM or volume).
   Widget _buildSinglePointCard({

@@ -21,6 +21,12 @@ const int kScrollableTrendMaxVisiblePoints = 8;
 /// 7 dp each), the wrapper floors the slot at 28 dp.
 const double kScrollableTrendMinPerPointWidth = 28.0;
 
+/// Horizontal margin applied to the left and right edges of the
+/// plot area to prevent edge points and labels from clipping (D-4).
+/// Ensures leftmost and rightmost points render fully with complete
+/// markers even at scroll extremes.
+const double kScrollableTrendHorizontalMargin = 12.0;
+
 /// A horizontally scrollable trend chart with a pinned y-axis
 /// label column. Replaces the fixed-width rendering for every
 /// stats chart on [StatsScreen] (strength e1RM, strength volume,
@@ -232,14 +238,18 @@ class _ScrollableTrendChartState extends State<ScrollableTrendChart> {
                   ? kScrollableTrendMinPerPointWidth
                   : (viewportWidth / widget.maxVisiblePoints)
                       .clamp(kScrollableTrendMinPerPointWidth, double.infinity);
-              // Plot width is at least the viewport, so sparse
-              // data fills the card; it grows with the data so
-              // dense data scrolls.
-              final naturalWidth = widget.pointCount * perPointWidth;
+              final scrollable = widget.pointCount > widget.maxVisiblePoints;
+              // Compute natural plot width. For scrollable data (pointCount >
+              // maxVisiblePoints), add horizontal margins to prevent edge
+              // points and labels from clipping (D-4). For sparse non-scrollable
+              // data, no margins needed (data sits in viewport).
+              final horizontalMargin =
+                  scrollable ? kScrollableTrendHorizontalMargin : 0.0;
+              final naturalWidth =
+                  widget.pointCount * perPointWidth + 2 * horizontalMargin;
               final plotWidth = naturalWidth > viewportWidth
                   ? naturalWidth
                   : viewportWidth;
-              final scrollable = widget.pointCount > widget.maxVisiblePoints;
 
               return SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -250,7 +260,15 @@ class _ScrollableTrendChartState extends State<ScrollableTrendChart> {
                 child: SizedBox(
                   width: plotWidth,
                   height: widget.height,
-                  child: widget.chartBuilder(plotWidth),
+                  child: scrollable
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: kScrollableTrendHorizontalMargin,
+                          ),
+                          child: widget.chartBuilder(plotWidth -
+                              2 * kScrollableTrendHorizontalMargin),
+                        )
+                      : widget.chartBuilder(plotWidth),
                 ),
               );
             },
@@ -301,19 +319,39 @@ class _PinnedYAxis extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        for (final v in values.reversed)
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (final v in values.reversed)
+                Padding(
+                  // Mirror the chart's y-axis label padding so the
+                  // values visually align with the gridlines.
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Text(
+                    // Bare numeric value, no unit. Unit appears once
+                    // in the dedicated position below the labels (D-3).
+                    v.toStringAsFixed(0),
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: themeColors.textMuted,
+                    ),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // Unit label appears exactly once per chart, below all y-axis
+        // values (D-3: shared unit display).
+        if (unitLabel.isNotEmpty)
           Padding(
-            // Mirror the chart's y-axis label padding so the
-            // values visually align with the gridlines.
-            padding: const EdgeInsets.only(right: 4),
+            padding: const EdgeInsets.only(right: 4, top: 4),
             child: Text(
-              // Trim the trailing space `formatYAxisValue`
-              // always inserts between value and unit. Stats
-              // charts pass a real unit ("62 lbs"); the
-              // measurement sheet passes an empty unit and
-              // would otherwise render "76 " with a dangling
-              // space.
-              ChartAxisHelper.formatYAxisValue(v, unitLabel).trimRight(),
+              unitLabel,
               style: TextStyle(
                 fontSize: 9,
                 color: themeColors.textMuted,

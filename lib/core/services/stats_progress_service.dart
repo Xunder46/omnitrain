@@ -111,6 +111,14 @@ class StatsProgressService {
   /// [StatsProgressData.topCardio].
   static const int kTopCardioCount = 2;
 
+  /// Maximum number of top isometric exercises to include in
+  /// [StatsProgressData.topIsometric].
+  static const int kTopIsometricCount = 2;
+
+  /// Maximum number of top sports exercises to include in
+  /// [StatsProgressData.topSports].
+  static const int kTopSportsCount = 2;
+
   /// Maximum number of recent PRs to return in [StatsProgressData.recentPRs].
   static const int kRecentPRCount = 5;
 
@@ -174,6 +182,12 @@ class StatsProgressService {
     // exerciseId → { training-day → accumulated _CardioDay }
     final cardioByExercise = <String, Map<DateTime, _CardioDay>>{};
 
+    // exerciseId → { training-day → accumulated _DrillDay }
+    final drillByExercise = <String, Map<DateTime, _DrillDay>>{};
+
+    // exerciseId → { training-day → accumulated _RoundDay }
+    final roundByExercise = <String, Map<DateTime, _RoundDay>>{};
+
     for (final session in completed) {
       if (!_sessionInWindow(session, window)) continue;
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
@@ -193,8 +207,11 @@ class StatsProgressService {
               );
             case 'timed':
               await _processTimedEffort(effort, sessionDay, cardioByExercise);
+            case 'drill':
+              await _processDrillEffort(effort, sessionDay, drillByExercise);
+            case 'round':
+              await _processRoundEffort(effort, sessionDay, roundByExercise);
             default:
-              // drill, round → not tracked in progress views
               break;
           }
         }
@@ -207,6 +224,8 @@ class StatsProgressService {
       ...setsByExercise.keys,
       ...repsByExercise.keys,
       ...cardioByExercise.keys,
+      ...drillByExercise.keys,
+      ...roundByExercise.keys,
     }) {
       if (!nameCache.containsKey(id)) {
         final exercise = await _exerciseById(id);
@@ -248,6 +267,29 @@ class StatsProgressService {
       nameCache,
     );
 
+    // Drill and round training days come from their respective accumulator maps;
+    // the helper expects `Map<String, Set<DateTime>>`, so project the inner
+    // DateTime keys into a Set here.
+    final drillTrainingDays = <String, Set<DateTime>>{
+      for (final entry in drillByExercise.entries)
+        entry.key: entry.value.keys.toSet(),
+    };
+    final topIsometricIds = _selectTopNWithRecencyFloor(
+      drillTrainingDays,
+      kTopIsometricCount,
+      nameCache,
+    );
+
+    final roundTrainingDays = <String, Set<DateTime>>{
+      for (final entry in roundByExercise.entries)
+        entry.key: entry.value.keys.toSet(),
+    };
+    final topSportsIds = _selectTopNWithRecencyFloor(
+      roundTrainingDays,
+      kTopSportsCount,
+      nameCache,
+    );
+
     // Trends and PRs are FULL-HISTORY for the selected exercises
     // — the window only decided who appears. Walk the unfiltered
     // `completed` list once and aggregate per-selected-exercise
@@ -263,6 +305,14 @@ class StatsProgressService {
     final fullCardioByExercise = await _buildFullCardioForExercises(
       completed,
       topCardioIds,
+    );
+    final fullDrillByExercise = await _buildFullDrillForExercises(
+      completed,
+      topIsometricIds,
+    );
+    final fullRoundByExercise = await _buildFullRoundForExercises(
+      completed,
+      topSportsIds,
     );
 
     // Build LiftProgress + collect PRs.
@@ -434,6 +484,48 @@ class StatsProgressService {
       topCardio.add(CardioProgress(exerciseName: name, trend: trend));
     }
 
+    // Build DrillProgress (isometric).
+    final topIsometric = <DrillProgress>[];
+    for (final exerciseId in topIsometricIds) {
+      final name = nameCache[exerciseId] ?? exerciseId;
+      final dayMap = fullDrillByExercise[exerciseId] ?? const {};
+      final days = dayMap.keys.toList()..sort();
+
+      final trend = <CardioTrendPoint>[];
+      for (final day in days) {
+        final dd = dayMap[day]!;
+        trend.add(CardioTrendPoint(
+          date: day,
+          durationSecs: dd.durationSecs,
+          distanceM: null,
+          paceSecPerKm: null,
+        ));
+      }
+
+      topIsometric.add(DrillProgress(exerciseName: name, trend: trend));
+    }
+
+    // Build RoundProgress (sports).
+    final topSports = <RoundProgress>[];
+    for (final exerciseId in topSportsIds) {
+      final name = nameCache[exerciseId] ?? exerciseId;
+      final dayMap = fullRoundByExercise[exerciseId] ?? const {};
+      final days = dayMap.keys.toList()..sort();
+
+      final trend = <CardioTrendPoint>[];
+      for (final day in days) {
+        final rd = dayMap[day]!;
+        trend.add(CardioTrendPoint(
+          date: day,
+          durationSecs: rd.durationSecs,
+          distanceM: null,
+          paceSecPerKm: null,
+        ));
+      }
+
+      topSports.add(RoundProgress(exerciseName: name, trend: trend));
+    }
+
     // Nutrition trend (NUTRITION card). Pure-Dart aggregation that
     // depends only on the repository — identical on Hive (web) and
     // any future native SQLite implementation. The card scrolls
@@ -452,6 +544,8 @@ class StatsProgressService {
     return StatsProgressData(
       topLifts: topLifts,
       topCardio: topCardio,
+      topIsometric: topIsometric,
+      topSports: topSports,
       recentPRs: recentPRs,
       nutritionTrend: nutritionTrend,
       feelingTrend: feelingTrend,
@@ -580,6 +674,64 @@ class StatsProgressService {
             ? (existing.distanceM ?? 0.0) + (newDistanceM ?? 0.0)
             : null,
       );
+    }
+  }
+
+  /// Process a drill effort (isometric): sum hold times per day.
+  /// Per D-6, multiple holds on the same day produce one aggregated
+  /// point with the total hold time (sum).
+  Future<void> _processDrillEffort(
+    SegmentEffort effort,
+    DateTime sessionDay,
+    Map<String, Map<DateTime, _DrillDay>> drillByExercise,
+  ) async {
+    final exerciseId = effort.exerciseId;
+    if (exerciseId == null) return;
+
+    final timedInstances = (await _loadHistory()).timedInstancesOf(effort.id);
+    final totalDuration = timedInstances
+        .where((t) => t.state == TimedState.finished)
+        .fold<int>(0, (sum, t) => sum + t.actualDurationSecs);
+
+    if (totalDuration <= 0) return;
+
+    final dayMap = drillByExercise.putIfAbsent(exerciseId, () => {});
+    final existing = dayMap[sessionDay];
+
+    if (existing == null) {
+      dayMap[sessionDay] = _DrillDay(durationSecs: totalDuration);
+    } else {
+      dayMap[sessionDay] =
+          _DrillDay(durationSecs: existing.durationSecs + totalDuration);
+    }
+  }
+
+  /// Process a round effort (sports): sum round times per day.
+  /// Per D-6, multiple rounds on the same day produce one aggregated
+  /// point with the total round time (sum).
+  Future<void> _processRoundEffort(
+    SegmentEffort effort,
+    DateTime sessionDay,
+    Map<String, Map<DateTime, _RoundDay>> roundByExercise,
+  ) async {
+    final exerciseId = effort.exerciseId;
+    if (exerciseId == null) return;
+
+    final timedInstances = (await _loadHistory()).timedInstancesOf(effort.id);
+    final totalDuration = timedInstances
+        .where((t) => t.state == TimedState.finished)
+        .fold<int>(0, (sum, t) => sum + t.actualDurationSecs);
+
+    if (totalDuration <= 0) return;
+
+    final dayMap = roundByExercise.putIfAbsent(exerciseId, () => {});
+    final existing = dayMap[sessionDay];
+
+    if (existing == null) {
+      dayMap[sessionDay] = _RoundDay(durationSecs: totalDuration);
+    } else {
+      dayMap[sessionDay] =
+          _RoundDay(durationSecs: existing.durationSecs + totalDuration);
     }
   }
 
@@ -1137,240 +1289,70 @@ class StatsProgressService {
     return result;
   }
 
-  // ── PR 2b descriptive analytics ──────────────────────────────────────────
-  //
-  // The following methods are the read-only computations behind
-  // the four new Stats sections (RECORDS, VOLUME TRENDS,
-  // CONSISTENCY, NUTRITION ADHERENCE). They walk the same
-  // `completed` list as `computeProgressData`; they are pure
-  // Dart over the repository interface; they are tested in
-  // `test/stats_progress_test.dart` and obey the
-  // effort-type-keying rule (a `set` effort contributes to
-  // weight / reps / tonnage series, a `timed` effort
-  // contributes to duration / distance series — regardless of
-  // the session's modality).
-
-  /// Returns one [ExerciseRecord] per exercise with at least one
-  /// logged effort. Records equal the max value actually present
-  /// in the exercise's logged observations, with the date that
-  /// value was set. The walk is unfiltered — full history, not
-  /// the current-state window — so a record is never "lost" to
-  /// a window change.
-  ///
-  /// Metrics:
-  ///   - `heaviestLoad` — max `load × reps` across the exercise's
-  ///     loaded sets, with the date of that set. `null` when
-  ///     every set was bodyweight (0 × N = 0 is not a record).
-  ///   - `mostRepsAtLoad` — the single set with the highest rep
-  ///     count, plus the load (kg) it was performed at and the
-  ///     date. Bodyweight sets are included with `loadKg: 0.0`.
-  ///   - `longestDuration` — the per-day Σ `actualDurationSecs`
-  ///     (across `TimedState.finished` instances) for the
-  ///     longest day of timed work, with that day. `null` when
-  ///     no timed effort exists.
-  ///   - `longestDistance` — same contract as duration but for
-  ///     the sum of `metric-distance` observations on timed
-  ///     efforts. `null` when no timed effort has a distance
-  ///     observation.
-  ///
-  /// Empty repo → empty list. No exceptions, no zero-fill.
-  Future<List<ExerciseRecord>> computeExerciseRecords() async {
-    final allSessions = (await _loadHistory()).sessions;
-    final completed = allSessions.where((s) => s.endedAtMs != null).toList();
-    if (completed.isEmpty) return const [];
-
-    // exerciseId → running accumulators
-    final heaviestByExercise = <String, _HeaviestRecord>{};
-    final mostRepsByExercise = <String, _MostRepsRecord>{};
-    final perDayTimedByExercise = <String, Map<DateTime, _CardioDay>>{};
-
-    // Cache the modality for the first session that surfaces the
-    // exercise. Modality is per-session, but the record only
-    // needs one representative value — Free-Training exercises
-    // are rare enough that the first-seen modality is the most
-    // useful default.
-    final modalityByExercise = <String, String?>{};
-
+  /// Builds a per-selected-exercise full-history drill trend map.
+  /// Filters by `effortKind == 'drill'` and sums hold times per day.
+  /// See [_buildFullCardioForExercises] for the parallel contract.
+  Future<Map<String, Map<DateTime, _DrillDay>>>
+      _buildFullDrillForExercises(
+    List<TrainingSession> completed,
+    List<String> exerciseIds,
+  ) async {
+    final result = <String, Map<DateTime, _DrillDay>>{};
+    if (exerciseIds.isEmpty) return result;
+    final selected = exerciseIds.toSet();
     for (final session in completed) {
-      final sessionModality = session.modality;
-      final sessionDt =
-          DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
+      if (session.endedAtMs == null) continue;
+      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
+        session.startedAtMs,
+      );
       final sessionDay =
           DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
       final segments = (await _loadHistory()).segmentsOf(session.id);
       for (final segment in segments) {
         final efforts = (await _loadHistory()).effortsOf(segment.id);
         for (final effort in efforts) {
+          if (effort.effortKind != 'drill') continue;
           final exId = effort.exerciseId;
-          if (exId == null) continue;
-          if (modalityByExercise[exId] == null) {
-            modalityByExercise[exId] = sessionModality;
-          }
-          switch (effort.effortKind) {
-            case 'set':
-              await _accumulateSetForRecords(
-                effort,
-                sessionDay,
-                exId,
-                heaviestByExercise,
-                mostRepsByExercise,
-              );
-              break;
-            case 'timed':
-              await _accumulateTimedForRecords(
-                effort,
-                sessionDay,
-                exId,
-                perDayTimedByExercise,
-              );
-              break;
-            default:
-              // drill, round → not tracked in records (the screen
-              // is for set and timed records only).
-              break;
-          }
+          if (exId == null || !selected.contains(exId)) continue;
+          await _processDrillEffort(effort, sessionDay, result);
         }
       }
     }
+    return result;
+  }
 
-    // Resolve exercise names for every referenced id.
-    final ids = <String>{
-      ...heaviestByExercise.keys,
-      ...mostRepsByExercise.keys,
-      ...perDayTimedByExercise.keys,
-    };
-    final nameCache = <String, String>{};
-    for (final id in ids) {
-      if (!nameCache.containsKey(id)) {
-        final exercise = await _exerciseById(id);
-        nameCache[id] = exercise?.name ?? id;
+  /// Builds a per-selected-exercise full-history round trend map.
+  /// Filters by `effortKind == 'round'` and sums round times per day.
+  /// See [_buildFullCardioForExercises] for the parallel contract.
+  Future<Map<String, Map<DateTime, _RoundDay>>>
+      _buildFullRoundForExercises(
+    List<TrainingSession> completed,
+    List<String> exerciseIds,
+  ) async {
+    final result = <String, Map<DateTime, _RoundDay>>{};
+    if (exerciseIds.isEmpty) return result;
+    final selected = exerciseIds.toSet();
+    for (final session in completed) {
+      if (session.endedAtMs == null) continue;
+      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
+        session.startedAtMs,
+      );
+      final sessionDay =
+          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final segments = (await _loadHistory()).segmentsOf(session.id);
+      for (final segment in segments) {
+        final efforts = (await _loadHistory()).effortsOf(segment.id);
+        for (final effort in efforts) {
+          if (effort.effortKind != 'round') continue;
+          final exId = effort.exerciseId;
+          if (exId == null || !selected.contains(exId)) continue;
+          await _processRoundEffort(effort, sessionDay, result);
+        }
       }
     }
-
-    final records = <ExerciseRecord>[];
-    for (final exId in ids) {
-      final heaviest = heaviestByExercise[exId];
-      final mostReps = mostRepsByExercise[exId];
-      final perDay = perDayTimedByExercise[exId] ?? const {};
-      String? longestDayKey;
-      var longestDurationSecs = 0;
-      double? longestDistanceM;
-      for (final entry in perDay.entries) {
-        if (entry.value.durationSecs > longestDurationSecs) {
-          longestDurationSecs = entry.value.durationSecs;
-          longestDayKey = entry.key.toIso8601String();
-        }
-        final dist = entry.value.distanceM;
-        if (dist != null &&
-            dist > 0 &&
-            (longestDistanceM == null || dist > longestDistanceM)) {
-          longestDistanceM = dist;
-          longestDayKey = entry.key.toIso8601String();
-        }
-      }
-      DateTime? longestDay;
-      if (longestDayKey != null) {
-        // Re-decode the day by finding the matching entry. Using
-        // the iso-string is robust against timezone / DST drift;
-        // `perDay` keys are local-midnight DateTimes built in
-        // `_accumulateTimedForRecords`.
-        for (final entry in perDay.entries) {
-          if (entry.key.toIso8601String() == longestDayKey) {
-            longestDay = entry.key;
-            break;
-          }
-        }
-      }
-
-      records.add(ExerciseRecord(
-        exerciseId: exId,
-        exerciseName: nameCache[exId] ?? exId,
-        modality: modalityByExercise[exId],
-        heaviestLoad: heaviest == null
-            ? null
-            : RecordValue(value: heaviest.value, date: heaviest.date),
-        mostRepsAtLoad: mostReps == null
-            ? null
-            : MostRepsRecord(
-                reps: mostReps.reps,
-                loadKg: mostReps.loadKg,
-                date: mostReps.date,
-              ),
-        longestDuration: (longestDay == null || longestDurationSecs == 0)
-            ? null
-            : DurationRecord(
-                durationSecs: longestDurationSecs,
-                date: longestDay,
-              ),
-        longestDistance: (longestDay == null || longestDistanceM == null)
-            ? null
-            : DistanceRecord(
-                distanceM: longestDistanceM,
-                date: longestDay,
-              ),
-      ));
-    }
-
-    // Sort by exercise name for stable display order.
-    records.sort((a, b) => a.exerciseName.compareTo(b.exerciseName));
-    return records;
+    return result;
   }
 
-  /// Volume tonnage (Σ `load × reps`) bucketed by ISO week, per
-  /// modality + overall. The walk is full-history but only
-  /// emits weekly buckets that have at least one qualifying set
-  /// — empty weeks are skipped (no zero-fill). Modality is
-  /// taken from the session, not the effort (the effort-kind
-  /// keying rule is the floor; sessions carry the
-  /// per-modality bucket label).
-  Future<VolumeTrend> computeVolumeTonnage() async {
-    return _computeVolumeByWeek(
-      label: 'Tonnage (kg)',
-      unit: 'kg',
-    );
-  }
-
-  /// Total time (Σ `actualDurationSecs` across
-  /// `TimedState.finished` instances) bucketed by ISO week, per
-  /// modality + overall. Same skip-empty / no-zero-fill
-  /// contract as [computeVolumeTonnage].
-  Future<VolumeTrend> computeTimedDuration() async {
-    return _computeVolumeByWeek(
-      label: 'Time (h:mm)',
-      unit: 'seconds',
-      isTimed: true,
-    );
-  }
-
-  /// Total distance (Σ `metric-distance` observations on timed
-  /// efforts) bucketed by ISO week, per modality + overall.
-  /// Same skip-empty / no-zero-fill contract.
-  Future<VolumeTrend> computeTimedDistance() async {
-    return _computeVolumeByWeek(
-      label: 'Distance (km)',
-      unit: 'metres',
-      isTimed: true,
-      isDistance: true,
-    );
-  }
-
-  /// Sessions per ISO week, per-modality + overall. Counts
-  /// every completed session in the week whose modality
-  /// matches (or "Free Training" when modality is null).
-  Future<ConsistencyTrend> computeConsistencyWeekly() async {
-    return _computeConsistency(
-      label: 'Sessions / week',
-      bucket: (date) => _startOfIsoWeek(date),
-    );
-  }
-
-  /// Sessions per calendar month, per-modality + overall.
-  Future<ConsistencyTrend> computeConsistencyMonthly() async {
-    return _computeConsistency(
-      label: 'Sessions / month',
-      bucket: (date) => DateTime(date.year, date.month, 1),
-    );
-  }
 
   /// Returns the per-day actuals (re-using the existing
   /// `computeNutritionTrend` aggregation) and a piecewise
@@ -1462,361 +1444,6 @@ class StatsProgressService {
       ..sort((a, b) => a.date.compareTo(b.date));
     return NutritionAdherence(actuals: actuals, targetLine: targetLine);
   }
-
-  // ── PR 2b private helpers ───────────────────────────────────────────────
-
-  /// Walks all completed sessions and buckets a single
-  /// volume-style metric (tonnage / time / distance) per ISO
-  /// week, per modality + overall. The [isTimed] flag switches
-  /// the inner loop from `set` efforts (tonnage) to `timed`
-  /// efforts (duration / distance). [isDistance] narrows the
-  /// timed walk to `metric-distance` observations.
-  Future<VolumeTrend> _computeVolumeByWeek({
-    required String label,
-    required String unit,
-    bool isTimed = false,
-    bool isDistance = false,
-  }) async {
-    final allSessions = (await _loadHistory()).sessions;
-    final completed = allSessions.where((s) => s.endedAtMs != null).toList();
-    if (completed.isEmpty) {
-      return VolumeTrend(
-        label: label,
-        unit: unit,
-        overall: const [],
-        byModality: const {},
-      );
-    }
-
-    // periodStart (DateTime, ISO-week Monday) → Σ value
-    final overall = <DateTime, double>{};
-    // modality (String) → periodStart → Σ value
-    final byModality = <String, Map<DateTime, double>>{};
-
-    for (final session in completed) {
-      final sessionDt =
-          DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
-      final weekStart = _startOfIsoWeek(sessionDt);
-      final modality = session.modality ?? '<null>';
-      final segments = (await _loadHistory()).segmentsOf(session.id);
-      for (final segment in segments) {
-        final efforts = (await _loadHistory()).effortsOf(segment.id);
-        for (final effort in efforts) {
-          if (isTimed) {
-            if (effort.effortKind != 'timed') continue;
-            if (effort.exerciseId == null) continue;
-            final observations =
-                (await _loadHistory()).observationsOf(effort.id);
-            final distanceObs = observations
-                .where((o) => o.metricId == MetricIds.distance)
-                .toList();
-            if (isDistance) {
-              if (distanceObs.isEmpty) continue;
-              var sum = 0.0;
-              for (final o in distanceObs) {
-                sum += (o.valueReal ?? 0.0);
-              }
-              if (sum <= 0) continue;
-              _addToBucket(overall, weekStart, sum);
-              _addToBucket(
-                byModality.putIfAbsent(modality, () => <DateTime, double>{}),
-                weekStart,
-                sum,
-              );
-            } else {
-              final timedInstances =
-                  (await _loadHistory()).timedInstancesOf(effort.id);
-              var duration = 0;
-              for (final t in timedInstances) {
-                if (t.state == TimedState.finished) {
-                  duration += t.actualDurationSecs;
-                }
-              }
-              if (duration <= 0) continue;
-              _addToBucket(overall, weekStart, duration.toDouble());
-              _addToBucket(
-                byModality.putIfAbsent(modality, () => <DateTime, double>{}),
-                weekStart,
-                duration.toDouble(),
-              );
-            }
-          } else {
-            if (effort.effortKind != 'set') continue;
-            if (effort.exerciseId == null) continue;
-            final observations =
-                (await _loadHistory()).observationsOf(effort.id);
-            final entries =
-                ObservationGrouper.groupByEffortKind('set', observations);
-            for (final entry in entries) {
-              final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
-              final reps = entry['reps'] as int? ?? 0;
-              if (reps <= 0 || weight <= 0) continue;
-              final tonnage = weight * reps;
-              _addToBucket(overall, weekStart, tonnage);
-              _addToBucket(
-                byModality.putIfAbsent(modality, () => <DateTime, double>{}),
-                weekStart,
-                tonnage,
-              );
-            }
-          }
-        }
-      }
-    }
-
-    return VolumeTrend(
-      label: label,
-      unit: unit,
-      overall: _sortBuckets(overall),
-      byModality: {
-        for (final entry in byModality.entries)
-          entry.key: _sortBuckets(entry.value),
-      },
-    );
-  }
-
-  /// Walks all completed sessions and buckets session counts by
-  /// the supplied [bucket] function (ISO-week start or
-  /// calendar-month start). Per-modality + overall. A null
-  /// session modality is bucketed under the Free-Training
-  /// `<null>` key.
-  Future<ConsistencyTrend> _computeConsistency({
-    required String label,
-    required DateTime Function(DateTime) bucket,
-  }) async {
-    final allSessions = (await _loadHistory()).sessions;
-    final completed = allSessions.where((s) => s.endedAtMs != null).toList();
-    if (completed.isEmpty) {
-      return ConsistencyTrend(
-        label: label,
-        overall: const [],
-        byModality: const {},
-      );
-    }
-
-    final overall = <DateTime, int>{};
-    final byModality = <String, Map<DateTime, int>>{};
-
-    for (final session in completed) {
-      final sessionDt =
-          DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
-      final period = bucket(sessionDt);
-      final modality = session.modality ?? '<null>';
-      overall[period] = (overall[period] ?? 0) + 1;
-      final modMap =
-          byModality.putIfAbsent(modality, () => <DateTime, int>{});
-      modMap[period] = (modMap[period] ?? 0) + 1;
-    }
-
-    return ConsistencyTrend(
-      label: label,
-      overall: overall.entries
-          .map((e) => ConsistencyPoint(periodStart: e.key, count: e.value))
-          .toList()
-        ..sort((a, b) => a.periodStart.compareTo(b.periodStart)),
-      byModality: {
-        for (final entry in byModality.entries)
-          entry.key: entry.value.entries
-              .map((e) =>
-                  ConsistencyPoint(periodStart: e.key, count: e.value))
-              .toList()
-            ..sort((a, b) => a.periodStart.compareTo(b.periodStart)),
-      },
-    );
-  }
-
-  /// Per-set accumulator behind [computeExerciseRecords].
-  /// Updates the running `heaviest` and `mostReps` records for
-  /// the given exercise.
-  ///
-  /// `heaviest` is keyed by max `weight` (not max tonnage) — the
-  /// record is the set with the heaviest single weight, and the
-  /// value carried is that set's tonnage (weight × reps). The
-  /// bodyweight-only case (every set has weight = 0) leaves the
-  /// heaviest record null: a 0 × N = 0 figure is not a meaningful
-  /// "heaviest" record.
-  Future<void> _accumulateSetForRecords(
-    SegmentEffort effort,
-    DateTime sessionDay,
-    String exId,
-    Map<String, _HeaviestRecord> heaviest,
-    Map<String, _MostRepsRecord> mostReps,
-  ) async {
-    final observations = (await _loadHistory()).observationsOf(effort.id);
-    final entries = ObservationGrouper.groupByEffortKind('set', observations);
-    for (final entry in entries) {
-      final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
-      final reps = entry['reps'] as int? ?? 0;
-      if (reps <= 0) continue;
-
-      if (weight > 0) {
-        // Track by max(weight) — a 120 kg × 1 set is "heavier" than
-        // a 100 kg × 5 set even when the latter has higher tonnage.
-        // The record carries the tonnage of the heaviest-weight set
-        // so the displayed value (load × reps) is the full strength
-        // figure for that set, matching the e1RM-style display
-        // convention used elsewhere on the Stats screen.
-        final existing = heaviest[exId];
-        // Read the stored weight directly. This previously reconstructed
-        // it as `existing.value / _recordRepsFor(...)`, but that helper
-        // returns 1 whenever the most-reps record sits on a different day
-        // than the heaviest record — so `existingWeight` became the
-        // TONNAGE (weight × reps), not the weight. Since tonnage ≥ weight
-        // for any set of 2+ reps, no later set could ever beat it and the
-        // heaviest-load record froze permanently after the first
-        // multi-rep set. `_HeaviestRecord.weight` has always held the
-        // correct value.
-        final existingWeight = existing?.weight ?? -1.0;
-        if (existing == null ||
-            weight > existingWeight ||
-            (weight == existingWeight &&
-                sessionDay.isBefore(existing.date))) {
-          heaviest[exId] = _HeaviestRecord(
-            value: weight * reps,
-            date: sessionDay,
-            weight: weight,
-            reps: reps,
-          );
-        }
-      }
-
-      final existingMostReps = mostReps[exId];
-      if (existingMostReps == null ||
-          reps > existingMostReps.reps ||
-          (reps == existingMostReps.reps &&
-              sessionDay.isBefore(existingMostReps.date))) {
-        mostReps[exId] = _MostRepsRecord(
-          reps: reps,
-          loadKg: weight,
-          date: sessionDay,
-        );
-      }
-    }
-  }
-
-
-  /// Per-timed-effort accumulator behind
-  /// [computeExerciseRecords]. Sums duration and distance per
-  /// day so a day with two 1 km runs (900 s + 1200 s) reports
-  /// 2100 s and 2 km, not the first-effort's value. Matches
-  /// the per-day sum contract that `_processTimedEffort` uses
-  /// for the cardio strength-card trend.
-  Future<void> _accumulateTimedForRecords(
-    SegmentEffort effort,
-    DateTime sessionDay,
-    String exId,
-    Map<String, Map<DateTime, _CardioDay>> perDay,
-  ) async {
-    final timedInstances = (await _loadHistory()).timedInstancesOf(effort.id);
-    var duration = 0;
-    for (final t in timedInstances) {
-      if (t.state == TimedState.finished) {
-        duration += t.actualDurationSecs;
-      }
-    }
-    if (duration <= 0) return;
-    final observations = (await _loadHistory()).observationsOf(effort.id);
-    final distanceObs = observations
-        .where((o) => o.metricId == MetricIds.distance)
-        .toList();
-    double? distanceM;
-    if (distanceObs.isNotEmpty) {
-      var sum = 0.0;
-      for (final o in distanceObs) {
-        sum += (o.valueReal ?? 0.0);
-      }
-      if (sum > 0) distanceM = sum;
-    }
-    final exMap = perDay.putIfAbsent(exId, () => <DateTime, _CardioDay>{});
-    final existing = exMap[sessionDay];
-    if (existing == null) {
-      exMap[sessionDay] = _CardioDay(
-        durationSecs: duration,
-        distanceM: distanceM,
-      );
-    } else {
-      exMap[sessionDay] = _CardioDay(
-        durationSecs: existing.durationSecs + duration,
-        distanceM: (existing.distanceM != null || distanceM != null)
-            ? (existing.distanceM ?? 0.0) + (distanceM ?? 0.0)
-            : null,
-      );
-    }
-  }
-
-  /// Bucket-add helper. Casts the dynamic-keyed `value` to
-  /// `double` so the map is homogeneous across the per-modality
-  /// and overall series.
-  void _addToBucket(
-    Map<DateTime, double> buckets,
-    DateTime key,
-    double value,
-  ) {
-    buckets[key] = (buckets[key] ?? 0.0) + value;
-  }
-
-  /// Sort + project a `Map<DateTime, double>` into a
-  /// chronologically-ascending `List<VolumeTrendPoint>`.
-  List<VolumeTrendPoint> _sortBuckets(Map<DateTime, double> buckets) {
-    final keys = buckets.keys.toList()..sort();
-    return keys
-        .map((k) => VolumeTrendPoint(periodStart: k, value: buckets[k]!))
-        .toList();
-  }
-
-  /// Returns the local-midnight DateTime of the Monday of the
-  /// ISO week containing [date]. ISO week starts on Monday
-  /// (matches Dart's `DateTime.weekday` convention where
-  /// 1 = Monday, 7 = Sunday).
-  ///
-  /// Uses calendar arithmetic (`DateTime(y, m, d - n)`), NOT
-  /// `subtract(Duration(days: n))`. A `Duration` is an exact span of
-  /// hours, so subtracting across a DST transition lands on the wrong
-  /// wall-clock time: in `America/Santiago` this returned Monday
-  /// **01:00** instead of 00:00 for the Sunday after each autumn
-  /// transition, which keys a different map bucket than the Mon–Sat of
-  /// the same week and splits that week in two on the VOLUME TRENDS and
-  /// CONSISTENCY charts. `DateTime(y, m, d - n)` normalises across
-  /// month and year boundaries and always yields local midnight.
-  static DateTime _startOfIsoWeek(DateTime date) {
-    return DateTime(date.year, date.month, date.day - (date.weekday - 1));
-  }
-}
-
-// ── Internal accumulator types ────────────────────────────────────────────────
-
-/// PR 2b records helper: running heaviest-weight record for a
-/// single exercise. `value` carries the tonnage (weight × reps)
-/// of the heaviest-weight set; `weight` and `reps` are kept so
-/// the comparator can decide which set is heavier when two
-/// candidates present. Tied weights keep the earlier date
-/// (records never move forward on a re-tied best).
-class _HeaviestRecord {
-  final double value;
-  final double weight;
-  final int reps;
-  final DateTime date;
-  const _HeaviestRecord({
-    required this.value,
-    required this.weight,
-    required this.reps,
-    required this.date,
-  });
-}
-
-/// PR 2b records helper: running most-reps single set for a
-/// single exercise, with the load (kg) it was performed at.
-/// Bodyweight sets are stored with `loadKg: 0.0`. Tied
-/// rep counts keep the earlier date.
-class _MostRepsRecord {
-  final int reps;
-  final double loadKg;
-  final DateTime date;
-  const _MostRepsRecord({
-    required this.reps,
-    required this.loadKg,
-    required this.date,
-  });
 }
 
 class _SetTuple {
@@ -1831,6 +1458,22 @@ class _CardioDay {
   final double? distanceM;
 
   const _CardioDay({required this.durationSecs, required this.distanceM});
+}
+
+/// Per-day isometric drill-time accumulator (sum of all hold times on that day).
+/// Mirrors _CardioDay structure: holds summed duration in seconds.
+class _DrillDay {
+  final int durationSecs;
+
+  const _DrillDay({required this.durationSecs});
+}
+
+/// Per-day sports round-time accumulator (sum of all round times on that day).
+/// Mirrors _CardioDay structure: holds summed duration in seconds.
+class _RoundDay {
+  final int durationSecs;
+
+  const _RoundDay({required this.durationSecs});
 }
 
 /// Per-day reps-axis accumulator for a single exercise. Carries

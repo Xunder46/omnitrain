@@ -92,6 +92,28 @@ class CardioProgress {
   const CardioProgress({required this.exerciseName, required this.trend});
 }
 
+/// Isometric drill progress for one exercise (hold time aggregation).
+class DrillProgress {
+  final String exerciseName;
+
+  /// Aggregated hold-time data per training day, sorted chronologically.
+  /// Each point represents the sum of all hold times (in seconds) on that day.
+  final List<CardioTrendPoint> trend;
+
+  const DrillProgress({required this.exerciseName, required this.trend});
+}
+
+/// Sports round progress for one exercise (round time aggregation).
+class RoundProgress {
+  final String exerciseName;
+
+  /// Aggregated round-time data per training day, sorted chronologically.
+  /// Each point represents the sum of all round times (in seconds) on that day.
+  final List<CardioTrendPoint> trend;
+
+  const RoundProgress({required this.exerciseName, required this.trend});
+}
+
 /// A personal record event (new all-time high for an exercise).
 ///
 /// Exactly one of [e1Rm] or [reps] is non-null on any given instance:
@@ -183,6 +205,12 @@ class StatsProgressData {
   /// Up to [StatsProgressService.kTopCardioCount] activities, sorted by training frequency.
   final List<CardioProgress> topCardio;
 
+  /// Up to [StatsProgressService.kTopIsometricCount] isometric exercises, sorted by training frequency.
+  final List<DrillProgress> topIsometric;
+
+  /// Up to [StatsProgressService.kTopSportsCount] sports exercises, sorted by training frequency.
+  final List<RoundProgress> topSports;
+
   /// Most-recent personal records across all tracked lifts (newest first).
   final List<StatsPR> recentPRs;
 
@@ -211,6 +239,8 @@ class StatsProgressData {
   const StatsProgressData({
     required this.topLifts,
     required this.topCardio,
+    this.topIsometric = const [],
+    this.topSports = const [],
     required this.recentPRs,
     this.nutritionTrend = const [],
     this.feelingTrend = const [],
@@ -220,6 +250,8 @@ class StatsProgressData {
   static final StatsProgressData empty = StatsProgressData(
     topLifts: const [],
     topCardio: const [],
+    topIsometric: const [],
+    topSports: const [],
     recentPRs: const [],
     window: StatsWindow.empty,
   );
@@ -303,214 +335,6 @@ class StatsWindow {
   );
 }
 
-// ── Per-exercise records (PR 2b records section) ────────────────────────────
-//
-// For every exercise with at least one logged effort, the
-// `StatsProgressService.computeExerciseRecords` aggregator returns
-// an `ExerciseRecord` carrying the best observed value per
-// metric with the date that value was set. Metrics that the
-// exercise has never been logged against stay null — no
-// zero-fill, no fabricated "0 kg" records on a 0-set exercise.
-//
-// All values are stored in the app's canonical units (kg, seconds,
-// metres). Conversion to user-display units (lbs, mi) happens at
-// the screen boundary through `UnitFormatter`; the service never
-// carries a display unit.
-
-/// One metric's best value on a single exercise, with the date
-/// that value was set. The `value` field's semantics depend on
-/// the metric — see the `heaviestLoad`, `mostRepsAtLoad`,
-/// `longestDuration`, and `longestDistance` getters on
-/// [ExerciseRecord], which return `RecordValue` shaped to match
-/// the metric (kg × reps, reps, seconds, metres respectively).
-class RecordValue {
-  /// The metric's value in the app's canonical unit. The
-  /// accompanying [date] is the training day that produced it.
-  final double value;
-
-  /// The training day (local-midnight DateTime) that produced the
-  /// record. When two sets on different days tie at the same
-  /// value, the earlier date is kept (records never move forward
-  /// when a tie is re-set).
-  final DateTime date;
-
-  const RecordValue({required this.value, required this.date});
-}
-
-/// Per-exercise record of best observed values across the user's
-/// full history. Every metric the exercise has logged is
-/// populated; metrics the exercise has never been logged against
-/// stay null. Modality is captured for per-modality grouping on
-/// the Stats screen's RECORDS section.
-class ExerciseRecord {
-  final String exerciseId;
-  final String exerciseName;
-
-  /// Modality the user most often trains this exercise in. Null
-  /// when every session was Free Training. The screen uses this
-  /// for grouping and is never displayed verbatim — see the
-  /// Modality display-name helper in `lib/core/constants/modality.dart`
-  /// if a label is needed.
-  final String? modality;
-
-  /// Heaviest load × reps figure (kg·reps) across all completed
-  /// sets of this exercise, with the date that figure was set.
-  /// `null` when every set was bodyweight (0 kg × N reps = 0 is
-  /// not a meaningful record).
-  final RecordValue? heaviestLoad;
-
-  /// The single set with the highest rep count, plus the load
-  /// (kg) it was performed at. Bodyweight sets are included
-  /// with `loadKg: 0.0` so a 12-rep pull-up shows up here even
-  /// when no weighted pull-up set exists.
-  final MostRepsRecord? mostRepsAtLoad;
-
-  /// Total duration (seconds) of timed efforts on the longest
-  /// day for this exercise, with that day. Per-day sum so a
-  /// day with two 1 km runs shows 2 km, not 1.
-  final DurationRecord? longestDuration;
-
-  /// Total distance (metres) of timed efforts on the longest
-  /// day for this exercise, with that day. Same per-day-sum
-  /// contract as [longestDuration].
-  final DistanceRecord? longestDistance;
-
-  const ExerciseRecord({
-    required this.exerciseId,
-    required this.exerciseName,
-    required this.modality,
-    this.heaviestLoad,
-    this.mostRepsAtLoad,
-    this.longestDuration,
-    this.longestDistance,
-  });
-}
-
-/// Specialised [RecordValue] for the most-reps-at-load record —
-/// carries the load (kg) alongside the rep count so the Stats
-/// screen can render "12 reps @ 60 kg" without round-tripping
-/// the value through a string.
-class MostRepsRecord {
-  final int reps;
-  final double loadKg;
-  final DateTime date;
-  const MostRepsRecord({
-    required this.reps,
-    required this.loadKg,
-    required this.date,
-  });
-}
-
-/// Specialised [RecordValue] for the longest-duration record —
-/// seconds (int) for the timeline display, plus the date.
-class DurationRecord {
-  final int durationSecs;
-  final DateTime date;
-  const DurationRecord({
-    required this.durationSecs,
-    required this.date,
-  });
-}
-
-/// Specialised [RecordValue] for the longest-distance record —
-/// metres (double) so fractional sub-metre precision survives
-/// the walk, plus the date.
-class DistanceRecord {
-  final double distanceM;
-  final DateTime date;
-  const DistanceRecord({
-    required this.distanceM,
-    required this.date,
-  });
-}
-
-// ── Volume / time / distance trends (PR 2b volume-trends section) ──────────
-
-/// One bucket on a volume / time / distance trend. The
-/// `periodStart` is local-midnight of the first day of the
-/// period; the unit of [value] depends on the trend
-/// (kg for tonnage, seconds for time, metres for distance).
-class VolumeTrendPoint {
-  final DateTime periodStart;
-  final double value;
-  const VolumeTrendPoint({
-    required this.periodStart,
-    required this.value,
-  });
-}
-
-/// A single-metric trend (tonnage, time, or distance) bucketed
-/// by ISO week. Carries one overall series (sum across all
-/// modalities in the bucket) and per-modality series keyed by
-/// the modality key stored on `TrainingSession.modality` (null
-/// key = Free Training). Empty buckets are not emitted — the
-/// trend only contains periods that had at least one qualifying
-/// effort in the current-state window.
-class VolumeTrend {
-  /// Human-readable label, e.g. `"Tonnage (kg)"` or `"Time (h:mm)"`.
-  /// Surfaces on the VOLUME TRENDS section's tab toggle and the
-  /// per-line legend.
-  final String label;
-
-  /// Canonical unit string for the trend's value. The screen
-  /// converts to display units at the boundary through
-  /// `UnitFormatter`; the service carries the canonical label
-  /// only.
-  final String unit;
-
-  /// One row per ISO week, sorted ascending by period start.
-  /// The value is the Σ across all modalities in that week.
-  final List<VolumeTrendPoint> overall;
-
-  /// Per-modality series keyed by `TrainingSession.modality`.
-  /// A null key holds the Free-Training series. Empty when no
-  /// modality has any qualifying effort in the window.
-  final Map<String, List<VolumeTrendPoint>> byModality;
-
-  const VolumeTrend({
-    required this.label,
-    required this.unit,
-    required this.overall,
-    required this.byModality,
-  });
-}
-
-// ── Consistency (PR 2b consistency section) ────────────────────────────────
-
-/// One bucket on a consistency (sessions-per-period) trend. The
-/// `periodStart` is local-midnight of the first day of the
-/// period; [count] is the number of completed sessions whose
-/// `startedAtMs` falls inside the period.
-class ConsistencyPoint {
-  final DateTime periodStart;
-  final int count;
-  const ConsistencyPoint({
-    required this.periodStart,
-    required this.count,
-  });
-}
-
-/// A sessions-per-period trend (week or month). Carries one
-/// overall series (all modalities) and per-modality series
-/// keyed by `TrainingSession.modality`. Empty when no
-/// completed sessions exist in any period.
-class ConsistencyTrend {
-  /// Human-readable label, e.g. `"Sessions / week"`.
-  final String label;
-
-  /// One row per period, sorted ascending by period start.
-  final List<ConsistencyPoint> overall;
-
-  /// Per-modality series keyed by `TrainingSession.modality`.
-  /// A null key holds the Free-Training series.
-  final Map<String, List<ConsistencyPoint>> byModality;
-
-  const ConsistencyTrend({
-    required this.label,
-    required this.overall,
-    required this.byModality,
-  });
-}
 
 // ── Nutrition adherence (PR 2b nutrition adherence section) ───────────────
 
