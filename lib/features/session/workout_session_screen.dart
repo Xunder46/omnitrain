@@ -709,6 +709,23 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       }
     }
 
+    // PHASE 2 FIX: Reorder operations to clear display cache before finishing timer.
+    // This ensures _effortElapsed[timerKey] is cleared before recordRestStart fires,
+    // preventing the display cache from bleeding into the next entry's rest display.
+    //
+    // New sequence:
+    // 1. Reset timer state (clear display cache) — synchronous
+    // 2. Finish timed/round entry (async persist) — unawaited
+    // 3. Start new rest (async persist) — unawaited
+
+    // Stop and reset timer UI state FIRST; clear display cache before next rest starts.
+    // User must explicitly start timer for the next entry.
+    if (effortKind == 'timed' ||
+        effortKind == 'drill' ||
+        effortKind == 'round') {
+      _resetTimerState(effortId, _currentSet - 1);
+    }
+
     // For timed/drill: finish the TimedInstance to persist wall-clock duration.
     // Safe no-op if already finished via timer expiry.
     if ((effortKind == 'timed' || effortKind == 'drill') &&
@@ -770,13 +787,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     // Haptic feedback on successful log
     if (!kIsWeb) {
       HapticFeedback.lightImpact();
-    }
-
-    // Stop and reset timer UI state; user must explicitly start timer for the next entry.
-    if (effortKind == 'timed' ||
-        effortKind == 'drill' ||
-        effortKind == 'round') {
-      _resetTimerState(effortId, _currentSet - 1);
     }
 
     // Start rest tracking on first real log of this set, persisting to database.

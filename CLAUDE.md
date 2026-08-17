@@ -75,9 +75,38 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
 ## Working Rules for Claude Code
 
 - Keep edits minimal and architecture-consistent.
-- Verify affected tests.
 - Never bypass repository interfaces from state/features.
 - Follow conventions/tokens from docs and constants; do not invent parallel patterns.
+
+### Decision ownership
+
+The project owner drives **product behavior** — what the app should do, how it should feel,
+what the user sees. Claude owns **technical decisions** — architecture, code structure, naming,
+file layout, test design, library choices.
+
+- Do NOT escalate implementation-design choices (method signatures, patterns, where code lives,
+  how to structure a test harness). Make the call, state it in one line, proceed.
+- DO escalate questions about observable behavior, product trade-offs, and anything that changes
+  what the user experiences.
+- Report findings in terms of what the app does. Keep file paths and code out of summaries unless
+  asked. Surface obstacles and risks plainly — stepping back from code review is not the same as
+  wanting less visibility.
+
+### Verification is observed output, not inference
+
+This section exists because it has been violated. Agents have reported work "complete" when the
+tests had never once executed, and a bug shipped alongside a fix because nobody ran anything.
+
+- `flutter analyze` passing is NOT a test run. "Syntactically valid" is NOT "passing".
+- Run `flutter test` and read the actual pass/fail counts. Paste them. If a run hangs, times out,
+  or you killed it, say so — a hang is a failure, not an inconclusive result.
+- A new test for a bug fix MUST be shown to FAIL without the fix. Stash the source change, run the
+  test, confirm it fails, restore, confirm it passes. A test that passes both ways proves nothing.
+- Never report as done what you have not observed. An honest "blocked, here's why" is always
+  acceptable; a false completion is not.
+- Prefer plain `test()` for state-layer tests. `testWidgets` runs inside `FakeAsync`, where a real
+  `await Future.delayed(...)` never resolves and hangs the suite forever unless the clock is
+  advanced with `tester.pump()`.
 
 ---
 

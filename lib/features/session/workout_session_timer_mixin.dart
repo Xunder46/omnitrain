@@ -492,6 +492,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             }
             return;
           }
+
           _inProgressKeys.add(timerKey);
           _pendingRoundTransitions.add(timerKey);
           _effortRunning[timerKey] = true;
@@ -507,7 +508,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             playSound: !_isAppInForeground,
           );
           if (mounted) setState(() {});
-          unawaited(widget.workoutState.closeAllOpenRests(effortId));
+
           unawaited(widget.restNotificationService.cancelRestNotifications());
           _lastRestPingFiredAt.remove(effortId);
           widget.workoutState
@@ -576,6 +577,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           }
           return;
         }
+
         _inProgressKeys.add(timerKey);
         _pendingTimedTransitions.add(timerKey);
         _effortRunning[timerKey] = true;
@@ -591,7 +593,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           playSound: !_isAppInForeground,
         );
         if (mounted) setState(() {});
-        unawaited(widget.workoutState.closeAllOpenRests(effortId));
+
         unawaited(widget.restNotificationService.cancelRestNotifications());
         _lastRestPingFiredAt.remove(effortId);
         widget.workoutState.startTimedEntry(effortId, entryIndex).whenComplete(

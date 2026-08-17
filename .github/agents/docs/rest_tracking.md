@@ -102,13 +102,28 @@ Next set _logSet() called
   → recordRestStart(effortId, nextEntryIndex)   // opens new rest
 
 Effort timer started (timed / drill / round)
-  → closeAllOpenRests(effortId)                // closes every open rest for that effort
+  → closeAllOpenRestsInMemory(effortId)        // closes every open rest IN-MEMORY immediately
+  → closeAllOpenRests(effortId) async          // persists the close to repository asynchronously
 
 Session ends via endSession()
   → persistOpenRests(endedAtMs)                 // closes any still-open rest at session end
 ```
 
 For the **first set** of an exercise (`entryIndex == 0`), no rest record is created — the overlay correctly stays hidden because `hasRestRecord(effortId, 0)` returns `false`.
+
+### Rest Record Lifecycle — Synchronous Close on Effort Start
+
+When a timed, round, or drill effort timer starts, `closeAllOpenRests(effortId)` is called to close all open rest records for that effort. This prevents a rest window opened for a previously-skipped entry from continuing to tick in the background.
+
+**Critical invariant**: The rest close happens in **two phases**:
+
+1. **Synchronous in-memory close** (`_closeAllOpenRestsInMemory`): All open `EntryRest` records for the effort have their `restEndMs` set to the current wall-clock instant. The in-memory cache in `TimerManager._entryRests` is updated immediately. This happens **before the timer UI starts rendering**.
+
+2. **Asynchronous repository persist** (`closeAllOpenRests`): After the in-memory close, the updated rest records are persisted to the repository asynchronously. This may lag behind UI rendering on high-latency devices, but queries to `hasRestRecord()` and `getRestElapsedSeconds()` see the closed state immediately from the in-memory cache.
+
+**Why two phases?** On real devices with network/IO latency, the repository persist can lag by hundreds of milliseconds. Without the in-memory close, the rest overlay would display stale elapsed time (rest time + new timer time) in that window, creating a confusing visual flicker. The two-phase approach ensures the UI is always consistent with in-memory state, even when the database is still catching up.
+
+**Testing**: Scenario S-2 in the rest-timer-timed-overlap-bug plan verifies this behaviour by simulating a 500ms async persist delay and confirming that `hasRestRecord()` returns `false` and `getRestElapsedSeconds()` returns `0` immediately, while the repository persist is still in-flight.
 
 ---
 

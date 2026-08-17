@@ -176,7 +176,7 @@ Transitions are validated by `_isValidRoundTransition()` in `WorkoutState`. Rapi
 - Elapsed time is read from `workoutState.getRestElapsedSeconds(effortId, entryIndex)` on each `_ticker` tick (wall-clock derived from `EntryRest.startedAtMs`)
 - Displays elapsed rest time (MM:SS format)
 - Positioned in lower screen area (above controls, non-intrusive)
-- Hides when the next effort timer starts (overlay check gates on `hasRestRecord`)
+- **Hides immediately when a timed/round/drill timer starts**: When `_toggleEffortTimer` is called to start a timed, round, or drill timer, all open rest records for that effort are closed **synchronously in-memory** before the timer UI begins rendering. This ensures `hasRestRecord()` returns `false` and `getRestElapsedSeconds()` returns `0` immediately, even if the async repository persist is still in-flight. Without this synchronous close, a race condition could occur where the rest overlay displays stale elapsed time (rest time + new timer time) in the millisecond window before the async persist completes. See [Rest Record Lifecycle — Synchronous Close on Effort Start](rest_tracking.md#rest-record-lifecycle--synchronous-close-on-effort-start) for details.
 - Independent of effort timers — rest records are keyed per effortId+entryIndex, not globally
 
 ### 6. Set Navigation and Control

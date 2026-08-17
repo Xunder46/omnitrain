@@ -266,6 +266,16 @@ class WorkoutState extends ChangeNotifier {
       _timerManager.resumeRest(effortId, entryIndex);
   Future<void> closeAllOpenRests(String effortId) =>
       _timerManager.closeAllOpenRests(effortId);
+
+  /// Synchronously closes all open rests for [effortId] in the in-memory cache.
+  /// Returns the list of rests that were actually closed.
+  /// Used by the timer mixin to close rests before the timer UI starts rendering,
+  /// ensuring hasRestRecord() and getRestElapsedSeconds() return the closed state
+  /// immediately, even if the async repository persist is still in-flight.
+  /// Callers may ignore the return value if they don't need to persist selectively.
+  List<EntryRest> closeAllOpenRestsInMemory(String effortId) =>
+      _timerManager.closeAllOpenRestsInMemory(effortId);
+
   int getRestElapsedSeconds(String effortId, int entryIndex) =>
       _timerManager.getRestElapsedSeconds(effortId, entryIndex);
 
