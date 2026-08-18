@@ -1832,22 +1832,22 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify list view is shown
-      expect(find.text('Exercises'), findsOneWidget);
+      // Verify list view is shown — the header names the session by modality
+      expect(find.text('Resistance / Lifting'), findsOneWidget);
 
       // Navigate to detail view by tapping the exercise tile
       await tester.tap(find.text('Barbell Back Squat'));
       await tester.pumpAndSettle();
 
       // Detail view is now shown (header title changes to exercise name)
-      expect(find.text('Exercises'), findsNothing);
+      expect(find.text('Resistance / Lifting'), findsNothing);
 
       // Tap the back arrow (IconButton in header) to return to list view
       await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
       await tester.pumpAndSettle();
 
       // Should be back on list view
-      expect(find.text('Exercises'), findsOneWidget);
+      expect(find.text('Resistance / Lifting'), findsOneWidget);
     });
 
     testWidgets(
@@ -1958,7 +1958,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Should be back on list view with scroll at bottom
-        expect(find.text('Exercises'), findsOneWidget);
+        expect(find.text('Edit Session'), findsOneWidget);
         expect(controller.offset, greaterThan(0.0));
       },
     );
@@ -2002,20 +2002,20 @@ void main() {
         await tester.pumpAndSettle();
 
         // List view is shown
-        expect(find.text('Exercises'), findsOneWidget);
+        expect(find.text('Edit Routine'), findsOneWidget);
 
         // Tap exercise to navigate to detail view
         await tester.tap(find.text(allExercises.first.name).first);
         await tester.pumpAndSettle();
 
-        // Detail view shown — 'Exercises' title replaced by exercise name
-        expect(find.text('Exercises'), findsNothing);
+        // Detail view shown — 'Edit Routine' title replaced by exercise name
+        expect(find.text('Edit Routine'), findsNothing);
 
         // Tap back arrow (OmniBackHeader) to return to list view
         await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
         await tester.pumpAndSettle();
 
-        expect(find.text('Exercises'), findsOneWidget);
+        expect(find.text('Edit Routine'), findsOneWidget);
       },
     );
 
@@ -2118,7 +2118,7 @@ void main() {
         navigator.maybePop();
         await tester.pumpAndSettle();
 
-        expect(find.text('Exercises'), findsOneWidget);
+        expect(find.text('Edit Routine'), findsOneWidget);
         expect(controller.offset, greaterThan(0.0));
       },
     );

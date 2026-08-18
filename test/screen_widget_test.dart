@@ -836,7 +836,7 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('RoutineSetupScreen', () {
-    testWidgets('shows Exercises header and name field for new routine', (
+    testWidgets('shows Create Routine header and name field for new routine', (
       WidgetTester tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -851,8 +851,8 @@ void main() {
 
       // Header
       expect(find.byType(OmniBackHeader), findsOneWidget);
-      // Header title
-      expect(find.text('Exercises'), findsOneWidget);
+      // Header title — no templateId, so this is a creation flow
+      expect(find.text('Create Routine'), findsOneWidget);
       // Back arrow
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
     });
@@ -871,8 +871,8 @@ void main() {
       // Initially might show loading spinner, then settles
       await tester.pumpAndSettle();
 
-      // After settle, should display the exercises header
-      expect(find.text('Exercises'), findsOneWidget);
+      // After settle, should display the routine-creation header
+      expect(find.text('Create Routine'), findsOneWidget);
     });
 
     testWidgets('add exercise button is visible', (WidgetTester tester) async {
@@ -971,7 +971,7 @@ void main() {
 
       // Should not be in loading state
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('Exercises'), findsOneWidget);
+      expect(find.text('Edit Routine'), findsOneWidget);
     });
 
     testWidgets('tapping exercise card opens detail view', (
@@ -9999,6 +9999,94 @@ void main() {
         );
       },
     );
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkoutSessionScreen – list-view header identity
+  // ══════════════════════════════════════════════════════════════════════════
+
+  group('WorkoutSessionScreen – session header names the session', () {
+    Future<Widget> buildSession(
+      MockWorkoutRepository repo, {
+      String? modality,
+      String? title,
+      bool editMode = false,
+    }) async {
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(modality: modality, title: title);
+      return MaterialApp(
+        home: WorkoutSessionScreen(
+          workoutState: workoutState,
+          routineState: RoutineState(repo),
+          sessionSummaryService: SessionSummaryService(repo),
+          timerAlertService: FakeTimerAlertService(),
+          settingsState: SettingsState(repo, fakePreferencesService()),
+          editMode: editMode,
+        ),
+      );
+    }
+
+    testWidgets('routine-started session shows the routine name', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = await _freshRepo();
+
+      // Matches the routine-launch path: routine name in the title,
+      // null modality because a routine may mix modalities.
+      await tester.pumpWidget(
+        await buildSession(repo, modality: null, title: 'Push Day'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Push Day'), findsOneWidget);
+      expect(find.text('Free Training'), findsNothing);
+    });
+
+    testWidgets('modality session falls back to the modality name', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = await _freshRepo();
+
+      await tester.pumpWidget(
+        await buildSession(repo, modality: 'resistance_lifting'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Resistance / Lifting'), findsOneWidget);
+    });
+
+    testWidgets('free session falls back to Free Training', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = await _freshRepo();
+
+      await tester.pumpWidget(await buildSession(repo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Free Training'), findsOneWidget);
+    });
+
+    testWidgets('edit mode titles the screen and keeps the name in the sub', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = await _freshRepo();
+
+      await tester.pumpWidget(
+        await buildSession(repo, title: 'Push Day', editMode: true),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit Session'), findsOneWidget);
+      expect(find.text('Push Day · 0 exercises'), findsOneWidget);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════

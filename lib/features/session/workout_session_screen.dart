@@ -14,6 +14,7 @@ import '../../state/workout/workout_state.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/constants/modality_display.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';

@@ -170,7 +170,7 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: OmniBackHeader(
-        title: 'Exercises',
+        title: widget.templateId != null ? 'Edit Routine' : 'Create Routine',
         subtitle: '${efforts.length} exercise${efforts.length != 1 ? 's' : ''}',
         onBack: () => _discardAndPop(),
         actions: widget.templateId != null

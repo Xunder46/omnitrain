@@ -982,6 +982,18 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
+  /// Identity of the session for the list-view header.
+  ///
+  /// Routine-started sessions carry the routine name in `title` (and a null
+  /// modality); every other entry point leaves `title` empty and carries the
+  /// modality, which renders as 'Free Training' when it too is null.
+  String get _sessionDisplayName {
+    final session = widget.workoutState.currentSession;
+    final title = session?.title?.trim() ?? '';
+    if (title.isNotEmpty) return title;
+    return ModalityDisplay.getName(session?.modality);
+  }
+
   Widget _buildHeader(ThemeData theme) {
     final currentSegmentName = !_showListView && _exercises.isNotEmpty
         ? _exercises[_currentExerciseIndex]['segmentName'] as String?
@@ -1015,7 +1027,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               children: [
                 Text(
                   _showListView
-                      ? 'Exercises'
+                      ? (widget.editMode ? 'Edit Session' : _sessionDisplayName)
                       : (_exercises.isNotEmpty
                             ? _exercises[_currentExerciseIndex]['name']
                                   as String
@@ -1030,7 +1042,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 const SizedBox(height: 4),
                 Text(
                   _showListView
-                      ? '${widget.editMode ? 'EDITING · ' : ''}${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}'
+                      ? '${widget.editMode ? '$_sessionDisplayName · ' : ''}${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}'
                       : (_exercises.isNotEmpty
                             ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}'
                             : ''),
