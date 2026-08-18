@@ -161,11 +161,18 @@ class ExerciseDetailViewBody extends StatelessWidget {
   final Discipline? discipline;
   final List<MuscleGroup> muscleGroups;
 
+  /// Padding for content inside the scrollable body.
+  /// Defaults to `EdgeInsets.fromLTRB(16, 16, 16, 24)` to preserve the
+  /// previous hardcoded padding, but can be overridden for contexts
+  /// (like library detail screen) that manage padding externally.
+  final EdgeInsets contentPadding;
+
   const ExerciseDetailViewBody({
     super.key,
     required this.exercise,
     required this.discipline,
     required this.muscleGroups,
+    this.contentPadding = const EdgeInsets.fromLTRB(16, 16, 16, 24),
   });
 
   @override
@@ -186,7 +193,7 @@ class ExerciseDetailViewBody extends StatelessWidget {
     final isCustom = exercise.isCustomExercise;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: contentPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

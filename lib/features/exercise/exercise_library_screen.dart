@@ -9,11 +9,6 @@
 //   - "Custom only" toggle (key `exercise_library_custom_only_toggle`).
 //   - Tap a row to open the management details surface
 //     (ExerciseLibraryDetailScreen), which exposes Copy / Edit / Remove.
-//
-// The details affordance from PR 7 (`exercise_row_details_button`) is
-// reused — tapping it opens `ExerciseDetailViewScreen` (read-only,
-// with the Add action suppressed) so the user can re-inspect the
-// metadata without committing to anything.
 
 import 'dart:async';
 
@@ -26,7 +21,6 @@ import 'package:omnitrain/state/exercise/exercise_library_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/layout/omni_back_header.dart';
 
-import 'exercise_detail_view_screen.dart';
 import 'exercise_library_detail_screen.dart';
 
 class ExerciseLibraryScreen extends StatefulWidget {
@@ -277,41 +271,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                 ],
               ),
             ),
-      trailing: IconButton(
-        key: const Key('exercise_row_details_button'),
-        icon: Icon(
-          Icons.info_outline,
-          color: theme.colorScheme.primary,
-          size: 20,
-        ),
-        tooltip: 'View exercise details',
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
-          width: 44,
-          height: 44,
-        ),
-        style: IconButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(
-              OmniTheme.buttonIconRadius,
-            ),
-          ),
-        ),
-        onPressed: () => _openReadOnlyDetails(exercise),
-      ),
       onTap: () => _openManagementDetails(exercise),
-    );
-  }
-
-  Future<void> _openReadOnlyDetails(Exercise exercise) async {
-    await OmniNavigator.push<Exercise>(
-      context,
-      (_) => ExerciseDetailViewScreen(
-        workoutState: widget.workoutState,
-        exercise: exercise,
-        title: 'Exercise Details',
-        showAddAction: false,
-      ),
     );
   }
 

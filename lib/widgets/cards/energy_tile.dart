@@ -116,7 +116,7 @@ class _EnergyTileState extends State<EnergyTile>
   Widget _buildSurface() {
     final isActive = widget.isActive;
     final isSecondary = widget.isSecondary;
-    final fillOpacity = isSecondary ? 0.08 : 0.18;
+    final fillOpacity = isSecondary ? 0.20 : 0.40;
 
     final baseDecoration = BoxDecoration(
       borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),

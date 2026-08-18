@@ -56,10 +56,17 @@ class CalendarEntry {
 class CalendarState extends ChangeNotifier {
   final WorkoutRepository _repository;
 
-  CalendarState(this._repository);
+  CalendarState(this._repository) {
+    final now = DateTime.now();
+    _year = now.year;
+    _month = now.month;
+  }
 
   // ─── Current month ────────────────────────────────────────────────────────
 
+  /// Displayed month. Set to the current local month in the constructor so
+  /// `year`/`month` are always readable — screens build before their async
+  /// `init()` completes and must not race it.
   late int _year;
   late int _month;
 
@@ -84,7 +91,7 @@ class CalendarState extends ChangeNotifier {
 
   // ─── Initialization ───────────────────────────────────────────────────────
 
-  /// Initialize to the current local month and load entries.
+  /// Reset to the current local month and load entries.
   Future<void> init() async {
     final now = DateTime.now();
     _year = now.year;

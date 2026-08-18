@@ -140,13 +140,6 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     super.initState();
     final repository = widget.workoutState.repository;
     _calendarState = CalendarState(repository);
-    // CalendarState.init() is async but its first statement is the
-    // synchronous `_year = now.year` assignment (no `await` before it),
-    // so a fire-and-forget call is sufficient to prime the late
-    // fields. Without this call, tapping "Open Calendar" in the
-    // calendar card throws `LateInitializationError` on the late
-    // `_year` field (Phase 4 review feedback — was A5 in the plan).
-    _calendarState.init();
     _periodState = PeriodState(repository);
     _routineSessionService = RoutineSessionService(repository);
     _summary = widget.workoutState.computeSessionSummary();

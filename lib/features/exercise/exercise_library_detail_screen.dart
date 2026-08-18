@@ -1,8 +1,13 @@
 // PR 8 — Exercise Library Detail Screen
 //
 // Management surface for a single exercise. Opens via the library's
-// row tap. Differences from `ExerciseDetailViewScreen` (PR 7):
+// row tap.
 //
+// Layout: Renders `ExerciseDetailViewBody` (read-only metadata) and
+// `_ManagementActionBar` (action buttons) in a single-padded Column
+// (padding via ExerciseDetailViewBody.contentPadding).
+//
+// Differences from the read-only viewer:
 //   - Built-in rows surface a `Copy` action (key
 //     `exercise_library_copy_button`).
 //   - Custom rows surface `Edit` (key `exercise_library_edit_button`)
@@ -170,6 +175,7 @@ class _ExerciseLibraryDetailScreenState
                     exercise: exercise,
                     discipline: _resolveDiscipline(exercise.disciplineId),
                     muscleGroups: _muscleGroupsForExercise,
+                    contentPadding: EdgeInsets.zero,
                   ),
                   const SizedBox(height: 24),
                   // Management action bar lives inside the scrolling
@@ -210,6 +216,7 @@ class _ManagementActionBar extends StatelessWidget {
 
     if (isCustom) {
       return Row(
+        key: const Key('exercise_library_action_bar'),
         children: [
           Expanded(
             child: OutlinedButton.icon(
@@ -253,6 +260,7 @@ class _ManagementActionBar extends StatelessWidget {
     }
 
     return SizedBox(
+      key: const Key('exercise_library_action_bar'),
       width: double.infinity,
       child: OutlinedButton.icon(
         key: const Key('exercise_library_copy_button'),
