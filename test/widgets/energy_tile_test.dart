@@ -128,7 +128,7 @@ void main() {
     );
 
     testWidgets(
-      'primary tile accent fill is rendered at ~18% (in the opaque base color)',
+      'primary tile accent fill is rendered at ~30% (in the opaque base color)',
       (tester) async {
         const accent = Color(0xFFA478FF); // a vivid purple for the math
         await tester.pumpWidget(
@@ -149,17 +149,17 @@ void main() {
           isNotNull,
           reason: 'primary tile base must have a solid color fill',
         );
-        // 18% of alpha 0xFF == 0x2E
+        // 30% of alpha 0xFF == 0x4D
         expect(
           (color!.a * 255).round(),
-          inInclusiveRange(44, 48),
-          reason: 'primary fill opacity should be ~18%',
+          inInclusiveRange(74, 79),
+          reason: 'primary fill opacity should be ~30%',
         );
       },
     );
 
     testWidgets(
-      'secondary tile accent fill is rendered at ~8% (Free stays purple)',
+      'secondary tile accent fill is rendered at ~15% (Free stays purple)',
       (tester) async {
         const accent = Color(0xFFA478FF); // Free's purple
         await tester.pumpWidget(
@@ -181,17 +181,17 @@ void main() {
           isNotNull,
           reason: 'secondary tile base must have a solid color fill',
         );
-        // 8% of alpha 0xFF == 0x14
+        // 15% of alpha 0xFF == 0x26
         expect(
           (color!.a * 255).round(),
-          inInclusiveRange(18, 22),
-          reason: 'secondary fill opacity should be ~8%',
+          inInclusiveRange(36, 40),
+          reason: 'secondary fill opacity should be ~15%',
         );
       },
     );
 
     testWidgets(
-      'secondary tile accent fill is rendered at ~8% (Routines uses its own neutral gray)',
+      'secondary tile accent fill is rendered at ~15% (Routines uses its own neutral gray)',
       (tester) async {
         const accent = Color(0xFF9E9E9E); // Routines neutral gray
         await tester.pumpWidget(
@@ -212,8 +212,8 @@ void main() {
         expect(color.r, inInclusiveRange(0.60, 0.63));
         expect(color.g, inInclusiveRange(0.60, 0.63));
         expect(color.b, inInclusiveRange(0.60, 0.63));
-        // 8% alpha
-        expect((color.a * 255).round(), inInclusiveRange(18, 22));
+        // 15% alpha
+        expect((color.a * 255).round(), inInclusiveRange(36, 40));
       },
     );
 

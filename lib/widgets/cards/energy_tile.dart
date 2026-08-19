@@ -5,6 +5,20 @@ import '../../core/constants/tile_artwork_metrics.dart';
 /// Premium training category tile with energy core visualization
 /// Features biomechanical aesthetic with depth and subtle animations
 class EnergyTile extends StatefulWidget {
+  /// Accent fill opacity for primary (modality) tiles.
+  ///
+  /// The tile fill is the modality accent composited over the theme's
+  /// background gradient, so this value trades modality identity against
+  /// theme cohesion: lower lets the theme dominate, higher lets the accent
+  /// dominate. The legibility floor it must respect is pinned by
+  /// `palette_legibility_contract_test.dart`, which reads these constants
+  /// rather than restating them — tune here and the gate follows.
+  static const double primaryFillOpacity = 0.30;
+
+  /// Accent fill opacity for secondary tiles (Free, Routines), which sit
+  /// one tier quieter than the modality tiles.
+  static const double secondaryFillOpacity = 0.15;
+
   final String title;
   final IconData? icon;
 
@@ -116,7 +130,9 @@ class _EnergyTileState extends State<EnergyTile>
   Widget _buildSurface() {
     final isActive = widget.isActive;
     final isSecondary = widget.isSecondary;
-    final fillOpacity = isSecondary ? 0.20 : 0.40;
+    final fillOpacity = isSecondary
+        ? EnergyTile.secondaryFillOpacity
+        : EnergyTile.primaryFillOpacity;
 
     final baseDecoration = BoxDecoration(
       borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),

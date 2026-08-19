@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/modality_colors.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
+import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/app.dart';
 import 'contrast_helpers.dart';
 import 'dart:math' as math;
 
 void main() {
-  group('Palette legibility contract (Iteration 2 - Checks 1-14)', () {
-    test('All 14 checks pass for all six themes', () {
+  group('Palette legibility contract (Iteration 2 - Checks 1-17)', () {
+    test('All 17 checks pass for all six themes', () {
       final results = <String, List<String>>{};
 
       for (final theme in AppTheme.values) {
@@ -173,6 +175,71 @@ void main() {
           results[theme.name]!.add(
             'Check 14 FAIL: onSurfaceVariant ${onSurfaceVariant} vs surface contrast = $onSurfaceVariantContrast (required ≥ 4.5:1)',
           );
+        }
+        // ── Checks 15-16: home tile fills ────────────────────────────────
+        // Tiles are the modality accent composited over the background
+        // gradient, so their legibility depends on BOTH the modality colour
+        // and the theme — neither of which the checks above cover. That gap
+        // is why the tile fills drifted through the palette re-anchoring
+        // unnoticed. The background TOP stop is the worst case: it is the
+        // lightest point of the gradient, so it produces the lightest fill
+        // and the weakest contrast for the tile's near-white label.
+        //
+        // These read the opacities from EnergyTile rather than restating
+        // them, so retuning the tiles moves the gate with them. What is
+        // pinned here is the legibility floor, not the aesthetic value.
+        for (final entry in ModalityColors.byModality.entries) {
+          final fill = _compositeOverSurface(
+            entry.value.withValues(alpha: EnergyTile.primaryFillOpacity),
+            colors.backgroundTop,
+          );
+          final labelOnFill = _compositeOverSurface(colors.textDominant, fill);
+          final tileContrast = contrastRatio(labelOnFill, fill);
+          if (tileContrast < 4.5) {
+            results[theme.name]!.add(
+              'Check 15 FAIL: primary tile label on ${entry.key} fill = $tileContrast (required ≥ 4.5:1)',
+            );
+          }
+        }
+
+        // ── Check 17: modality accents at full opacity ───────────────────
+        // Calendar dots, chips and period markers paint ModalityColors at
+        // FULL opacity directly on the theme surface, with no compositing to
+        // soften them. On the month grid the dot is the only thing saying
+        // which modality a session was, so it is a graphical object carrying
+        // meaning and owes WCAG 1.4.11's 3:1 against its backdrop.
+        //
+        // This check exists because the palette re-anchoring lightened five
+        // surfaces and silently pushed the free-training accent from passing
+        // to ~2.7:1 on all five. Nothing caught it — modality colours are
+        // global constants while surfaces are per-theme, so only a check that
+        // crosses the two can see the interaction.
+        for (final entry in ModalityColors.byModality.entries) {
+          final c = contrastRatio(entry.value, colors.surface);
+          if (c < 3.0) {
+            results[theme.name]!.add(
+              'Check 17 FAIL: modality accent ${entry.key} vs surface = $c (required ≥ 3:1)',
+            );
+          }
+        }
+
+        // Secondary tiles run one tier quieter, and their label is white at
+        // 70% rather than textDominant — the weakest text on any tile.
+        for (final entry in ModalityColors.byModality.entries) {
+          final fill = _compositeOverSurface(
+            entry.value.withValues(alpha: EnergyTile.secondaryFillOpacity),
+            colors.backgroundTop,
+          );
+          final labelOnFill = _compositeOverSurface(
+            const Color(0xFFFFFFFF).withValues(alpha: 0.70),
+            fill,
+          );
+          final tileContrast = contrastRatio(labelOnFill, fill);
+          if (tileContrast < 4.5) {
+            results[theme.name]!.add(
+              'Check 16 FAIL: secondary tile label on ${entry.key} fill = $tileContrast (required ≥ 4.5:1)',
+            );
+          }
         }
       }
 

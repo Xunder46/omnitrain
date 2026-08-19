@@ -43,6 +43,42 @@ Six themes ship: Abyssal Neon, Forge & Ember, Obsidian Volt, Void Pulse, Crimson
 
 **Values live in `lib/core/constants/omni_theme.dart` and nowhere else.** This document names tokens and says what each is for; it does not restate what any of them equal.
 
+### Adding or changing a theme
+
+Theme compliance is enforced by the toolchain, not by reviewer memory. Two gates
+catch a new or edited theme, in this order:
+
+**1. The compiler.** `AppTheme` is matched by exhaustive `switch` statements, so adding an
+enum value fails the build until every one is handled. Today that forces you to supply the
+full palette, the Material `ColorScheme` role mapping, and the on-primary / on-secondary
+label colours. You cannot ship a theme that silently inherits another theme's values or
+falls through to a framework default — the build stops first.
+
+**2. The palette legibility contract** (`test/palette_legibility_contract_test.dart`).
+It iterates `AppTheme.values`, so once the code compiles, every rule applies to the new
+theme automatically with **no test edits**. It covers background lightness, surface lift,
+muted and secondary text, borders, dividers, accent contrast, the on-primary/on-secondary
+labels, the interactive vs decorative outline split, the elevated container tier, the home
+tile fills at both tiers, and the modality accents against the surface. A failure names the
+theme, the check, the measured value and the threshold.
+
+Related gates that also iterate the roster: `emphasis_tier_contract_test.dart` (accent stays
+chromatically distinct from the text tiers) and `switch_consistency_contract_test.dart`
+(no control opts out of theme-driven styling).
+
+**What is NOT gated.** Be deliberate about these, because nothing will stop you:
+
+- The macro chart and nutrition strip palettes have no contrast check.
+- Glow and brand colours are exempt by design — the brand mark stays constant across themes.
+- `textDisabled` has no floor.
+- The startup failure surface renders in the canonical theme regardless of the saved one,
+  because it runs before persisted settings are readable.
+
+**Tuning an existing value.** Change it and run the suite. If a check fails, the value is
+wrong or the threshold needs an explicit, recorded decision — never quietly relax the
+assertion. Thresholds are approved product decisions; a test edited to accommodate a value
+is how the original legibility defects reached users in the first place.
+
 ### Emphasis Tiers
 
 OmniTrain’s shared text hierarchy is expressed through `OmniTheme.colors`:
@@ -65,7 +101,7 @@ OmniTrain’s shared text hierarchy is expressed through `OmniTheme.colors`:
 2. **Surfaces** float above the background with depth (shadow + border)
 3. **Cyan/teal accents** indicate interactivity or active state — never decorative filler
 4. **White text** with opacity levels creates hierarchy without introducing new hues
-5. **Home tiles** use a solid low-opacity accent fill (primary ~18%, secondary ~8%) with a 1px white top rim highlight and 1px black bottom inner shadow on primary tiles; secondary tiles (Free, Routines) have no rim or inner shadow. Tile gradients are intentionally not used — see `EnergyTile` and `HomeTileConfig.isSecondary`.
+5. **Home tiles** use a solid low-opacity accent fill (primary ~30%, secondary ~15%) with a 1px white top rim highlight and 1px black bottom inner shadow on primary tiles; secondary tiles (Free, Routines) have no rim or inner shadow. Tile gradients are intentionally not used — see `EnergyTile` and `HomeTileConfig.isSecondary`.
 6. **Glow effects** are reserved for active/selected states and brand elements
 7. **Modality accent colors** must come from `lib/core/constants/modality_colors.dart` (single source of truth) and must not be hardcoded in screens/components
 

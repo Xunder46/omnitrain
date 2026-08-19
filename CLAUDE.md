@@ -48,7 +48,7 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
   - `rest_tracking.md` — wall-clock rest tracking, `EntryRest` model, DB-backed rest records
   - `navigation_and_screens.md` — complete screen map, navigation flow, dependency injection pattern
   - `navigation_contract.md` — the navigation contract (enforced by `test/navigation_contract_enforcement_test.dart`)
-  - `design_system.md` — visual identity, color tokens, typography, spacing, animation rules, component patterns
+  - `design_system.md` — visual identity, color tokens, typography, spacing, animation rules, component patterns; **read its "Adding or changing a theme" section before touching any theme value** — theme compliance is gated by exhaustive `switch` coverage plus `test/palette_legibility_contract_test.dart`, which auto-applies every rule to new themes. Never relax a failing contrast assertion to accommodate a value.
   - `history/route-migration-audit.md` — **HISTORY** original `centralized-route-system` migration audit (superseded by the automated test)
   - `docs-audit-2026-07-26.md` — record of the 2026-07-26 audit: what was corrected, what was added, and what remains unresolved
   - **Nutrition** has no dedicated feature doc yet; its behavior is spread across `navigation_and_screens.md`, `state_management/nutrition_state.md`, `widget_catalog/nutrition_widgets.md`, `data_models.md`, and `db_integration.md`
