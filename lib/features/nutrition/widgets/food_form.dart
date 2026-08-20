@@ -818,7 +818,7 @@ class _FoodFormState extends State<FoodForm> {
 
   /// Build the items list for the category dropdown (S-001 / S-002).
   ///
-  /// The list is `Ungrouped` + the active groups, in alphabetical
+  /// The list is `Uncategorized` + the active groups, in alphabetical
   /// order. When the food's stored `_groupId` is **not** in the
   /// active list (it points at a deleted category, or one that was
   /// never created because the user pre-created their own), we
@@ -837,7 +837,7 @@ class _FoodFormState extends State<FoodForm> {
   /// it under. Again, muted style.
   ///
   /// Items are listed in this order: synthesised (if any) →
-  /// `Ungrouped` → active groups. The synthesised item is
+  /// `Uncategorized` → active groups. The synthesised item is
   /// prepended so the user sees it at the top of the menu (or as
   /// the selected value when it matches `_groupId`).
   List<DropdownMenuItem<String?>> _categoryDropdownItems(
@@ -856,7 +856,7 @@ class _FoodFormState extends State<FoodForm> {
     items.add(
       const DropdownMenuItem<String?>(
         value: null,
-        child: Text('Ungrouped'),
+        child: Text('Uncategorized'),
       ),
     );
     for (final g in activeGroups) {
@@ -880,7 +880,7 @@ class _FoodFormState extends State<FoodForm> {
   ///   * a synthesised "(no longer available)" item carrying the
   ///     stored id but no resolvable name.
   ///
-  /// Returns `null` when `_groupId` is null (Ungrouped) or when
+  /// Returns `null` when `_groupId` is null (Uncategorized) or when
   /// it is in the active list (no synthesis needed).
   DropdownMenuItem<String?>? _synthesiseOrphanCategoryItem({
     required Color mutedStyle,

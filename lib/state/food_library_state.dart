@@ -347,6 +347,14 @@ class FoodLibraryState extends ChangeNotifier {
       throw Exception('Food group not found: $id');
     }
     final now = DateTime.now().millisecondsSinceEpoch;
+    // The guard below reads the in-memory catalog cache. A cold
+    // cache would make it see zero bundled foods and wave the
+    // deletion through, stranding every bundled food in the
+    // category — the exact outcome the guard exists to prevent.
+    // Load the catalog first when it has never been populated.
+    if (_catalogFoods.isEmpty) {
+      await loadCatalogFoods();
+    }
     // Bundled-food guard (S-006): if any bundled catalog food
     // currently points at this group, refuse the deletion. Run
     // this BEFORE the library/user-catalog reassignment so a

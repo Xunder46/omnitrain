@@ -16,10 +16,10 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
 
 /// Sentinel used by [_DeleteGroupDialog] to distinguish "user
-/// tapped Cancel" from "user picked Ungrouped (which is a legitimate
+/// tapped Cancel" from "user picked Uncategorized (which is a legitimate
 /// `null` destination)". The dialog returns this sentinel for cancel
 /// and the raw destination (which may itself be `null` for
-/// Ungrouped) for confirm.
+/// Uncategorized) for confirm.
 const Object _cancelledSentinel = Object();
 
 /// Manage Food Library screen — two-tab flow for adding and removing
@@ -98,7 +98,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
   // ── Tab-aware primary bottom CTA ──────────────────────────────────────
   //
   // The My Foods and Groups tabs each have a single primary
-  // bottom action (New Food / + New Group). Both are routed
+  // bottom action (New Food / + New Category). Both are routed
   // through the shared `OmniBottomCTA` on the host's
   // `Scaffold.bottomNavigationBar` (see
   // `.github/agents/plans/add-food-screen-bottom-cta-plan.md` and
@@ -135,21 +135,21 @@ class _AddFoodScreenState extends State<AddFoodScreen>
     );
   }
 
-  /// Creates a new group (shared with the previous inline
+  /// Creates a new category (shared with the previous inline
   /// `_GroupsTabState._createGroup` method).
-  /// Tracks the new group ID so it appears at the end of the list.
+  /// Tracks the new category ID so it appears at the end of the list.
   Future<void> _createGroup() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final newId = await widget.foodLibraryState.createFoodGroup('New Group');
-      // Track this as the newly created group and focus it
+      final newId = await widget.foodLibraryState.createFoodGroup('New Category');
+      // Track this as the newly created category and focus it
       setState(() {
         _newlyCreatedGroupId = newId;
         _focusGroupId = newId;
       });
     } catch (_) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not create group')),
+        const SnackBar(content: Text('Could not create category')),
       );
     }
   }
@@ -168,7 +168,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
             );
           case _groupsTabIndex:
             return OmniBottomCTA(
-              label: '+ New Group',
+              label: '+ New Category',
               buttonKey: const Key('new_group_button'),
               onPressed: _createGroup,
             );
@@ -190,7 +190,7 @@ class _AddFoodScreenState extends State<AddFoodScreen>
           tabs: const [
             Tab(text: 'Library'),
             Tab(text: 'My Foods'),
-            Tab(text: 'Groups'),
+            Tab(text: 'Categories'),
           ],
         ),
       ),
@@ -261,6 +261,31 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
     super.dispose();
   }
 
+  /// Write [draft] through the state layer. Legacy rows are
+  /// library-only (`isCatalog = false`), but the catalog branch is
+  /// kept so the shim stays correct if a catalog row is ever
+  /// routed here.
+  Future<void> _persist(FoodDraft draft) {
+    if (widget.food.isCatalog) {
+      return widget.foodLibraryState.updateCatalogFood(widget.food, draft);
+    }
+    return widget.foodLibraryState.updateCustomFood(
+      id: widget.food.id,
+      name: draft.name,
+      groupId: draft.groupId,
+      unitType: draft.unitType,
+      referenceAmount: draft.referenceAmount,
+      referenceLabel: draft.referenceLabel,
+      protein: draft.protein,
+      carbs: draft.carbs,
+      fiber: draft.fiber,
+      fat: draft.fat,
+      sodium: draft.sodium,
+      notes: draft.notes,
+      imagePath: draft.imagePath,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -274,33 +299,27 @@ class _LegacyLibraryEditScreenState extends State<_LegacyLibraryEditScreen> {
         onSave: (draft) async {
           final messenger = ScaffoldMessenger.of(context);
           try {
-            if (widget.food.isCatalog) {
-              await widget.foodLibraryState.updateCatalogFood(
-                widget.food,
-                draft,
-              );
-            } else {
-              await widget.foodLibraryState.updateCustomFood(
-                id: widget.food.id,
-                name: draft.name,
-                groupId: draft.groupId,
-                unitType: draft.unitType,
-                referenceAmount: draft.referenceAmount,
-                referenceLabel: draft.referenceLabel,
-                protein: draft.protein,
-                carbs: draft.carbs,
-                fiber: draft.fiber,
-                fat: draft.fat,
-                sodium: draft.sodium,
-                notes: draft.notes,
-                imagePath: draft.imagePath,
-              );
-            }
+            await _persist(draft);
             return true;
           } catch (e) {
             messenger.showSnackBar(
               SnackBar(content: Text('Could not save ${widget.food.name}: $e')),
             );
+            return false;
+          }
+        },
+        // "Save on upload / save on clear": picking or clearing a
+        // photo persists immediately, the same as the catalog
+        // editor (`EditFoodScreen`). Without this the photo
+        // change lived only in the form until the user pressed
+        // Save — and a user who tapped × and then backed out
+        // (the natural gesture, since the catalog editor needs no
+        // Save) found the photo still there.
+        onImageSave: (draft) async {
+          try {
+            await _persist(draft);
+            return true;
+          } catch (_) {
             return false;
           }
         },
@@ -1261,20 +1280,20 @@ class _CatalogRowState extends State<_CatalogRow> {
 /// the **Library** tab. Delegates to the shared [FoodForm] widget
 // ─── Tab 3: Groups ───────────────────────────────────────────────
 
-/// Manage the food groups that organize the library.
+/// Manage the food categories that organize the library.
 ///
-/// Each row has an inline `TextField` for renaming the group (the
+/// Each row has an inline `TextField` for renaming the category (the
 /// rename is committed when the field is unfocused / the IME action
 /// fires) and a trash `IconButton` on the right. Deleting a non-empty
-/// group opens a confirmation dialog with a destination dropdown
-/// (Ungrouped + every other active group, Ungrouped default); on
-/// confirm the group's foods are reassigned and the group is
-/// archived. Deleting an empty group is silent (no confirmation).
+/// category opens a confirmation dialog with a destination dropdown
+/// (Uncategorized + every other active category, Uncategorized default); on
+/// confirm the category's foods are reassigned and the category is
+/// archived. Deleting an empty category is silent (no confirmation).
 ///
-/// A "+ New Group" button at the bottom of the list creates a new
-/// group with a default name and focuses the new row's `TextField`.
+/// A "+ New Category" button at the bottom of the list creates a new
+/// category with a default name and focuses the new row's `TextField`.
 ///
-/// The synthetic "Ungrouped" row at the bottom of the list is
+/// The synthetic "Uncategorized" row at the bottom of the list is
 /// informational (food count) and cannot be renamed or deleted.
 class _GroupsTab extends StatefulWidget {
   final FoodLibraryState foodLibraryState;
@@ -1369,15 +1388,42 @@ class _GroupsTabState extends State<_GroupsTab> {
 
         // Count foods per group id (for the ungrouped row and the
         // empty-delete check).
+        //
+        // The tally is the set of foods the category actually
+        // holds, which is NOT the same as the user's personal
+        // library:
+        //
+        //   * every non-archived catalog row — the bundled foods
+        //     shipped with the app AND the ones the user created
+        //     via **+ New Item** (those live in the catalog box,
+        //     not the library box), and
+        //   * legacy library-only customs — non-archived
+        //     `isCatalog = false` rows with no catalog twin.
+        //
+        // Personal-library COPIES of a catalog food are excluded:
+        // adding a bundled food to "Foods I Eat" does not add a
+        // second food to the category. The `catalogIdFor` check
+        // is the same identity rule the My Foods tab uses, so the
+        // two lists stay in lockstep.
+        //
+        // Getting this right matters beyond the label: the count
+        // is also what `_confirmAndDeleteGroup` reads to decide
+        // whether a category is empty enough to delete without
+        // asking the user where its foods should go.
         final foodsByGroup = <String?, int>{};
+        for (final f in widget.foodLibraryState.catalogFoods) {
+          if (f.isArchived) continue;
+          foodsByGroup[f.groupId] = (foodsByGroup[f.groupId] ?? 0) + 1;
+        }
         for (final f in foods) {
           if (f.isArchived || f.isCatalog) continue;
+          if (widget.foodLibraryState.catalogIdFor(f) != null) continue;
           foodsByGroup[f.groupId] = (foodsByGroup[f.groupId] ?? 0) + 1;
         }
 
         return ListView(
           // Bottom padding clears the host's shared bottom CTA
-          // (+ New Group).
+          // (+ New Category).
           padding: const EdgeInsets.fromLTRB(
             0,
             8,
@@ -1545,10 +1591,8 @@ class _GroupRow extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 border: const OutlineInputBorder(),
-                hintText: 'Group name',
-                suffixText: foodCount == 0
-                    ? 'empty'
-                    : '$foodCount food${foodCount == 1 ? '' : 's'}',
+                hintText: 'Category name',
+                suffixText: '$foodCount',
                 suffixStyle: theme.textTheme.bodySmall?.copyWith(
                   color: OmniTheme.colors.textMuted,
                 ),
@@ -1566,7 +1610,7 @@ class _GroupRow extends StatelessWidget {
             child: IconButton(
               key: Key('group_delete_${group.id}'),
               icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete group',
+              tooltip: 'Delete category',
               onPressed: onDelete,
             ),
           ),
@@ -1576,7 +1620,7 @@ class _GroupRow extends StatelessWidget {
   }
 }
 
-/// Read-only "Ungrouped" row at the bottom of the Groups tab.
+/// Read-only "Uncategorized" row at the bottom of the Categories tab.
 /// No edit / delete affordances — the row is purely informational.
 class _UngroupedRow extends StatelessWidget {
   final int foodCount;
@@ -1597,7 +1641,7 @@ class _UngroupedRow extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Ungrouped',
+              'Uncategorized',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: OmniTheme.colors.textMuted,
                 fontStyle: FontStyle.italic,
@@ -1605,7 +1649,7 @@ class _UngroupedRow extends StatelessWidget {
             ),
           ),
           Text(
-            '$foodCount food${foodCount == 1 ? '' : 's'}',
+            '$foodCount',
             style: theme.textTheme.bodySmall?.copyWith(
               color: OmniTheme.colors.textMuted,
             ),
@@ -1616,10 +1660,10 @@ class _UngroupedRow extends StatelessWidget {
   }
 }
 
-/// Confirmation dialog for deleting a non-empty group.
+/// Confirmation dialog for deleting a non-empty category.
 ///
-/// The destination dropdown defaults to "Ungrouped" (null). Returns
-/// the picked destination group id, or `null` for Ungrouped. The
+/// The destination dropdown defaults to "Uncategorized" (null). Returns
+/// the picked destination category id, or `null` for Uncategorized. The
 /// `null` return value from the dialog itself means the user
 /// cancelled.
 class _DeleteGroupDialog extends StatefulWidget {
@@ -1645,7 +1689,7 @@ class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      title: const Text('Delete group?'),
+      title: const Text('Delete category?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1675,7 +1719,7 @@ class _DeleteGroupDialogState extends State<_DeleteGroupDialog> {
             items: [
               const DropdownMenuItem<String?>(
                 value: null,
-                child: Text('Ungrouped'),
+                child: Text('Uncategorized'),
               ),
               for (final g in widget.otherGroups)
                 DropdownMenuItem<String?>(

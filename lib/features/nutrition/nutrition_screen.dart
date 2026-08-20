@@ -57,7 +57,13 @@ class _NutritionScreenState extends State<NutritionScreen> {
 
   Future<void> _loadLibrary() async {
     await Future.wait([
-      widget.foodLibraryState.loadFoodGroups(),
+      // `includeArchived: true` so the cache matches what its
+      // `foodGroups` getter documents (active + archived). The
+      // food editor needs the archived rows to label a food filed
+      // under a deleted category with the category's NAME rather
+      // than its raw internal id; every display path filters with
+      // `activeFoodGroups`.
+      widget.foodLibraryState.loadFoodGroups(includeArchived: true),
       widget.foodLibraryState.loadFoods(),
     ]);
   }
@@ -320,7 +326,7 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
           );
         }
 
-        final groups = _sortedGroups(foodLibraryState.foodGroups);
+        final groups = _sortedGroups(foodLibraryState.activeFoodGroups);
         final foods = foodLibraryState.foods;
 
         // Empty state: show whenever the user's Foods I Eat list is empty,
@@ -343,22 +349,32 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
 
         // Bucket foods by FoodGroup id (D-1 / S-042). The category
         // label is the FoodGroup's name from the live cache; null
-        // groupId maps to the synthetic "Ungrouped" section. The
-        // section header mirrors the Groups tab exactly — the
+        // groupId maps to the synthetic "Uncategorized" section. The
+        // section header mirrors the Categories tab exactly — the
         // rename propagates here on the next notifyListeners.
+        //
+        // A food whose `groupId` no longer resolves to an active
+        // category (the category was deleted, or was never seeded
+        // because the user already had one by that name) buckets
+        // into Ungrouped. Keying it by the dangling id instead
+        // would drop the food from this card entirely, because the
+        // section order below is built from the active categories.
+        final activeGroupIds = {for (final g in groups) g.id};
         final Map<String, List<Food>> byGroup = {};
         for (final f in foods) {
-          byGroup.putIfAbsent(f.groupId ?? '', () => []).add(f);
+          final gid = f.groupId;
+          final key = (gid != null && activeGroupIds.contains(gid)) ? gid : '';
+          byGroup.putIfAbsent(key, () => []).add(f);
         }
 
-        // Sort: groups alpha (case-insensitive) by name, "Ungrouped"
-        // last. The empty key is our sentinel for Ungrouped.
+        // Sort: groups alpha (case-insensitive) by name, "Uncategorized"
+        // last. The empty key is our sentinel for Uncategorized.
         final groupNameById = <String, String>{
           for (final g in groups) g.id: g.name,
         };
         String labelFor(String groupId) {
-          if (groupId.isEmpty) return 'Ungrouped';
-          return groupNameById[groupId] ?? 'Ungrouped';
+          if (groupId.isEmpty) return 'Uncategorized';
+          return groupNameById[groupId] ?? 'Uncategorized';
         }
 
         final orderedGroupIds = <String>[];
@@ -391,7 +407,7 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
 
 /// Renders a single category header and its food rows.
 /// Category is the FoodGroup name resolved through the live state
-/// cache; "Ungrouped" is the synthetic section for foods with
+/// cache; "Uncategorized" is the synthetic section for foods with
 /// `groupId == null` or whose group id is no longer in the active
 /// list (e.g. archived).
 class _GroupBlock extends StatelessWidget {
