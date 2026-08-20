@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/modality.dart';
@@ -19,6 +20,27 @@ import 'helpers/fake_timer_alert_service.dart';
 /// scrolling. Both parts are sized from the space that is actually available,
 /// so these tests pin the sizes at which that used to fail: short phones, a
 /// six-row month, wide viewports, and large accessibility text.
+/// Mirrors `_MonthGrid`'s own arithmetic: 4pt of padding each side and six
+/// 2pt gaps between seven columns.
+double cellWidthFor(double viewportWidth) => (viewportWidth - 8 - 12) / 7;
+
+/// Must track `_MonthGrid._minRowHeight`.
+const double _minRowHeight = 52;
+
+/// Holds the month load open so the calendar's loading frame actually renders,
+/// the way it does on a device where storage takes a frame or more to answer.
+class _BlockingRepo extends MockWorkoutRepository {
+  final Completer<void> _gate = Completer<void>();
+
+  void release() => _gate.complete();
+
+  @override
+  Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs) async {
+    await _gate.future;
+    return super.getSessionsByDateRange(fromMs, toMs);
+  }
+}
+
 void main() {
   Future<MockWorkoutRepository> freshRepo() async {
     final repo = MockWorkoutRepository();
@@ -242,158 +264,109 @@ void main() {
   });
 
   group('cell height capping', () {
-    testWidgets('S-1: Month on tall iPhone — cells capped to maxRowHeight formula', (
+    /// The height the grid actually gave each day cell, read back from the
+    /// delegate it laid out with. Asserting on the GridView's own box instead
+    /// proves nothing: that box is clamped to the space available whether or
+    /// not the cells inside it were ever compressed.
+    double measuredCellHeight(WidgetTester tester, double viewportWidth) {
+      final gridView = tester.widget<GridView>(find.byType(GridView).first);
+      final delegate =
+          gridView.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+      return cellWidthFor(viewportWidth) / delegate.childAspectRatio;
+    }
+
+    testWidgets('S-1: on a tall iPhone cells stop at the cap, never stretch', (
       tester,
     ) async {
-      // iPhone 14: 390x844pt. The render() function navigates to a six-row month.
-      // Without the cap, cells would stretch based on available height.
-      // With the cap, cells are sized to maxRowHeight = cellWidth / 0.7 ≈ 75pt
       const size = Size(390, 844);
       expect(await render(tester, size: size), isEmpty);
 
-      // Find the GridView to measure cell heights
-      final gridFinder = find.byType(GridView);
-      expect(gridFinder, findsWidgets);
-      final gridRect = tester.getRect(gridFinder.first);
-
-      // cellWidth ≈ (390 - 8 - 12) / 7 ≈ 53pt
-      // maxRowHeight cap = 53 / 0.7 ≈ 75pt
-      // The grid should use this capped height, not stretch to fill screen
-
-      final cellWidth = (size.width - 8 - 12) / 7;
-      final maxRowHeight = cellWidth / 0.7;
-
-      // Verify that cell height is capped at maxRowHeight (within a few points)
-      // Grid height ≈ (actual rowHeight) * (number of rows) + spacing
-      // If uncapped, rowHeight would be larger; if capped, it's ≈ maxRowHeight
-
-      // For verification: if row height is truly capped at maxRowHeight,
-      // then grid height should be approximately maxRowHeight * num_rows + spacing.
-      // We measure this by verifying the cap is applied.
-
-      // The grid height should be significantly smaller than it would be without capping.
-      // Without cap, 6 rows on tall screen might be 120pt+ each. With cap at ~75pt,
-      // grid should be ~75*6 + spacing ≈ 460pt
-      final maxPossibleHeightWithoutCap = 150 * 6 + 2 * 5; // 910pt (rough estimate)
-
+      final cap = cellWidthFor(size.width) / 0.7;
       expect(
-        gridRect.height,
-        lessThan(maxPossibleHeightWithoutCap),
-        reason: 'S-1: Grid height ${gridRect.height} should show capping is applied (well under $maxPossibleHeightWithoutCap)',
-      );
-
-      // Also verify the cap ratio is respected by checking cell aspect ratio
-      // If childAspectRatio = cellWidth / rowHeight and rowHeight ≈ maxRowHeight,
-      // then we can infer rowHeight from the cell measurements
-      final childAspectRatio = cellWidth / maxRowHeight;
-      expect(
-        childAspectRatio,
-        greaterThan(0.6),
-        reason: 'S-1: Child aspect ratio should reflect capped row height',
+        measuredCellHeight(tester, size.width),
+        closeTo(cap, 0.5),
+        reason:
+            'S-1: a six-row month on a tall phone leaves spare height, so the '
+            'cap must be what sizes the cell — not the leftover space',
       );
     });
 
-    testWidgets('S-5: Tablet cells grow proportionally, capped at max aspect ratio',
-        (tester) async {
-      // iPad: 768x1024pt, 6-row month with 0 sessions
-      // Tablet cells should be larger than iPhone but still capped proportionally
-      const tabletSize = Size(768, 1024);
-      expect(await render(tester, size: tabletSize), isEmpty);
+    testWidgets('S-5: on a tablet cells compress below the cap to fit', (
+      tester,
+    ) async {
+      const size = Size(768, 1024);
+      expect(await render(tester, size: size), isEmpty);
 
-      final gridFinder = find.byType(GridView);
-      expect(gridFinder, findsWidgets);
-      final tabletGridRect = tester.getRect(gridFinder.first);
+      final cap = cellWidthFor(size.width) / 0.7;
+      final measured = measuredCellHeight(tester, size.width);
 
-      // Tablet: cellWidth ≈ (768 - 8 - 12) / 7 ≈ 108pt
-      final tabletCellWidth = (tabletSize.width - 8 - 12) / 7;
-      final tabletMaxRowHeight = tabletCellWidth / 0.7;
-
-      // With 6 rows, height should be ≈ maxRowHeight * 6 + spacing
-      final expectedHeight = tabletMaxRowHeight * 6 + 2 * 5;
-
-      // Grid height should be clamped to available space and capped proportionally
+      // A tablet is wide enough that the cap (~153pt) exceeds the height a
+      // six-row month has to spend, so the available-height path must win.
+      // This is the assertion that fails if compression is ever disabled.
       expect(
-        tabletGridRect.height,
-        lessThanOrEqualTo(expectedHeight + 5),
-        reason: 'S-5: Tablet grid height should respect max aspect ratio cap',
+        measured,
+        lessThan(cap - 1),
+        reason:
+            'S-5: cell height ${measured.toStringAsFixed(1)}pt should be driven '
+            'by available height, below the ${cap.toStringAsFixed(1)}pt cap',
+      );
+      expect(
+        measured,
+        greaterThan(_minRowHeight),
+        reason: 'S-5: a tablet has room to spare, so the floor must not bind',
       );
     });
 
-    testWidgets('S-8: Landscape with 6-row month — grid compresses and scrolls', (tester) async {
-      // Landscape 844x390: narrow vertical space for a 6-row month
-      // With the 52pt floor, 6 rows need 52*6 + 5*2 = 322pt just for grid
-      // Plus header + weekday + stats = ~200pt
-      // Total ~522pt > 390pt viewport → grid must scroll
+    testWidgets('S-8: in landscape cells hit the floor and the grid scrolls', (
+      tester,
+    ) async {
       const size = Size(844, 390);
       expect(await render(tester, size: size), isEmpty);
 
-      // Find the GridView
-      final gridFinder = find.byType(GridView);
-      expect(gridFinder, findsWidgets);
-
-      // Verify the grid exists and is constrained to landscape
-      final gridRect = tester.getRect(gridFinder.first);
-      expect(gridRect.width, greaterThan(gridRect.height),
-          reason: 'S-8: Landscape viewport is wider than tall');
-
-      // cellWidth ≈ (844 - 8 - 12) / 7 ≈ 119pt
-      // maxRowHeight = 119 / 0.7 ≈ 170pt
-      // But available height might be ~150pt, so computed = 150/6 = 25pt
-      // Clamped to floor: min(25, max=170, min=52) = 52pt
-      final cellWidth = (size.width - 8 - 12) / 7;
-      final maxRowHeight = cellWidth / 0.7;
-
-      // Grid should compress toward the 52pt floor, NOT stretch to ~170pt
-      // If it was stretching (bug), height would be maxRowHeight * 6 ≈ 1020pt
-      // With floor, height should be 52pt * 6 + spacing ≈ 322pt
-      final compressedHeight = 52 * 6 + 2 * 5; // ~322pt
-      final stretchedHeight = maxRowHeight * 6 + 2 * 5; // ~1020pt (bug case)
-
-      // Assert it's compressed, not stretched
+      final cap = cellWidthFor(size.width) / 0.7;
       expect(
-        gridRect.height,
-        lessThan(stretchedHeight * 0.5), // Less than halfway to stretched
-        reason: 'S-8: Grid should compress toward floor (52pt), not stretch to $maxRowHeight pt',
+        measuredCellHeight(tester, size.width),
+        closeTo(_minRowHeight, 0.5),
+        reason:
+            'S-8: landscape cannot fit six rows, so cells must sit on the '
+            '${_minRowHeight}pt floor rather than the ${cap.toStringAsFixed(0)}pt cap',
       );
 
-      // Verify the grid's scroll physics allow scrolling (not NeverScrollable)
-      // This is harder to test directly, but we can infer from the fact that
-      // the grid fits within the landscape constraint without overflow errors
-      expect(await render(tester, size: size), isEmpty,
-          reason: 'S-8: Grid should scroll smoothly without layout errors');
+      final gridView = tester.widget<GridView>(find.byType(GridView).first);
+      expect(
+        gridView.physics,
+        isNot(isA<NeverScrollableScrollPhysics>()),
+        reason: 'S-8: the grid itself must scroll once it is at the floor',
+      );
+
+      // The point of scrolling the grid rather than the page: the stats stay put.
+      expect(
+        tester.getRect(find.text('SESSIONS')).bottom,
+        lessThanOrEqualTo(size.height),
+        reason: 'S-8: the stats strip must not be pushed off-screen',
+      );
     });
 
-    testWidgets('verifies finite-constraints branch: compression actually happens', (tester) async {
-      // This test specifically verifies that the finite-height branch is live,
-      // not dead code. We render on landscape (844x390) and verify cells compress
-      // to match available space, not stretch to maxRowHeight.
-      const size = Size(844, 390);
-      expect(await render(tester, size: size), isEmpty);
+    testWidgets('the cap and the floor are different code paths', (
+      tester,
+    ) async {
+      // Guards against a regression collapsing both cases onto one value:
+      // a tall phone must be capped while landscape sits on the floor.
+      const phone = Size(390, 844);
+      expect(await render(tester, size: phone), isEmpty);
+      final phoneCell = measuredCellHeight(tester, phone.width);
 
-      final gridFinder = find.byType(GridView);
-      expect(gridFinder, findsWidgets);
-      final gridRect = tester.getRect(gridFinder.first);
-
-      // On landscape, available height for grid is limited.
-      // If finite-constraints branch is dead (grid uses maxRowHeight always),
-      // cells would be tall (maxRowHeight ≈ 170pt) and grid would stretch huge.
-      // If finite-constraints branch is live, cells compress to available space (~52pt floor).
-
-      final cellWidth = (size.width - 8 - 12) / 7;
-      final maxRowHeight = cellWidth / 0.7; // ≈ 170pt per row
-
-      // Buggy stretched case: ~1020pt (maxRowHeight * 6 rows + spacing)
-      final expectedBuggyStretched = maxRowHeight * 6 + 2 * 5;
-
-      // Compressed case: grid height should be MUCH smaller than stretched
-      // At the floor (52pt * 6 = 312pt) or at whatever fits in available space
-      // The key assertion: it should be FAR less than the buggy case
+      const landscape = Size(844, 390);
+      expect(await render(tester, size: landscape), isEmpty);
+      final landscapeCell = measuredCellHeight(tester, landscape.width);
 
       expect(
-        gridRect.height,
-        lessThan(expectedBuggyStretched * 0.5), // Less than half of buggy stretched
-        reason: 'Finite-constraints branch is live: grid compresses to ~${gridRect.height.toStringAsFixed(0)}pt, '
-            'well below buggy stretched ~${expectedBuggyStretched.toStringAsFixed(0)}pt',
+        landscapeCell,
+        lessThan(phoneCell),
+        reason:
+            'landscape (${landscapeCell.toStringAsFixed(1)}pt) is width-rich but '
+            'height-poor, so its cells must end up shorter than a phone\'s '
+            '(${phoneCell.toStringAsFixed(1)}pt) despite the wider cells',
       );
     });
   });
@@ -474,30 +447,83 @@ void main() {
     });
   });
 
-  testWidgets('loading state with SizedBox.expand is safe on bounded Column', (tester) async {
-    // Verify that using SizedBox.expand for the loading indicator works correctly
-    // on a non-scrollable Column (not wrapped in SingleChildScrollView).
-    // The loading frame renders during init(), then transitions to the grid.
+  testWidgets('the loading frame lays out without error', (tester) async {
+    // The mock repository normally resolves before a frame can render, so the
+    // loading branch never gets exercised. On a device the month load takes at
+    // least a frame, so block the load and pump that frame deliberately.
     const size = Size(390, 844);
-    final repo = MockWorkoutRepository();
+    final repo = _BlockingRepo();
     await repo.initialize();
     final calendarState = CalendarState(repo);
 
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    // Pump the widget and let init() run — this briefly shows loading state
+    final errors = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) =>
+        errors.add(details.exceptionAsString().split('\n').first);
+
     await tester.pumpWidget(buildScreen(repo, calendarState));
-    // At this point, loading might be visible (init() called in initState)
-    // Don't settle yet; check for errors during the loading→grid transition
+    final loading = calendarState.init();
+    await tester.pump();
 
+    expect(
+      find.byType(CircularProgressIndicator),
+      findsOneWidget,
+      reason: 'the blocked load should leave the spinner on screen',
+    );
+    expect(
+      errors,
+      isEmpty,
+      reason: 'the loading frame must lay out cleanly: $errors',
+    );
+
+    repo.release();
+    await loading;
+    // Safe to settle only now — the spinner animates forever while it is shown.
     await tester.pumpAndSettle();
+    FlutterError.onError = previous;
 
-    // After settle, loading should be done and grid should be visible
-    expect(find.byType(GridView), findsWidgets,
-        reason: 'CalendarScreen should transition from loading to grid without errors');
-    expect(find.byType(CalendarScreen), findsWidgets,
-        reason: 'CalendarScreen should render successfully');
+    expect(find.byType(GridView), findsWidgets);
+    expect(errors, isEmpty, reason: 'loading → grid transition: $errors');
+  });
+
+  testWidgets('the modality legend keeps clear of the screen edge', (
+    tester,
+  ) async {
+    // A short phone is where this binds: the legend appears, the grid gives up
+    // height to make room for it, and without a bottom inset the strip would
+    // end flush against the screen edge.
+    const size = Size(375, 667);
+    expect(await render(tester, size: size, sessionsOnDayOne: 5), isEmpty);
+
+    final strip = tester.getRect(
+      find
+          .byWidgetPredicate(
+            (w) => w.runtimeType.toString() == '_MonthlyStatsStrip',
+          )
+          .first,
+    );
+    expect(
+      strip.bottom,
+      lessThanOrEqualTo(size.height - 12),
+      reason:
+          'the stats strip ends at ${strip.bottom.toStringAsFixed(1)}pt with no '
+          'clearance below it on a ${size.height.toInt()}pt screen',
+    );
+
+    // The room came from the grid, not from pushing the legend off-screen.
+    final gridView = tester.widget<GridView>(find.byType(GridView).first);
+    final delegate =
+        gridView.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    final cellHeight = cellWidthFor(size.width) / delegate.childAspectRatio;
+    expect(
+      cellHeight,
+      lessThan(cellWidthFor(size.width) / 0.7),
+      reason: 'the grid should compress to fund the legend, not overflow',
+    );
+    expect(cellHeight, greaterThan(_minRowHeight));
   });
 
   group('session dot capacity at capped height', () {

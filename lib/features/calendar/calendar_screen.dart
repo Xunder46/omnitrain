@@ -138,7 +138,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
                 _WeekDayRow(labels: _weekLabels),
                 if (widget.calendarState.isLoading)
-                  SizedBox.expand(
+                  const Expanded(
                     child: Center(child: CircularProgressIndicator()),
                   )
                 else ...[
@@ -154,7 +154,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    // Bottom inset keeps the modality legend off the screen
+                    // edge on short phones, where the grid compresses to make
+                    // room for it and the strip would otherwise sit flush.
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     child: _MonthlyStatsStrip(
                       completedSessions:
                           widget.calendarState.completedSessionCount,

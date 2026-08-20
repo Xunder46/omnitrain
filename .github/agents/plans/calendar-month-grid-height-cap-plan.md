@@ -440,6 +440,27 @@ The calendar month grid's day cells stretch on tall screens with few-row months.
 
 ## Feedback
 
+### Second fix pass (post-review, user-authorised)
+
+Two defects introduced by the first bounded fix pass were corrected:
+
+1. **Loading frame crash.** The loading branch had been changed from `Expanded` to
+   `SizedBox.expand`, which throws `BoxConstraints forces an infinite height` as a
+   child of a bounded `Column`. Verified in isolation, then reverted to `Expanded`.
+   The mock repository resolves before a frame renders, so no existing test caught
+   it; the new test blocks the month load on a `Completer` so the loading frame
+   really renders.
+
+2. **Tests did not constrain the behaviour.** The S-1/S-5/S-8 assertions measured
+   the `GridView`'s own box, which is clamped to the available space whether or not
+   the cells inside were compressed — so all 24 tests passed with the compression
+   branch disabled. They now read the laid-out `childAspectRatio` back off the
+   delegate and assert the actual cell height.
+
+Mutation-verified: disabling compression fails 3 tests (S-5, S-8, cap-vs-floor);
+restoring `SizedBox.expand` fails the loading test. Both were green under the old
+assertions. Full suite after: 2388 passed, 1 skipped, 0 failed.
+
 ### Code Review Corrections Applied
 
 **Issue**: Single-Child Scroll View wrapper was added in Phase 1 implementation but was NOT in the plan. This broke the finite-constraints path of the clamping logic.
