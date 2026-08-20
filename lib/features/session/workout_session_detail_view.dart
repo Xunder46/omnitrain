@@ -876,12 +876,15 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     // Live mode center control state:
     // 1) Logged entries show status label.
     // 2) Timer entries that never started show Start.
-    // 3) Otherwise show log button.
+    // 3) Paused timer entries show Resume.
+    // 4) Otherwise show log button.
     Widget centerControl;
     if (isLogged) {
       centerControl = _buildLoggedLabel(theme);
     } else if (_isTimerEntryNotStarted(effortKind, effortId, entryIndex)) {
-      centerControl = _buildStartTimerButton(effortId, theme);
+      centerControl = _buildTimerToggleButton(effortId, theme, 'Start');
+    } else if (_isTimerEntryPaused(effortKind, effortId, entryIndex)) {
+      centerControl = _buildTimerToggleButton(effortId, theme, 'Resume');
     } else {
       centerControl = _buildLogSetButton(effortKind, theme);
     }
@@ -934,9 +937,31 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
-  Widget _buildStartTimerButton(String effortId, ThemeData theme) {
+  /// True when the entry's timer was started and is currently paused.
+  ///
+  /// Live navigation no longer pauses a running timer, so this is reached
+  /// only by a session restored from storage that was persisted mid-pause.
+  /// Without a Resume control such an entry is a dead end: the in-progress
+  /// lock blocks every other timer and nothing can restart this one.
+  bool _isTimerEntryPaused(String effortKind, String effortId, int entryIndex) {
+    if (effortKind == 'timed' || effortKind == 'drill') {
+      return _getTimedInstance(effortId, entryIndex)?.state ==
+          TimedState.paused;
+    }
+    if (effortKind == 'round') {
+      return _getRoundInstance(effortId, entryIndex)?.state ==
+          RoundState.paused;
+    }
+    return false;
+  }
+
+  Widget _buildTimerToggleButton(
+    String effortId,
+    ThemeData theme,
+    String label,
+  ) {
     return Tooltip(
-      message: 'Start',
+      message: label,
       child: FilledButton(
         style: ButtonStyle(
           shape: WidgetStateProperty.all(
@@ -949,7 +974,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
           ),
         ),
         onPressed: () => _toggleEffortTimer(effortId),
-        child: const Text('Start'),
+        child: Text(label),
       ),
     );
   }

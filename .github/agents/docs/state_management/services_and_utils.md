@@ -87,9 +87,9 @@ Groups flat observation lists by effort kind into structured per-set maps. Used 
 - `_resetTimerState`: removes key from `_inProgressKeys` (called after manual set log/finish flows).
 - `_handleEffortTimerExpired` (round flow): removes the current round key from `_inProgressKeys` before calling `completeRound`, so the next round is immediately startable after auto-expiry.
 
-**Auto-pause hooks** (in `workout_session_screen.dart`):
-- `_jumpToSet()` — checks if current set's timer is running (`_effortRunning[timerKey] == true`) and calls `_pauseEffortTimer` before navigating to a different set.
-- `_switchExercise()` — same auto-pause check before switching to a different exercise.
+**Navigation and running timers** (in `workout_session_screen.dart`):
+- `_previousSet()`, `_jumpToSet()`, and `_switchExercise()` do **not** pause a running timer. The periodic tick and the scheduled expiry notification stay live, and `_handleEffortTimerExpired` finishes the entry (and opens the next rest) regardless of which set the user is looking at.
+- These three sites used to call a `_pauseEffortTimer` helper. That helper is gone: pausing left the entry in a state with no Resume control while its key still held the in-progress lock, so the user could neither resume it nor start any other timer.
 
 ### `TimerAlertService`
 

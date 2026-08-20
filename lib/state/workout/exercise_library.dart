@@ -3,12 +3,6 @@ import '../../core/utils/exercise_helpers.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 
-// TEMPORARY DEBUG FLAG — remove before shipping.
-// When true, the exercise info/notes coach marks are treated as never-seen
-// every time the workout session screen loads, so both hints replay on each
-// visit instead of only the very first time.
-const bool kDebugAlwaysShowExerciseHints = true;
-
 class ExerciseLibrary {
   final WorkoutRepository _repository;
   final void Function() _notify;
@@ -123,12 +117,6 @@ class ExerciseLibrary {
   }
 
   Future<void> initExerciseHints() async {
-    if (kDebugAlwaysShowExerciseHints) {
-      _exerciseNotesHintSeen = false;
-      _exerciseInfoHintSeen = false;
-      _notify();
-      return;
-    }
     _exerciseNotesHintSeen = await _repository.getPreferenceBool(
       'hint_seen_exercise_notes',
     );

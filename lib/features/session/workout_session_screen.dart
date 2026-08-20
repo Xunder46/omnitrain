@@ -932,14 +932,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final effortId = exercise['id'] as String;
     final effortKind = exercise['effortKind'] as String? ?? 'set';
 
-    // Stop timer for the current set if it's running
+    // A running timer keeps running while the user browses other sets. Its
+    // elapsed time is wall-clock derived, the periodic tick and the expiry
+    // notification stay live, and expiry finishes the entry from wherever
+    // the user happens to be.
     if (effortKind == 'timed' ||
         effortKind == 'drill' ||
         effortKind == 'round') {
-      final timerKey = '$effortId-${_currentSet - 1}';
-      if (_effortRunning[timerKey] == true) {
-        _pauseEffortTimer(effortId, _currentSet - 1);
-      }
       _resetEffortAlertState(effortId, _currentSet - 1);
     }
 
@@ -1307,20 +1306,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   void _jumpToSet(int setNumber) {
-    // Auto-pause timer if in progress before jumping to another set.
-    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
-      final ex = _exercises[_currentExerciseIndex];
-      final effortId = ex['id'] as String;
-      final effortKind = ex['effortKind'] as String? ?? 'set';
-      if (effortKind == 'timed' ||
-          effortKind == 'drill' ||
-          effortKind == 'round') {
-        final timerKey = '$effortId-${_currentSet - 1}';
-        if (_effortRunning[timerKey] == true) {
-          _pauseEffortTimer(effortId, _currentSet - 1);
-        }
-      }
-    }
+    // A running timer is left running — see [_previousSet].
     _beginSetTransition(setNumber > _currentSet ? 1 : -1);
     setState(() {
       _currentSet = setNumber;
@@ -1337,20 +1323,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   void _switchExercise(int delta, {bool preserveSetTransition = false}) {
     final newIndex = _currentExerciseIndex + delta;
     if (newIndex < 0 || newIndex >= _exercises.length) return;
-    // Auto-pause timer if in progress before switching exercise.
-    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
-      final ex = _exercises[_currentExerciseIndex];
-      final effortId = ex['id'] as String;
-      final effortKind = ex['effortKind'] as String? ?? 'set';
-      if (effortKind == 'timed' ||
-          effortKind == 'drill' ||
-          effortKind == 'round') {
-        final timerKey = '$effortId-${_currentSet - 1}';
-        if (_effortRunning[timerKey] == true) {
-          _pauseEffortTimer(effortId, _currentSet - 1);
-        }
-      }
-    }
+    // A running timer is left running — see [_previousSet].
     unawaited(
       _focusExerciseDetail(
         newIndex,

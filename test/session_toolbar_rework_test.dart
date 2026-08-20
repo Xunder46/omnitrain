@@ -709,9 +709,11 @@ void main() {
     });
   });
 
-  group('Toolbar Rework — Auto-Pause on Navigation (Phase B)', () {
-    // S-013: Navigating away from timed set auto-pauses timer
-    testWidgets('S-013: jumping to another set auto-pauses the running timer', (
+  group('Toolbar Rework — Timer Survives Navigation (Phase B)', () {
+    // S-013: Navigating away from a timed set leaves the timer running.
+    // Supersedes the original auto-pause contract: a paused entry had no
+    // Resume control, so navigating away mid-interval was a dead end.
+    testWidgets('S-013: jumping to another set leaves the timer running', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(600, 1200));
@@ -735,17 +737,62 @@ void main() {
       // RUNNING should be displayed
       expect(find.textContaining('RUNNING'), findsOneWidget);
 
-      // Tap forward arrow to jump to set 2 — should auto-pause
+      // Jump to set 2 and back — the set 1 timer must be untouched.
       await tester.tap(find.byIcon(Icons.arrow_forward));
       await tester.pumpAndSettle();
 
-      // Navigate back to set 1 to verify it's now paused
       await tester.tap(find.byIcon(Icons.arrow_back).last);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('PAUSED'), findsOneWidget);
+      expect(find.textContaining('RUNNING'), findsOneWidget);
+      expect(find.textContaining('PAUSED'), findsNothing);
+      // No Resume control, because nothing paused the timer.
+      expect(find.widgetWithText(FilledButton, 'Resume'), findsNothing);
+    });
+
+    // S-013b: the persisted instance is never paused by the round trip, so
+    // its wall-clock elapsed keeps advancing instead of freezing at the
+    // moment the user left the set.
+    testWidgets('S-013b: navigation never pauses the persisted instance', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'cardio_endurance');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-easy-run');
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        effortKindOverride: 'timed',
+      );
+      await deps.workoutState.addEntry(effortId);
+
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Easy Run');
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Leave for set 2, let wall-clock time pass, then come back.
+      await tester.tap(find.byIcon(Icons.arrow_forward));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 3));
+
+      await tester.tap(find.byIcon(Icons.arrow_back).last);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      final instance = deps.workoutState.getTimedInstancesForEffort(
+        effortId,
+      )[0];
+      expect(instance.state, TimedState.active);
+      // elapsedMs is `now - startedAt - totalPaused`, so a clean pause ledger
+      // is what keeps it advancing while the user is on another set.
+      expect(instance.pausedAtMs, isNull);
+      expect(instance.totalPausedDurationMs, 0);
     });
   });
 

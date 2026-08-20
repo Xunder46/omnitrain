@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/navigation/omni_route.dart';
+import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 import 'package:omnitrain/core/services/session_summary_service.dart';
 import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
@@ -366,6 +368,125 @@ void main() {
           repository: repo,
           textScaleFactor: 3.0,
         );
+        await tester.tap(find.text(exercise.name).first);
+        await tester.pumpAndSettle();
+        expect(find.text('View exercise info'), findsOneWidget);
+
+        await _expectGlowCenteredOnInfoIcon(tester, exercise);
+      },
+    );
+
+    testWidgets(
+      'S-001e: glow stays on the icon when the screen arrives via a route '
+      'push (position must be tracked, not snapshotted)',
+      (WidgetTester tester) async {
+        // The coach mark is scheduled one frame after the detail view
+        // appears, which is routinely still inside a route transition: a
+        // Cupertino push holds the incoming page a full screen-width to the
+        // right, a pop-return holds the returning page a third of a
+        // screen-width to the left. A single reading taken then leaves the
+        // glow permanently offset by an amount that scales with the
+        // viewport. The overlay must re-measure until the target settles.
+        tester.view.physicalSize = const Size(1179, 2556);
+        tester.view.devicePixelRatio = 3.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        await repo.setPreferenceBool(_kNotesHintKey, true);
+        await repo.setPreferenceBool(_kInfoHintKey, false);
+
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        await workoutState.createNewSession(modality: 'resistance_lifting');
+        final exercises = await repo.getExercises();
+        final exercise = exercises.first;
+        final effortId = await workoutState.addExerciseToSession(
+          exercise,
+          chosenMetric: 'reps',
+        );
+
+        late BuildContext pushContext;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                pushContext = context;
+                return const Scaffold(body: SizedBox.shrink());
+              },
+            ),
+          ),
+        );
+
+        // The real navigation path: OmniRoute + initialFocusId lands
+        // directly in the detail view while the push is still animating.
+        Navigator.of(pushContext).push(
+          OmniRoute<void>(
+            builder: (_) => WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo, fakePreferencesService()),
+              initialFocusId: effortId,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('View exercise info'), findsOneWidget);
+
+        await _expectGlowCenteredOnInfoIcon(tester, exercise);
+      },
+    );
+
+    testWidgets(
+      'S-001f: glow stays on the icon inside the large-screen centered '
+      'column (overlay coordinate space, not window coordinates)',
+      (WidgetTester tester) async {
+        // On surfaces at or above OmniTheme.kColumnMinActivationWidth the
+        // app builder wraps the Navigator — and therefore its Overlay — in
+        // a centered column capped at OmniTheme.kColumnMaxWidth. The coach
+        // mark is drawn inside that overlay, so a position read in window
+        // coordinates is inset-too-far-right by (surface - column) / 2.
+        // The error grows as the window widens, which is why it shows up on
+        // desktop and never on a phone.
+        tester.view.physicalSize = const Size(2000, 2800);
+        tester.view.devicePixelRatio = 2.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        await repo.setPreferenceBool(_kNotesHintKey, true);
+        await repo.setPreferenceBool(_kInfoHintKey, false);
+
+        final workoutState = WorkoutState(repo);
+        final routineState = RoutineState(repo);
+        final sessionSummaryService = SessionSummaryService(repo);
+        await workoutState.createNewSession(modality: 'resistance_lifting');
+        final exercises = await repo.getExercises();
+        final exercise = exercises.first;
+        await workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
+
+        // Mirrors lib/app.dart: the gradient (and its column) wraps the
+        // Navigator via MaterialApp.builder.
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) => OmniGradientBackground(
+              child: child ?? const SizedBox.shrink(),
+            ),
+            home: WorkoutSessionScreen(
+              workoutState: workoutState,
+              routineState: routineState,
+              sessionSummaryService: sessionSummaryService,
+              timerAlertService: FakeTimerAlertService(),
+              settingsState: SettingsState(repo, fakePreferencesService()),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.text(exercise.name).first);
         await tester.pumpAndSettle();
         expect(find.text('View exercise info'), findsOneWidget);

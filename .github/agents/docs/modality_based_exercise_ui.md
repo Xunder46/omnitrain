@@ -185,9 +185,10 @@ Detail view uses two distinct control rows instead of a single toolbar.
 
 **Timer Control Rule**:
 
-- timed, round, and drill entries are started or paused from the timer display itself
+- timed, round, and drill entries are started from the action-row centre button (`Start`); the timer display itself is read-only
 - there is no separate play button in the action row
-- jumping to another set auto-pauses any active timer first
+- navigating to another set or exercise leaves a running timer running — elapsed time is wall-clock derived, so it keeps advancing and still expires on schedule while the user is elsewhere
+- a paused entry (only reachable from a session persisted mid-pause) shows `Resume` in the same centre slot
 
 **Delete / Remove Rule**:
 

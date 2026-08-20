@@ -424,7 +424,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     }
   }
 
-  // ── Timer toggle / tick / pause ───────────────────────────────────────────
+  // ── Timer toggle / tick ───────────────────────────────────────────────────
 
   void _toggleEffortTimer(String effortId) {
     final entryIndex = _currentSet - 1;
@@ -647,26 +647,6 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
       setState(() {
         _effortElapsed[timerKey] = elapsed;
       });
-    }
-  }
-
-  void _pauseEffortTimer(
-    String effortId,
-    int entryIndex, {
-    String? effortKindOverride,
-  }) {
-    final timerKey = '$effortId-$entryIndex';
-    _effortRunning[timerKey] = false;
-    _effortTimers[timerKey]?.cancel();
-    _cancelEffortExpiryNotification();
-
-    final effortKind = effortKindOverride ?? _getEffortKind(effortId);
-    if (effortKind == 'round') {
-      unawaited(widget.workoutState.pauseRound(effortId, entryIndex));
-      return;
-    }
-    if (effortKind == 'timed' || effortKind == 'drill') {
-      unawaited(widget.workoutState.pauseTimedEntry(effortId, entryIndex));
     }
   }
 
