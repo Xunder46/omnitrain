@@ -1,5 +1,14 @@
 part of 'workout_session_screen.dart';
 
+/// Bottom inset for the big duration readout in the timed/drill detail views.
+///
+/// Trimmed from the editor's default 32 px so the STOPPED / RUNNING status row
+/// sits closer to the number it describes. The difference is added back below
+/// the status row as [_kTimedStatusRowBottomGap], so nothing further down the
+/// column shifts.
+const EdgeInsets _kTimedValuePadding = EdgeInsets.fromLTRB(32, 32, 32, 25);
+const double _kTimedStatusRowBottomGap = 20;
+
 /// Detail-view builders for [WorkoutSessionScreen].
 ///
 /// Extension on [_WorkoutSessionScreenState] — because this file is a `part of`
@@ -107,7 +116,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(height: 50),
+        const SizedBox(height: 24),
         OutlinedButton.icon(
           onPressed: () => _updateUi(() {
             _weightAdjustExpanded[key] = !isExpanded;
@@ -282,6 +291,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   emphasisTier: MetricEmphasisTier.dominant,
                   isReadOnly: true,
                   onTap: null,
+                  padding: _kTimedValuePadding,
                   onValueChanged: (_) {},
                 ),
                 Row(
@@ -313,6 +323,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     ),
                   ],
                 ),
+                const SizedBox(height: _kTimedStatusRowBottomGap),
               ],
             ),
             if (entryData['extra-weight'] != null)
@@ -615,6 +626,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                   emphasisTier: MetricEmphasisTier.dominant,
                   isReadOnly: true,
                   onTap: null,
+                  padding: _kTimedValuePadding,
                   onValueChanged: (_) {},
                 ),
                 Row(
@@ -646,6 +658,7 @@ extension _SessionDetailViewBuilders on _WorkoutSessionScreenState {
                     ),
                   ],
                 ),
+                const SizedBox(height: _kTimedStatusRowBottomGap),
               ],
             ),
             _buildWeightAdjustmentSection(

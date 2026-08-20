@@ -61,6 +61,13 @@ class InlineMetricEditor extends StatefulWidget {
   /// Called when value changes, passes new value
   final Function(dynamic) onValueChanged;
 
+  /// Optional override for the editor's own padding.
+  ///
+  /// Defaults to a symmetric 32 px inset. Callers that stack another element
+  /// directly beneath the value (e.g. the timed/drill status row) trim the
+  /// bottom inset so the two read as one group instead of drifting apart.
+  final EdgeInsetsGeometry? padding;
+
   const InlineMetricEditor({
     super.key,
     required this.metricType,
@@ -71,6 +78,7 @@ class InlineMetricEditor extends StatefulWidget {
     this.showUnitInline = false,
     this.onTap,
     this.emphasisTier,
+    this.padding,
     required this.onValueChanged,
   });
 
@@ -235,7 +243,9 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     return GestureDetector(
       onTap: widget.onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
+        padding:
+            widget.padding ??
+            const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
         child: contentRow,
       ),
     );
