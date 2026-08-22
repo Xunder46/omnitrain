@@ -135,6 +135,36 @@ jobs:
         with:
           flutter-version: '3.41.9'
       - run: flutter pub get
+
+      # Recreate the signing material CI cannot have from git.
+      # `android/key.properties` and the keystore are both gitignored, and
+      # `android/app/build.gradle.kts` reads them with an unguarded cast
+      # (`keystoreProperties["keyAlias"] as String`). Without this step the
+      # build fails at Gradle CONFIGURATION time with a NullPointerException,
+      # before it compiles anything.
+      #
+      # `storeFile` is resolved by `file()` inside the :app module, so the
+      # path is relative to `android/app/`.
+      - name: Set up Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is empty. The release build cannot be signed."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          echo "Signing config written (keystore $(wc -c < android/app/upload-keystore.jks) bytes)"
+
       - name: Build AAB with Sentry baked in
         run: |
           # Only SENTRY_DSN is passed to the Flutter build as a
