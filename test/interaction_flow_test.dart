@@ -22,6 +22,8 @@ import 'package:omnitrain/features/session/workout_session_screen.dart';
 import 'package:omnitrain/features/settings/settings_screen.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
+import 'package:omnitrain/state/exercise/exercise_library_state.dart';
+import 'package:omnitrain/core/services/exercise_library_service.dart';
 import 'package:omnitrain/state/home/home_state.dart';
 import 'package:omnitrain/state/nutrition_state.dart';
 import 'package:omnitrain/state/period/period_state.dart';
@@ -105,6 +107,10 @@ void main() {
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
         nutritionPrimerState: nutritionPrimerState,
+        exerciseLibraryState: ExerciseLibraryState(
+          service: ExerciseLibraryService(repo),
+          workoutState: workoutState,
+        ),
       );
 
       return (screen: screen, workoutState: workoutState, sessionId: sessionId);
@@ -142,6 +148,10 @@ void main() {
         nutritionState: NutritionState(repo),
         foodLibraryState: FoodLibraryState(repo),
         nutritionPrimerState: nutritionPrimerState,
+        exerciseLibraryState: ExerciseLibraryState(
+          service: ExerciseLibraryService(repo),
+          workoutState: workoutState,
+        ),
       );
     }
 
@@ -206,7 +216,7 @@ void main() {
   });
 
   group('InlineMetricEditor interactions', () {
-    // Crown is dormant in InlineMetricEditor — value changes via tap-to-edit modal.
+    // Value changes go through the tap-to-edit modal.
 
     testWidgets(
       'weight tap-to-edit: entering 10.5 confirms to onValueChanged(10.5)',
@@ -268,81 +278,6 @@ void main() {
       },
     );
 
-    // The following tests drive MetricCrownWidget directly (dormant in
-    // InlineMetricEditor but still constructible) to verify that the crown's
-    // step-math is intact and has not been deleted.
-
-    testWidgets(
-      'fast weight drag on dormant crown widget still snaps to 0.5 increments',
-      (WidgetTester tester) async {
-        double? updatedValue;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MetricCrownWidget(
-                metricType: 'weight',
-                currentValue: 10.0,
-                onValueChanged: (value) => updatedValue = value as double,
-              ),
-            ),
-          ),
-        );
-
-        // Drive the crown's drag handler directly (same step-math as before).
-        final crownGd = tester.widget<GestureDetector>(
-          find.descendant(
-            of: find.byType(MetricCrownWidget),
-            matching: find.byType(GestureDetector),
-          ),
-        );
-        crownGd.onVerticalDragUpdate!(
-          DragUpdateDetails(
-            delta: const Offset(0, -13),
-            globalPosition: Offset.zero,
-          ),
-        );
-        await tester.pump();
-
-        expect(updatedValue, 10.5);
-      },
-    );
-
-    testWidgets(
-      'fast extra-weight drag on dormant crown widget still snaps to 0.5 increments',
-      (WidgetTester tester) async {
-        double? updatedValue;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MetricCrownWidget(
-                metricType: 'extra-weight',
-                currentValue: 0.0,
-                onValueChanged: (value) => updatedValue = value as double,
-              ),
-            ),
-          ),
-        );
-
-        // Drive the crown's drag handler directly.
-        final crownGd = tester.widget<GestureDetector>(
-          find.descendant(
-            of: find.byType(MetricCrownWidget),
-            matching: find.byType(GestureDetector),
-          ),
-        );
-        crownGd.onVerticalDragUpdate!(
-          DragUpdateDetails(
-            delta: const Offset(0, -13),
-            globalPosition: Offset.zero,
-          ),
-        );
-        await tester.pump();
-
-        expect(updatedValue, 0.5);
-      },
-    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -837,13 +772,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // Dismiss the auto-opened picker so WorkoutSessionScreen is foregrounded
-      if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
-        await tester.tap(find.byIcon(Icons.arrow_back));
-        await tester.pumpAndSettle();
-      }
 
-      expect(find.widgetWithText(FilledButton, 'Add Exercise'), findsOneWidget);
+      // PR 6 / S-003 — empty sessions no longer auto-open the exercise
+      // picker; the user picks Add Exercise or Add Block from the balanced
+      // empty state. Both buttons are equally weighted OutlinedButtons.
+      expect(find.byType(ExercisePickerScreen), findsNothing);
+      expect(
+        find.widgetWithText(OutlinedButton, 'Add Exercise'),
+        findsOneWidget,
+      );
       expect(find.widgetWithText(OutlinedButton, 'Add Block'), findsOneWidget);
       expect(
         find.byWidgetPredicate(
@@ -929,19 +866,19 @@ void main() {
 
       expect(find.text('Delete Me'), findsOneWidget);
 
-      // open popup menu
-      await tester.tap(find.byType(PopupMenuButton<dynamic>));
+      // PR 6 / S-001 — overflow menu is gone. Open the editor via the card
+      // body and use the header delete action.
+      await tester.tap(find.byKey(const Key('routine-card-body')));
+      await tester.pump();
+      tester.takeException(); // consume setState-during-build from initState
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Delete'));
+      await tester.tap(find.byKey(const Key('routine-delete-action')));
       await tester.pumpAndSettle();
 
-      // Confirmation dialog - tap confirm delete
-      final confirmDelete = find.text('Delete');
-      if (confirmDelete.evaluate().isNotEmpty) {
-        await tester.tap(confirmDelete.last);
-        await tester.pumpAndSettle();
-      }
+      // Confirmation dialog — tap the destructive Delete button.
+      await tester.tap(find.byKey(const Key('routine-delete-confirm')));
+      await tester.pumpAndSettle();
 
       expect(find.text('Delete Me'), findsNothing);
     });
@@ -1895,22 +1832,22 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Verify list view is shown
-      expect(find.text('Exercises'), findsOneWidget);
+      // Verify list view is shown — the header names the session by modality
+      expect(find.text('Resistance / Lifting'), findsOneWidget);
 
       // Navigate to detail view by tapping the exercise tile
       await tester.tap(find.text('Barbell Back Squat'));
       await tester.pumpAndSettle();
 
       // Detail view is now shown (header title changes to exercise name)
-      expect(find.text('Exercises'), findsNothing);
+      expect(find.text('Resistance / Lifting'), findsNothing);
 
       // Tap the back arrow (IconButton in header) to return to list view
       await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
       await tester.pumpAndSettle();
 
       // Should be back on list view
-      expect(find.text('Exercises'), findsOneWidget);
+      expect(find.text('Resistance / Lifting'), findsOneWidget);
     });
 
     testWidgets(
@@ -2021,7 +1958,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // Should be back on list view with scroll at bottom
-        expect(find.text('Exercises'), findsOneWidget);
+        expect(find.text('Edit Session'), findsOneWidget);
         expect(controller.offset, greaterThan(0.0));
       },
     );
@@ -2065,20 +2002,20 @@ void main() {
         await tester.pumpAndSettle();
 
         // List view is shown
-        expect(find.text('Exercises'), findsOneWidget);
+        expect(find.text('Edit Routine'), findsOneWidget);
 
         // Tap exercise to navigate to detail view
         await tester.tap(find.text(allExercises.first.name).first);
         await tester.pumpAndSettle();
 
-        // Detail view shown — 'Exercises' title replaced by exercise name
-        expect(find.text('Exercises'), findsNothing);
+        // Detail view shown — 'Edit Routine' title replaced by exercise name
+        expect(find.text('Edit Routine'), findsNothing);
 
         // Tap back arrow (OmniBackHeader) to return to list view
         await tester.tap(find.widgetWithIcon(IconButton, Icons.arrow_back));
         await tester.pumpAndSettle();
 
-        expect(find.text('Exercises'), findsOneWidget);
+        expect(find.text('Edit Routine'), findsOneWidget);
       },
     );
 
@@ -2181,7 +2118,7 @@ void main() {
         navigator.maybePop();
         await tester.pumpAndSettle();
 
-        expect(find.text('Exercises'), findsOneWidget);
+        expect(find.text('Edit Routine'), findsOneWidget);
         expect(controller.offset, greaterThan(0.0));
       },
     );

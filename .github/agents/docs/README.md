@@ -11,14 +11,6 @@
 > [`docs-audit-2026-07-26.md`](docs-audit-2026-07-26.md) for the full summary
 > and the list of things left unresolved.
 >
-> **Feedback-pack baseline — 2026-07-27.** Before PRs 2–8, the startup,
-> gesture, routine, session-entry, rest, nutrition, exercise-ownership, and
-> maintenance-sheet surfaces were rechecked against `lib/`. Read
-> [`feedback-pack-baseline-2026-07-27.md`](feedback-pack-baseline-2026-07-27.md)
-> for verified current behavior and the explicit current-vs-planned boundary.
-> The linked [shipping order](../plans/2026-07-27-00-feedback-pack-shipping-order.md)
-> takes precedence over the pending 2026-07-13 plans.
->
 > **Size ceiling:** no file in this folder may exceed **64 KiB** — larger files
 > are silently skipped by the indexers that serve these docs to agents.
 > Enforced by `test/docs_indexing_contract_test.dart`.
@@ -51,7 +43,7 @@ non-overlapping training periods).
 | Document | Description |
 |----------|-------------|
 | [Global Conventions](global_conventions.md) | Cross-cutting rules that apply to every task: units and canonical storage, theme tokens, effort-kind analytics, timestamps, and product guardrails |
-| [2026-07-27 Feedback-Pack Baseline](feedback-pack-baseline-2026-07-27.md) | Source-verified current behavior before PRs 2–8, downstream desired behavior kept separate, and the ordered delivery queue |
+| [Documentation Standard](documentation_standard.md) | What these documents may and may not contain; the required top-of-document scope block; the rule that behaviour is pointed at, not described |
 
 ### Product & Philosophy
 | Document | Description |
@@ -74,6 +66,7 @@ non-overlapping training periods).
 | [Theme & Settings](theme_and_settings.md) | Theme system, measurement/calendar preferences, timer alerts, workout toggles, and Settings screen behavior |
 | [Rolling Sessions](rolling_sessions.md) | Rolling/continuous free session format, segment block grouping, isRolling flag, and inline start-sheet guidance |
 | [Stats Screen](stats_screen.md) | All-time aggregates (Sessions / Time / Streak), scrollable Strength e1RM and volume trends, scrollable Cardio pace + distance (or duration) trends, all-time Recent PRs, and a full-history NUTRITION card with a Calories / Macros segmented toggle. Each section's top-N exercise list is selected from a "current-state window" (active training period or last 14 training days) while the trend charts themselves use the selected exercise's full history. |
+| [Stats Best-Load Investigation](stats_best_load_investigation.md) | Investigation finding (2026-08-16), not a feature doc. Traces every computation that produces a per-exercise best/heaviest-load figure and every surface that displays one. Records what the deleted Records section's "Heaviest load" actually computed (one set's `weight × reps`), which mislabeled figures are still live (Recent PRs and the session-summary PR line show an *estimated* 1RM as a bare weight), and why rep records came out uniformly `10` (a persisted default, not a cap). |
 | **Nutrition** — no dedicated feature doc yet | ⚠️ Nutrition shipped but never got its own feature document. Until one exists, the behavior is spread across [Navigation & Screens](navigation_and_screens.md) (the four nutrition screens and their flows), [Nutrition State](state_management/nutrition_state.md) (`NutritionState`, `FoodLibraryState`, `NutritionPrimerState`), [Nutrition Widgets](widget_catalog/nutrition_widgets.md) and [Home Screen & Nutrition Cards](widget_catalog/home_screen.md), [Data Models](data_models.md#nutrition-models), and [DB Integration](db_integration.md). |
 
 ### Release & Operations
@@ -152,7 +145,6 @@ lib/
 │   ├── cards/            # EnergyTile, EnergyCore, MaintenanceTile
 │   ├── chart/            # Shared chart primitives
 │   ├── common/           # InteractiveLogo
-│   ├── hub/              # HubSheet — built and tested but NOT wired up (see nav doc)
 │   ├── icons/            # Custom icon widgets
 │   ├── inputs/           # SelectAllOnFocus, NumericFieldWithDoneBar
 │   ├── layout/           # OmniGradientBackground, OmniSurface, OmniCardHeader, NoiseOverlay
@@ -244,6 +236,8 @@ Documents that describe a past snapshot, a superseded design, or a single-purpos
 Current contents:
 
 - [`history/route-migration-audit.md`](history/route-migration-audit.md) — the original `centralized-route-system` migration audit (May–June 2026). Superseded as the enforcement mechanism by [`test/navigation_contract_enforcement_test.dart`](../../../test/navigation_contract_enforcement_test.dart); the test wins on disagreement.
+- [`history/feedback-pack-baseline-2026-07-27.md`](history/feedback-pack-baseline-2026-07-27.md) — the source baseline recorded on 2026-07-27, immediately before the 2026-07-27 feedback pack (PRs 2–8). Frozen as of that date and no longer accurate: PRs 2, 4, 5 and 6 have since shipped.
+
 **Last Updated**: July 27, 2026
 
 ---

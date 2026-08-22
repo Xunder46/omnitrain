@@ -111,14 +111,17 @@ void main() {
       sessionSummaryService: deps.sessionSummaryService,
     );
 
-    // Empty session auto-opens the exercise picker; close it so we can test
-    // the manual add-button flow below.
-    if (find.byType(ExercisePickerScreen).evaluate().isNotEmpty) {
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
-    }
+    // PR 6 — empty sessions no longer auto-open the exercise picker.
+    // The picker is foregrounded only when the user explicitly taps the
+    // Add Exercise button on the balanced empty state.
+    expect(find.byType(ExercisePickerScreen), findsNothing);
 
-    expect(find.widgetWithText(FilledButton, 'Add Exercise'), findsOneWidget);
+    // The empty state renders Add Exercise as an OutlinedButton (equally
+    // weighted with Add Block per PR 6 / S-003).
+    expect(
+      find.widgetWithText(OutlinedButton, 'Add Exercise'),
+      findsOneWidget,
+    );
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -128,7 +131,7 @@ void main() {
       ),
       findsNothing,
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Add Exercise'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Add Exercise'));
     await tester.pumpAndSettle();
 
     // Exercise picker dialog should open with search field

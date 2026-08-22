@@ -53,120 +53,22 @@ injected via constructor.
 
 **File**: `lib/features/nutrition/widgets/log_food_row.dart`
 
-A single food-library row that doubles as the "log a food as consumed"
-affordance on the nutrition page. Layout, left to right:
+One row per food in the "Foods I Eat" list, and the actual logging affordance: the thumbnail is
+the toggle that logs or unlogs the food for today, alongside an amount input and a single-line
+macro summary.
 
-```
-[ thumb toggle ]  [ name (1 line) + "<cal> cal · <P>P · <C>C · <F>F" ]  [ amount input + unit label ]
-```
+**An unsaved amount edit is not a log.** Typing in the amount field updates the in-memory
+controller only; the food row is written when the user explicitly commits. This keeps a
+half-typed number from being persisted as a real entry.
 
-**Iteration 1 (thumbnail toggle)** replaced the leading `Checkbox`
-with a tappable food thumbnail. The thumb IS the log/unlog toggle
-(S-001): tapping it logs the food at the current amount (or unlogs).
-Foods with `imagePath` show the image; foods without show the muted
-placeholder from `FoodThumbnail` (S-002 — the common case on web
-where the image picker is a no-op). The visible thumb is 40×40 and
-the tap target is padded to **48×48** (design-system gym-glove rule).
-The thumb's `Semantics(checked: isLogged, label: "Log <name>" /
-"Unlog <name>", button: true)` wrapper exposes the toggle to screen
-readers and tests via `flagsCollection.isChecked` (S-005).
-
-**Selected state** (S-003): 2 px primary border + a 16×16 check badge
-in the top-right corner filled with `primary`. The transition is
-animated via `AnimatedContainer` (border) and `AnimatedOpacity`
-(badge) at `OmniTheme.animationDuration` (180 ms) and
-`OmniTheme.animationCurve` (`easeInOut`). **Unselected state**
-(S-004): 1 px hairline `divider` border, no badge. **Press feedback**
-(S-003 / S-004): an `AnimatedScale` shrinks the visible thumb to
-0.96× its size while pressed.
-
-The amount input behavior is unchanged from prior iterations — the
-typed value is the food's own-unit amount for grams foods and a
-multiplier for count foods. Editing the amount on a logged row
-auto-commits the new amount to the day log (debounced ~250 ms).
-Validation: amount must be `> 0`; an invalid amount makes the thumb
-tap a no-op and renders an inline error.
-
-**Pre-fill priority (food-last-amount-plan, June 2026)** — when the
-food is not logged today, the amount input is pre-filled in this
-order: (1) `food.lastAmountConsumed` (the user's last saved portion
-for this food, in its own unit) — null when the food has never been
-logged; (2) `food.referenceAmount` for grams-type (e.g. 100 g); (3)
-`1.0` for count-type (the default multiplier). When the food IS
-logged today, the existing `findLoggedTodayForFood` lookup wins and
-the pre-fill is the day's `amountConsumed` value (today's value
-overrides any remembered yesterday's value).
-
-**Iteration 1 (single-line macros — S-007)** replaced the 2×2 macro
-grid with a single `Text` line in the format
-`"<cal> cal · <P>P · <C>C · <F>F"` (e.g. `"90 cal · 0P · 0C · 10F"`)
-for format parity with `AddFoodScreen` rows. The line is one `Text`
-widget with `maxLines: 1` and `TextOverflow.ellipsis`.
-
-| Prop | Type | Description |
-|------|------|-------------|
-| `food` | `Food` | The library food to render and toggle. |
-| `nutritionState` | `NutritionState` | Day-log state (read for `isFoodLoggedToday`; mutate via `logConsumedFoodAt` / `unlogFoodToday`). |
-| `foodLibraryState` | `FoodLibraryState` | Symmetric constructor parameter; not mutated by the row. |
-
-**Stable keys (for tests)**:
-- `Key('log_food_thumb_<food.id>')` — mounted on the `Semantics`
-  wrapper of the thumb toggle (not the inner `GestureDetector`).
-  Tests look up the toggle's checked state via
-  `tester.getSemantics(find.byKey(...)).getSemanticsData().flagsCollection.isChecked`
-  (returns `CheckedState.isTrue` when logged, `CheckedState.isFalse`
-  when not). The key is on `Semantics` (not `GestureDetector`) so
-  that semantics-tree lookups find the correct node carrying the
-  `checked` / `label` properties.
-- `Key('log_food_amount_<food.id>')` — mounted on the amount input.
-
-**Row separation (S-006)**: hairline dividers (`divider` color,
-1 px) render between rows in a group, never after the last row.
-Implemented in `_GroupBlock` (the private widget in
-`nutrition_screen.dart` that renders each food group). The
-per-divider key is `Key('group_<groupName>_divider_<i>')` where
-`<i>` is the row index that follows the divider.
-
-The widget rebuilds via `ListenableBuilder(listenable: nutritionState)`
-so the thumb's checked state and the amount input's pre-fill update
-the moment a log is written.
-
----
+The row's selected and unselected states are visually distinct without relying on colour alone.
 
 ### `FoodThumbnail`
 
 **File**: `lib/features/nutrition/widgets/food_thumbnail.dart`
-(platform image renderer split into
-`food_thumbnail_io.dart` / `food_thumbnail_stub.dart` via
-conditional import — same pattern as `ProfileAvatarImage` in
-`lib/features/profile/widgets/`).
 
-A 40×40 rounded thumbnail for a food item, with a placeholder
-when no image is set. Mirrors the contract of `ProfileAvatarImage`:
-the image is loaded from a local file path on native and falls
-back to a placeholder on web or when the file is missing.
-
-Used as the leading slot on each catalog row in the **Library**
-tab of `AddFoodScreen` (key `food_catalog_thumb_<id>`). The slot
-is always present (placeholder when no image) so the trailing
-Add / Remove button column does not reflow when an image is
-added or removed. The same widget is also used inside the
-`FoodForm`'s image picker tile.
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `imagePath` | `String?` | required | Local file path to a food photo. `null` / empty / unreadable path falls back to the placeholder. |
-| `size` | `double` | `40` | Diameter in logical pixels. |
-| `radius` | `double` | `8` | Corner radius — matches the `OmniTheme.buttonUtilityRadius` token. |
-
-**Behavior**:
-- Always renders a fixed-size slot. The slot is filled with the
-  image (`Image.file` on native with an `errorBuilder` fallback)
-  or a placeholder (`Icons.restaurant_outlined` tinted with
-  `OmniTheme.colors.textMuted` on a `surface` background).
-- Pure presentation — no repository / state access, no business
-  logic. The `imagePath` is a plain `String?` read at build time.
-- The `kIsWeb` short-circuit keeps `dart:io` out of the web build.
+Square food image with a placeholder fallback. Platform-conditional: the native implementation
+reads from the managed image directory, the web stub renders the placeholder.
 
 ### `FoodForm`
 
@@ -187,9 +89,9 @@ value: `null` → create mode, non-null → edit mode.
 | `onImageSave` | `Future<bool> Function(FoodDraft draft)?` | `null` | Optional partial-save callback fired after a successful photo pick **or** after the × (clear) overlay clears the photo in **edit mode** (`initial != null`). Wired by `EditFoodScreen` to `FoodLibraryState.updateCatalogFood` so the new or cleared `imagePath` lands in the data layer immediately, even on screens that have no Save button. The draft is built from `initial` with only `imagePath` swapped, so concurrent edits to the form's text controllers (a half-typed name, for example) are preserved. **Not fired in create mode** — the image is just stored locally until the user saves the whole food. |
 
 **Form fields (top to bottom)**:
-1. Image picker tile (`FoodFormImageTile`, key `food_form_image_tile`) — square 96×96 with × (clear) and edit (change) overlays; opens a Camera / Gallery bottom sheet on tap; web is a no-op with a snackbar.
+1. Image picker tile (`FoodFormImageTile`, key `food_form_image_tile`) — square 96×96 tile. The displayed photo follows the same three-tier precedence as the library list's `FoodThumbnail`: user-picked `imagePath`, then `FoodPhotoService.bundledPhotoAssetPath` resolved via `foodId`/`catalogId`, then placeholder. The × (clear) overlay is gated on a user-set photo (the shipped photo is the food's baseline, not the user's), and the edit overlay is shown whenever any photo is rendered. Overlay gating and picker behaviour are verified by `test/food_form_shipped_photo_test.dart` (S-001..S-006).
 2. Name (`food_form_name`) — `TextFormField` with `TextCapitalization.words`.
-3. Group (`food_form_group`) — `DropdownButtonFormField<String?>` of the active groups + an "Ungrouped" `null` entry.
+3. Group (`food_form_group`) — `DropdownButtonFormField<String?>` of the active groups + an "Ungrouped" `null` entry. When the food's stored `groupId` points at a category that is not in the active list (deleted, or a default category that was never created because of a name collision at first launch), the form synthesises an extra item carrying the stored `groupId` and the group's resolved name from the full group cache (suffixed " (archived)") or the raw id (suffixed " (no longer available)") rendered with `OmniTheme.colors.textMuted`. See `test/food_form_orphan_category_test.dart` (S-001 / S-002).
 4. Unit type (`food_form_unit_type`) — `DropdownButtonFormField<FoodUnitType>` of `count` / `grams`. Swapping units pre-fills sensible defaults for the reference amount + label.
 5. Reference amount (`food_form_reference_amount`) + Reference label (`food_form_reference_label`).
 6. Macros (per the reference above) — `Protein (g)` (required), `Carbs (g)` (required), `Fiber (g)` (optional, blank = unset), `Fat (g)` (required), `Sodium (mg)` (optional, blank = unset). All accept **decimal** input (e.g. `0.5`, `1.25`) via the `^\d*\.?\d*$` regex filter, mirroring the reference-amount field. Macros are stored as `double` on `Food` / `FoodDraft` so fractional grams persist (S-001).
@@ -264,26 +166,16 @@ so add / rename / archive operations reflect immediately.
 
 ### `_GroupRow` (private to `_CategoriesTab`)
 
-| Param | Type | Purpose |
-|---|---|---|
-| `group` | `FoodGroup` | The group to render |
-| `controller` | `TextEditingController` | Stable per-group controller (held by `_CategoriesTabState._controllers`); preserves in-progress rename text across rebuilds |
-| `foodCount` | `int` | Number of foods in this group; rendered in the `suffixText` |
-| `onRename(String)` | `Future<void> Function(String)` | Calls `FoodLibraryState.renameFoodGroup(id, newName)` |
-| `onDelete()` | `Future<void> Function()` | Opens the confirm dialog (or silent-deletes when `foodCount == 0`) |
+**File**: `lib/features/nutrition/add_food_screen.dart`
 
-The `TextField` is keyed `group_name_<group.id>` and commits the
-rename on `onEditingComplete` (IME action / unfocus) and on
-`onSubmitted` (Enter). The trash `IconButton` is keyed
-`group_delete_<group.id>`. Both use `OmniTheme.colors` and
-`theme.colorScheme` — no hardcoded colors.
+One editable food group: inline rename plus delete.
 
 ### `_UngroupedRow` (private to `_CategoriesTab`)
 
-A read-only, single-row summary of foods with `groupId == null`.
-Renders an `Icons.label_off_outlined` icon, the label "Ungrouped"
-(italic, muted), and the food count. No `TextField`, no trash
-affordance — the row is purely informational.
+**File**: `lib/features/nutrition/add_food_screen.dart`
+
+The synthetic "Ungrouped" bucket. Informational only — it cannot be renamed or deleted, because it
+is not a stored `FoodGroup` but the absence of one.
 
 ### `_DeleteGroupDialog`
 

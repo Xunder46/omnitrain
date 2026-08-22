@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/constants/workout_constants.dart';
@@ -118,6 +120,11 @@ class TimerManager {
   Future<void> startRound(String effortId, int roundIndex) async {
     _clearError();
     try {
+      // Close all open rests for this effort in-memory BEFORE starting the round.
+      // This ensures hasRestRecord() and getRestElapsedSeconds() return the closed
+      // state immediately, even if the async repository persist is still in-flight.
+      final closedRests = closeAllOpenRestsInMemory(effortId);
+
       final list = _roundInstances[effortId];
       if (list == null || roundIndex >= list.length) return;
       final old = list[roundIndex];
@@ -135,6 +142,17 @@ class TimerManager {
       );
       await _repository.updateRoundInstance(updated);
       list[roundIndex] = updated;
+
+      // Persist the closed rests asynchronously in the background.
+      // Catch errors so failures don't leave the database out of sync with memory.
+      for (var rest in closedRests) {
+        unawaited(
+          _repository.updateEntryRest(rest).catchError((e) {
+            _setError('Failed to persist closed rest: $e');
+          }),
+        );
+      }
+
       _notify();
     } catch (e) {
       _setError('Failed to start round: $e');
@@ -180,7 +198,9 @@ class TimerManager {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final pauseDuration = old.pausedAtMs != null ? (now - old.pausedAtMs!) : 0;
+      final pauseDuration = old.pausedAtMs != null
+          ? (now - old.pausedAtMs!)
+          : 0;
 
       final updated = old.copyWith(
         state: RoundState.active,
@@ -204,13 +224,17 @@ class TimerManager {
       final old = list[roundIndex];
 
       if (!_isValidRoundTransition(old.state, RoundState.finished)) {
-        debugPrint('Invalid round transition: ${old.state} -> finished (complete)');
+        debugPrint(
+          'Invalid round transition: ${old.state} -> finished (complete)',
+        );
         return;
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
       final finishedAtMs =
-          old.startedAtMs + (old.plannedDurationSecs * 1000) + old.totalPausedDurationMs;
+          old.startedAtMs +
+          (old.plannedDurationSecs * 1000) +
+          old.totalPausedDurationMs;
 
       final updated = old.copyWith(
         state: RoundState.finished,
@@ -236,7 +260,9 @@ class TimerManager {
       final old = list[roundIndex];
 
       if (!_isValidRoundTransition(old.state, RoundState.finished)) {
-        debugPrint('Invalid round transition: ${old.state} -> finished (early)');
+        debugPrint(
+          'Invalid round transition: ${old.state} -> finished (early)',
+        );
         return;
       }
 
@@ -246,7 +272,9 @@ class TimerManager {
           ? old.totalPausedDurationMs + (now - old.pausedAtMs!)
           : old.totalPausedDurationMs;
 
-      final elapsedMs = old.startedAtMs > 0 ? (now - old.startedAtMs - totalPausedMs) : 0;
+      final elapsedMs = old.startedAtMs > 0
+          ? (now - old.startedAtMs - totalPausedMs)
+          : 0;
       final actualDurationSecs = (elapsedMs / 1000).round().clamp(
         0,
         old.plannedDurationSecs * WorkoutConstants.roundActualDurationCapFactor,
@@ -324,7 +352,8 @@ class TimerManager {
       final rounds = entry.value;
       for (int i = 0; i < rounds.length; i++) {
         final round = rounds[i];
-        if (round.state == RoundState.active || round.state == RoundState.paused) {
+        if (round.state == RoundState.active ||
+            round.state == RoundState.paused) {
           await endRoundEarly(effortId, i);
         }
       }
@@ -378,6 +407,11 @@ class TimerManager {
   Future<void> startTimedEntry(String effortId, int entryIndex) async {
     _clearError();
     try {
+      // Close all open rests for this effort in-memory BEFORE starting the timer.
+      // This ensures hasRestRecord() and getRestElapsedSeconds() return the closed
+      // state immediately, even if the async repository persist is still in-flight.
+      final closedRests = closeAllOpenRestsInMemory(effortId);
+
       final list = _timedInstances[effortId];
       if (list == null || entryIndex >= list.length) return;
       final old = list[entryIndex];
@@ -388,7 +422,9 @@ class TimerManager {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final offsetMs = old.targetDurationSecs > 0 ? old.targetDurationSecs * 1000 : 0;
+      final offsetMs = old.targetDurationSecs > 0
+          ? old.targetDurationSecs * 1000
+          : 0;
       final updated = old.copyWith(
         state: TimedState.active,
         startedAtMs: now - offsetMs,
@@ -397,6 +433,17 @@ class TimerManager {
       );
       await _repository.updateTimedInstance(updated);
       list[entryIndex] = updated;
+
+      // Persist the closed rests asynchronously in the background.
+      // Catch errors so failures don't leave the database out of sync with memory.
+      for (var rest in closedRests) {
+        unawaited(
+          _repository.updateEntryRest(rest).catchError((e) {
+            _setError('Failed to persist closed rest: $e');
+          }),
+        );
+      }
+
       _notify();
     } catch (e) {
       _setError('Failed to start timed entry: $e');
@@ -442,7 +489,9 @@ class TimerManager {
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      final pauseDuration = old.pausedAtMs != null ? (now - old.pausedAtMs!) : 0;
+      final pauseDuration = old.pausedAtMs != null
+          ? (now - old.pausedAtMs!)
+          : 0;
 
       final updated = old.copyWith(
         state: TimedState.active,
@@ -476,7 +525,9 @@ class TimerManager {
           ? old.totalPausedDurationMs + (now - old.pausedAtMs!)
           : old.totalPausedDurationMs;
 
-      final elapsedMs = old.startedAtMs > 0 ? (now - old.startedAtMs - totalPausedMs) : 0;
+      final elapsedMs = old.startedAtMs > 0
+          ? (now - old.startedAtMs - totalPausedMs)
+          : 0;
       final actualDurationSecs = (elapsedMs / 1000).round().clamp(0, 86400);
 
       final updated = old.copyWith(
@@ -514,7 +565,9 @@ class TimerManager {
       final observations = _observations?[effortId];
       if (observations != null) {
         final idPrefix = 'obs-$effortId-$entryIndex-';
-        final toDelete = observations.where((o) => o.id.startsWith(idPrefix)).toList();
+        final toDelete = observations
+            .where((o) => o.id.startsWith(idPrefix))
+            .toList();
         for (final obs in toDelete) {
           await _repository.deleteObservation(obs.id);
         }
@@ -562,7 +615,8 @@ class TimerManager {
       final entries = entry.value;
       for (int i = 0; i < entries.length; i++) {
         final timedEntry = entries[i];
-        if (timedEntry.state == TimedState.active || timedEntry.state == TimedState.paused) {
+        if (timedEntry.state == TimedState.active ||
+            timedEntry.state == TimedState.paused) {
           await finishTimedEntry(effortId, i);
         }
       }
@@ -705,8 +759,7 @@ class TimerManager {
       final updated = rest.copyWith(
         restIsPaused: false,
         restPausedAtMs: null,
-        restPausedDurationMs:
-            rest.restPausedDurationMs + additionalPauseMs,
+        restPausedDurationMs: rest.restPausedDurationMs + additionalPauseMs,
         updatedAtMs: now,
       );
       await _repository.updateEntryRest(updated);
@@ -723,6 +776,9 @@ class TimerManager {
 
     try {
       final rest = list.firstWhere((r) => r.entryIndex == entryIndex);
+      // Only return elapsed time for OPEN rests (restEndMs == null).
+      // Closed rests return 0 since they are no longer accumulating.
+      if (rest.restEndMs != null) return 0;
       final now = DateTime.now().millisecondsSinceEpoch;
       return rest.elapsedSeconds(now);
     } catch (_) {
@@ -747,7 +803,7 @@ class TimerManager {
   bool hasRestRecord(String effortId, int entryIndex) {
     final list = _entryRests[effortId];
     if (list == null) return false;
-    return list.any((r) => r.entryIndex == entryIndex);
+    return list.any((r) => r.entryIndex == entryIndex && r.restEndMs == null);
   }
 
   /// Closes every open [EntryRest] across **all** efforts at [closeAtMs].
@@ -783,29 +839,63 @@ class TimerManager {
     }
   }
 
+  /// Synchronously closes all open [EntryRest] records for [effortId] in the
+  /// in-memory cache. Paused rests are closed at their pause time so the
+  /// recorded duration excludes the stopped interval.
+  ///
+  /// This method updates the [_entryRests] cache immediately without calling
+  /// Closes all open [EntryRest] records for [effortId] in the in-memory cache.
+  /// Returns the list of rests that were actually closed (those with `restEndMs == null`).
+  ///
+  /// Does NOT call [_notify] or persist to the repository. Use [closeAllOpenRests] to
+  /// also persist the changes asynchronously.
+  ///
+  /// Call this method BEFORE starting an effort timer to ensure the rest
+  /// visibility and elapsed-time queries return the closed state immediately,
+  /// even if the async repository persist is still in-flight.
+  List<EntryRest> closeAllOpenRestsInMemory(String effortId) {
+    final closedRests = <EntryRest>[];
+    final list = _entryRests[effortId];
+    if (list == null) return closedRests;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (var i = 0; i < list.length; i++) {
+      final rest = list[i];
+      if (rest.restEndMs != null) continue;
+      final effectiveEnd = _effectiveRestEndMs(rest, now);
+      final closed = rest.copyWith(
+        restEndMs: effectiveEnd,
+        restIsPaused: false,
+        restPausedAtMs: null,
+        updatedAtMs: now,
+      );
+      list[i] = closed;
+      closedRests.add(closed);
+    }
+    return closedRests;
+  }
+
   /// Closes every open [EntryRest] record for [effortId], regardless of
   /// entryIndex. Called when an interval timer starts so that a rest window
   /// opened for a previously-skipped interval does not keep ticking.
   /// Paused rests are closed at their pause time so the recorded
   /// duration excludes the stopped interval.
+  ///
+  /// The in-memory close happens synchronously via [closeAllOpenRestsInMemory].
+  /// The repository persist happens asynchronously. If you need the in-memory
+  /// close to happen before UI rendering, call [closeAllOpenRestsInMemory]
+  /// first, then call this method for the async persist.
+  ///
+  /// Only persists the rests that were actually closed (not already-closed rests),
+  /// preventing write-amplification on repeated timer starts.
   Future<void> closeAllOpenRests(String effortId) async {
     _clearError();
     try {
-      final list = _entryRests[effortId];
-      if (list == null) return;
-      final now = DateTime.now().millisecondsSinceEpoch;
-      for (var i = 0; i < list.length; i++) {
-        final rest = list[i];
-        if (rest.restEndMs != null) continue;
-        final effectiveEnd = _effectiveRestEndMs(rest, now);
-        final closed = rest.copyWith(
-          restEndMs: effectiveEnd,
-          restIsPaused: false,
-          restPausedAtMs: null,
-          updatedAtMs: now,
-        );
-        await _repository.updateEntryRest(closed);
-        list[i] = closed;
+      // Close in-memory and get the rests that were actually closed
+      final closedRests = closeAllOpenRestsInMemory(effortId);
+
+      // Then persist asynchronously — only those that were just closed
+      for (var rest in closedRests) {
+        await _repository.updateEntryRest(rest);
       }
       _notify();
     } catch (e) {
@@ -833,8 +923,9 @@ class TimerManager {
       final old = list[entryIndex];
       final now = DateTime.now().millisecondsSinceEpoch;
       // Synthesise timestamps so elapsedMs == durationSecs * 1000.
-      final startedAtMs =
-          old.startedAtMs > 0 ? old.startedAtMs : now - (durationSecs * 1000);
+      final startedAtMs = old.startedAtMs > 0
+          ? old.startedAtMs
+          : now - (durationSecs * 1000);
       final finishedAtMs = startedAtMs + (durationSecs * 1000);
       final updated = old.copyWith(
         state: TimedState.finished,
@@ -868,11 +959,13 @@ class TimerManager {
       if (list == null || roundIndex >= list.length) return;
       final old = list[roundIndex];
       final now = DateTime.now().millisecondsSinceEpoch;
-      final startedAtMs =
-          old.startedAtMs > 0 ? old.startedAtMs : now - (durationSecs * 1000);
+      final startedAtMs = old.startedAtMs > 0
+          ? old.startedAtMs
+          : now - (durationSecs * 1000);
       final finishedAtMs = startedAtMs + (durationSecs * 1000);
-      final plannedDurationSecs =
-          old.plannedDurationSecs > 0 ? old.plannedDurationSecs : durationSecs;
+      final plannedDurationSecs = old.plannedDurationSecs > 0
+          ? old.plannedDurationSecs
+          : durationSecs;
       final updated = old.copyWith(
         state: RoundState.finished,
         actualDurationSecs: durationSecs,
@@ -904,8 +997,9 @@ class TimerManager {
       for (int i = 0; i < rounds.length; i++) {
         final round = rounds[i];
         if (round.state != RoundState.finished) {
-          final durationSecs =
-              round.plannedDurationSecs > 0 ? round.plannedDurationSecs : 0;
+          final durationSecs = round.plannedDurationSecs > 0
+              ? round.plannedDurationSecs
+              : 0;
           await setRoundFinished(effortId, i, durationSecs);
         }
       }

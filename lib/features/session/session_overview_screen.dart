@@ -14,6 +14,7 @@ import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import 'workout_session_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 class SessionOverviewScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -265,28 +266,19 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                 icon: const Icon(Icons.delete_outline),
                                 onPressed: () async {
                                   final effortId = exercise['id'] as String;
-                                  final confirmed = await showDialog<bool>(
+                                  final confirmed = await ConfirmationDialog.showTwoChoice(
                                     context: context,
-                                    builder: (context) => AlertDialog(
-                                      title: const Text('Remove Exercise'),
-                                      content: Text(
-                                        'Remove ${exercise['name']} from this workout?',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(context, false),
-                                          child: const Text('Cancel'),
-                                        ),
-                                        FilledButton(
-                                          onPressed: () =>
-                                              Navigator.pop(context, true),
-                                          child: const Text('Remove'),
-                                        ),
-                                      ],
+                                    title: 'Remove Exercise',
+                                    body: Text(
+                                      'Remove ${exercise['name']} from this workout?',
                                     ),
+                                    dismissLabel: 'Cancel',
+                                    confirmLabel: 'Remove',
+                                    dismissKey: const Key('session-overview-remove-exercise-cancel'),
+                                    confirmKey: const Key('session-overview-remove-exercise-confirm'),
+                                    isDestructive: true,
                                   );
-                                  if (confirmed == true && mounted) {
+                                  if (confirmed && mounted) {
                                     await widget.workoutState
                                         .removeExerciseFromSession(effortId);
                                     await _initializeSession();

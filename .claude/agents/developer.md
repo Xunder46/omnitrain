@@ -45,10 +45,10 @@ Your code runs in TWO environments without changes:
 - Seeds reference data on first run from `SeedData`
 - Hot reload works
 
-### Future: Native Optimization
-- iOS/Android/Desktop
-- Will use `SqliteWorkoutRepository` for better performance
-- Same interface, same state code, different storage
+### Persistence reality
+- `HiveWorkoutRepository` is the runtime on **every** platform, web included.
+- The SQLite runtime is retired; there is no `SqliteWorkoutRepository`.
+- `MockWorkoutRepository` is the in-memory implementation for tests and dev.
 
 ### How to Achieve This
 
@@ -65,9 +65,8 @@ class WorkoutState extends ChangeNotifier {
 ```dart
 // main.dart
 void main() {
-  final repository = kIsWeb 
-    ? MockWorkoutRepository()      // Web
-    : SqliteWorkoutRepository();   // Native (future)
+  final repository = HiveWorkoutRepository(); // every platform
+  await repository.initialize();
   
   final workoutState = WorkoutState(repository);
   runApp(MyApp(workoutState: workoutState));
@@ -275,7 +274,7 @@ Before implementing or modifying features, consult the relevant documentation in
 
 - **`docs/app_philosophy.md`** — Product goals, UX constraints, session/block architecture
 - **`docs/modality_tracking.md`** — Modality system: capabilities, effort kinds, exercise ranking, adaptive UI
-- **`docs/modality_based_exercise_ui.md`** — WorkoutSessionScreen: per-modality UI rendering, timer state, InlineMetricEditor, swipe gestures
+- **`docs/modality_based_exercise_ui.md`** — WorkoutSessionScreen: effort-kind vocabulary, wall-clock timer architecture, round state machine, immediate-persistence contract
 - **`docs/exercise_ranking.md`** — Exercise ranking algorithm: scoring, ModalityConfig, relevance calculation
 - **`docs/my_routines.md`** — My Routines: template data model, RoutineState, routine-to-session conversion, RoutineSetupScreen UI
 - **`docs/db_integration.md`** — Database setup, schema, migrations
@@ -376,6 +375,16 @@ When you receive a handoff from @conductor:
 - [ ] Check hot reload works
 
 **Doc hygiene** (mandatory before handoff — state explicitly if no update was needed):
+
+**Before editing any document, read `docs/documentation_standard.md`.** It
+defines what these documents may contain. In short: update a document only
+where the change made an existing claim **false**, or changed **structure**,
+**rationale**, or an **invariant**. Never add user-flow walkthroughs, control
+or gesture inventories, visual/presentation detail, values already defined in
+source, copied code or field tables, or roadmap sections — the reviewer rejects
+all of these. Where behaviour changed, **delete the stale prose and point at the
+test** that verifies it; do not rewrite it into a corrected version.
+
 - [ ] `docs/navigation_and_screens.md` — update if a new screen was added, a route changed, or constructor dependencies changed
 - [ ] `docs/state_management.md` — update if a new state class or method was added, or a service changed
 - [ ] `docs/widget_catalog.md` — update if a new reusable widget was added or existing widget props changed
@@ -384,10 +393,6 @@ When you receive a handoff from @conductor:
 ## Token Monitoring
 
 Monitor context usage as you work. If approaching the context limit, prefer to stop cleanly at the end of a phase boundary rather than mid-implementation. Update the plan file with progress, mark phase status, and instruct the user to resume in a new chat with the plan file attached.
-
-## Output Discipline (cost)
-
-Prefer surgical, targeted edits over full-file rewrites — change only the lines that need changing, never regenerate whole files. Do not echo large unchanged code blocks. Keep completion summaries to the structured handoff format only.
 
 ## Phase Complete Template
 
@@ -542,13 +547,11 @@ class ExerciseListScreen extends StatelessWidget {
   }
   
   void _openDetail(BuildContext context, Exercise exercise) {
-    Navigator.push(
+    OmniNavigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ExerciseDetailScreen(
-          workoutState: workoutState,
-          exerciseId: exercise.id,
-        ),
+      (_) => ExerciseDetailScreen(
+        workoutState: workoutState,
+        exerciseId: exercise.id,
       ),
     );
   }
@@ -578,12 +581,10 @@ class ExerciseListScreen extends StatelessWidget {
   }
   
   void _createNew(BuildContext context) {
-    Navigator.push(
+    OmniNavigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ExerciseFormScreen(
-          workoutState: workoutState,
-        ),
+      (_) => ExerciseFormScreen(
+        workoutState: workoutState,
       ),
     );
   }
@@ -701,11 +702,15 @@ Then hand off to @code-reviewer with a summary:
 - [x] No regressions in existing tests
 ```
 
+## Output Discipline (cost)
+
+Prefer surgical, targeted edits over full-file rewrites — change only the lines that need changing, never regenerate whole files. Do not echo large unchanged code blocks. Keep completion summaries to the structured handoff format only.
+
 ## Remember
 
 - Always read `.github/agents/plans/[feature]-plan.md` first to understand full feature context
 - Always update the `## Progress` checklist in the plan file after completing work
-- If blocked, add `## Feedback` to the plan file and notify the user to re-run the Coordinator
+- If blocked, add `## Feedback` to the plan file and notify the user to re-run the Conductor
 - Phase 0 is non-negotiable — no implementation without a complete Conductor-authored scenario register and red tests
 - Scenario register comes from the plan file (`## Scenarios`) and is authored by the Conductor
 - Do not run scenario Q&A with the user in this agent
@@ -720,6 +725,3 @@ Then hand off to @code-reviewer with a summary:
 - Extract reusable UI to widgets/
 - Test on web with HiveWorkoutRepository
 - Code must work unchanged when repository is swapped
-
-
-================================================================================

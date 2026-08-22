@@ -424,7 +424,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
     }
   }
 
-  // ── Timer toggle / tick / pause ───────────────────────────────────────────
+  // ── Timer toggle / tick ───────────────────────────────────────────────────
 
   void _toggleEffortTimer(String effortId) {
     final entryIndex = _currentSet - 1;
@@ -492,6 +492,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             }
             return;
           }
+
           _inProgressKeys.add(timerKey);
           _pendingRoundTransitions.add(timerKey);
           _effortRunning[timerKey] = true;
@@ -507,7 +508,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
             playSound: !_isAppInForeground,
           );
           if (mounted) setState(() {});
-          unawaited(widget.workoutState.closeAllOpenRests(effortId));
+
           unawaited(widget.restNotificationService.cancelRestNotifications());
           _lastRestPingFiredAt.remove(effortId);
           widget.workoutState
@@ -576,6 +577,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           }
           return;
         }
+
         _inProgressKeys.add(timerKey);
         _pendingTimedTransitions.add(timerKey);
         _effortRunning[timerKey] = true;
@@ -591,7 +593,7 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
           playSound: !_isAppInForeground,
         );
         if (mounted) setState(() {});
-        unawaited(widget.workoutState.closeAllOpenRests(effortId));
+
         unawaited(widget.restNotificationService.cancelRestNotifications());
         _lastRestPingFiredAt.remove(effortId);
         widget.workoutState.startTimedEntry(effortId, entryIndex).whenComplete(
@@ -645,26 +647,6 @@ mixin WorkoutSessionTimerMixin on State<WorkoutSessionScreen> {
       setState(() {
         _effortElapsed[timerKey] = elapsed;
       });
-    }
-  }
-
-  void _pauseEffortTimer(
-    String effortId,
-    int entryIndex, {
-    String? effortKindOverride,
-  }) {
-    final timerKey = '$effortId-$entryIndex';
-    _effortRunning[timerKey] = false;
-    _effortTimers[timerKey]?.cancel();
-    _cancelEffortExpiryNotification();
-
-    final effortKind = effortKindOverride ?? _getEffortKind(effortId);
-    if (effortKind == 'round') {
-      unawaited(widget.workoutState.pauseRound(effortId, entryIndex));
-      return;
-    }
-    if (effortKind == 'timed' || effortKind == 'drill') {
-      unawaited(widget.workoutState.pauseTimedEntry(effortId, entryIndex));
     }
   }
 

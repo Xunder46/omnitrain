@@ -274,6 +274,9 @@ class RestNotificationService {
     await cancelRestNotifications();
     if (intervalSecs <= 0) return;
 
+    // Resolve exact-alarm capability once per batch, not per ping.
+    await _refreshExactAlarmCapability();
+
     final nowMs = (_nowProvider ?? DateTime.now)().millisecondsSinceEpoch;
 
     for (int n = 1; n <= maxRestPings; n++) {
@@ -344,6 +347,8 @@ class RestNotificationService {
 
     final nowMs = (_nowProvider ?? DateTime.now)().millisecondsSinceEpoch;
     if (fireAtMs <= nowMs) return;
+
+    await _refreshExactAlarmCapability();
 
     final fireAt = DateTime.fromMillisecondsSinceEpoch(fireAtMs);
     final details = NotificationDetails(
@@ -537,10 +542,73 @@ class RestNotificationService {
       body,
       scheduledDate,
       details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: _androidScheduleMode,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );
+  }
+
+  /// Cached result of the exact-alarm capability probe. `null` until the
+  /// first schedule call resolves it.
+  bool? _canScheduleExactAlarms;
+
+  /// The schedule mode to use for this device.
+  ///
+  /// `exactAllowWhileIdle` requires `SCHEDULE_EXACT_ALARM`, which
+  /// Android 14+ denies by default to any app that is not an alarm
+  /// clock or calendar. Asking for it anyway throws
+  /// `PlatformException(exact_alarms_not_permitted)` and the ping is
+  /// simply never delivered — the previous silent-sound retry could not
+  /// recover from that, because it re-issued the same exact-mode
+  /// request.
+  ///
+  /// A rest ping that lands a few seconds late is far better than one
+  /// that never lands, so we fall back to `inexactAllowWhileIdle` when
+  /// the permission is absent. Devices that DO grant it keep precise
+  /// timing.
+  AndroidScheduleMode get _androidScheduleMode =>
+      (_canScheduleExactAlarms ?? false)
+      ? AndroidScheduleMode.exactAllowWhileIdle
+      : AndroidScheduleMode.inexactAllowWhileIdle;
+
+  /// Probe the platform for exact-alarm permission and cache it.
+  ///
+  /// Called once per schedule batch rather than per notification. A
+  /// probe failure is treated as "not permitted" — the inexact path
+  /// always works, so an unknown state must not cost the user their
+  /// ping.
+  Future<void> _refreshExactAlarmCapability() async {
+    if (_isWeb) return;
+    // A schedule override means the real plugin is never invoked (the
+    // test harness and `RestNotificationService.noop()` both use one).
+    // Probing the platform there would reach for a binding that may not
+    // exist and tell us nothing about any real device.
+    if (_zonedScheduleOverride != null) return;
+
+    try {
+      // `resolvePlatformSpecificImplementation` itself can throw when no
+      // ServicesBinding is initialised, so it belongs inside the guard —
+      // not just the probe call.
+      final androidPlugin = _plugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      if (androidPlugin == null) {
+        // Non-Android (iOS): the Android schedule mode is ignored, so
+        // the cached value is irrelevant. Leave it false.
+        return;
+      }
+      _canScheduleExactAlarms =
+          await androidPlugin.canScheduleExactNotifications() ?? false;
+    } catch (_) {
+      // Deliberately NOT reported. This probe runs once per schedule
+      // batch, so a reporting path here would emit a non-fatal on every
+      // rest period for any device where the probe is unavailable —
+      // enough volume to crowd out real crashes. The failure is also
+      // self-correcting: an unknown capability falls back to inexact
+      // scheduling, which always works.
+      _canScheduleExactAlarms = false;
+    }
   }
 
   Future<void> cancelRestNotifications() async {

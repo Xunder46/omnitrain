@@ -188,7 +188,7 @@ void main() {
     // does not collide with the dialog action.
     Finder _dialogDiscardFinder() => find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.widgetWithText(TextButton, 'Discard'),
+          matching: find.widgetWithText(FilledButton, 'Discard'),
         );
 
     testWidgets(

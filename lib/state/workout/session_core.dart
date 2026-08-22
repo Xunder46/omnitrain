@@ -118,22 +118,28 @@ class SessionCore {
     return _exerciseCache[exerciseId];
   }
 
-  void cacheExercise(Exercise exercise) => _exerciseCache[exercise.id] = exercise;
+  void cacheExercise(Exercise exercise) =>
+      _exerciseCache[exercise.id] = exercise;
 
   // ── Block management (delegated to SessionBlockManager) ────────────────
   List<SessionBlock> getSessionBlocks() => _blockManager.getSessionBlocks();
-  Future<String> addSessionBlock({String? name}) => _blockManager.addSessionBlock(name: name);
-  Future<void> updateSessionBlock(SessionBlock block) => _blockManager.updateSessionBlock(block);
-  Future<void> deleteSessionBlock(String blockId) => _blockManager.deleteSessionBlock(blockId);
+  Future<String> addSessionBlock({String? name}) =>
+      _blockManager.addSessionBlock(name: name);
+  Future<void> updateSessionBlock(SessionBlock block) =>
+      _blockManager.updateSessionBlock(block);
+  Future<void> deleteSessionBlock(String blockId) =>
+      _blockManager.deleteSessionBlock(blockId);
   Future<void> reorderSessionBlocks(List<String> orderedIds) =>
       _blockManager.reorderSessionBlocks(orderedIds);
-  Future<String> cloneSessionBlock(String blockId) => _blockManager.cloneSessionBlock(blockId);
+  Future<String> cloneSessionBlock(String blockId) =>
+      _blockManager.cloneSessionBlock(blockId);
   Future<void> assignEffortToBlock(String effortId, String? blockId) =>
       _blockManager.assignEffortToBlock(effortId, blockId);
 
   // ── Summary / query (delegated to SessionSummaryBuilder) ───────────────
   SessionSummary computeSessionSummary() {
-    if (_currentSession == null) throw Exception('No active session to summarize');
+    if (_currentSession == null)
+      throw Exception('No active session to summarize');
     return _summaryBuilder.buildSessionSummary(_currentSession!);
   }
 
@@ -144,7 +150,8 @@ class SessionCore {
       _summaryBuilder.buildExercisesWithEntries();
 
   // ── Session query (repository pass-through) ────────────────────────────
-  Future<List<TrainingSession>> getAllSessions() => _repository.getAllSessions();
+  Future<List<TrainingSession>> getAllSessions() =>
+      _repository.getAllSessions();
 
   Future<List<TrainingSession>> getSessionsByDateRange(int fromMs, int toMs) =>
       _repository.getSessionsByDateRange(fromMs, toMs);

@@ -12,7 +12,7 @@ class ModalityColors {
   static const Color resistanceLifting = Color(0xFF5B9BD5);
   static const Color sports = Color(0xFFE63946);
   static const Color isometricStretching = Color(0xFFFFA726);
-  static const Color freeTraining = Color(0xFF7E57C2);
+  static const Color freeTraining = Color(0xFF885ED1);
 
   static const Map<String, Color> byModality = {
     Modality.cardioEndurance: cardioEndurance,

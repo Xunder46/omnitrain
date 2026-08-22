@@ -18,6 +18,7 @@ import '../session/workout_session_screen.dart';
 import '../session/session_summary_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/layout/omni_bottom_cta.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 /// Shows all sessions (planned + completed TrainingSessions) for a single day.
 ///
@@ -229,44 +230,19 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
 
     // Check if user has an active session already.
     if (widget.workoutState.hasActiveSession) {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await ConfirmationDialog.showTwoChoice(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Start New Session?'),
-          content: const Text(
-            'Starting this session will save your current session first.',
-          ),
-          actions: [
-            TextButton(
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonUtilityRadius,
-                    ),
-                  ),
-                ),
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Start New'),
-            ),
-          ],
+        title: 'Start New Session?',
+        body: const Text(
+          'Your current session will be discarded and cannot be recovered.',
         ),
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Start New',
+        dismissKey: const Key('day-session-new-start-cancel'),
+        confirmKey: const Key('day-session-new-start-confirm'),
+        isDestructive: true,
       );
-      if (confirmed != true) return;
+      if (!confirmed) return;
     }
 
     try {
@@ -391,42 +367,18 @@ class _DaySessionListScreenState extends State<DaySessionListScreen> {
   }
 
   Future<void> _deletePlanned(BuildContext context, PlannedSession ps) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Session'),
-        content: Text('Delete "${ps.title ?? 'this planned session'}"?'),
-        actions: [
-          TextButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      title: ps.title != null
+          ? 'Delete "${ps.title}"?'
+          : 'Delete this planned session?',
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Delete',
+      dismissKey: const Key('day-session-delete-cancel'),
+      confirmKey: const Key('day-session-delete-confirm'),
+      isDestructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await widget.calendarState.deletePlannedSession(ps.id);
     }
   }

@@ -367,14 +367,10 @@ extension _SessionGlobalTimerExt on _WorkoutSessionScreenState {
       return;
     }
 
-    final iconCenter = renderBox.localToGlobal(
-      Offset(renderBox.size.width / 2, renderBox.size.height / 2),
-    );
-
     late OverlayEntry entry;
     entry = OverlayEntry(
       builder: (_) => _ExerciseCoachMarkOverlay(
-        iconCenter: iconCenter,
+        targetKey: targetKey,
         label: label,
         primaryColor: primaryColor,
         onDismiss: () {
@@ -552,16 +548,26 @@ class _ExerciseNoteSheetState extends State<_ExerciseNoteSheet> {
 /// Full-screen one-time coach mark that highlights a header icon.
 ///
 /// Renders a dark semi-transparent backdrop, a pulsing primary-colored glow
-/// centred on [iconCenter], and a short label below.  Tapping anywhere —
-/// including the glow — dismisses the overlay and calls [onDismiss].
+/// centred on the widget behind [targetKey], and a short label below.
+/// Tapping anywhere — including the glow — dismisses the overlay and calls
+/// [onDismiss].
+///
+/// The target is re-measured on every frame rather than snapshotted once.
+/// A single reading is unreliable: the coach mark is scheduled one frame
+/// after the exercise detail view appears, which is routinely still inside
+/// a route transition (a Cupertino push holds the incoming page a full
+/// screen-width to the right; a pop-return holds the returning page a third
+/// of a screen-width to the left). Anchoring to a mid-transition reading
+/// leaves the glow permanently offset by an amount that scales with the
+/// viewport, which is exactly the bug this tracking prevents.
 class _ExerciseCoachMarkOverlay extends StatefulWidget {
-  final Offset iconCenter;
+  final GlobalKey targetKey;
   final String label;
   final Color primaryColor;
   final VoidCallback onDismiss;
 
   const _ExerciseCoachMarkOverlay({
-    required this.iconCenter,
+    required this.targetKey,
     required this.label,
     required this.primaryColor,
     required this.onDismiss,
@@ -578,9 +584,16 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
   late final Animation<double> _scale;
   late final Animation<double> _opacity;
 
+  /// Latest known centre of the target icon, in global coordinates.
+  Offset? _iconCenter;
+
+  /// Guards against queueing more than one tracking callback per frame.
+  bool _trackScheduled = false;
+
   @override
   void initState() {
     super.initState();
+    _scheduleTracking();
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 700),
@@ -609,6 +622,53 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _iconCenter ??= _measureTarget();
+  }
+
+  /// Centre of the target icon, expressed in the coordinate space of the
+  /// overlay this coach mark is drawn in — not the window.
+  ///
+  /// The two differ whenever the Navigator sits inside the large-screen
+  /// centered column (see [OmniGradientBackground]): the overlay's origin is
+  /// then the column's left edge, inset from the window by half the leftover
+  /// width. Resolving against the overlay's own render box keeps the glow on
+  /// the icon at any window width, and is a no-op on phone-width surfaces
+  /// where the overlay already fills the window.
+  Offset? _measureTarget() {
+    final box =
+        widget.targetKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    final overlayBox =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    return box.localToGlobal(
+      Offset(box.size.width / 2, box.size.height / 2),
+      ancestor: overlayBox,
+    );
+  }
+
+  /// Re-measures the target after the next frame and repaints if it moved.
+  ///
+  /// The callback re-arms itself, but it never *schedules* a frame — it only
+  /// runs when something else produces one (a route transition, the pulse,
+  /// a scroll). Once the screen is idle the chain goes quiet, so this stays
+  /// safe for `pumpAndSettle`.
+  void _scheduleTracking() {
+    if (_trackScheduled) return;
+    _trackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _trackScheduled = false;
+      if (!mounted) return;
+      final next = _measureTarget();
+      if (next != null && next != _iconCenter) {
+        setState(() => _iconCenter = next);
+      }
+      _scheduleTracking();
+    });
+  }
+
+  @override
   void dispose() {
     _pulse.dispose();
     super.dispose();
@@ -623,17 +683,57 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
     const double triangleHeight = 6;
     const double screenMargin = 8.0;
 
-    final cx = widget.iconCenter.dx;
-    final cy = widget.iconCenter.dy;
+    final iconCenter = _iconCenter;
+    if (iconCenter == null) {
+      // Target not laid out yet — hold the backdrop so the screen stays
+      // inert, and let the tracking callback fill in the position.
+      _scheduleTracking();
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {},
+        child: Container(color: const Color(0xBF000000)),
+      );
+    }
+    final cx = iconCenter.dx;
+    final cy = iconCenter.dy;
 
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    // Clamp label so it never overflows either edge of the screen.
-    final rawLabelLeft = cx - labelWidth / 2;
-    final clampedLabelLeft = rawLabelLeft.clamp(
-      screenMargin,
-      screenWidth - labelWidth - screenMargin,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Clamp against the overlay's own width, not the window's: on a
+        // large screen the overlay is the centered column, so a
+        // window-width clamp would let the label run past its edge.
+        final availableWidth = constraints.maxWidth;
+        final rawLabelLeft = cx - labelWidth / 2;
+        final maxLabelLeft = availableWidth - labelWidth - screenMargin;
+        // A viewport narrower than the label leaves nothing to clamp within.
+        final clampedLabelLeft = maxLabelLeft <= screenMargin
+            ? screenMargin
+            : rawLabelLeft.clamp(screenMargin, maxLabelLeft).toDouble();
+
+        return _buildOverlayStack(
+          cx: cx,
+          cy: cy,
+          glowRadius: glowRadius,
+          labelWidth: labelWidth,
+          labelOffset: labelOffset,
+          triangleWidth: triangleWidth,
+          triangleHeight: triangleHeight,
+          clampedLabelLeft: clampedLabelLeft,
+        );
+      },
     );
+  }
 
+  Widget _buildOverlayStack({
+    required double cx,
+    required double cy,
+    required double glowRadius,
+    required double labelWidth,
+    required double labelOffset,
+    required double triangleWidth,
+    required double triangleHeight,
+    required double clampedLabelLeft,
+  }) {
     return Stack(
       children: [
         // Dark backdrop — absorbs all taps so neither the overlay itself
@@ -683,7 +783,7 @@ class _ExerciseCoachMarkOverlayState extends State<_ExerciseCoachMarkOverlay>
           top: cy + labelOffset,
           child: IgnorePointer(
             child: CustomPaint(
-              size: const Size(triangleWidth, triangleHeight),
+              size: Size(triangleWidth, triangleHeight),
               painter: _TrianglePointerPainter(
                 color: widget.primaryColor.withOpacity(0.85),
               ),

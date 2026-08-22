@@ -48,10 +48,10 @@ Your code runs in TWO environments without changes:
 - Seeds reference data on first run from `SeedData`
 - Hot reload works
 
-### Future: Native Optimization
-- iOS/Android/Desktop
-- Will use `SqliteWorkoutRepository` for better performance
-- Same interface, same state code, different storage
+### Persistence reality
+- `HiveWorkoutRepository` is the runtime on **every** platform, web included.
+- The SQLite runtime is retired; there is no `SqliteWorkoutRepository`.
+- `MockWorkoutRepository` is the in-memory implementation for tests and dev.
 
 ### How to Achieve This
 
@@ -68,9 +68,8 @@ class WorkoutState extends ChangeNotifier {
 ```dart
 // main.dart
 void main() {
-  final repository = kIsWeb 
-    ? MockWorkoutRepository()      // Web
-    : SqliteWorkoutRepository();   // Native (future)
+  final repository = HiveWorkoutRepository(); // every platform
+  await repository.initialize();
   
   final workoutState = WorkoutState(repository);
   runApp(MyApp(workoutState: workoutState));
@@ -278,7 +277,7 @@ Before implementing or modifying features, consult the relevant documentation in
 
 - **`docs/app_philosophy.md`** — Product goals, UX constraints, session/block architecture
 - **`docs/modality_tracking.md`** — Modality system: capabilities, effort kinds, exercise ranking, adaptive UI
-- **`docs/modality_based_exercise_ui.md`** — WorkoutSessionScreen: per-modality UI rendering, timer state, InlineMetricEditor, swipe gestures
+- **`docs/modality_based_exercise_ui.md`** — WorkoutSessionScreen: effort-kind vocabulary, wall-clock timer architecture, round state machine, immediate-persistence contract
 - **`docs/exercise_ranking.md`** — Exercise ranking algorithm: scoring, ModalityConfig, relevance calculation
 - **`docs/my_routines.md`** — My Routines: template data model, RoutineState, routine-to-session conversion, RoutineSetupScreen UI
 - **`docs/db_integration.md`** — Database setup, schema, migrations
@@ -379,6 +378,16 @@ When you receive a handoff from @conductor:
 - [ ] Check hot reload works
 
 **Doc hygiene** (mandatory before handoff — state explicitly if no update was needed):
+
+**Before editing any document, read `docs/documentation_standard.md`.** It
+defines what these documents may contain. In short: update a document only
+where the change made an existing claim **false**, or changed **structure**,
+**rationale**, or an **invariant**. Never add user-flow walkthroughs, control
+or gesture inventories, visual/presentation detail, values already defined in
+source, copied code or field tables, or roadmap sections — the reviewer rejects
+all of these. Where behaviour changed, **delete the stale prose and point at the
+test** that verifies it; do not rewrite it into a corrected version.
+
 - [ ] `docs/navigation_and_screens.md` — update if a new screen was added, a route changed, or constructor dependencies changed
 - [ ] `docs/state_management.md` — update if a new state class or method was added, or a service changed
 - [ ] `docs/widget_catalog.md` — update if a new reusable widget was added or existing widget props changed

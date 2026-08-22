@@ -9,6 +9,18 @@
 // the circle (the avatar display path uses `ClipOval`, so the
 // framed square region is clipped to a circle when shown).
 //
+// **The square is always full of photo.** The pannable child is
+// sized so the image's *shorter* side covers the viewport (a
+// cover fit) and the longer side overflows for the user to pan
+// through, with `minScale: 1.0` as the cover scale. A
+// `BoxFit.contain` layout would letterbox a non-square photo and
+// bake the empty bands into the saved avatar, which is exactly
+// the bug this arrangement prevents.
+//
+// **The scrim is preview chrome, never pixels.** The dim ring and
+// its hairline are painted OUTSIDE the `RepaintBoundary`, so they
+// frame the crop on screen without being captured into the PNG.
+//
 // **Output shape**. The stored avatar is a **square PNG**, NOT
 // the clipped circle. The circular scrim is a preview aid only;
 // the persisted file matches the full viewport. This matches the
@@ -84,6 +96,17 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
   /// used to capture the framed region.
   final GlobalKey _boundaryKey = GlobalKey();
 
+  /// Natural pixel size of the source image. `null` until the
+  /// async decode finishes; the viewport falls back to a
+  /// `BoxFit.cover` render (fills the square, not pannable) in
+  /// that window so a capture during it is still bar-free.
+  Size? _imageSize;
+
+  /// Viewport side the current centering transform was computed
+  /// for. Guards the post-frame centering so it runs once per
+  /// (image, viewport) pair instead of on every build.
+  double? _centeredForSide;
+
   /// Drives the `InteractiveViewer`. Tests set this directly to
   /// simulate a deliberate pan / zoom crop; the production UI
   /// lets the user's gestures drive it.
@@ -102,9 +125,66 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
       _transformationController;
 
   @override
+  void initState() {
+    super.initState();
+    _decodeImageSize();
+  }
+
+  @override
   void dispose() {
     _transformationController.dispose();
     super.dispose();
+  }
+
+  /// Read the source image's natural pixel dimensions. The crop
+  /// viewport needs them to size the pannable child so its
+  /// **shorter** side matches the square viewport (a cover fit) —
+  /// without them a non-square photo can only be laid out with
+  /// `BoxFit.contain`, which letterboxes the square and bakes
+  /// empty bars into the captured avatar.
+  Future<void> _decodeImageSize() async {
+    try {
+      final codec = await ui.instantiateImageCodec(widget.imageBytes);
+      try {
+        final frame = await codec.getNextFrame();
+        final size = Size(
+          frame.image.width.toDouble(),
+          frame.image.height.toDouble(),
+        );
+        frame.image.dispose();
+        if (!mounted || size.shortestSide <= 0) return;
+        setState(() => _imageSize = size);
+      } finally {
+        codec.dispose();
+      }
+    } catch (_) {
+      // A source the codec cannot read also cannot be rendered by
+      // `Image.memory`; the viewport's cover fallback handles the
+      // display and the capture path stays intact.
+    }
+  }
+
+  /// Size of the pannable child for [imageSize] inside a square
+  /// viewport of [side]: the image scaled so its shorter side
+  /// exactly covers the viewport. The longer side overflows and
+  /// is what the user pans through.
+  static Size _coverChildSize(Size imageSize, double side) {
+    final scale = side / imageSize.shortestSide;
+    return Size(imageSize.width * scale, imageSize.height * scale);
+  }
+
+  /// Transform that parks the viewport over the centre of the
+  /// cover-sized child, so the crop opens on the middle of the
+  /// photo rather than its top-left corner.
+  static Matrix4 _centeredMatrix(Size imageSize, double side) {
+    final child = _coverChildSize(imageSize, side);
+    return Matrix4.identity()
+      ..translateByDouble(
+        -(child.width - side) / 2,
+        -(child.height - side) / 2,
+        0,
+        1,
+      );
   }
 
   Future<void> _onConfirm() async {
@@ -199,40 +279,96 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
     final screenWidth = MediaQuery.of(context).size.width;
     final viewportSide = math.min(screenWidth - 32, 360.0);
 
+    final imageSize = _imageSize;
+    if (imageSize != null && _centeredForSide != viewportSide) {
+      // Centre the crop on the photo the first time both the
+      // decoded size and the laid-out viewport are known (and
+      // again if the viewport side changes, e.g. on rotation).
+      // Assigning the controller notifies the `InteractiveViewer`,
+      // so it has to happen after this frame, not during build.
+      _centeredForSide = viewportSide;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _transformationController.value =
+            _centeredMatrix(imageSize, viewportSide);
+      });
+    }
+
     return SizedBox(
       width: viewportSide,
       child: AspectRatio(
         aspectRatio: 1.0,
-        child: RepaintBoundary(
-          key: _boundaryKey,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              InteractiveViewer(
-                transformationController: _transformationController,
-                // Pinch-in is allowed down to 1× — the viewport
-                // cannot show empty borders below the natural
-                // image size, so anything smaller would invite
-                // black bars in the captured region.
-                minScale: 1.0,
-                maxScale: 4.0,
-                child: Image.memory(
-                  widget.imageBytes,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.medium,
-                ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Only the image layer sits inside the
+            // `RepaintBoundary`. The scrim below is deliberately
+            // OUTSIDE it: anything inside is baked into the
+            // captured PNG, and a dimmed frame + hairline ring
+            // are preview chrome, not part of the avatar.
+            RepaintBoundary(
+              key: _boundaryKey,
+              child: ClipRect(
+                child: _buildImageLayer(viewportSide, imageSize),
               ),
-              // The circular dim overlay is a preview aid — the
-              // persisted image is the full square viewport. The
-              // overlay is `IgnorePointer`d so it never blocks the
-              // `InteractiveViewer`'s gesture detector underneath.
-              const IgnorePointer(
-                child: CustomPaint(
-                  painter: _CircularCropOverlayPainter(),
-                ),
+            ),
+            // The circular dim overlay is a preview aid — the
+            // persisted image is the full square viewport. The
+            // overlay is `IgnorePointer`d so it never blocks the
+            // `InteractiveViewer`'s gesture detector underneath.
+            const IgnorePointer(
+              child: CustomPaint(
+                painter: _CircularCropOverlayPainter(),
               ),
-            ],
-          ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The pan / zoom image layer.
+  ///
+  /// Once the source dimensions are known the child is sized to
+  /// **cover** the square viewport (shorter side == viewport side)
+  /// and handed to an unconstrained `InteractiveViewer`, which
+  /// clamps panning to the child's bounds. The square is therefore
+  /// filled with photo at every scale ≥ 1 — the user pans along
+  /// the overflowing axis to choose the framing, and no empty
+  /// letterbox band can ever end up in the capture.
+  ///
+  /// Before the decode lands, `BoxFit.cover` fills the same square
+  /// (not pannable for that one frame), so a capture during the
+  /// decode window is bar-free too.
+  Widget _buildImageLayer(double viewportSide, Size? imageSize) {
+    if (imageSize == null) {
+      return Image.memory(
+        widget.imageBytes,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+      );
+    }
+
+    final childSize = _coverChildSize(imageSize, viewportSide);
+    return InteractiveViewer(
+      transformationController: _transformationController,
+      // The child is larger than the viewport on its long axis,
+      // so it must be laid out unconstrained; `constrained: true`
+      // would squeeze it back to the viewport and reintroduce the
+      // letterbox.
+      constrained: false,
+      // Pinch-in is allowed down to 1× — that is the cover fit,
+      // the smallest scale at which the square is still fully
+      // covered by photo.
+      minScale: 1.0,
+      maxScale: 4.0,
+      child: SizedBox(
+        width: childSize.width,
+        height: childSize.height,
+        child: Image.memory(
+          widget.imageBytes,
+          fit: BoxFit.fill,
+          filterQuality: FilterQuality.medium,
         ),
       ),
     );

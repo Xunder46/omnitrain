@@ -92,6 +92,28 @@ class CardioProgress {
   const CardioProgress({required this.exerciseName, required this.trend});
 }
 
+/// Isometric drill progress for one exercise (hold time aggregation).
+class DrillProgress {
+  final String exerciseName;
+
+  /// Aggregated hold-time data per training day, sorted chronologically.
+  /// Each point represents the sum of all hold times (in seconds) on that day.
+  final List<CardioTrendPoint> trend;
+
+  const DrillProgress({required this.exerciseName, required this.trend});
+}
+
+/// Sports round progress for one exercise (round time aggregation).
+class RoundProgress {
+  final String exerciseName;
+
+  /// Aggregated round-time data per training day, sorted chronologically.
+  /// Each point represents the sum of all round times (in seconds) on that day.
+  final List<CardioTrendPoint> trend;
+
+  const RoundProgress({required this.exerciseName, required this.trend});
+}
+
 /// A personal record event (new all-time high for an exercise).
 ///
 /// Exactly one of [e1Rm] or [reps] is non-null on any given instance:
@@ -183,6 +205,12 @@ class StatsProgressData {
   /// Up to [StatsProgressService.kTopCardioCount] activities, sorted by training frequency.
   final List<CardioProgress> topCardio;
 
+  /// Up to [StatsProgressService.kTopIsometricCount] isometric exercises, sorted by training frequency.
+  final List<DrillProgress> topIsometric;
+
+  /// Up to [StatsProgressService.kTopSportsCount] sports exercises, sorted by training frequency.
+  final List<RoundProgress> topSports;
+
   /// Most-recent personal records across all tracked lifts (newest first).
   final List<StatsPR> recentPRs;
 
@@ -211,6 +239,8 @@ class StatsProgressData {
   const StatsProgressData({
     required this.topLifts,
     required this.topCardio,
+    this.topIsometric = const [],
+    this.topSports = const [],
     required this.recentPRs,
     this.nutritionTrend = const [],
     this.feelingTrend = const [],
@@ -220,6 +250,8 @@ class StatsProgressData {
   static final StatsProgressData empty = StatsProgressData(
     topLifts: const [],
     topCardio: const [],
+    topIsometric: const [],
+    topSports: const [],
     recentPRs: const [],
     window: StatsWindow.empty,
   );
@@ -301,4 +333,47 @@ class StatsWindow {
     isPeriodScoped: false,
     recentDays: 0,
   );
+}
+
+
+// ── Nutrition adherence (PR 2b nutrition adherence section) ───────────────
+
+/// One point on the nutrition-target piecewise line. The
+/// `date` is local-midnight of the day the point starts at;
+/// the target values extend from this point forward until the
+/// next point in the series (or to the end of the actuals'
+/// x-axis for the final point). The piecewise line is built by
+/// walking `WorkoutRepository.getNutritionTargetForDate` for
+/// every saved target change, so a save on day 10 produces a
+/// step at day 10 — historical actuals are never rewritten.
+class NutritionAdherenceTargetPoint {
+  final DateTime date;
+  final double calories;
+  final double protein;
+  final double carbs;
+  final double fat;
+
+  const NutritionAdherenceTargetPoint({
+    required this.date,
+    required this.calories,
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+  });
+}
+
+/// Companion to `StatsProgressData.nutritionTrend` for the
+/// NUTRITION card's target-line overlay. `actuals` re-uses
+/// the existing `NutritionTrendPoint` series (same
+/// per-day math, same skip-empty rule). `targetLine` is empty
+/// when no target has ever been saved — the screen omits the
+/// dashed target line in that case.
+class NutritionAdherence {
+  final List<NutritionTrendPoint> actuals;
+  final List<NutritionAdherenceTargetPoint> targetLine;
+
+  const NutritionAdherence({
+    required this.actuals,
+    required this.targetLine,
+  });
 }

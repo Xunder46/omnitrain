@@ -27,7 +27,7 @@ Services contain business logic that doesn't belong in state classes. They depen
 - Allow-list is the single source of truth — `buildMetadata` builds the return map from named args; any `extra` keys are silently dropped.
 - `sendDefaultPii: false` strips IP / device-id / request cookies at the SDK boundary.
 - `enableAutoSessionTracking = false`, `enableAutoNativeBreadcrumbs = false` block auto-breadcrumbs and session telemetry.
-- The pre-release gate (`scripts/pre_release_check.sh` §11k) re-asserts: Sentry in `pubspec.yaml`, `sentry_dart_plugin` in dev-deps, `bootstrap` actually called from `lib/main.dart`, gated on `kReleaseMode`, Android release minified with `:app:uploadSentryMapping` hook, iOS Release config keeping dSYMs.
+- The pre-release gate (`scripts/pre_release_check.sh`) re-asserts the Sentry wiring at archive time so a broken configuration cannot ship to the App Store / Play Store. The wiring the gate enforces and the tests that verify it: the `sentry_flutter` runtime dependency and `sentry_dart_plugin` symbol-upload dev-dependency are declared in `pubspec.yaml`; `bootstrap` is actually awaited from `lib/main.dart`; the debug-build guard (`kReleaseMode`) prevents debug builds from shipping telemetry; no `SENTRY_AUTH_TOKEN` (or any credential-shaped `--dart-define`) is compiled into the shipped Android binary; `SENTRY_PROJECT` exported in both the iOS and Android workflow jobs names the single `omnitrain` Sentry project; the iOS release artifact actually contains the DSN string (artifact inspection, not a workflow-text check); Android release minified with the `:app:uploadSentryMapping` hook; iOS Release config keeping dSYMs. The Android notification protections (`proguard-rules.pro` `-keep` for `com.dexterous.flutterlocalnotifications.**`, `keep.xml` raw-resource declarations) take effect in the produced `seeds.txt` / AAB / APK. Verified by `test/pre_release_gate_upload_destination_test.dart`, `test/pre_release_gate_ios_artifact_test.dart`, and `test/pre_release_gate_notification_and_build_test.dart`.
 
 ### `RoutineSessionService`
 
@@ -87,9 +87,9 @@ Groups flat observation lists by effort kind into structured per-set maps. Used 
 - `_resetTimerState`: removes key from `_inProgressKeys` (called after manual set log/finish flows).
 - `_handleEffortTimerExpired` (round flow): removes the current round key from `_inProgressKeys` before calling `completeRound`, so the next round is immediately startable after auto-expiry.
 
-**Auto-pause hooks** (in `workout_session_screen.dart`):
-- `_jumpToSet()` — checks if current set's timer is running (`_effortRunning[timerKey] == true`) and calls `_pauseEffortTimer` before navigating to a different set.
-- `_switchExercise()` — same auto-pause check before switching to a different exercise.
+**Navigation and running timers** (in `workout_session_screen.dart`):
+- `_previousSet()`, `_jumpToSet()`, and `_switchExercise()` do **not** pause a running timer. The periodic tick and the scheduled expiry notification stay live, and `_handleEffortTimerExpired` finishes the entry (and opens the next rest) regardless of which set the user is looking at.
+- These three sites used to call a `_pauseEffortTimer` helper. That helper is gone: pausing left the entry in a state with no Resume control while its key still held the in-progress lock, so the user could neither resume it nor start any other timer.
 
 ### `TimerAlertService`
 

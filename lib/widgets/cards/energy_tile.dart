@@ -1,12 +1,30 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/constants/tile_artwork_metrics.dart';
 
 /// Premium training category tile with energy core visualization
 /// Features biomechanical aesthetic with depth and subtle animations
 class EnergyTile extends StatefulWidget {
+  /// Accent fill opacity for primary (modality) tiles.
+  ///
+  /// The tile fill is the modality accent composited over the theme's
+  /// background gradient, so this value trades modality identity against
+  /// theme cohesion: lower lets the theme dominate, higher lets the accent
+  /// dominate. The legibility floor it must respect is pinned by
+  /// `palette_legibility_contract_test.dart`, which reads these constants
+  /// rather than restating them — tune here and the gate follows.
+  static const double primaryFillOpacity = 0.30;
+
+  /// Accent fill opacity for secondary tiles (Free, Routines), which sit
+  /// one tier quieter than the modality tiles.
+  static const double secondaryFillOpacity = 0.15;
+
   final String title;
   final IconData? icon;
-  final Widget? iconWidget;
+
+  /// Custom-drawn artwork, supplied as a builder so this tile — not the
+  /// caller — decides how large it renders. See [TileArtworkMetrics].
+  final TileArtworkBuilder? artworkBuilder;
   final Color accentColor;
   final VoidCallback onTap;
 
@@ -24,7 +42,7 @@ class EnergyTile extends StatefulWidget {
     super.key,
     required this.title,
     this.icon,
-    this.iconWidget,
+    this.artworkBuilder,
     required this.accentColor,
     required this.onTap,
     this.isSecondary = false,
@@ -54,13 +72,17 @@ class _EnergyTileState extends State<EnergyTile>
     );
     _pulse = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.1, end: 1.00)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween(
+          begin: 0.1,
+          end: 1.00,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 50,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.00, end: 0.1)
-            .chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween(
+          begin: 1.00,
+          end: 0.1,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
         weight: 50,
       ),
     ]).animate(_pulseController);
@@ -108,7 +130,9 @@ class _EnergyTileState extends State<EnergyTile>
   Widget _buildSurface() {
     final isActive = widget.isActive;
     final isSecondary = widget.isSecondary;
-    final fillOpacity = isSecondary ? 0.08 : 0.18;
+    final fillOpacity = isSecondary
+        ? EnergyTile.secondaryFillOpacity
+        : EnergyTile.primaryFillOpacity;
 
     final baseDecoration = BoxDecoration(
       borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
@@ -150,7 +174,6 @@ class _EnergyTileState extends State<EnergyTile>
         // bottom-inner-shadow strips inside the content (see _buildContent),
         // clipped to the rounded surface via Clip.hardEdge on the Stack.
         // Secondary tiles render with the base decoration only.
-        padding: const EdgeInsets.all(20),
         child: _buildContent(),
       ),
     );
@@ -158,7 +181,9 @@ class _EnergyTileState extends State<EnergyTile>
 
   Widget _buildContent() {
     final isSecondary = widget.isSecondary;
-    final iconSize = isSecondary ? 56.0 : 70.0;
+    // The per-tier artwork ceiling — the size on a tile with room to spare.
+    // The shared rule shrinks below it; nothing may exceed it.
+    final maxArtworkSize = isSecondary ? 56.0 : 70.0;
     final iconColor = isSecondary
         ? Colors.white.withOpacity(0.75)
         : OmniTheme.colors.textDominant;
@@ -167,137 +192,170 @@ class _EnergyTileState extends State<EnergyTile>
         : OmniTheme.colors.textDominant;
     final labelWeight = isSecondary ? FontWeight.w500 : FontWeight.w600;
 
+    final artworkRegionKey = ValueKey(
+      'energy_tile_artwork_region_${widget.title}',
+    );
+    final artworkKey = ValueKey('energy_tile_artwork_${widget.title}');
+    final labelKey = ValueKey('energy_tile_label_${widget.title}');
+    final statusKey = ValueKey('energy_tile_status_${widget.title}');
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Hide text if width is too small (less than 150 pixels)
-        final shouldShowText = constraints.maxWidth > 100;
+        // Every dimension below comes from the one shared sizing rule.
+        // This tile states its label style and its per-tier artwork
+        // ceiling; it does not restate the rule. See
+        // `lib/core/constants/tile_artwork_metrics.dart`.
+        final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+        final metrics = TileArtworkMetrics.resolve(
+          tileHeight: constraints.maxHeight,
+          maxArtworkSize: maxArtworkSize,
+          // 16pt from titleSmall, at the active text scale.
+          labelLineHeight: 16.0 * textScale,
+        );
 
-        return Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            // 1px top rim highlight — drawn first so content sits above.
-            if (!isSecondary)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 1,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                  ),
-                ),
-              ),
-            // 1px bottom inner shadow — sits at the very bottom edge, full
-            // width. Clipped to the rounded corners by Stack's Clip.hardEdge.
-            if (!isSecondary)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: 1,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.20),
-                  ),
-                ),
-              ),
-            // Pulsing "live" dot — only on active tiles. ~8pt diameter,
-            // top-right ~10pt inset. Dot only animates; the glow itself
-            // remains static. The dot is decorative (ExcludeSemantics) so
-            // it is not announced separately from the tile.
-            if (widget.isActive)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: ExcludeSemantics(
-                  child: AnimatedBuilder(
-                    animation: _pulse,
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _pulse.value,
-                        child: child,
-                      );
-                    },
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Color(0x4D000000), // black @ 30%
-                            blurRadius: 1,
-                            spreadRadius: 0,
-                          ),
-                        ],
-                      ),
+        final outerPadding = metrics.outerPadding;
+        final showArtwork = metrics.showArtwork;
+        final artworkHeight = metrics.artworkSize;
+        const artworkTopInset = TileArtworkMetrics.artworkTopInset;
+
+        // The label widget is shared between the two layouts.
+        final labelStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+          color: labelColor,
+          fontWeight: labelWeight,
+          letterSpacing: OmniTheme.titleLetterSpacing,
+          height: 1,
+        );
+        final label = Text(
+          widget.title,
+          key: labelKey,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.clip,
+          style: labelStyle,
+        );
+
+        // The artwork, wrapped with the artwork key so the test can locate
+        // its bounding box. Custom-drawn artwork is built at the resolved
+        // size exactly like a standard icon — the builder indirection is
+        // what keeps a caller from pinning a fixed size past the rule.
+        final artwork = widget.artworkBuilder != null
+            ? widget.artworkBuilder!(artworkHeight, iconColor)
+            : Icon(widget.icon, size: artworkHeight, color: iconColor);
+        final iconChild = KeyedSubtree(
+          key: artworkKey,
+          child: IconTheme(
+            data: IconThemeData(color: iconColor, size: artworkHeight),
+            child: artwork,
+          ),
+        );
+
+        // The artwork region has breathing room above the icon so it
+        // never collides with the active dot.
+        final artworkRegion = KeyedSubtree(
+          key: artworkRegionKey,
+          child: Padding(
+            padding: const EdgeInsets.only(top: artworkTopInset),
+            child: Center(child: iconChild),
+          ),
+        );
+
+        // The label padding keeps the 12/8 ratio (12 bottom, 8 top) so
+        // tall tiles render with the original spacing; cramped tiles
+        // shrink both sides proportionally. The split is owned by the
+        // shared rule.
+        final labelInLayout = Padding(
+          padding: EdgeInsets.only(
+            bottom: metrics.labelGapBottom,
+            top: metrics.labelGapTop,
+          ),
+          child: label,
+        );
+
+        final content = showArtwork
+            ? Column(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  Expanded(child: artworkRegion),
+                  labelInLayout,
+                ],
+              )
+            : Center(child: label);
+
+        return Padding(
+          padding: EdgeInsets.all(outerPadding),
+          child: Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              // 1px top rim highlight — drawn first so content sits above.
+              if (!isSecondary)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08),
                     ),
                   ),
                 ),
-              ),
-            // Content group: pin the icon in the upper third and the label
-            // baseline to a fixed offset from the bottom edge, so the
-            // label position does not float when the icon size changes
-            // (e.g. across primary vs. secondary tiers or with the active
-            // state). Uses `Positioned` inside the outer Stack instead of
-            // `Column + spaceBetween` so the bottom anchor is deterministic
-            // and independent of the icon's vertical extent.
-            Positioned.fill(
-              child: Column(
-                children: [
-                  // Upper region: pushes the icon into the upper third.
-                  // On active tiles, the dot occupies the top ~18pt, so
-                  // the upper region shrinks proportionally. `Expanded` is
-                  // used so the icon stays centered within the upper band
-                  // without leaking into the lower band.
-                  Expanded(
-                    flex: 3,
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        top: 15,
-                      ),
-                      child: Center(
-                        child: IconTheme(
-                          data: IconThemeData(
-                              color: iconColor, size: iconSize),
-                          child: widget.iconWidget ??
-                              Icon(widget.icon,
-                                  size: iconSize, color: iconColor),
+              // 1px bottom inner shadow — sits at the very bottom edge, full
+              // width. Clipped to the rounded corners by Stack's Clip.hardEdge.
+              if (!isSecondary)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.20),
+                    ),
+                  ),
+                ),
+              // Pulsing "live" dot — only on active tiles. ~8pt diameter,
+              // top-right ~10pt inset. Dot only animates; the glow itself
+              // remains static. The dot is decorative (ExcludeSemantics) so
+              // it is not announced separately from the tile.
+              if (widget.isActive)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: KeyedSubtree(
+                    key: statusKey,
+                    child: ExcludeSemantics(
+                      child: AnimatedBuilder(
+                        animation: _pulse,
+                        builder: (context, child) {
+                          return Opacity(opacity: _pulse.value, child: child);
+                        },
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Color(0x4D000000), // black @ 30%
+                                blurRadius: 1,
+                                spreadRadius: 0,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                  if (shouldShowText) ...[
-                    //const SizedBox(height: 8),
-                    Padding(
-                      // Reserve room at the bottom for the 1px shadow
-                      // strip on primary tiles and consistent label
-                      // position across tiers.
-                      padding: const EdgeInsets.only(bottom: 12, top: 8),
-                      child: Text(
-                        widget.title,
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.clip,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleSmall
-                            ?.copyWith(
-                              color: labelColor,
-                              fontWeight: labelWeight,
-                              letterSpacing: OmniTheme.titleLetterSpacing,
-                              height: 1,
-                            ),
-                      ),
-                    ),
-                  ] else
-                    const Spacer(flex: 1),
-                ],
-              ),
-            ),
-          ],
+                ),
+              // Content group: when the artwork fits the budget, render
+              // the artwork at the top and the label at the bottom (the
+              // original anchored layout).  When the budget is too tight,
+              // omit the artwork and centre the label — the label is the
+              // identifying content, the artwork is decorative.
+              Positioned.fill(child: content),
+            ],
+          ),
         );
       },
     );

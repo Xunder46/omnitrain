@@ -5,7 +5,7 @@
 OmniTrain uses a repository-first persistence architecture:
 
 - Runtime app persistence: `HiveWorkoutRepository` (web and current cross-platform runtime)
-- SQL schema assets + migrations: maintained in `scripts/` and `lib/data/datasources/` for SQLite parity work
+- SQL schema assets: maintained in `scripts/` for SQLite parity work
 - Single abstraction contract: `WorkoutRepository`
 
 This document explains how to validate DB assets and how profile-related persistence is represented in both Hive runtime and SQL assets.
@@ -21,28 +21,6 @@ This document explains how to validate DB assets and how profile-related persist
 - `scripts/sqlite_schema.sql`
 - `scripts/sqlite_seed.sql`
 - `test/db_seed_test.dart`
-
----
-
-## Setup And Validation
-
-1. Install dependencies.
-
-```bash
-flutter pub get
-```
-
-2. Validate schema + seed assets in deterministic test mode.
-
-```bash
-flutter test test/db_seed_test.dart
-```
-
-3. Validate profile repository behavior.
-
-```bash
-flutter test test/profile_data_layer_test.dart
-```
 
 ---
 
@@ -175,25 +153,9 @@ On startup, `HiveWorkoutRepository.initialize()` runs the service:
 4. Records the most recent `from → to` transition in the meta box for
    diagnostics.
 
-The shim's legacy-marker mapping (highest legacy marker wins, because
-the legacy code always ran them in order):
-
-| Legacy marker | Implied `data_version` |
-|---|---|
-| (none) | 1 |
-| `seed_loaded` | 2 |
-| `seed_units_migrated_v1` | 3 |
-| `exercise_round_defaults_migrated_v1` | 4 |
-| `session_feeling_fields_migrated_v1` | 5 |
-| `calendar_data_seeded_v1` | 6 |
-| `calendar_seed_purged_v1` | 7 |
-| `exercise_content_fields_migrated_v1` | 8 |
-| `timed_extra_weight_migrated_v1` | 9 |
-| `exercise_library_refreshed_v5` | 10 |
-| `nutrition_targets_daily_migrated_v1` | 11 |
-| `food_catalog_seeded_v1` | 12 |
-| `default_food_groups_seeded_v1` | 13 |
-| `food_category_groupid_migrated_v1` | 14 (`currentDataVersion`) |
+The shim maps the highest legacy marker present to its implied version, because the legacy code
+always ran the steps in order. The mapping lives in
+[`lib/core/constants/data_version.dart`](../../../lib/core/constants/data_version.dart).
 
 Repository methods used by the service:
 
@@ -347,8 +309,7 @@ layer resolves it to a `groupId` FK at load time.
 
 Pre-existing installs may have catalog rows where `notes` carries the
 category label and `group_id` is `NULL`. The Hive one-shot migration
-`food_category_groupid_migrated_v1` (see the Hive Migration Keys
-section above) backfills the `group_id` FK and clears `notes`. The
+`food_category_groupid_migrated_v1` backfills the `group_id` FK and clears `notes`. The
 equivalent SQL block for the future `SqliteWorkoutRepository`
 importer is documented in `scripts/sqlite_schema.sql` under
 "FOOD CATEGORY → GROUP_ID MIGRATION (June 2026)".
@@ -415,7 +376,8 @@ the existing `updateFood`).
 | `archiveFood(id)` | Soft-deletes a library food (sets `isArchived = true`). |
 | `getCatalogFoods({includeArchived})` | Returns catalog foods (`isCatalog == true`). |
 | `getCatalogFoodById(id)` | Returns a catalog food by ID. |
-| `addCatalogFoodToLibrary(catalogFoodId)` | Copies a catalog food to the library with a new ID and `isCatalog = false`. The original catalog food remains unchanged. || `reassignFoodsToGroup(foodIds, targetGroupId)` | Moves a list of foods to a new group (or `null` for "Ungrouped") in place. Used by the Groups tab when deleting a non-empty group; foods are never deleted. Catalog foods are excluded. Empty list is a no-op. || `getConsumedFoodsForDate(dateMs)` | Returns consumed food entries for a specific day (matching `dateMs`). |
+| `addCatalogFoodToLibrary(catalogFoodId)` | Copies a catalog food to the library with a new ID and `isCatalog = false`. The original catalog food remains unchanged. || `reassignFoodsToGroup(foodIds, targetGroupId)` | Moves a list of library foods to a new group (or `null` for "Ungrouped") in place. Used by the Groups tab when deleting a non-empty group; foods are never deleted. Catalog foods are excluded. Empty list is a no-op. |
+| `reassignCatalogFoodsToGroup(catalogFoodIds, targetGroupId)` | Parallel to `reassignFoodsToGroup` but targets the catalog box. Used by `FoodLibraryState.deleteFoodGroupReassigningFoods` so user-created catalog foods (those created via **+ New Item**) are moved off a deleted category. Bundled catalog foods are never passed here — the bundled-food guard at the state layer rejects them. Empty list is a no-op. || `getConsumedFoodsForDate(dateMs)` | Returns consumed food entries for a specific day (matching `dateMs`). |
 | `createConsumedFood(entry)` | Creates a new consumed food log entry. |
 | `updateConsumedFood(entry)` | Updates an existing consumed food entry by `id`. Throws `StateError` if the id is not present. Used by the day-uniqueness update path in `NutritionState.logConsumedFoodAt`. |
 | `getConsumedFoodById(id)` | Returns a single consumed food entry by id, or `null` if not found. Used as a cache-miss fallback by `NutritionState.findLoggedTodayForFood`. |
@@ -659,18 +621,6 @@ WorkoutRepository (injected into WorkoutState)
 ```
 
 All repository reads and writes go through the same `WorkoutRepository` interface. The concrete implementation (`HiveWorkoutRepository` or future `SqliteWorkoutRepository`) is injected once at app startup and passed to each sub-holder.
-
-### SyncService Integration Surface (forward-looking)
-
-When cloud sync is added, `SyncService` will be injected alongside `WorkoutRepository` at each sub-holder construction. The pattern is:
-
-```dart
-// After each successful repository write in SessionCore:
-await _repository.createSession(session);
-_syncService?.queueCreate(SyncEntity.session, session);
-```
-
-The same seam applies in `TimerManager` (for round/timed instance writes) and `ExerciseLibrary` (for exercise and note writes). No repository interface changes are required — `SyncService` is an additive injection.
 
 ---
 

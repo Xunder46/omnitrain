@@ -58,54 +58,20 @@ behavior; the design system is intentionally phone-shaped.
 
 **File**: `lib/widgets/layout/omni_back_header.dart`
 
-Standardized back-and-title header used by all secondary screens. Implements `PreferredSizeWidget` so it slots directly into `Scaffold.appBar`. **Screen-level chrome** — lives above the body and is distinct from `OmniCardHeader` (per-card title, see below).
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `title` | `String` | required | Primary header text |
-| `subtitle` | `String?` | `null` | Optional second line below the title in `bodySmall` + `OmniTheme.colors.textSecondary` |
-| `onBack` | `VoidCallback?` | `null` | Called on back arrow tap; defaults to `Navigator.of(context).pop()` |
-| `actions` | `List<Widget>?` | `null` | Trailing widgets forwarded to `AppBar.actions` |
-
-**Behavior**:
-- `preferredSize` is always `Size.fromHeight(kToolbarHeight)` (56 px)
-- `backgroundColor` and `surfaceTintColor` are `Colors.transparent`, `elevation: 0` — gradient background shows through
-- Back arrow color: `OmniTheme.colors.textDominant` (never inherits from theme's `foregroundColor`)
-- `titleTextStyle`: `titleLarge` + `FontWeight.w600` + `OmniTheme.titleLetterSpacing` (0.4) + `OmniTheme.colors.textDominant`
-- Screens must set `extendBodyBehindAppBar: true` on their `Scaffold` for the gradient to render behind the transparent header
-
-**Usage notes**:
-- Calendar uses `actions: [FilledButton('+')]` for the Periods shortcut
-- `SessionSummaryScreen` uses `actions: [PopupMenuButton]` for the Edit/Save/Discard overflow
-- `SessionOverviewScreen` and `RoutineSetupScreen` use `subtitle` for contextual secondary text
+Shared back-navigation header. Standard toolbar height, transparent so the route gradient shows
+through. Screens supply a title and optional actions.
 
 ### `OmniCardHeader`
 
 **File**: `lib/widgets/layout/omni_card_header.dart`
 
-Canonical per-card header rendered above an outlined card. Single source of truth for section/card header typography across the app. **Card-level chrome** — distinct from `OmniBackHeader` (screen-level, above the body).
+The single source of truth for section eyebrows and per-card titles.
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `title` | `String` | required | Header title (left-aligned) |
-| `actions` | `List<Widget>?` | `null` | Trailing widgets (icon buttons, controls) rendered in a right-aligned cluster. `null` or empty list renders no cluster. |
-| `padding` | `EdgeInsetsGeometry?` | `EdgeInsets.fromLTRB(0, 0, 0, 8)` | Padding around the row. The default leaves an 8 dp gap below the row so the header sits cleanly above the card beneath it. |
-
-**Behavior**:
-- Title typography is the canonical D-1 quartet: `theme.textTheme.labelSmall` + `FontWeight.w600` + `letterSpacing: 2.0` + `color: OmniTheme.colors.textMuted`. The widget enforces this — callers cannot override the style.
-- Title has `maxLines: 1, overflow: TextOverflow.ellipsis` (Phase 2.2 / A8) so long titles truncate gracefully rather than wrap.
-- Layout: `Row(MainAxisAlignment.spaceBetween)` with the title inside `Expanded` (so it shrinks/truncates when actions take space) and the actions cluster as a `Row(mainAxisSize: MainAxisSize.min, children: actions)`. Keys: `Key('omniCardHeader_title')` on the title `Text`; `Key('omniCardHeader_actions')` on the actions cluster `Row`.
-- Presentation-only: no repository or service access, no business logic.
-- Use cases (every section/card header in the app routes through this widget):
-  - **Settings screen** (Phase 1): `PREFERENCES`, `SOUNDS & ALERTS`, `WORKOUT`, `APPEARANCE`.
-  - **Session Summary screen** (Phase 2 / 2.1 / 2.2): the date header above the combined session info card (with the modality chip in actions), the `SESSION NOTE` header above the note card, and the month label header above the calendar card (with the `Open Calendar` button in actions).
-  - **Daily Nutrition screen** (Phase 3): `Today` header (with the `nutrition_target_button` `OutlinedButton.icon` in actions — PR 3 / S-002), `Foods I Eat` header (with the `food_library_manage_pencil` `IconButton` in actions).
-  - **Profile screen** (Phase 4): one `OmniCardHeader` per measurement definition (label + the `+` add `OutlinedButton` in actions).
-  - **Stats screen** (Phase 5): `ALL TIME`, `STRENGTH` / `CARDIO` (with the window chip in actions), `NUTRITION`.
-
-**Forbidden**:
-- Raw `Text` widgets above outlined cards are **not permitted** for section/card headers. Any pre-existing per-screen `_SectionHeader` / `_SectionLabel` / in-card `Text(definition.label)` widget has been migrated to this primitive (see `.github/agents/plans/unified-card-and-header-plan.md`).
-- Hard-coded overrides of the title style — the typography is canonical and enforced by the widget.
+**The widget enforces the typography contract; callers cannot override it.** This is the whole
+reason it exists — before it, every screen re-declared its own header style and they drifted. Raw
+`Text` widgets above outlined cards are not permitted (see
+[Global Conventions](../global_conventions.md)). An optional actions slot hosts trailing controls
+so callers never need to rebuild the row.
 
 ### `OmniSurface`
 
@@ -127,27 +93,14 @@ Base container for all cards and panels. Dark navy with border + shadow. **Singl
 
 **File**: `lib/widgets/layout/omni_bottom_cta.dart`
 
-Shared full-width bottom call-to-action used by screens with a single persistent footer action. **Single source of truth for primary bottom CTA placement and width** — see `.github/agents/plans/primary-bottom-cta-anchor-width-plan.md`.
+The shared primary bottom action. Every screen with a primary bottom action must route through it,
+so the button's width and vertical anchor are identical everywhere and the user learns one
+location for "the main action". Handles safe-area insets so the button clears the iOS home
+indicator and Android navigation bar uniformly. Geometry comes from `OmniTheme` tokens — see
+[Design System](../design_system.md) for the rule and its forbidden patterns.
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `label` | `String` | required | Button text; a leading `+` triggers the shared add affordance |
-| `onPressed` | `VoidCallback?` | required | Tap handler; `null` disables the CTA |
-| `isDestructive` | `bool` | `false` | Uses the active theme’s destructive/error colors |
-| `buttonKey` | `Key?` | `null` | Optional `Key` forwarded to the rendered `FilledButton`. Used by host screens that need a stable test target (e.g. the `food_form_save` key on the food library host screens) |
-
-**Behavior**:
-- **Height**: `OmniTheme.buttonPrimaryHeight` (56 dp).
-- **Width**: `double.infinity` inset by `OmniTheme.bottomCTAHorizontalPadding` (16) on each side. The button's left/right edges sit at exactly the same horizontal margin on every screen.
-- **Corner radius**: `OmniTheme.buttonBorderRadius` (12 dp).
-- **Vertical anchor**: `SafeArea(top: false)` (bottom on by default) plus `OmniTheme.bottomCTAVerticalBottomPadding` (16). The button clears the device home indicator (iOS) and gesture / 3-button nav bar (Android) uniformly.
-- **Top padding**: `OmniTheme.bottomCTAVerticalTopPadding` (24) — the gap between content above and the CTA so the gradient fade reads as a deliberate break.
-- **Footer treatment**: theme-reactive fade gradient using `colorScheme.surface` so the CTA lifts above scrollable content.
-- Prevents per-screen CTA styling drift by centralizing footer layout, colors, and safe-area handling.
-
-**Call-site contract**:
-- All primary bottom CTAs use this widget. Inline `Spacer() + SizedBox + FilledButton` is **not** permitted at the bottom of a screen — that pattern has been removed in favour of `Scaffold.bottomNavigationBar: OmniBottomCTA(...)`.
-- Form bodies that need clearance for the bottom CTA use `OmniTheme.formBottomCTAClearance` (112) as the scroll view's bottom padding.
+Hosts that need a stable test target forward a `Key` to the rendered button; the shared geometry is
+unaffected.
 
 ### `NoiseOverlayPainter`
 

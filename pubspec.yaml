@@ -63,9 +63,17 @@ dev_dependencies:
     sdk: flutter
   sqflite_common_ffi: ^2.4.0
   flutter_launcher_icons: ^0.13.1
-  # Build-time hook that uploads iOS dSYMs and Android ProGuard mappings
-  # to Sentry. See `.github/agents/docs/` and the config block at the
-  # bottom of this file. Documented in the crash-reporting plan.
+  # CLI that uploads debug symbols (iOS dSYMs, Android/native .so symbols,
+  # Dart symbols) to Sentry. It is NOT a Gradle plugin and NOT an Xcode
+  # build phase — it is run explicitly after the build via
+  # `dart run sentry_dart_plugin`. See the `sentry:` config block at the
+  # bottom of this file and the release workflow.
+  #
+  # Not covered by this tool: Android ProGuard/R8 `mapping.txt` upload,
+  # which needs the `io.sentry.android.gradle` plugin. Until that is
+  # applied, JVM stack traces from the minified Android release arrive
+  # obfuscated. Dart-level traces (the large majority of Flutter crashes)
+  # are unaffected.
   sentry_dart_plugin: ^2.0.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
@@ -90,6 +98,7 @@ flutter:
   assets:
     - assets/data/food_catalog.json
     - assets/icon/
+    - assets/images/
     - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
@@ -132,40 +141,60 @@ flutter_launcher_icons:
   min_sdk_android: 26
 
 # Sentry symbol-upload config. The dev_dependency `sentry_dart_plugin`
-# above reads this block at build time. The two tokens (auth_token and
-# org/project) are intentionally env-driven so the same pubspec.yaml
-# works for local builds (where the token is unset and the plugin is a
-# no-op) and for CI release builds. `release` and `debug` blocks let
-# the plugin upload on archive builds only.
+# above reads this block at build time. The three upload-side values
+# (auth_token, org, project) are intentionally env-driven so the same
+# pubspec.yaml works for local builds (where the token is unset and
+# the plugin is a no-op) and for CI release builds.
+#
+# These three values are build-machine ONLY. They must be exported
+# in the release workflow's `env:` block (where the Sentry Android
+# Gradle plugin and the sentry_dart_plugin iOS build phase can read
+# them) and must NEVER be passed to `flutter build` as a
+# `--dart-define`. Passing them as `--dart-define` compiles them
+# into the shipped application binary, where they are extractable
+# from any published artifact. The pre-release gate enforces this;
+# see `scripts/pre_release_check.sh` §11l, §11m.
 #
 # Set the following in your release environment (`.xcode.env`,
 # `android/local.properties`, or your CI secret store):
 #   SENTRY_AUTH_TOKEN=<project token>
 #   SENTRY_ORG=<your-sentry-org-slug>
-#   SENTRY_PROJECT=omnitrain-ios   (and ...-android for Android)
-sentry_dart_plugin:
+#   SENTRY_PROJECT=omnitrain
+#
+# Both iOS dSYMs and Android ProGuard mappings upload to the single
+# `omnitrain` Sentry project. Per-platform destinations
+# (`omnitrain-ios` / `omnitrain-android`) do not exist and are
+# rejected by the pre-release gate (§11n / §11o).
+#
+# The only Sentry value the application itself reads is the DSN, via
+# `--dart-define=SENTRY_DSN=...` (consumed at runtime by
+# `lib/main.dart` via `String.fromEnvironment('SENTRY_DSN', ...)`).
+# The DSN is a public endpoint URL, not a credential.
+# NOTE: the top-level key MUST be `sentry:`. The plugin reads
+# `pubspec['sentry']` (see `sentry_dart_plugin/lib/src/utils/config-reader/
+# config_reader.dart`). A block keyed `sentry_dart_plugin:` is silently
+# ignored, which is how this config previously appeared correct while
+# uploading nothing.
+#
+# Only keys the plugin actually understands may appear here. Unknown keys
+# are dropped without warning, so `symbols_paths` (the real key is the
+# singular `symbols_path`), `includes`, `excludes`, `build_mode`, and
+# `buildscripts` are NOT valid and were removed.
+#
+# `sentry_dart_plugin` is a standalone Dart CLI, not a Gradle plugin and
+# not an Xcode build phase. It must be invoked explicitly AFTER the build
+# produces its symbols:
+#
+#     dart run sentry_dart_plugin
+#
+# The release workflow does exactly that in both jobs — see
+# `.github/workflows/release.yml`.
+sentry:
+  upload_debug_symbols: true
   upload_sources: true
-  upload_native_symbols: true
-  symbols_paths:
-    - build/symbols
-    - ios/Runner.xcworkspace
-  includes:
-    - build/**
-    - Classes/**
-    - Packages/**
-    - ios/**
-    - lib/**
-  excludes:
-    - "**/*.symbols"
-    - "**/*.sym"
-    - "**/*.map"
-    - "**/Pods/**"
-    - "**/.dart_tool/**"
   url: https://sentry.io/
   wait_for_processing: false
-  build_mode: release
-  buildscripts:
-    - name: OmniTrain_iOS_dSYM
-    - name: OmniTrain_Android_Mapping
-      task: :app:uploadSentryMapping
-      enabled: true
+  # `project`, `org`, and `auth_token` are intentionally absent: the
+  # plugin reads SENTRY_PROJECT / SENTRY_ORG / SENTRY_AUTH_TOKEN from the
+  # environment. That keeps the token out of the repo and lets a local
+  # build (where the vars are unset) no-op instead of failing.

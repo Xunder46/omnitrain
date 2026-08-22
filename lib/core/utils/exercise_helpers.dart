@@ -8,6 +8,24 @@ const Object _exerciseCopyWithUnset = Object();
 
 /// Extension methods for Exercise - encapsulates capability checking logic
 extension ExerciseCapabilities on Exercise {
+  /// Identity contract for user-created (custom) exercises.
+  ///
+  /// PR 7 establishes this as the single canonical marker used by every
+  /// surface that needs to highlight user-owned exercises (picker, details
+  /// screen, future PR 8 library). The contract is intentionally narrow:
+  ///
+  /// - `ownerUserId != null` ⇒ user-created / custom
+  /// - `ownerUserId == null` ⇒ bundled / catalog
+  ///
+  /// Today every code path that creates a custom exercise stamps the
+  /// hard-coded value `'user-1'` (see
+  /// `lib/state/workout/exercise_library.dart` -> `createExercise` and the
+  /// corresponding seed-time callers), and every bundled row in
+  /// `lib/mock/seed_data.dart` leaves the field null. PR 8 may revisit the
+  /// value to a real per-user id, but the *nullability* distinction is the
+  /// contract and must not change without a data migration.
+  bool get isCustomExercise => ownerUserId != null;
+
   /// Check if exercise supports a specific capability
   bool supports(String capability) => capabilities.contains(capability);
 

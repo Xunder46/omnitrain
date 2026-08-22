@@ -12,9 +12,10 @@ handoffs:
       phase's Done Criteria commands until green. If the plan doesn't cover
       a decision, choose the option most consistent with the Ledger and
       record it in ## Assumption Log — do not stop. Update Progress before
-      finishing. BOTH environments always: HiveWorkoutRepository (web) and
-      the SQLite schema narrative (future native); MockWorkoutRepository
-      mirrors Hive output exactly.
+      finishing. Both repositories always: `HiveWorkoutRepository` (runtime,
+      every platform) and `MockWorkoutRepository` (tests/dev), which must
+      mirror Hive output exactly. Keep `scripts/sqlite_schema.sql` in step
+      with the models — it is the data-model contract, not a runtime.
   - label: Hand off to Developer
     agent: developer
     prompt: |
@@ -27,7 +28,7 @@ handoffs:
       a decision, choose the option most consistent with the Ledger and
       record it in ## Assumption Log — do not stop. Update Progress before
       finishing. Repository interfaces only — never direct storage access;
-      code must work on web (Hive) and future native (SQLite).
+      code must stay environment-safe for web and native.
 ---
 
 # Conductor Agent (V2)
@@ -196,11 +197,13 @@ Conductor marks each RATIFIED (promote to D-x) or REVERT (remediation).>
 
 ## Project Specifics
 
-- **Dual environment parity** is a standing invariant in every plan:
-  HiveWorkoutRepository (web, current) and SqliteWorkoutRepository
-  (native, future) behind `WorkoutRepository`; MockWorkoutRepository must
-  mirror Hive-path output value-for-value; SQLite schema narrative
-  (`scripts/sqlite_schema.sql`) updated whenever Hive behavior changes.
+- **Repository parity** is a standing invariant in every plan:
+  `HiveWorkoutRepository` (the runtime on every platform, web included) and
+  `MockWorkoutRepository` (in-memory, tests and dev) both sit behind
+  `WorkoutRepository`, and Mock must mirror Hive-path output value-for-value.
+  The SQLite runtime is retired; `scripts/sqlite_schema.sql` is the canonical
+  data-model contract (executed by `test/db_seed_test.dart`) and is updated
+  whenever the models change.
 - **Route by phase**: schema/models/repositories/migrations/seed → @dba;
   state/screens/widgets/navigation → @developer.
 - **Docs index**: `docs/README.md`. Modality work always reads

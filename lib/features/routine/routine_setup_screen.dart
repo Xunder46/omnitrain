@@ -15,6 +15,8 @@ import '../../core/utils/unit_formatter.dart';
 import '../../data/models/models.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../widgets/session/duration_entry_dialog.dart';
+import 'my_routines_screen.dart' show showDeleteRoutineDialog;
+import '../../widgets/dialogs/confirmation_dialog.dart' show ConfirmationDialog, UnsavedChangesAction;
 
 /// Screen for creating or editing a workout routine (template)
 class RoutineSetupScreen extends StatefulWidget {
@@ -168,9 +170,22 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
       extendBody: true,
       extendBodyBehindAppBar: true,
       appBar: OmniBackHeader(
-        title: 'Exercises',
+        title: widget.templateId != null ? 'Edit Routine' : 'Create Routine',
         subtitle: '${efforts.length} exercise${efforts.length != 1 ? 's' : ''}',
         onBack: () => _discardAndPop(),
+        actions: widget.templateId != null
+            ? [
+                IconButton(
+                  key: const Key('routine-delete-action'),
+                  tooltip: 'Delete routine',
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: theme.colorScheme.error,
+                  ),
+                  onPressed: _deleteCurrentRoutine,
+                ),
+              ]
+            : null,
       ),
       body: Stack(
         children: [
@@ -734,57 +749,31 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     }
   }
 
-  void _removeExercise(String templateEffortId) {
-    showDialog(
+  Future<void> _removeExercise(String templateEffortId) async {
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      builder: (context) {
-        final theme = Theme.of(context);
-        final utilityButtonShape = RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
-        );
-        return AlertDialog(
-          backgroundColor: theme.colorScheme.surface,
-          title: Text(
-            'Remove Exercise?',
-            style: TextStyle(color: theme.colorScheme.onSurface),
-          ),
-          content: Text(
-            'This exercise will be removed from the routine.',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.75),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              style: TextButton.styleFrom(shape: utilityButtonShape),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                widget.routineState.removeExerciseFromRoutine(templateEffortId);
-                if (!mounted) return;
-                final remaining = widget.routineState.currentEfforts.length;
-                setState(() {
-                  if (remaining == 0) {
-                    _showListView = true;
-                    _currentExerciseIndex = 0;
-                  } else if (_currentExerciseIndex >= remaining) {
-                    _currentExerciseIndex = remaining - 1;
-                  }
-                });
-              },
-              style: TextButton.styleFrom(shape: utilityButtonShape),
-              child: Text(
-                'Remove',
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ),
-          ],
-        );
-      },
+      title: 'Remove Exercise?',
+      body: const Text('This exercise will be removed from the routine.'),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Remove',
+      dismissKey: const Key('routine-setup-remove-exercise-cancel'),
+      confirmKey: const Key('routine-setup-remove-exercise-confirm'),
+      isDestructive: true,
     );
+
+    if (confirmed) {
+      widget.routineState.removeExerciseFromRoutine(templateEffortId);
+      if (!mounted) return;
+      final remaining = widget.routineState.currentEfforts.length;
+      setState(() {
+        if (remaining == 0) {
+          _showListView = true;
+          _currentExerciseIndex = 0;
+        } else if (_currentExerciseIndex >= remaining) {
+          _currentExerciseIndex = remaining - 1;
+        }
+      });
+    }
   }
 
   void _openDetail(int index) {
@@ -897,25 +886,16 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
   Future<void> _confirmDeleteSegment(TemplateSegment segment) async {
     final confirmed = await showDialog<bool>(
       context: context,
+      barrierDismissible: true,
       builder: (context) {
-        final utilityButtonShape = RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
-        );
-        return AlertDialog(
-          title: const Text('Delete Block?'),
-          content: const Text('This block and its exercises will be removed.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              style: TextButton.styleFrom(shape: utilityButtonShape),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(shape: utilityButtonShape),
-              child: const Text('Delete'),
-            ),
-          ],
+        return ConfirmationDialog.twoChoice(
+          title: 'Delete Block?',
+          body: const Text('This block and its exercises will be removed.'),
+          dismissLabel: 'Cancel',
+          confirmLabel: 'Delete',
+          dismissKey: const Key('routine-delete-block-cancel'),
+          confirmKey: const Key('routine-delete-block-confirm'),
+          isDestructive: true,
         );
       },
     );
@@ -989,6 +969,40 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     Navigator.pop(context);
   }
 
+  /// PR 6 / S-002 — header delete action. Shows the destructive delete
+  /// dialog naming the routine and states permanence; on confirm, removes
+  /// the template (and any planned-session rows) while leaving completed
+  /// sessions, history, stats, and PRs untouched. The action is gated to
+  /// routines loaded by id (it is not shown for new unsaved drafts).
+  Future<void> _deleteCurrentRoutine() async {
+    final templateId = widget.templateId;
+    if (templateId == null) return;
+
+    final routineName = widget.routineState.currentTemplate?.name ??
+        _nameController.text.trim();
+
+    final confirmed = await showDeleteRoutineDialog(
+      context,
+      routineState: widget.routineState,
+      templateId: templateId,
+      routineName: routineName,
+    );
+    if (!mounted || !confirmed) return;
+
+    await widget.routineState.deleteRoutine(templateId);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Deleted "$routineName"')),
+    );
+
+    // Cancel any pending autosave draft for this routine and pop without
+    // re-prompting — the routine is gone, so the dirty baseline is moot.
+    widget.routineState.cancelPendingAutosave();
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
   /// Single exit path for the Routine editor. Used by header back, system
   /// back, and the bottom Cancel button so every exit surface shows the
   /// same confirmation. Returns silently when the user has nothing to
@@ -1007,12 +1021,12 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     if (!mounted) return;
 
     switch (action) {
-      case _UnsavedChangesAction.discard:
+      case UnsavedChangesAction.discard:
         // Discard: tear down the in-flight draft and pop.
         await widget.routineState.discardCurrentRoutineAndClearDraft();
         if (!mounted) return;
         Navigator.of(context).pop();
-      case _UnsavedChangesAction.save:
+      case UnsavedChangesAction.save:
         if (_nameController.text.trim().isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Please enter a routine name')),
@@ -1025,76 +1039,21 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
           const SnackBar(content: Text('Routine saved successfully')),
         );
         Navigator.of(context).pop();
-      case _UnsavedChangesAction.keepEditing:
+      case UnsavedChangesAction.keepEditing:
       case null:
         // Stay on the screen.
         break;
     }
   }
 
-  Future<_UnsavedChangesAction?> _showUnsavedChangesDialog() {
-    final theme = Theme.of(context);
-    return showDialog<_UnsavedChangesAction>(
+  Future<UnsavedChangesAction> _showUnsavedChangesDialog() {
+    return ConfirmationDialog.showUnsavedChanges(
       context: context,
-      builder: (dialogContext) {
-        final utilityButtonShape = RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
-        );
-        return AlertDialog(
-          backgroundColor: theme.colorScheme.surface,
-          title: Row(
-            children: [
-              const Expanded(child: Text('Unsaved changes')),
-              IconButton(
-                onPressed: () =>
-                    Navigator.pop(dialogContext, _UnsavedChangesAction.keepEditing),
-                tooltip: 'Keep editing',
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-          content: const Text(
-            'You have unsaved edits. Save them or discard to return to the routines list.',
-          ),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          actions: [
-            SizedBox(
-              width: double.infinity,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Tooltip(
-                      message: 'Discard changes',
-                      child: OutlinedButton(
-                        onPressed: () =>
-                            Navigator.pop(dialogContext, _UnsavedChangesAction.discard),
-                        style: ButtonStyle(
-                          shape: WidgetStateProperty.all(utilityButtonShape),
-                        ),
-                        child: const Text('Discard'),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Tooltip(
-                      message: 'Save changes',
-                      child: FilledButton(
-                        onPressed: () =>
-                            Navigator.pop(dialogContext, _UnsavedChangesAction.save),
-                        style: ButtonStyle(
-                          shape: WidgetStateProperty.all(utilityButtonShape),
-                        ),
-                        child: const Text('Save'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
+      title: 'Unsaved changes',
+      body: 'You have unsaved edits. Save them or discard to return to the routines list.',
+      keepEditingKey: const Key('routine-edit-unsaved-keep'),
+      discardKey: const Key('routine-edit-unsaved-discard'),
+      saveKey: const Key('routine-edit-unsaved-save'),
     );
   }
 
@@ -1121,11 +1080,6 @@ class _RoutineSetupScreenState extends State<RoutineSetupScreen> {
     });
   }
 }
-
-/// Action returned by the routine editor's unsaved-changes dialog. Mirrors
-/// the completed-session edit confirmation vocabulary so the two flows
-/// share the same wording and ordering.
-enum _UnsavedChangesAction { save, discard, keepEditing }
 
 /// Card displaying an exercise in the routine setup
 class ExerciseCard extends StatelessWidget {

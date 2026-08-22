@@ -99,7 +99,10 @@ void main() {
         expect(colors.primary, isNot(colors.textDominant));
         expect(colors.primary, isNot(colors.textSecondary));
 
-        const neutralSaturationThreshold = 0.10;
+        // D-16: Raise saturation guard from 0.10 to 0.15 to handle Void Pulse near-grey
+        // secondary text (saturation 0.114, hue quantization noise ±3.3°).
+        // All six themes now route to saturation branch decisively (accent 1.000 vs text ~0.11).
+        const neutralSaturationThreshold = 0.15;
         const minimumHueDelta = 10.0;
 
         if (dominantHsl.saturation < neutralSaturationThreshold) {

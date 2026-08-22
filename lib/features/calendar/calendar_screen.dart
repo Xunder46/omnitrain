@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
@@ -140,16 +142,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     child: Center(child: CircularProgressIndicator()),
                   )
                 else ...[
-                  _MonthGrid(
-                    year: widget.calendarState.year,
-                    month: widget.calendarState.month,
-                    entriesByDay: widget.calendarState.entriesByDay,
-                    periods: widget.calendarState.periods,
-                    startOfWeek: _startOfWeek,
-                    onDayTap: (date) => _onDayTap(context, date),
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: _MonthGrid(
+                      year: widget.calendarState.year,
+                      month: widget.calendarState.month,
+                      entriesByDay: widget.calendarState.entriesByDay,
+                      periods: widget.calendarState.periods,
+                      startOfWeek: _startOfWeek,
+                      onDayTap: (date) => _onDayTap(context, date),
+                    ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    // Bottom inset keeps the modality legend off the screen
+                    // edge on short phones, where the grid compresses to make
+                    // room for it and the strip would otherwise sit flush.
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                     child: _MonthlyStatsStrip(
                       completedSessions:
                           widget.calendarState.completedSessionCount,
@@ -333,6 +341,19 @@ class _MonthGrid extends StatelessWidget {
     required this.onDayTap,
   });
 
+  /// Floor for a day cell's height. Below this the day number and a single
+  /// row of session dots stop fitting, so the grid scrolls instead of
+  /// squeezing further.
+  static const double _minRowHeight = 52;
+
+  /// Maximum aspect ratio for grid cells (height:width). Prevents cells from
+  /// stretching arbitrarily tall on tall screens with few rows.
+  static const double _maxAspectRatio = 0.7;
+
+  static const double _rowSpacing = 2;
+  static const double _columnSpacing = 2;
+  static const double _horizontalPadding = 4;
+
   @override
   Widget build(BuildContext context) {
     final grid = OmniDateUtils.buildMonthGrid(
@@ -340,32 +361,85 @@ class _MonthGrid extends StatelessWidget {
       month,
       startOfWeek: startOfWeek,
     );
+    final rowCount = (grid.length / 7).ceil();
 
-    return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 7,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
-        childAspectRatio: 0.7,
-      ),
-      itemCount: grid.length,
-      itemBuilder: (context, index) {
-        final date = grid[index];
-        if (date == null) return const SizedBox.shrink();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Cell height is driven by the height actually available, not by the
+        // viewport's width. A month needing six rows therefore packs into the
+        // same space a five-row month uses, and wide screens no longer inflate
+        // the grid past the bottom of the screen.
+        final cellWidth =
+            (constraints.maxWidth -
+                _horizontalPadding * 2 -
+                _columnSpacing * 6) /
+            7;
+        final spacing = _rowSpacing * (rowCount - 1);
 
-        final dayMs = OmniDateUtils.startOfDayMs(date);
-        final entries = entriesByDay[dayMs] ?? [];
-        final isToday = OmniDateUtils.isToday(date);
+        // Cap row height to maintain aspect ratio and prevent cells from
+        // stretching arbitrarily tall on tall screens.
+        final maxRowHeight = cellWidth / _maxAspectRatio;
 
-        return _DayCell(
-          date: date,
-          entries: entries,
-          periods: periods,
-          isToday: isToday,
-          onTap: () => onDayTap(date),
+        // Compute rowHeight: use available space when constrained (the normal path).
+        // When unconstrained (e.g., rare test setup or future scrollable context),
+        // fall back to maxRowHeight; this is not the app's typical path.
+        double computedRowHeight;
+        if (constraints.maxHeight.isFinite) {
+          computedRowHeight = (constraints.maxHeight - spacing) / rowCount;
+        } else {
+          // Defensive fallback: not typically reached in the app.
+          computedRowHeight = maxRowHeight;
+        }
+
+        final rowHeight = math.max(
+          _minRowHeight,
+          math.min(computedRowHeight, maxRowHeight),
+        );
+
+        final gridHeight = rowHeight * rowCount + spacing;
+        final actualHeight = constraints.maxHeight.isFinite
+            ? math.min(gridHeight, constraints.maxHeight)
+            : gridHeight;
+        final fits = actualHeight >= gridHeight;
+
+        final gridView = GridView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
+          physics: fits
+              ? const NeverScrollableScrollPhysics()
+              : const ClampingScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisSpacing: _rowSpacing,
+            crossAxisSpacing: _columnSpacing,
+            childAspectRatio: cellWidth / rowHeight,
+          ),
+          itemCount: grid.length,
+          itemBuilder: (context, index) {
+            final date = grid[index];
+            if (date == null) return const SizedBox.shrink();
+
+            final dayMs = OmniDateUtils.startOfDayMs(date);
+            final entries = entriesByDay[dayMs] ?? [];
+            final isToday = OmniDateUtils.isToday(date);
+
+            return _DayCell(
+              date: date,
+              entries: entries,
+              periods: periods,
+              isToday: isToday,
+              onTap: () => onDayTap(date),
+            );
+          },
+        );
+
+        // Wrap the grid in a SizedBox to control its height.
+        // This prevents the grid from expanding to fill available space
+        // and allows the stats strip to sit directly below it.
+        // Clamp the height to available space; if it doesn't fit, the grid scrolls.
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: actualHeight,
+          child: gridView,
         );
       },
     );
@@ -443,7 +517,8 @@ class _DayCell extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 3),
-            if (entries.isNotEmpty) _SessionIndicators(entries: entries),
+            if (entries.isNotEmpty)
+              Expanded(child: _SessionIndicators(entries: entries)),
           ],
         ),
       ),
@@ -451,53 +526,80 @@ class _DayCell extends StatelessWidget {
   }
 }
 
-/// Row 1: first 2 dots. Row 2: 3rd dot (if present) + "+N" overflow (if >3).
+/// Two dots per row, filling as many rows as the cell has room for. A short
+/// cell shows the guaranteed minimum of one row; a taller cell shows more
+/// before falling back to a "+N" badge in the final slot.
 class _SessionIndicators extends StatelessWidget {
   final List<CalendarEntry> entries;
 
   const _SessionIndicators({required this.entries});
 
+  /// 14pt dot plus its 1pt vertical margins.
+  static const double _slotExtent = 16.0;
+  static const int _dotsPerRow = 2;
+  static const int _maxRows = 3;
+
   @override
   Widget build(BuildContext context) {
-    final row1 = entries.take(2).toList();
-    final hasRow2 = entries.length > 2;
-    final third = entries.length > 2 ? entries[2] : null;
-    final overflow = entries.length > 3 ? entries.length - 3 : 0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final rows = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight ~/ _slotExtent).clamp(1, _maxRows)
+            : 1;
+        final capacity = rows * _dotsPerRow;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Row(
+        // The badge takes the last slot, so it displaces one dot.
+        final hidden = entries.length > capacity
+            ? entries.length - capacity + 1
+            : 0;
+        final visible = hidden > 0
+            ? entries.take(capacity - 1).toList()
+            : entries;
+
+        final slots = <Widget>[
+          for (final entry in visible) _Dot(entry: entry),
+          if (hidden > 0) _OverflowBadge(count: hidden),
+        ];
+
+        return Column(
           mainAxisSize: MainAxisSize.min,
-          children: row1.map((e) => _Dot(entry: e)).toList(),
-        ),
-        if (hasRow2)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (third != null) _Dot(entry: third),
-              if (overflow > 0)
-                Container(
-                  width: 14.0,
-                  height: 14.0,
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 1,
-                    vertical: 1,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '+$overflow',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: OmniTheme.colors.textSecondary.withOpacity(0.75),
-                      fontWeight: FontWeight.w600,
-                      height: 1.0,
-                    ),
-                  ),
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (var i = 0; i < slots.length; i += _dotsPerRow)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: slots.sublist(
+                  i,
+                  math.min(i + _dotsPerRow, slots.length),
                 ),
-            ],
-          ),
-      ],
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _OverflowBadge extends StatelessWidget {
+  final int count;
+
+  const _OverflowBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 14.0,
+      height: 14.0,
+      margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+      alignment: Alignment.center,
+      child: Text(
+        '+$count',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: OmniTheme.colors.textSecondary.withOpacity(0.75),
+          fontWeight: FontWeight.w600,
+          height: 1.0,
+        ),
+      ),
     );
   }
 }
@@ -603,23 +705,28 @@ class _MonthlyStatsStrip extends StatelessWidget {
         Column(
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _CompactStat(
-                  label: 'SESSIONS',
-                  value: completedSessions > 0 ? '$completedSessions' : '—',
+                Expanded(
+                  child: _CompactStat(
+                    label: 'SESSIONS',
+                    value: completedSessions > 0 ? '$completedSessions' : '—',
+                  ),
                 ),
-                _CompactStat(
-                  label: 'TIME',
-                  value: _formatTrainingTime(totalTrainingMs),
+                Expanded(
+                  child: _CompactStat(
+                    label: 'TIME',
+                    value: _formatTrainingTime(totalTrainingMs),
+                  ),
                 ),
-                _CompactStat(
-                  label: isActiveStreak ? 'STREAK' : 'BEST RUN',
-                  value: completedSessions == 0
-                      ? '—'
-                      : (streakDays >= 3
-                            ? '🔥 ${streakDays}d'
-                            : (streakDays == 0 ? '0' : '${streakDays}d')),
+                Expanded(
+                  child: _CompactStat(
+                    label: isActiveStreak ? 'STREAK' : 'BEST RUN',
+                    value: completedSessions == 0
+                        ? '—'
+                        : (streakDays >= 3
+                              ? '🔥 ${streakDays}d'
+                              : (streakDays == 0 ? '0' : '${streakDays}d')),
+                  ),
                 ),
               ],
             ),
@@ -651,20 +758,30 @@ class _CompactStat extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.2,
-            color: OmniTheme.colors.textSecondary.withOpacity(0.55),
+        // scaleDown keeps both lines on one line at large text scales, where
+        // three side-by-side stats would otherwise run off the edge.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.0,
+              color: OmniTheme.colors.textSecondary.withOpacity(0.55),
+            ),
           ),
         ),
-        const SizedBox(height: 7),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.displayMedium?.copyWith(
-            letterSpacing: -0.5,
-            color: OmniTheme.colors.textDominant,
+        const SizedBox(height: 6),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            maxLines: 1,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              letterSpacing: -0.5,
+              color: OmniTheme.colors.textDominant,
+            ),
           ),
         ),
       ],

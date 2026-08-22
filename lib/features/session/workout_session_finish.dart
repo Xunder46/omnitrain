@@ -17,79 +17,54 @@ extension _SessionFinishExt on _WorkoutSessionScreenState {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Finish Workout?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You have completed:',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '• ${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '• Elapsed time: $_elapsedFormatted',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'This action will save and close the workout session.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withAlpha((0.6 * 255).round()),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Cancel'),
+      title: 'Finish Workout?',
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'You have completed:',
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '• ${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}',
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  '• Elapsed time: $_elapsedFormatted',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
             ),
-            child: const Text('Finish'),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'This action will save and close the workout session.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withAlpha((0.6 * 255).round()),
+            ),
           ),
         ],
       ),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Finish',
+      dismissKey: const Key('session-finish-cancel'),
+      confirmKey: const Key('session-finish-confirm'),
+      isDestructive: false,
     );
 
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       await _finishSession();
     }
   }

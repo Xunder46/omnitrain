@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omnitrain/core/constants/capability.dart';
 import 'package:omnitrain/core/constants/catalog_version.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
 import 'package:omnitrain/core/models/demo_routine_spec.dart';
@@ -31,6 +32,9 @@ class _RoutinesFakeCatalogSource implements CatalogSource {
 
   @override
   final Map<String, List<String>> exerciseCapabilities;
+
+  @override
+  List<MuscleGroup> get muscleGroups => SeedData.sampleMuscleGroups;
 
   @override
   final Map<String, List<String>> exerciseMuscleGroups;
@@ -124,6 +128,97 @@ void main() {
           ),
           isFalse,
           reason: 'user-created routine must never be tombstoned by refresh',
+        );
+      },
+    );
+
+    test(
+      'D-007: a below-template change reaches a device that already has the demo',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        await repo.setCatalogVersion(0);
+        await CatalogRefreshService(repo, _bundledSource()).refresh();
+
+        // Stand in for a device carrying an older shape of the routine:
+        // an effort that still has a rest interval the bundle has dropped.
+        const templateId = 'demo-template-hit-full-body';
+        final segments = await repo.getTemplateSegments(templateId);
+        final efforts = await repo.getTemplateEfforts(segments.first.id);
+        final stale = efforts.first;
+        await repo.updateTemplateEffort(
+          TemplateEffort(
+            id: stale.id,
+            templateSegmentId: stale.templateSegmentId,
+            orderIndex: stale.orderIndex,
+            effortKind: stale.effortKind,
+            exerciseId: stale.exerciseId,
+            restSeconds: 180,
+            createdAtMs: stale.createdAtMs,
+          ),
+        );
+
+        // The user has not edited the routine, so no tombstone exists and
+        // the refresh owns the body.
+        expect(
+          await repo.isSeedEntryTouched(
+            SeedEntryType.routineTemplate,
+            templateId,
+          ),
+          isFalse,
+        );
+
+        await repo.setCatalogVersion(bundledCatalogVersion - 1);
+        await CatalogRefreshService(repo, _bundledSource()).refresh();
+
+        final refreshedSegments = await repo.getTemplateSegments(templateId);
+        final refreshedEfforts = await repo.getTemplateEfforts(
+          refreshedSegments.first.id,
+        );
+        expect(
+          refreshedEfforts.every((e) => e.restSeconds == null),
+          isTrue,
+          reason:
+              'a template-row-only patch cannot deliver this; the refresh '
+              'must rewrite the body of an untouched demo',
+        );
+        expect(
+          refreshedEfforts.length,
+          equals(6),
+          reason: 'Compound block must still hold its six efforts',
+        );
+      },
+    );
+
+    test(
+      'D-008: a user-edited demo keeps its body across the refresh',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        await repo.setCatalogVersion(0);
+        await CatalogRefreshService(repo, _bundledSource()).refresh();
+
+        const templateId = 'demo-template-hit-full-body';
+        final segments = await repo.getTemplateSegments(templateId);
+        final firstSegmentId = segments.first.id;
+
+        // The user edits the routine — the state layer tombstones it.
+        await repo.markSeedEntryTouched(
+          SeedEntryType.routineTemplate,
+          templateId,
+        );
+        await repo.deleteTemplateSegment(firstSegmentId);
+
+        await repo.setCatalogVersion(bundledCatalogVersion - 1);
+        await CatalogRefreshService(repo, _bundledSource()).refresh();
+
+        final after = await repo.getTemplateSegments(templateId);
+        expect(
+          after.any((s) => s.id == firstSegmentId),
+          isFalse,
+          reason:
+              'the body rewrite must not resurrect a segment the user '
+              'deleted from a demo they have taken ownership of',
         );
       },
     );
@@ -251,11 +346,13 @@ void main() {
 
   group('Seeded Demo Routines — Validator', () {
     final exerciseIds = SeedData.sampleExercises.map((e) => e.id).toSet();
+    final capabilities = SeedData.exerciseCapabilityRelationships;
 
     test('V-001: every demo exerciseId resolves to the bundled catalog', () {
       final result = DemoRoutinesValidator.validate(
         SeedData.sampleDemoRoutineBundles,
         exerciseIds,
+        exerciseCapabilities: capabilities,
       );
       expect(
         result.isValid,
@@ -270,6 +367,7 @@ void main() {
       final result = DemoRoutinesValidator.validate(
         SeedData.sampleDemoRoutineBundles,
         exerciseIds,
+        exerciseCapabilities: capabilities,
       );
       expect(
         result.isValid,
@@ -278,6 +376,67 @@ void main() {
             'every demo effort must declare its kind-appropriate targets; '
             'failures: ${result.failures.join(", ")}',
       );
+    });
+
+    test('V-005: a hold-capable drill may declare no targets at all', () {
+      final hold = _syntheticOneExerciseDemo(
+        exerciseId: 'exercise-side-plank',
+        effortKind: 'drill',
+        metrics: const [],
+      );
+
+      // exercise-side-plank carries the `hold` capability, so a count-up
+      // hold with nothing to preset is valid.
+      expect(
+        capabilities['exercise-side-plank'],
+        contains(ExerciseCapability.hold),
+        reason: 'fixture assumption: side plank must be hold-capable',
+      );
+
+      final result = DemoRoutinesValidator.validate(
+        [hold],
+        exerciseIds,
+        exerciseCapabilities: capabilities,
+      );
+      expect(
+        result.isValid,
+        isTrue,
+        reason: 'failures: ${result.failures.join(", ")}',
+      );
+    });
+
+    test('V-006: a drill that is not a hold still requires a duration', () {
+      final drill = _syntheticOneExerciseDemo(
+        exerciseId: 'exercise-bjj-drilling',
+        effortKind: 'drill',
+        metrics: const [],
+      );
+
+      expect(
+        capabilities['exercise-bjj-drilling'] ?? const <String>[],
+        isNot(contains(ExerciseCapability.hold)),
+        reason: 'fixture assumption: bjj drilling must not be hold-capable',
+      );
+
+      final result = DemoRoutinesValidator.validate(
+        [drill],
+        exerciseIds,
+        exerciseCapabilities: capabilities,
+      );
+      expect(result.isValid, isFalse);
+    });
+
+    test('V-007: without capabilities, every drill needs a duration', () {
+      final hold = _syntheticOneExerciseDemo(
+        exerciseId: 'exercise-side-plank',
+        effortKind: 'drill',
+        metrics: const [],
+      );
+
+      // The exemption is opt-in: a caller that cannot supply capabilities
+      // keeps the stricter rule rather than silently relaxing it.
+      final result = DemoRoutinesValidator.validate([hold], exerciseIds);
+      expect(result.isValid, isFalse);
     });
 
     test('V-003: validator flags a dangling exercise reference', () {

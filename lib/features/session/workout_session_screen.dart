@@ -14,6 +14,7 @@ import '../../state/workout/workout_state.dart';
 import '../exercise/exercise_picker_screen.dart';
 import '../../widgets/pickers/modality_picker_dialog.dart';
 import '../../core/constants/modality_config.dart';
+import '../../core/constants/modality_display.dart';
 import '../../core/services/stats_progress_service.dart';
 import '../../data/models/models.dart';
 import '../../widgets/session/inline_metric_editor.dart';
@@ -24,7 +25,9 @@ import '../../state/routine/routine_state.dart';
 import '../../core/services/session_summary_service.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/models/session_edit_snapshot.dart';
+import 'rest_timer_strip.dart';
 import 'session_summary_screen.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 part 'workout_session_timer_mixin.dart';
 part 'workout_session_list_view.dart';
@@ -38,6 +41,12 @@ const double _kSessionScrollBottomExtra = 24.0;
 const double _kBottomControlsClearance = 140.0 + _kSessionScrollBottomExtra;
 const double _kBackFromDetailBottomPeekFraction = 0.05;
 const Duration _kTimerUpdateInterval = Duration(seconds: 1);
+/// Animation duration used to coordinate the rest-timer strip's
+/// appearance and disappearance with the scrollable's bottom
+/// padding so the content does not jolt underneath the user. The
+/// strip itself uses the same duration via
+/// [RestTimerStrip.animationDuration].
+const Duration _kRestStripAnimationDuration = RestTimerStrip.animationDuration;
 
 Future<T?> _pushSessionReplacement<T, TO>(
   BuildContext context,
@@ -46,10 +55,6 @@ Future<T?> _pushSessionReplacement<T, TO>(
 }) {
   return OmniNavigator.pushReplacement<T, TO>(context, builder, result: result);
 }
-
-/// Actions surfaced by the "Unsaved changes" dialog shown when the user
-/// tries to leave edit mode without saving.
-enum _EditBackAction { save, discard, close }
 
 class WorkoutSessionScreen extends StatefulWidget {
   final WorkoutState workoutState;
@@ -201,10 +206,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   int? _pendingDurationSecs;
   int? _originalDurationSecs;
   int _focusRequestId = 0;
-
-  // Track if auto-open exercise picker was attempted on first load.
-  // Prevents re-opening on subsequent _loadExercises() calls.
-  bool _autoOpenAttempted = false;
 
   // Guard against concurrent add/delete-set operations triggered by rapid taps.
   bool _isStructuralOp = false;
@@ -709,6 +710,23 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       }
     }
 
+    // PHASE 2 FIX: Reorder operations to clear display cache before finishing timer.
+    // This ensures _effortElapsed[timerKey] is cleared before recordRestStart fires,
+    // preventing the display cache from bleeding into the next entry's rest display.
+    //
+    // New sequence:
+    // 1. Reset timer state (clear display cache) — synchronous
+    // 2. Finish timed/round entry (async persist) — unawaited
+    // 3. Start new rest (async persist) — unawaited
+
+    // Stop and reset timer UI state FIRST; clear display cache before next rest starts.
+    // User must explicitly start timer for the next entry.
+    if (effortKind == 'timed' ||
+        effortKind == 'drill' ||
+        effortKind == 'round') {
+      _resetTimerState(effortId, _currentSet - 1);
+    }
+
     // For timed/drill: finish the TimedInstance to persist wall-clock duration.
     // Safe no-op if already finished via timer expiry.
     if ((effortKind == 'timed' || effortKind == 'drill') &&
@@ -770,13 +788,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     // Haptic feedback on successful log
     if (!kIsWeb) {
       HapticFeedback.lightImpact();
-    }
-
-    // Stop and reset timer UI state; user must explicitly start timer for the next entry.
-    if (effortKind == 'timed' ||
-        effortKind == 'drill' ||
-        effortKind == 'round') {
-      _resetTimerState(effortId, _currentSet - 1);
     }
 
     // Start rest tracking on first real log of this set, persisting to database.
@@ -921,14 +932,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final effortId = exercise['id'] as String;
     final effortKind = exercise['effortKind'] as String? ?? 'set';
 
-    // Stop timer for the current set if it's running
+    // A running timer keeps running while the user browses other sets. Its
+    // elapsed time is wall-clock derived, the periodic tick and the expiry
+    // notification stay live, and expiry finishes the entry from wherever
+    // the user happens to be.
     if (effortKind == 'timed' ||
         effortKind == 'drill' ||
         effortKind == 'round') {
-      final timerKey = '$effortId-${_currentSet - 1}';
-      if (_effortRunning[timerKey] == true) {
-        _pauseEffortTimer(effortId, _currentSet - 1);
-      }
       _resetEffortAlertState(effortId, _currentSet - 1);
     }
 
@@ -1158,47 +1168,21 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
       // If this is the last entry, always warn since it removes the entire exercise
       if (entries.length == 1) {
-        final confirmed = await showDialog<bool>(
+        final confirmed = await ConfirmationDialog.showTwoChoice(
           context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Remove Exercise?'),
-            content: Text(
-              'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
-              'Deleting it will remove the entire exercise from your session.\n\n'
-              'Continue?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Confirm'),
-              ),
-            ],
+          title: 'Remove Exercise?',
+          body: Text(
+            'This is the last ${setLabel.toLowerCase()} for "$exerciseName". '
+            'Deleting it will remove the entire exercise from your session.',
           ),
+          dismissLabel: 'Cancel',
+          confirmLabel: 'Remove',
+          dismissKey: const Key('workout-remove-exercise-cancel'),
+          confirmKey: const Key('workout-remove-exercise-confirm'),
+          isDestructive: true,
         );
 
-        if (confirmed != true) return;
+        if (!confirmed) return;
 
         // Delete the entry and remove the exercise
         if (widget.editMode) _hasStructuralChanges = true;
@@ -1220,43 +1204,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
 
       // Multi-set: only confirm if the set has been logged
       if (isLogged) {
-        final confirmed = await showDialog<bool>(
+        final confirmed = await ConfirmationDialog.showTwoChoice(
           context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Delete logged $setLabel?'),
-            content: const Text('This cannot be undone.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ButtonStyle(
-                  shape: WidgetStateProperty.all(
-                    RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        OmniTheme.buttonUtilityRadius,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Delete'),
-              ),
-            ],
-          ),
+          title: 'Delete logged $setLabel?',
+          body: const Text('This cannot be undone.'),
+          dismissLabel: 'Cancel',
+          confirmLabel: 'Delete',
+          dismissKey: const Key('workout-delete-logged-entry-cancel'),
+          confirmKey: const Key('workout-delete-logged-entry-confirm'),
+          isDestructive: true,
         );
 
-        if (confirmed != true) return;
+        if (!confirmed) return;
       }
 
       if (widget.editMode) _hasStructuralChanges = true;
@@ -1347,20 +1306,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   void _jumpToSet(int setNumber) {
-    // Auto-pause timer if in progress before jumping to another set.
-    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
-      final ex = _exercises[_currentExerciseIndex];
-      final effortId = ex['id'] as String;
-      final effortKind = ex['effortKind'] as String? ?? 'set';
-      if (effortKind == 'timed' ||
-          effortKind == 'drill' ||
-          effortKind == 'round') {
-        final timerKey = '$effortId-${_currentSet - 1}';
-        if (_effortRunning[timerKey] == true) {
-          _pauseEffortTimer(effortId, _currentSet - 1);
-        }
-      }
-    }
+    // A running timer is left running — see [_previousSet].
     _beginSetTransition(setNumber > _currentSet ? 1 : -1);
     setState(() {
       _currentSet = setNumber;
@@ -1377,20 +1323,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   void _switchExercise(int delta, {bool preserveSetTransition = false}) {
     final newIndex = _currentExerciseIndex + delta;
     if (newIndex < 0 || newIndex >= _exercises.length) return;
-    // Auto-pause timer if in progress before switching exercise.
-    if (_exercises.isNotEmpty && _currentExerciseIndex < _exercises.length) {
-      final ex = _exercises[_currentExerciseIndex];
-      final effortId = ex['id'] as String;
-      final effortKind = ex['effortKind'] as String? ?? 'set';
-      if (effortKind == 'timed' ||
-          effortKind == 'drill' ||
-          effortKind == 'round') {
-        final timerKey = '$effortId-${_currentSet - 1}';
-        if (_effortRunning[timerKey] == true) {
-          _pauseEffortTimer(effortId, _currentSet - 1);
-        }
-      }
-    }
+    // A running timer is left running — see [_previousSet].
     unawaited(
       _focusExerciseDetail(
         newIndex,
@@ -1400,32 +1333,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   }
 
   /// Check if the exercise picker should auto-open on first session load.
-  /// Auto-open only if:
-  /// - NOT in edit mode (edit mode is for reviewing completed sessions)
-  /// - Session has no exercises yet
-  /// - First load (auto-open not yet attempted)
-  /// - Not a rolling session with existing blocks
-  bool _shouldAutoOpenPicker() {
-    final hasBlocks = widget.workoutState.getSessionBlocks().isNotEmpty;
-    return !widget.editMode &&
-        _exercises.isEmpty &&
-        !_autoOpenAttempted &&
-        (!widget.workoutState.isRollingSession || !hasBlocks);
-  }
+  ///
+  /// PR 6 / S-003 contract: new workouts land on a neutral empty session
+  /// rather than auto-opening the picker. The user picks Add Exercise or
+  /// Add Block from the balanced empty state; the picker only opens when
+  /// the user explicitly asks for it.
+  bool _shouldAutoOpenPicker() => false;
 
   /// Schedule the exercise picker to open after the current frame renders.
-  /// Uses [Future.microtask] to ensure the UI is fully built and the loading
-  /// spinner is cleared before triggering the dialog.
-  void _scheduleAutoOpenPicker() {
-    _autoOpenAttempted =
-        true; // Prevent re-opening on subsequent _loadExercises calls
-    // Schedule after current frame renders so loading state is cleared
-    Future.microtask(() {
-      if (mounted) {
-        _addExercise();
-      }
-    });
-  }
+  /// PR 6: no-op — see [_shouldAutoOpenPicker]. Unreachable while
+  /// [_shouldAutoOpenPicker] returns false; kept so restoring the
+  /// behaviour is a one-line change at the predicate.
+  void _scheduleAutoOpenPicker() {}
 
   Future<void> _addExercise({String? segmentId, String? blockId}) async {
     // Capture before the dialog so we can detect when this is the first exercise.
@@ -1613,45 +1532,20 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     }
 
     // Non-empty block — confirm before cascade-deleting all exercises.
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Block?'),
-        content: Text(
-          'This block contains $count exercise${count != 1 ? 's' : ''}. '
-          'All exercises inside will be permanently deleted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
+      title: 'Delete Block?',
+      body: Text(
+        'This block contains $count exercise${count != 1 ? 's' : ''}. '
+        'All exercises inside will be permanently deleted.',
       ),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Delete',
+      dismissKey: const Key('session-delete-block-cancel'),
+      confirmKey: const Key('session-delete-block-confirm'),
+      isDestructive: true,
     );
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       await widget.workoutState.deleteSessionBlock(block.id);
       await _loadExercises();
     }
@@ -1720,7 +1614,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       filledButtonTheme: FilledButtonThemeData(
         style: ButtonStyle(
           backgroundColor: WidgetStatePropertyAll(themeColors.primary),
-          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          foregroundColor: WidgetStatePropertyAll(theme.colorScheme.onPrimary),
         ),
       ),
     );

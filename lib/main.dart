@@ -6,6 +6,7 @@ import 'app/startup_root.dart';
 import 'core/models/app_version_info.dart';
 import 'core/services/bundled_catalog_source.dart';
 import 'core/services/catalog_refresh_service.dart';
+import 'core/services/exercise_library_service.dart';
 import 'core/services/image_storage_service.dart';
 import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
@@ -19,10 +20,12 @@ import 'state/routine/routine_state.dart';
 import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
+import 'core/constants/omni_theme.dart';
 import 'state/settings/settings_state.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
+import 'state/exercise/exercise_library_state.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/services/crash_reporting_service.dart';
 import 'core/utils/rest_notification_service.dart';
@@ -35,15 +38,13 @@ final _startupDiagnosticWriter = StartupFailureDiagnosticWriter.create();
 typedef StartupRepositoryFactory = Future<WorkoutRepository> Function();
 typedef StartupPreferencesServiceFactory = PreferencesService Function();
 typedef StartupTimerAlertServiceFactory = TimerAlertService Function();
-typedef StartupRestNotificationServiceFactory = RestNotificationService
-    Function();
-typedef StartupImageStorageServiceFactory = Future<ImageStorageService?>
-    Function();
+typedef StartupRestNotificationServiceFactory =
+    RestNotificationService Function();
+typedef StartupImageStorageServiceFactory =
+    Future<ImageStorageService?> Function();
 typedef StartupAppVersionInfoLoader = Future<AppVersionInfo> Function();
-typedef StartupNonFatalIssueHandler = Future<void> Function(
-  Object error,
-  StackTrace stackTrace,
-);
+typedef StartupNonFatalIssueHandler =
+    Future<void> Function(Object error, StackTrace stackTrace);
 
 class StartupNotificationInitializationError implements Exception {
   StartupNotificationInitializationError(this.cause);
@@ -149,7 +150,10 @@ void main() async {
   // every emitted event carries the same canonical value. A plugin
   // failure (rare on supported platforms) falls back to "0.0.0" — the
   // reporting layer prefers a known-but-imprecise value over no value.
-  var appVersion = '0.0.0+0';
+  // 'version-unavailable+0' is the designated fallback: it is greppable
+  // in the Sentry dashboard and visibly not a real version string, so
+  // it is distinguishable from a genuine build (unlike '0.0.0+0').
+  var appVersion = 'version-unavailable+0';
   try {
     final pkg = await PackageInfo.fromPlatform();
     appVersion = '${pkg.version}+${pkg.buildNumber}';
@@ -203,6 +207,13 @@ Future<Widget> runStartup({
   final repository = await createRepository();
   await repository.initialize();
 
+  // Adopt the user's saved theme as soon as it is readable — before the
+  // catalog refresh below, which can hit the network. `MyApp` sets this
+  // again from `SettingsState`; doing it here only moves the moment
+  // earlier, so the preparing screen renders in the user's palette
+  // instead of flashing the default theme for the length of startup.
+  OmniTheme.activeTheme = await SettingsState.readPersistedTheme(repository);
+
   // Reconcile the device's stored catalog against the bundled
   // catalog. Runs at app start (after repository.initialize, before
   // state construction) so every state class sees the post-refresh
@@ -233,10 +244,10 @@ Future<Widget> runStartup({
   // once at app start; the same instance is shared by every
   // state and screen that needs it (D-8).
   // On web, skip initialization as it's not supported there.
-    final imageStorageServiceFactory =
+  final imageStorageServiceFactory =
       createImageStorageService ??
       () async => kIsWeb ? null : ImageStorageService.create();
-    final imageStorageService = await imageStorageServiceFactory();
+  final imageStorageService = await imageStorageServiceFactory();
 
   // Create state with repository
   final workoutState = WorkoutState(repository);
@@ -273,6 +284,11 @@ Future<Widget> runStartup({
   // Create service with repository
   final routineSessionService = RoutineSessionService(repository);
   final sessionSummaryService = SessionSummaryService(repository);
+  final exerciseLibraryService = ExerciseLibraryService(repository);
+  final exerciseLibraryState = ExerciseLibraryState(
+    service: exerciseLibraryService,
+    workoutState: workoutState,
+  );
 
   // Build-metadata for the Settings footer.
   //
@@ -301,6 +317,7 @@ Future<Widget> runStartup({
     nutritionState: nutritionState,
     foodLibraryState: foodLibraryState,
     nutritionPrimerState: nutritionPrimerState,
+    exerciseLibraryState: exerciseLibraryState,
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,

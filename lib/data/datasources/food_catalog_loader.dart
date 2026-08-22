@@ -63,6 +63,16 @@ class FoodCatalogLoader {
         ? FoodUnitType.count
         : FoodUnitType.grams;
 
+    // Optional `hidden` flag. Absent or `false` means the row loads
+    // visible; `true` means the row is published hidden so the
+    // display paths (Library tab on `AddFoodScreen`, catalog search,
+    // and the default `getCatalogFoods(includeArchived: false)`
+    // reader) all skip it. The model uses `isArchived` for this
+    // because the existing display / search / refresh-diff layers
+    // already filter on it; the JSON's `hidden` is the authoring
+    // vocabulary, `Food.isArchived` is the runtime vocabulary.
+    final hidden = map['hidden'] == true;
+
     // Macro values are stored as `double` on Food (S-001 — see
     // `.github/agents/plans/food-form-decimals-and-autofocus-plan.md`).
     // The catalog JSON's `protein` / `carbs` / `fat` values are integers
@@ -92,7 +102,7 @@ class FoodCatalogLoader {
       fiber: fiber,
       fat: fat,
       sodium: sodium,
-      isArchived: false,
+      isArchived: hidden,
       // Catalog rows no longer carry their category in notes; the
       // group_id is the single source of truth for the grouping.
       notes: null,
@@ -122,4 +132,30 @@ class FoodCatalogLoader {
     'drinks': 'food-group-drinks',
     'condiments': 'food-group-condiments',
   };
+
+  /// Test-only escape hatch: the category → groupId map is private
+  /// because the loader's runtime contract is "resolve on parse" —
+  /// callers do not ask the loader for an id lookup at runtime. The
+  /// seed-vs-JSON parity test (`food_catalog_load_test.dart` S-001)
+  /// does need to resolve the JSON's `category` to the same
+  /// FoodGroup.id the loader would write to `Food.groupId`, so the
+  /// map is exposed under a `FoodCatalogLoaderTestAccess` alias to
+  /// keep the symbol unambiguous in test code.
+  static const Map<String, String> testCategoryToGroupId = _categoryToGroupId;
+}
+
+/// Convenience wrapper used by the seed-vs-JSON parity test
+/// (`food_catalog_load_test.dart` S-001) to resolve a JSON category
+/// to the `FoodGroup.id` the loader would write. Production code
+/// must not depend on this — the loader resolves the category as
+/// part of `parseCatalogJson`; runtime callers see `Food.groupId`.
+class FoodCatalogLoaderTestAccess {
+  FoodCatalogLoaderTestAccess._();
+
+  /// Resolves a JSON `category` string (case-insensitive) to the
+  /// `FoodGroup.id` the production loader would write.
+  /// Returns `null` for unknown categories — same as the loader.
+  static String? resolveCategoryToGroupId(String category) {
+    return FoodCatalogLoader.testCategoryToGroupId[category.toLowerCase()];
+  }
 }

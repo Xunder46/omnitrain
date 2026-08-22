@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../../core/constants/tile_artwork_metrics.dart';
+
 /// Minimalist geometric stick figure performing an overhead barbell press.
 ///
 /// Fully filled rectangular silhouette — no strokes. Style matches the
 /// geometric icon language of the other modality tiles.
 ///
 /// ## Integration
-/// EnergyCore currently accepts only [IconData] and renders via Flutter's
-/// [Icon] widget. To use this custom painter, EnergyCore must be updated to
-/// accept an optional [Widget? customIcon] parameter. When [customIcon] is
-/// provided, it is rendered instead of the [Icon] widget.
+/// Tiles never construct this widget at a fixed size. A tile definition
+/// references [artwork] as a [TileArtworkBuilder]; the tile resolves the size
+/// from [TileArtworkMetrics] and calls the builder with it, so this figure
+/// scales and drops out at exactly the same points as a standard [Icon].
 ///
-/// Usage inside EnergyCore (after update):
 /// ```dart
-/// EnergyCore(
-///   customIcon: OverheadPressIcon(size: size * 0.55),
-///   gradientColors: ...,
-///   glowColor: ...,
+/// HomeTileConfig(
+///   key: 'resistance',
+///   artworkBuilder: OverheadPressIcon.artwork,
+///   ...
 /// )
 /// ```
 ///
@@ -33,6 +34,26 @@ class OverheadPressIcon extends StatelessWidget {
     required this.size,
     this.color = const Color.fromARGB(255, 231, 231, 231),
   });
+
+  /// [TileArtworkBuilder] adapter. Referenced as a tear-off from tile
+  /// definitions so the definition never states a size.
+  static Widget artwork(double size, Color color) =>
+      OverheadPressIcon(size: size, color: color);
+
+  /// How far the barbell plates overshoot the top of the widget's box, as a
+  /// fraction of [size].
+  ///
+  /// The plates start at y = -20 on the 240×280 reference canvas, which is
+  /// deliberate — it is what makes the barbell read as held overhead rather
+  /// than resting on the figure's head. Exposed so the tile-bounds test can
+  /// assert the overshoot still lands inside the tile's own padding instead
+  /// of hard-coding the ratio in the test.
+  static const double topOvershootRatio = 20 / 280;
+
+  /// How far the barbell shaft overshoots the right of the widget's box, as
+  /// a fraction of [size]. The shaft is drawn a full reference-canvas width
+  /// starting at x = 2, so it runs 2 units past the right edge.
+  static const double rightOvershootRatio = 2 / 240;
 
   @override
   Widget build(BuildContext context) {
@@ -64,11 +85,7 @@ class _OverheadPressPainter extends CustomPainter {
     double y(double v) => v / 280 * h;
 
     // ── HEAD ──────────────────────────────────────────────────────────────────
-    canvas.drawCircle(
-      Offset(x(124), y(50)),
-      w * (19.0 / 240),
-      paint,
-    );
+    canvas.drawCircle(Offset(x(124), y(50)), w * (19.0 / 240), paint);
 
     // ── TORSO ─────────────────────────────────────────────────────────────────
     canvas.drawRect(

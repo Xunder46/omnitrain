@@ -13,6 +13,7 @@ import '../../widgets/layout/omni_card_header.dart';
 import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsState settingsState;
@@ -306,40 +307,18 @@ class _SoundsAlertsSectionState extends State<_SoundsAlertsSection> {
 
     final shouldRequest = await showDialog<bool>(
       context: this.context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Enable Timer Notifications?'),
-        content: const Text(
+      barrierDismissible: true,
+      builder: (ctx) => ConfirmationDialog.twoChoice(
+        title: 'Enable Timer Notifications?',
+        body: const Text(
           'Notifications keep rest pings and effort timer alerts working when '
           'your phone is locked. You can change this any time in Settings.',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Not now'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            child: const Text('Continue'),
-          ),
-        ],
+        dismissLabel: 'Not now',
+        confirmLabel: 'Continue',
+        dismissKey: const Key('settings-timer-notifications-cancel'),
+        confirmKey: const Key('settings-timer-notifications-confirm'),
+        isDestructive: false,
       ),
     );
 

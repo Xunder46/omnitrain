@@ -34,19 +34,6 @@ After the first frame, when `sessionFeeling == null` AND `SettingsState.showFeel
 
 ---
 
-## User Workflow
-
-WorkoutSessionScreen -> Finish Workout
-  -> SessionSummaryScreen
-    -> [if sessionFeeling is null] mandatory 1-5 feeling sheet
-    -> review top stats when present and modality cards
-    -> optionally edit session note (debounced autosave)
-    -> optionally open calendar
-    -> optionally use overflow menu (Edit Session, Save as Routine, Discard)
-    -> Done
-
----
-
 ## Screen Layout
 
 The screen renders a CustomScrollView over OmniGradientBackground with this order:
@@ -205,7 +192,6 @@ Key public methods:
 Repository compatibility:
 
 - Uses WorkoutRepository interface only
-- Works with both HiveWorkoutRepository and SqliteWorkoutRepository
 
 ---
 
@@ -220,7 +206,6 @@ Key classes:
 - ExerciseSummary
 - PRAchievement
 - GroupDelta
-- VolumeComparison — **retained in the model, not rendered in the active layout.** The earlier standalone volume-comparison surface on the summary was removed; progress feedback now lives as per-group `GroupDelta` chips on each modality group card (see "Group Cards" above). The class is preserved because the summary service still constructs one internally and the type is pinned by tests.
 - SessionTemplateDraft
 - SessionTemplateExercise
 - TemplateTargetDraft
@@ -238,17 +223,10 @@ Important SessionSummary fields used by the current UI:
 
 ---
 
-## Save as Routine Flow
+## Save as Routine
 
-Save as Routine remains available from the overflow menu.
-
-Flow:
-
-1. Open bottom sheet
-2. Edit routine name
-3. Reorder/add/remove draft exercises
-4. Save through saveRoutineFromDraft
-5. Reload routines and finish session
+Available from the summary's overflow menu. The draft is editable — name, exercise order,
+additions and removals — before it is persisted through `saveRoutineFromDraft`.
 
 ---
 

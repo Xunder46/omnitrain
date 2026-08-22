@@ -48,6 +48,8 @@ class _StatsScreenState extends State<StatsScreen> {
   StatsProgressData? _progressData;
   _NutritionView _nutritionView = _NutritionView.calories;
 
+  NutritionAdherence? _nutritionAdherence;
+
   @override
   void initState() {
     super.initState();
@@ -76,12 +78,18 @@ class _StatsScreenState extends State<StatsScreen> {
       await calendarState.init();
       final streak = calendarState.streakDays;
 
-      // Compute progress data (e1RM trends, volume trends, cardio trends,
-      // PRs, and the nutrition trend — all in one call so we don't
+      // One service instance for the whole load. The service caches its
+      // history snapshot per instance, so every `compute*` call below
+      // shares a single read of the repository — constructing a second
+      // instance here would silently double that cost.
+      final service = StatsProgressService(widget.workoutState.repository);
+
+      // Compute progress data (e1RM trends, cardio trends, isometric trends,
+      // sports trends, PRs, and the nutrition trend — all in one call so we don't
       // double-walk the repository for the same screen).
-      final progressData = await StatsProgressService(
-        widget.workoutState.repository,
-      ).computeProgressData();
+      final progressData = await service.computeProgressData();
+
+      final adherence = await service.computeNutritionAdherence();
 
       if (!mounted) return;
 
@@ -90,6 +98,7 @@ class _StatsScreenState extends State<StatsScreen> {
         _totalDurationMs = totalMs;
         _streakDays = streak;
         _progressData = progressData;
+        _nutritionAdherence = adherence;
         _isLoading = false;
       });
     } catch (_) {
@@ -126,7 +135,13 @@ class _StatsScreenState extends State<StatsScreen> {
                             ..._buildStrengthSection(context, themeColors),
                             const SizedBox(height: 24),
                             ..._buildCardioSection(context, themeColors),
+                            const SizedBox(height: 24),
+                            ..._buildIsometricSection(context, themeColors),
+                            const SizedBox(height: 24),
+                            ..._buildSportsSection(context, themeColors),
+                            const SizedBox(height: 24),
                             ..._buildFeelingSection(context, themeColors),
+                            const SizedBox(height: 24),
                             ..._buildNutritionSection(context, themeColors),
                           ],
                   ),
@@ -635,6 +650,317 @@ class _StatsScreenState extends State<StatsScreen> {
     return widgets;
   }
 
+  // ── Isometric section ─────────────────────────────────────────────────────
+
+  List<Widget> _buildIsometricSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final data = _progressData;
+    final widgets = <Widget>[
+      OmniCardHeader(
+        title: 'ISOMETRIC',
+        actions: [
+          if (data != null)
+            _buildWindowChip(context, themeColors, data.window),
+        ],
+      ),
+    ];
+
+    if (data == null || data.topIsometric.isEmpty) {
+      widgets.add(
+        _buildSectionEmptyState(
+          context,
+          themeColors,
+          'No isometric history yet. Log hold exercises to see trends here.',
+        ),
+      );
+      return widgets;
+    }
+
+    for (final drill in data.topIsometric) {
+      widgets.add(_buildDrillCard(context, themeColors, drill));
+      widgets.add(const SizedBox(height: 12));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildDrillCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    DrillProgress drill,
+  ) {
+    final theme = Theme.of(context);
+
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            drill.exerciseName,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.colors.textDominant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (drill.trend.length >= 2) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Duration (sec)',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildDurationChart(
+              themeColors,
+              drill.trend,
+              unitLabel: 'sec',
+              color: themeColors.primary,
+            ),
+          ] else if (drill.trend.length == 1) ...[
+            const SizedBox(height: 8),
+            _buildSingleDurationPointCard(
+              theme: theme,
+              themeColors: themeColors,
+              point: drill.trend.first,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDurationChart(
+    OmniThemeColors themeColors,
+    List<CardioTrendPoint> points, {
+    required String unitLabel,
+    required Color color,
+    double divisor = 1.0,
+  }) {
+    final durationValues = points
+        .map((p) => p.durationSecs.toDouble() / divisor)
+        .toList();
+    final spots = List.generate(
+      points.length,
+      (i) => FlSpot(i.toDouble(), durationValues[i]),
+    );
+
+    final bounds = ChartAxisHelper.computeBounds(durationValues);
+
+    return ScrollableTrendChart(
+      themeColors: themeColors,
+      bounds: bounds,
+      unitLabel: unitLabel,
+      pointCount: points.length,
+      chartBuilder: (plotWidth) {
+        return LineChart(
+          LineChartData(
+            minX: 0,
+            maxX: (points.length - 1).toDouble(),
+            minY: bounds.min,
+            maxY: bounds.max,
+            lineTouchData: const LineTouchData(enabled: false),
+            titlesData: FlTitlesData(
+              topTitles: const AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: false,
+                  reservedSize: 0,
+                ),
+              ),
+              rightTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: _kBottomAxisReservedSize,
+                  interval: 1,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.round();
+                    if (idx < 0 || idx >= points.length) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!ChartAxisHelper.shouldShowDateLabel(
+                      idx,
+                      points.length,
+                    )) {
+                      return const SizedBox.shrink();
+                    }
+                    return buildEdgeAwareDateLabel(
+                      meta: meta,
+                      text: ChartAxisHelper.formatDateLabel(points[idx].date),
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: themeColors.textMuted,
+                      ),
+                      isFirst: idx == 0,
+                      isLast: idx == points.length - 1,
+                    );
+                  },
+                ),
+              ),
+            ),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: themeColors.divider, strokeWidth: 1),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: spots,
+                color: color,
+                isCurved: true,
+                curveSmoothness: 0.3,
+                barWidth: 2,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                    radius: 3,
+                    color: color,
+                    strokeWidth: 1.5,
+                    strokeColor: themeColors.surface,
+                  ),
+                ),
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: color.withAlpha(25),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSingleDurationPointCard({
+    required ThemeData theme,
+    required OmniThemeColors themeColors,
+    required CardioTrendPoint point,
+  }) {
+    final secs = point.durationSecs;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: themeColors.divider.withAlpha(30),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$secs sec',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: OmniTheme.colors.textDominant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '1 session — log more to see a trend',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: themeColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Sports section ────────────────────────────────────────────────────────
+
+  List<Widget> _buildSportsSection(
+    BuildContext context,
+    OmniThemeColors themeColors,
+  ) {
+    final data = _progressData;
+    final widgets = <Widget>[
+      OmniCardHeader(
+        title: 'SPORTS',
+        actions: [
+          if (data != null)
+            _buildWindowChip(context, themeColors, data.window),
+        ],
+      ),
+    ];
+
+    if (data == null || data.topSports.isEmpty) {
+      widgets.add(
+        _buildSectionEmptyState(
+          context,
+          themeColors,
+          'No sports history yet. Log sports rounds to see trends here.',
+        ),
+      );
+      return widgets;
+    }
+
+    for (final round in data.topSports) {
+      widgets.add(_buildRoundCard(context, themeColors, round));
+      widgets.add(const SizedBox(height: 12));
+    }
+
+    return widgets;
+  }
+
+  Widget _buildRoundCard(
+    BuildContext context,
+    OmniThemeColors themeColors,
+    RoundProgress round,
+  ) {
+    final theme = Theme.of(context);
+
+    return OmniSurface(
+      padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            round.exerciseName,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: OmniTheme.colors.textDominant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (round.trend.length >= 2) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Duration (sec)',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: themeColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildDurationChart(
+              themeColors,
+              round.trend,
+              unitLabel: 'sec',
+              color: themeColors.secondary,
+            ),
+          ] else if (round.trend.length == 1) ...[
+            const SizedBox(height: 8),
+            _buildSingleDurationPointCard(
+              theme: theme,
+              themeColors: themeColors,
+              point: round.trend.first,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+
+
   // ── Feeling section ───────────────────────────────────────────────────────
 
   /// The HOW DID IT FEEL section surfaces the post-session feeling
@@ -659,7 +985,6 @@ class _StatsScreenState extends State<StatsScreen> {
     final data = _progressData;
     final trend = data?.feelingTrend ?? const <FeelingTrendPoint>[];
     final widgets = <Widget>[
-      const SizedBox(height: 24),
       OmniCardHeader(
         title: 'HOW DID IT FEEL',
         actions: [
@@ -855,7 +1180,6 @@ class _StatsScreenState extends State<StatsScreen> {
   ) {
     final trend = _progressData?.nutritionTrend ?? const [];
     return [
-      const SizedBox(height: 24),
       const OmniCardHeader(title: 'NUTRITION'),
       _buildNutritionCard(context, themeColors, trend),
     ];
@@ -874,7 +1198,6 @@ class _StatsScreenState extends State<StatsScreen> {
     List<NutritionTrendPoint> trend,
   ) {
     final theme = Theme.of(context);
-    final macroColors = themeColors.macroChart;
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
       child: Column(
@@ -887,32 +1210,7 @@ class _StatsScreenState extends State<StatsScreen> {
             const SizedBox(height: _kNutritionLegendGap),
             SizedBox(
               height: _kNutritionLegendRowHeight,
-              child: _nutritionView == _NutritionView.macros
-                  ? Wrap(
-                      spacing: 12,
-                      runSpacing: 4,
-                      children: [
-                        _buildLegendItem(
-                          theme,
-                          macroColors.protein,
-                          'Protein (g)',
-                          themeColors,
-                        ),
-                        _buildLegendItem(
-                          theme,
-                          macroColors.carbs,
-                          'Carbs (g)',
-                          themeColors,
-                        ),
-                        _buildLegendItem(
-                          theme,
-                          macroColors.fat,
-                          'Fat (g)',
-                          themeColors,
-                        ),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+              child: _buildNutritionLegend(theme, themeColors),
             ),
           ] else if (trend.length >= 2) ...[
             if (_nutritionView == _NutritionView.calories)
@@ -924,32 +1222,7 @@ class _StatsScreenState extends State<StatsScreen> {
             // Calories ↔ Macros does not change the card's height.
             SizedBox(
               height: _kNutritionLegendRowHeight,
-              child: _nutritionView == _NutritionView.macros
-                  ? Wrap(
-                      spacing: 12,
-                      runSpacing: 4,
-                      children: [
-                        _buildLegendItem(
-                          theme,
-                          macroColors.protein,
-                          'Protein (g)',
-                          themeColors,
-                        ),
-                        _buildLegendItem(
-                          theme,
-                          macroColors.carbs,
-                          'Carbs (g)',
-                          themeColors,
-                        ),
-                        _buildLegendItem(
-                          theme,
-                          macroColors.fat,
-                          'Fat (g)',
-                          themeColors,
-                        ),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+              child: _buildNutritionLegend(theme, themeColors),
             ),
           ] else
             // S-004: exactly 1 logged day → inline single-point card.
@@ -1026,6 +1299,14 @@ class _StatsScreenState extends State<StatsScreen> {
       (i) => FlSpot(i.toDouble(), trend[i].calories.toDouble()),
     );
 
+    // Dashed target line. Steps at every saved target change —
+    // each `NutritionAdherenceTargetPoint` extends forward to
+    // the next point. We project the steps onto the actuals'
+    // x-axis (one y-value per actuals index) and let fl_chart
+    // draw the dashed segments between them. Empty when no
+    // target has ever been saved.
+    final targetSeries = _buildTargetCaloriesSeries(themeColors, trend);
+
     return ScrollableTrendChart(
       themeColors: themeColors,
       bounds: bounds,
@@ -1090,6 +1371,9 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
             borderData: FlBorderData(show: false),
             lineBarsData: [
+              // Target line first so the actuals draw on top.
+              // `dotData.show: false` keeps the dashed line clean.
+              ?targetSeries,
               LineChartBarData(
                 spots: spots,
                 color: themeColors.primary,
@@ -1116,6 +1400,103 @@ class _StatsScreenState extends State<StatsScreen> {
         );
       },
     );
+  }
+
+  /// Projects the piecewise `NutritionAdherenceTargetPoint`
+  /// list onto the actuals' x-axis (one y-value per actuals
+  /// index) and returns a dashed `LineChartBarData` ready to
+  /// drop into the calories chart's `lineBarsData`. Returns
+  /// `null` when no target has ever been saved (so the dashed
+  /// line is not drawn at all).
+  LineChartBarData? _buildTargetCaloriesSeries(
+    OmniThemeColors themeColors,
+    List<NutritionTrendPoint> trend,
+  ) {
+    final targetLine = _nutritionAdherence?.targetLine ?? const [];
+    if (targetLine.isEmpty) return null;
+    final spots = <FlSpot>[];
+    var currentTarget = targetLine.first;
+    var currentTargetIdx = 0;
+    for (var i = 0; i < trend.length; i++) {
+      // Find the most recent target whose date is on or before
+      // this actuals day.
+      while (currentTargetIdx < targetLine.length - 1 &&
+          !targetLine[currentTargetIdx + 1].date.isAfter(trend[i].date)) {
+        currentTargetIdx++;
+        currentTarget = targetLine[currentTargetIdx];
+      }
+      spots.add(FlSpot(i.toDouble(), currentTarget.calories));
+    }
+    return LineChartBarData(
+      spots: spots,
+      color: themeColors.primary.withAlpha(120),
+      isCurved: false,
+      barWidth: 1.5,
+      isStrokeCapRound: true,
+      dashArray: const [4, 4],
+      dotData: FlDotData(show: false),
+      belowBarData: BarAreaData(show: false),
+    );
+  }
+
+  /// Same as [_buildTargetCaloriesSeries] but for the macros
+  /// view: returns up to three dashed `LineChartBarData` for
+  /// protein, carbs, and fat. Empty list when no target has
+  /// ever been saved.
+  List<LineChartBarData> _buildTargetMacroSeries(
+    OmniThemeColors themeColors,
+    List<NutritionTrendPoint> trend,
+  ) {
+    final targetLine = _nutritionAdherence?.targetLine ?? const [];
+    if (targetLine.isEmpty) return const [];
+    final macroColors = themeColors.macroChart;
+    final series = <_MacroTargetSeries>[];
+    void seriesFor({
+      required Color color,
+      required double Function(NutritionAdherenceTargetPoint) value,
+    }) {
+      final spots = <FlSpot>[];
+      var currentTarget = targetLine.first;
+      var currentTargetIdx = 0;
+      for (var i = 0; i < trend.length; i++) {
+        while (currentTargetIdx < targetLine.length - 1 &&
+            !targetLine[currentTargetIdx + 1].date.isAfter(trend[i].date)) {
+          currentTargetIdx++;
+          currentTarget = targetLine[currentTargetIdx];
+        }
+        spots.add(FlSpot(i.toDouble(), value(currentTarget)));
+      }
+      series.add(_MacroTargetSeries(
+        color: color,
+        spots: spots,
+      ));
+    }
+
+    seriesFor(
+      color: macroColors.protein,
+      value: (t) => t.protein,
+    );
+    seriesFor(
+      color: macroColors.carbs,
+      value: (t) => t.carbs,
+    );
+    seriesFor(
+      color: macroColors.fat,
+      value: (t) => t.fat,
+    );
+    return [
+      for (final s in series)
+        LineChartBarData(
+          spots: s.spots,
+          color: s.color.withAlpha(120),
+          isCurved: false,
+          barWidth: 1.5,
+          isStrokeCapRound: true,
+          dashArray: const [4, 4],
+          dotData: FlDotData(show: false),
+          belowBarData: BarAreaData(show: false),
+        ),
+    ];
   }
 
   /// Builds an empty chart showing zero values when there's no
@@ -1164,9 +1545,20 @@ class _StatsScreenState extends State<StatsScreen> {
                     if (value == 0 || value == (emptyPointCount - 1).toDouble()) {
                       return buildEdgeAwareDateLabel(
                         meta: meta,
+                        // Calendar arithmetic, not `subtract(Duration(...))`
+                        // — across a DST transition a Duration lands on the
+                        // wrong wall-clock day. Cosmetic here (empty-state
+                        // axis) but kept consistent with the service so the
+                        // pattern does not get copied back out.
                         text: ChartAxisHelper.formatDateLabel(
-                          DateTime.now()
-                              .subtract(Duration(days: ((emptyPointCount - 1) - value).toInt())),
+                          () {
+                            final now = DateTime.now();
+                            return DateTime(
+                              now.year,
+                              now.month,
+                              now.day - ((emptyPointCount - 1) - value).toInt(),
+                            );
+                          }(),
                         ),
                         style: TextStyle(
                           fontSize: 9,
@@ -1370,6 +1762,9 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
             borderData: FlBorderData(show: false),
             lineBarsData: [
+              // Target lines first (drawn behind the actuals so
+              // they read as a baseline reference, not as data).
+              ..._buildTargetMacroSeries(themeColors, trend),
               // NOTE: the carbs line plots **total** carbs grams
               // (not net carbs), matching the home strip's "total
               // carbs for blue" semantics.
@@ -1496,7 +1891,13 @@ class _StatsScreenState extends State<StatsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            _buildCardioDurationChart(themeColors, cardio.trend),
+            _buildDurationChart(
+              themeColors,
+              cardio.trend,
+              unitLabel: 'min',
+              color: themeColors.secondary,
+              divisor: 60.0,
+            ),
           ] else if (cardio.trend.length == 1) ...[
             const SizedBox(height: 8),
             _buildSingleCardioPointCard(
@@ -1696,109 +2097,6 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _buildCardioDurationChart(
-    OmniThemeColors themeColors,
-    List<CardioTrendPoint> points,
-  ) {
-    final durationValues = points.map((p) => p.durationSecs / 60.0).toList();
-    final spots = List.generate(
-      points.length,
-      (i) => FlSpot(i.toDouble(), durationValues[i]),
-    );
-
-    final bounds = ChartAxisHelper.computeBounds(durationValues);
-
-    return ScrollableTrendChart(
-      themeColors: themeColors,
-      bounds: bounds,
-      unitLabel: 'min',
-      pointCount: points.length,
-      chartBuilder: (plotWidth) {
-        return LineChart(
-          LineChartData(
-            minX: 0,
-            maxX: (points.length - 1).toDouble(),
-            minY: bounds.min,
-            maxY: bounds.max,
-            lineTouchData: const LineTouchData(enabled: false),
-            titlesData: FlTitlesData(
-              topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
-              ),
-              rightTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: _kBottomAxisReservedSize,
-                  interval: 1,
-                  getTitlesWidget: (value, meta) {
-                    final idx = value.round();
-                    if (idx < 0 || idx >= points.length) {
-                      return const SizedBox.shrink();
-                    }
-                    if (!ChartAxisHelper.shouldShowDateLabel(
-                      idx,
-                      points.length,
-                    )) {
-                      return const SizedBox.shrink();
-                    }
-                    return buildEdgeAwareDateLabel(
-                      meta: meta,
-                      text: ChartAxisHelper.formatDateLabel(points[idx].date),
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: themeColors.textMuted,
-                      ),
-                      isFirst: idx == 0,
-                      isLast: idx == points.length - 1,
-                    );
-                  },
-                ),
-              ),
-            ),
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              getDrawingHorizontalLine: (_) =>
-                  FlLine(color: themeColors.divider, strokeWidth: 1),
-            ),
-            borderData: FlBorderData(show: false),
-            lineBarsData: [
-              LineChartBarData(
-                spots: spots,
-                color: themeColors.secondary,
-                isCurved: true,
-                curveSmoothness: 0.3,
-                barWidth: 2,
-                isStrokeCapRound: true,
-                dotData: FlDotData(
-                  show: true,
-                  getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                    radius: 3,
-                    color: themeColors.secondary,
-                    strokeWidth: 1.5,
-                    strokeColor: themeColors.surface,
-                  ),
-                ),
-                belowBarData: BarAreaData(
-                  show: true,
-                  color: themeColors.secondary.withAlpha(25),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 
   /// Deliberate single-point card for a lift metric (e1RM or volume).
   Widget _buildSinglePointCard({
@@ -1970,6 +2268,153 @@ class _StatsScreenState extends State<StatsScreen> {
     final km = distanceM / 1000.0;
     return distUnit == 'mi' ? km * 0.621371 : km;
   }
+
+  /// Build the NUTRITION card's legend row. Carries the
+  /// active view's macro / calorie markers plus a "Target"
+  /// marker whenever the adherence series has a target
+  /// line. The dashed line is rendered with a 2-pixel solid
+  /// swatch followed by a 2-pixel gap so the legend swatch
+  /// matches the on-chart dash pattern.
+  Widget _buildNutritionLegend(
+    ThemeData theme,
+    OmniThemeColors themeColors,
+  ) {
+    final macroColors = themeColors.macroChart;
+    final hasTarget = (_nutritionAdherence?.targetLine.isNotEmpty ?? false);
+    if (_nutritionView == _NutritionView.calories) {
+      return Wrap(
+        spacing: 12,
+        runSpacing: 4,
+        children: [
+          _buildLegendItem(
+            theme,
+            themeColors.primary,
+            'Calories (kcal)',
+            themeColors,
+          ),
+          if (hasTarget)
+            _buildDashedLegendItem(
+              theme,
+              themeColors.primary.withAlpha(120),
+              'Target (kcal)',
+              themeColors,
+            ),
+        ],
+      );
+    }
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        _buildLegendItem(
+          theme,
+          macroColors.protein,
+          'Protein (g)',
+          themeColors,
+        ),
+        _buildLegendItem(
+          theme,
+          macroColors.carbs,
+          'Carbs (g)',
+          themeColors,
+        ),
+        _buildLegendItem(
+          theme,
+          macroColors.fat,
+          'Fat (g)',
+          themeColors,
+        ),
+        if (hasTarget)
+          _buildDashedLegendItem(
+            theme,
+            themeColors.textMuted,
+            'Target',
+            themeColors,
+          ),
+      ],
+    );
+  }
+
+  /// Like `_buildLegendItem` but renders the color swatch as
+  /// a 2-pixel-on / 2-pixel-off dash so the legend reads as
+  /// the same dashed target line the chart draws.
+  Widget _buildDashedLegendItem(
+    ThemeData theme,
+    Color color,
+    String label,
+    OmniThemeColors themeColors,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CustomPaint(
+          size: const Size(12, 8),
+          painter: _DashedLegendSwatchPainter(color: color),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: themeColors.textMuted,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Renders the dashed legend swatch for the nutrition
+/// target line. Two pixels on, two pixels off — same dash
+/// pattern the chart line uses (`dashArray: [4, 4]`).
+class _DashedLegendSwatchPainter extends CustomPainter {
+  final Color color;
+  _DashedLegendSwatchPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final y = size.height / 2;
+    // 2-pixel dashes with 2-pixel gaps, repeating across
+    // the 12-pixel swatch width.
+    var x = 0.0;
+    while (x < size.width) {
+      final end = (x + 2).clamp(0, size.width).toDouble();
+      canvas.drawLine(Offset(x, y), Offset(end, y), paint);
+      x += 4;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedLegendSwatchPainter old) =>
+      old.color != color;
+}
+
+/// PR 2b macros-target-series helper. Carries the color and
+/// spots for one macro's target line; projected from the
+/// adherence series by `_buildTargetMacroSeries`.
+class _MacroTargetSeries {
+  final Color color;
+  final List<FlSpot> spots;
+  const _MacroTargetSeries({required this.color, required this.spots});
+}
+
+/// Holds one chart series for the multi-line VOLUME TRENDS
+/// and CONSISTENCY charts: the line color, the x-indexed
+/// data points, and the legend label. Indexed against the
+/// shared period-points x-axis so every series can share one
+/// `ScrollableTrendChart`.
+class _ChartSeries {
+  final Color color;
+  final List<FlSpot> spots;
+  final String legendLabel;
+  const _ChartSeries({
+    required this.color,
+    required this.spots,
+    required this.legendLabel,
+  });
 }
 
 class _LinearScale {

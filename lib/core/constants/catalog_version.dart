@@ -17,10 +17,32 @@
 ///   we bumped to `2` so every existing install runs a one-time refresh on
 ///   next launch (catching everyone who installed at v1). When the bundled
 ///   demo routines shipped, we bumped to `3` so existing installs receive
-///   them exactly once on next launch.
+///   them exactly once on next launch. When the food catalog expanded from 107
+///   to 150 items (adding 43 new foods to close high-traffic gaps), we bumped
+///   to `4` to deliver all new foods to existing users on next launch. When
+///   the food catalog expanded from 150 to 166 items (adding 16 new foods to
+///   close high-frequency gaps that force hand-entry: wings, ground chicken,
+///   beef patty, roast beef deli,5cabbage, jalapeño, green onion, sourdough,
+///   croissant, blueberry muffin, pepperoni pizza, vanilla ice cream,
+///   California roll, half and half, whipped cream, diet cola), we bumped to
+///   `5` to deliver all new foods to existing users on next launch.
+///   When `beer_regular` and `red_wine` were retired (published with
+///   `hidden: true` because the calorie-derivation model does not represent
+///   alcohol — see `food_catalog_load_test.dart` S-007), we bumped to `8`
+///   so existing installs receive the new hidden state on next launch.
+///   When the HIT Full Body routine shipped and the muscle-group taxonomy was
+///   completed (calves, forearms, adductors, neck, traps added; `muscle-arms`
+///   and `muscle-legs` finally defined rather than only referenced; the
+///   exercise→muscle mappings swept), we bumped to `9` so existing installs
+///   pick up the new groups and corrected mappings on next launch.
+///   When rest intervals were removed from HIT Full Body we bumped to `10`.
+///   That bump only reaches the routine because the same change taught
+///   `_refreshDemoRoutines` to rewrite an *untouched* demo's segments /
+///   efforts / targets; before it, the refresh patched the template row
+///   alone, so no version bump could ever deliver a change below it.
 library;
 
-const int bundledCatalogVersion = 3;
+const int bundledCatalogVersion = 10;
 
 /// Entity-type identifiers used in the seed-entry tombstone markers.
 ///

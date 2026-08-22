@@ -8,6 +8,7 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 import 'create_period_screen.dart';
 import '../../widgets/layout/omni_back_header.dart';
 import '../../core/navigation/navigation.dart';
+import '../../widgets/dialogs/confirmation_dialog.dart';
 
 class PeriodListScreen extends StatefulWidget {
   final PeriodState periodState;
@@ -107,37 +108,15 @@ class _PeriodListScreenState extends State<PeriodListScreen> {
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Period'),
-        content: Text('Delete "${period.name}"?'),
-        actions: [
-          TextButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
+      barrierDismissible: true,
+      builder: (ctx) => ConfirmationDialog.twoChoice(
+        title: 'Delete Period',
+        body: Text('Delete "${period.name}"?'),
+        dismissLabel: 'Cancel',
+        confirmLabel: 'Delete',
+        dismissKey: const Key('period-delete-cancel'),
+        confirmKey: const Key('period-delete-confirm'),
+        isDestructive: true,
       ),
     );
     if (confirmed == true) {

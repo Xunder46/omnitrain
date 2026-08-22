@@ -14,10 +14,15 @@ import '../../../core/constants/omni_theme.dart';
 /// from the existing `OmniTheme.softShadow` drop on the dark navy header —
 /// no inner border, no glyph, no chevron, no label.
 ///
-/// The outer transparent Padding insets the visible circle from the AppBar's
-/// left edge and the status bar, and reserves room for the shadow's blur. It
-/// also guarantees a tappable hit region of at least 44×44pt, supplemented by
-/// an explicit `ConstrainedBox` minimum on the gesture bounds.
+/// The outer transparent Padding insets the visible circle from the top,
+/// right, and bottom edges of the AppBar and from the status bar, and
+/// reserves room for the shadow's blur. It also guarantees a tappable hit
+/// region of at least 44×44pt, supplemented by an explicit `ConstrainedBox`
+/// minimum on the gesture bounds. The left side carries NO padding so the
+/// visible 55 px circle's left edge is exactly at `titleSpacing` (16) from
+/// the AppBar's content-start — the same x-coordinate the home-screen
+/// training tiles start at (their outer `Padding(fromLTRB(16, 0, 16, 0))`).
+/// This keeps the logo button visually aligned with the leftmost tile edge.
 ///
 /// The press reaction (AnimatedScale to `OmniTheme.pressedScale`, light haptic
 /// on non-web, reduced-motion fallback) is preserved unchanged.
@@ -117,11 +122,11 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
     // centered in the circle.
     final innerPadding = (widget.tileSize - widget.size) / 2;
 
-    // Circle surface: subtle white overlay (matches the
-    // `OmniTheme.colors.surfaceBorder` token value, 0x0FFFFFFF = ~6% white)
-    // so the button has presence on the dark navy header without
-    // introducing a new color. The 1px `surfaceBorder` ring reinforces the
-    // circle edge. The 3D feel comes from `OmniTheme.softShadow` underneath.
+    // Circle edge: a single-width `surfaceBorder` ring, the same weight every
+    // other surface in the app draws its border at. It was previously drawn at
+    // double width, which read as heavy once the theme re-anchoring raised the
+    // `surfaceBorder` token's opacity. The 3D feel comes from
+    // `OmniTheme.softShadow` underneath.
     final tile = Container(
       width: widget.tileSize,
       height: widget.tileSize,
@@ -130,32 +135,43 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
         color: const Color.fromARGB(0, 0, 0, 0),
         border: Border.all(
           color: themeColors.surfaceBorder,
-          width: OmniTheme.surfaceBorderWidth * 2,
+          width: OmniTheme.surfaceBorderWidth,
         ),
         boxShadow: [OmniTheme.softShadow],
       ),
       padding: EdgeInsets.all(innerPadding),
-      child: Padding(
-        padding: const EdgeInsets.only(right: 1), // tweak: 1–4
-        child: Center(child: artwork),
-      ),
+      child: Center(child: artwork),
     );
 
     // Internal margin so the circle's soft shadow has full room to render
     // and the visible button reads with breathing room inside the AppBar.
-    // The AppBar's title slot is tightly sized to the toolbar height
-    // (kToolbarHeight = 56px); this padding insets the visible circle from
-    // the widget's left edge (away from the screen edge) and top edge (away
-    // from the status bar), and reserves room for the shadow's blur on the
-    // right and bottom. The padding is transparent and does not change the
-    // visible circle's shape, size, fill, or logo. The widget's bounding
-    // box is 72×64 (8px horizontal × 2 + 56, 4px vertical × 2 + 56), well
-    // above the 44×44pt hit-target minimum even before the ConstrainedBox
-    // below guarantees it. The visible circle (56px) matches kToolbarHeight
-    // exactly, so the AppBar toolbar height and the body-centered "TRAIN"
-    // title do not shift.
+    // The padding is intentionally ASYMMETRIC: 0 on the left, 8 px on
+    // top/right/bottom.
+    //
+    // The visible 55×55 circle's left edge lands at
+    // `AppBar.titleSpacing` (16) from the AppBar's content-start, which
+    // is the same x-coordinate the home-screen training tiles start at
+    // (their outer `Padding(fromLTRB(16, 0, 16, 0))`). With 0 left
+    // padding inside the logo button, the visible circle sits flush with
+    // the leftmost tile edge instead of 8 px to the right of them.
+    //
+    // 8 px top + 8 px bottom keep the circle vertically centred and
+    // reserve room for the soft shadow's blur above and below. 8 px
+    // right insets the visible circle from any future AppBar trailing
+    // widget. The padding is transparent and does not change the
+    // visible circle's shape, size, fill, or logo. The widget's
+    // bounding box becomes (55 + 8 + 8) wide × (55 + 8 + 8) tall = 63×71
+    // on the horizontal — width is less than height because the left
+    // padding is 0.
+    //
+    // The bottom padding is also what keeps the visible circle off the
+    // sheet's top edge when the Hub sheet is fully expanded (the sheet
+    // top lands at `padding.top + toolbarHeight`, just below the
+    // AppBar's bottom edge; the 8 px bottom padding guarantees the
+    // circle is fully inside the AppBar regardless of the actual
+    // `toolbarHeight` configured on the host Scaffold).
     final padded = Padding(
-      padding: const EdgeInsets.fromLTRB(1, 8, 8, 4),
+      padding: const EdgeInsets.only(top: 8, right: 8, bottom: 8),
       child: tile,
     );
 
@@ -185,8 +201,10 @@ class HomeLogoButtonState extends State<HomeLogoButton> {
 
     // Hit target guarantee: ensure the gesture region is at least 44×44pt
     // even if `tileSize` is later reduced below 44. The Padding above
-    // already provides 72×64, but ConstrainedBox + opaque hit-test
-    // behaviour make the guarantee explicit and resilient.
+    // already provides 63×71 (0 left + 8 right + 8 top + 8 bottom around
+    // the 55 px circle, well above the 44 pt hit target on every side
+    // except the left), but ConstrainedBox + opaque hit-test behaviour
+    // make the guarantee explicit and resilient.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,

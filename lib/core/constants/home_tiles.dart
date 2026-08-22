@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'modality.dart';
 import 'modality_colors.dart';
+import 'tile_artwork_metrics.dart';
 import '../../widgets/icons/overhead_press_icon.dart';
 
 /// Configuration for home screen modality tiles with cosmic aesthetic
@@ -10,7 +11,13 @@ class HomeTileConfig {
   final String key;
   final String label;
   final IconData? iconData;
-  final Widget? iconWidget;
+
+  /// Custom-drawn artwork for tiles a standard [IconData] cannot express.
+  ///
+  /// A builder, not a widget: the tile owns artwork size, so a definition
+  /// states *which* artwork to draw and never how large. Custom artwork and
+  /// standard icons therefore shrink and drop out at the same points.
+  final TileArtworkBuilder? artworkBuilder;
   final Color accentColor;
   final String? modality; // null = special tile (Free Training, My Routines)
 
@@ -26,7 +33,7 @@ class HomeTileConfig {
     required this.key,
     required this.label,
     this.iconData,
-    this.iconWidget,
+    this.artworkBuilder,
     required this.accentColor,
     this.modality,
     this.isSecondary = false,
@@ -51,7 +58,7 @@ class HomeTiles {
     HomeTileConfig(
       key: 'resistance',
       label: 'Resistance',
-      iconWidget: OverheadPressIcon(size: 70),
+      artworkBuilder: OverheadPressIcon.artwork,
       accentColor: ModalityColors.resistanceLifting,
       modality: Modality.resistanceLifting,
     ),

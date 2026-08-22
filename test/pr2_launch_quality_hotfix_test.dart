@@ -37,7 +37,9 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/features/routine/routine_setup_screen.dart';
 import 'package:omnitrain/features/session/workout_session_screen.dart';
+import 'package:omnitrain/core/constants/omni_theme.dart';
 import 'package:omnitrain/features/startup/startup_failure_screen.dart';
+import 'package:omnitrain/features/startup/startup_preparing_screen.dart';
 import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
@@ -108,6 +110,17 @@ Future<void> _openDetailView(WidgetTester tester, String exerciseName) async {
 void main() {
   // ── S-001 / S-002 — StartupRoot preparing/distinct states ─────────────
 
+  /// The preparing screen's only themed foreground element.
+  Color? _preparingSpinnerColor(WidgetTester tester) {
+    final indicator = tester.widget<CircularProgressIndicator>(
+      find.descendant(
+        of: find.byType(StartupPreparingScreen),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+    );
+    return indicator.valueColor?.value;
+  }
+
   group('StartupRoot — preparing state (S-001)', () {
     testWidgets(
       'preparing renders a non-failure surface and never shows the failure screen on a healthy launch',
@@ -152,6 +165,42 @@ void main() {
         // screen is still absent.
         expect(find.byType(StartupFailureScreen), findsNothing);
         expect(find.text('APP-SURFACE-MARKER'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'preparing screen adopts a theme change while mounted instead of holding the default',
+      (WidgetTester tester) async {
+        addTearDown(() => OmniTheme.activeTheme = AppTheme.abyssalNeon);
+        OmniTheme.activeTheme = AppTheme.abyssalNeon;
+
+        // The screen is mounted before startup knows the user's theme, so
+        // reading the token once at build time would pin it to the default
+        // for the whole run. This pins that it tracks the change instead.
+        await tester.pumpWidget(
+          const MaterialApp(home: StartupPreparingScreen()),
+        );
+        await tester.pump();
+
+        expect(
+          _preparingSpinnerColor(tester),
+          OmniTheme.colorsForTheme(AppTheme.abyssalNeon).primary,
+        );
+
+        // Startup resolves the saved theme part-way through the run.
+        OmniTheme.activeTheme = AppTheme.crimsonDojo;
+        await tester.pump();
+
+        expect(find.byType(StartupPreparingScreen), findsOneWidget);
+        expect(
+          _preparingSpinnerColor(tester),
+          OmniTheme.colorsForTheme(AppTheme.crimsonDojo).primary,
+          reason:
+              'The preparing screen must listen for the theme adoption rather '
+              'than read it once — otherwise it flashes the default palette '
+              'for the length of startup.',
+        );
         expect(tester.takeException(), isNull);
       },
     );

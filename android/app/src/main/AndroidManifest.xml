@@ -1,5 +1,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Required so the Sentry SDK can transmit crash reports from release
+      builds. Debug and profile builds get this from their own manifests
+      (the Flutter tool needs it for hot reload); release builds did not,
+      which left crash reporting dependent on whether the Sentry AAR
+      happened to contribute the permission via manifest merge. Declared
+      explicitly so the release manifest does not rely on a transitive
+      dependency's manifest. INTERNET is a normal permission — it needs
+      no Play Console declaration and no runtime request.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      Rest-timer pings are scheduled with `exactAllowWhileIdle`. On
+      Android 14+ this permission is denied by default for apps whose
+      core function is not an alarm clock or calendar, so the app must
+      degrade to inexact scheduling when it is absent — see
+      `RestNotificationService._resolveAndroidScheduleMode`. Keeping the
+      declaration lets devices that DO grant it get precise pings.
+    -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <application
         android:label="OmniTrain"

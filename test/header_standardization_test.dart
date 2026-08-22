@@ -1351,7 +1351,7 @@ void main() {
                   unitType: FoodUnitType.grams,
                   groupId: 'g-1',
                   referenceAmount: 100.0,
-                  referenceLabel: '100 g',
+                  referenceLabel: 'g',
                   protein: 0,
                   carbs: 0,
                   fat: 0,
@@ -2683,7 +2683,16 @@ void main() {
     testWidgets(
       'S-018: every Stats section eyebrow uses D-1 typography (labelSmall + w600 + 2.0 + textMuted)',
       (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 900));
+        // Tall viewport so every section header — including the
+        // NUTRITION card at the bottom — is mounted. PR 2b added
+        // RECORDS / VOLUME TRENDS / CONSISTENCY between the
+        // existing sections, so the total content height grew;
+        // a phone-class 900-tall viewport now hides NUTRITION
+        // offscreen. The header itself is mounted in the
+        // widget tree, but `find.text` only matches widgets that
+        // are currently in the visible viewport for the test
+        // surface. Bumping to 1800 keeps every section visible.
+        await tester.binding.setSurfaceSize(const Size(400, 1800));
         await pumpStatsScreen(
           tester,
           seed: (repo) => seedCompletedStrengthSession(repo),

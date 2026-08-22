@@ -1197,6 +1197,19 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<Map<String, List<SessionSegment>>> getSegmentsBySession() async {
+    final grouped = <String, List<SessionSegment>>{};
+    for (final raw in _segmentsBox.values) {
+      final segment = SessionSegment.fromMap(_asStringMap(raw));
+      (grouped[segment.sessionId] ??= <SessionSegment>[]).add(segment);
+    }
+    for (final segments in grouped.values) {
+      segments.sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+    }
+    return grouped;
+  }
+
+  @override
   Future<String> createSegment(SessionSegment segment) async {
     await _segmentsBox.put(segment.id, segment.toMap());
     return segment.id;
@@ -1211,28 +1224,46 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .where((e) => e.segmentId == segmentId)
         .toList();
 
-    efforts.sort((a, b) {
-      final topCompare = _effectiveEffortTopLevelOrder(
-        a,
-      ).compareTo(_effectiveEffortTopLevelOrder(b));
-      if (topCompare != 0) return topCompare;
-
-      if (a.blockId != null && b.blockId != null && a.blockId == b.blockId) {
-        final blockCompare = _effectiveEffortBlockOrder(
-          a,
-        ).compareTo(_effectiveEffortBlockOrder(b));
-        if (blockCompare != 0) return blockCompare;
-      }
-
-      final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
-      if (legacyCompare != 0) return legacyCompare;
-
-      final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
-      if (createdCompare != 0) return createdCompare;
-
-      return a.id.compareTo(b.id);
-    });
+    efforts.sort(_compareEfforts);
     return efforts;
+  }
+
+  /// The canonical effort ordering. Extracted so [getSegmentEfforts] and
+  /// [getEffortsBySegment] cannot drift apart — the bulk path must sort
+  /// exactly the way the per-segment path does.
+  int _compareEfforts(SegmentEffort a, SegmentEffort b) {
+    final topCompare = _effectiveEffortTopLevelOrder(
+      a,
+    ).compareTo(_effectiveEffortTopLevelOrder(b));
+    if (topCompare != 0) return topCompare;
+
+    if (a.blockId != null && b.blockId != null && a.blockId == b.blockId) {
+      final blockCompare = _effectiveEffortBlockOrder(
+        a,
+      ).compareTo(_effectiveEffortBlockOrder(b));
+      if (blockCompare != 0) return blockCompare;
+    }
+
+    final legacyCompare = a.orderIndex.compareTo(b.orderIndex);
+    if (legacyCompare != 0) return legacyCompare;
+
+    final createdCompare = a.createdAtMs.compareTo(b.createdAtMs);
+    if (createdCompare != 0) return createdCompare;
+
+    return a.id.compareTo(b.id);
+  }
+
+  @override
+  Future<Map<String, List<SegmentEffort>>> getEffortsBySegment() async {
+    final grouped = <String, List<SegmentEffort>>{};
+    for (final raw in _effortsBox.values) {
+      final effort = SegmentEffort.fromMap(_asStringMap(raw));
+      (grouped[effort.segmentId] ??= <SegmentEffort>[]).add(effort);
+    }
+    for (final efforts in grouped.values) {
+      efforts.sort(_compareEfforts);
+    }
+    return grouped;
   }
 
   @override
@@ -1283,6 +1314,17 @@ class HiveWorkoutRepository implements WorkoutRepository {
         .map((raw) => EffortObservation.fromMap(_asStringMap(raw)))
         .where((o) => o.effortId == effortId)
         .toList();
+  }
+
+  @override
+  Future<Map<String, List<EffortObservation>>> getObservationsByEffort() async {
+    final grouped = <String, List<EffortObservation>>{};
+    for (final raw in _observationsBox.values) {
+      final observation = EffortObservation.fromMap(_asStringMap(raw));
+      (grouped[observation.effortId] ??= <EffortObservation>[])
+          .add(observation);
+    }
+    return grouped;
   }
 
   @override
@@ -1377,6 +1419,19 @@ class HiveWorkoutRepository implements WorkoutRepository {
   }
 
   @override
+  Future<Map<String, List<TimedInstance>>> getTimedInstancesByEffort() async {
+    final grouped = <String, List<TimedInstance>>{};
+    for (final raw in _timedInstancesBox.values) {
+      final instance = TimedInstance.fromMap(_asStringMap(raw));
+      (grouped[instance.effortId] ??= <TimedInstance>[]).add(instance);
+    }
+    for (final instances in grouped.values) {
+      instances.sort((a, b) => a.entryIndex.compareTo(b.entryIndex));
+    }
+    return grouped;
+  }
+
+  @override
   Future<String> createTimedInstance(TimedInstance instance) async {
     await _timedInstancesBox.put(instance.id, instance.toMap());
     return instance.id;
@@ -1438,38 +1493,6 @@ class HiveWorkoutRepository implements WorkoutRepository {
     }
     await _entryRestsBox.deleteAll(idsToDelete);
   }
-
-  @override
-  Future<Map<String?, List<EntryRest>>> getEntryRestsByModalityInDateRange(
-    int fromMs,
-    int toMs,
-  ) async {
-    final result = <String?, List<EntryRest>>{};
-    for (final raw in _entryRestsBox.values) {
-      final rest = EntryRest.fromMap(_asStringMap(raw));
-      if (rest.restEndMs == null) continue;
-      if (rest.restStartMs < fromMs || rest.restStartMs > toMs) continue;
-
-      final effortRaw = _effortsBox.get(rest.effortId);
-      if (effortRaw == null) continue;
-      final effort = SegmentEffort.fromMap(_asStringMap(effortRaw));
-
-      final segmentRaw = _segmentsBox.get(effort.segmentId);
-      if (segmentRaw == null) continue;
-      final segment = SessionSegment.fromMap(_asStringMap(segmentRaw));
-
-      final sessionRaw = _sessionsBox.get(segment.sessionId);
-      if (sessionRaw == null) continue;
-      final session = TrainingSession.fromMap(_asStringMap(sessionRaw));
-
-      final modality = session.modality;
-
-      result.putIfAbsent(modality, () => []).add(rest);
-    }
-    return result;
-  }
-
-  // ===== EXERCISE NOTES =====
 
   @override
   Future<ExerciseNote?> getExerciseNote(String exerciseId) async {
@@ -1557,6 +1580,11 @@ class HiveWorkoutRepository implements WorkoutRepository {
     return _muscleGroupsBox.values
         .map((raw) => MuscleGroup.fromMap(_asStringMap(raw)))
         .toList();
+  }
+
+  @override
+  Future<void> upsertMuscleGroup(MuscleGroup group) async {
+    await _muscleGroupsBox.put(group.id, group.toMap());
   }
 
   @override
@@ -2002,6 +2030,28 @@ class HiveWorkoutRepository implements WorkoutRepository {
       if (food.isCatalog) continue; // safety: catalog foods are read-only
       final updated = food.copyWith(groupId: targetGroupId, updatedAtMs: now);
       await _foodsBox.put(id, updated.toMap());
+    }
+  }
+
+  @override
+  Future<void> reassignCatalogFoodsToGroup(
+    List<String> catalogFoodIds,
+    String? targetGroupId,
+  ) async {
+    if (catalogFoodIds.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final id in catalogFoodIds) {
+      final raw = _foodCatalogBox.get(id);
+      if (raw == null) continue;
+      final food = Food.fromMap(_asStringMap(raw));
+      // Safety: bundled catalog foods are never passed here (the
+      // bundled-food guard at the state layer rejects them), but
+      // double-check defensively in case a future caller forgets.
+      // The bundled id set lives in `FoodLibraryState._bundledCatalogFoodIds`
+      // which the repository does not import; the state layer is
+      // the only caller and filters before invoking this method.
+      final updated = food.copyWith(groupId: targetGroupId, updatedAtMs: now);
+      await _foodCatalogBox.put(id, updated.toMap());
     }
   }
 

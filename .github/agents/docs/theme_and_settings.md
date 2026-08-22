@@ -34,16 +34,9 @@ enum AppTheme {
 
 ### Available Themes
 
-| Enum Value | Display Name | Primary Accent | Character |
-|------------|--------------|----------------|-----------|
-| `AppTheme.abyssalNeon` | Abyssal Neon | `#00B4B8` | Deep navy with cyan instrumentation |
-| `AppTheme.forgeEmber` | Forge & Ember | `#FF6B35` | Molten orange, industrial warmth |
-| `AppTheme.obsidianVolt` | Obsidian Volt | `#D4A017` | Dark amber-electric contrast |
-| `AppTheme.voidPulse` | Void Pulse | `#8B5CF6` | Deep violet, late-night focus |
-| `AppTheme.crimsonDojo` | Crimson Dojo | `#E53935` | Combat-sport red, heavier contrast |
-| `AppTheme.malachiteCore` | Malachite Core | `#1A9A4A` | Deep mineral green, grounded and earthy |
-
-For full palette values and visual rationale, see [Design System](design_system.md).
+Six themes: Abyssal Neon, Forge & Ember, Obsidian Volt, Void Pulse, Crimson Dojo, and Malachite
+Core. Their palettes and the reasoning behind each are in [Design System](design_system.md); the
+values themselves live only in `lib/core/constants/omni_theme.dart`.
 
 ### `OmniTheme` Token Resolver
 
@@ -133,70 +126,32 @@ Valid rest ping intervals:
 
 **File**: `lib/features/settings/settings_screen.dart`
 
-Entry path: `HomeScreen` → Maintenance sheet → `SettingsScreen` (also reachable from the home-screen Hub sheet)
+Entry path: `HomeScreen` → Maintenance sheet → `SettingsScreen`
 
 The screen is organized into four surfaced sections plus a low-emphasis version footer.
 
-### 1. Preferences
+### Sections
 
-Rows in the `PREFERENCES` section:
+The screen groups preferences, sound and alert behaviour, workout follow-up, and appearance. Two
+rules matter beyond the row list:
 
-- `Start of Week`: segmented toggle (`Sun` / `Mon`) used by calendar views
-- `Weight`: segmented toggle (`kg` / `lbs`) used by weight displays and editors
-- `Distance`: segmented toggle (`km` / `mi`) used by cardio and timed exercise displays
-- `Height`: segmented toggle (`cm` / `ft in`) used by the profile card, the
-  height log sheet, and the height history chart. The stored value is
-  always canonical centimeters; switching the toggle never rewrites a
-  saved height. The log sheet's input shape branches on this preference
-  (single `Value (cm)` field in cm mode; side-by-side `Feet` and `Inches`
-  fields in ftin mode, with inches bounded to 0–11). The compound
-  feet/inches form (e.g. `5 ft 11 in`) is rendered in the profile card
-  and the history chart's selected-point label.
-
-Below those rows, a `PREVIEW` card renders example values for both weight and distance using the active unit preferences.
-
-### 2. Sounds & Alerts
-
-Rows in the `SOUNDS & ALERTS` section:
-
-- `Effort Timer Sound`: bottom-sheet picker for the sound played when a timed effort or round expires
-- `Rest Ping`: bottom-sheet picker for the periodic interval reminder during an open rest
-- `Rest Ping Sound`: bottom-sheet picker for the sound used by the rest ping
-
-Behavior notes:
-
-- tapping a sound option plays an immediate preview through `TimerAlertService.playPreview(...)`
-- effort timer completion uses `fireEffortTimerAlert(...)` and adds heavy haptics on native platforms
-- rest ping uses `fireRestPingAlert(...)` and adds light haptics on native platforms
-- web safely no-ops audio playback and logs debug output instead of throwing
-
-### 3. Workout
-
-Rows in the `WORKOUT` section:
-
-- `Feeling Survey` (`showFeelingSurvey`, default `true`, preference key `show_feeling_survey`): toggle for whether the post-workout `SessionSummaryScreen` shows the 1–5 feeling prompt after the first frame. The sheet is non-dismissible (`isDismissible: false, enableDrag: false`); the user picks a value before the sheet closes. Toggling the setting OFF suppresses the sheet globally — the survey is post-workout only and does not surface from any other screen (e.g. it does not fire when the summary is reached via the calendar historical flow, and there is no in-session feeling prompt). See [Session Summary → Feeling Survey Capture](session_summary.md#feeling-survey-capture) for the full behaviour.
-
-### 4. Appearance
-
-The `APPEARANCE` section renders a two-column theme grid from `AppTheme.values`.
-
-Interaction rules:
-
-- tapping a tile calls `settingsState.setAppTheme(appTheme)` directly
-- the selected tile uses surfaced fill plus a primary-colored border
-- when the theme count is odd, the grid renders one ghost slot so the last row is visually balanced instead of showing a lone tile
+- **Height is stored canonically in centimetres regardless of the display unit.** Switching the
+  unit toggle never rewrites a saved height; only the input shape and the rendered form change.
+  This is the general units rule from [Global Conventions](global_conventions.md) applied to the
+  one measurement with a compound display form.
+- **Sound choices preview immediately on tap** through `TimerAlertService.playPreview`, and audio
+  playback no-ops safely on web rather than throwing.
 
 ### Version Footer
 
-The screen ends with a centered, low-emphasis footer that displays the **installed** app version and build number. The footer text is rendered as `Version X.Y.Z (N)` — version (`pubspec.yaml`'s `version:` token) followed by the build number (the `+N` suffix) in parentheses.
+The footer reports the installed app version and build, resolved once at startup from
+`package_info_plus` and threaded in as `AppVersionInfo`. The string is built by
+`AppVersionInfo.formatVersionLine()` so the screen and its tests share one formatter.
 
-**Source.** The values come from `package_info_plus`'s `PackageInfo.fromPlatform()`, resolved once at app startup in `lib/main.dart` and threaded into the `SettingsScreen` constructor as `appVersionInfo: AppVersionInfo(version, build)` via `MyApp` → `OnboardingScreen` / `HomeScreen` → `SettingsScreen` (and via `HubSheet` for the secondary access path). The Settings footer is the only site that consumes the value today.
-
-**Format helper.** The exact `Version X.Y.Z (N)` string is built by `AppVersionInfo.formatVersionLine()` in `lib/core/models/app_version_info.dart`, so the screen and its tests share one canonical formatter.
-
-**Hardcoded-string rule.** No version literal is baked into `lib/features/settings/`. A future version bump is reflected automatically — edit `pubspec.yaml`, rebuild, the row updates with zero source-code changes.
-
-**Failure mode.** If `package_info_plus` fails to resolve on a platform at startup (`main.dart` `try`/`catch`), `appVersionInfo` falls back to `AppVersionInfo(version: '0.0.0', build: '0')` so the footer remains renderable while the rest of the app continues to load. The placeholder string lives only in this catch block and never reaches a widget under normal operation.
+**No version literal is baked into `lib/features/settings/`.** A version bump is picked up from
+`pubspec.yaml` with zero source changes. A placeholder exists only in the startup catch block so
+the footer stays renderable if the platform lookup fails; it never reaches a widget under normal
+operation.
 
 ### Removed Surface
 

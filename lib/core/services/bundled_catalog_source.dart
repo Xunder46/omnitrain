@@ -26,6 +26,9 @@ class BundledCatalogSource implements CatalogSource {
       SeedData.exerciseCapabilityRelationships;
 
   @override
+  List<MuscleGroup> get muscleGroups => SeedData.sampleMuscleGroups;
+
+  @override
   Map<String, List<String>> get exerciseMuscleGroups =>
       SeedData.exerciseMuscleGroupRelationships;
 

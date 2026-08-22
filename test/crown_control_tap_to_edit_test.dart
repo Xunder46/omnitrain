@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,7 +9,6 @@ import 'package:omnitrain/state/routine/routine_state.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'package:omnitrain/state/workout/workout_state.dart';
 import 'package:omnitrain/widgets/session/inline_metric_editor.dart';
-import 'package:omnitrain/widgets/session/metric_crown_widget.dart';
 
 import 'helpers/fake_timer_alert_service.dart';
 import 'helpers/fake_preferences_service.dart';
@@ -52,81 +50,13 @@ Widget _buildEditor({
 
 void main() {
   // ══════════════════════════════════════════════════════════════════════════
-  // Crown presence tests (T-01 – T-04)
-  // Crown is now dormant: all editable editors render NO crown.
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('Crown presence (crown is dormant — findsNothing for all editors)', () {
-    // T-01
-    testWidgets(
-      'T-01: InlineMetricEditor (reps, not read-only) does NOT render MetricCrownWidget',
-      (tester) async {
-        await tester.pumpWidget(_buildEditor(metricType: 'reps', currentValue: 10));
-        expect(find.byType(MetricCrownWidget), findsNothing);
-      },
-    );
-
-    // T-02
-    testWidgets(
-      'T-02: InlineMetricEditor (weight, not read-only) does NOT render MetricCrownWidget',
-      (tester) async {
-        await tester.pumpWidget(_buildEditor(
-          metricType: 'weight',
-          currentValue: 80.0,
-          unitLabel: 'KG',
-        ));
-        expect(find.byType(MetricCrownWidget), findsNothing);
-      },
-    );
-
-    // T-03
-    testWidgets(
-      'T-03: neither reps nor weight editor in same tree renders MetricCrownWidget',
-      (tester) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Column(
-                children: [
-                  InlineMetricEditor(
-                    metricType: 'reps',
-                    currentValue: 10,
-                    unitLabel: 'REPS',
-                    emphasisTier: MetricEmphasisTier.dominant,
-                    onValueChanged: (_) {},
-                  ),
-                  InlineMetricEditor(
-                    metricType: 'weight',
-                    currentValue: 80.0,
-                    unitLabel: 'KG',
-                    emphasisTier: MetricEmphasisTier.secondary,
-                    onValueChanged: (_) {},
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-        // Crown is dormant — both editors render no crown.
-        expect(find.byType(MetricCrownWidget), findsNothing);
-      },
-    );
-
-    // T-04
-    testWidgets(
-      'T-04: InlineMetricEditor with isReadOnly:true does NOT render MetricCrownWidget',
-      (tester) async {
-        await tester.pumpWidget(_buildEditor(isReadOnly: true));
-        expect(find.byType(MetricCrownWidget), findsNothing);
-      },
-    );
-  });
-
   // ══════════════════════════════════════════════════════════════════════════
-  // Tap-to-edit behaviour tests (T-05 – T-06, rewritten from crown drag)
+  // Tap-to-edit behaviour tests (T-05 – T-06)
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('Tap-to-edit value entry (replaces crown drag)', () {
+  group('Tap-to-edit value entry', () {
     // T-05: tapping reps number opens modal; confirm calls onValueChanged
     testWidgets(
       'T-05: tapping reps number opens modal; confirming new value calls onValueChanged',
@@ -189,130 +119,6 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(updatedValue, 10.5);
-      },
-    );
-  });
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // Crown widget mechanics (T-07 – T-09)
-  // These test MetricCrownWidget directly (dormant in InlineMetricEditor but
-  // still constructible and must not be deleted from the codebase).
-  // ══════════════════════════════════════════════════════════════════════════
-
-  group('Crown widget rotation mechanics (dormant widget, tested directly)', () {
-    // T-07
-    testWidgets(
-      'T-07: rotation angle changes during drag and does not change after drag ends',
-      (tester) async {
-        final crownKey = GlobalKey<MetricCrownWidgetState>();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MetricCrownWidget(
-                key: crownKey,
-                metricType: 'reps',
-                currentValue: 10,
-                onValueChanged: (_) {},
-              ),
-            ),
-          ),
-        );
-
-        expect(crownKey.currentState!.rotationAngle, 0.0);
-
-        // Perform drag.
-        final gesture = await tester.startGesture(
-          tester.getCenter(find.byType(MetricCrownWidget)),
-        );
-        await gesture.moveBy(const Offset(0, -30));
-        await tester.pump();
-
-        final midAngle = crownKey.currentState!.rotationAngle;
-        expect(midAngle, isNot(0.0));
-
-        // End drag.
-        await gesture.up();
-        await tester.pump();
-
-        // Pump several more frames; angle must not change further.
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.pump(const Duration(milliseconds: 100));
-
-        expect(crownKey.currentState!.rotationAngle, midAngle);
-      },
-    );
-
-    // T-08
-    testWidgets(
-      'T-08: after drag ends, subsequent pump calls produce no further value changes',
-      (tester) async {
-        int callCount = 0;
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MetricCrownWidget(
-                metricType: 'reps',
-                currentValue: 10,
-                onValueChanged: (_) => callCount++,
-              ),
-            ),
-          ),
-        );
-
-        final gesture = await tester.startGesture(
-          tester.getCenter(find.byType(MetricCrownWidget)),
-        );
-        await gesture.moveBy(const Offset(0, -10));
-        await tester.pump();
-
-        await gesture.up();
-        await tester.pump();
-
-        final countAfterRelease = callCount;
-
-        // More pump calls: no extra value changes expected.
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.pump(const Duration(milliseconds: 200));
-
-        expect(callCount, countAfterRelease);
-      },
-    );
-
-    // T-09
-    testWidgets(
-      'T-09: rotation magnitude is ~2× drag distance '
-      '(drag 60px → rotation ≈ π radians)',
-      (tester) async {
-        final crownKey = GlobalKey<MetricCrownWidgetState>();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: MetricCrownWidget(
-                key: crownKey,
-                metricType: 'reps',
-                currentValue: 10,
-                onValueChanged: (_) {},
-              ),
-            ),
-          ),
-        );
-
-        final gesture = await tester.startGesture(
-          tester.getCenter(find.byType(MetricCrownWidget)),
-        );
-        // Drag exactly 60 logical pixels downward.
-        await gesture.moveBy(const Offset(0, 60));
-        await tester.pump();
-        await gesture.up();
-        await tester.pump();
-
-        final angle = crownKey.currentState!.rotationAngle;
-        // Expected: 60 * (2π / 120) = π  (positive = downward).
-        const expected = 60 * 2 * math.pi / 120;
-        expect(angle, closeTo(expected, 0.05));
       },
     );
   });
@@ -453,48 +259,6 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('MetricStepCalc', () {
-    test('reps: +10px drag = +1 rep', () {
-      final result = MetricStepCalc.apply('reps', 5, -10.0);
-      expect(result, 6);
-    });
-
-    test('reps: clamps at 0 from below', () {
-      final result = MetricStepCalc.apply('reps', 0, 20.0);
-      expect(result, 0);
-    });
-
-    test('reps: clamps at 999', () {
-      final result = MetricStepCalc.apply('reps', 999, -20.0);
-      expect(result, 999);
-    });
-
-    test('weight: 10px drag = +0.5', () {
-      final result = MetricStepCalc.apply('weight', 10.0, -10.0);
-      expect(result, 10.5);
-    });
-
-    test('weight: clamps at 0 (drag-step lower bound unchanged)', () {
-      final result = MetricStepCalc.apply('weight', 0.0, 20.0);
-      expect(result, 0.0);
-    });
-
-    test('extra-weight: supports negative values (20px down = -1.0)', () {
-      // deltaY = +20.0 → change = -20 → steps = truncate(-20/10) = -2
-      // newValue = 0 + (-2 * 0.5) = -1.0
-      final result = MetricStepCalc.apply('extra-weight', 0.0, 20.0);
-      expect(result, -1.0);
-    });
-
-    test('extra-weight: clamps at -100', () {
-      final result = MetricStepCalc.apply('extra-weight', -100.0, 20.0);
-      expect(result, -100.0);
-    });
-
-    test('extra-weight: clamps at 200', () {
-      final result = MetricStepCalc.apply('extra-weight', 200.0, -20.0);
-      expect(result, 200.0);
-    });
-
     test('parseAndClamp: reps parses to int', () {
       final result = MetricStepCalc.parseAndClamp('reps', '15');
       expect(result, 15);
@@ -626,22 +390,6 @@ void main() {
   // Codebase guard (T-G01)
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('Codebase guard', () {
-    test(
-      'T-G01: MetricCrownWidget is constructible (not deleted from codebase)',
-      () {
-        expect(
-          () => MetricCrownWidget(
-            metricType: 'reps',
-            currentValue: 0,
-            onValueChanged: (_) {},
-          ),
-          returnsNormally,
-        );
-      },
-    );
-  });
-
   // ══════════════════════════════════════════════════════════════════════════
   // Surface verification (T-14 – T-16)
   // ══════════════════════════════════════════════════════════════════════════
@@ -671,7 +419,7 @@ void main() {
     // T-14
     testWidgets(
       'T-14: WorkoutSessionScreen live mode (free session, effortKind==set) '
-      'does NOT render MetricCrownWidget; tapping reps value opens AlertDialog',
+      'tapping the reps value opens the numeric entry dialog',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -710,8 +458,6 @@ void main() {
         );
 
         await navigateToSetDetail(tester, exercise.name);
-        // Crown is dormant.
-        expect(find.byType(MetricCrownWidget), findsNothing);
 
         // Tap-to-edit: tapping an InlineMetricEditor opens the modal.
         final editors = find.byType(InlineMetricEditor);
@@ -735,7 +481,7 @@ void main() {
     // T-15
     testWidgets(
       'T-15: WorkoutSessionScreen live mode (routine session, intent=routine, '
-      'effortKind==set) does NOT render MetricCrownWidget',
+      'effortKind==set) exposes tap-to-edit on the value',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -777,14 +523,13 @@ void main() {
         );
 
         await navigateToSetDetail(tester, exercise.name);
-        expect(find.byType(MetricCrownWidget), findsNothing);
       },
     );
 
     // T-16
     testWidgets(
       'T-16: RoutineSetupScreen (effortKind==set) exercise detail '
-      'does NOT render MetricCrownWidget',
+      'exposes tap-to-edit on the value',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(600, 1200));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -823,13 +568,12 @@ void main() {
         );
 
         await navigateToSetDetail(tester, exercise.name);
-        expect(find.byType(MetricCrownWidget), findsNothing);
       },
     );
 
-    // T-17: read-only timer display in live mode has no crown
+    // T-17: read-only timer display in live mode is not tap-editable
     testWidgets(
-      'T-17: live-mode timed editor (isReadOnly:true) does NOT render a crown',
+      'T-17: live-mode timed editor (isReadOnly:true) is not tap-editable',
       (tester) async {
         await tester.pumpWidget(_buildEditor(
           metricType: 'duration',
@@ -837,18 +581,17 @@ void main() {
           unitLabel: 'ELAPSED',
           isReadOnly: true,
         ));
-        expect(find.byType(MetricCrownWidget), findsNothing);
       },
     );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Duration editor (crown dormant — tap-to-edit is the interaction path)
+  // Duration editor (tap-to-edit is the interaction path)
   // ══════════════════════════════════════════════════════════════════════════
 
-  group('Duration editor in routine setup (crown dormant)', () {
+  group('Duration editor in routine setup', () {
     testWidgets(
-      'duration editor (not read-only, no onTap) does NOT render MetricCrownWidget',
+      'duration editor (not read-only, no onTap) exposes tap-to-edit',
       (tester) async {
         await tester.pumpWidget(_buildEditor(
           metricType: 'duration',
@@ -856,7 +599,6 @@ void main() {
           unitLabel: 'DURATION',
           isReadOnly: false,
         ));
-        expect(find.byType(MetricCrownWidget), findsNothing);
       },
     );
 

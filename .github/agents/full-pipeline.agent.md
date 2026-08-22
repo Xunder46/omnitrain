@@ -10,7 +10,7 @@ disable-model-invocation: false
 You are the **single combined agent** that replaces running
 `@conductor` → `@dba` → `@developer` → `@code-reviewer` in sequence.
 You plan, implement, and review the feature end-to-end inside one chat
-session, and stop at the human checkpoint after the review.
+session, and run to completion — there is no mid-flight checkpoint.
 
 The output and contracts of every phase must match what each individual
 agent would have produced. Skim only where the four prompts are
@@ -141,11 +141,13 @@ Mark: `### Phase 0 Complete ✓` in the plan file.
 - Abstract methods only, returning `Future<T>`.
 - Environment-agnostic — no platform-specific types.
 
-### Step 1.3: Implement in Hive-backed mock repository
+### Step 1.3: Implement in both repositories
 
-- Update `lib/data/repositories/mock_workout_repository.dart` (and
-  the Hive variant in the same file/folder if it exists). Use
-  in-memory `Map`s. No SQLite, no `dart:io`.
+- `lib/data/repositories/hive_workout_repository.dart` is the runtime
+  implementation on every platform, web included.
+- `lib/data/repositories/mock_workout_repository.dart` is the in-memory
+  implementation for tests and dev. Both must satisfy the interface.
+- No SQLite, no `dart:io` in either.
 - Update `initialize()` to load new entities from `lib/mock/seed_data.dart`.
 
 ### Step 1.4: Update seed data (`lib/mock/seed_data.dart`)
@@ -156,16 +158,23 @@ Mark: `### Phase 0 Complete ✓` in the plan file.
 ### Step 1.5: Document SQLite changes
 
 - Update `scripts/sqlite_schema.sql` with new tables/columns.
-- Add SQL comments for the future `SqliteWorkoutRepository` if
-  interface shape diverges from the mock.
+- The SQL files are the canonical data-model contract, not a runtime —
+  the SQLite runtime is retired. `test/db_seed_test.dart` executes them,
+  so they must stay valid SQL and in step with the models.
 
 ### Step 1.6: Doc hygiene
 
-- `docs/data_models.md` — update if any model class was added,
-  fields were added/removed, or `fromMap`/`toMap` contracts changed.
-- `docs/db_integration.md` — update if new repository methods were
-  added or Hive key conventions changed.
-- If neither needed updating, say so explicitly in the handoff.
+Read `docs/documentation_standard.md` before editing any document.
+
+- Update a document only where the change made an existing claim
+  **false**, or changed **structure** (what exists, what owns what),
+  **rationale**, or an **invariant**.
+- Do **not** add field tables, schema SQL, or behavioural descriptions.
+  `data_models.md` owns model *relationships*, not field lists; the
+  model source and `scripts/sqlite_schema.sql` own the rest.
+- Where behaviour changed, delete the stale prose and point at the
+  test that verifies it. Do not rewrite it into a corrected version.
+- If nothing needed updating, say so explicitly in the handoff.
 
 Mark: `### Phase 1 Complete ✓` in the plan file.
 
@@ -252,13 +261,18 @@ Rules:
 
 ### Step 2.7: Doc hygiene
 
-- `docs/navigation_and_screens.md` — update if a new screen was added,
-  a route changed, or constructor dependencies changed.
-- `docs/state_management.md` — update if a new state class or method
-  was added, or a service changed.
-- `docs/widget_catalog.md` — update if a new reusable widget was
-  added or existing widget props changed.
-- If none needed updating, say so explicitly.
+Read `docs/documentation_standard.md` before editing any document.
+
+- Update a document only where the change made an existing claim
+  **false**, or changed **structure** (a screen, a state class, a
+  widget's responsibility, what routes where), **rationale**, or an
+  **invariant**.
+- Do **not** add user-flow walkthroughs, control or gesture
+  inventories, visual/presentation detail, or values already defined
+  in source. Step 3.4b rejects all of these.
+- Where behaviour changed, delete the stale prose and point at the
+  test that verifies it. Do not rewrite it into a corrected version.
+- If nothing needed updating, say so explicitly.
 
 Mark: `### Phase 2 Complete ✓` in the plan file.
 
@@ -302,18 +316,99 @@ For each entry in `## Scenarios`, locate the corresponding test in
 the mapped test file. Confirm the test asserts the Expected Outcome.
 Flag missing or wrong-outcome tests as **WARNING**.
 
-### Step 3.4: Doc hygiene table
+### Step 3.4: Documentation falsification check (BLOCKING)
 
-| Doc | Status |
+**Run this on every change, including changes that touch no
+documentation at all.** A code-only change is the normal way
+documentation becomes false: the code moves and the prose stays
+behind. Skipping this step because Phase 1/2 reported no doc updates
+reproduces the bug it exists to catch.
+
+**Deriving scope — start from the code, not the handoff.** List the
+files Phases 1 and 2 touched. Read the scope declaration at the top of
+each document under `.github/agents/docs/`; a document is *implicated*
+when any changed file falls inside its declared scope. **A document
+with no scope declaration, or one you cannot parse, covers everything
+and is implicated by every change** — read it. A declaration that
+under-claims is worse than a missing one: treat the document as
+implicated anyway and report the mismatch, because a missing block
+fails safe while an under-claiming one fails silently. Most documents
+do not yet carry a declaration, so this currently implicates the whole
+set; that is correct conservative behaviour, not a defect.
+
+The Phase 1/2 doc-hygiene notes are corroborating evidence only —
+useful for spotting a claimed update that did not happen. They are
+never the source of scope. There is no fixed list of documents.
+
+For each implicated document, verify against the **post-change** code:
+does any claim describe behaviour the change altered; does any named
+file, class, method, constant or test still exist; does any structural
+claim or stated invariant still hold.
+
+**Conflicts.** If two implicated documents disagree about the same
+area, report the conflict and do not pick a winner — at least one is
+wrong and no reader can tell which.
+
+**Severity.** A document asserting something **untrue** about the
+current product is ❌ **CRITICAL** — blocking, same severity as
+Step 3.4b. A document that is merely **incomplete** — silent about
+something new but stating nothing false — is 🟡 WARNING. The first
+misleads an agent into wrong work; the second only fails to help.
+
+**Remedy.** Where the change alters behaviour a document *describes*,
+delete the prose and point at the test that verifies the new
+behaviour. Do not edit the description into a corrected version — a
+corrected description is just as unable to fail when it goes stale
+again, and Step 3.4b would reject it on the way in. If the behaviour
+has no test, the remedy is a test, then a pointer.
+
+One line per implicated document; expand only on failure:
+
+```
+DOC FALSIFICATION: ✅ PASS (N implicated) — doc1.md, doc2.md
+DOC FALSIFICATION: ❌ CRITICAL — <doc>:<line> — <false claim> — now <actual> → delete prose, point at <test>
+DOC FALSIFICATION: 🟡 WARNING — <doc> — incomplete: <what is unmentioned>
+DOC FALSIFICATION: ⚠️ CONFLICT — <docA>:<line> vs <docB>:<line> — <disagreement>
+```
+
+### Step 3.4b: Documentation standard enforcement (BLOCKING)
+
+Runs when the change touches documentation. Distinct from Step 3.4:
+**3.4b rejects prohibited content being *added*; 3.4 rejects a
+document the change made *false*.** A document can be fully
+standard-conformant and still be false. Do not merge the two.
+
+`.github/agents/docs/documentation_standard.md` is the authority.
+Reject as ❌ CRITICAL any change that adds, to a reference document,
+content in these seven classes — regardless of how accurate it is,
+because accuracy decays silently:
+
+| # | Prohibited class |
 |---|---|
-| navigation_and_screens.md | ✅ / ❌ Stale / N/A |
-| state_management.md | ✅ / ❌ Stale / N/A |
-| widget_catalog.md | ✅ / ❌ Stale / N/A |
-| data_models.md | ✅ / ❌ Stale / N/A |
-| db_integration.md | ✅ / ❌ Stale / N/A |
+| 1 | Step-by-step user flow (numbered walkthroughs, arrow chains) |
+| 2 | Visual presentation (sizes, colours, hex, icons, positions, spacing) |
+| 3 | Control / gesture inventory |
+| 4 | Numeric value defined in source |
+| 5 | Copied implementation content (code blocks, field tables, schema SQL) |
+| 6 | Roadmap / planned work |
+| 7 | Unshipped-change note ("Scheduled, not current") |
 
-For each doc listed as updated, read it and verify it reflects the
-post-implementation code.
+Two exhaustive exceptions (standard §6): `design_system.md` may carry
+visual *rules* but no values or hex literals; `data_models.md` may
+carry model *relationships* but no per-class field tables.
+
+**Also reject** a documentation change that describes behaviour instead
+of pointing at where it is verified.
+
+```
+DOC STANDARD: ❌ CRITICAL — <doc>:<line> — class <N> — remove, or replace with a test pointer
+DOC STANDARD: ✅ PASS — no prohibited content added
+```
+
+Guard tests in `test/docs_indexing_contract_test.dart` catch the
+mechanical cases (hex literals, arrow-chain walkthroughs, roadmap
+headings). A green suite is **not** sufficient — the guards do not
+detect control inventories, copied code, or restated numerics.
 
 ### Step 3.5: Global conventions verification
 
@@ -392,6 +487,29 @@ removed/renamed code) are **WARNING** that breaks CI.
 - Long parameter lists → accept the model. God classes (50+ methods)
   → split. Feature envy (chains into a state) → add a state method.
 
+**Never invent a user-visible value.** If a fix requires choosing a size,
+percentage, threshold, label, or ordering the plan did not pin, that is a
+decision, not a mechanical fix. `e.g.` and "tuned during dev" in a plan mean
+the value is NOT pinned. Apply the option most consistent with the plan's
+stated intent, record it in `## Assumption Log` with the options considered
+and why, and report it as a finding so it is reviewed rather than absorbed.
+Test-only fixes are exempt — a wrong assertion fails loudly in CI instead of
+shipping.
+
+You hold edit rights for every phase, so a duplication finding is not
+just a note. Resolve it one of two ways and say which:
+
+- **Extract it now** when the fix is contained and stays inside the
+  phase's Predicted Files — pull the duplicate into
+  `lib/widgets/`, `lib/core/utils/`, or `lib/core/constants/`, update
+  every call site, and re-run Done Criteria. Report as
+  `♻️ EXTRACTED | target.dart | what moved | call sites updated: N`.
+- **Report it with a target** when the fix would touch files outside
+  the phase's scope — name the destination file and every call site so
+  the extraction is a mechanical follow-up, not a rediscovery. Never
+  emit a duplication finding without naming where the shared version
+  should live.
+
 ### Step 3.12: Output
 
 Findings use the fixed one-line structure:
@@ -415,6 +533,24 @@ are grouped into one line.
 
 ### Step 3.13: Review verdict
 
+**Approve only if all of these hold** — this is the threshold, not a
+preference. If any fails, the verdict is ❌ Critical Issues:
+
+- Every acceptance criterion is met (plan file, and the prompt file if
+  one exists).
+- Every `## Scenarios` entry has a corresponding **passing** test.
+- Architecture rules hold for every in-scope layer.
+- No critical DRY violation is left unresolved and unreported.
+- Clean code standards are met.
+- `flutter test` is green and `flutter analyze` reports no new errors.
+- Step 3.4 found no false documentation claim, and Step 3.4b found no
+  prohibited content added.
+
+**Approved with Suggestions** is for findings that are all 💡 SUGGEST —
+never for an unmet criterion, an untested scenario, or a stale document.
+Downgrading a blocker to a suggestion to reach approval is the failure
+mode this bar exists to prevent.
+
 If critical issues:
 
 ```markdown
@@ -422,7 +558,7 @@ If critical issues:
 Layers in scope: [list] | Layers skipped: [list]
 [Findings — one line each]
 [Test gaps]
-[Doc hygiene table]
+[Doc falsification + doc standard lines]
 PASS (N rules): ... | N/A (N rules): ... | FAIL: ...
 Critical: N | Warnings: N | Suggestions: N
 → @developer: [summary] | → @dba: [summary]
@@ -436,7 +572,7 @@ If approved:
 ## Code Review: ✅ APPROVED
 Layers in scope: [list] | Layers skipped: [list]
 PASS (N rules): ... | N/A (N rules): ...
-[Doc hygiene table]
+[Doc falsification + doc standard lines]
 ---
 ⏸️ **PIPELINE COMPLETE** — Implementation and review delivered.
 Ready to merge.

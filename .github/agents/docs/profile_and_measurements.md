@@ -16,7 +16,7 @@ Primary capabilities:
 
 ## Entry Points
 
-- `HomeScreen` maintenance sheet (and the home-screen Hub sheet surfaced from the logo tap):
+- `HomeScreen` maintenance sheet:
   - Profile tile pushes `ProfileScreen`
   - Stats tile pushes `StatsScreen` (all-time aggregates, scrollable strength + cardio trends, Recent PRs, NUTRITION card — see [Stats Screen](stats_screen.md))
   - Settings tile pushes `SettingsScreen` (preferences, sounds & alerts, Feeling Survey toggle, theme grid, version footer — see [Theme & Settings](theme_and_settings.md))
@@ -82,15 +82,10 @@ Convenience getters (all are pure derivations of `_latestMeasurements` — no ex
 
 ### Identity Section
 
-- Sits on top of `OmniGradientBackground` as a compact horizontal header — there is no `OmniSurface` card chrome wrapping the identity block; the gradient shows through behind it.
-- Layout: a single `Row` with `CrossAxisAlignment.center`:
-  - **Left** — the avatar (200 × 200 circular, hairline border). Tap opens the avatar bottom sheet (Take Photo, Choose from Gallery, Remove Photo). Remove is disabled when no avatar path is set.
-  - **Right** — a `Column` (`mainAxisAlignment: center`, `crossAxisAlignment: start`) anchored at the avatar's mid-height, with a consistent gutter beside the avatar. The two lines are stacked as a tight pair (2 dp inter-row gap, no oversized tap-target chrome):
-    - **Name** (top line, `headlineMedium`, `FontWeight.w700`, `textDominant`). Tapping opens the existing name editor dialog. `headlineMedium` gives the right column visual heft against the 200 dp avatar so the pair reads as deliberate rather than the avatar-plus-drifting-text.
-    - **Height** (second line, `bodyMedium`, `textSecondary` — quieter than the name). The whole line is one tap target (key `profile_identity_height_value`); tapping it opens `_HeightDialog` (cm/ftin input shape, same path as before).
-- Height renders as a left-aligned subtitle under the name — not a centered standalone control — and has no leading icon (the prior `Icons.height` arrow cue was removed because it read as a resize/sort control; the entire row is already tappable).
-- Both lines are wrapped in `Material > InkWell > Padding(horizontal: 12) > Text` with no `ConstrainedBox(minHeight: …)` and no vertical padding — the InkWell wraps the text tightly so the name and height read as a single stacked pair rather than two disconnected lines. Horizontal padding (12 dp) is kept so the tap area still extends left/right of the text glyphs.
-- The horizontal layout collapses the block to roughly the avatar's vertical envelope, recovering space below for the charted measurement cards.
+A compact horizontal header — avatar on the left, name and height stacked beside it — sitting
+directly on the gradient with no card chrome, so it collapses to roughly the avatar's height and
+leaves the space below for the measurement cards. Name and height are each their own tap target,
+opening their respective editors.
 
 ### Measurement Sections
 
@@ -102,13 +97,9 @@ Convenience getters (all are pure derivations of `_latestMeasurements` — no ex
   - outlined add button (except Lean Mass — see below)
 - Row tap (chart area) opens chart history sheet
 - Add button opens log sheet
-- **Lean Mass** renders as a read-only computed row:
-  - Card chrome (header + surface) matches its peers
-  - Card body shows a `Computed` label on the left + the calculated value on the right
-  - No `+` button, no tappable sparkline — no manual entry path
-  - Value derives from `ProfileState.computedLeanMassKg = latestBodyWeightKg × (1 − latestBodyFatPct / 100)`
-  - When either input is missing, the value reads `—` (em dash), not a number
-  - Derivation formula (`Body weight × (1 − body fat)`) wraps onto additional lines as needed so the full expression always displays — never a mid-expression `…` truncation. The formula `Text` has no `maxLines: 1` / `TextOverflow.ellipsis` constraint.
+- **Lean Mass** is a read-only computed row with no manual entry path. Its value derives from
+  `ProfileState.computedLeanMassKg` (body weight × (1 − body fat %)), and reads as an em dash when
+  either input is missing rather than showing a misleading number.
   - Pre-existing `lean_mass` `BodyMeasurementEntry` rows are preserved in the repository but are not used as the display source
 
 ### Logging Sheet
@@ -195,39 +186,13 @@ from bleeding through during the slide-up transition. A raw
 crop step's `Scaffold` is transparent — using `MaterialPageRoute`
 causes the ProfileScreen below to be visible mid-transition.
 
-**Crop UI.** `lib/features/profile/widgets/avatar_crop_sheet.dart`:
-- Square viewport via `AspectRatio(aspectRatio: 1.0)` with
-  `RepaintBoundary` → `InteractiveViewer` (`minScale: 1.0`,
-  `maxScale: 4.0`) → `Image.memory(bytes, fit: BoxFit.contain)`.
-  The user can pinch-zoom and drag to reposition.
-- A circular dim scrim above the viewport shows what the avatar
-  will look like inside the circle (matches the avatar's
-  `ClipOval` display). Built with a `CustomPainter` using
-  `Path.fillType = evenOdd` so the circle's interior is left
-  transparent and the image shows through.
-- Bottom CTA row: `OutlinedButton` Cancel + `FilledButton` Use
-  Photo, both with explicit `shape:` overrides using
-  `OmniTheme.buttonBorderRadius` per the global convention.
-- Hint text: "Pinch & drag to position".
+**Crop UI.** The viewport is square with a circular dim scrim showing what the avatar will look
+like once clipped, and the user can pinch-zoom and drag to reposition within it.
 
-**Output shape.** The stored avatar is a **square PNG** (encoded
-via `RepaintBoundary.toImage(pixelRatio: 3.0, format:
-ImageByteFormat.png)` then `image.toByteData(format:
-ImageByteFormat.png)`). The circular scrim is a preview aid only;
-the persisted file matches the full viewport. This keeps the
-`UserProfile.avatarPath` shape square (the existing
-`ClipOval` display still applies at render time) and avoids
-introducing a transparent-margin avatar format that the rest of
-the app does not render.
-
-**Capture pipeline.** On Use Photo, the viewport's
-`RenderRepaintBoundary` is rendered to a `ui.Image` via
-`toImage(pixelRatio: 3.0)` — a 3× scale produces a ~1000+ px
-output from a 360 dp viewport, plenty for an avatar shown at
-any reasonable size on a phone-class display. The image is
-re-encoded as PNG via `image.toByteData(format:
-ImageByteFormat.png)` — the `ImageByteFormat` codecs are built
-into Flutter, so no new image-encoding dependency is added.
+**Output shape.** The stored avatar is a **square** image; the circular scrim is a preview aid
+only. Keeping the persisted file square means the existing `ClipOval` display still applies at
+render time and avoids introducing a transparent-margin avatar format nothing else in the app
+renders.
 
 **Cancel** pops with `null`; the picker temp file lives outside
 the managed dir and is never copied in. The existing avatar

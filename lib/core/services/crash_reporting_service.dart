@@ -86,9 +86,11 @@ class CrashReportingService {
     required CrashReporter reporter,
     required bool enabled,
     required Map<String, String> Function() buildMetadata,
+    required CrashReportThrottleConfig throttleConfig,
   })  : _reporter = reporter,
         _enabled = enabled,
-        _buildMetadata = buildMetadata;
+        _buildMetadata = buildMetadata,
+        _rateLimiter = _CrashReportRateLimiter(config: throttleConfig);
 
   static CrashReportingService? _instance;
 
@@ -97,6 +99,7 @@ class CrashReportingService {
   final CrashReporter _reporter;
   final bool _enabled;
   final Map<String, String> Function() _buildMetadata;
+  final _CrashReportRateLimiter _rateLimiter;
 
   /// Boots the reporter and, when [enabled] is true, installs the
   /// global Flutter error sinks.
@@ -108,6 +111,8 @@ class CrashReportingService {
     required CrashReporter reporter,
     required bool enabled,
     required Map<String, String> Function() buildMetadata,
+    CrashReportThrottleConfig throttleConfig =
+        CrashReportThrottleConfig.defaults,
   }) async {
     if (_instance != null) {
       return;
@@ -117,10 +122,11 @@ class CrashReportingService {
       reporter: reporter,
       enabled: enabled,
       buildMetadata: buildMetadata,
+      throttleConfig: throttleConfig,
     );
     _instance = svc;
 
-    await reporter.init(enabled: enabled);
+    await reporter.init(enabled: enabled, metadata: buildMetadata());
     if (enabled) {
       svc._installErrorSinks();
     }
@@ -129,6 +135,8 @@ class CrashReportingService {
   /// Resets the singleton. Tests use this between cases.
   @visibleForTesting
   static void resetForTests() {
+    final svc = _instance;
+    svc?._rateLimiter.reset();
     _instance = null;
   }
 
@@ -159,7 +167,10 @@ class CrashReportingService {
 
   /// Forwards an error to the reporter. Respects [enabled] — debug
   /// builds drop the event entirely so the developer console does not
-  /// double-report.
+  /// double-report. Applies the per-signature throttle so a single
+  /// repeating failure cannot exhaust the monthly reporting budget;
+  /// suppressed occurrences are tracked locally and re-emitted as a
+  /// `suppressedOccurrences` tag once the cooldown elapses.
   static Future<void> recordError(
     Object error, {
     StackTrace? stackTrace,
@@ -171,8 +182,17 @@ class CrashReportingService {
       return;
     }
 
+    // Signature: the same exception type from the same call site. The
+    // error message is intentionally excluded so two instances of the
+    // same call-site failure group together.
+    final signature = '${error.runtimeType}|${errorContext ?? ''}';
+    final decision = svc._rateLimiter.consider(signature);
+    if (!decision.shouldSend) {
+      return;
+    }
+
     final sourceMeta = svc._buildMetadata();
-    final cleaned = buildMetadata(
+    var cleaned = buildMetadata(
       appVersion: sourceMeta['appVersion'] ?? 'unknown',
       osVersion: sourceMeta['osVersion'] ?? 'unknown',
       deviceModel: sourceMeta['deviceModel'] ?? 'unknown',
@@ -180,6 +200,19 @@ class CrashReportingService {
       // allow-list takes precedence — additional keys are silently
       // ignored. The wrapper itself never forwards untrusted keys.
     );
+    if (decision.suppressedSinceLast > 0) {
+      cleaned = <String, String>{
+        ...cleaned,
+        'suppressedOccurrences':
+            decision.suppressedSinceLast.toString(),
+      };
+    }
+    if (errorContext != null && errorContext.isNotEmpty) {
+      cleaned = <String, String>{
+        ...cleaned,
+        'errorContext': errorContext,
+      };
+    }
 
     await svc._reporter.recordError(
       error,
@@ -289,6 +322,26 @@ class SentryCrashReporter implements CrashReporter {
       return;
     }
 
+    if (dsn.isEmpty) {
+      // The pre-release gate (§11p, §11q) is the primary defense
+      // against shipping a release without a reporting destination.
+      // This guard is defensive: if a future regression slips past
+      // the gate (e.g. a new iOS build-invocation shape the gate
+      // does not yet cover), the runtime still surfaces a
+      // diagnosable condition rather than silently dropping events.
+      // The log line is intentionally distinct from the
+      // kReleaseMode-gated disable above so an on-call engineer
+      // can tell the two failure modes apart from a single log line.
+      debugPrint(
+        'Sentry reporting disabled: DSN is empty. The release build '
+        'was not compiled with --dart-define=SENTRY_DSN=<value>. '
+        'This differs from a debug/profile build, which is '
+        'deliberately disabled at the call site via kReleaseMode.',
+      );
+      _enabled = false;
+      return;
+    }
+
     try {
       await SentryFlutter.init(
         (SentryFlutterOptions options) {
@@ -319,6 +372,24 @@ class SentryCrashReporter implements CrashReporter {
         },
       );
       _enabled = true;
+
+      // Set identity tags at the SDK scope level so every event —
+      // including platform-originated failures that bypass recordError —
+      // carries the full allow-listed identity payload.
+      if (metadata != null) {
+        await Sentry.configureScope((Scope scope) {
+          for (final key in const <String>[
+            'appVersion',
+            'osVersion',
+            'deviceModel',
+          ]) {
+            final value = metadata[key];
+            if (value != null) {
+              scope.setTag(key, value);
+            }
+          }
+        });
+      }
     } catch (e, st) {
       // Crash-reporting must never break startup.
       debugPrint('Sentry init failed (continuing without reporting): $e');
@@ -416,7 +487,115 @@ const Set<String> _allowedTagKeys = <String>{
   'osVersion',
   'deviceModel',
   'errorContext',
+  'suppressedOccurrences',
 };
+
+/// Per-signature rate-limit configuration for [CrashReportingService].
+///
+/// The budget-tier rationale and the tradeoff between exact event
+/// counts and budget survival are documented in
+/// `.github/agents/plans/crash-reporting-rate-limit-plan.md`. A single
+/// noisy failure must never exhaust the monthly reporting budget; the
+/// dashboard's raw count for a throttled signature becomes an undercount
+/// corrected by the `suppressedOccurrences` tag on each transmitted
+/// report.
+@immutable
+class CrashReportThrottleConfig {
+  const CrashReportThrottleConfig({
+    required this.threshold,
+    required this.cooldown,
+    DateTime Function()? clock,
+  }) : _clock = clock;
+
+  /// Number of reports forwarded per signature before suppression
+  /// begins. Must be at least 1.
+  final int threshold;
+
+  /// Time that must elapse since the last forwarded report before the
+  /// next occurrence is forwarded (with a `suppressedOccurrences` tag).
+  final Duration cooldown;
+
+  final DateTime Function()? _clock;
+
+  /// Production defaults: 100 reports per signature per 15-minute
+  /// cooldown. Tuned to the current Sentry budget tier — revisit if the
+  /// budget grows substantially.
+  static const CrashReportThrottleConfig defaults = CrashReportThrottleConfig(
+    threshold: 100,
+    cooldown: Duration(minutes: 15),
+  );
+
+  @visibleForTesting
+  DateTime now() {
+    final clock = _clock;
+    return clock != null ? clock() : DateTime.now();
+  }
+}
+
+/// In-memory per-signature rate limiter used by
+/// [CrashReportingService.recordError] to enforce the throttle
+/// contract. State is per-process — a fresh launch starts with an
+/// empty counter map (matching the prompt's "counters do not persist
+/// across app launches" requirement).
+class _CrashReportRateLimiter {
+  _CrashReportRateLimiter({required CrashReportThrottleConfig config})
+      : _config = config;
+
+  final CrashReportThrottleConfig _config;
+  final Map<String, _SignatureThrottleState> _states =
+      <String, _SignatureThrottleState>{};
+
+  /// Consult the limiter for [signature]. Returns whether the report
+  /// should be transmitted and, if so, how many occurrences have been
+  /// suppressed since the previous forwarded report for this signature.
+  ///
+  /// Algorithm:
+  ///   • Below threshold → send, suppressed = 0.
+  ///   • At or above threshold and cooldown not elapsed → suppress
+  ///     (do not send), increment suppressed counter.
+  ///   • At or above threshold and cooldown elapsed → send with the
+  ///     accumulated suppressed count, reset counter to 0.
+  ({bool shouldSend, int suppressedSinceLast}) consider(String signature) {
+    final now = _config.now();
+    final state = _states.putIfAbsent(
+      signature,
+      () => _SignatureThrottleState(),
+    );
+
+    if (state.transmittedCount < _config.threshold) {
+      state.transmittedCount++;
+      state.suppressedSinceLast = 0;
+      state.lastTransmittedAt = now;
+      return (shouldSend: true, suppressedSinceLast: 0);
+    }
+
+    final last = state.lastTransmittedAt;
+    if (last != null && now.difference(last) >= _config.cooldown) {
+      final suppressed = state.suppressedSinceLast;
+      state.transmittedCount = 1;
+      state.suppressedSinceLast = 0;
+      state.lastTransmittedAt = now;
+      return (shouldSend: true, suppressedSinceLast: suppressed);
+    }
+
+    state.suppressedSinceLast++;
+    return (shouldSend: false, suppressedSinceLast: 0);
+  }
+
+  /// Clears all per-signature state. Tests call this between cases via
+  /// [CrashReportingService.resetForTests]; the production reset path
+  /// (a fresh app launch) is implicit because the limiter is owned by
+  /// the service singleton.
+  void reset() {
+    _states.clear();
+  }
+}
+
+class _SignatureThrottleState {
+  int transmittedCount = 0;
+  int suppressedSinceLast = 0;
+  DateTime? lastTransmittedAt;
+}
 
 String _environmentLabel() {
   if (kReleaseMode) return 'production';

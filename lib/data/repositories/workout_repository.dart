@@ -45,6 +45,18 @@ abstract class WorkoutRepository {
   Future<List<SessionSegment>> getSessionSegments(String sessionId);
   Future<String> createSegment(SessionSegment segment);
 
+  /// Every segment on the device, grouped by `sessionId`.
+  ///
+  /// Semantically identical to calling [getSessionSegments] once per
+  /// session, but costs a single pass instead of one full scan per
+  /// session. Each group carries the same ordering [getSessionSegments]
+  /// guarantees.
+  ///
+  /// Intended for whole-history analytics (see `StatsProgressService`).
+  /// Screens that need one session's segments should keep using
+  /// [getSessionSegments].
+  Future<Map<String, List<SessionSegment>>> getSegmentsBySession();
+
   // Efforts
   /// Returns efforts in deterministic active-session display order.
   ///
@@ -53,6 +65,13 @@ abstract class WorkoutRepository {
   /// - block-local order for efforts inside the same block
   /// - stable tie-breakers for legacy rows
   Future<List<SegmentEffort>> getSegmentEfforts(String segmentId);
+
+  /// Every effort on the device, grouped by `segmentId`.
+  ///
+  /// The bulk counterpart to [getSegmentEfforts]; each group is sorted
+  /// by the same ordering contract documented there. One pass over the
+  /// effort store instead of one full scan per segment.
+  Future<Map<String, List<SegmentEffort>>> getEffortsBySegment();
 
   /// Persist a new effort.
   ///
@@ -63,6 +82,19 @@ abstract class WorkoutRepository {
 
   // Observations
   Future<List<EffortObservation>> getEffortObservations(String effortId);
+
+  /// Every observation on the device, grouped by `effortId`.
+  ///
+  /// The bulk counterpart to [getEffortObservations]. Like that method
+  /// the groups carry no ordering guarantee — callers that need a
+  /// stable order must sort.
+  Future<Map<String, List<EffortObservation>>> getObservationsByEffort();
+
+  /// Every timed instance on the device, grouped by `effortId`.
+  ///
+  /// The bulk counterpart to [getTimedInstances]; each group carries the
+  /// same `entryIndex` ordering.
+  Future<Map<String, List<TimedInstance>>> getTimedInstancesByEffort();
   Future<String> createObservation(EffortObservation observation);
   Future<void> updateObservation(EffortObservation observation);
   Future<void> deleteObservation(String id);
@@ -83,6 +115,13 @@ abstract class WorkoutRepository {
 
   // Muscle Groups
   Future<List<MuscleGroup>> getMuscleGroups();
+
+  /// Insert [group] if absent, or update it in place when the bundled
+  /// definition differs. Used by the catalog refresh so groups added after
+  /// a device's first launch still reach it; without this, an exercise can
+  /// reference a group the device has never heard of.
+  Future<void> upsertMuscleGroup(MuscleGroup group);
+
   Future<List<MuscleGroup>> getExerciseMuscleGroups(String exerciseId);
   Future<void> setExerciseMuscleGroups(
     String exerciseId,
@@ -204,14 +243,6 @@ abstract class WorkoutRepository {
   /// Delete all rest records belonging to an effort.
   /// Called by deleteEffort() and during edit-mode rollback.
   Future<void> deleteEntryRestsForEffort(String effortId);
-
-  /// Returns all closed EntryRest records (restEndMs != null) whose restStartMs
-  /// falls within [fromMs, toMs], grouped by normalised modality key.
-  /// - null key = Free Training (session had no modality set).
-  Future<Map<String?, List<EntryRest>>> getEntryRestsByModalityInDateRange(
-    int fromMs,
-    int toMs,
-  );
 
   // Exercise Notes
   //
@@ -437,6 +468,26 @@ abstract class WorkoutRepository {
   /// list is a no-op.
   Future<void> reassignFoodsToGroup(
     List<String> foodIds,
+    String? targetGroupId,
+  );
+
+  /// Reassign a list of **catalog** foods to a new group in a single
+  /// transaction.
+  ///
+  /// Parallel to [reassignFoodsToGroup] but targets the catalog box
+  /// (`_foodCatalogBox`) instead of the library box. Used by
+  /// `FoodLibraryState.deleteFoodGroupReassigningFoods` so that
+  /// user-owned catalog foods (those created via the **+ New Item**
+  /// flow) are moved off a deleted category just like library foods
+  /// are. Bundled catalog foods are never passed here — the
+  /// bundled-food guard runs before this method is called and refuses
+  /// the entire deletion if any bundled food points at the source
+  /// group (the catalog refresh would otherwise undo the rewrite).
+  ///
+  /// Unknown food ids are silently skipped (idempotent). An empty
+  /// list is a no-op.
+  Future<void> reassignCatalogFoodsToGroup(
+    List<String> catalogFoodIds,
     String? targetGroupId,
   );
 

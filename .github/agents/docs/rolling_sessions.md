@@ -11,33 +11,12 @@ Rolling sessions differ from standard sessions in two key ways:
 
 ---
 
-## User Workflow
-
-```
-HomeScreen
-  └── Free Training tile
-        └── _showFreeTrainingStartSheet (bottom sheet)
-              ├── Rolling Session toggle (off by default)
-              │     subtitle: "A rolling session stays open all day. Tap any tile
-              │                to return and add more work at any time.
-              │                No session timer — just your sets."
-              └── Start Session button
-                    └── WorkoutSessionScreen (isRolling = true/false)
-```
-
----
-
 ## The `isRolling` Flag
 
-| Detail | Value |
-|--------|-------|
-| **Model field** | `TrainingSession.isRolling` |
-| **Type** | `bool` |
-| **Default** | `false` |
-| **Persistence** | SQLite column `is_rolling` (integer 0/1) |
-| **Set by** | `WorkoutState.createNewSession(isRolling: true/false)` |
+`TrainingSession.isRolling` is a `bool` defaulting to `false`, set through
+`WorkoutState.createNewSession(isRolling: …)`.
 
-The flag is set at session creation and is never mutated afterward. The Free Training start sheet (`_showFreeTrainingStartSheet` in `home_screen.dart`) exposes a `SwitchListTile` for the user to opt in before pressing **Start Session**.
+The flag is set at session creation and is never mutated afterward.
 
 ---
 
@@ -72,17 +51,12 @@ The session still records `startedAtMs` and `endedAtMs` for archival purposes; o
 
 ---
 
-## Free Training Start Sheet (Inline Onboarding)
+## Free Training Start Sheet
 
-When the user taps the **Free Training tile**, `HomeScreen` shows `_showFreeTrainingStartSheet` — a modal bottom sheet that contains:
-
-- A `SwitchListTile` labeled **Rolling Session** (default off)
-- An inline subtitle explaining rolling behavior: *"A rolling session stays open all day. Tap any tile to return and add more work at any time. No session timer — just your sets."*
-- A **Start Session** filled button
-
-There is no separate first-time-only sheet. The guidance text is always visible in the Free Training start sheet. The `Don't show again` preference flow and a separate rolling onboarding modal were intentionally removed; all guidance was consolidated here.
-
----
+Rolling mode is opted into from the Free Training start sheet before the session begins. The
+guidance explaining rolling behaviour is always visible in that sheet rather than shown once — a
+separate first-run modal and a "don't show again" preference were both removed, so there is exactly
+one place this is explained and no state to keep in sync.
 
 ## Entry Point
 

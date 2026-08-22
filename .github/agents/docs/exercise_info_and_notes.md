@@ -11,22 +11,6 @@ Both features are additive and stay inside the workout session flow. No full-scr
 
 ---
 
-## User Workflow
-
-```
-WorkoutSessionScreen (detail mode)
-  -> Header actions
-     -> Info icon (i)
-        -> Exercise Info bottom sheet
-     -> Notes icon (edit)
-        -> Exercise Notes bottom sheet
-           -> Type note text
-           -> 500ms debounce auto-save
-           -> Header dot indicator appears when note exists
-```
-
----
-
 ## UI Entry Points
 
 ### Header actions

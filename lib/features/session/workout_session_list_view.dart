@@ -265,52 +265,75 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   // ── Add exercise + block bar ──────────────────────────────────────────────
 
-  Widget _buildAddExerciseAndBlockBar(ThemeData theme, {String? segmentId}) {
+  /// PR 6 — Add Exercise and Add Block are ALWAYS secondary
+  /// (OutlinedButton) CTAs, regardless of whether the session is empty
+  /// or already has content. Neither choice should ever look like the
+  /// "primary" action: the bottom Finish Workout CTA is the only
+  /// FilledButton in the session screen. Visual consistency across
+  /// empty-state and populated sessions keeps the user's attention on
+  /// the logged work, not on chrome that competes with it.
+  ///
+  /// The picker only opens when the user explicitly taps Add Exercise.
+  /// Add Block calls `workoutState.addSessionBlock()` directly.
+  Widget _buildAddExerciseAndBlockBar(
+    ThemeData theme, {
+    String? segmentId,
+  }) {
+    final addExercise = SizedBox(
+      width: double.infinity,
+      height: OmniTheme.buttonPrimaryHeight,
+      child: OutlinedButton(
+        key: const Key('add-exercise'),
+        onPressed: () => _addExercise(segmentId: segmentId),
+        style: ButtonStyle(
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                OmniTheme.buttonBorderRadius,
+              ),
+            ),
+          ),
+        ),
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text('Add Exercise'),
+        ),
+      ),
+    );
+
+    final addBlock = SizedBox(
+      width: double.infinity,
+      height: OmniTheme.buttonPrimaryHeight,
+      child: OutlinedButton(
+        key: const Key('add-block'),
+        onPressed: () async {
+          await widget.workoutState.addSessionBlock();
+          _updateUi(() {});
+        },
+        style: ButtonStyle(
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(
+                OmniTheme.buttonBorderRadius,
+              ),
+            ),
+          ),
+        ),
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text('Add Block'),
+        ),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: double.infinity,
-            height: OmniTheme.buttonPrimaryHeight,
-            child: FilledButton(
-              onPressed: () => _addExercise(segmentId: segmentId),
-              style: ButtonStyle(
-                shape: WidgetStateProperty.all(
-                  RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      OmniTheme.buttonBorderRadius,
-                    ),
-                  ),
-                ),
-              ),
-              child: const FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text('Add Exercise'),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () async {
-                await widget.workoutState.addSessionBlock();
-                _updateUi(() {});
-              },
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                side: BorderSide(color: theme.colorScheme.primary),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-              child: const Text('Add Block'),
-            ),
-          ),
+          addExercise,
+          const SizedBox(height: 12),
+          addBlock,
         ],
       ),
     );
@@ -324,6 +347,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         ? widget.workoutState.segments.first.id
         : null;
 
+    final showRestStrip = _shouldShowRestOverlay();
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
@@ -337,9 +361,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Expanded(
                   child: blocks.isEmpty
                       ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.only(
-                              bottom: _kBottomControlsClearance,
+                          child: AnimatedPadding(
+                            duration: _kRestStripAnimationDuration,
+                            curve: Curves.easeOut,
+                            padding: EdgeInsets.only(
+                              bottom: _kBottomControlsClearance +
+                                  (showRestStrip
+                                      ? OmniTheme.restStripHeight
+                                      : 0),
                             ),
                             child: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 480),
@@ -352,11 +381,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                         )
                       : ListView(
                           controller: _listScrollController,
-                          padding: const EdgeInsets.fromLTRB(
+                          padding: EdgeInsets.fromLTRB(
                             0,
                             0,
                             0,
-                            _kBottomControlsClearance,
+                            _kBottomControlsClearance +
+                                (showRestStrip
+                                    ? OmniTheme.restStripHeight
+                                    : 0),
                           ),
                           children: [
                             for (int i = 0; i < blocks.length; i++)
@@ -373,24 +405,27 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ],
             ),
           ),
-          if (_shouldShowRestOverlay())
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: OmniTheme.restOverlayBottomOffset,
-              child: Center(
-                child: _buildRestOverlayChip(theme, _formatGlobalRestElapsed()),
-              ),
-            ),
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: OmniBottomCTA(
-              label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-              onPressed: widget.editMode
-                  ? _saveEditChanges
-                  : _showFinishSessionDialog,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RestTimerStrip(
+                  visible: showRestStrip,
+                  child: _buildRestOverlayChip(
+                    theme,
+                    _formatGlobalRestElapsed(),
+                  ),
+                ),
+                OmniBottomCTA(
+                  label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+                  onPressed: widget.editMode
+                      ? _saveEditChanges
+                      : _showFinishSessionDialog,
+                ),
+              ],
             ),
           ),
         ],
@@ -407,56 +442,70 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         : null;
 
     if (_exercises.isEmpty && blocks.isEmpty) {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
-        extendBody: true,
-        body: Stack(
-          children: [
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(theme),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(children: [_buildSessionTimeWidget(theme)]),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: _kBottomControlsClearance,
-                        ),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 480),
-                          child: _buildAddExerciseAndBlockBar(
-                            theme,
-                            segmentId: segmentId,
+      // PR 6 / S-003 + S-004 — new workouts (modality or Free Training
+      // start) land on the balanced empty state; routine-populated
+      // sessions bypass it entirely (no neutral prompt mid-context).
+      final isRoutineSession =
+          widget.workoutState.currentSession?.routineTemplateId != null;
+      if (isRoutineSession) {
+        // Fall through to the populated list view — a routine session
+        // should never show the neutral empty state, even if its manifest
+        // happens to resolve to zero visible exercises. The bottom CTA
+        // and rest overlay still mount in the populated path below.
+      } else {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBody: true,
+          body: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildHeader(theme),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(children: [_buildSessionTimeWidget(theme)]),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: _kBottomControlsClearance,
+                          ),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 480),
+                            child: _buildAddExerciseAndBlockBar(
+                              theme,
+                              segmentId: segmentId,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: OmniBottomCTA(
-                label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-                onPressed: widget.editMode
-                    ? _saveEditChanges
-                    : _showFinishSessionDialog,
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: OmniBottomCTA(
+                  label:
+                      widget.editMode ? 'Save Changes' : 'Finish Workout',
+                  onPressed: widget.editMode
+                      ? _saveEditChanges
+                      : _showFinishSessionDialog,
+                ),
               ),
-            ),
-          ],
-        ),
-      );
+            ],
+          ),
+        );
+      }
     }
 
     final items = _buildNonRollingTopLevelItems(_exercises);
+    final showRestStrip = _shouldShowRestOverlay();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -475,11 +524,14 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 Expanded(
                   child: ListView(
                     controller: _listScrollController,
-                    padding: const EdgeInsets.fromLTRB(
+                    padding: EdgeInsets.fromLTRB(
                       0,
                       8,
                       0,
-                      _kBottomControlsClearance,
+                      _kBottomControlsClearance +
+                          (showRestStrip
+                              ? OmniTheme.restStripHeight
+                              : 0),
                     ),
                     children: [
                       for (final item in items)
@@ -499,24 +551,27 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               ],
             ),
           ),
-          if (_shouldShowRestOverlay())
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: OmniTheme.restOverlayBottomOffset,
-              child: Center(
-                child: _buildRestOverlayChip(theme, _formatGlobalRestElapsed()),
-              ),
-            ),
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: OmniBottomCTA(
-              label: widget.editMode ? 'Save Changes' : 'Finish Workout',
-              onPressed: widget.editMode
-                  ? _saveEditChanges
-                  : _showFinishSessionDialog,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RestTimerStrip(
+                  visible: showRestStrip,
+                  child: _buildRestOverlayChip(
+                    theme,
+                    _formatGlobalRestElapsed(),
+                  ),
+                ),
+                OmniBottomCTA(
+                  label: widget.editMode ? 'Save Changes' : 'Finish Workout',
+                  onPressed: widget.editMode
+                      ? _saveEditChanges
+                      : _showFinishSessionDialog,
+                ),
+              ],
             ),
           ),
         ],
@@ -747,6 +802,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         ? entries[_currentSet - 1]
         : (effortKind == 'set' ? {'reps': 0, 'weight': 0.0} : {'duration': 0});
 
+    final showRestStrip = _shouldShowRestOverlay();
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBody: true,
@@ -773,36 +829,66 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                     child: Column(
                       children: [
                         Expanded(
-                          child: SingleChildScrollView(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _buildMetricWidget(
-                                    exercise,
-                                    currentEntry,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _buildSetProgress(
-                                    entries.length,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _buildSetIndicator(
-                                    entries.length,
-                                    effortKind,
-                                    theme,
-                                  ),
-                                  SizedBox(
-                                    height: 24 + _kSessionScrollBottomExtra,
-                                  ),
-                                ],
+                          child: AnimatedPadding(
+                            duration: _kRestStripAnimationDuration,
+                            curve: Curves.easeOut,
+                            padding: EdgeInsets.only(
+                              bottom: showRestStrip
+                                  ? OmniTheme.restStripHeight
+                                  : 0,
+                            ),
+                            child: SingleChildScrollView(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    _buildMetricWidget(
+                                      exercise,
+                                      currentEntry,
+                                      effortKind,
+                                      theme,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _buildSetProgress(
+                                      entries.length,
+                                      effortKind,
+                                      theme,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _buildSetIndicator(
+                                      entries.length,
+                                      effortKind,
+                                      theme,
+                                    ),
+                                    SizedBox(
+                                      height:
+                                          24 + _kSessionScrollBottomExtra,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
+                          ),
+                        ),
+
+                        // Docked rest-timer strip directly above the
+                        // set controls. Visibility is governed by the
+                        // shared _shouldShowRestOverlay() helper
+                        // (covers edit-mode, running effort, and
+                        // cross-effort rest scenarios in one rule).
+                        // The strip's height animates in sync with
+                        // the scrollable's bottom padding so the
+                        // content can scroll clear of it and the
+                        // strip collapses to zero when no rest is
+                        // open.
+                        RestTimerStrip(
+                          visible: showRestStrip,
+                          child: _buildRestOverlayChip(
+                            theme,
+                            _formatGlobalRestElapsed(),
                           ),
                         ),
 
@@ -818,23 +904,6 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 ],
               ),
             ),
-            // Rest timer overlay in lower half. Visibility is governed by the
-            // shared _shouldShowRestOverlay() helper (covers edit-mode, running
-            // effort, and cross-effort rest scenarios in one rule). The overlay
-            // persists after crossing an exercise boundary because the helper
-            // looks at the session-wide most-recent open rest.
-            if (_shouldShowRestOverlay())
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: OmniTheme.restOverlayBottomOffset,
-                child: Center(
-                  child: _buildRestOverlayChip(
-                    theme,
-                    _formatGlobalRestElapsed(),
-                  ),
-                ),
-              ),
           ],
         ),
     );
@@ -842,54 +911,23 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
 
   // ── Discard Session ────────────────────────────────────────────────────
 
-  /// Confirmation dialog: states permanence. Matches the dismiss button
-  /// styling used by the Session Summary's "Discard" dialog (TextButton
-  /// + utility radius + error color tint) so the two flows feel like
-  /// one feature.
+  /// Confirmation dialog: states permanence.
   Future<void> _showDiscardDialog() async {
     if (!mounted) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await ConfirmationDialog.showTwoChoice(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Discard session?'),
-        content: const Text(
-          'This will permanently delete this session and all its data. '
-          'You will return to Home.',
-        ),
-        actions: [
-          TextButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    OmniTheme.buttonUtilityRadius,
-                  ),
-                ),
-              ),
-              foregroundColor: WidgetStateProperty.all(
-                Theme.of(ctx).colorScheme.error,
-              ),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Discard'),
-          ),
-        ],
+      title: 'Discard session?',
+      body: const Text(
+        'This will permanently delete this session and all its data. '
+        'You will return to Home.',
       ),
+      dismissLabel: 'Cancel',
+      confirmLabel: 'Discard',
+      dismissKey: const Key('session-list-discard-cancel'),
+      confirmKey: const Key('session-list-discard-confirm'),
+      isDestructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await _discardCurrentSession();
     }
   }
@@ -944,6 +982,18 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
     );
   }
 
+  /// Identity of the session for the list-view header.
+  ///
+  /// Routine-started sessions carry the routine name in `title` (and a null
+  /// modality); every other entry point leaves `title` empty and carries the
+  /// modality, which renders as 'Free Training' when it too is null.
+  String get _sessionDisplayName {
+    final session = widget.workoutState.currentSession;
+    final title = session?.title?.trim() ?? '';
+    if (title.isNotEmpty) return title;
+    return ModalityDisplay.getName(session?.modality);
+  }
+
   Widget _buildHeader(ThemeData theme) {
     final currentSegmentName = !_showListView && _exercises.isNotEmpty
         ? _exercises[_currentExerciseIndex]['segmentName'] as String?
@@ -977,7 +1027,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
               children: [
                 Text(
                   _showListView
-                      ? 'Exercises'
+                      ? (widget.editMode ? 'Edit Session' : _sessionDisplayName)
                       : (_exercises.isNotEmpty
                             ? _exercises[_currentExerciseIndex]['name']
                                   as String
@@ -992,7 +1042,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 const SizedBox(height: 4),
                 Text(
                   _showListView
-                      ? '${widget.editMode ? 'EDITING · ' : ''}${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}'
+                      ? '${widget.editMode ? '$_sessionDisplayName · ' : ''}${_exercises.length} exercise${_exercises.length != 1 ? 's' : ''}'
                       : (_exercises.isNotEmpty
                             ? 'Exercise ${_currentExerciseIndex + 1} / ${_exercises.length}'
                             : ''),

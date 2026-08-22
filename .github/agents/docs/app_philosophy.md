@@ -193,42 +193,26 @@ Used for:
 
 ## 8. Home Screen Structure
 
-### Tile Layout (3 rows × 2 columns)
-(Answer: "What kind of session am I doing today?" + routine access)
+### Tile Taxonomy
 
-| Row | Column 1 | Column 2 |
-|-----|----------|----------|
-| 1 | Cardio / Endurance | Resistance / Lifting |
-| 2 | Sports (unified martial arts + sports) | Isometric / Stretching |
-| 3 | Free Training (null modality) | My Routines (special tile) |
+The grid answers one question — "what kind of session am I doing today?" — plus routine access.
+There are two kinds of tile:
 
-**Feb 2026 changes**: Martial Arts and Sports tiles were unified into a single "Sports" tile. My Routines tile was added as the 6th tile.
+- **Modality tiles (5)** — Cardio / Endurance, Resistance / Lifting, Sports, Isometric /
+  Stretching, and Free Training (null modality). Each starts a new session with that modality;
+  tapping an already-active modality tile resumes rather than restarting.
+- **My Routines tile (1)** — not a modality. Navigates to routine management, or straight to the
+  active session when a routine session is running.
 
-### Tile Types
-- **Modality tiles** (5): Start a new session with a preset modality. Tapping an active modality tile resumes the session.
-- **My Routines tile** (1): Navigates to routine management (`MyRoutinesScreen`). If a routine session is active, navigates directly to `WorkoutSessionScreen`.
-
-See [Navigation & Screens](navigation_and_screens.md) for the complete screen flow and [Session Summary](session_summary.md) for what happens after a workout ends.
+See [Navigation & Screens](navigation_and_screens.md) for the screen graph and
+[Session Summary](session_summary.md) for what happens after a workout ends.
 
 ### Maintenance Sheet
 A draggable bottom sheet provides access to system features. The sheet snaps directly between collapsed (7%) and expanded (92%); the previous mid snap point was removed so opening the sheet is a single-step gesture.
 
-**Corrected 2026-07-26 (docs audit).** This section previously said the sheet
-offers "Profile, Stats, Settings — all three routes are implemented". The
-production sheet renders **four** items, in this order:
-
-| # | Item | Destination |
-|---|------|-------------|
-| 1 | Calendar | `CalendarScreen` |
-| 2 | Stats | `StatsScreen` |
-| 3 | Profile | `ProfileScreen` |
-| 4 | Settings | `SettingsScreen` |
-
 Source: `_buildMaintenanceGrid` in `lib/features/home/home_screen.dart`.
 Nutrition is **not** in the sheet — it is reached from the
-`NutritionSummaryCard` below the tile grid. See the
-[hub discrepancy flag](navigation_and_screens.md#hub-discrepancy) for the
-unresolved `HubSheet` question.
+`NutritionSummaryCard` below the tile grid.
 
 Home screen never shows individual exercises.
 
@@ -272,17 +256,11 @@ A Template is:
 
 ---
 
-## 11. New User Flow
+## 11. New User Onboarding
 
-### Onboarding Inputs
-- Primary training type(s)
-- Primary goal
-- Available equipment
-
-### Onboarding Outputs
-- Default SportProfile
-- Initial Templates
-- Default Home Screen category ordering
+Onboarding collects only what changes the app's defaults — training type, goal, and available
+equipment — and uses it to seed the default SportProfile, initial Templates, and home category
+ordering.
 
 No mandatory tutorials or explanations.
 
@@ -343,16 +321,6 @@ No global “score” or gamification required.
 - Templates per Home category
 - Exercise filtering and creation
 - History + basic progress
-
-### Deferred
-- Advanced analytics
-- Coaching logic
-- Social features
-- Wearable integrations (can be layered later)
-
-> **Corrected 2026-07-26 (docs audit).** "Nutrition tracking" was listed as
-> deferred here as well. It has shipped — see the note under
-> [Explicit Non-Goals](#explicit-non-goals-v1).
 
 ---
 

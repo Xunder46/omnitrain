@@ -6,11 +6,11 @@ disable-model-invocation: false
 handoffs:
   - label: Hand off to DBA
     agent: dba
-    prompt: Proceed with Phase 1 (Data Layer). See the plan above for details. IMPORTANT! Implement for BOTH environments: HiveWorkoutRepository (web-compatible, in-memory) and future SqliteWorkoutRepository (production, persistent). Carry forward docs/global_conventions.md so canonical storage, timestamps, and other shared rules stay intact.
+    prompt: Proceed with Phase 1 (Data Layer). See the plan above for details. IMPORTANT! Implement against the `WorkoutRepository` interface and both implementations that exist: `HiveWorkoutRepository` (runtime, every platform) and `MockWorkoutRepository` (tests/dev). Carry forward docs/global_conventions.md so canonical storage, timestamps, and other shared rules stay intact.
     send: true
   - label: Hand off to Developer
     agent: developer
-    prompt: Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access. docs/global_conventions.md applies to the entire implementation.
+    prompt: Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must stay environment-safe for web and native, and depend on the `WorkoutRepository` interface only. Use repository interfaces, never direct storage access. docs/global_conventions.md applies to the entire implementation.
     send: true
   - label: Hand off to Code Reviewer
     agent: code-reviewer
@@ -161,34 +161,38 @@ lib/
 - Loads seed data from `lib/mock/seed_data.dart` on first run
 - `MockWorkoutRepository` also exists for in-memory testing
 
-### Production (Mobile/Desktop)
-- Full SQLite via sqflite package planned
-- Will use `SqliteWorkoutRepository` (same interface)
-- Persistent local storage
-- Schema in `scripts/sqlite_schema.sql`
+### Persistence reality
+- `HiveWorkoutRepository` is the runtime on **every** platform, web included.
+- The SQLite **runtime is retired**: `sqflite` is not a dependency and the
+  datasource files were deleted. There is no `SqliteWorkoutRepository`.
+- `scripts/sqlite_schema.sql` and `sqlite_seed.sql` remain as the canonical
+  **data-model contract** (executed by `test/db_seed_test.dart`), not a
+  persistence path. Keep them in step with `lib/data/models/models.dart`.
 
 ### How It Works
 - Repository pattern abstracts storage
 - State classes depend on `WorkoutRepository` interface
 - At app startup, inject appropriate implementation:
-  - `HiveWorkoutRepository()` for current builds (web + native)
-  - `SqliteWorkoutRepository()` for future native optimization
+  - `HiveWorkoutRepository()` on every platform
+  - `MockWorkoutRepository()` in tests and dev
 - **Same state, same UI, different data source**
 
 ## Key Feature Documentation
 
 For a complete index and reading guide, see **`docs/README.md`**.
 
+Before planning any documentation work, read **`docs/documentation_standard.md`** — it defines what these documents may and may not contain.
+
 For comprehensive technical and business context on implemented features, refer to:
 
 - **`docs/app_philosophy.md`**: Core design principles, user experience philosophy, and architectural decisions
 - **`docs/modality_tracking.md`**: Modality-aware workout tracking system - business context, technical architecture, exercise capabilities (7 flags), effort kind derivation, UI adaptation, implementation details, testing strategies, and code references for 40 exercises across 6 modalities
-- **`docs/modality_based_exercise_ui.md`**: Adaptive workout session screen - per-modality UI rendering, timer state management, set navigation, InlineMetricEditor interaction, and swipe gesture patterns
+- **`docs/modality_based_exercise_ui.md`**: Adaptive workout session screen — effort-kind vocabulary, wall-clock timer architecture and its rationale, round state machine, immediate-persistence contract
 - **`docs/exercise_ranking.md`**: Exercise ranking and recommended sorting - scoring algorithm, ModalityConfig inputs, relevance score calculation, and repository-level sorting
 - **`docs/my_routines.md`**: My Routines feature - reusable workout template system, template data model hierarchy, RoutineState management, routine-to-session conversion flow, and RoutineSetupScreen dual-view UI
-- **`docs/session_summary.md`**: Post-workout analytics - PRs, volume comparison, save-as-routine
+- **`docs/session_summary.md`**: Post-workout analytics — per-group deltas, inline PRs, feeling-survey capture, save-as-routine
 - **`docs/db_integration.md`**: Database integration strategy and patterns
-- **`docs/design_system.md`**: Complete design system — color tokens, typography, spacing, animation rules, component patterns, accessibility requirements, and visual identity guidelines
+- **`docs/design_system.md`**: Visual identity and design **rules** — the mandatory shape rule, bottom-CTA anchoring, section-header contract, naming conventions. Values live in `lib/core/constants/omni_theme.dart`, never here
 - **`docs/navigation_and_screens.md`**: Complete screen map, navigation flow, dependency injection pattern
 - **`docs/state_management.md`**: ChangeNotifier classes, service classes, dependency graph
 - **`docs/data_models.md`**: All domain models — sessions, exercises, templates, measurements
@@ -236,8 +240,8 @@ When creating a plan, use this format:
 1. [ ] Update schema: [specific changes]
 2. [ ] Create/update models: [which models]
 3. [ ] Update repository interface: [new methods]
-4. [ ] Implement in MockWorkoutRepository (web)
-5. [ ] Plan for SqliteWorkoutRepository (production)
+4. [ ] Implement in `HiveWorkoutRepository` (runtime)
+5. [ ] Mirror in `MockWorkoutRepository` (tests/dev)
 6. [ ] Update seed data if needed
 
 ### Phase 2: Logic/UI (@developer)

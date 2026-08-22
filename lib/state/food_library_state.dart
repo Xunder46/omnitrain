@@ -13,6 +13,50 @@ import '../data/repositories/workout_repository.dart';
 ///
 /// All operations route through the injected WorkoutRepository interface,
 /// allowing environment-agnostic persistence (Hive web, SQLite native).
+
+/// Thrown by [FoodLibraryState.deleteFoodGroupReassigningFoods] when
+/// the deletion would strand at least one bundled catalog food —
+/// i.e. a food whose id is in [FoodLibraryState._bundledCatalogFoodIds]
+/// still has `groupId` equal to the category being deleted.
+///
+/// The constraint (see
+/// `.github/agents/plans/2026-08-08-food-edit-orphan-category-plan.md`):
+/// we cannot rewrite a bundled catalog food's `groupId` to "fix" the
+/// stranded-ness, because the catalog refresh restores the bundled
+/// food's category on every launch — so any such rewrite would
+/// silently revert and the user would watch their action undo
+/// itself. The honest answer is to refuse the deletion and tell the
+/// user which category is blocking it; the UI catches this error and
+/// surfaces it as a snackbar.
+///
+/// Subclass of [StateError] so the existing
+/// `try { ... } catch (_) { snackbar }` handlers in
+/// `add_food_screen.dart` continue to treat it as a soft failure
+/// (no rethrow, no rollback); a typed `catch` is preferred so a
+/// future migration to surface specific copy can discriminate.
+class FoodGroupHasBundledFoodsError extends StateError {
+  /// The id of the category the user tried to delete. Surfaced so the
+  /// UI can build copy that names the category.
+  final String groupId;
+
+  /// The display name of the category, captured at throw time.
+  final String groupName;
+
+  /// The bundled food ids that currently reference [groupId] and
+  /// would be stranded if the deletion proceeded. Surfaced so the
+  /// UI can list the first few names in the snackbar.
+  final List<String> bundledFoodIds;
+
+  FoodGroupHasBundledFoodsError({
+    required this.groupId,
+    required this.groupName,
+    required this.bundledFoodIds,
+  }) : super(
+          'Cannot delete category "$groupName" ($groupId): ${bundledFoodIds.length} '
+          'bundled catalog food(s) still reference it.',
+        );
+}
+
 class FoodLibraryState extends ChangeNotifier {
   final WorkoutRepository _repository;
 
@@ -85,7 +129,7 @@ class FoodLibraryState extends ChangeNotifier {
   }
 
   /// Nullable accessor for the image storage helper. Used by the
-  /// rendering widgets (`FoodThumbnail`, `_ImageBody`) which
+  /// rendering widgets (`FoodThumbnail`, `FoodFormImageTile`) which
   /// receive the service as an optional parameter and degrade
   /// gracefully when no service is injected (legacy / test path).
   ImageStorageService? get imageStorageOrNull => _imageStorage;
@@ -280,6 +324,20 @@ class FoodLibraryState extends ChangeNotifier {
   /// by the repository (a no-op `UPDATE`). After completion, the
   /// group's row is `isArchived = true` and the cache reflects the
   /// reassignment.
+  ///
+  /// **Bundled-food guard (S-006)**: refuses the deletion when
+  /// at least one bundled catalog food — a food whose id is in
+  /// [_bundledCatalogFoodIds] — still has `groupId == id`. We
+  /// cannot rewrite a bundled catalog food's `groupId` because
+  /// the catalog refresh restores the bundled category on every
+  /// launch, so any such rewrite would silently revert and the
+  /// user would watch their action undo itself. The honest answer
+  /// is to refuse the deletion and surface the reason via a
+  /// [FoodGroupHasBundledFoodsError] (caught by
+  /// `add_food_screen.dart`'s `_confirmAndDeleteGroup` and shown
+  /// as a snackbar). Library foods and user-created catalog foods
+  /// in the category are reassigned and the category is archived
+  /// exactly as before — only the bundled case is blocked.
   Future<void> deleteFoodGroupReassigningFoods(
     String id,
     String? toGroupId,
@@ -289,6 +347,32 @@ class FoodLibraryState extends ChangeNotifier {
       throw Exception('Food group not found: $id');
     }
     final now = DateTime.now().millisecondsSinceEpoch;
+    // The guard below reads the in-memory catalog cache. A cold
+    // cache would make it see zero bundled foods and wave the
+    // deletion through, stranding every bundled food in the
+    // category — the exact outcome the guard exists to prevent.
+    // Load the catalog first when it has never been populated.
+    if (_catalogFoods.isEmpty) {
+      await loadCatalogFoods();
+    }
+    // Bundled-food guard (S-006): if any bundled catalog food
+    // currently points at this group, refuse the deletion. Run
+    // this BEFORE the library/user-catalog reassignment so a
+    // refused deletion is a true no-op (no row was touched).
+    final strandedBundled = _catalogFoods.values
+        .where(
+          (f) => !f.isArchived && f.groupId == id && isBundledCatalogFood(f.id),
+        )
+        .map((f) => f.id)
+        .toList();
+    if (strandedBundled.isNotEmpty) {
+      throw FoodGroupHasBundledFoodsError(
+        groupId: id,
+        groupName: group.name,
+        bundledFoodIds: strandedBundled,
+      );
+    }
+    // Reassign library foods first (existing behaviour).
     final foodIds = _foods.values
         .where(
           (f) =>
@@ -311,6 +395,32 @@ class FoodLibraryState extends ChangeNotifier {
           // Defensive: if the repo lost the row between the update
           // and the read, drop it from the cache to stay in sync.
           _foods.remove(fid);
+        }
+      }
+    }
+    // Reassign user-owned catalog foods (those created via **+ New
+    // Item**) too. The bundled guard above guarantees we never see a
+    // bundled id here; the filter on `isBundledCatalogFood == false`
+    // is belt-and-suspenders.
+    final userCatalogIds = _catalogFoods.values
+        .where(
+          (f) =>
+              !f.isArchived &&
+              f.groupId == id &&
+              !isBundledCatalogFood(f.id),
+        )
+        .map((f) => f.id)
+        .toList();
+    if (userCatalogIds.isNotEmpty) {
+      await _repository.reassignCatalogFoodsToGroup(userCatalogIds, toGroupId);
+      // Refresh the catalog cache for the moved rows so the in-memory
+      // catalog mirrors the persisted state.
+      for (final cid in userCatalogIds) {
+        final refreshed = await _repository.getCatalogFoodById(cid);
+        if (refreshed != null) {
+          _catalogFoods[cid] = refreshed;
+        } else {
+          _catalogFoods.remove(cid);
         }
       }
     }
@@ -1167,58 +1277,96 @@ class FoodLibraryState extends ChangeNotifier {
     'almond_milk',
     'almonds',
     'apple',
+    'asparagus',
     'avocado',
     'bacon',
     'bagel',
     'banana',
+    'bbq_sauce',
+    'beef_jerky',
+    'beef_patty',
+    'beer_regular',
     'bell_pepper',
     'black_beans',
     'blueberries',
+    'blueberry_muffin',
     'breakfast_cereal',
     'broccoli',
     'brown_rice',
+    'brussels_sprouts',
     'butter',
+    'cabbage',
+    'california_roll',
+    'cantaloupe',
     'carrots',
     'cashews',
+    'cauliflower',
+    'celery',
     'cheddar_cheese',
+    'cherries',
     'chia_seeds',
     'chicken_breast',
     'chicken_thigh',
+    'chicken_wing',
     'chickpeas',
+    'chocolate_chip_cookie',
     'coconut_oil',
     'cod',
     'coffee',
     'cola',
+    'corn_tortilla',
     'cottage_cheese',
+    'couscous',
     'crackers',
     'cream_cheese',
+    'croissant',
     'cucumber',
     'dark_chocolate',
+    'dates',
+    'diet_cola',
+    'donut_glazed',
+    'edamame',
     'egg',
     'egg_white',
     'english_muffin',
+    'feta_cheese',
     'flax_seeds',
     'flour_tortilla',
+    'french_fries',
     'granola_bar',
     'grapes',
     'greek_yogurt',
     'green_beans',
+    'green_onion',
     'green_peas',
+    'green_tea',
     'ground_beef',
     'ground_beef_2',
+    'ground_chicken',
     'ground_turkey',
+    'guacamole',
+    'half_and_half',
     'ham',
     'honey',
+    'hot_sauce',
     'hummus',
+    'ice_cream_vanilla',
+    'jalapeno',
+    'kale',
     'ketchup',
+    'kidney_beans',
+    'kiwi',
     'latte',
     'lentils',
     'mango',
     'maple_syrup',
+    'marinara_sauce',
     'mayonnaise',
+    'milk_2pct',
     'mozzarella_cheese',
     'mushrooms',
     'mustard',
+    'oat_milk',
     'oats',
     'olive_oil',
     'onion',
@@ -1232,38 +1380,61 @@ class FoodLibraryState extends ChangeNotifier {
     'peanuts',
     'pear',
     'pineapple',
+    'pistachios',
+    'pita_bread',
+    'pizza_pepperoni_slice',
+    'pizza_slice',
     'popcorn',
     'pork_chop',
     'pork_sausage_link',
+    'pork_tenderloin',
     'potato',
     'potato_chips',
     'pretzels',
     'protein_bar',
+    'pumpkin_seeds',
     'quinoa',
     'raisins',
+    'ramen_prepared',
     'ranch_dressing',
+    'raspberries',
+    'red_wine',
     'rice_cake',
+    'roast_beef_deli',
     'romaine_lettuce',
     'salmon',
+    'salmon_raw',
     'salsa',
+    'sardines_oil',
     'shrimp',
     'sirloin_steak',
     'skim_milk',
+    'sour_cream',
+    'sourdough_bread',
     'soy_sauce',
     'spinach',
+    'sports_drink',
     'strawberries',
     'string_cheese',
+    'sugar_granulated',
+    'sunflower_seeds',
     'sweet_corn',
     'sweet_potato',
+    'swiss_cheese',
     'tempeh',
+    'tilapia',
     'tofu',
     'tomato',
+    'tortilla_chips',
     'trail_mix',
     'tuna',
+    'tuna_raw',
     'turkey_breast',
+    'waffle',
     'walnuts',
     'watermelon',
     'whey_protein',
+    'whipped_cream',
     'white_bread',
     'white_rice',
     'whole_milk',

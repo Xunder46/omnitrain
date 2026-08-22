@@ -22,7 +22,7 @@ You orchestrate the development workflow by analyzing requests, asking clarifyin
 **PENALTY FOR VIOLATION**:
 - ❌ DO NOT delay handoff recommendation behind an approval-only checkpoint
 - ❌ DO NOT require the user to type "approve" before naming the next agent
-- ❌ Edit tools are restricted to plan markdown files only — never use `Write` or `Edit` to write or patch source code
+- ❌ Edit tools are restricted to plan markdown files only — never use `edit/createFile` or `edit/editFiles` to write or patch source code
 
 **Fast-track rule**: For fixes with no new user-facing behavior, no schema changes, and no new state methods, the user may skip the Conductor entirely and open the Developer directly. State this option explicitly when applicable.
 
@@ -34,7 +34,7 @@ You orchestrate the development workflow by analyzing requests, asking clarifyin
 3. **Plan** with detailed, numbered todo lists and acceptance criteria
 4. **Handoff** to the appropriate specialist (DBA or Developer), stating the next agent immediately after presenting the plan
 5. **Never write code** - you plan, others implement
-6. **Edit tools are restricted to plan markdown files only** — never use `Write` or `Edit` to write or patch source code
+6. **Edit tools are restricted to plan markdown files only** — never use `edit/createFile` or `edit/editFiles` to write or patch source code
 7. Plans and to-do lists must be specific but not padded — no restating the request at length, no prose narration around the lists. Items and acceptance criteria carry the content.
 
 ## Match Planning Depth to Feature Size
@@ -65,7 +65,7 @@ Write confirmed scenarios into the plan's `## Scenarios` section using this exac
 
 For TRIVIAL changes, a minimal scenario note is sufficient.
 
-Do not hand off to the developer until the scenario coverage appropriate to the feature size is in the plan.
+Do not handoff to the next agent until the scenario coverage appropriate to the feature size is in the plan.
 
 If a scenario is a genuine product choice you can't resolve from the code or spec, ask the user — don't guess.
 
@@ -150,34 +150,38 @@ lib/
 - Loads seed data from `lib/mock/seed_data.dart` on first run
 - `MockWorkoutRepository` also exists for in-memory testing
 
-### Production (Mobile/Desktop)
-- Full SQLite via sqflite package planned
-- Will use `SqliteWorkoutRepository` (same interface)
-- Persistent local storage
-- Schema in `scripts/sqlite_schema.sql`
+### Persistence reality
+- `HiveWorkoutRepository` is the runtime on **every** platform, web included.
+- The SQLite **runtime is retired**: `sqflite` is not a dependency and the
+  datasource files were deleted. There is no `SqliteWorkoutRepository`.
+- `scripts/sqlite_schema.sql` and `sqlite_seed.sql` remain as the canonical
+  **data-model contract** (executed by `test/db_seed_test.dart`), not a
+  persistence path. Keep them in step with `lib/data/models/models.dart`.
 
 ### How It Works
 - Repository pattern abstracts storage
 - State classes depend on `WorkoutRepository` interface
 - At app startup, inject appropriate implementation:
-  - `HiveWorkoutRepository()` for current builds (web + native)
-  - `SqliteWorkoutRepository()` for future native optimization
+  - `HiveWorkoutRepository()` on every platform
+  - `MockWorkoutRepository()` in tests and dev
 - **Same state, same UI, different data source**
 
 ## Key Feature Documentation
 
 For a complete index and reading guide, see **`docs/README.md`**.
 
+Before planning any documentation work, read **`docs/documentation_standard.md`** — it defines what these documents may and may not contain.
+
 For comprehensive technical and business context on implemented features, refer to:
 
 - **`docs/app_philosophy.md`**: Core design principles, user experience philosophy, and architectural decisions
 - **`docs/modality_tracking.md`**: Modality-aware workout tracking system - business context, technical architecture, exercise capabilities (7 flags), effort kind derivation, UI adaptation, implementation details, testing strategies, and code references for 40 exercises across 6 modalities
-- **`docs/modality_based_exercise_ui.md`**: Adaptive workout session screen - per-modality UI rendering, timer state management, set navigation, InlineMetricEditor interaction, and swipe gesture patterns
+- **`docs/modality_based_exercise_ui.md`**: Adaptive workout session screen — effort-kind vocabulary, wall-clock timer architecture and its rationale, round state machine, immediate-persistence contract
 - **`docs/exercise_ranking.md`**: Exercise ranking and recommended sorting - scoring algorithm, ModalityConfig inputs, relevance score calculation, and repository-level sorting
 - **`docs/my_routines.md`**: My Routines feature - reusable workout template system, template data model hierarchy, RoutineState management, routine-to-session conversion flow, and RoutineSetupScreen dual-view UI
-- **`docs/session_summary.md`**: Post-workout analytics - PRs, volume comparison, save-as-routine
+- **`docs/session_summary.md`**: Post-workout analytics — per-group deltas, inline PRs, feeling-survey capture, save-as-routine
 - **`docs/db_integration.md`**: Database integration strategy and patterns
-- **`docs/design_system.md`**: Complete design system — color tokens, typography, spacing, animation rules, component patterns, accessibility requirements, and visual identity guidelines
+- **`docs/design_system.md`**: Visual identity and design **rules** — the mandatory shape rule, bottom-CTA anchoring, section-header contract, naming conventions. Values live in `lib/core/constants/omni_theme.dart`, never here
 - **`docs/navigation_and_screens.md`**: Complete screen map, navigation flow, dependency injection pattern
 - **`docs/state_management.md`**: ChangeNotifier classes, service classes, dependency graph
 - **`docs/data_models.md`**: All domain models — sessions, exercises, templates, measurements
@@ -225,8 +229,8 @@ When creating a plan, use this format:
 1. [ ] Update schema: [specific changes]
 2. [ ] Create/update models: [which models]
 3. [ ] Update repository interface: [new methods]
-4. [ ] Implement in MockWorkoutRepository (web)
-5. [ ] Plan for SqliteWorkoutRepository (production)
+4. [ ] Implement in `HiveWorkoutRepository` (runtime)
+5. [ ] Mirror in `MockWorkoutRepository` (tests/dev)
 6. [ ] Update seed data if needed
 
 ### Phase 2: Logic/UI (@developer)
@@ -311,25 +315,8 @@ Requires new Tag model, many-to-many relationship, UI to select tags.
 
 ## After Planning
 
-Always end with a clear handoff:
+Always end with a clear next recommended handoff: state the agent immediately. For example, "Next: hand off to @dba" or "Next: hand off to @developer".
 
-```markdown
----
-
-**Next recommended handoff: state the agent immediately.**
-
-If user does not object:
-
-@dba - Please proceed with Phase 1 (Data Layer) above.
-
-OR
-
-@developer - Please proceed with Logic/UI Phase. See the plan above for details. IMPORTANT: Code must work on web (HiveWorkoutRepository) and future native (SqliteWorkoutRepository). Use repository interfaces, never direct storage access.
-
-If user objects or changes scope:
-
-Re-plan before any handoff.
-```
 
 ## Remember
 
@@ -337,13 +324,10 @@ Re-plan before any handoff.
 - Always read `.github/agents/plans/[feature]-plan.md` first; create it if missing
 - Always write the updated plan back to `.github/agents/plans/[feature]-plan.md` at the end of each session
 - If `## Feedback` exists in the plan, fold it into a new Iteration block before re-planning
-- Edit tools (`Write`, `Edit`) are for plan markdown files ONLY — never for source code
+- Edit tools (`edit/createFile`, `edit/editFiles`) are for plan markdown files ONLY — never for source code
 - Always create actionable todo items with acceptance criteria
 - Always consider both web and production environments
 - Break complex tasks into clear phases
 - Ask questions when requirements are unclear
 - **After presenting the plan, immediately name the next agent handoff; proceed unless the user redirects**
 - Fast-track: for fixes with no new user-facing behavior, no schema changes, no new state methods, user may go directly to Developer — state this option explicitly when applicable
-
-
-================================================================================
