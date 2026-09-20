@@ -1,0 +1,205 @@
+{
+  "protocolVersion": 1,
+  "name": "A second snapshot merges entries instead of replacing them",
+  "description": "The watch logs an entry the phone has not seen. A snapshot the phone then sends carries structure, position, revision, and timers — and its own entry list, which does not include the watch's. The watch's entry must survive: entries merge by entryId, while structure, position, and timers are replaced. The snapshot also carries no hold timer, which clears the one an incremental message had started.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-merge-snapshot-1",
+    "sessionId": "s-2026-07-13-7",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T18:30:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-7",
+      "revision": 30,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        },
+        {
+          "sessionExerciseId": "sx-plank",
+          "exerciseId": "ex-plank",
+          "name": "Plank",
+          "capabilities": ["time", "hold"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "e-501",
+          "eventId": "evt-501",
+          "kind": "set",
+          "loggedAt": "2026-07-13T18:25:00Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 5,
+          "loadKg": 80
+        }
+      ],
+      "timers": {
+        "elapsed": {
+          "kind": "elapsed",
+          "state": "running",
+          "startedAt": "2026-07-13T18:20:00Z",
+          "accumulatedPauseMs": 0
+        }
+      }
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-merge-obs",
+      "sessionId": "s-2026-07-13-7",
+      "type": "observations_up",
+      "origin": "watch",
+      "sentAt": "2026-07-13T18:32:00Z",
+      "payload": {
+        "events": [
+          {
+            "eventId": "evt-502",
+            "entryId": "e-502",
+            "kind": "set",
+            "loggedAt": "2026-07-13T18:31:00Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 5,
+            "loadKg": 82.5
+          }
+        ]
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-merge-hold",
+      "sessionId": "s-2026-07-13-7",
+      "type": "timer_state",
+      "origin": "watch",
+      "sentAt": "2026-07-13T18:32:30Z",
+      "payload": {
+        "timers": {
+          "hold": {
+            "kind": "hold",
+            "state": "running",
+            "startedAt": "2026-07-13T18:32:30Z",
+            "accumulatedPauseMs": 0
+          }
+        }
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-merge-snapshot-2",
+      "sessionId": "s-2026-07-13-7",
+      "type": "session_snapshot",
+      "origin": "phone",
+      "sentAt": "2026-07-13T18:33:00Z",
+      "payload": {
+        "sessionId": "s-2026-07-13-7",
+        "revision": 31,
+        "status": "active",
+        "currentExerciseIndex": 2,
+        "exercises": [
+          {
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "name": "Barbell Bench Press",
+            "capabilities": ["sets", "reps", "load"]
+          },
+          {
+            "sessionExerciseId": "sx-plank",
+            "exerciseId": "ex-plank",
+            "name": "Plank",
+            "capabilities": ["time", "hold"]
+          },
+          {
+            "sessionExerciseId": "sx-squat",
+            "exerciseId": "ex-goblet-squat",
+            "name": "Goblet Squat",
+            "capabilities": ["sets", "reps", "load"]
+          }
+        ],
+        "entries": [
+          {
+            "entryId": "e-501",
+            "eventId": "evt-501",
+            "kind": "set",
+            "loggedAt": "2026-07-13T18:25:00Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 5,
+            "loadKg": 80
+          }
+        ],
+        "timers": {
+          "elapsed": {
+            "kind": "elapsed",
+            "state": "running",
+            "startedAt": "2026-07-13T18:20:00Z",
+            "accumulatedPauseMs": 0
+          }
+        }
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-7",
+    "status": "active",
+    "revision": 31,
+    "currentExerciseIndex": 2,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      },
+      {
+        "sessionExerciseId": "sx-squat",
+        "exerciseId": "ex-goblet-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-501",
+        "eventId": "evt-501",
+        "kind": "set",
+        "loggedAt": "2026-07-13T18:25:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "entryId": "e-502",
+        "eventId": "evt-502",
+        "kind": "set",
+        "loggedAt": "2026-07-13T18:31:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 82.5
+      }
+    ],
+    "timers": {
+      "elapsed": {
+        "kind": "elapsed",
+        "state": "running",
+        "startedAt": "2026-07-13T18:20:00Z",
+        "accumulatedPauseMs": 0
+      }
+    }
+  }
+}

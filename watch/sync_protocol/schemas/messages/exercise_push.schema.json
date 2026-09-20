@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/exercise_push.schema.json",
+  "title": "exercise_push",
+  "description": "Phone → watch. A catalog exercise the user picked on the phone, pushed into the live session for the watch to display and log against.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    { "required": ["sessionId"] },
+    {
+      "properties": {
+        "type": { "const": "exercise_push" },
+        "origin": { "const": "phone" },
+        "payload": {
+          "type": "object",
+          "required": ["exercise", "insertAtIndex"],
+          "additionalProperties": false,
+          "properties": {
+            "exercise": { "$ref": "envelope.schema.json#/$defs/sessionExercise" },
+            "insertAtIndex": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  ]
+}

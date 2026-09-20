@@ -1,0 +1,121 @@
+{
+  "protocolVersion": 1,
+  "name": "The same exercise twice is two slots",
+  "description": "A session may hold the same exercise in two different slots — a routine with bench press in two segments produces exactly that. Slots are distinguished by sessionExerciseId, so removing one leaves the other standing, and each slot keeps the entries logged against it.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-repeat-snapshot",
+    "sessionId": "s-2026-07-13-8",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T18:40:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-8",
+      "revision": 40,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench-1",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        },
+        {
+          "sessionExerciseId": "sx-plank",
+          "exerciseId": "ex-plank",
+          "name": "Plank",
+          "capabilities": ["time", "hold"]
+        },
+        {
+          "sessionExerciseId": "sx-bench-2",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "e-601",
+          "eventId": "evt-601",
+          "kind": "set",
+          "loggedAt": "2026-07-13T18:35:00Z",
+          "sessionExerciseId": "sx-bench-1",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 5,
+          "loadKg": 80
+        },
+        {
+          "entryId": "e-602",
+          "eventId": "evt-602",
+          "kind": "set",
+          "loggedAt": "2026-07-13T18:38:00Z",
+          "sessionExerciseId": "sx-bench-2",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 10,
+          "loadKg": 60
+        }
+      ],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-repeat-change",
+      "sessionId": "s-2026-07-13-8",
+      "type": "structure_change",
+      "origin": "phone",
+      "sentAt": "2026-07-13T18:41:00Z",
+      "payload": {
+        "changeId": "chg-601",
+        "changes": [
+          { "kind": "remove_exercise", "sessionExerciseId": "sx-bench-1" }
+        ]
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-8",
+    "status": "active",
+    "revision": 41,
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      },
+      {
+        "sessionExerciseId": "sx-bench-2",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-601",
+        "eventId": "evt-601",
+        "kind": "set",
+        "loggedAt": "2026-07-13T18:35:00Z",
+        "sessionExerciseId": "sx-bench-1",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "entryId": "e-602",
+        "eventId": "evt-602",
+        "kind": "set",
+        "loggedAt": "2026-07-13T18:38:00Z",
+        "sessionExerciseId": "sx-bench-2",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 10,
+        "loadKg": 60
+      }
+    ],
+    "timers": {}
+  }
+}

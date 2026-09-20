@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-lifecycle-bad-1",
+  "sessionId": "s-2026-07-13-1",
+  "type": "session_lifecycle",
+  "origin": "watch",
+  "sentAt": "2026-07-13T18:20:00Z",
+  "payload": {
+    "state": "finished",
+    "at": "2026-07-13T18:20:00Z"
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "protocolVersion": 1,
+  "name": "A timer set to null is cleared; unnamed timers survive an incremental update",
+  "description": "An incremental timer_state names two of the four timer kinds: one sets a timer to null, the other updates a timer. A kind the message does not name is left alone — only a snapshot is authoritative for timer state as a whole.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-clear-snapshot",
+    "sessionId": "s-2026-07-13-6",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T18:20:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-6",
+      "revision": 50,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [],
+      "timers": {
+        "rest": {
+          "kind": "rest",
+          "state": "running",
+          "startedAt": "2026-07-13T18:19:00Z",
+          "accumulatedPauseMs": 0,
+          "plannedDurationMs": 90000
+        },
+        "elapsed": {
+          "kind": "elapsed",
+          "state": "running",
+          "startedAt": "2026-07-13T18:00:00Z",
+          "accumulatedPauseMs": 0
+        }
+      }
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-clear-timers",
+      "sessionId": "s-2026-07-13-6",
+      "type": "timer_state",
+      "origin": "watch",
+      "sentAt": "2026-07-13T18:21:00Z",
+      "payload": {
+        "timers": {
+          "rest": null,
+          "hold": {
+            "kind": "hold",
+            "state": "running",
+            "startedAt": "2026-07-13T18:21:00Z",
+            "accumulatedPauseMs": 0
+          }
+        }
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-6",
+    "status": "active",
+    "revision": 50,
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [],
+    "timers": {
+      "elapsed": {
+        "kind": "elapsed",
+        "state": "running",
+        "startedAt": "2026-07-13T18:00:00Z",
+        "accumulatedPauseMs": 0
+      },
+      "hold": {
+        "kind": "hold",
+        "state": "running",
+        "startedAt": "2026-07-13T18:21:00Z",
+        "accumulatedPauseMs": 0
+      }
+    }
+  }
+}

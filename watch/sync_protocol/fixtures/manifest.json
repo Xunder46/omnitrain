@@ -1,0 +1,138 @@
+{
+  "protocolVersion": 1,
+  "description": "Conformance fixture register. Every fixture file in this directory is listed here exactly once; the Dart validator, the watchOS suite, and the Wear OS suite walk this manifest rather than a hardcoded list. Every reconciliation fixture is replayed by the conformance test and must converge on its `expected` state; each entry under `scenarios` records the property the fixture pins, and the plan scenario it belongs to where there is one (`scenario` is null for fixtures that pin a protocol rule rather than a plan scenario).",
+  "valid": [
+    { "path": "valid/routines_down.json", "type": "routines_down" },
+    { "path": "valid/exercise_push.json", "type": "exercise_push" },
+    { "path": "valid/structure_change.json", "type": "structure_change" },
+    { "path": "valid/observations_up.json", "type": "observations_up" },
+    { "path": "valid/session_lifecycle.json", "type": "session_lifecycle" },
+    { "path": "valid/session_snapshot.json", "type": "session_snapshot" },
+    { "path": "valid/timer_state.json", "type": "timer_state" }
+  ],
+  "invalid": [
+    {
+      "path": "invalid/routines_down_missing_routine_id.json",
+      "type": "routines_down",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "routineId"
+    },
+    {
+      "path": "invalid/routines_down_unlisted_fallback_exercise.json",
+      "type": "routines_down",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "fallbackExercises"
+    },
+    {
+      "path": "invalid/exercise_push_unknown_origin.json",
+      "type": "exercise_push",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "garmin"
+    },
+    {
+      "path": "invalid/structure_change_unknown_kind.json",
+      "type": "structure_change",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "rotate_exercise"
+    },
+    {
+      "path": "invalid/observations_up_missing_event_id.json",
+      "type": "observations_up",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "eventId"
+    },
+    {
+      "path": "invalid/session_lifecycle_unknown_state.json",
+      "type": "session_lifecycle",
+      "expectedCode": "invalid_enum_value",
+      "expectedReasonContains": "finished"
+    },
+    {
+      "path": "invalid/session_snapshot_missing_session_id.json",
+      "type": "session_snapshot",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "sessionId"
+    },
+    {
+      "path": "invalid/session_snapshot_index_out_of_range.json",
+      "type": "session_snapshot",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "currentExerciseIndex"
+    },
+    {
+      "path": "invalid/session_snapshot_duplicate_slot.json",
+      "type": "session_snapshot",
+      "expectedCode": "semantic_violation",
+      "expectedReasonContains": "sessionExerciseId"
+    },
+    {
+      "path": "invalid/timer_state_remaining_seconds.json",
+      "type": "timer_state",
+      "expectedCode": "unexpected_field",
+      "expectedReasonContains": "remainingSeconds",
+      "note": "The only fixture that carries a remaining-time field, on purpose: the field is the defect. Every fixture that represents timer state must be free of one — see test/sync_protocol_fixtures_test.dart (S-003)."
+    }
+  ],
+  "scenarios": [
+    {
+      "path": "reconciliation/snapshot_then_events.json",
+      "scenario": "S-004",
+      "property": "reconnect reconciliation converges"
+    },
+    {
+      "path": "reconciliation/duplicate_delivery.json",
+      "scenario": "S-002",
+      "property": "replaying the stream twice equals applying it once"
+    },
+    {
+      "path": "reconciliation/remove_current_exercise.json",
+      "scenario": "S-005",
+      "property": "removing the current exercise advances to the next valid one"
+    },
+    {
+      "path": "reconciliation/repeated_exercise.json",
+      "scenario": null,
+      "property": "the same exercise in two slots is two addresses"
+    },
+    {
+      "path": "reconciliation/structure_change_apply.json",
+      "scenario": null,
+      "property": "every structure-change kind applies in order"
+    },
+    {
+      "path": "reconciliation/snapshot_merge.json",
+      "scenario": null,
+      "property": "a second snapshot merges entries and replaces structure and timers"
+    },
+    {
+      "path": "reconciliation/timer_cleared.json",
+      "scenario": null,
+      "property": "a null timer clears; an unnamed timer survives"
+    },
+    {
+      "path": "reconciliation/lifecycle_transitions.json",
+      "scenario": null,
+      "property": "lifecycle states apply in order and out-of-range positions clamp"
+    },
+    {
+      "path": "reconciliation/lifecycle_started.json",
+      "scenario": null,
+      "property": "a session reported started is live again"
+    },
+    {
+      "path": "reconciliation/lifecycle_completed.json",
+      "scenario": null,
+      "property": "a completed session stays completed"
+    },
+    {
+      "path": "reconciliation/duplicate_slot_add.json",
+      "scenario": "S-005",
+      "property": "a slot id can be introduced only once"
+    },
+    {
+      "path": "reconciliation/version_mismatch.json",
+      "scenario": "S-006",
+      "property": "version mismatch rejects and answers with a snapshot"
+    }
+  ]
+}

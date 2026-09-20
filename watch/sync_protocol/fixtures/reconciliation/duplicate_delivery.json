@@ -1,0 +1,149 @@
+{
+  "protocolVersion": 1,
+  "name": "Duplicate delivery is a no-op",
+  "description": "The same observations and the same structure change are delivered twice. Applying the stream twice must produce exactly the state of applying it once, and exactly one entry per distinct eventId.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-dup-snapshot",
+    "sessionId": "s-2026-07-13-2",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T17:30:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-2",
+      "revision": 3,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-dup-obs",
+      "sessionId": "s-2026-07-13-2",
+      "type": "observations_up",
+      "origin": "watch",
+      "sentAt": "2026-07-13T17:36:00Z",
+      "payload": {
+        "events": [
+          {
+            "eventId": "evt-301",
+            "entryId": "e-301",
+            "kind": "set",
+            "loggedAt": "2026-07-13T17:31:00Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 5,
+            "loadKg": 80
+          },
+          {
+            "eventId": "evt-302",
+            "entryId": "e-302",
+            "kind": "set",
+            "loggedAt": "2026-07-13T17:33:00Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 5,
+            "loadKg": 80
+          },
+          {
+            "eventId": "evt-303",
+            "entryId": "e-303",
+            "kind": "set",
+            "loggedAt": "2026-07-13T17:35:00Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 5,
+            "loadKg": 80
+          }
+        ]
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-dup-change",
+      "sessionId": "s-2026-07-13-2",
+      "type": "structure_change",
+      "origin": "phone",
+      "sentAt": "2026-07-13T17:36:30Z",
+      "payload": {
+        "changeId": "chg-301",
+        "changes": [
+          {
+            "kind": "add_exercise",
+            "exercise": {
+              "sessionExerciseId": "sx-pullup",
+              "exerciseId": "ex-pull-up",
+              "name": "Pull-Up",
+              "capabilities": ["sets", "reps", "load"]
+            },
+            "atIndex": 1
+          }
+        ]
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-2",
+    "status": "active",
+    "revision": 4,
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-pullup",
+        "exerciseId": "ex-pull-up",
+        "name": "Pull-Up",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-301",
+        "eventId": "evt-301",
+        "kind": "set",
+        "loggedAt": "2026-07-13T17:31:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "entryId": "e-302",
+        "eventId": "evt-302",
+        "kind": "set",
+        "loggedAt": "2026-07-13T17:33:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "entryId": "e-303",
+        "eventId": "evt-303",
+        "kind": "set",
+        "loggedAt": "2026-07-13T17:35:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      }
+    ],
+    "timers": {}
+  }
+}

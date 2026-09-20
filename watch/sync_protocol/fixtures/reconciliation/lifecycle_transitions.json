@@ -1,0 +1,124 @@
+{
+  "protocolVersion": 1,
+  "name": "Session lifecycle state machine",
+  "description": "Every lifecycle state applied in order, plus the out-of-range position falls back to the last valid exercise rather than escaping the exercise list. Lifecycle messages never change structure, entries, or the revision.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-lifecycle-snapshot",
+    "sessionId": "s-2026-07-13-9",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T18:50:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-9",
+      "revision": 5,
+      "status": "active",
+      "currentExerciseIndex": 0,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        },
+        {
+          "sessionExerciseId": "sx-plank",
+          "exerciseId": "ex-plank",
+          "name": "Plank",
+          "capabilities": ["time", "hold"]
+        },
+        {
+          "sessionExerciseId": "sx-squat",
+          "exerciseId": "ex-goblet-squat",
+          "name": "Goblet Squat",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-lifecycle-started",
+      "sessionId": "s-2026-07-13-9",
+      "type": "session_lifecycle",
+      "origin": "phone",
+      "sentAt": "2026-07-13T18:51:00Z",
+      "payload": { "state": "started", "at": "2026-07-13T18:51:00Z" }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-lifecycle-advanced",
+      "sessionId": "s-2026-07-13-9",
+      "type": "session_lifecycle",
+      "origin": "phone",
+      "sentAt": "2026-07-13T18:52:00Z",
+      "payload": {
+        "state": "exercise_advanced",
+        "at": "2026-07-13T18:52:00Z",
+        "exerciseIndex": 2
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-lifecycle-advanced-out-of-range",
+      "sessionId": "s-2026-07-13-9",
+      "type": "session_lifecycle",
+      "origin": "watch",
+      "sentAt": "2026-07-13T18:53:00Z",
+      "payload": {
+        "state": "exercise_advanced",
+        "at": "2026-07-13T18:53:00Z",
+        "exerciseIndex": 99
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-lifecycle-completed",
+      "sessionId": "s-2026-07-13-9",
+      "type": "session_lifecycle",
+      "origin": "phone",
+      "sentAt": "2026-07-13T18:54:00Z",
+      "payload": { "state": "completed", "at": "2026-07-13T18:54:00Z" }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-lifecycle-abandoned",
+      "sessionId": "s-2026-07-13-9",
+      "type": "session_lifecycle",
+      "origin": "watch",
+      "sentAt": "2026-07-13T18:55:00Z",
+      "payload": { "state": "abandoned", "at": "2026-07-13T18:55:00Z" }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-9",
+    "status": "abandoned",
+    "revision": 5,
+    "currentExerciseIndex": 2,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      },
+      {
+        "sessionExerciseId": "sx-squat",
+        "exerciseId": "ex-goblet-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

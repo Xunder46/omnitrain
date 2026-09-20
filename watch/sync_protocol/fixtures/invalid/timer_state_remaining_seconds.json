@@ -1,0 +1,20 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-timers-bad-1",
+  "sessionId": "s-2026-07-13-1",
+  "type": "timer_state",
+  "origin": "watch",
+  "sentAt": "2026-07-13T17:33:00Z",
+  "payload": {
+    "timers": {
+      "rest": {
+        "kind": "rest",
+        "state": "running",
+        "startedAt": "2026-07-13T17:32:00Z",
+        "accumulatedPauseMs": 0,
+        "plannedDurationMs": 90000,
+        "remainingSeconds": 42
+      }
+    }
+  }
+}

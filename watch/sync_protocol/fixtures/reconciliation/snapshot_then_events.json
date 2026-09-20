@@ -1,0 +1,291 @@
+{
+  "protocolVersion": 1,
+  "name": "Snapshot then divergent watch events converge",
+  "description": "The watch logs five entries while disconnected, then reconnects. The phone answers with a snapshot plus a structure change it had queued, and the watch replays its observations. Two of the five events are delivered twice. End state: every watch entry present exactly once, the phone's structure change applied, the rest timer running, and the entry the phone already knew about untouched.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-scenario-snapshot",
+    "sessionId": "s-2026-07-13-1",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T17:40:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-1",
+      "revision": 7,
+      "status": "active",
+      "currentExerciseIndex": 1,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        },
+        {
+          "sessionExerciseId": "sx-plank",
+          "exerciseId": "ex-plank",
+          "name": "Plank",
+          "capabilities": ["time", "hold"]
+        },
+        {
+          "sessionExerciseId": "sx-squat",
+          "exerciseId": "ex-goblet-squat",
+          "name": "Goblet Squat",
+          "capabilities": ["sets", "reps", "load"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "e-10",
+          "eventId": "evt-10",
+          "kind": "set",
+          "loggedAt": "2026-07-13T17:10:00Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 5,
+          "loadKg": 80
+        }
+      ],
+      "timers": {}
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-scenario-change",
+      "sessionId": "s-2026-07-13-1",
+      "type": "structure_change",
+      "origin": "phone",
+      "sentAt": "2026-07-13T17:41:00Z",
+      "payload": {
+        "changeId": "chg-201",
+        "changes": [
+          {
+            "kind": "add_exercise",
+            "exercise": {
+              "sessionExerciseId": "sx-pullup",
+              "exerciseId": "ex-pull-up",
+              "name": "Pull-Up",
+              "capabilities": ["sets", "reps", "load"]
+            },
+            "atIndex": 3
+          }
+        ]
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-scenario-obs",
+      "sessionId": "s-2026-07-13-1",
+      "type": "observations_up",
+      "origin": "watch",
+      "sentAt": "2026-07-13T17:59:00Z",
+      "payload": {
+        "events": [
+          {
+            "eventId": "evt-101",
+            "entryId": "e-101",
+            "kind": "set",
+            "loggedAt": "2026-07-13T17:45:00Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 5,
+            "loadKg": 82.5
+          },
+          {
+            "eventId": "evt-102",
+            "entryId": "e-102",
+            "kind": "set",
+            "loggedAt": "2026-07-13T17:47:00Z",
+            "sessionExerciseId": "sx-bench",
+            "exerciseId": "ex-barbell-bench-press",
+            "reps": 5,
+            "loadKg": 82.5
+          },
+          {
+            "eventId": "evt-103",
+            "entryId": "e-103",
+            "kind": "timed",
+            "loggedAt": "2026-07-13T17:52:00Z",
+            "sessionExerciseId": "sx-plank",
+            "exerciseId": "ex-plank",
+            "startedAt": "2026-07-13T17:48:00Z",
+            "endedAt": "2026-07-13T17:52:00Z"
+          },
+          {
+            "eventId": "evt-104",
+            "entryId": "e-104",
+            "kind": "set",
+            "loggedAt": "2026-07-13T17:55:00Z",
+            "sessionExerciseId": "sx-squat",
+            "exerciseId": "ex-goblet-squat",
+            "reps": 8,
+            "loadKg": 24
+          },
+          {
+            "eventId": "evt-105",
+            "entryId": "e-105",
+            "kind": "nutrition_quick_log",
+            "loggedAt": "2026-07-13T17:58:00Z",
+            "foodId": "food-oatmeal",
+            "servings": 1.5,
+            "calories": 285
+          }
+        ]
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-scenario-obs-duplicate",
+      "sessionId": "s-2026-07-13-1",
+      "type": "observations_up",
+      "origin": "watch",
+      "sentAt": "2026-07-13T18:00:00Z",
+      "payload": {
+        "events": [
+          {
+            "eventId": "evt-103",
+            "entryId": "e-103",
+            "kind": "timed",
+            "loggedAt": "2026-07-13T17:52:00Z",
+            "sessionExerciseId": "sx-plank",
+            "exerciseId": "ex-plank",
+            "startedAt": "2026-07-13T17:48:00Z",
+            "endedAt": "2026-07-13T17:52:00Z"
+          },
+          {
+            "eventId": "evt-104",
+            "entryId": "e-104",
+            "kind": "set",
+            "loggedAt": "2026-07-13T17:55:00Z",
+            "sessionExerciseId": "sx-squat",
+            "exerciseId": "ex-goblet-squat",
+            "reps": 8,
+            "loadKg": 24
+          }
+        ]
+      }
+    },
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-scenario-timers",
+      "sessionId": "s-2026-07-13-1",
+      "type": "timer_state",
+      "origin": "watch",
+      "sentAt": "2026-07-13T17:59:30Z",
+      "payload": {
+        "timers": {
+          "rest": {
+            "kind": "rest",
+            "state": "running",
+            "startedAt": "2026-07-13T17:58:00Z",
+            "accumulatedPauseMs": 0,
+            "plannedDurationMs": 90000
+          }
+        }
+      }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-1",
+    "status": "active",
+    "revision": 8,
+    "currentExerciseIndex": 1,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      },
+      {
+        "sessionExerciseId": "sx-squat",
+        "exerciseId": "ex-goblet-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-pullup",
+        "exerciseId": "ex-pull-up",
+        "name": "Pull-Up",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-10",
+        "eventId": "evt-10",
+        "kind": "set",
+        "loggedAt": "2026-07-13T17:10:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "entryId": "e-101",
+        "eventId": "evt-101",
+        "kind": "set",
+        "loggedAt": "2026-07-13T17:45:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 82.5
+      },
+      {
+        "entryId": "e-102",
+        "eventId": "evt-102",
+        "kind": "set",
+        "loggedAt": "2026-07-13T17:47:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 82.5
+      },
+      {
+        "entryId": "e-103",
+        "eventId": "evt-103",
+        "kind": "timed",
+        "loggedAt": "2026-07-13T17:52:00Z",
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "startedAt": "2026-07-13T17:48:00Z",
+        "endedAt": "2026-07-13T17:52:00Z"
+      },
+      {
+        "entryId": "e-104",
+        "eventId": "evt-104",
+        "kind": "set",
+        "loggedAt": "2026-07-13T17:55:00Z",
+        "sessionExerciseId": "sx-squat",
+        "exerciseId": "ex-goblet-squat",
+        "reps": 8,
+        "loadKg": 24
+      },
+      {
+        "entryId": "e-105",
+        "eventId": "evt-105",
+        "kind": "nutrition_quick_log",
+        "loggedAt": "2026-07-13T17:58:00Z",
+        "foodId": "food-oatmeal",
+        "servings": 1.5,
+        "calories": 285
+      }
+    ],
+    "timers": {
+      "rest": {
+        "kind": "rest",
+        "state": "running",
+        "startedAt": "2026-07-13T17:58:00Z",
+        "accumulatedPauseMs": 0,
+        "plannedDurationMs": 90000
+      }
+    }
+  }
+}

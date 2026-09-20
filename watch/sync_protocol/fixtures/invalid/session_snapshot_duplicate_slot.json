@@ -1,0 +1,30 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-snapshot-bad-3",
+  "sessionId": "s-2026-07-13-1",
+  "type": "session_snapshot",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:21:00Z",
+  "payload": {
+    "sessionId": "s-2026-07-13-1",
+    "revision": 7,
+    "status": "active",
+    "currentExerciseIndex": 0,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-goblet-squat",
+        "name": "Goblet Squat",
+        "capabilities": ["sets", "reps", "load"]
+      }
+    ],
+    "entries": [],
+    "timers": {}
+  }
+}

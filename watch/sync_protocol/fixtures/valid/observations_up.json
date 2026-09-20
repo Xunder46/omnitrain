@@ -1,0 +1,62 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-obs-1",
+  "sessionId": "s-2026-07-13-1",
+  "type": "observations_up",
+  "origin": "watch",
+  "sentAt": "2026-07-13T17:59:00Z",
+  "payload": {
+    "events": [
+      {
+        "eventId": "evt-1",
+        "entryId": "e-1",
+        "kind": "set",
+        "loggedAt": "2026-07-13T17:10:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      },
+      {
+        "eventId": "evt-2",
+        "entryId": "e-2",
+        "kind": "timed",
+        "loggedAt": "2026-07-13T17:20:00Z",
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "startedAt": "2026-07-13T17:18:00Z",
+        "endedAt": "2026-07-13T17:20:00Z"
+      },
+      {
+        "eventId": "evt-3",
+        "entryId": "e-3",
+        "kind": "round",
+        "loggedAt": "2026-07-13T17:26:00Z",
+        "sessionExerciseId": "sx-burpee",
+        "exerciseId": "ex-burpee",
+        "startedAt": "2026-07-13T17:24:00Z",
+        "endedAt": "2026-07-13T17:26:00Z",
+        "roundNumber": 2
+      },
+      {
+        "eventId": "evt-4",
+        "entryId": "e-4",
+        "kind": "hold",
+        "loggedAt": "2026-07-13T17:30:00Z",
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "startedAt": "2026-07-13T17:29:00Z",
+        "endedAt": "2026-07-13T17:30:00Z"
+      },
+      {
+        "eventId": "evt-5",
+        "entryId": "e-5",
+        "kind": "nutrition_quick_log",
+        "loggedAt": "2026-07-13T17:32:00Z",
+        "foodId": "food-oatmeal",
+        "servings": 1.5,
+        "calories": 285
+      }
+    ]
+  }
+}

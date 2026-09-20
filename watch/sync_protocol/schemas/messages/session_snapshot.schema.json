@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/session_snapshot.schema.json",
+  "title": "session_snapshot",
+  "description": "Either direction. The full live-session state, exchanged on connect, on reconnect, and after a rejection. A snapshot is authoritative for structure, status, position, and timers; entries are merged by entryId.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "properties": {
+        "type": { "const": "session_snapshot" },
+        "payload": {
+          "type": "object",
+          "required": [
+            "sessionId",
+            "revision",
+            "status",
+            "currentExerciseIndex",
+            "exercises",
+            "entries",
+            "timers"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string", "minLength": 1 },
+            "revision": { "type": "integer", "minimum": 0 },
+            "status": { "enum": ["active", "completed", "abandoned"] },
+            "currentExerciseIndex": { "type": "integer", "minimum": 0 },
+            "exercises": {
+              "type": "array",
+              "items": { "$ref": "envelope.schema.json#/$defs/sessionExercise" }
+            },
+            "entries": {
+              "type": "array",
+              "items": { "$ref": "envelope.schema.json#/$defs/entry" }
+            },
+            "timers": { "$ref": "envelope.schema.json#/$defs/timers" }
+          }
+        }
+      }
+    }
+  ]
+}

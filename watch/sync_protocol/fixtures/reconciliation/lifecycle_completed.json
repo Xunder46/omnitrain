@@ -1,0 +1,106 @@
+{
+  "protocolVersion": 1,
+  "name": "Lifecycle: completion is a terminal status",
+  "description": "A completed session stays completed when nothing follows it. Structure, position, entries, revision, and timers are untouched by a lifecycle message.",
+  "snapshot": {
+    "protocolVersion": 1,
+    "messageId": "msg-completed-snapshot",
+    "sessionId": "s-2026-07-13-12",
+    "type": "session_snapshot",
+    "origin": "phone",
+    "sentAt": "2026-07-13T19:20:00Z",
+    "payload": {
+      "sessionId": "s-2026-07-13-12",
+      "revision": 75,
+      "status": "active",
+      "currentExerciseIndex": 1,
+      "exercises": [
+        {
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "name": "Barbell Bench Press",
+          "capabilities": ["sets", "reps", "load"]
+        },
+        {
+          "sessionExerciseId": "sx-plank",
+          "exerciseId": "ex-plank",
+          "name": "Plank",
+          "capabilities": ["time", "hold"]
+        }
+      ],
+      "entries": [
+        {
+          "entryId": "e-801",
+          "eventId": "evt-801",
+          "kind": "set",
+          "loggedAt": "2026-07-13T19:15:00Z",
+          "sessionExerciseId": "sx-bench",
+          "exerciseId": "ex-barbell-bench-press",
+          "reps": 5,
+          "loadKg": 80
+        }
+      ],
+      "timers": {
+        "rest": {
+          "kind": "rest",
+          "state": "running",
+          "startedAt": "2026-07-13T19:19:00Z",
+          "accumulatedPauseMs": 0,
+          "plannedDurationMs": 90000
+        }
+      }
+    }
+  },
+  "stream": [
+    {
+      "protocolVersion": 1,
+      "messageId": "msg-completed",
+      "sessionId": "s-2026-07-13-12",
+      "type": "session_lifecycle",
+      "origin": "watch",
+      "sentAt": "2026-07-13T19:21:00Z",
+      "payload": { "state": "completed", "at": "2026-07-13T19:21:00Z" }
+    }
+  ],
+  "expected": {
+    "sessionId": "s-2026-07-13-12",
+    "status": "completed",
+    "revision": 75,
+    "currentExerciseIndex": 1,
+    "exercises": [
+      {
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "name": "Barbell Bench Press",
+        "capabilities": ["sets", "reps", "load"]
+      },
+      {
+        "sessionExerciseId": "sx-plank",
+        "exerciseId": "ex-plank",
+        "name": "Plank",
+        "capabilities": ["time", "hold"]
+      }
+    ],
+    "entries": [
+      {
+        "entryId": "e-801",
+        "eventId": "evt-801",
+        "kind": "set",
+        "loggedAt": "2026-07-13T19:15:00Z",
+        "sessionExerciseId": "sx-bench",
+        "exerciseId": "ex-barbell-bench-press",
+        "reps": 5,
+        "loadKg": 80
+      }
+    ],
+    "timers": {
+      "rest": {
+        "kind": "rest",
+        "state": "running",
+        "startedAt": "2026-07-13T19:19:00Z",
+        "accumulatedPauseMs": 0,
+        "plannedDurationMs": 90000
+      }
+    }
+  }
+}

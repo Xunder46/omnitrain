@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnitrain.app/watch/sync_protocol/v1/messages/observations_up.schema.json",
+  "title": "observations_up",
+  "description": "Watch → phone. Append-only observations. Every event is self-contained (it carries everything needed to materialise an entry) and idempotent (delivering it twice must not create a second entry).",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    { "required": ["sessionId"] },
+    {
+      "properties": {
+        "type": { "const": "observations_up" },
+        "origin": { "const": "watch" },
+        "payload": {
+          "type": "object",
+          "required": ["events"],
+          "additionalProperties": false,
+          "properties": {
+            "events": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/event" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "event": {
+      "allOf": [
+        { "$ref": "envelope.schema.json#/$defs/entry" },
+        {
+          "oneOf": [
+            {
+              "required": [
+                "kind",
+                "sessionExerciseId",
+                "exerciseId",
+                "reps"
+              ],
+              "properties": { "kind": { "const": "set" } }
+            },
+            {
+              "required": [
+                "kind",
+                "sessionExerciseId",
+                "exerciseId",
+                "startedAt",
+                "endedAt"
+              ],
+              "properties": { "kind": { "const": "timed" } }
+            },
+            {
+              "required": [
+                "kind",
+                "sessionExerciseId",
+                "exerciseId",
+                "startedAt",
+                "endedAt",
+                "roundNumber"
+              ],
+              "properties": { "kind": { "const": "round" } }
+            },
+            {
+              "required": [
+                "kind",
+                "sessionExerciseId",
+                "exerciseId",
+                "startedAt",
+                "endedAt"
+              ],
+              "properties": { "kind": { "const": "hold" } }
+            },
+            {
+              "required": ["kind", "foodId"],
+              "properties": { "kind": { "const": "nutrition_quick_log" } }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
