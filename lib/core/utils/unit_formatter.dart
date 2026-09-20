@@ -35,6 +35,13 @@ class UnitFormatter {
     return normalizeWeightUnit(unit) == 'lbs' ? value / _kgToLbs : value;
   }
 
+  /// Canonical kilograms as the display value for [unit] — the unit-string
+  /// form of [convertWeight], for callers that hold a unit rather than a
+  /// [SettingsState] (the watch client runs in its own process).
+  static double fromKilograms(double kg, String? unit) {
+    return normalizeWeightUnit(unit) == 'lbs' ? kg * _kgToLbs : kg;
+  }
+
   static String weightLabel(SettingsState settings) {
     return weightLabelForUnit(settings.preferredWeightUnit);
   }
@@ -125,6 +132,14 @@ class UnitFormatter {
       return displayValue / _kmToMiles;
     }
     return displayValue;
+  }
+
+  /// Metres in one display unit of distance. Canonical distance is metres —
+  /// the unit `MetricIds.distance` carries — so callers working in metres use
+  /// this instead of the kilometre-based helpers above; the constant is the
+  /// same one, inverted once here rather than again per call site.
+  static double metresPerUnit(String? unit) {
+    return normalizeDistanceUnit(unit) == 'miles' ? 1000 / _kmToMiles : 1000;
   }
 
   // ── Height ───────────────────────────────────────────────────────────────

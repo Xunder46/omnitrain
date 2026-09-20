@@ -28,3 +28,16 @@ public func remainingMs(_ timer: WatchTimerRecord, now: Date) -> Int? {
     let remaining = planned - activeElapsedMs(timer, now: now)
     return remaining < 0 ? 0 : remaining
 }
+
+/// The wall-clock instant `timer` reaches zero, or nil when it has no planned
+/// duration.
+///
+/// A pause postpones the instant, and the postponement is exactly the pause
+/// bookkeeping the record carries. Whether the countdown got there is
+/// `remainingMs`'s answer, not this one: a timer paused before its instant has
+/// one in the past and still has time left.
+public func completionInstant(_ timer: WatchTimerRecord) -> Date? {
+    guard let planned = timer.plannedDurationMs else { return nil }
+    let plannedMs = Double(planned + timer.accumulatedPauseMs)
+    return timer.startedAt.addingTimeInterval(plannedMs / 1000)
+}

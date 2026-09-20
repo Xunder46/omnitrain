@@ -20,7 +20,7 @@ cloud sync. It defines payloads, authority, and convergence.
 | `schemas/envelope.schema.json` | Envelope fields plus the payload fragments shared by more than one message type |
 | `schemas/messages/` | One JSON Schema per message type |
 | `fixtures/manifest.json` | Register of every fixture in this tree: valid, invalid, and scenario |
-| `fixtures/valid/` | One conforming message per type |
+| `fixtures/valid/` | Conforming messages, at least one per type |
 | `fixtures/invalid/` | One or more non-conforming messages per type, each with the reason it must be rejected |
 | `fixtures/reconciliation/` | Scenario fixtures: replayable snapshots with event streams, covering reconciliation, duplicate delivery, structure-change application, snapshot merge, timer clearing, slot identity, lifecycle ordering, and version mismatch. `fixtures/manifest.json` is the complete register |
 
@@ -86,6 +86,12 @@ Notes that follow from the schemas:
   practice, and either one alone is enough to reject a duplicate.
 - A `session_snapshot` payload carries its own `sessionId`, which MUST match the
   envelope's.
+- An observation event carries the metrics its entry needs: `reps` and `loadKg`
+  for a set, `startedAt` and `endedAt` for timed work, rounds and holds,
+  `distanceMeters` for distance-capable work, and `extraLoadKg` for a hold's
+  added or assisting load. Distance is entered by hand whenever the watch has no
+  fix: GPS is a separate concern and MUST NOT gate an entry.
+  `fixtures/valid/observations_up_distance_and_load.json` is the shape in full.
 
 ## Authority rules (normative)
 

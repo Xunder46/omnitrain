@@ -30,3 +30,19 @@ int? remainingMs(WatchTimerRecord timer, DateTime now) {
   final remaining = planned - activeElapsedMs(timer, now);
   return remaining < 0 ? 0 : remaining;
 }
+
+/// The wall-clock instant [timer] reaches zero, or null when it has no planned
+/// duration.
+///
+/// A pause postpones the instant, and the postponement is exactly the pause
+/// bookkeeping the record carries. Whether the countdown got there is
+/// [remainingMs]'s answer, not this one: a timer paused before its instant has
+/// one in the past and still has time left.
+DateTime? completionInstant(WatchTimerRecord timer) {
+  final planned = timer.plannedDurationMs;
+  if (planned == null) return null;
+
+  return timer.startedAt.add(
+    Duration(milliseconds: planned + timer.accumulatedPauseMs),
+  );
+}

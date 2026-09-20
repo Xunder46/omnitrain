@@ -210,8 +210,9 @@ Web selects a no-op stub. Consumed by the startup path that renders
 
 **File**: `lib/core/utils/date_utils.dart`
 
-Static date helpers for calendar and session grouping (`startOfDayMs`, day/
-month bucketing, and related conversions). All operations are **local-time
+Static date helpers for calendar and session grouping, plus the shared clock
+format for durations (`startOfDayMs`, day/month bucketing, and related
+conversions). All operations are **local-time
 safe** — they build `DateTime` values from local components rather than UTC,
 which is what keeps day-rollover and calendar bucketing correct.
 

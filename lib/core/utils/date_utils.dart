@@ -129,4 +129,16 @@ class OmniDateUtils {
     if (hours == 0) return '${minutes}m';
     return '${hours}h ${minutes}m';
   }
+
+  /// Formats a duration in milliseconds as a clock: "m:ss", or "h:mm:ss" once
+  /// it passes the hour. The shape a value is read in mid-effort, where
+  /// seconds still matter.
+  static String formatClock(int ms) {
+    final totalSeconds = (ms < 0 ? 0 : ms / 1000).round();
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    final minutes = totalSeconds ~/ 60;
+    if (minutes < 60) return '$minutes:$seconds';
+    final hours = minutes ~/ 60;
+    return '$hours:${(minutes % 60).toString().padLeft(2, '0')}:$seconds';
+  }
 }

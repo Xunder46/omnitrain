@@ -1,0 +1,48 @@
+{
+  "description": "The stepping, terminology and effort-kind vocabulary both watch clients must agree on. Neither client owns these values: the Flutter client reads them through the phone's canonical helpers (UnitFormatter, ModalityDisplay, ModalityConfig), the Swift client mirrors them, and both suites assert against this file — so a change on one platform fails the other's tests instead of diverging silently.",
+  "stepping": {
+    "kilogramsPerDetent": 2.5,
+    "poundsPerDetent": 5,
+    "secondsPerDetent": 5,
+    "tenthsOfDistanceUnitPerDetent": 0.1,
+    "countPerDetent": 1
+  },
+  "unitConversion": {
+    "kilogramsPerPound": 2.20462,
+    "kilometresPerMile": 0.621371
+  },
+  "metricKeys": [
+    "reps",
+    "weight",
+    "duration",
+    "distance",
+    "rounds",
+    "round-duration",
+    "extra-weight"
+  ],
+  "capabilityPrecedence": [
+    "hold",
+    "rounds",
+    "reps",
+    "sets",
+    "load",
+    "time",
+    "distance"
+  ],
+  "effortKindByMetric": {
+    "time": "timed",
+    "distance": "timed",
+    "hold": "drill",
+    "rounds": "round",
+    "reps": "set",
+    "sets": "set",
+    "load": "set"
+  },
+  "roundsLabels": [
+    { "modality": "sports", "label": "Periods" },
+    { "modality": "cardio_endurance", "label": "Intervals" },
+    { "modality": "resistance_lifting", "label": "Rounds" },
+    { "modality": "isometric_stretching", "label": "Rounds" },
+    { "modality": null, "label": "Rounds" }
+  ]
+}

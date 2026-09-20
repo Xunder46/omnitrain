@@ -195,6 +195,15 @@
           "type": "integer",
           "minimum": 1
         },
+        "distanceMeters": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Distance covered, entered by hand when there is no fix. GPS is never a precondition for an entry."
+        },
+        "extraLoadKg": {
+          "type": "number",
+          "description": "Load added to or assisting a hold. Negative is band assist, which is why this is not loadKg."
+        },
         "foodId": {
           "type": "string",
           "minLength": 1

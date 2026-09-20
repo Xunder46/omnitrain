@@ -6,6 +6,7 @@
     { "path": "valid/exercise_push.json", "type": "exercise_push" },
     { "path": "valid/structure_change.json", "type": "structure_change" },
     { "path": "valid/observations_up.json", "type": "observations_up" },
+    { "path": "valid/observations_up_distance_and_load.json", "type": "observations_up" },
     { "path": "valid/session_lifecycle.json", "type": "session_lifecycle" },
     { "path": "valid/session_snapshot.json", "type": "session_snapshot" },
     { "path": "valid/timer_state.json", "type": "timer_state" }

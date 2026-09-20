@@ -6,8 +6,9 @@
 // Deliberately a plain Swift package rather than an Xcode project: the engine,
 // its append-only store, its timer math, and the protocol conformance suite are
 // platform-independent, so they build and run today — `swift test` — with no
-// watch app target standing in the way. The Xcode watch target depends on this
-// package and adds only the UI and the transport.
+// watch app target standing in the way. The SwiftUI logging view ships here too,
+// behind `#if os(watchOS)` so `swift test` still compiles; the Xcode watch
+// target depends on this package and adds the app entry point and the transport.
 //
 // Behaviour parity with the Wear OS implementation in `lib/watch/session/` is
 // the contract; the shared JSON fixtures in `watch/sync_protocol/fixtures/`

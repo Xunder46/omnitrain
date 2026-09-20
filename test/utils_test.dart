@@ -141,7 +141,7 @@ void main() {
       final copy = original.copyWith(name: 'Renamed');
       expect(copy.modality, 'isometric_stretching');
     });
-    
+
     test('Exercise toMap/fromMap round-trips modality', () {
       final original = _exercise(
         modality: 'resistance_lifting',
@@ -188,11 +188,14 @@ void main() {
       expect(UnitFormatter.heightLabelUpper(settingsFtin), 'FT IN');
     });
 
-    test('formatHeight renders centimeters in cm mode with one-decimal policy', () {
-      expect(UnitFormatter.formatHeight(180.0, settingsCm), '180 cm');
-      expect(UnitFormatter.formatHeight(180.34, settingsCm), '180.3 cm');
-      expect(UnitFormatter.formatHeight(180.35, settingsCm), '180.3 cm');
-    });
+    test(
+      'formatHeight renders centimeters in cm mode with one-decimal policy',
+      () {
+        expect(UnitFormatter.formatHeight(180.0, settingsCm), '180 cm');
+        expect(UnitFormatter.formatHeight(180.34, settingsCm), '180.3 cm');
+        expect(UnitFormatter.formatHeight(180.35, settingsCm), '180.3 cm');
+      },
+    );
 
     test('formatHeight renders compound feet/inches in ftin mode', () {
       // 180 cm = 70.866 in → rounds to 71 in = 5' 11"
@@ -254,10 +257,7 @@ void main() {
         expect(ftinDisplay, "5' 11\"");
         // Switch back: the canonical value is unchanged, so the cm
         // display still reads the same.
-        final cmDisplay = UnitFormatter.formatHeight(
-          canonicalCm,
-          settingsCm,
-        );
+        final cmDisplay = UnitFormatter.formatHeight(canonicalCm, settingsCm);
         expect(cmDisplay, '180 cm');
       },
     );
@@ -646,9 +646,12 @@ void main() {
         expect(ModalityConfig.forModality('nonexistent'), isNull);
       });
 
-      test('martial_arts is no longer a known modality (compat guard removed)', () {
-        expect(ModalityConfig.forModality('martial_arts'), isNull);
-      });
+      test(
+        'martial_arts is no longer a known modality (compat guard removed)',
+        () {
+          expect(ModalityConfig.forModality('martial_arts'), isNull);
+        },
+      );
     });
 
     group('getRequiredMetrics', () {
@@ -690,40 +693,46 @@ void main() {
 
       test('formRequiredCapabilities map to expected modality-primary set', () {
         expect(
-          ModalityConfig.forModality('cardio_endurance')!
-              .formRequiredCapabilities,
+          ModalityConfig.forModality(
+            'cardio_endurance',
+          )!.formRequiredCapabilities,
           ['time', 'distance'],
         );
         expect(
-          ModalityConfig.forModality('resistance_lifting')!
-              .formRequiredCapabilities,
+          ModalityConfig.forModality(
+            'resistance_lifting',
+          )!.formRequiredCapabilities,
           ['reps', 'load'],
         );
         expect(
-          ModalityConfig.forModality('isometric_stretching')!
-              .formRequiredCapabilities,
+          ModalityConfig.forModality(
+            'isometric_stretching',
+          )!.formRequiredCapabilities,
           ['hold'],
         );
-        expect(
-          ModalityConfig.forModality('sports')!.formRequiredCapabilities,
-          ['time', 'rounds'],
-        );
+        expect(ModalityConfig.forModality('sports')!.formRequiredCapabilities, [
+          'time',
+          'rounds',
+        ]);
       });
 
       test('showMuscleGroupsInForm true for resistance and isometric only', () {
         expect(
-          ModalityConfig.forModality('resistance_lifting')!
-              .showMuscleGroupsInForm,
+          ModalityConfig.forModality(
+            'resistance_lifting',
+          )!.showMuscleGroupsInForm,
           isTrue,
         );
         expect(
-          ModalityConfig.forModality('isometric_stretching')!
-              .showMuscleGroupsInForm,
+          ModalityConfig.forModality(
+            'isometric_stretching',
+          )!.showMuscleGroupsInForm,
           isTrue,
         );
         expect(
-          ModalityConfig.forModality('cardio_endurance')!
-              .showMuscleGroupsInForm,
+          ModalityConfig.forModality(
+            'cardio_endurance',
+          )!.showMuscleGroupsInForm,
           isFalse,
         );
         expect(
@@ -839,10 +848,7 @@ void main() {
       });
 
       test('legacyCapabilitiesForEdit returns empty for null modality', () {
-        final legacy = ModalityConfig.legacyCapabilitiesForEdit(
-          null,
-          ['reps'],
-        );
+        final legacy = ModalityConfig.legacyCapabilitiesForEdit(null, ['reps']);
         expect(legacy, isEmpty);
       });
     });
@@ -1220,12 +1226,15 @@ void main() {
   // ── shouldFireRestPing ──────────────────────────────────────────────────
 
   group('shouldFireRestPing', () {
-    test('returns true when elapsed is multiple of interval and not yet pinged', () {
-      expect(
-        shouldFireRestPing(elapsed: 60, interval: 60, lastPinged: 0),
-        isTrue,
-      );
-    });
+    test(
+      'returns true when elapsed is multiple of interval and not yet pinged',
+      () {
+        expect(
+          shouldFireRestPing(elapsed: 60, interval: 60, lastPinged: 0),
+          isTrue,
+        );
+      },
+    );
 
     test('returns false when already pinged at this elapsed value', () {
       expect(
@@ -1287,57 +1296,74 @@ void main() {
   // ─────────────────────────────────────────────────────────────────
 
   group('feelingColor', () {
-    test(
-      'S-001: rating 5 equals themeColors.primary for every AppTheme '
-      '— single source of truth, no Theme.of(context) indirection',
-      () {
-        for (final t in AppTheme.values) {
-          final themeColors = OmniTheme.colorsForTheme(t);
-          expect(
-            feelingColor(5, themeColors),
-            themeColors.primary,
-            reason: 'rating 5 must equal themeColors.primary '
-                'on theme "$t" so the accent token has one source '
-                'and reads as the same accent every chart, button, '
-                'and history-row accent already use',
-          );
-        }
-      },
-    );
+    test('S-001: rating 5 equals themeColors.primary for every AppTheme '
+        '— single source of truth, no Theme.of(context) indirection', () {
+      for (final t in AppTheme.values) {
+        final themeColors = OmniTheme.colorsForTheme(t);
+        expect(
+          feelingColor(5, themeColors),
+          themeColors.primary,
+          reason:
+              'rating 5 must equal themeColors.primary '
+              'on theme "$t" so the accent token has one source '
+              'and reads as the same accent every chart, button, '
+              'and history-row accent already use',
+        );
+      }
+    });
+
+    test('S-002: feelingColor is theme-pure — the same themeColors '
+        'yields the same color regardless of any BuildContext. '
+        'No `Theme.of(context)` indirection survives in the helper.', () {
+      final themeColors = OmniTheme.colors;
+      // Call twice and confirm the result is identical. If the
+      // helper still secretly consulted Theme.of(context), calling
+      // it inside vs outside a widget tree would diverge.
+      final fromBareCall = feelingColor(5, themeColors);
+      final fromBareCallAgain = feelingColor(5, themeColors);
+      expect(fromBareCall, fromBareCallAgain);
+      expect(fromBareCall, themeColors.primary);
+
+      // Every other rating must also be deterministic from the
+      // theme tokens (today they are Material defaults; this
+      // guards against accidental regression to a context read).
+      expect(feelingColor(1, themeColors), feelingColor(1, themeColors));
+      expect(feelingColor(4, themeColors), Colors.green);
+    });
+
+    test('ratings 1..4 keep their established Material palette — only '
+        'rating 5 changed (it now equals themeColors.primary instead '
+        'of Theme.of(context).primaryColor)', () {
+      final themeColors = OmniTheme.colors;
+      expect(feelingColor(1, themeColors), Colors.red);
+      expect(feelingColor(2, themeColors), Colors.orange);
+      expect(feelingColor(3, themeColors), Colors.yellow[700]);
+      expect(feelingColor(4, themeColors), Colors.green);
+      expect(feelingColor(5, themeColors), themeColors.primary);
+    });
+  });
+
+  group('OmniDateUtils.formatClock', () {
+    test('renders m:ss below an hour', () {
+      expect(OmniDateUtils.formatClock(0), '0:00');
+      expect(OmniDateUtils.formatClock(65000), '1:05');
+      expect(OmniDateUtils.formatClock(3599000), '59:59');
+    });
+
+    test('rolls into h:mm:ss at an hour, and keeps the minutes padded', () {
+      expect(OmniDateUtils.formatClock(3600000), '1:00:00');
+      expect(OmniDateUtils.formatClock(3661000), '1:01:01');
+    });
+
+    test('rounds to the nearest second, so a countdown does not stall', () {
+      expect(OmniDateUtils.formatClock(1499), '0:01');
+      expect(OmniDateUtils.formatClock(1500), '0:02');
+    });
 
     test(
-      'S-002: feelingColor is theme-pure — the same themeColors '
-      'yields the same color regardless of any BuildContext. '
-      'No `Theme.of(context)` indirection survives in the helper.',
+      'a timer past its instant reads zero rather than a negative clock',
       () {
-        final themeColors = OmniTheme.colors;
-        // Call twice and confirm the result is identical. If the
-        // helper still secretly consulted Theme.of(context), calling
-        // it inside vs outside a widget tree would diverge.
-        final fromBareCall = feelingColor(5, themeColors);
-        final fromBareCallAgain = feelingColor(5, themeColors);
-        expect(fromBareCall, fromBareCallAgain);
-        expect(fromBareCall, themeColors.primary);
-
-        // Every other rating must also be deterministic from the
-        // theme tokens (today they are Material defaults; this
-        // guards against accidental regression to a context read).
-        expect(feelingColor(1, themeColors), feelingColor(1, themeColors));
-        expect(feelingColor(4, themeColors), Colors.green);
-      },
-    );
-
-    test(
-      'ratings 1..4 keep their established Material palette — only '
-      'rating 5 changed (it now equals themeColors.primary instead '
-      'of Theme.of(context).primaryColor)',
-      () {
-        final themeColors = OmniTheme.colors;
-        expect(feelingColor(1, themeColors), Colors.red);
-        expect(feelingColor(2, themeColors), Colors.orange);
-        expect(feelingColor(3, themeColors), Colors.yellow[700]);
-        expect(feelingColor(4, themeColors), Colors.green);
-        expect(feelingColor(5, themeColors), themeColors.primary);
+        expect(OmniDateUtils.formatClock(-5000), '0:00');
       },
     );
   });
