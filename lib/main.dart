@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -7,6 +9,9 @@ import 'core/models/app_version_info.dart';
 import 'core/services/bundled_catalog_source.dart';
 import 'core/services/catalog_refresh_service.dart';
 import 'core/services/exercise_library_service.dart';
+import 'core/services/health_platform_gateway.dart';
+import 'core/services/health_platform_service.dart';
+import 'core/services/health_sync_service.dart';
 import 'core/services/image_storage_service.dart';
 import 'core/services/preferences_service.dart';
 import 'core/services/routine_session_service.dart';
@@ -20,7 +25,9 @@ import 'state/routine/routine_state.dart';
 import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
+import 'core/constants/health_constants.dart';
 import 'core/constants/omni_theme.dart';
+import 'core/constants/profile_measurements.dart';
 import 'state/settings/settings_state.dart';
 import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
@@ -35,6 +42,12 @@ import 'package:timezone/timezone.dart' as tz;
 
 final _startupDiagnosticWriter = StartupFailureDiagnosticWriter.create();
 
+/// App-lifetime listener driving the platform health read pipeline on
+/// every foreground. Held at library scope so nothing collects it; a
+/// retry startup pass disposes and replaces it so reads never run
+/// through a stale service graph.
+AppLifecycleListener? _healthLifecycleListener;
+
 typedef StartupRepositoryFactory = Future<WorkoutRepository> Function();
 typedef StartupPreferencesServiceFactory = PreferencesService Function();
 typedef StartupTimerAlertServiceFactory = TimerAlertService Function();
@@ -42,6 +55,7 @@ typedef StartupRestNotificationServiceFactory =
     RestNotificationService Function();
 typedef StartupImageStorageServiceFactory =
     Future<ImageStorageService?> Function();
+typedef StartupHealthPlatformServiceFactory = HealthPlatformService Function();
 typedef StartupAppVersionInfoLoader = Future<AppVersionInfo> Function();
 typedef StartupNonFatalIssueHandler =
     Future<void> Function(Object error, StackTrace stackTrace);
@@ -65,6 +79,35 @@ class StartupNotificationInitializationError implements Exception {
 /// choice. Adding a new platform later will reuse this same constructor.
 Future<WorkoutRepository> _createRepository() async {
   return HiveWorkoutRepository();
+}
+
+/// Imports body weight from the platform health store and refreshes the
+/// Profile measurement view so the imported rows are visible without a
+/// manual reload. Never throws — [HealthSyncService.syncOnForeground]
+/// reports failure as an empty result.
+@visibleForTesting
+Future<void> syncHealthBodyWeight(
+  HealthSyncService healthSync,
+  ProfileState profileState,
+) async {
+  final imported = await healthSync.syncOnForeground();
+  if (imported.isEmpty) return;
+  await profileState.loadLatestMeasurements([
+    ProfileMeasurements.bodyweight.type,
+  ]);
+}
+
+/// Builds the app-lifetime listener that drives [syncHealthBodyWeight] on
+/// every foreground. Exposed so the read trigger can be exercised in a test
+/// through the same construction the app uses.
+@visibleForTesting
+AppLifecycleListener createHealthLifecycleListener(
+  HealthSyncService healthSync,
+  ProfileState profileState,
+) {
+  return AppLifecycleListener(
+    onResume: () => unawaited(syncHealthBodyWeight(healthSync, profileState)),
+  );
 }
 
 Future<void> _initializeLocalTimezone() async {
@@ -195,6 +238,7 @@ Future<Widget> runStartup({
   StartupRestNotificationServiceFactory createRestNotificationService =
       RestNotificationService.new,
   StartupImageStorageServiceFactory? createImageStorageService,
+  StartupHealthPlatformServiceFactory? createHealthPlatformGateway,
   StartupAppVersionInfoLoader loadAppVersionInfo = _loadAppVersionInfo,
   StartupNonFatalIssueHandler onNonFatalStartupIssue =
       _reportNonFatalStartupIssue,
@@ -249,19 +293,46 @@ Future<Widget> runStartup({
       () async => kIsWeb ? null : ImageStorageService.create();
   final imageStorageService = await imageStorageServiceFactory();
 
+  // Platform health gateway (Apple Health / Health Connect). Self-selects
+  // a no-op on web and desktop — see `health_platform_gateway.dart`.
+  final healthPlatform =
+      (createHealthPlatformGateway ?? createHealthPlatformService)();
+
   // Create state with repository
-  final workoutState = WorkoutState(repository);
   final homeState = HomeState(repository);
   await homeState.init();
-  final routineState = RoutineState(repository);
-  final calendarState = CalendarState(repository);
-  final periodState = PeriodState(repository);
+  final settingsState = SettingsState(
+    repository,
+    preferencesService,
+    healthPlatform: healthPlatform,
+  );
+  await settingsState.initialize();
   final profileState = ProfileState(
     repository,
     imageStorage: imageStorageService,
   );
-  final settingsState = SettingsState(repository, preferencesService);
-  await settingsState.initialize();
+
+  final healthSyncService = HealthSyncService(
+    platform: healthPlatform,
+    repository: repository,
+    isWriteEnabled: () =>
+        settingsState.healthWriteWorkouts == HealthToggleState.on,
+    isReadEnabled: () =>
+        settingsState.healthReadBodyWeight == HealthToggleState.on,
+  );
+
+  // Foreground trigger for the health body-weight read. Reads never
+  // prompt for permission, so this is safe to fire on every resume.
+  _healthLifecycleListener?.dispose();
+  _healthLifecycleListener = createHealthLifecycleListener(
+    healthSyncService,
+    profileState,
+  );
+
+  final workoutState = WorkoutState(repository, healthSync: healthSyncService);
+  final routineState = RoutineState(repository);
+  final calendarState = CalendarState(repository);
+  final periodState = PeriodState(repository);
   final nutritionState = NutritionState(repository);
   await nutritionState.loadNutritionTarget();
   final foodLibraryState = FoodLibraryState(

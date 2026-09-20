@@ -4,6 +4,7 @@ import '../../core/constants/workout_constants.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/health_sync_service.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
@@ -48,6 +49,12 @@ class SessionCore {
   final void Function() _clearErrorCallback;
   final TimerManager _timerManager;
   final ExerciseLibrary _exerciseLibrary;
+
+  /// Optional platform-health write pipeline. Null in tests and in
+  /// builds without a health integration; the lifecycle calls it only
+  /// after a session has been persisted.
+  final HealthSyncService? _healthSync;
+
   late final SessionBlockManager _blockManager;
   late final SessionSummaryBuilder _summaryBuilder;
 
@@ -67,11 +74,13 @@ class SessionCore {
     required void Function() clearError,
     required TimerManager timerManager,
     required ExerciseLibrary exerciseLibrary,
+    HealthSyncService? healthSync,
   }) : _notify = notify,
        _setErrorCallback = setError,
        _clearErrorCallback = clearError,
        _timerManager = timerManager,
-       _exerciseLibrary = exerciseLibrary {
+       _exerciseLibrary = exerciseLibrary,
+       _healthSync = healthSync {
     _blockManager = SessionBlockManager(
       _repository,
       notify: _notify,

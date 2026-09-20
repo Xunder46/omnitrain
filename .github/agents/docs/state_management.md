@@ -29,7 +29,7 @@ State classes follow strict rules:
 | [Workout Session State](state_management/workout_state.md) | `WorkoutState` facade + `SessionCore`, `SessionBlockManager`, `SessionSummaryBuilder`, `TimerManager`, `ExerciseLibrary` |
 | [Nutrition State](state_management/nutrition_state.md) | `NutritionState`, `FoodLibraryState`, `NutritionPrimerState` |
 | [Routine, Calendar, Home, Profile & Settings State](state_management/app_state.md) | `RoutineState`, `CalendarState`, `HomeState`, `ProfileState`, `SettingsState`, `PeriodState` |
-| [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch` |
+| [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch` |
 
 ---
 
@@ -45,6 +45,7 @@ State classes follow strict rules:
 | `ExerciseLibrary` | [Workout Session State](state_management/workout_state.md) |
 | `FoodLibraryState` | [Nutrition State](state_management/nutrition_state.md) |
 | `FuzzySearch` | [Services & Utilities](state_management/services_and_utils.md) |
+| `HealthSyncService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `HomeState` | [App State](state_management/app_state.md) |
 | `NutritionPrimerState` | [Nutrition State](state_management/nutrition_state.md) |
 | `NutritionState` | [Nutrition State](state_management/nutrition_state.md) |

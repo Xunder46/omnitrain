@@ -44,5 +44,9 @@
 	<string>OmniTrain uses your photo library so you can set a profile picture and add photos to your foods.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Omnitrain may save profile photo edits to your photo library when supported.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>OmniTrain reads your body weight from Apple Health so measurements recorded by other apps and wearables appear in your measurement history.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>OmniTrain saves your finished workouts to Apple Health so your other apps and wearables can see them.</string>
 </dict>
 </plist>

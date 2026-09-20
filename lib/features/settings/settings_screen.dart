@@ -3,6 +3,7 @@ import 'package:app_settings/app_settings.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/constants/health_constants.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/models/app_version_info.dart';
 import '../../core/utils/unit_formatter.dart';
@@ -14,6 +15,12 @@ import '../../widgets/layout/omni_surface.dart';
 import '../../core/utils/timer_alert_service.dart';
 import '../../core/utils/rest_notification_service.dart';
 import '../../widgets/dialogs/confirmation_dialog.dart';
+
+/// Widget keys for the two platform-health toggles. Tests target a specific
+/// control through these rather than "the Nth switch in the list", which
+/// depends on which rows the lazy list happens to have built.
+const Key healthWriteToggleKey = Key('health-write-toggle');
+const Key healthReadToggleKey = Key('health-read-toggle');
 
 class SettingsScreen extends StatefulWidget {
   final SettingsState settingsState;
@@ -126,6 +133,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 24),
                 const OmniCardHeader(title: 'WORKOUT'),
                 _WorkoutSection(settingsState: widget.settingsState),
+                const SizedBox(height: 24),
+                const OmniCardHeader(title: 'HEALTH'),
+                _HealthSection(settingsState: widget.settingsState),
                 const SizedBox(height: 24),
                 const OmniCardHeader(title: 'APPEARANCE'),
                 OmniSurface(
@@ -826,6 +836,101 @@ class _WorkoutSection extends StatelessWidget {
               value: settingsState.showFeelingSurvey,
               onChanged: settingsState.setShowFeelingSurvey,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── HEALTH ────────────────────────────────────────────────────────────────
+
+/// Phone health-store integration: two independent, off-by-default
+/// toggles. A denied OS permission is shown as the off switch plus a
+/// plain-language notice that points at the system settings, so the app
+/// stays fully usable without the integration (S-005).
+class _HealthSection extends StatelessWidget {
+  final SettingsState settingsState;
+
+  const _HealthSection({required this.settingsState});
+
+  @override
+  Widget build(BuildContext context) {
+    final writeState = settingsState.healthWriteWorkouts;
+    final readState = settingsState.healthReadBodyWeight;
+
+    return OmniSurface(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SettingsRow(
+            label: 'Write workouts',
+            subtitle:
+                'Adds finished workouts to Apple Health / Health Connect so '
+                'your other apps and wearables can see them. Nothing is '
+                'written until you turn this on.',
+            trailing: Switch(
+              key: healthWriteToggleKey,
+              value: writeState == HealthToggleState.on,
+              onChanged: settingsState.setHealthWriteWorkoutsEnabled,
+            ),
+          ),
+          if (writeState == HealthToggleState.permissionDenied)
+            const _HealthDeniedNotice(),
+          _SurfaceDivider(theme: Theme.of(context)),
+          _SettingsRow(
+            label: 'Read body weight',
+            subtitle:
+                'Shows body weight recorded by other apps and wearables in '
+                'your measurement history. Only weight is read.',
+            trailing: Switch(
+              key: healthReadToggleKey,
+              value: readState == HealthToggleState.on,
+              onChanged: settingsState.setHealthReadBodyWeightEnabled,
+            ),
+          ),
+          if (readState == HealthToggleState.permissionDenied)
+            const _HealthDeniedNotice(),
+        ],
+      ),
+    );
+  }
+}
+
+class _HealthDeniedNotice extends StatelessWidget {
+  const _HealthDeniedNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Permission was denied. Allow access in your phone settings '
+              'to turn this on.',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: OmniTheme.colors.textMuted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          TextButton(
+            style: ButtonStyle(
+              shape: WidgetStateProperty.all(
+                RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonUtilityRadius,
+                  ),
+                ),
+              ),
+            ),
+            onPressed: AppSettings.openAppSettings,
+            child: const Text('Open settings'),
           ),
         ],
       ),

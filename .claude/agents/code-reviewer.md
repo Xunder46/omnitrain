@@ -133,7 +133,7 @@ If no `## Scenarios` section exists, note as **WARNING** and flag to Developer t
 **Run this on every change, including changes that touch no documentation at
 all.** A code-only change is the *normal* way documentation becomes false: the
 code moves and the prose stays behind. Every false claim in
-`.github/agents/docs-standard-audit-2026-07-30.md` was produced by a change that
+`.github/agents/plans/docs-standard-audit-2026-07-30.md` was produced by a change that
 added nothing to any document and was approved for exactly that reason. If you
 skip this step because there is no documentation diff, you have reproduced the
 bug this step exists to catch.

@@ -4,6 +4,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/models/routine_session_manifest.dart';
 import '../../core/models/session_edit_snapshot.dart';
 import '../../core/models/session_summary.dart';
+import '../../core/services/health_sync_service.dart';
 import '../../data/models/models.dart';
 import '../../data/repositories/workout_repository.dart';
 import 'exercise_library.dart';
@@ -20,7 +21,9 @@ class WorkoutState extends ChangeNotifier {
 
   String? _error;
 
-  WorkoutState(this._repository) {
+  /// [healthSync] is optional so existing construction sites (tests stand
+  /// in for most of them) keep working; `main.dart` always injects one.
+  WorkoutState(this._repository, {HealthSyncService? healthSync}) {
     _timerManager = TimerManager(
       _repository,
       notify: notifyListeners,
@@ -41,6 +44,7 @@ class WorkoutState extends ChangeNotifier {
       clearError: _clearError,
       timerManager: _timerManager,
       exerciseLibrary: _exerciseLibrary,
+      healthSync: healthSync,
     );
     _timerManager.bindObservations(_sessionCore.observationsMap);
   }

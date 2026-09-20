@@ -277,7 +277,6 @@ void main() {
         expect(updatedValue, 0.5);
       },
     );
-
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1385,7 +1384,17 @@ void main() {
 
       expect(settingsState.showFeelingSurvey, isTrue);
 
-      await tester.tap(find.byType(Switch));
+      // The settings list is taller than the test viewport, so the
+      // WORKOUT section is not built until it is scrolled into view.
+      await tester.scrollUntilVisible(
+        find.text('Feeling Survey'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      // The Feeling Survey row is the first switch row in the list.
+      await tester.tap(find.byType(Switch).first);
       await tester.pumpAndSettle();
 
       expect(settingsState.showFeelingSurvey, isFalse);

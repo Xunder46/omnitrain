@@ -128,11 +128,14 @@ Valid rest ping intervals:
 
 Entry path: `HomeScreen` → Maintenance sheet → `SettingsScreen`
 
-The screen is organized into four surfaced sections plus a low-emphasis version footer.
+The screen's section labels are rendered by `OmniCardHeader`. The label set and
+order are pinned by the Settings section test in `test/header_standardization_test.dart` rather than
+enumerated here — the list is presentation, and prose enumeration of it drifts.
 
 ### Sections
 
-The screen groups preferences, sound and alert behaviour, workout follow-up, and appearance. Two
+The screen groups preferences, sound and alert behaviour, workout follow-up, appearance, and the
+platform-health sync toggles. Two
 rules matter beyond the row list:
 
 - **Height is stored canonically in centimetres regardless of the display unit.** Switching the
@@ -155,7 +158,12 @@ operation.
 
 ### Removed Surface
 
-The Settings screen no longer includes account-management rows such as sign-in, export-data, or account-removal actions. The current implementation is limited to preferences, alert behavior, workout follow-up, and appearance.
+The Settings screen does not include account-management rows such as sign-in, export-data, or account-removal actions.
+
+The platform-health toggles are the one settings area that can fail to take effect: an OS permission
+denial is persisted as its own toggle state (rather than silently reading as off) so the row can
+point the user at system settings. The gate each pipeline reads is owned by `SettingsState`; see
+[State Management](state_management.md).
 
 ---
 

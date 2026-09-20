@@ -928,9 +928,8 @@ void main() {
   // ═══════════════════════════════════════════════════════════════════════
 
   group('OmniCardHeader – SettingsScreen migration (S-017)', () {
-    testWidgets('SettingsScreen renders four OmniCardHeader section labels', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('SettingsScreen renders every section label as an '
+        'OmniCardHeader', (WidgetTester tester) async {
       final repo = await _freshRepo();
       final settingsState = SettingsState(repo, fakePreferencesService());
       await settingsState.initialize();
@@ -946,24 +945,26 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Four section labels migrate 1:1 to OmniCardHeader.
-      final headers = find.byType(OmniCardHeader);
-      expect(headers, findsNWidgets(4));
-
-      // Each title appears exactly once.
-      expect(find.text('PREFERENCES'), findsOneWidget);
-      expect(find.text('SOUNDS & ALERTS'), findsOneWidget);
-      expect(find.text('WORKOUT'), findsOneWidget);
-      expect(find.text('APPEARANCE'), findsOneWidget);
-
-      // Each title is rendered with D-1 typography (letter-spacing 2.0,
-      // font weight w600, color textMuted).
+      // Every section label is an OmniCardHeader with D-1 typography
+      // (letter-spacing 2.0, font weight w600, color textMuted). The list
+      // is taller than the test viewport, so each label is scrolled into
+      // view before it is inspected.
       for (final title in const [
         'PREFERENCES',
         'SOUNDS & ALERTS',
         'WORKOUT',
+        'HEALTH',
         'APPEARANCE',
       ]) {
+        await tester.scrollUntilVisible(
+          find.text(title),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text(title), findsOneWidget, reason: '$title header');
+
         final titleText = tester.widget<Text>(
           find.descendant(
             of: find.byType(OmniCardHeader),

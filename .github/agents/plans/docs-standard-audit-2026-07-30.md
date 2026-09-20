@@ -3,7 +3,7 @@
 **Status: PROPOSAL FOR HUMAN REVIEW. Nothing here has been acted on.**
 
 This file audits every document under `.github/agents/docs/` against
-[`documentation_standard.md`](docs/documentation_standard.md). It is a decision
+[`documentation_standard.md`](../docs/documentation_standard.md). It is a decision
 record, not a work order. No document was modified, no test was written, and no
 application source was touched to produce it.
 
@@ -539,7 +539,7 @@ will therefore show more than two entries; `git status --porcelain` filtered to
 this task's changes shows exactly two additions:
 
 - `.github/agents/docs/documentation_standard.md` (new)
-- `.github/agents/docs-standard-audit-2026-07-30.md` (this file)
+- `.github/agents/plans/docs-standard-audit-2026-07-30.md` (this file)
 
 ## D.6 Test status — one pre-existing failure, one introduced by this task
 

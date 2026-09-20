@@ -48,7 +48,6 @@ Orchestrates template-to-session conversion.
 **Throws**: `Exception` if template not found or has no exercises
 
 ### `SessionSummaryService`
-
 **File**: `lib/core/services/session_summary_service.dart`
 **Depends on**: `WorkoutRepository`
 
@@ -61,6 +60,47 @@ Post-workout analytics.
 | `saveRoutineFromDraft(draft, {focusModality})` | `String` (template ID) | Persists a session-to-routine template |
 
 ---
+
+---
+
+### `HealthSyncService`
+
+**File**: `lib/core/services/health_sync_service.dart`
+
+Owns the two opt-in platform-health pipelines (Apple Health / Health Connect):
+writing a completed session out, and reading body weight back in. Constructed
+in `main.dart` and injected into `WorkoutState` (via `SessionCore`, which calls
+`onSessionCompleted` after a successful session save) and into the app-lifetime
+`AppLifecycleListener` (which calls `syncOnForeground`).
+
+Layering rationale — the plugin boundary is deliberately narrow:
+
+- `health_platform_service.dart` declares the plugin-free `HealthPlatformService`
+  contract, the `HealthWorkoutDraft` / `HealthWeightSample` value types, and an
+  `UnavailableHealthPlatformService` no-op.
+- `health_platform_gateway.dart` conditionally exports the io gateway
+  (`health_platform_gateway_io.dart`, backed by the `health` package) or a stub,
+  mirroring `image_storage_service.dart`. The `health` package imports `dart:io`,
+  so it must never enter the web compilation path.
+- `health_modality_mapper.dart` maps session modality to the app-owned
+  `HealthActivityKind`; the io gateway translates a kind to a platform activity
+  type **per platform**, because several types (e.g. strength, flexibility)
+  exist on exactly one platform and crossing them throws.
+
+Invariants:
+
+- Neither pipeline ever throws, prompts, or blocks: a missing permission or
+  platform error surfaces as `false` / an empty list. Sessions and UI stay
+  functional without the integration. Enforced by the try/catch blocks in
+  `HealthSyncService` and `HealthPluginPlatformService`; verified by
+  `test/health_platform_test.dart`.
+- The write pipeline touches the platform at most once per session id, across
+  restarts, via a JSON ledger preference key (`HealthPrefs.writtenSessionIdsKey`).
+  Enforced in `onSessionCompleted`; verified by `test/health_platform_test.dart`.
+- Imported body-weight rows use deterministic ids derived from the platform
+  sample, so a repeated foreground read upserts instead of duplicating.
+- Toggle state lives in the normal preference store (`HealthPrefs` keys), so a
+  reinstall resets both toggles to off.
 
 ---
 

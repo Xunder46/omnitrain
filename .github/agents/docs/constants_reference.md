@@ -209,6 +209,23 @@ Default target values when creating new sets/entries:
 
 ---
 
+## Health Sync Constants
+
+**File**: `lib/core/constants/health_constants.dart`
+
+Vocabulary for the opt-in platform health integration (Apple Health / Health Connect). Kept free of
+plugin types so the mapping logic is testable everywhere; the native gateway translates
+`HealthActivityKind` to a platform activity type per platform.
+
+| Symbol | Purpose |
+|--------|---------|
+| `HealthPrefs` | Preference keys for the two toggles and the written-session ledger, plus the ledger cap and read lookback window |
+| `HealthToggleState` | `off` / `on` / `permissionDenied` — the third state is what lets a denied toggle stay visibly denied instead of reading as off |
+| `HealthActivityKind` | App-owned workout vocabulary (`strength`, `cardio`, `flexibility`, `sport`, `conditioning`, `other`) that modality maps onto |
+| `parseHealthToggleState` / `healthToggleStateValue` | The single serialization pair for the toggle states; unknown persisted values resolve to `off` |
+
+---
+
 ## Home Tile Configuration
 
 **File**: `lib/core/constants/home_tiles.dart`

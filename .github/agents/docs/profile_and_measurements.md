@@ -89,6 +89,11 @@ opening their respective editors.
 
 ### Measurement Sections
 
+- Rows for a measurement type can arrive from two sources: the in-app log sheet, and the platform
+  health store when the user enables `Read body weight`. An imported row is an ordinary
+  `BodyMeasurementEntry` in canonical kilograms, distinguished by a deterministic id derived from
+  the platform sample — so re-reading the same sample upserts rather than duplicating. Nothing
+  downstream may assume a user typed the value.
 - Single charted column sourced from `ProfileMeasurements.additional`, top-to-bottom:
   Body Weight, Body Fat %, Waist, Lean Mass, Hips, Thigh, Chest, Arm
 - Each row has:

@@ -1,7 +1,7 @@
 ---
 description: 'Reviews completed work for code quality, DRY compliance, clean code principles, and architecture adherence. Assesses and plans refactoring - does not edit code directly.'
 tools: [execute/runNotebookCell, execute/getTerminalOutput, execute/killTerminal, execute/sendToTerminal, execute/createAndRunTask, execute/runInTerminal, execute/runTests, execute/testFailure, read/getNotebookSummary, read/problems, read/readFile, read/terminalSelection, read/terminalLastCommand, edit/editFiles, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/textSearch, search/usages, dart-code.dart-code/get_dtd_uri, dart-code.dart-code/dart_format, dart-code.dart-code/dart_fix, todo]
-model: Mini Max M2 (MiniMax) (customendpoint)
+model: go/DeepSeek V4.1 Flash (opencode)
 disable-model-invocation: false
 handoffs:
   - label: Hand off to DBA for fixes
@@ -142,7 +142,7 @@ If no `## Scenarios` section exists, note as **WARNING** and flag to Developer t
 **Run this on every change, including changes that touch no documentation at
 all.** A code-only change is the *normal* way documentation becomes false: the
 code moves and the prose stays behind. Every false claim in
-`.github/agents/docs-standard-audit-2026-07-30.md` was produced by a change that
+`.github/agents/plans/docs-standard-audit-2026-07-30.md` was produced by a change that
 added nothing to any document and was approved for exactly that reason. If you
 skip this step because there is no documentation diff, you have reproduced the
 bug this step exists to catch.

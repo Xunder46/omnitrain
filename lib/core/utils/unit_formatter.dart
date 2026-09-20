@@ -28,6 +28,13 @@ class UnitFormatter {
     return kg;
   }
 
+  /// Converts a weight expressed in [unit] to canonical kilograms — the
+  /// inverse of [convertWeight], sharing the same conversion constant.
+  /// Used at input boundaries such as the health-store import.
+  static double toKilograms(double value, String unit) {
+    return normalizeWeightUnit(unit) == 'lbs' ? value / _kgToLbs : value;
+  }
+
   static String weightLabel(SettingsState settings) {
     return weightLabelForUnit(settings.preferredWeightUnit);
   }
@@ -204,10 +211,7 @@ class UnitFormatter {
   /// Convert a feet/inches pair to canonical cm. The log sheet uses
   /// this when the user saves in ftin mode; the stored value is
   /// always cm with `unitId='unit-cm'`.
-  static double toCanonicalHeightFeetInches(
-    int feet,
-    int inches,
-  ) {
+  static double toCanonicalHeightFeetInches(int feet, int inches) {
     return feetInchesToCm(feet, inches);
   }
 

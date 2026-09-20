@@ -38,6 +38,16 @@ extension SessionCoreLifecycleMethods on SessionCore {
       _notify();
     } catch (e) {
       _setError('Failed to end session: $e');
+      return;
+    }
+
+    // Platform health write. Deliberately outside the persistence
+    // try/catch above: the session is already saved and the service is
+    // contract-bound never to throw, so nothing here can flip the
+    // session into an error state.
+    final completedSession = _currentSession;
+    if (completedSession != null) {
+      await _healthSync?.onSessionCompleted(completedSession);
     }
   }
 
