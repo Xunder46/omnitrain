@@ -30,7 +30,8 @@ extension ExerciseCapabilities on Exercise {
   bool supports(String capability) => capabilities.contains(capability);
 
   /// Check if exercise supports any of the given capabilities
-  bool supportsAny(List<String> caps) => caps.any((c) => capabilities.contains(c));
+  bool supportsAny(List<String> caps) =>
+      caps.any((c) => capabilities.contains(c));
 
   /// Create a copy with updated fields
   /// Preserves immutability pattern and allows for transient field updates (e.g. relevanceScore)
@@ -68,13 +69,12 @@ extension ExerciseCapabilities on Exercise {
       relevanceScore: relevanceScore ?? this.relevanceScore,
       defaultRoundDurationSecs:
           defaultRoundDurationSecs ?? this.defaultRoundDurationSecs,
-        howToSteps: howToSteps == _exerciseCopyWithUnset
+      howToSteps: howToSteps == _exerciseCopyWithUnset
           ? this.howToSteps
           : howToSteps as List<String>?,
-        imageAssetPath: imageAssetPath == _exerciseCopyWithUnset
+      imageAssetPath: imageAssetPath == _exerciseCopyWithUnset
           ? this.imageAssetPath
           : imageAssetPath as String?,
     );
   }
 }
-

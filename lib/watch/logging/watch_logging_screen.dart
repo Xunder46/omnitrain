@@ -22,6 +22,7 @@ import '../../core/utils/date_utils.dart';
 import '../../core/utils/unit_formatter.dart';
 import '../session/watch_records.dart';
 import '../session/watch_timer_math.dart';
+import '../widgets/watch_controls.dart';
 import 'watch_logging_state.dart';
 import 'watch_timer_haptics.dart';
 
@@ -51,17 +52,14 @@ class WatchLoggingScreen extends StatefulWidget {
   final WatchLoggingState state;
   final WatchHaptics haptics;
 
-  /// Points of turn that count as one rotary detent. A Digital Crown detent and
-  /// a Wear OS rotary notch both arrive as a scroll or a drag, and both are
-  /// accumulated against this.
-  static const double pointsPerDetent = 32;
+  /// Points of turn that count as one detent, as [WatchRotaryTurn] counts them.
+  static const double pointsPerDetent = WatchRotaryTurn.defaultPointsPerDetent;
 
-  /// Wrist-scale layout. The phone's spacing and icon tokens are sized for a
-  /// full-width screen — `OmniTheme.buttonIconSize` alone is 60 points — so the
-  /// watch carries its own two values rather than scaling a phone token down.
+  /// Wrist-scale layout. The phone's spacing tokens are sized for a full-width
+  /// screen, so the watch carries its own two values rather than scaling a phone
+  /// token down.
   static const double surfaceInset = 8;
   static const double surfaceInsetCompact = 4;
-  static const double stepIconSize = 22;
 
   @override
   State<WatchLoggingScreen> createState() => _WatchLoggingScreenState();
@@ -73,7 +71,7 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
   static const Duration _tick = Duration(seconds: 1);
 
   /// Turn accumulated per field, waiting to add up to a whole detent.
-  final Map<String, double> _turn = {};
+  final Map<String, WatchRotaryTurn> _turn = {};
 
   Timer? _ticker;
   late WatchTimerHaptics _haptics;
@@ -111,16 +109,12 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
   /// turn away from the wrist raises the value. Travel short of a detent is
   /// carried to the next event rather than rounding the value off its step.
   void _turnField(WatchMetricField field, double travel) {
-    // The gesture axis runs the other way: dragging up is a negative delta and
-    // means more.
-    final rising = (_turn[field.metricKey] ?? 0) - travel;
-    final detents = rising / WatchLoggingScreen.pointsPerDetent;
-    final whole = detents.truncateToDouble();
-    _turn[field.metricKey] =
-        rising - whole * WatchLoggingScreen.pointsPerDetent;
-    if (whole == 0) return;
+    final detents = (_turn[field.metricKey] ??= WatchRotaryTurn()).detentsFor(
+      travel,
+    );
+    if (detents == 0) return;
 
-    widget.state.adjust(field.metricKey, whole);
+    widget.state.adjust(field.metricKey, detents.toDouble());
     setState(() {});
   }
 
@@ -250,11 +244,14 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
             : null,
         child: Row(
           children: [
-            _stepButton(
+            WatchStepButton(
               icon: Icons.remove,
               label: 'Less ${field.label}',
               onPressed: dialable
-                  ? () => widget.state.adjust(field.metricKey, -1)
+                  ? () {
+                      widget.state.adjust(field.metricKey, -1);
+                      setState(() {});
+                    }
                   : null,
             ),
             Expanded(
@@ -279,39 +276,19 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
                 ],
               ),
             ),
-            _stepButton(
+            WatchStepButton(
               icon: Icons.add,
               label: 'More ${field.label}',
               onPressed: dialable
-                  ? () => widget.state.adjust(field.metricKey, 1)
+                  ? () {
+                      widget.state.adjust(field.metricKey, 1);
+                      setState(() {});
+                    }
                   : null,
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _stepButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onPressed,
-  }) {
-    return IconButton(
-      icon: Icon(icon),
-      tooltip: label,
-      iconSize: WatchLoggingScreen.stepIconSize,
-      style: IconButton.styleFrom(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
-        ),
-      ),
-      onPressed: onPressed == null
-          ? null
-          : () {
-              onPressed();
-              setState(() {});
-            },
     );
   }
 

@@ -43,18 +43,30 @@ public struct WatchStartView: View {
     private let paths: WatchSessionStartPaths
     private let onSessionStarted: (WatchSessionRecord) -> Void
 
+    /// Opens the quick-log surface. Nil leaves the button off the screen.
+    ///
+    /// Nutrition logging is independent of training sessions, so this sits on the
+    /// home surface rather than behind a workout (S-006).
+    private let onOpenNutrition: (() -> Void)?
+
     /// Wrist-scale inset. The phone's spacing tokens are sized for a full-width
     /// screen; this surface carries its own value rather than scaling one down.
     private static let surfaceInset = 4.0
+
+    /// The home surface's way into the quick-log, which is reachable with no
+    /// workout running.
+    public static let logFoodLabel = "Log food"
 
     @State private var pickingExercise = false
 
     public init(
         paths: WatchSessionStartPaths,
-        onSessionStarted: @escaping (WatchSessionRecord) -> Void
+        onSessionStarted: @escaping (WatchSessionRecord) -> Void,
+        onOpenNutrition: (() -> Void)? = nil
     ) {
         self.paths = paths
         self.onSessionStarted = onSessionStarted
+        self.onOpenNutrition = onOpenNutrition
     }
 
     public var body: some View {
@@ -77,6 +89,11 @@ public struct WatchStartView: View {
                     Task { await startFreeWorkout() }
                 }
                 .buttonStyle(.bordered)
+
+                if let onOpenNutrition {
+                    Button(Self.logFoodLabel, action: onOpenNutrition)
+                        .buttonStyle(.bordered)
+                }
 
                 if paths.phoneReachable { WatchSearchOnPhoneHint() }
             }

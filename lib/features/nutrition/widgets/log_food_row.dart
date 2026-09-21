@@ -537,12 +537,11 @@ class _ThumbToggleState extends State<_ThumbToggle> {
     // shape is always visible. The badge mirrors the same
     // shape/color split (hollow ring vs. filled disc with a
     // check) — see the comment block on [_ThumbToggle].
-    final borderColor =
-        isLogged ? themeColors.primary : themeColors.textMuted;
-    final badgeFill =
-        isLogged ? themeColors.primary : themeColors.surface;
-    final badgeBorderColor =
-        isLogged ? themeColors.surface : themeColors.textMuted;
+    final borderColor = isLogged ? themeColors.primary : themeColors.textMuted;
+    final badgeFill = isLogged ? themeColors.primary : themeColors.surface;
+    final badgeBorderColor = isLogged
+        ? themeColors.surface
+        : themeColors.textMuted;
 
     final thumb = AnimatedContainer(
       duration: OmniTheme.animationDuration,
@@ -571,7 +570,8 @@ class _ThumbToggleState extends State<_ThumbToggle> {
               imageStorage: widget.imageStorage,
               foodId: widget.food.id,
               catalogId: widget.food.catalogId,
-              size: _ThumbToggle._thumbSize -
+              size:
+                  _ThumbToggle._thumbSize -
                   (_ThumbToggle._thumbBorderWidth * 2),
               // BoxFit.cover in each image renderer crops into the inset area;
               // the placeholder receives the same geometry and dimming.
@@ -640,11 +640,7 @@ class _ThumbToggleState extends State<_ThumbToggle> {
                     ),
                   ),
                   child: isLogged
-                      ? Icon(
-                          Icons.check,
-                          size: 12,
-                          color: themeColors.surface,
-                        )
+                      ? Icon(Icons.check, size: 12, color: themeColors.surface)
                       : const SizedBox.shrink(),
                 ),
               ),

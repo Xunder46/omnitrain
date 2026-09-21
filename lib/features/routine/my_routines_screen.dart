@@ -287,8 +287,9 @@ Future<bool> showDeleteRoutineDialog(
   required String templateId,
   required String routineName,
 }) async {
-  final plannedCount =
-      await routineState.countPlannedSessionsForTemplate(templateId);
+  final plannedCount = await routineState.countPlannedSessionsForTemplate(
+    templateId,
+  );
   if (!context.mounted) return false;
 
   final bodyText = plannedCount > 0
@@ -396,8 +397,7 @@ class _RoutineCard extends StatelessWidget {
                                 Expanded(
                                   child: Text(
                                     routine.name,
-                                    style: theme.textTheme.titleSmall
-                                        ?.copyWith(
+                                    style: theme.textTheme.titleSmall?.copyWith(
                                       fontWeight: FontWeight.w600,
                                       color: theme.colorScheme.onSurface,
                                     ),

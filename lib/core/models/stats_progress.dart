@@ -137,9 +137,9 @@ class StatsPR {
     this.e1Rm,
     this.reps,
   }) : assert(
-          (e1Rm != null) ^ (reps != null),
-          'Exactly one of e1Rm or reps must be non-null on a StatsPR',
-        );
+         (e1Rm != null) ^ (reps != null),
+         'Exactly one of e1Rm or reps must be non-null on a StatsPR',
+       );
 }
 
 /// A single chronological data point in the Stats-screen feeling
@@ -318,9 +318,8 @@ class StatsWindow {
   /// sessions. A recent-days window with zero training days returns
   /// false (and the Stats screen renders its existing empty states
   /// for both sections).
-  bool get hasData => !isPeriodScoped
-      ? (recentDays != null && recentDays! > 0)
-      : true;
+  bool get hasData =>
+      !isPeriodScoped ? (recentDays != null && recentDays! > 0) : true;
 
   /// Sentinel empty window used by [StatsProgressData.empty].
   /// Not user-visible; the screen never reaches this state because
@@ -334,7 +333,6 @@ class StatsWindow {
     recentDays: 0,
   );
 }
-
 
 // ── Nutrition adherence (PR 2b nutrition adherence section) ───────────────
 
@@ -372,8 +370,5 @@ class NutritionAdherence {
   final List<NutritionTrendPoint> actuals;
   final List<NutritionAdherenceTargetPoint> targetLine;
 
-  const NutritionAdherence({
-    required this.actuals,
-    required this.targetLine,
-  });
+  const NutritionAdherence({required this.actuals, required this.targetLine});
 }

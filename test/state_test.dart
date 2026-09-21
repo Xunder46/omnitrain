@@ -1984,12 +1984,10 @@ void main() {
           final observations = await repo.getEffortObservations(effortId);
           // Find the entry-1 reps + weight observations.
           final repsObs1 = observations.firstWhere(
-            (o) =>
-                o.metricId == MetricIds.reps && o.id.endsWith('-1-reps'),
+            (o) => o.metricId == MetricIds.reps && o.id.endsWith('-1-reps'),
           );
           final weightObs1 = observations.firstWhere(
-            (o) =>
-                o.metricId == MetricIds.weight && o.id.endsWith('-1-weight'),
+            (o) => o.metricId == MetricIds.weight && o.id.endsWith('-1-weight'),
           );
           expect(repsObs1.valueInt, 12);
           expect(weightObs1.valueReal, 80.0);
@@ -2029,8 +2027,7 @@ void main() {
 
           final observations = await repo.getEffortObservations(effortId);
           final repsObs1 = observations.firstWhere(
-            (o) =>
-                o.metricId == MetricIds.reps && o.id.endsWith('-1-reps'),
+            (o) => o.metricId == MetricIds.reps && o.id.endsWith('-1-reps'),
           );
           final ewObs1 = observations.firstWhere(
             (o) =>
@@ -2093,10 +2090,7 @@ void main() {
           await state.updateEntryValue(effortId, 0, 'extra-weight', 5.0);
 
           // drill 1: caller passes previousValues.
-          await state.addEntry(
-            effortId,
-            previousValues: {'extra-weight': 5.0},
-          );
+          await state.addEntry(effortId, previousValues: {'extra-weight': 5.0});
 
           final observations = await repo.getEffortObservations(effortId);
           final ewObs1 = observations.firstWhere(
@@ -2131,12 +2125,10 @@ void main() {
 
           final observations = await repo.getEffortObservations(effortId);
           final repsObs0 = observations.firstWhere(
-            (o) =>
-                o.metricId == MetricIds.reps && o.id.endsWith('-0-reps'),
+            (o) => o.metricId == MetricIds.reps && o.id.endsWith('-0-reps'),
           );
           final weightObs0 = observations.firstWhere(
-            (o) =>
-                o.metricId == MetricIds.weight && o.id.endsWith('-0-weight'),
+            (o) => o.metricId == MetricIds.weight && o.id.endsWith('-0-weight'),
           );
           expect(repsObs0.valueInt, 10);
           expect(weightObs0.valueReal, 0.0);
@@ -2496,10 +2488,7 @@ void main() {
 
           await state.recordRestStart(effortId, 0);
           // Capture the start timestamp so we can compute the expected end.
-          final startMs = state
-              .getEntryRests(effortId)
-              .first
-              .restStartMs;
+          final startMs = state.getEntryRests(effortId).first.restStartMs;
           await Future<void>.delayed(const Duration(milliseconds: 5));
           await state.pauseRest(effortId, 0);
           // Wait well past the start while the rest is paused.
@@ -2598,41 +2587,35 @@ void main() {
           // active counted time (~5s) — not 15s (5s active + 10s
           // paused). Wall-clock may have advanced slightly past the
           // pause (tolerance up to 1 s for a racy test).
-          final elapsed = reloaded.getRestElapsedSeconds(
-            effortId,
-            0,
-          );
+          final elapsed = reloaded.getRestElapsedSeconds(effortId, 0);
           expect(elapsed, lessThanOrEqualTo(1));
         },
       );
 
-      test(
-        'closeAllOpenRests preserves counted time for paused rests by '
-        'recording the pause time as the end time',
-        () async {
-          final repo = await _freshRepo();
-          final state = WorkoutState(repo);
-          await state.createNewSession();
-          final exercises = await repo.getExercises();
-          final effortId = await state.addExerciseToSession(
-            exercises.first,
-            chosenMetric: 'reps',
-          );
+      test('closeAllOpenRests preserves counted time for paused rests by '
+          'recording the pause time as the end time', () async {
+        final repo = await _freshRepo();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
+        final exercises = await repo.getExercises();
+        final effortId = await state.addExerciseToSession(
+          exercises.first,
+          chosenMetric: 'reps',
+        );
 
-          await state.recordRestStart(effortId, 0);
-          await Future<void>.delayed(const Duration(milliseconds: 5));
-          await state.pauseRest(effortId, 0);
-          final pauseTime = DateTime.now().millisecondsSinceEpoch;
-          await Future<void>.delayed(const Duration(milliseconds: 30));
+        await state.recordRestStart(effortId, 0);
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        await state.pauseRest(effortId, 0);
+        final pauseTime = DateTime.now().millisecondsSinceEpoch;
+        await Future<void>.delayed(const Duration(milliseconds: 30));
 
-          await state.closeAllOpenRests(effortId);
-          final rest = state.getEntryRests(effortId).first;
-          expect(rest.restEndMs, isNotNull);
-          // End time must be at the pause time (not now), so the
-          // recorded rest duration is ~0s rather than ~35s.
-          expect(rest.restEndMs!, lessThanOrEqualTo(pauseTime + 5));
-        },
-      );
+        await state.closeAllOpenRests(effortId);
+        final rest = state.getEntryRests(effortId).first;
+        expect(rest.restEndMs, isNotNull);
+        // End time must be at the pause time (not now), so the
+        // recorded rest duration is ~0s rather than ~35s.
+        expect(rest.restEndMs!, lessThanOrEqualTo(pauseTime + 5));
+      });
     });
 
     test('updateSessionRpe persists RPE value', () async {
@@ -3066,41 +3049,38 @@ void main() {
       },
     );
 
-    test(
-      'computeSessionSummary populates ExerciseSummary.bestE1RM '
-      'for set-kind efforts (AC-5 parity-plan guard)',
-      () async {
-        // Plan: .github/agents/plans/summary-pr-parity-plan.md (AC-5).
-        // The builder must produce `bestE1RM` so the Session Summary's
-        // PR detector (which now uses the same Epley formula as the
-        // toast and Stats screen) has a value to compare against.
-        final repo = await _freshRepo();
-        final exercises = await repo.getExercises();
-        final ex = exercises.first;
-        // Seed a completed session with one set (5 × 60 → e1RM 70.0).
-        await _seedCompletedSetSession(
-          repo,
-          sessionId: 's-e1rm',
-          startedAtMs: 1000,
-          endedAtMs: 5000,
-          exerciseId: ex.id,
-          reps: 5,
-          weight: 60.0,
-        );
+    test('computeSessionSummary populates ExerciseSummary.bestE1RM '
+        'for set-kind efforts (AC-5 parity-plan guard)', () async {
+      // Plan: .github/agents/plans/summary-pr-parity-plan.md (AC-5).
+      // The builder must produce `bestE1RM` so the Session Summary's
+      // PR detector (which now uses the same Epley formula as the
+      // toast and Stats screen) has a value to compare against.
+      final repo = await _freshRepo();
+      final exercises = await repo.getExercises();
+      final ex = exercises.first;
+      // Seed a completed session with one set (5 × 60 → e1RM 70.0).
+      await _seedCompletedSetSession(
+        repo,
+        sessionId: 's-e1rm',
+        startedAtMs: 1000,
+        endedAtMs: 5000,
+        exerciseId: ex.id,
+        reps: 5,
+        weight: 60.0,
+      );
 
-        final state = WorkoutState(repo);
-        await state.loadHistoricalSession('s-e1rm');
+      final state = WorkoutState(repo);
+      await state.loadHistoricalSession('s-e1rm');
 
-        final summary = state.computeSessionSummary();
-        final exerciseSummary = summary.exercises.single;
-        expect(exerciseSummary.effortKind, 'set');
-        // bestWeight remains the volume metric (raw top weight, in kg).
-        expect(exerciseSummary.bestWeight, 60.0);
-        // bestE1RM is the PR metric (e1RM = 70.0), populated by the
-        // builder so computePRs can compare against the standing best.
-        expect(exerciseSummary.bestE1RM, closeTo(70.0, 0.001));
-      },
-    );
+      final summary = state.computeSessionSummary();
+      final exerciseSummary = summary.exercises.single;
+      expect(exerciseSummary.effortKind, 'set');
+      // bestWeight remains the volume metric (raw top weight, in kg).
+      expect(exerciseSummary.bestWeight, 60.0);
+      // bestE1RM is the PR metric (e1RM = 70.0), populated by the
+      // builder so computePRs can compare against the standing best.
+      expect(exerciseSummary.bestE1RM, closeTo(70.0, 0.001));
+    });
 
     test('getSessionBlocks returns sorted by orderIndex', () async {
       final repo = await _freshRepo();
@@ -3411,39 +3391,43 @@ void main() {
 
   group('NutritionState', () {
     // ── S-001 First load today (no targets; ancestor walk) ─────────────────
-    test('loadNutritionTargetForDate returns null when no ancestor exists',
-        () async {
-      final repo = await _freshRepo();
-      final state = NutritionState(repo);
-      final today = OmniDateUtils.todayMidnightMs();
-      await state.loadNutritionTargetForDate(today);
-      expect(state.nutritionTarget, isNull);
-    });
+    test(
+      'loadNutritionTargetForDate returns null when no ancestor exists',
+      () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
+        await state.loadNutritionTargetForDate(today);
+        expect(state.nutritionTarget, isNull);
+      },
+    );
 
-    test('loadNutritionTargetForDate rolls over from yesterday\'s target',
-        () async {
-      final repo = await _freshRepo();
-      final yesterday = OmniDateUtils.startOfDayMs(
-        DateTime.now().subtract(const Duration(days: 1)),
-      );
-      final yesterdayTarget = NutritionTarget(
-        calories: 2000,
-        protein: 120,
-        carbs: 250,
-        fat: 70,
-        dateMs: yesterday,
-      );
-      await repo.saveNutritionTargetForDate(yesterday, yesterdayTarget);
+    test(
+      'loadNutritionTargetForDate rolls over from yesterday\'s target',
+      () async {
+        final repo = await _freshRepo();
+        final yesterday = OmniDateUtils.startOfDayMs(
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+        final yesterdayTarget = NutritionTarget(
+          calories: 2000,
+          protein: 120,
+          carbs: 250,
+          fat: 70,
+          dateMs: yesterday,
+        );
+        await repo.saveNutritionTargetForDate(yesterday, yesterdayTarget);
 
-      final state = NutritionState(repo);
-      final today = OmniDateUtils.todayMidnightMs();
-      await state.loadNutritionTargetForDate(today);
-      expect(state.nutritionTarget, isNotNull);
-      expect(state.nutritionTarget?.calories, 2000);
-      expect(state.nutritionTarget?.protein, 120);
-      // The rolled-over copy must carry today's date.
-      expect(state.nutritionTarget?.dateMs, today);
-    });
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
+        await state.loadNutritionTargetForDate(today);
+        expect(state.nutritionTarget, isNotNull);
+        expect(state.nutritionTarget?.calories, 2000);
+        expect(state.nutritionTarget?.protein, 120);
+        // The rolled-over copy must carry today's date.
+        expect(state.nutritionTarget?.dateMs, today);
+      },
+    );
 
     // ── S-002 Save all four fields ─────────────────────────────────────────
     test('saveNutritionTargetForDate persists all four macros', () async {
@@ -3470,26 +3454,27 @@ void main() {
 
     // ── S-003 Clear a target field (store as 0.0) ─────────────────────────
     test(
-        'saveNutritionTargetForDate stores 0.0 for cleared fields (not null)',
-        () async {
-      final repo = await _freshRepo();
-      final state = NutritionState(repo);
-      final today = OmniDateUtils.todayMidnightMs();
-      await state.saveNutritionTargetForDate(
-        today,
-        NutritionTarget(calories: 2500, protein: 150, carbs: 300, fat: 80),
-      );
-      // Re-save with carbs cleared.
-      await state.saveNutritionTargetForDate(
-        today,
-        NutritionTarget(calories: 2500, protein: 150, carbs: 0, fat: 80),
-      );
-      expect(state.nutritionTarget?.carbs, 0.0);
+      'saveNutritionTargetForDate stores 0.0 for cleared fields (not null)',
+      () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final today = OmniDateUtils.todayMidnightMs();
+        await state.saveNutritionTargetForDate(
+          today,
+          NutritionTarget(calories: 2500, protein: 150, carbs: 300, fat: 80),
+        );
+        // Re-save with carbs cleared.
+        await state.saveNutritionTargetForDate(
+          today,
+          NutritionTarget(calories: 2500, protein: 150, carbs: 0, fat: 80),
+        );
+        expect(state.nutritionTarget?.carbs, 0.0);
 
-      final reload = NutritionState(repo);
-      await reload.loadNutritionTargetForDate(today);
-      expect(reload.nutritionTarget?.carbs, 0.0);
-    });
+        final reload = NutritionState(repo);
+        await reload.loadNutritionTargetForDate(today);
+        expect(reload.nutritionTarget?.carbs, 0.0);
+      },
+    );
 
     // ── S-005 Hidden 0 values (isUnset) ───────────────────────────────────
     test('isUnset getter reflects "all four macros are 0"', () {
@@ -3513,8 +3498,7 @@ void main() {
     });
 
     // ── S-007 Forward-propagation: yesterday is unaffected ───────────────
-    test(
-        'saveNutritionTargetForDate does NOT modify past dates when '
+    test('saveNutritionTargetForDate does NOT modify past dates when '
         'forward-propagating', () async {
       final repo = await _freshRepo();
       final state = NutritionState(repo);
@@ -3557,27 +3541,29 @@ void main() {
     });
 
     // ── S-004 Day rollover mechanics ───────────────────────────────────────
-    test('rolloverToDate loads the new date\'s target (or walks back)',
-        () async {
-      final repo = await _freshRepo();
-      final state = NutritionState(repo);
-      final yesterday = OmniDateUtils.startOfDayMs(
-        DateTime.now().subtract(const Duration(days: 1)),
-      );
-      final target = NutritionTarget(
-        calories: 2100,
-        protein: 130,
-        carbs: 260,
-        fat: 75,
-      );
-      await state.saveNutritionTargetForDate(yesterday, target);
+    test(
+      'rolloverToDate loads the new date\'s target (or walks back)',
+      () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final yesterday = OmniDateUtils.startOfDayMs(
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+        final target = NutritionTarget(
+          calories: 2100,
+          protein: 130,
+          carbs: 260,
+          fat: 75,
+        );
+        await state.saveNutritionTargetForDate(yesterday, target);
 
-      // Rollover to today; should find the ancestor and roll it forward.
-      final today = OmniDateUtils.todayMidnightMs();
-      await state.rolloverToDate(today);
-      expect(state.nutritionTarget?.calories, 2100);
-      expect(state.nutritionTarget?.dateMs, today);
-    });
+        // Rollover to today; should find the ancestor and roll it forward.
+        final today = OmniDateUtils.todayMidnightMs();
+        await state.rolloverToDate(today);
+        expect(state.nutritionTarget?.calories, 2100);
+        expect(state.nutritionTarget?.dateMs, today);
+      },
+    );
 
     // ── getTodayTarget convenience ────────────────────────────────────────
     test('getTodayTarget returns the current day\'s target', () async {
@@ -3629,91 +3615,103 @@ void main() {
     // tests pin the contract: loads from the repo, populates the cache,
     // sums via `ConsumedFood.caloriesConsumed`, and notifies listeners.
     group('consumed-food cache', () {
-      test('initial cache is empty and loadConsumedToday keeps it empty',
-          () async {
-        final repo = await _freshRepoCleanConsumed();
-        final state = NutritionState(repo);
-        expect(state.consumedToday, isEmpty);
-        expect(state.todayConsumedCalories, 0);
+      test(
+        'initial cache is empty and loadConsumedToday keeps it empty',
+        () async {
+          final repo = await _freshRepoCleanConsumed();
+          final state = NutritionState(repo);
+          expect(state.consumedToday, isEmpty);
+          expect(state.todayConsumedCalories, 0);
 
-        await state.loadConsumedToday();
-        expect(state.consumedToday, isEmpty);
-        expect(state.todayConsumedCalories, 0);
-      });
+          await state.loadConsumedToday();
+          expect(state.consumedToday, isEmpty);
+          expect(state.todayConsumedCalories, 0);
+        },
+      );
 
-      test('getTodayConsumedFoods returns empty when repo has no rows',
-          () async {
-        final repo = await _freshRepoCleanConsumed();
-        final state = NutritionState(repo);
-        final foods = await state.getTodayConsumedFoods();
-        expect(foods, isEmpty);
-        expect(state.consumedToday, isEmpty);
-      });
+      test(
+        'getTodayConsumedFoods returns empty when repo has no rows',
+        () async {
+          final repo = await _freshRepoCleanConsumed();
+          final state = NutritionState(repo);
+          final foods = await state.getTodayConsumedFoods();
+          expect(foods, isEmpty);
+          expect(state.consumedToday, isEmpty);
+        },
+      );
 
-      test('loadConsumedToday populates the cache from the repository',
-          () async {
-        final repo = await _freshRepoCleanConsumed();
-        final today = OmniDateUtils.todayMidnightMs();
+      test(
+        'loadConsumedToday populates the cache from the repository',
+        () async {
+          final repo = await _freshRepoCleanConsumed();
+          final today = OmniDateUtils.todayMidnightMs();
 
-        // Seed two consumed-food snapshots for today.
-        await repo.createConsumedFood(ConsumedFood(
-          id: 'c-1',
-          loggedAtMs: today + 1000,
-          dateMs: today,
-          sourceFoodId: 'food-1',
-          name: 'Oatmeal',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          protein: 13,
-          carbs: 68,
-          fat: 6,
-          amountConsumed: 1.0,
-          targetCalories: 2000,
-          targetProtein: 150,
-          targetCarbs: 200,
-          targetFat: 65,
-          createdAtMs: today,
-          updatedAtMs: today,
-        ));
-        await repo.createConsumedFood(ConsumedFood(
-          id: 'c-2',
-          loggedAtMs: today + 2000,
-          dateMs: today,
-          sourceFoodId: 'food-2',
-          name: 'Egg',
-          unitType: FoodUnitType.count,
-          referenceAmount: 1,
-          referenceLabel: 'egg',
-          protein: 6,
-          carbs: 1,
-          fat: 5,
-          amountConsumed: 2.0,
-          targetCalories: 2000,
-          targetProtein: 150,
-          targetCarbs: 200,
-          targetFat: 65,
-          createdAtMs: today,
-          updatedAtMs: today,
-        ));
+          // Seed two consumed-food snapshots for today.
+          await repo.createConsumedFood(
+            ConsumedFood(
+              id: 'c-1',
+              loggedAtMs: today + 1000,
+              dateMs: today,
+              sourceFoodId: 'food-1',
+              name: 'Oatmeal',
+              unitType: FoodUnitType.grams,
+              referenceAmount: 100,
+              referenceLabel: 'g',
+              protein: 13,
+              carbs: 68,
+              fat: 6,
+              amountConsumed: 1.0,
+              targetCalories: 2000,
+              targetProtein: 150,
+              targetCarbs: 200,
+              targetFat: 65,
+              createdAtMs: today,
+              updatedAtMs: today,
+            ),
+          );
+          await repo.createConsumedFood(
+            ConsumedFood(
+              id: 'c-2',
+              loggedAtMs: today + 2000,
+              dateMs: today,
+              sourceFoodId: 'food-2',
+              name: 'Egg',
+              unitType: FoodUnitType.count,
+              referenceAmount: 1,
+              referenceLabel: 'egg',
+              protein: 6,
+              carbs: 1,
+              fat: 5,
+              amountConsumed: 2.0,
+              targetCalories: 2000,
+              targetProtein: 150,
+              targetCarbs: 200,
+              targetFat: 65,
+              createdAtMs: today,
+              updatedAtMs: today,
+            ),
+          );
 
-        final state = NutritionState(repo);
-        var notifications = 0;
-        state.addListener(() => notifications++);
-        await state.loadConsumedToday();
+          final state = NutritionState(repo);
+          var notifications = 0;
+          state.addListener(() => notifications++);
+          await state.loadConsumedToday();
 
-        expect(state.consumedToday, hasLength(2));
-        expect(notifications, greaterThanOrEqualTo(1),
-            reason: 'loadConsumedToday must notify listeners on success');
-        // Oatmeal (per-100 g, amount=1.0): 13*4 + 68*4 + 6*9 = 378;
-        // scaled by 1/100 → 378 * 0.01 = 3.78 → 4.
-        // 2 eggs (per-1, amount=2.0): (6*4 + 1*4 + 5*9) * (2/1) = 146.
-        // Total: 4 + 146 = 150.
-        expect(state.todayConsumedCalories, 4 + 146);
-      });
+          expect(state.consumedToday, hasLength(2));
+          expect(
+            notifications,
+            greaterThanOrEqualTo(1),
+            reason: 'loadConsumedToday must notify listeners on success',
+          );
+          // Oatmeal (per-100 g, amount=1.0): 13*4 + 68*4 + 6*9 = 378;
+          // scaled by 1/100 → 378 * 0.01 = 3.78 → 4.
+          // 2 eggs (per-1, amount=2.0): (6*4 + 1*4 + 5*9) * (2/1) = 146.
+          // Total: 4 + 146 = 150.
+          expect(state.todayConsumedCalories, 4 + 146);
+        },
+      );
 
-      test('loadConsumedToday is idempotent and refreshes the cache',
-          () async {
+      test('loadConsumedToday is idempotent and refreshes the cache', () async {
         final repo = await _freshRepoCleanConsumed();
         final state = NutritionState(repo);
 
@@ -3725,20 +3723,22 @@ void main() {
         expect(state.consumedToday, isEmpty);
       });
 
-      test('clearConsumedToday empties the cache and notifies listeners',
-          () async {
-        final repo = await _freshRepoCleanConsumed();
-        final state = NutritionState(repo);
-        await state.loadConsumedToday();
-        expect(state.consumedToday, isEmpty);
+      test(
+        'clearConsumedToday empties the cache and notifies listeners',
+        () async {
+          final repo = await _freshRepoCleanConsumed();
+          final state = NutritionState(repo);
+          await state.loadConsumedToday();
+          expect(state.consumedToday, isEmpty);
 
-        var notifications = 0;
-        state.addListener(() => notifications++);
-        state.clearConsumedToday();
-        // Empty-on-empty is a no-op; we don't require a notification here.
-        expect(state.consumedToday, isEmpty);
-        expect(notifications, 0);
-      });
+          var notifications = 0;
+          state.addListener(() => notifications++);
+          state.clearConsumedToday();
+          // Empty-on-empty is a no-op; we don't require a notification here.
+          expect(state.consumedToday, isEmpty);
+          expect(notifications, 0);
+        },
+      );
     });
 
     // ═════════════════════════════════════════════════════════════════════
@@ -3750,22 +3750,24 @@ void main() {
     // canonical ml value; the state never writes a raw glass count.
     // ═════════════════════════════════════════════════════════════════════
     group('daily water log', () {
-      test('initial cache is empty; loadWaterForDate fetches from repo',
-          () async {
-        final repo = await _freshRepo();
-        // Pre-seed the repo with 500 ml for today.
-        final today = OmniDateUtils.todayMidnightMs();
-        await repo.saveWaterVolumeForDate(today, 500);
+      test(
+        'initial cache is empty; loadWaterForDate fetches from repo',
+        () async {
+          final repo = await _freshRepo();
+          // Pre-seed the repo with 500 ml for today.
+          final today = OmniDateUtils.todayMidnightMs();
+          await repo.saveWaterVolumeForDate(today, 500);
 
-        final state = NutritionState(repo);
-        // Cache is empty until the explicit load call.
-        expect(state.waterTodayMl, 0);
-        expect(state.waterTodayGlasses, 0);
+          final state = NutritionState(repo);
+          // Cache is empty until the explicit load call.
+          expect(state.waterTodayMl, 0);
+          expect(state.waterTodayGlasses, 0);
 
-        await state.loadWaterForDate(today);
-        expect(state.waterTodayMl, 500);
-        expect(state.waterTodayGlasses, 2);
-      });
+          await state.loadWaterForDate(today);
+          expect(state.waterTodayMl, 500);
+          expect(state.waterTodayGlasses, 2);
+        },
+      );
 
       test('incrementWaterForDate stores +250 ml and notifies', () async {
         final repo = await _freshRepo();
@@ -3875,12 +3877,8 @@ void main() {
       test('date isolation: writing day A does not change day B', () async {
         final repo = await _freshRepo();
         final state = NutritionState(repo);
-        final dayA = OmniDateUtils.startOfDayMs(
-          DateTime(2026, 5, 10),
-        );
-        final dayB = OmniDateUtils.startOfDayMs(
-          DateTime(2026, 5, 11),
-        );
+        final dayA = OmniDateUtils.startOfDayMs(DateTime(2026, 5, 10));
+        final dayB = OmniDateUtils.startOfDayMs(DateTime(2026, 5, 11));
 
         // Day A: +3 glasses (750 ml).
         for (var i = 0; i < 3; i++) {
@@ -3907,31 +3905,28 @@ void main() {
         expect(fresh.waterTodayMl, 750);
       });
 
-      test(
-        'rolloverToDate: today\'s water reads 0 after rollover; the prior '
-        'date\'s stored ml is unchanged',
-        () async {
-          final repo = await _freshRepo();
-          final state = NutritionState(repo);
-          // Day A (yesterday): 750 ml logged.
-          final dayA = OmniDateUtils.startOfDayMs(
-            DateTime.now().subtract(const Duration(days: 1)),
-          );
-          for (var i = 0; i < 3; i++) {
-            await state.incrementWaterForDate(dayA);
-          }
-          expect(await repo.getWaterVolumeForDate(dayA), 750);
+      test('rolloverToDate: today\'s water reads 0 after rollover; the prior '
+          'date\'s stored ml is unchanged', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        // Day A (yesterday): 750 ml logged.
+        final dayA = OmniDateUtils.startOfDayMs(
+          DateTime.now().subtract(const Duration(days: 1)),
+        );
+        for (var i = 0; i < 3; i++) {
+          await state.incrementWaterForDate(dayA);
+        }
+        expect(await repo.getWaterVolumeForDate(dayA), 750);
 
-          // Rollover to today: cache empties, repository re-reads 0.
-          final today = OmniDateUtils.todayMidnightMs();
-          await state.rolloverToDate(today);
-          expect(state.waterTodayMl, 0);
-          expect(state.waterTodayGlasses, 0);
+        // Rollover to today: cache empties, repository re-reads 0.
+        final today = OmniDateUtils.todayMidnightMs();
+        await state.rolloverToDate(today);
+        expect(state.waterTodayMl, 0);
+        expect(state.waterTodayGlasses, 0);
 
-          // The prior date's stored ml is unchanged.
-          expect(await repo.getWaterVolumeForDate(dayA), 750);
-        },
-      );
+        // The prior date's stored ml is unchanged.
+        expect(await repo.getWaterVolumeForDate(dayA), 750);
+      });
     });
 
     // ── Per-macro totals (Phase 1 of the macro-donut-chart plan) ───────
@@ -3940,80 +3935,81 @@ void main() {
     // missing one) and pins the per-row scaling contract on all four
     // by exercising it through log/delete.
     group('per-macro totals', () {
-      test(
-        'empty cache: all four per-macro getters return 0',
-        () async {
-          final repo = await _freshRepoCleanConsumed();
-          final state = NutritionState(repo);
-          expect(state.todayConsumedProtein, 0);
-          expect(state.todayConsumedCarbs, 0);
-          expect(state.todayConsumedFiber, 0);
-          expect(state.todayConsumedFat, 0);
+      test('empty cache: all four per-macro getters return 0', () async {
+        final repo = await _freshRepoCleanConsumed();
+        final state = NutritionState(repo);
+        expect(state.todayConsumedProtein, 0);
+        expect(state.todayConsumedCarbs, 0);
+        expect(state.todayConsumedFiber, 0);
+        expect(state.todayConsumedFat, 0);
 
-          // Loading an empty repo leaves the totals at 0.
-          await state.loadConsumedToday();
-          expect(state.todayConsumedProtein, 0);
-          expect(state.todayConsumedCarbs, 0);
-          expect(state.todayConsumedFiber, 0);
-          expect(state.todayConsumedFat, 0);
-        },
-      );
+        // Loading an empty repo leaves the totals at 0.
+        await state.loadConsumedToday();
+        expect(state.todayConsumedProtein, 0);
+        expect(state.todayConsumedCarbs, 0);
+        expect(state.todayConsumedFiber, 0);
+        expect(state.todayConsumedFat, 0);
+      });
 
       test(
         'per-row scaling: grams food and count food both scale their '
         'macros; values are summed unrounded and rounded once at the end',
         () async {
-        final repo = await _freshRepoCleanConsumed();
-        final state = NutritionState(repo);
-        final today = OmniDateUtils.todayMidnightMs();
+          final repo = await _freshRepoCleanConsumed();
+          final state = NutritionState(repo);
+          final today = OmniDateUtils.todayMidnightMs();
 
           // Per-100 g food, 1.5 portions logged: each macro is
           // (1.5 / 100) = 0.015× the reference. pasta macros (P=30,
           // C=80, F=10, F=4) contribute (0.45, 1.2, 0.15, 0.06).
-          await repo.createConsumedFood(ConsumedFood(
-            id: 'c-pasta',
-            loggedAtMs: today + 1000,
-            dateMs: today,
-            sourceFoodId: 'food-pasta',
-            name: 'Pasta',
-            unitType: FoodUnitType.grams,
-            referenceAmount: 100,
-            referenceLabel: 'g',
-            protein: 30,
-            carbs: 80,
-            fiber: 10,
-            fat: 4,
-            amountConsumed: 1.5,
-            targetCalories: 2000,
-            targetProtein: 150,
-            targetCarbs: 200,
-            targetFat: 65,
-            createdAtMs: today,
-            updatedAtMs: today,
-          ));
+          await repo.createConsumedFood(
+            ConsumedFood(
+              id: 'c-pasta',
+              loggedAtMs: today + 1000,
+              dateMs: today,
+              sourceFoodId: 'food-pasta',
+              name: 'Pasta',
+              unitType: FoodUnitType.grams,
+              referenceAmount: 100,
+              referenceLabel: 'g',
+              protein: 30,
+              carbs: 80,
+              fiber: 10,
+              fat: 4,
+              amountConsumed: 1.5,
+              targetCalories: 2000,
+              targetProtein: 150,
+              targetCarbs: 200,
+              targetFat: 65,
+              createdAtMs: today,
+              updatedAtMs: today,
+            ),
+          );
           // Per-1-egg food, 2 eggs logged: each macro is 2× reference.
           // (P=6, C=1, fiber=null, F=5) contribute (12, 2, 0, 10).
-          await repo.createConsumedFood(ConsumedFood(
-            id: 'c-eggs',
-            loggedAtMs: today + 2000,
-            dateMs: today,
-            sourceFoodId: 'food-eggs',
-            name: 'Egg',
-            unitType: FoodUnitType.count,
-            referenceAmount: 1,
-            referenceLabel: 'egg',
-            protein: 6,
-            carbs: 1,
-            fiber: null,
-            fat: 5,
-            amountConsumed: 2.0,
-            targetCalories: 2000,
-            targetProtein: 150,
-            targetCarbs: 200,
-            targetFat: 65,
-            createdAtMs: today,
-            updatedAtMs: today,
-          ));
+          await repo.createConsumedFood(
+            ConsumedFood(
+              id: 'c-eggs',
+              loggedAtMs: today + 2000,
+              dateMs: today,
+              sourceFoodId: 'food-eggs',
+              name: 'Egg',
+              unitType: FoodUnitType.count,
+              referenceAmount: 1,
+              referenceLabel: 'egg',
+              protein: 6,
+              carbs: 1,
+              fiber: null,
+              fat: 5,
+              amountConsumed: 2.0,
+              targetCalories: 2000,
+              targetProtein: 150,
+              targetCarbs: 200,
+              targetFat: 65,
+              createdAtMs: today,
+              updatedAtMs: today,
+            ),
+          );
 
           await state.loadConsumedToday();
           // protein: 0.45 + 12 = 12.45 → 12
@@ -4037,27 +4033,29 @@ void main() {
         // F=0) contribute (0.06, 0.84, 0, 0) — protein still rounds
         // down to 0 even at 3 portions (this is the rounding-once
         // contract, not a bug).
-        await repo.createConsumedFood(ConsumedFood(
-          id: 'c-rice',
-          loggedAtMs: today + 1000,
-          dateMs: today,
-          sourceFoodId: 'food-rice',
-          name: 'White Rice',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          protein: 2,
-          carbs: 28,
-          fiber: null,
-          fat: 0,
-          amountConsumed: 3.0,
-          targetCalories: 2000,
-          targetProtein: 150,
-          targetCarbs: 200,
-          targetFat: 65,
-          createdAtMs: today,
-          updatedAtMs: today,
-        ));
+        await repo.createConsumedFood(
+          ConsumedFood(
+            id: 'c-rice',
+            loggedAtMs: today + 1000,
+            dateMs: today,
+            sourceFoodId: 'food-rice',
+            name: 'White Rice',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100,
+            referenceLabel: 'g',
+            protein: 2,
+            carbs: 28,
+            fiber: null,
+            fat: 0,
+            amountConsumed: 3.0,
+            targetCalories: 2000,
+            targetProtein: 150,
+            targetCarbs: 200,
+            targetFat: 65,
+            createdAtMs: today,
+            updatedAtMs: today,
+          ),
+        );
 
         await state.loadConsumedToday();
         expect(state.todayConsumedFiber, 0);
@@ -4157,97 +4155,82 @@ void main() {
         },
       );
 
-      test(
-        'S-002: a food that has never been logged has '
-        'lastAmountConsumed = null on its row',
-        () async {
-          final repo = await _freshRepo();
-          final food = await seedFood(repo, id: 'food-s002');
+      test('S-002: a food that has never been logged has '
+          'lastAmountConsumed = null on its row', () async {
+        final repo = await _freshRepo();
+        final food = await seedFood(repo, id: 'food-s002');
 
-          // The repo created the row without logging anything.
-          final fetched = await repo.getFoodById(food.id);
-          expect(fetched, isNotNull);
-          expect(fetched!.lastAmountConsumed, isNull);
-        },
-      );
+        // The repo created the row without logging anything.
+        final fetched = await repo.getFoodById(food.id);
+        expect(fetched, isNotNull);
+        expect(fetched!.lastAmountConsumed, isNull);
+      });
 
-      test(
-        'S-003: saving with a changed amount updates lastAmountConsumed '
-        'to the new value on the food row',
-        () async {
-          final repo = await _freshRepo();
-          final state = NutritionState(repo);
-          final food = await seedFood(repo, id: 'food-s003');
+      test('S-003: saving with a changed amount updates lastAmountConsumed '
+          'to the new value on the food row', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final food = await seedFood(repo, id: 'food-s003');
 
-          // First log at 150 → last amount = 150.
-          await state.logConsumedFoodAt(food, 150.0);
-          expect((await repo.getFoodById(food.id))!.lastAmountConsumed,
-              150.0);
+        // First log at 150 → last amount = 150.
+        await state.logConsumedFoodAt(food, 150.0);
+        expect((await repo.getFoodById(food.id))!.lastAmountConsumed, 150.0);
 
-          // Update via day-uniqueness path at 200 → last amount = 200.
-          await state.logConsumedFoodAt(food, 200.0);
-          expect((await repo.getFoodById(food.id))!.lastAmountConsumed,
-              200.0);
+        // Update via day-uniqueness path at 200 → last amount = 200.
+        await state.logConsumedFoodAt(food, 200.0);
+        expect((await repo.getFoodById(food.id))!.lastAmountConsumed, 200.0);
 
-          // A fresh state instance reads the persisted value.
-          final reader = NutritionState(repo);
-          await reader.loadConsumedToday();
-          final foodAfter = await repo.getFoodById(food.id);
-          expect(foodAfter!.lastAmountConsumed, 200.0);
-        },
-      );
+        // A fresh state instance reads the persisted value.
+        final reader = NutritionState(repo);
+        await reader.loadConsumedToday();
+        final foodAfter = await repo.getFoodById(food.id);
+        expect(foodAfter!.lastAmountConsumed, 200.0);
+      });
 
-      test(
-        'S-005: today-log pre-fill in LogFoodRow reads from the today '
-        'ConsumedFood row, not the remembered last amount',
-        () async {
-          // Sanity check the storage contract this feature relies on:
-          // when the food is already logged today, today's amount
-          // is the source of truth. The LogFoodRow's `initState`
-          // branches on `findLoggedTodayForFood(...)` first.
-          final repo = await _freshRepo();
-          final state = NutritionState(repo);
-          final food = await seedFood(repo, id: 'food-s005');
+      test('S-005: today-log pre-fill in LogFoodRow reads from the today '
+          'ConsumedFood row, not the remembered last amount', () async {
+        // Sanity check the storage contract this feature relies on:
+        // when the food is already logged today, today's amount
+        // is the source of truth. The LogFoodRow's `initState`
+        // branches on `findLoggedTodayForFood(...)` first.
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final food = await seedFood(repo, id: 'food-s005');
 
-          // Yesterday's "remembered" amount = 150 (simulated by
-          // pre-seeding the food's lastAmountConsumed).
-          await repo.updateFood(
-            food.copyWith(lastAmountConsumed: 150.0),
-          );
+        // Yesterday's "remembered" amount = 150 (simulated by
+        // pre-seeding the food's lastAmountConsumed).
+        await repo.updateFood(food.copyWith(lastAmountConsumed: 150.0));
 
-          // Today's log = 200 (a different value).
-          await state.logConsumedFoodAt(food, 200.0);
+        // Today's log = 200 (a different value).
+        await state.logConsumedFoodAt(food, 200.0);
 
-          // The today's amount is the one the row pre-fills with.
-          final today = state.findLoggedTodayForFood(food.id);
-          expect(today, isNotNull);
-          expect(today!.amountConsumed, 200.0);
+        // The today's amount is the one the row pre-fills with.
+        final today = state.findLoggedTodayForFood(food.id);
+        expect(today, isNotNull);
+        expect(today!.amountConsumed, 200.0);
 
-          // And the stored lastAmountConsumed was updated to 200
-          // (write-through is part of every successful save).
-          expect((await repo.getFoodById(food.id))!.lastAmountConsumed,
-              200.0);
-        },
-      );
+        // And the stored lastAmountConsumed was updated to 200
+        // (write-through is part of every successful save).
+        expect((await repo.getFoodById(food.id))!.lastAmountConsumed, 200.0);
+      });
 
-      test(
-        'S-006: re-adding an already-linked catalog food is a no-op '
-        'at the state layer (catalogId linkage); lastAmountConsumed '
-        'on the existing row is not touched',
-        () async {
-          // The food-durable-identity plan guarantees that the
-          // state layer's `addCatalogFoodToLibrary` does NOT create
-          // a duplicate row when the catalog food is already linked
-          // to a non-archived library row. The library id is
-          // reused and the existing row's `lastAmountConsumed` is
-          // not disturbed (this is the durable-identity guard).
-          final repo = await _freshRepo();
-          final state = NutritionState(repo);
-          final foodLib = FoodLibraryState(repo);
+      test('S-006: re-adding an already-linked catalog food is a no-op '
+          'at the state layer (catalogId linkage); lastAmountConsumed '
+          'on the existing row is not touched', () async {
+        // The food-durable-identity plan guarantees that the
+        // state layer's `addCatalogFoodToLibrary` does NOT create
+        // a duplicate row when the catalog food is already linked
+        // to a non-archived library row. The library id is
+        // reused and the existing row's `lastAmountConsumed` is
+        // not disturbed (this is the durable-identity guard).
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final foodLib = FoodLibraryState(repo);
 
-          // Seed a catalog source via the test helper (writes to
-          // the catalog box).
-          await repo.seedCatalogFood(const Food(
+        // Seed a catalog source via the test helper (writes to
+        // the catalog box).
+        await repo.seedCatalogFood(
+          const Food(
             id: 'catalog-s006',
             name: 'Chicken (S-006)',
             unitType: FoodUnitType.grams,
@@ -4258,93 +4241,86 @@ void main() {
             fat: 1,
             createdAtMs: 1,
             updatedAtMs: 1,
-          ));
-          await foodLib.loadCatalogFoods();
+          ),
+        );
+        await foodLib.loadCatalogFoods();
 
-          // First add via the state layer → creates the library row.
-          final libraryId1 = await foodLib.addCatalogFoodToLibrary(
-            'catalog-s006',
-          );
+        // First add via the state layer → creates the library row.
+        final libraryId1 = await foodLib.addCatalogFoodToLibrary(
+          'catalog-s006',
+        );
 
-          // Log it at 175 → lastAmountConsumed = 175.
-          final libraryFood = (await repo.getFoodById(libraryId1))!;
-          await state.logConsumedFoodAt(libraryFood, 175.0);
-          expect(
-            (await repo.getFoodById(libraryId1))!.lastAmountConsumed,
-            175.0,
-          );
+        // Log it at 175 → lastAmountConsumed = 175.
+        final libraryFood = (await repo.getFoodById(libraryId1))!;
+        await state.logConsumedFoodAt(libraryFood, 175.0);
+        expect((await repo.getFoodById(libraryId1))!.lastAmountConsumed, 175.0);
 
-          // Re-add via the state layer → should return the SAME
-          // library id (catalogId linkage) and NOT touch
-          // lastAmountConsumed.
-          final libraryId2 = await foodLib.addCatalogFoodToLibrary(
-            'catalog-s006',
-          );
-          expect(libraryId2, libraryId1,
-              reason: 'durable linkage reuses the prior library row');
-          final after = await repo.getFoodById(libraryId2);
-          expect(after, isNotNull);
-          expect(after!.lastAmountConsumed, 175.0,
-              reason: 're-add must not reset the remembered amount');
-        },
-      );
+        // Re-add via the state layer → should return the SAME
+        // library id (catalogId linkage) and NOT touch
+        // lastAmountConsumed.
+        final libraryId2 = await foodLib.addCatalogFoodToLibrary(
+          'catalog-s006',
+        );
+        expect(
+          libraryId2,
+          libraryId1,
+          reason: 'durable linkage reuses the prior library row',
+        );
+        final after = await repo.getFoodById(libraryId2);
+        expect(after, isNotNull);
+        expect(
+          after!.lastAmountConsumed,
+          175.0,
+          reason: 're-add must not reset the remembered amount',
+        );
+      });
 
-      test(
-        'count-type food: lastAmountConsumed stores the own-unit amount '
-        '(already a count, not a multiplier)',
-        () async {
-          final repo = await _freshRepo();
-          final state = NutritionState(repo);
-          final food = await seedFood(
-            repo,
-            id: 'food-count',
-            name: 'Egg',
-            unitType: FoodUnitType.count,
-            referenceAmount: 1,
-            referenceLabel: 'egg',
-          );
+      test('count-type food: lastAmountConsumed stores the own-unit amount '
+          '(already a count, not a multiplier)', () async {
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final food = await seedFood(
+          repo,
+          id: 'food-count',
+          name: 'Egg',
+          unitType: FoodUnitType.count,
+          referenceAmount: 1,
+          referenceLabel: 'egg',
+        );
 
-          // 2 eggs. The ConsumedFood stores amountConsumed = 2
-          // (own-unit, not multiplier — the state layer already
-          // multiplies by referenceAmount before persisting).
-          await state.logConsumedFoodAt(food, 2.0);
-          final fetched = await repo.getFoodById(food.id);
-          expect(fetched!.lastAmountConsumed, 2.0);
-        },
-      );
+        // 2 eggs. The ConsumedFood stores amountConsumed = 2
+        // (own-unit, not multiplier — the state layer already
+        // multiplies by referenceAmount before persisting).
+        await state.logConsumedFoodAt(food, 2.0);
+        final fetched = await repo.getFoodById(food.id);
+        expect(fetched!.lastAmountConsumed, 2.0);
+      });
 
-      test(
-        'food-row write does not block the ConsumedFood save when it '
-        'fails (best-effort)',
-        () async {
-          // We verify the contract by reading the existing log:
-          // a successful ConsumedFood write must occur regardless of
-          // whether the food-row write succeeded. We can't easily
-          // inject a food-write failure into the MockWorkoutRepository
-          // without subclassing it; instead, we confirm that the
-          // ConsumeFood row IS persisted with amountConsumed = X
-          // even though the food row does NOT yet reflect the write
-          // (because the implementation calls `updateFood` after
-          // `createConsumedFood` and we don't await it). This pins
-          // the call order: ConsumedFood first, then food row.
-          final repo = await _freshRepo();
-          final state = NutritionState(repo);
-          final food = await seedFood(repo, id: 'food-order');
+      test('food-row write does not block the ConsumedFood save when it '
+          'fails (best-effort)', () async {
+        // We verify the contract by reading the existing log:
+        // a successful ConsumedFood write must occur regardless of
+        // whether the food-row write succeeded. We can't easily
+        // inject a food-write failure into the MockWorkoutRepository
+        // without subclassing it; instead, we confirm that the
+        // ConsumeFood row IS persisted with amountConsumed = X
+        // even though the food row does NOT yet reflect the write
+        // (because the implementation calls `updateFood` after
+        // `createConsumedFood` and we don't await it). This pins
+        // the call order: ConsumedFood first, then food row.
+        final repo = await _freshRepo();
+        final state = NutritionState(repo);
+        final food = await seedFood(repo, id: 'food-order');
 
-          await state.logConsumedFoodAt(food, 175.0);
-          // ConsumedFood row IS persisted.
-          final today = state.consumedToday;
-          expect(today, hasLength(1));
-          expect(today.first.amountConsumed, 175.0);
-          // Food row IS also updated in the happy path.
-          expect(
-            (await repo.getFoodById(food.id))!.lastAmountConsumed,
-            175.0,
-          );
-        },
-      );
+        await state.logConsumedFoodAt(food, 175.0);
+        // ConsumedFood row IS persisted.
+        final today = state.consumedToday;
+        expect(today, hasLength(1));
+        expect(today.first.amountConsumed, 175.0);
+        // Food row IS also updated in the happy path.
+        expect((await repo.getFoodById(food.id))!.lastAmountConsumed, 175.0);
+      });
     });
-
   });
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -140,8 +140,8 @@ class Exercise {
     relevanceScore: m['relevance_score'] as double?,
     defaultRoundDurationSecs: m['default_round_duration_secs'] as int?,
     howToSteps: m['how_to_steps'] != null
-      ? List<String>.from(jsonDecode(m['how_to_steps'] as String) as List)
-      : null,
+        ? List<String>.from(jsonDecode(m['how_to_steps'] as String) as List)
+        : null,
     imageAssetPath: m['image_asset_path'] as String?,
   );
 
@@ -444,10 +444,10 @@ class SegmentEffort {
     segmentId: m['segment_id'] as String,
     orderIndex: m['order_index'] as int,
     topLevelOrderIndex:
-      (m['top_level_order_index'] as int?) ?? (m['order_index'] as int),
+        (m['top_level_order_index'] as int?) ?? (m['order_index'] as int),
     blockOrderIndex:
-      (m['block_order_index'] as int?) ??
-      ((m['block_id'] as String?) != null ? m['order_index'] as int : null),
+        (m['block_order_index'] as int?) ??
+        ((m['block_id'] as String?) != null ? m['order_index'] as int : null),
     effortKind: m['effort_kind'] as String,
     exerciseId: m['exercise_id'] as String?,
     note: m['note'] as String?,
@@ -616,6 +616,7 @@ class WorkoutTemplate {
   final String? focusModality;
   final String? primaryDisciplineId;
   final String? note;
+
   /// `true` when this template shipped as a built-in demo via the versioned
   /// catalog refresh pipeline. The flag is informational only — the refresh
   /// still gates writes on the per-entry tombstone returned by
@@ -1547,18 +1548,21 @@ class TrainingPeriod {
 ///
 /// Pure Dart — no Flutter imports.
 class EntryRest {
-  final String id;         // 'rest-{effortId}-{entryIndex}'
+  final String id; // 'rest-{effortId}-{entryIndex}'
   final String effortId;
-  final int entryIndex;    // 0-based; this rest precedes this set/round
-  final int restStartMs;  // wall-clock epoch ms when previous set was logged
-  final int? restEndMs;   // wall-clock epoch ms when this set/round began; null = still resting
+  final int entryIndex; // 0-based; this rest precedes this set/round
+  final int restStartMs; // wall-clock epoch ms when previous set was logged
+  final int?
+  restEndMs; // wall-clock epoch ms when this set/round began; null = still resting
   /// `true` when the user has tapped the rest tile to stop the counted
   /// time. While `true`, [restPausedAtMs] holds the wall-clock
   /// moment the rest was paused (used to freeze the elapsed display).
   final bool restIsPaused;
+
   /// Wall-clock epoch ms when the rest was paused; `null` while not
   /// paused. Persisted so the pause state survives reloads.
   final int? restPausedAtMs;
+
   /// Accumulated duration the rest spent in the paused state, in
   /// milliseconds. Excluded from the recorded rest duration on
   /// close/finish. The field is the single source of truth for
@@ -1584,8 +1588,8 @@ class EntryRest {
   /// Elapsed rest in whole seconds, excluding any paused interval.
   /// Live (unbounded) while [restEndMs] is null.
   int elapsedSeconds(int nowMs) {
-    final effectiveEndMs = restEndMs ??
-        (restIsPaused ? (restPausedAtMs ?? nowMs) : nowMs);
+    final effectiveEndMs =
+        restEndMs ?? (restIsPaused ? (restPausedAtMs ?? nowMs) : nowMs);
     return ((effectiveEndMs - restStartMs - restPausedDurationMs) / 1000)
         .round()
         .clamp(0, 99999);
@@ -1711,7 +1715,8 @@ class NutritionTarget {
   final double protein;
   final double carbs;
   final double fat;
-  final int? dateMs; // Optional date (ms since epoch); null for legacy global targets
+  final int?
+  dateMs; // Optional date (ms since epoch); null for legacy global targets
 
   NutritionTarget({
     this.calories = 0.0,
@@ -1726,20 +1731,20 @@ class NutritionTarget {
       calories == 0.0 && protein == 0.0 && carbs == 0.0 && fat == 0.0;
 
   factory NutritionTarget.fromMap(Map<String, dynamic> m) => NutritionTarget(
-        calories: ((m['calories'] as num?) ?? 0.0).toDouble(),
-        protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
-        carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
-        fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
-        dateMs: m['date_ms'] as int?,
-      );
+    calories: ((m['calories'] as num?) ?? 0.0).toDouble(),
+    protein: ((m['protein'] as num?) ?? 0.0).toDouble(),
+    carbs: ((m['carbs'] as num?) ?? 0.0).toDouble(),
+    fat: ((m['fat'] as num?) ?? 0.0).toDouble(),
+    dateMs: m['date_ms'] as int?,
+  );
 
   Map<String, dynamic> toMap() => {
-        'calories': calories,
-        'protein': protein,
-        'carbs': carbs,
-        'fat': fat,
-        'date_ms': dateMs,
-      };
+    'calories': calories,
+    'protein': protein,
+    'carbs': carbs,
+    'fat': fat,
+    'date_ms': dateMs,
+  };
 
   NutritionTarget copyWith({
     double? calories,
@@ -1929,8 +1934,7 @@ class Food {
   /// Macros are stored as `double` to support fractional grams
   /// (e.g. `0.5` g of fat); the calorie count is rounded to `int`
   /// at the display boundary because the UI shows whole kcal.
-  int get calories =>
-      (protein * 4 + carbs * 4 + fat * 9).round();
+  int get calories => (protein * 4 + carbs * 4 + fat * 9).round();
 
   /// Computed net carbs: carbs - (fiber ?? 0).
   /// Rounded to `int` for parity with the existing
@@ -1940,7 +1944,8 @@ class Food {
 
   factory Food.fromMap(Map<String, dynamic> m) {
     // Handle legacy rows: if new fields are missing, fall back to serving fields
-    final hasNewFields = m['unit_type'] != null || m['reference_amount'] != null;
+    final hasNewFields =
+        m['unit_type'] != null || m['reference_amount'] != null;
 
     return Food(
       id: m['id'] as String,
@@ -2073,8 +2078,8 @@ const Object _foodCopyWithUnset = Object();
 
 class ConsumedFood {
   final String id;
-  final int loggedAtMs;     // when the user logged this (wall clock)
-  final int dateMs;         // day key (local midnight ms) this counts toward
+  final int loggedAtMs; // when the user logged this (wall clock)
+  final int dateMs; // day key (local midnight ms) this counts toward
 
   // Source reference — nullable if the original food was deleted
   final String? sourceFoodId;
@@ -2298,20 +2303,20 @@ class WaterLogEntry {
   static String idForDate(int dateMs) => 'water-$dateMs';
 
   factory WaterLogEntry.fromMap(Map<String, dynamic> m) => WaterLogEntry(
-        id: m['id'] as String,
-        dateMs: m['date_ms'] as int,
-        volumeMl: m['volume_ml'] as int,
-        createdAtMs: m['created_at_ms'] as int,
-        updatedAtMs: m['updated_at_ms'] as int,
-      );
+    id: m['id'] as String,
+    dateMs: m['date_ms'] as int,
+    volumeMl: m['volume_ml'] as int,
+    createdAtMs: m['created_at_ms'] as int,
+    updatedAtMs: m['updated_at_ms'] as int,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'date_ms': dateMs,
-        'volume_ml': volumeMl,
-        'created_at_ms': createdAtMs,
-        'updated_at_ms': updatedAtMs,
-      };
+    'id': id,
+    'date_ms': dateMs,
+    'volume_ml': volumeMl,
+    'created_at_ms': createdAtMs,
+    'updated_at_ms': updatedAtMs,
+  };
 
   WaterLogEntry copyWith({
     String? id,

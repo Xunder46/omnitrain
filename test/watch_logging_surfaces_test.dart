@@ -634,23 +634,32 @@ void main() {
       ];
 
       final files = [
-        for (final root in const ['lib/watch/logging', 'lib/watch/debug'])
+        for (final root in const [
+          'lib/watch/logging',
+          'lib/watch/nutrition',
+          'lib/watch/debug',
+        ])
           ...Directory('${Directory.current.path}/$root')
               .listSync()
               .whereType<File>()
               .where((file) => file.path.endsWith('.dart')),
-        // The native surface is a new surface too, and its strings are read by
-        // the same rule.
-        File(
-          '${Directory.current.path}/watch/watchos/Sources/'
-          'WatchSessionEngine/WatchLoggingView.swift',
-        ),
+        // The native surfaces are new surfaces too, and their strings are read
+        // by the same rule.
+        for (final surface in const [
+          'WatchLoggingView.swift',
+          'WatchNutritionView.swift',
+        ])
+          File(
+            '${Directory.current.path}/watch/watchos/Sources/'
+            'WatchSessionEngine/$surface',
+          ),
       ];
       expect(files, isNotEmpty);
       expect(
         files.where((file) => file.path.endsWith('.swift')),
         isNotEmpty,
-        reason: 'the watchOS surface must be scanned, not just the Flutter one',
+        reason:
+            'the watchOS surfaces must be scanned, not just the Flutter one',
       );
 
       final quoted = [RegExp(r"'([^'\n]*)'"), RegExp(r'"([^"\n]*)"')];

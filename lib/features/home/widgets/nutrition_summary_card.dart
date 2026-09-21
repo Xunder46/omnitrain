@@ -113,8 +113,7 @@ class NutritionSummaryCard extends StatelessWidget {
 
   /// True when the user has NOT configured a daily calorie target.
   /// Independent of whether food has been logged.
-  bool get _isNoTarget =>
-      targetCalories == null || targetCalories! <= 0;
+  bool get _isNoTarget => targetCalories == null || targetCalories! <= 0;
 
   /// True when the user has not logged any food yet.
   bool get _hasNoConsumedData => consumedCalories <= 0;
@@ -189,8 +188,7 @@ class NutritionSummaryCard extends StatelessWidget {
         type: MaterialType.transparency,
         child: InkWell(
           onTap: onTap,
-          borderRadius:
-              BorderRadius.circular(OmniTheme.surfaceBorderRadius),
+          borderRadius: BorderRadius.circular(OmniTheme.surfaceBorderRadius),
           child: OmniSurface(
             padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
             child: Column(
@@ -268,11 +266,7 @@ class _Headline extends StatelessWidget {
       key: const Key('nutrition_card_headline'),
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(
-          Icons.local_dining_outlined,
-          size: 18,
-          color: headlineColor,
-        ),
+        Icon(Icons.local_dining_outlined, size: 18, color: headlineColor),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -281,11 +275,11 @@ class _Headline extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: headlineColor,
-                  fontWeight: FontWeight.w800,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  letterSpacing: 0.4,
-                ),
+              color: headlineColor,
+              fontWeight: FontWeight.w800,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              letterSpacing: 0.4,
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -399,29 +393,22 @@ class _Gauge extends StatelessWidget {
                   width: fillWidth,
                   child: ClipRRect(
                     key: const Key('nutrition_card_gauge_fill'),
-                    borderRadius:
-                        BorderRadius.circular(_gaugeHeight / 2),
+                    borderRadius: BorderRadius.circular(_gaugeHeight / 2),
                     child: Row(
                       mainAxisSize: MainAxisSize.max,
                       children: [
                         _GaugeSegment(
-                          key: const Key(
-                            'nutrition_card_gauge_segment_0',
-                          ),
+                          key: const Key('nutrition_card_gauge_segment_0'),
                           width: fillWidth * (proteinKcal / totalMacroKcal),
                           color: macros.protein,
                         ),
                         _GaugeSegment(
-                          key: const Key(
-                            'nutrition_card_gauge_segment_1',
-                          ),
+                          key: const Key('nutrition_card_gauge_segment_1'),
                           width: fillWidth * (carbsKcal / totalMacroKcal),
                           color: macros.carbs,
                         ),
                         _GaugeSegment(
-                          key: const Key(
-                            'nutrition_card_gauge_segment_2',
-                          ),
+                          key: const Key('nutrition_card_gauge_segment_2'),
                           width: fillWidth * (fatKcal / totalMacroKcal),
                           color: macros.fat,
                         ),
@@ -444,11 +431,7 @@ class _GaugeSegment extends StatelessWidget {
   final double width;
   final Color color;
 
-  const _GaugeSegment({
-    super.key,
-    required this.width,
-    required this.color,
-  });
+  const _GaugeSegment({super.key, required this.width, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -560,9 +543,7 @@ class _CaptionEntry extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // Empty state: show the dash placeholder, NOT `0%`.
-    final captionText = isEmpty
-        ? '—'
-        : '$label ${percent ?? 0}%';
+    final captionText = isEmpty ? '—' : '$label ${percent ?? 0}%';
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -570,10 +551,7 @@ class _CaptionEntry extends StatelessWidget {
         Container(
           width: _markerSize,
           height: _markerSize,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 6),
         Text(
@@ -581,11 +559,11 @@ class _CaptionEntry extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.labelSmall?.copyWith(
-                color: textColor,
-                fontWeight: FontWeight.w600,
-                fontFeatures: const [FontFeature.tabularFigures()],
-                letterSpacing: 0.4,
-              ),
+            color: textColor,
+            fontWeight: FontWeight.w600,
+            fontFeatures: const [FontFeature.tabularFigures()],
+            letterSpacing: 0.4,
+          ),
         ),
       ],
     );

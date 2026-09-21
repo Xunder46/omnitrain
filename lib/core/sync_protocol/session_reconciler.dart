@@ -235,16 +235,10 @@ class SyncSessionReconciler {
   /// A swap replaces what the slot holds and nothing else — the slot keeps its
   /// id, so entries logged against it still point at it, and the position does
   /// not move.
-  void _swapExercise(
-    String sessionExerciseId,
-    Map<String, Object?> exercise,
-  ) {
+  void _swapExercise(String sessionExerciseId, Map<String, Object?> exercise) {
     final index = _indexOfSlot(sessionExerciseId);
     if (index < 0) return;
-    _exercises[index] = {
-      ...exercise,
-      'sessionExerciseId': sessionExerciseId,
-    };
+    _exercises[index] = {...exercise, 'sessionExerciseId': sessionExerciseId};
   }
 
   /// Points the session at the slot [sessionExerciseId] names, falling back to

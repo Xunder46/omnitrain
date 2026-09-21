@@ -60,9 +60,11 @@ counters are never part of a message.
 | Type | Direction | Purpose | Schema | Fixture |
 |------|-----------|---------|--------|---------|
 | `routines_down` | phone → watch | The user's routines (routine → segments → efforts → per-metric targets) plus the fallback exercise list | `schemas/messages/routines_down.schema.json` | `fixtures/valid/routines_down.json` |
+| `foods_down` | phone → watch | The user's Foods I Eat list — the foods the wrist may quick-log — plus the categories that order it | `schemas/messages/foods_down.schema.json` | `fixtures/valid/foods_down.json` |
 | `exercise_push` | phone → watch | A catalog exercise the user searched for on the phone, pushed into the live session | `schemas/messages/exercise_push.schema.json` | `fixtures/valid/exercise_push.json` |
 | `structure_change` | phone → watch | Add, remove, reorder, swap, correct a logged entry, delete a logged entry | `schemas/messages/structure_change.schema.json` | `fixtures/valid/structure_change.json` |
 | `observations_up` | watch → phone | Append-only observations: sets, timed entries, rounds, holds, nutrition quick-logs | `schemas/messages/observations_up.schema.json` | `fixtures/valid/observations_up.json` |
+| `receipt` | phone → watch | The observations the phone has taken responsibility for — what lets the watch drop an observation it sent | `schemas/messages/receipt.schema.json` | `fixtures/valid/receipt.json` |
 | `session_lifecycle` | either | Session started, exercise advanced, completed, abandoned | `schemas/messages/session_lifecycle.schema.json` | `fixtures/valid/session_lifecycle.json` |
 | `session_snapshot` | either | The full live-session state, exchanged on connect, on reconnect, and after a rejection | `schemas/messages/session_snapshot.schema.json` | `fixtures/valid/session_snapshot.json` |
 | `timer_state` | either | Rest, round, hold, and elapsed timers as wall-clock timestamps plus pause bookkeeping | `schemas/messages/timer_state.schema.json` | `fixtures/valid/timer_state.json` |
@@ -74,6 +76,12 @@ Notes that follow from the schemas:
   reports a `semantic_violation` when coverage is missing.
 - `fallbackExercises` is catalog reference data: it names exercises, not session
   slots, so its entries carry no `sessionExerciseId`.
+- `foods_down` is reference data too, and the wrist owns none of it: a food the
+  user creates, edits or deletes on the phone reaches the watch only in the next
+  `foods_down`, and the watch that quick-logs a food never edits the catalog. A
+  food's `categoryId` is the phone's own grouping, already resolved to the
+  categories the message carries; `null` means the phone groups it under
+  Uncategorized.
 - `exercise_push` is itself the structural edit: it carries `insertAtIndex`
   and the slot it creates. The phone MUST NOT follow it with an `add_exercise`
   change for the same slot.
@@ -84,6 +92,18 @@ Notes that follow from the schemas:
 - An observation event carries both `eventId` and `entryId`. `eventId` is the
   delivery key, `entryId` is the entry's identity; the two are equal in
   practice, and either one alone is enough to reject a duplicate.
+- A `receipt` names the `entryId`s the phone holds. It is deliberately
+  session-free: a nutrition quick-log taken with no workout running names a
+  session the phone does not hold, so `session_snapshot` never carries it back,
+  and without a receipt the watch would re-send it on every connect and could
+  never prune the row. A receipt asserts that the phone has the observation, not
+  that anything changed — a food the phone's library no longer carries is
+  acknowledged too. A snapshot also confirms the `entryId`s it carries, so a
+  receipt is what acknowledges an entry no snapshot carries, and the two are the
+  whole of it: an entry neither message names stays owed.
+  This is the one message type added after v1 was published, and it is additive
+  in the sense that matters here: the two clients ship from this repository in
+  one release, so a receiver that predates the type cannot be in the field.
 - A `session_snapshot` payload carries its own `sessionId`, which MUST match the
   envelope's.
 - An observation event carries the metrics its entry needs: `reps` and `loadKg`

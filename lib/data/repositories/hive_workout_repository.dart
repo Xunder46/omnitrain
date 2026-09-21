@@ -1321,8 +1321,9 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final grouped = <String, List<EffortObservation>>{};
     for (final raw in _observationsBox.values) {
       final observation = EffortObservation.fromMap(_asStringMap(raw));
-      (grouped[observation.effortId] ??= <EffortObservation>[])
-          .add(observation);
+      (grouped[observation.effortId] ??= <EffortObservation>[]).add(
+        observation,
+      );
     }
     return grouped;
   }
@@ -2313,28 +2314,22 @@ class HiveWorkoutRepository implements WorkoutRepository {
     final raw = _waterLogBox.get(key);
     final now = DateTime.now().millisecondsSinceEpoch;
     if (raw == null) {
-      await _waterLogBox.put(
-        key,
-        <String, dynamic>{
-          'id': WaterLogEntry.idForDate(dateMs),
-          'date_ms': dateMs,
-          'volume_ml': clamped,
-          'created_at_ms': now,
-          'updated_at_ms': now,
-        },
-      );
+      await _waterLogBox.put(key, <String, dynamic>{
+        'id': WaterLogEntry.idForDate(dateMs),
+        'date_ms': dateMs,
+        'volume_ml': clamped,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+      });
     } else {
       final existing = _asStringMap(raw);
-      await _waterLogBox.put(
-        key,
-        <String, dynamic>{
-          'id': WaterLogEntry.idForDate(dateMs),
-          'date_ms': dateMs,
-          'volume_ml': clamped,
-          'created_at_ms': (existing['created_at_ms'] as int?) ?? now,
-          'updated_at_ms': now,
-        },
-      );
+      await _waterLogBox.put(key, <String, dynamic>{
+        'id': WaterLogEntry.idForDate(dateMs),
+        'date_ms': dateMs,
+        'volume_ml': clamped,
+        'created_at_ms': (existing['created_at_ms'] as int?) ?? now,
+        'updated_at_ms': now,
+      });
     }
   }
 
@@ -2362,7 +2357,8 @@ class HiveWorkoutRepository implements WorkoutRepository {
 
   @override
   Future<bool> isSeedEntryTouched(String entityType, String id) async {
-    return (_metaBox.get(seedEntryTouchedKey(entityType, id)) as bool?) ?? false;
+    return (_metaBox.get(seedEntryTouchedKey(entityType, id)) as bool?) ??
+        false;
   }
 
   @override

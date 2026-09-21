@@ -236,8 +236,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'STRENGTH',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -298,8 +297,9 @@ class _StatsScreenState extends State<StatsScreen> {
     // reps-axis exercise (`.github/agents/plans/stats-summary-fix-pack-plan.md`,
     // Push-Up mixed-axis bug fix).
     final repsDisplay = lift.repsTrend.toList();
-    final repsHasAddedWeight =
-        repsDisplay.any((p) => (p.extraWeightKg ?? 0) > 0);
+    final repsHasAddedWeight = repsDisplay.any(
+      (p) => (p.extraWeightKg ?? 0) > 0,
+    );
 
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
@@ -407,11 +407,7 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget _buildAddedWeightNote(ThemeData theme, OmniThemeColors themeColors) {
     return Row(
       children: [
-        Icon(
-          Icons.info_outline,
-          size: 14,
-          color: themeColors.textMuted,
-        ),
+        Icon(Icons.info_outline, size: 14, color: themeColors.textMuted),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
@@ -454,10 +450,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -625,8 +618,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'CARDIO',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -661,8 +653,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'ISOMETRIC',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -765,10 +756,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -887,8 +875,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'SPORTS',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -959,8 +946,6 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-
-
   // ── Feeling section ───────────────────────────────────────────────────────
 
   /// The HOW DID IT FEEL section surfaces the post-session feeling
@@ -988,8 +973,7 @@ class _StatsScreenState extends State<StatsScreen> {
       OmniCardHeader(
         title: 'HOW DID IT FEEL',
         actions: [
-          if (data != null)
-            _buildWindowChip(context, themeColors, data.window),
+          if (data != null) _buildWindowChip(context, themeColors, data.window),
         ],
       ),
     ];
@@ -1061,109 +1045,102 @@ class _StatsScreenState extends State<StatsScreen> {
     return OmniSurface(
       padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
       child: ScrollableTrendChart(
-            themeColors: themeColors,
-            bounds: feelingBounds,
-            unitLabel: '',
-            pointCount: trend.length,
-            chartBuilder: (plotWidth) {
-              return LineChart(
-                LineChartData(
-                  minX: 0,
-                  maxX: (trend.length - 1).toDouble(),
-                  minY: feelingBounds.min,
-                  maxY: feelingBounds.max,
-                  lineTouchData: const LineTouchData(enabled: false),
-                  titlesData: FlTitlesData(
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: false,
-                        reservedSize: 0,
-                      ),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: _kBottomAxisReservedSize,
-                        interval: 1,
-                        getTitlesWidget: (value, meta) {
-                          final idx = value.round();
-                          if (idx < 0 || idx >= trend.length) {
-                            return const SizedBox.shrink();
-                          }
-                          if (!ChartAxisHelper.shouldShowDateLabel(
-                            idx,
-                            trend.length,
-                          )) {
-                            return const SizedBox.shrink();
-                          }
-                          return buildEdgeAwareDateLabel(
-                            meta: meta,
-                            text: ChartAxisHelper.formatDateLabel(
-                              trend[idx].date,
-                            ),
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: themeColors.textMuted,
-                            ),
-                            isFirst: idx == 0,
-                            isLast: idx == trend.length - 1,
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    getDrawingHorizontalLine: (_) => FlLine(
-                      color: themeColors.divider,
-                      strokeWidth: 1,
-                    ),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: spots,
-                      color: lineColor,
-                      // Straight segments (no curve) so the line
-                      // reads unambiguously on a 120dp-tall
-                      // chart. Curved segments with sparse data
-                      // can pull control points off-grid and
-                      // render the line as a smear.
-                      isCurved: false,
-                      // 2dp line + 3dp dots — the same conventions every other
-                      // chart on this screen (e1RM, volume, cardio
-                      // pace + distance, cardio duration, nutrition
-                      // calories, nutrition macros) already uses.
-                      // Heavier weights and a glow shadow were tried
-                      // here earlier but made the feeling chart
-                      // visually louder than every other trend on
-                      // the screen; the standard 2dp / 3dp / 1.5dp
-                      // triple reads correctly against the chart
-                      // background on every theme without any
-                      // extra contrast tooling.
-                      barWidth: 2,
-                      isStrokeCapRound: true,
-                      dotData: FlDotData(
-                        show: true,
-                        getDotPainter: (p, x, data, i) => FlDotCirclePainter(
-                          radius: 3,
-                          color: pointColors[i],
-                          strokeWidth: 1.5,
-                        ),
-                      ),
-                    ),
-                  ],
+        themeColors: themeColors,
+        bounds: feelingBounds,
+        unitLabel: '',
+        pointCount: trend.length,
+        chartBuilder: (plotWidth) {
+          return LineChart(
+            LineChartData(
+              minX: 0,
+              maxX: (trend.length - 1).toDouble(),
+              minY: feelingBounds.min,
+              maxY: feelingBounds.max,
+              lineTouchData: const LineTouchData(enabled: false),
+              titlesData: FlTitlesData(
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false, reservedSize: 0),
                 ),
-              );
-            },
-          ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                leftTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: _kBottomAxisReservedSize,
+                    interval: 1,
+                    getTitlesWidget: (value, meta) {
+                      final idx = value.round();
+                      if (idx < 0 || idx >= trend.length) {
+                        return const SizedBox.shrink();
+                      }
+                      if (!ChartAxisHelper.shouldShowDateLabel(
+                        idx,
+                        trend.length,
+                      )) {
+                        return const SizedBox.shrink();
+                      }
+                      return buildEdgeAwareDateLabel(
+                        meta: meta,
+                        text: ChartAxisHelper.formatDateLabel(trend[idx].date),
+                        style: TextStyle(
+                          fontSize: 9,
+                          color: themeColors.textMuted,
+                        ),
+                        isFirst: idx == 0,
+                        isLast: idx == trend.length - 1,
+                      );
+                    },
+                  ),
+                ),
+              ),
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                getDrawingHorizontalLine: (_) =>
+                    FlLine(color: themeColors.divider, strokeWidth: 1),
+              ),
+              borderData: FlBorderData(show: false),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  color: lineColor,
+                  // Straight segments (no curve) so the line
+                  // reads unambiguously on a 120dp-tall
+                  // chart. Curved segments with sparse data
+                  // can pull control points off-grid and
+                  // render the line as a smear.
+                  isCurved: false,
+                  // 2dp line + 3dp dots — the same conventions every other
+                  // chart on this screen (e1RM, volume, cardio
+                  // pace + distance, cardio duration, nutrition
+                  // calories, nutrition macros) already uses.
+                  // Heavier weights and a glow shadow were tried
+                  // here earlier but made the feeling chart
+                  // visually louder than every other trend on
+                  // the screen; the standard 2dp / 3dp / 1.5dp
+                  // triple reads correctly against the chart
+                  // background on every theme without any
+                  // extra contrast tooling.
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(
+                    show: true,
+                    getDotPainter: (p, x, data, i) => FlDotCirclePainter(
+                      radius: 3,
+                      color: pointColors[i],
+                      strokeWidth: 1.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1225,19 +1202,19 @@ class _StatsScreenState extends State<StatsScreen> {
               child: _buildNutritionLegend(theme, themeColors),
             ),
           ] else
-            // S-004: exactly 1 logged day → inline single-point card.
-            if (_nutritionView == _NutritionView.calories)
-              _buildSingleNutritionCaloriesPoint(
-                theme: theme,
-                themeColors: themeColors,
-                point: trend.first,
-              )
-            else
-              _buildSingleNutritionMacrosPoint(
-                theme: theme,
-                themeColors: themeColors,
-                point: trend.first,
-              ),
+          // S-004: exactly 1 logged day → inline single-point card.
+          if (_nutritionView == _NutritionView.calories)
+            _buildSingleNutritionCaloriesPoint(
+              theme: theme,
+              themeColors: themeColors,
+              point: trend.first,
+            )
+          else
+            _buildSingleNutritionMacrosPoint(
+              theme: theme,
+              themeColors: themeColors,
+              point: trend.first,
+            ),
         ],
       ),
     );
@@ -1249,14 +1226,8 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget _buildNutritionToggle(ThemeData theme, OmniThemeColors themeColors) {
     return SegmentedButton<_NutritionView>(
       segments: const [
-        ButtonSegment(
-          value: _NutritionView.calories,
-          label: Text('Calories'),
-        ),
-        ButtonSegment(
-          value: _NutritionView.macros,
-          label: Text('Macros'),
-        ),
+        ButtonSegment(value: _NutritionView.calories, label: Text('Calories')),
+        ButtonSegment(value: _NutritionView.macros, label: Text('Macros')),
       ],
       selected: {_nutritionView},
       onSelectionChanged: (selection) {
@@ -1322,10 +1293,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -1466,24 +1434,12 @@ class _StatsScreenState extends State<StatsScreen> {
         }
         spots.add(FlSpot(i.toDouble(), value(currentTarget)));
       }
-      series.add(_MacroTargetSeries(
-        color: color,
-        spots: spots,
-      ));
+      series.add(_MacroTargetSeries(color: color, spots: spots));
     }
 
-    seriesFor(
-      color: macroColors.protein,
-      value: (t) => t.protein,
-    );
-    seriesFor(
-      color: macroColors.carbs,
-      value: (t) => t.carbs,
-    );
-    seriesFor(
-      color: macroColors.fat,
-      value: (t) => t.fat,
-    );
+    seriesFor(color: macroColors.protein, value: (t) => t.protein);
+    seriesFor(color: macroColors.carbs, value: (t) => t.carbs);
+    seriesFor(color: macroColors.fat, value: (t) => t.fat);
     return [
       for (final s in series)
         LineChartBarData(
@@ -1525,10 +1481,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -1542,7 +1495,8 @@ class _StatsScreenState extends State<StatsScreen> {
                   reservedSize: _kBottomAxisReservedSize,
                   interval: 1,
                   getTitlesWidget: (value, meta) {
-                    if (value == 0 || value == (emptyPointCount - 1).toDouble()) {
+                    if (value == 0 ||
+                        value == (emptyPointCount - 1).toDouble()) {
                       return buildEdgeAwareDateLabel(
                         meta: meta,
                         // Calendar arithmetic, not `subtract(Duration(...))`
@@ -1550,16 +1504,14 @@ class _StatsScreenState extends State<StatsScreen> {
                         // wrong wall-clock day. Cosmetic here (empty-state
                         // axis) but kept consistent with the service so the
                         // pattern does not get copied back out.
-                        text: ChartAxisHelper.formatDateLabel(
-                          () {
-                            final now = DateTime.now();
-                            return DateTime(
-                              now.year,
-                              now.month,
-                              now.day - ((emptyPointCount - 1) - value).toInt(),
-                            );
-                          }(),
-                        ),
+                        text: ChartAxisHelper.formatDateLabel(() {
+                          final now = DateTime.now();
+                          return DateTime(
+                            now.year,
+                            now.month,
+                            now.day - ((emptyPointCount - 1) - value).toInt(),
+                          );
+                        }()),
                         style: TextStyle(
                           fontSize: 9,
                           color: themeColors.textMuted,
@@ -1606,42 +1558,47 @@ class _StatsScreenState extends State<StatsScreen> {
                     color: themeColors.primary.withAlpha(25),
                   ),
                 )
-              else
-                ...[
-                  LineChartBarData(
-                    spots:
-                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
-                    color: macroColors.protein,
-                    isCurved: true,
-                    curveSmoothness: 0.3,
-                    barWidth: 2,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    belowBarData: BarAreaData(show: false),
+              else ...[
+                LineChartBarData(
+                  spots: List.generate(
+                    emptyPointCount,
+                    (i) => FlSpot(i.toDouble(), 0),
                   ),
-                  LineChartBarData(
-                    spots:
-                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
-                    color: macroColors.carbs,
-                    isCurved: true,
-                    curveSmoothness: 0.3,
-                    barWidth: 2,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    belowBarData: BarAreaData(show: false),
+                  color: macroColors.protein,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(show: false),
+                  belowBarData: BarAreaData(show: false),
+                ),
+                LineChartBarData(
+                  spots: List.generate(
+                    emptyPointCount,
+                    (i) => FlSpot(i.toDouble(), 0),
                   ),
-                  LineChartBarData(
-                    spots:
-                        List.generate(emptyPointCount, (i) => FlSpot(i.toDouble(), 0)),
-                    color: macroColors.fat,
-                    isCurved: true,
-                    curveSmoothness: 0.3,
-                    barWidth: 2,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    belowBarData: BarAreaData(show: false),
+                  color: macroColors.carbs,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(show: false),
+                  belowBarData: BarAreaData(show: false),
+                ),
+                LineChartBarData(
+                  spots: List.generate(
+                    emptyPointCount,
+                    (i) => FlSpot(i.toDouble(), 0),
                   ),
-                ],
+                  color: macroColors.fat,
+                  isCurved: true,
+                  curveSmoothness: 0.3,
+                  barWidth: 2,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(show: false),
+                  belowBarData: BarAreaData(show: false),
+                ),
+              ],
             ],
           ),
         );
@@ -1713,10 +1670,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -1973,10 +1927,7 @@ class _StatsScreenState extends State<StatsScreen> {
             lineTouchData: const LineTouchData(enabled: false),
             titlesData: FlTitlesData(
               topTitles: const AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: false,
-                  reservedSize: 0,
-                ),
+                sideTitles: SideTitles(showTitles: false, reservedSize: 0),
               ),
               rightTitles: const AxisTitles(
                 sideTitles: SideTitles(showTitles: false),
@@ -2096,7 +2047,6 @@ class _StatsScreenState extends State<StatsScreen> {
       ],
     );
   }
-
 
   /// Deliberate single-point card for a lift metric (e1RM or volume).
   Widget _buildSinglePointCard({
@@ -2275,10 +2225,7 @@ class _StatsScreenState extends State<StatsScreen> {
   /// line. The dashed line is rendered with a 2-pixel solid
   /// swatch followed by a 2-pixel gap so the legend swatch
   /// matches the on-chart dash pattern.
-  Widget _buildNutritionLegend(
-    ThemeData theme,
-    OmniThemeColors themeColors,
-  ) {
+  Widget _buildNutritionLegend(ThemeData theme, OmniThemeColors themeColors) {
     final macroColors = themeColors.macroChart;
     final hasTarget = (_nutritionAdherence?.targetLine.isNotEmpty ?? false);
     if (_nutritionView == _NutritionView.calories) {
@@ -2312,18 +2259,8 @@ class _StatsScreenState extends State<StatsScreen> {
           'Protein (g)',
           themeColors,
         ),
-        _buildLegendItem(
-          theme,
-          macroColors.carbs,
-          'Carbs (g)',
-          themeColors,
-        ),
-        _buildLegendItem(
-          theme,
-          macroColors.fat,
-          'Fat (g)',
-          themeColors,
-        ),
+        _buildLegendItem(theme, macroColors.carbs, 'Carbs (g)', themeColors),
+        _buildLegendItem(theme, macroColors.fat, 'Fat (g)', themeColors),
         if (hasTarget)
           _buildDashedLegendItem(
             theme,

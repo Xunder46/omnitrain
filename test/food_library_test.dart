@@ -400,11 +400,7 @@ void main() {
         final baselineCatalog = (await repo.getCatalogFoods()).length;
 
         final newId = await repo.createCatalogFood(
-          _testFood(
-            id: 'catalog-new-1',
-            name: 'New Catalog Food',
-            protein: 11,
-          ),
+          _testFood(id: 'catalog-new-1', name: 'New Catalog Food', protein: 11),
         );
 
         // The new row is in the catalog.
@@ -424,59 +420,43 @@ void main() {
       },
     );
 
-    test(
-      'updateCatalogFood overwrites the catalog row in place',
-      () async {
-        final repo = await _freshRepo();
-        // Seed a catalog row.
-        await repo.seedCatalogFood(
-          _testFood(id: 'catalog-update-1', protein: 10),
-        );
+    test('updateCatalogFood overwrites the catalog row in place', () async {
+      final repo = await _freshRepo();
+      // Seed a catalog row.
+      await repo.seedCatalogFood(
+        _testFood(id: 'catalog-update-1', protein: 10),
+      );
 
-        // Read → mutate → write.
-        final original =
-            (await repo.getCatalogFoodById('catalog-update-1'))!;
-        final updated = original.copyWith(
-          name: 'Updated Catalog Food',
-          protein: 50,
-        );
-        await repo.updateCatalogFood(updated);
+      // Read → mutate → write.
+      final original = (await repo.getCatalogFoodById('catalog-update-1'))!;
+      final updated = original.copyWith(
+        name: 'Updated Catalog Food',
+        protein: 50,
+      );
+      await repo.updateCatalogFood(updated);
 
-        // Catalog reflects the change.
-        final reread = await repo.getCatalogFoodById('catalog-update-1');
-        expect(reread!.name, 'Updated Catalog Food');
-        expect(reread.protein, 50);
-      },
-    );
+      // Catalog reflects the change.
+      final reread = await repo.getCatalogFoodById('catalog-update-1');
+      expect(reread!.name, 'Updated Catalog Food');
+      expect(reread.protein, 50);
+    });
 
-    test(
-      'updateCatalogFood throws on a non-catalog food',
-      () async {
-        final repo = await _freshRepo();
-        // _testFood produces a row with isCatalog = false (the
-        // default for user-owned foods).
-        final libRow = _testFood(id: 'not-catalog-1');
-        expect(
-          () => repo.updateCatalogFood(libRow),
-          throwsStateError,
-        );
-      },
-    );
+    test('updateCatalogFood throws on a non-catalog food', () async {
+      final repo = await _freshRepo();
+      // _testFood produces a row with isCatalog = false (the
+      // default for user-owned foods).
+      final libRow = _testFood(id: 'not-catalog-1');
+      expect(() => repo.updateCatalogFood(libRow), throwsStateError);
+    });
 
-    test(
-      'updateCatalogFood throws on an unknown catalog id',
-      () async {
-        final repo = await _freshRepo();
-        final phantom = _testFood(
-          id: 'phantom-1',
-          name: 'Phantom',
-        ).copyWith(isCatalog: true);
-        expect(
-          () => repo.updateCatalogFood(phantom),
-          throwsStateError,
-        );
-      },
-    );
+    test('updateCatalogFood throws on an unknown catalog id', () async {
+      final repo = await _freshRepo();
+      final phantom = _testFood(
+        id: 'phantom-1',
+        name: 'Phantom',
+      ).copyWith(isCatalog: true);
+      expect(() => repo.updateCatalogFood(phantom), throwsStateError);
+    });
   });
 
   // ─── Food groups (Groups tab) (R-2) ──────────────────────────────
@@ -743,62 +723,53 @@ void main() {
     // for any query that resolves to those rows (or to any
     // hidden row added later). The empty-query full-list result
     // also excludes them — only 166 visible rows surface.
-    test(
-      'S-005: searchCatalogFoods filters out hidden catalog rows',
-      () async {
-        final repo = await _freshRepo();
-        final state = FoodLibraryState(repo);
-        await state.loadCatalogFoods();
+    test('S-005: searchCatalogFoods filters out hidden catalog rows', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await state.loadCatalogFoods();
 
-        // The two retired terms return nothing — they were hidden
-        // at the bundled catalog layer because the app's calorie
-        // model cannot represent their alcohol-derived energy.
-        final beer = await state.searchCatalogFoods('beer');
-        expect(
-          beer,
-          isEmpty,
-          reason:
-              'beer_regular must not appear in catalog search; the row '
-              'is hidden by the bundled catalog',
-        );
+      // The two retired terms return nothing — they were hidden
+      // at the bundled catalog layer because the app's calorie
+      // model cannot represent their alcohol-derived energy.
+      final beer = await state.searchCatalogFoods('beer');
+      expect(
+        beer,
+        isEmpty,
+        reason:
+            'beer_regular must not appear in catalog search; the row '
+            'is hidden by the bundled catalog',
+      );
 
-        final wine = await state.searchCatalogFoods('wine');
-        expect(
-          wine,
-          isEmpty,
-          reason:
-              'red_wine must not appear in catalog search; the row is '
-              'hidden by the bundled catalog',
-        );
+      final wine = await state.searchCatalogFoods('wine');
+      expect(
+        wine,
+        isEmpty,
+        reason:
+            'red_wine must not appear in catalog search; the row is '
+            'hidden by the bundled catalog',
+      );
 
-        // The empty-query full list drops the hidden rows too.
-        final all = await state.searchCatalogFoods('');
-        expect(
-          all.length,
-          166,
-          reason: 'empty-query search returns the 166 visible rows only',
-        );
-        expect(
-          all.any((f) => f.id == 'beer_regular'),
-          isFalse,
-        );
-        expect(
-          all.any((f) => f.id == 'red_wine'),
-          isFalse,
-        );
+      // The empty-query full list drops the hidden rows too.
+      final all = await state.searchCatalogFoods('');
+      expect(
+        all.length,
+        166,
+        reason: 'empty-query search returns the 166 visible rows only',
+      );
+      expect(all.any((f) => f.id == 'beer_regular'), isFalse);
+      expect(all.any((f) => f.id == 'red_wine'), isFalse);
 
-        // A close-but-not-equal query still matches unrelated rows.
-        // Sanity check that the search predicate is not degenerate.
-        final beerish = await state.searchCatalogFoods('beef');
-        expect(
-          beerish,
-          isNotEmpty,
-          reason: 'non-hidden rows must still match normally',
-        );
-        for (final f in beerish) {
-          expect(f.id, isNot('beer_regular'));
-        }
-      },
-    );
+      // A close-but-not-equal query still matches unrelated rows.
+      // Sanity check that the search predicate is not degenerate.
+      final beerish = await state.searchCatalogFoods('beef');
+      expect(
+        beerish,
+        isNotEmpty,
+        reason: 'non-hidden rows must still match normally',
+      );
+      for (final f in beerish) {
+        expect(f.id, isNot('beer_regular'));
+      }
+    });
   });
 }

@@ -306,26 +306,29 @@ void main() {
     expect(kinds, unorderedEquals(SyncProtocolValidator.timerKinds));
   });
 
-  test('S-004 every reconciliation fixture converges on its expected state', () {
-    final replayable = scenarios.where(_isReplayable).toList();
-
-    expect(
-      replayable.length,
-      scenarios.length - 1,
-      reason: 'only the version-mismatch scenario is not a replay',
-    );
-
-    for (final scenario in replayable) {
-      final fixture = _readJson('fixtures/${scenario['path']}');
-      final reconciled = _replay(fixture['snapshot'], _streamOf(fixture));
+  test(
+    'S-004 every reconciliation fixture converges on its expected state',
+    () {
+      final replayable = scenarios.where(_isReplayable).toList();
 
       expect(
-        reconciled.convergedState(),
-        equals(fixture['expected']),
-        reason: scenario['property']! as String,
+        replayable.length,
+        scenarios.length - 1,
+        reason: 'only the version-mismatch scenario is not a replay',
       );
-    }
-  });
+
+      for (final scenario in replayable) {
+        final fixture = _readJson('fixtures/${scenario['path']}');
+        final reconciled = _replay(fixture['snapshot'], _streamOf(fixture));
+
+        expect(
+          reconciled.convergedState(),
+          equals(fixture['expected']),
+          reason: scenario['property']! as String,
+        );
+      }
+    },
+  );
 
   test(
     'S-005 removing the current exercise advances to the next valid one',
@@ -355,8 +358,9 @@ void main() {
         reason: 'a running timer elsewhere in the session must be unaffected',
       );
       expect(
-        (state['entries']! as List)
-            .map((entry) => _asObject(entry)['sessionExerciseId']),
+        (state['entries']! as List).map(
+          (entry) => _asObject(entry)['sessionExerciseId'],
+        ),
         containsAll(<String>['sx-bench', 'sx-plank']),
         reason: 'removing a slot must not remove the entries logged against it',
       );
@@ -364,13 +368,15 @@ void main() {
   );
 
   test('S-005 the same exercise in two slots is two addresses', () {
-    final scenario = _readJson('fixtures/reconciliation/repeated_exercise.json');
-    final exercises = _objectsIn(
-      _payloadOf(scenario['snapshot'])['exercises'],
+    final scenario = _readJson(
+      'fixtures/reconciliation/repeated_exercise.json',
     );
+    final exercises = _objectsIn(_payloadOf(scenario['snapshot'])['exercises']);
     final benchSlots = _slotIds(
       exercises
-          .where((exercise) => exercise['exerciseId'] == 'ex-barbell-bench-press')
+          .where(
+            (exercise) => exercise['exerciseId'] == 'ex-barbell-bench-press',
+          )
           .toList(growable: false),
     );
 
@@ -534,4 +540,58 @@ void main() {
       }
     });
   });
+
+  group('the receiver gate', () {
+    /// Every entry point that takes a message from a peer calls
+    /// [SyncProtocolValidator.evaluateOrAccept]: the version check and the
+    /// conformance verdict have one owner, so a receiver cannot answer
+    /// differently from the protocol it claims to speak.
+    test('accepts a conformant message and refuses a malformed one', () {
+      final conformant = _readJson('fixtures/valid/foods_down.json');
+
+      expect(_accepted(conformant), isTrue);
+
+      final malformed = _readJson(
+        'fixtures/invalid/foods_down_missing_food_id.json',
+      );
+      expect(_accepted(malformed), isFalse);
+    });
+
+    test('refuses a message written for another protocol version', () {
+      final otherVersion = {
+        ..._readJson('fixtures/valid/foods_down.json'),
+        'protocolVersion': SyncProtocolValidator.protocolVersion + 1,
+      };
+
+      expect(_accepted(otherVersion), isFalse);
+      expect(
+        _validator
+            .evaluateIncoming(
+              otherVersion,
+              receiverVersion: SyncProtocolValidator.protocolVersion,
+            )
+            .respondWithSnapshot,
+        isTrue,
+        reason: 'a version this build cannot read is answered with a resync',
+      );
+    });
+
+    test('accepts anything when the receiver carries no schemas', () {
+      // A build that ships without the schema set cannot tell a conformant
+      // message from a malformed one, and refusing everything it cannot read
+      // would be worse than reading what it can.
+      expect(
+        SyncProtocolValidator.evaluateOrAccept(null, {'type': 'foods_down'}),
+        isA<SyncMessageDecision>().having(
+          (decision) => decision.accepted,
+          'accepted',
+          isTrue,
+        ),
+      );
+    });
+  });
 }
+
+/// The shared gate's verdict on [message], as every receiver sees it.
+bool _accepted(Map<String, Object?> message) =>
+    SyncProtocolValidator.evaluateOrAccept(_validator, message).accepted;

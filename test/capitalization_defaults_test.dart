@@ -25,13 +25,13 @@ Future<MockWorkoutRepository> _freshRepo() async {
 
 // Finds a TextField whose InputDecoration.labelText matches [label].
 Finder _fieldByLabel(String label) => find.byWidgetPredicate(
-      (w) => w is TextField && w.decoration?.labelText == label,
-    );
+  (w) => w is TextField && w.decoration?.labelText == label,
+);
 
 // Finds a TextField whose InputDecoration.hintText matches [hint].
 Finder _fieldByHint(String hint) => find.byWidgetPredicate(
-      (w) => w is TextField && w.decoration?.hintText == hint,
-    );
+  (w) => w is TextField && w.decoration?.hintText == hint,
+);
 
 void main() {
   group('Capitalization defaults — word-case fields', () {
@@ -43,9 +43,7 @@ void main() {
         final workoutState = WorkoutState(repo);
 
         await tester.pumpWidget(
-          MaterialApp(
-            home: ExerciseEditorScreen(workoutState: workoutState),
-          ),
+          MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
         );
         await tester.pumpAndSettle();
 
@@ -149,70 +147,63 @@ void main() {
         final workoutState = WorkoutState(repo);
 
         await tester.pumpWidget(
-          MaterialApp(
-            home: ExerciseEditorScreen(workoutState: workoutState),
-          ),
+          MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
         );
         await tester.pumpAndSettle();
 
-        final tf =
-            tester.widget<TextField>(_fieldByLabel('Description (optional)'));
+        final tf = tester.widget<TextField>(
+          _fieldByLabel('Description (optional)'),
+        );
         expect(tf.textCapitalization, TextCapitalization.sentences);
       },
     );
   });
 
   group('Capitalization defaults — no-capitalization fields', () {
-    testWidgets(
-      'numeric set-logging field has no auto-capitalization',
-      (tester) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: NumericFieldWithDoneBar(
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Reps'),
-              ),
+    testWidgets('numeric set-logging field has no auto-capitalization', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NumericFieldWithDoneBar(
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Reps'),
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        final tf = tester.widget<TextField>(_fieldByLabel('Reps'));
-        expect(tf.textCapitalization, TextCapitalization.none);
-      },
-    );
+      final tf = tester.widget<TextField>(_fieldByLabel('Reps'));
+      expect(tf.textCapitalization, TextCapitalization.none);
+    });
 
-    testWidgets(
-      'exercise search field has no auto-capitalization',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1000));
-        final repo = await _freshRepo();
-        final workoutState = WorkoutState(repo);
+    testWidgets('exercise search field has no auto-capitalization', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1000));
+      final repo = await _freshRepo();
+      final workoutState = WorkoutState(repo);
 
-        // Show the exercise picker screen directly
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ExercisePickerScreen(workoutState: workoutState),
-          ),
-        );
-        await tester.pumpAndSettle();
+      // Show the exercise picker screen directly
+      await tester.pumpWidget(
+        MaterialApp(home: ExercisePickerScreen(workoutState: workoutState)),
+      );
+      await tester.pumpAndSettle();
 
-        final tf = tester.widget<TextField>(
-          _fieldByHint('Search exercises...'),
-        );
-        expect(tf.textCapitalization, TextCapitalization.none);
+      final tf = tester.widget<TextField>(_fieldByHint('Search exercises...'));
+      expect(tf.textCapitalization, TextCapitalization.none);
 
-        await tester.tap(_fieldByHint('Search exercises...'));
-        await tester.pump();
-        await tester.enterText(_fieldByHint('Search exercises...'), 'abc');
-        await tester.pump();
-        final updatedTf = tester.widget<TextField>(
-          _fieldByHint('Search exercises...'),
-        );
-        expect(updatedTf.controller?.text, 'abc');
-      },
-    );
+      await tester.tap(_fieldByHint('Search exercises...'));
+      await tester.pump();
+      await tester.enterText(_fieldByHint('Search exercises...'), 'abc');
+      await tester.pump();
+      final updatedTf = tester.widget<TextField>(
+        _fieldByHint('Search exercises...'),
+      );
+      expect(updatedTf.controller?.text, 'abc');
+    });
   });
 
   group('Capitalization defaults — manual override preserved', () {
@@ -224,9 +215,7 @@ void main() {
         final workoutState = WorkoutState(repo);
 
         await tester.pumpWidget(
-          MaterialApp(
-            home: ExerciseEditorScreen(workoutState: workoutState),
-          ),
+          MaterialApp(home: ExerciseEditorScreen(workoutState: workoutState)),
         );
         await tester.pumpAndSettle();
 

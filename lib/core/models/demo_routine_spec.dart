@@ -38,10 +38,7 @@ class DemoRoutineEffortSpec {
 /// Lightweight immutable spec describing one demo routine segment and the
 /// efforts it owns.
 class DemoRoutineSegmentSpec {
-  const DemoRoutineSegmentSpec({
-    required this.segment,
-    required this.efforts,
-  });
+  const DemoRoutineSegmentSpec({required this.segment, required this.efforts});
 
   final TemplateSegment segment;
   final List<DemoRoutineEffortSpec> efforts;
@@ -52,10 +49,7 @@ class DemoRoutineSegmentSpec {
 /// contains the segment + effort + target hierarchy that gets persisted
 /// alongside the template by the refresh orchestrator.
 class DemoRoutineBundle {
-  const DemoRoutineBundle({
-    required this.template,
-    required this.segments,
-  });
+  const DemoRoutineBundle({required this.template, required this.segments});
 
   final WorkoutTemplate template;
   final List<DemoRoutineSegmentSpec> segments;

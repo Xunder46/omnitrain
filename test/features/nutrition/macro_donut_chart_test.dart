@@ -93,21 +93,24 @@ void main() {
       }
     });
 
-    test('n=3 (net carbs + fat + protein): all three gaps equal gapDegrees', () {
-      final sections = computeMacroSections(
-        protein: 50,
-        netCarbs: 50,
-        fiber: 0,
-        fat: 50,
-        gapDegrees: 1.5,
-      );
-      expect(sections.length, 3);
-      final gaps = gapsOf(sections, gapRad: 1.5 * math.pi / 180.0);
-      expect(gaps.length, 3);
-      for (final g in gaps) {
-        expect(g, closeTo(1.5 * math.pi / 180.0, 1e-9));
-      }
-    });
+    test(
+      'n=3 (net carbs + fat + protein): all three gaps equal gapDegrees',
+      () {
+        final sections = computeMacroSections(
+          protein: 50,
+          netCarbs: 50,
+          fiber: 0,
+          fat: 50,
+          gapDegrees: 1.5,
+        );
+        expect(sections.length, 3);
+        final gaps = gapsOf(sections, gapRad: 1.5 * math.pi / 180.0);
+        expect(gaps.length, 3);
+        for (final g in gaps) {
+          expect(g, closeTo(1.5 * math.pi / 180.0, 1e-9));
+        }
+      },
+    );
 
     test('n=4 (all macros non-zero): all four gaps equal gapDegrees', () {
       final sections = computeMacroSections(
@@ -142,10 +145,7 @@ void main() {
       );
       final gaps = gapsOf(sections, gapRad: 1.5 * math.pi / 180.0);
       final totalGap = gaps.fold<double>(0, (sum, g) => sum + g);
-      expect(
-        totalSweep + totalGap,
-        closeTo(2 * math.pi, 1e-9),
-      );
+      expect(totalSweep + totalGap, closeTo(2 * math.pi, 1e-9));
     });
 
     test('non-uniform weights: gap equality still holds', () {
@@ -188,8 +188,10 @@ void main() {
         fat: 25,
         gapDegrees: 1.5,
       );
-      expect(sections[0].startAngleRadians,
-          closeTo(-math.pi / 2 + 1.5 * math.pi / 180.0 / 2, 1e-9));
+      expect(
+        sections[0].startAngleRadians,
+        closeTo(-math.pi / 2 + 1.5 * math.pi / 180.0 / 2, 1e-9),
+      );
     });
   });
 
@@ -227,7 +229,11 @@ void main() {
       );
       // Taps at the mid-angle of each section, just inside the band.
       for (var i = 0; i < sections.length; i++) {
-        final p = pointAtPainterAngle(sections[i].midAngleRadians, midR, chartSize);
+        final p = pointAtPainterAngle(
+          sections[i].midAngleRadians,
+          midR,
+          chartSize,
+        );
         final hit = resolveSectionHit(
           sections: sections,
           localPosition: p,
@@ -235,7 +241,11 @@ void main() {
           bandInnerRadius: inner,
           bandOuterRadius: outer,
         );
-        expect(hit, i, reason: 'cardinal angle $i should resolve to section $i');
+        expect(
+          hit,
+          i,
+          reason: 'cardinal angle $i should resolve to section $i',
+        );
       }
     });
 
@@ -257,7 +267,11 @@ void main() {
       // A tap just below 12 o'clock (so it lands inside the band,
       // not on the gap seam at -π/2 + gap/2). Use the mid-angle of
       // section 0 instead of the literal 12 o'clock.
-      final p = pointAtPainterAngle(sections[0].midAngleRadians, midR, chartSize);
+      final p = pointAtPainterAngle(
+        sections[0].midAngleRadians,
+        midR,
+        chartSize,
+      );
       final hit = resolveSectionHit(
         sections: sections,
         localPosition: p,
@@ -327,8 +341,11 @@ void main() {
     test('every theme defines a chartLabelDark color', () {
       for (final theme in AppTheme.values) {
         final colors = OmniTheme.colorsForTheme(theme);
-        expect(colors.macroChart.chartLabelDark, isA<Color>(),
-            reason: 'theme $theme is missing chartLabelDark on macroChart');
+        expect(
+          colors.macroChart.chartLabelDark,
+          isA<Color>(),
+          reason: 'theme $theme is missing chartLabelDark on macroChart',
+        );
       }
     });
 
@@ -441,8 +458,10 @@ void main() {
       for (var i = 0; i < labels.length; i++) {
         final l = labels[i];
         final s = sections[i];
-        final expectedX = chartSize.width / 2 + midR * math.cos(s.midAngleRadians);
-        final expectedY = chartSize.height / 2 + midR * math.sin(s.midAngleRadians);
+        final expectedX =
+            chartSize.width / 2 + midR * math.cos(s.midAngleRadians);
+        final expectedY =
+            chartSize.height / 2 + midR * math.sin(s.midAngleRadians);
         expect(l.position!.dx, closeTo(expectedX, 1e-6));
         expect(l.position!.dy, closeTo(expectedY, 1e-6));
       }
@@ -470,8 +489,11 @@ void main() {
       // section. Every section's text and position are null.
       expect(labels, isNotEmpty);
       for (final l in labels) {
-        expect(l.text, isNull,
-            reason: 'all sections too narrow for the 200px stub');
+        expect(
+          l.text,
+          isNull,
+          reason: 'all sections too narrow for the 200px stub',
+        );
         expect(l.position, isNull);
       }
     });
@@ -502,11 +524,17 @@ void main() {
       // Find the Protein label (the wide one) — should be non-null.
       final netCarbs = labels.firstWhere((l) => l.sectionName == 'Net Carbs');
       final protein = labels.firstWhere((l) => l.sectionName == 'Protein');
-      expect(netCarbs.text, isNull,
-          reason: 'narrow Net Carbs section should hide its label');
+      expect(
+        netCarbs.text,
+        isNull,
+        reason: 'narrow Net Carbs section should hide its label',
+      );
       expect(netCarbs.position, isNull);
-      expect(protein.text, isNotNull,
-          reason: 'wide Protein section should keep its label');
+      expect(
+        protein.text,
+        isNotNull,
+        reason: 'wide Protein section should keep its label',
+      );
       expect(protein.position, isNotNull);
     });
 

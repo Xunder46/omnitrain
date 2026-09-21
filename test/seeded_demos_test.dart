@@ -248,10 +248,7 @@ void main() {
 
         // User deletes it — repo + tombstone.
         await repo.deleteTemplate(firstId);
-        await repo.markSeedEntryTouched(
-          SeedEntryType.routineTemplate,
-          firstId,
-        );
+        await repo.markSeedEntryTouched(SeedEntryType.routineTemplate, firstId);
 
         // Trigger another refresh (simulating a re-bundled catalog).
         await CatalogRefreshService(repo, _bundledSource()).refresh();
@@ -279,9 +276,7 @@ void main() {
         expect(original, isNotNull);
         expect(original!.isBuiltInDemo, isTrue);
 
-        await repo.updateTemplate(
-          original.copyWith(name: 'My Renamed Demo'),
-        );
+        await repo.updateTemplate(original.copyWith(name: 'My Renamed Demo'));
         await repo.markSeedEntryTouched(
           SeedEntryType.routineTemplate,
           targetId,
@@ -363,20 +358,23 @@ void main() {
       );
     });
 
-    test('V-002: every demo effort carries targets appropriate to its kind', () {
-      final result = DemoRoutinesValidator.validate(
-        SeedData.sampleDemoRoutineBundles,
-        exerciseIds,
-        exerciseCapabilities: capabilities,
-      );
-      expect(
-        result.isValid,
-        isTrue,
-        reason:
-            'every demo effort must declare its kind-appropriate targets; '
-            'failures: ${result.failures.join(", ")}',
-      );
-    });
+    test(
+      'V-002: every demo effort carries targets appropriate to its kind',
+      () {
+        final result = DemoRoutinesValidator.validate(
+          SeedData.sampleDemoRoutineBundles,
+          exerciseIds,
+          exerciseCapabilities: capabilities,
+        );
+        expect(
+          result.isValid,
+          isTrue,
+          reason:
+              'every demo effort must declare its kind-appropriate targets; '
+              'failures: ${result.failures.join(", ")}',
+        );
+      },
+    );
 
     test('V-005: a hold-capable drill may declare no targets at all', () {
       final hold = _syntheticOneExerciseDemo(
@@ -443,10 +441,7 @@ void main() {
       final orphan = _syntheticOneExerciseDemo(
         exerciseId: 'exercise-does-not-exist',
       );
-      final result = DemoRoutinesValidator.validate(
-        [orphan],
-        exerciseIds,
-      );
+      final result = DemoRoutinesValidator.validate([orphan], exerciseIds);
       expect(result.isValid, isFalse);
       expect(result.failures, isNotEmpty);
     });
@@ -463,10 +458,7 @@ void main() {
           ),
         ],
       );
-      final result = DemoRoutinesValidator.validate(
-        [bad],
-        exerciseIds,
-      );
+      final result = DemoRoutinesValidator.validate([bad], exerciseIds);
       expect(result.isValid, isFalse);
     });
   });
@@ -507,11 +499,7 @@ DemoRoutineBundle _syntheticOneExerciseDemo({
   required String exerciseId,
   String effortKind = 'set',
   List<DemoRoutineTargetSpec> metrics = const [
-    DemoRoutineTargetSpec(
-      metricId: MetricIds.reps,
-      setIndex: 0,
-      targetInt: 10,
-    ),
+    DemoRoutineTargetSpec(metricId: MetricIds.reps, setIndex: 0, targetInt: 10),
     DemoRoutineTargetSpec(
       metricId: MetricIds.weight,
       setIndex: 0,

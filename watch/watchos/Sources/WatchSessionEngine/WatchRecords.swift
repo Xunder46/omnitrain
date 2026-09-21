@@ -45,6 +45,49 @@ public enum WatchLifecycleState {
     public static let abandoned = "abandoned"
 }
 
+/// The `kind` an observation carries, matching `observations_up`'s event enum
+/// (PROTOCOL.md, "Message families").
+public enum WatchObservationKind {
+    public static let set = "set"
+    public static let timed = "timed"
+    public static let round = "round"
+    public static let hold = "hold"
+
+    /// A food the user quick-logged. The one kind that is not tied to a session
+    /// slot: it names a food and a portion, and nothing else.
+    public static let nutritionQuickLog = "nutrition_quick_log"
+
+    public static let all = [set, timed, round, hold, nutritionQuickLog]
+}
+
+/// The session id a nutrition quick-log carries when the wrist has no session
+/// to put it in.
+///
+/// `observations_up` requires a non-empty `sessionId`, and the quick-log
+/// surface is reachable with no workout running — eating is not a training
+/// event. A log taken outside a session therefore names the day's nutrition
+/// log rather than inventing a training session; a log taken while a session is
+/// running rides that session instead, so it is part of the workout's story.
+public enum WatchNutritionSession {
+    public static let prefix = "nutrition-"
+
+    /// The id standalone quick-logs logged at `loggedAt` carry, in UTC.
+    public static func idFor(_ loggedAt: Date) -> String {
+        let utc = UTC.calendar.dateComponents([.year, .month, .day], from: loggedAt)
+        let month = String(format: "%02d", utc.month ?? 1)
+        let day = String(format: "%02d", utc.day ?? 1)
+        return "\(prefix)\(utc.year ?? 0)-\(month)-\(day)"
+    }
+}
+
+private enum UTC {
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+}
+
 /// What a sensor sample measures, and in which unit.
 ///
 /// The watch stores raw readings; nothing here is derived analytics, and the
@@ -567,6 +610,7 @@ public enum StoredWatchRecord {
     public static let sensorSampleType = "sensor_sample"
     public static let confirmationType = "confirmation"
     public static let routineCatalogType = "routine_catalog"
+    public static let foodCatalogType = "food_catalog"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
@@ -574,6 +618,7 @@ public enum StoredWatchRecord {
     case sensorSample(WatchSensorSampleRecord)
     case confirmation(WatchConfirmationRecord)
     case routineCatalog(WatchRoutineCatalogRecord)
+    case foodCatalog(WatchFoodCatalogRecord)
 
     public var recordType: String {
         switch self {
@@ -583,6 +628,7 @@ public enum StoredWatchRecord {
         case .sensorSample: return Self.sensorSampleType
         case .confirmation: return Self.confirmationType
         case .routineCatalog: return Self.routineCatalogType
+        case .foodCatalog: return Self.foodCatalogType
         }
     }
 
@@ -594,6 +640,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.recordId
         case .confirmation(let row): return row.recordId
         case .routineCatalog(let row): return row.recordId
+        case .foodCatalog(let row): return row.recordId
         }
     }
 
@@ -605,6 +652,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.sessionId
         case .confirmation(let row): return row.sessionId
         case .routineCatalog(let row): return row.sessionId
+        case .foodCatalog(let row): return row.sessionId
         }
     }
 
@@ -616,6 +664,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.recordedAt
         case .confirmation(let row): return row.recordedAt
         case .routineCatalog(let row): return row.recordedAt
+        case .foodCatalog(let row): return row.recordedAt
         }
     }
 
@@ -627,6 +676,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.sequence
         case .confirmation(let row): return row.sequence
         case .routineCatalog(let row): return row.sequence
+        case .foodCatalog(let row): return row.sequence
         }
     }
 
@@ -638,6 +688,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return .sensorSample(row.withSequence(sequence))
         case .confirmation(let row): return .confirmation(row.withSequence(sequence))
         case .routineCatalog(let row): return .routineCatalog(row.withSequence(sequence))
+        case .foodCatalog(let row): return .foodCatalog(row.withSequence(sequence))
         }
     }
 
@@ -649,6 +700,7 @@ public enum StoredWatchRecord {
         case .sensorSample(let row): return row.toJson()
         case .confirmation(let row): return row.toJson()
         case .routineCatalog(let row): return row.toJson()
+        case .foodCatalog(let row): return row.toJson()
         }
     }
 
@@ -663,6 +715,7 @@ public enum StoredWatchRecord {
         case sensorSampleType: return .sensorSample(try WatchSensorSampleRecord.fromJson(json))
         case confirmationType: return .confirmation(try WatchConfirmationRecord.fromJson(json))
         case routineCatalogType: return .routineCatalog(try WatchRoutineCatalogRecord.fromJson(json))
+        case foodCatalogType: return .foodCatalog(try WatchFoodCatalogRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)
         }
     }

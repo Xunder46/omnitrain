@@ -497,7 +497,10 @@ abstract class WorkoutRepository {
 
   /// Get all non-archived foods belonging to a specific group.
   /// Pass [includeArchived] = true to include archived foods.
-  Future<List<Food>> getFoodsByGroup(String groupId, {bool includeArchived = false});
+  Future<List<Food>> getFoodsByGroup(
+    String groupId, {
+    bool includeArchived = false,
+  });
 
   /// Get a single food by ID, or null if not found.
   Future<Food?> getFoodById(String id);

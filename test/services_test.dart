@@ -549,150 +549,143 @@ void main() {
 
       // S-T-001: cross-surface parity — the same seed yields the same
       // "is this a PR" verdict in all three surfaces.
-      test(
-        'S-T-001 cross-surface parity: same set, '
-        'toast + Stats + summary all record a PR',
-        () async {
-          // ── Surface A: in-session toast ───────────────────────────
-          // At the moment the user logs the new set, s-new is in-progress.
-          // getAllTimeBestE1RM(exA) excludes in-progress sessions, so the
-          // standing best is s-old's 70.0.
-          final toastRepo = await _freshRepo();
-          final toastEx = (await toastRepo.getExercises()).first;
-          await _seedCompletedSetSession(
-            toastRepo,
-            sessionId: 's-old',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
-            exerciseId: toastEx.id,
-            reps: 5,
-            weight: 60.0, // e1RM 70.0
-          );
-          // In-progress session with the new set (reps=5, weight=70 → e1RM ~81.67).
-          final toastSession = await _seedCompletedSetSession(
-            toastRepo,
-            sessionId: 's-new',
-            startedAtMs: 3000,
-            endedAtMs: 4000,
-            exerciseId: toastEx.id,
-            reps: 5,
-            weight: 70.0,
-          );
-          // Re-write s-new as in-progress by clearing endedAtMs.
-          await toastRepo.updateSession(
-            TrainingSession(
-              id: toastSession.id,
-              ownerUserId: toastSession.ownerUserId,
-              startedAtMs: toastSession.startedAtMs,
-              // endedAtMs: null — the toast sees an in-progress session.
-              createdAtMs: toastSession.createdAtMs,
-              updatedAtMs: toastSession.startedAtMs,
-            ),
-          );
-          final standingBestA =
-              await StatsProgressService(toastRepo)
-                  .getAllTimeBestE1RM(toastEx.id);
-          expect(standingBestA, 70.0);
-          final justLoggedE1rmA =
-              StatsProgressService.epley1RM(70.0, 5)!;
-          expect(justLoggedE1rmA, greaterThan(standingBestA));
+      test('S-T-001 cross-surface parity: same set, '
+          'toast + Stats + summary all record a PR', () async {
+        // ── Surface A: in-session toast ───────────────────────────
+        // At the moment the user logs the new set, s-new is in-progress.
+        // getAllTimeBestE1RM(exA) excludes in-progress sessions, so the
+        // standing best is s-old's 70.0.
+        final toastRepo = await _freshRepo();
+        final toastEx = (await toastRepo.getExercises()).first;
+        await _seedCompletedSetSession(
+          toastRepo,
+          sessionId: 's-old',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: toastEx.id,
+          reps: 5,
+          weight: 60.0, // e1RM 70.0
+        );
+        // In-progress session with the new set (reps=5, weight=70 → e1RM ~81.67).
+        final toastSession = await _seedCompletedSetSession(
+          toastRepo,
+          sessionId: 's-new',
+          startedAtMs: 3000,
+          endedAtMs: 4000,
+          exerciseId: toastEx.id,
+          reps: 5,
+          weight: 70.0,
+        );
+        // Re-write s-new as in-progress by clearing endedAtMs.
+        await toastRepo.updateSession(
+          TrainingSession(
+            id: toastSession.id,
+            ownerUserId: toastSession.ownerUserId,
+            startedAtMs: toastSession.startedAtMs,
+            // endedAtMs: null — the toast sees an in-progress session.
+            createdAtMs: toastSession.createdAtMs,
+            updatedAtMs: toastSession.startedAtMs,
+          ),
+        );
+        final standingBestA = await StatsProgressService(
+          toastRepo,
+        ).getAllTimeBestE1RM(toastEx.id);
+        expect(standingBestA, 70.0);
+        final justLoggedE1rmA = StatsProgressService.epley1RM(70.0, 5)!;
+        expect(justLoggedE1rmA, greaterThan(standingBestA));
 
-          // ── Surface B: Stats screen ────────────────────────────────
-          // Both sessions completed; Stats PR detection walks the per-day
-          // e1RM trend and must register s-new as a PR.
-          // Sessions are anchored to recent days so the new
-          // recency floor (`StatsProgressService.kTopExerciseRecencyDays`)
-          // keeps the exercise eligible for selection.
-          final statsRepo = await _freshRepo();
-          final statsEx = (await statsRepo.getExercises()).first;
-          final now = DateTime.now();
-          final todayMidnight = DateTime(now.year, now.month, now.day);
-          final sOldMs = todayMidnight
-              .subtract(const Duration(days: 2))
-              .millisecondsSinceEpoch;
-          final sNewMs = todayMidnight
-              .subtract(const Duration(days: 1))
-              .millisecondsSinceEpoch;
-          await _seedCompletedSetSession(
-            statsRepo,
-            sessionId: 's-old',
-            startedAtMs: sOldMs,
-            endedAtMs: sOldMs + 3600000,
-            exerciseId: statsEx.id,
-            reps: 5,
-            weight: 60.0,
-          );
-          await _seedCompletedSetSession(
-            statsRepo,
-            sessionId: 's-new',
-            startedAtMs: sNewMs,
-            endedAtMs: sNewMs + 3600000,
-            exerciseId: statsEx.id,
-            reps: 5,
-            weight: 70.0,
-          );
-          final statsData =
-              await StatsProgressService(statsRepo).computeProgressData();
-          final statsPRs = statsData.recentPRs
-              .where((pr) => pr.exerciseName == statsEx.name)
-              .toList();
-          expect(statsPRs, hasLength(1));
-          expect(statsPRs.first.e1Rm, closeTo(81.6667, 0.001));
+        // ── Surface B: Stats screen ────────────────────────────────
+        // Both sessions completed; Stats PR detection walks the per-day
+        // e1RM trend and must register s-new as a PR.
+        // Sessions are anchored to recent days so the new
+        // recency floor (`StatsProgressService.kTopExerciseRecencyDays`)
+        // keeps the exercise eligible for selection.
+        final statsRepo = await _freshRepo();
+        final statsEx = (await statsRepo.getExercises()).first;
+        final now = DateTime.now();
+        final todayMidnight = DateTime(now.year, now.month, now.day);
+        final sOldMs = todayMidnight
+            .subtract(const Duration(days: 2))
+            .millisecondsSinceEpoch;
+        final sNewMs = todayMidnight
+            .subtract(const Duration(days: 1))
+            .millisecondsSinceEpoch;
+        await _seedCompletedSetSession(
+          statsRepo,
+          sessionId: 's-old',
+          startedAtMs: sOldMs,
+          endedAtMs: sOldMs + 3600000,
+          exerciseId: statsEx.id,
+          reps: 5,
+          weight: 60.0,
+        );
+        await _seedCompletedSetSession(
+          statsRepo,
+          sessionId: 's-new',
+          startedAtMs: sNewMs,
+          endedAtMs: sNewMs + 3600000,
+          exerciseId: statsEx.id,
+          reps: 5,
+          weight: 70.0,
+        );
+        final statsData = await StatsProgressService(
+          statsRepo,
+        ).computeProgressData();
+        final statsPRs = statsData.recentPRs
+            .where((pr) => pr.exerciseName == statsEx.name)
+            .toList();
+        expect(statsPRs, hasLength(1));
+        expect(statsPRs.first.e1Rm, closeTo(81.6667, 0.001));
 
-          // ── Surface C: Session Summary ─────────────────────────────
-          // s-new is the just-finished session. computePRs must use
-          // getAllTimeBestE1RM with excludeSessionId so the just-finished
-          // session's own PR is not compared against itself.
-          final summaryRepo = await _freshRepo();
-          final summaryEx = (await summaryRepo.getExercises()).first;
-          await _seedCompletedSetSession(
-            summaryRepo,
-            sessionId: 's-old',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
+        // ── Surface C: Session Summary ─────────────────────────────
+        // s-new is the just-finished session. computePRs must use
+        // getAllTimeBestE1RM with excludeSessionId so the just-finished
+        // session's own PR is not compared against itself.
+        final summaryRepo = await _freshRepo();
+        final summaryEx = (await summaryRepo.getExercises()).first;
+        await _seedCompletedSetSession(
+          summaryRepo,
+          sessionId: 's-old',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: summaryEx.id,
+          reps: 5,
+          weight: 60.0, // e1RM 70.0
+        );
+        final summarySession = await _seedCompletedSetSession(
+          summaryRepo,
+          sessionId: 's-new',
+          startedAtMs: 3000,
+          endedAtMs: 4000,
+          exerciseId: summaryEx.id,
+          reps: 5,
+          weight: 70.0, // e1RM ~81.67
+        );
+        const newE1rm = 70.0 * (1 + 5 / 30);
+
+        final summaryPRs = await SessionSummaryService(summaryRepo).computePRs([
+          ExerciseSummary(
             exerciseId: summaryEx.id,
-            reps: 5,
-            weight: 60.0, // e1RM 70.0
-          );
-          final summarySession = await _seedCompletedSetSession(
-            summaryRepo,
-            sessionId: 's-new',
-            startedAtMs: 3000,
-            endedAtMs: 4000,
-            exerciseId: summaryEx.id,
-            reps: 5,
-            weight: 70.0, // e1RM ~81.67
-          );
-          const newE1rm = 70.0 * (1 + 5 / 30);
+            name: summaryEx.name,
+            effortKind: 'set',
+            setsCompleted: 1,
+            bestWeight: 70.0,
+            bestE1RM: newE1rm,
+            executionOrder: 0,
+          ),
+        ], currentSessionId: summarySession.id);
 
-          final summaryPRs =
-              await SessionSummaryService(summaryRepo).computePRs(
-            [
-              ExerciseSummary(
-                exerciseId: summaryEx.id,
-                name: summaryEx.name,
-                effortKind: 'set',
-                setsCompleted: 1,
-                bestWeight: 70.0,
-                bestE1RM: newE1rm,
-                executionOrder: 0,
-              ),
-            ],
-            currentSessionId: summarySession.id,
-          );
+        expect(summaryPRs, hasLength(1));
+        expect(summaryPRs.first.exerciseName, summaryEx.name);
+        expect(summaryPRs.first.newBest, closeTo(newE1rm, 0.001));
+        expect(summaryPRs.first.previousBest, 70.0);
 
-          expect(summaryPRs, hasLength(1));
-          expect(summaryPRs.first.exerciseName, summaryEx.name);
-          expect(summaryPRs.first.newBest, closeTo(newE1rm, 0.001));
-          expect(summaryPRs.first.previousBest, 70.0);
-
-          // ── Parity assertion ─────────────────────────────────────
-          // The summary's recorded PR e1RM equals the toast's
-          // justLoggedE1rm and the Stats screen's recorded PR e1RM.
-          expect(summaryPRs.first.newBest, statsPRs.first.e1Rm);
-          expect(summaryPRs.first.newBest, justLoggedE1rmA);
-        },
-      );
+        // ── Parity assertion ─────────────────────────────────────
+        // The summary's recorded PR e1RM equals the toast's
+        // justLoggedE1rm and the Stats screen's recorded PR e1RM.
+        expect(summaryPRs.first.newBest, statsPRs.first.e1Rm);
+        expect(summaryPRs.first.newBest, justLoggedE1rmA);
+      });
 
       // S-T-002: first-ever performance is a PR.
       test('S-T-002 first-ever performance is a PR', () async {
@@ -713,21 +706,17 @@ void main() {
         );
         const newE1rm = 60.0 * (1 + 5 / 30);
 
-        final prs =
-            await SessionSummaryService(repo).computePRs(
-          [
-            ExerciseSummary(
-              exerciseId: ex.id,
-              name: ex.name,
-              effortKind: 'set',
-              setsCompleted: 1,
-              bestWeight: 60.0,
-              bestE1RM: newE1rm,
-              executionOrder: 0,
-            ),
-          ],
-          currentSessionId: session.id,
-        );
+        final prs = await SessionSummaryService(repo).computePRs([
+          ExerciseSummary(
+            exerciseId: ex.id,
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 1,
+            bestWeight: 60.0,
+            bestE1RM: newE1rm,
+            executionOrder: 0,
+          ),
+        ], currentSessionId: session.id);
 
         expect(prs, hasLength(1));
         expect(prs.first.previousBest, 0);
@@ -737,61 +726,55 @@ void main() {
       // S-T-003: rep-driven PR — more reps at a lower weight can
       // produce a higher e1RM. Under the OLD raw-weight definition
       // this was hidden; the new definition surfaces it.
-      test(
-        'S-T-003 rep-driven PR: more reps at a lower weight → PR',
-        () async {
-          final repo = await _freshRepo();
-          final exercises = await repo.getExercises();
-          final ex = exercises.first;
+      test('S-T-003 rep-driven PR: more reps at a lower weight → PR', () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final ex = exercises.first;
 
-          // History: 100 × 1 → e1RM 103.333. Old definition would have
-          // used raw top weight (100) and would not detect a PR when
-          // the new set's top weight is lower (80). New definition
-          // uses e1RM and DOES detect a PR.
-          await _seedCompletedSetSession(
-            repo,
-            sessionId: 'past',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
+        // History: 100 × 1 → e1RM 103.333. Old definition would have
+        // used raw top weight (100) and would not detect a PR when
+        // the new set's top weight is lower (80). New definition
+        // uses e1RM and DOES detect a PR.
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 'past',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: ex.id,
+          reps: 1,
+          weight: 100.0,
+        );
+        final session = await _seedCompletedSetSession(
+          repo,
+          sessionId: 'now',
+          startedAtMs: 3000,
+          endedAtMs: 4000,
+          exerciseId: ex.id,
+          reps: 10,
+          weight: 80.0, // e1RM = 80 × (1 + 10/30) = 106.667
+        );
+
+        // Recompute the actually-logged e1RM using the canonical
+        // helper (the summary uses the same formula).
+        final newE1rm = StatsProgressService.epley1RM(80.0, 10)!;
+        expect(newE1rm, closeTo(106.6667, 0.001));
+
+        final prs = await SessionSummaryService(repo).computePRs([
+          ExerciseSummary(
             exerciseId: ex.id,
-            reps: 1,
-            weight: 100.0,
-          );
-          final session = await _seedCompletedSetSession(
-            repo,
-            sessionId: 'now',
-            startedAtMs: 3000,
-            endedAtMs: 4000,
-            exerciseId: ex.id,
-            reps: 10,
-            weight: 80.0, // e1RM = 80 × (1 + 10/30) = 106.667
-          );
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 1,
+            bestWeight: 80.0, // lower than historical top weight
+            bestE1RM: newE1rm,
+            executionOrder: 0,
+          ),
+        ], currentSessionId: session.id);
 
-          // Recompute the actually-logged e1RM using the canonical
-          // helper (the summary uses the same formula).
-          final newE1rm = StatsProgressService.epley1RM(80.0, 10)!;
-          expect(newE1rm, closeTo(106.6667, 0.001));
-
-          final prs = await SessionSummaryService(repo).computePRs(
-            [
-              ExerciseSummary(
-                exerciseId: ex.id,
-                name: ex.name,
-                effortKind: 'set',
-                setsCompleted: 1,
-                bestWeight: 80.0, // lower than historical top weight
-                bestE1RM: newE1rm,
-                executionOrder: 0,
-              ),
-            ],
-            currentSessionId: session.id,
-          );
-
-          expect(prs, hasLength(1));
-          expect(prs.first.previousBest, closeTo(103.3333, 0.001));
-          expect(prs.first.newBest, closeTo(106.6667, 0.001));
-        },
-      );
+        expect(prs, hasLength(1));
+        expect(prs.first.previousBest, closeTo(103.3333, 0.001));
+        expect(prs.first.newBest, closeTo(106.6667, 0.001));
+      });
 
       // S-T-004: non-strength effort never produces a PR even when
       // bestE1RM is artificially populated.
@@ -839,20 +822,17 @@ void main() {
           weight: 60.0, // same e1RM 70.0
         );
 
-        final prs = await SessionSummaryService(repo).computePRs(
-          [
-            ExerciseSummary(
-              exerciseId: ex.id,
-              name: ex.name,
-              effortKind: 'set',
-              setsCompleted: 1,
-              bestWeight: 60.0,
-              bestE1RM: 70.0,
-              executionOrder: 0,
-            ),
-          ],
-          currentSessionId: session.id,
-        );
+        final prs = await SessionSummaryService(repo).computePRs([
+          ExerciseSummary(
+            exerciseId: ex.id,
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 1,
+            bestWeight: 60.0,
+            bestE1RM: 70.0,
+            executionOrder: 0,
+          ),
+        ], currentSessionId: session.id);
 
         expect(prs, isEmpty);
       });
@@ -882,20 +862,17 @@ void main() {
           weight: 50.0, // e1RM 55.0
         );
 
-        final prs = await SessionSummaryService(repo).computePRs(
-          [
-            ExerciseSummary(
-              exerciseId: ex.id,
-              name: ex.name,
-              effortKind: 'set',
-              setsCompleted: 1,
-              bestWeight: 50.0,
-              bestE1RM: 55.0,
-              executionOrder: 0,
-            ),
-          ],
-          currentSessionId: session.id,
-        );
+        final prs = await SessionSummaryService(repo).computePRs([
+          ExerciseSummary(
+            exerciseId: ex.id,
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 1,
+            bestWeight: 50.0,
+            bestE1RM: 55.0,
+            executionOrder: 0,
+          ),
+        ], currentSessionId: session.id);
 
         expect(prs, isEmpty);
       });
@@ -903,156 +880,144 @@ void main() {
       // S-T-007: getAllTimeBestE1RM zero-arg path unchanged.
       // (Locks down that the toast's behavior is preserved by adding
       // the optional excludeSessionId parameter — D-3 / D-6.)
-      test(
-        'S-T-007 getAllTimeBestE1RM with no excludeSessionId '
-        'excludes in-progress sessions only',
-        () async {
-          final repo = await _freshRepo();
-          final exercises = await repo.getExercises();
-          final ex = exercises.first;
+      test('S-T-007 getAllTimeBestE1RM with no excludeSessionId '
+          'excludes in-progress sessions only', () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final ex = exercises.first;
 
-          await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-old',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
-            exerciseId: ex.id,
-            reps: 5,
-            weight: 60.0, // e1RM 70.0
-          );
-          // Build an in-progress session manually so we can set its
-          // observation e1RM above the historical best without
-          // _seedCompletedSetSession forcibly closing it.
-          final session = TrainingSession(
-            id: 's-in-progress',
-            ownerUserId: 'u-1',
-            startedAtMs: 3000,
-            // endedAtMs: null → in-progress
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-old',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 60.0, // e1RM 70.0
+        );
+        // Build an in-progress session manually so we can set its
+        // observation e1RM above the historical best without
+        // _seedCompletedSetSession forcibly closing it.
+        final session = TrainingSession(
+          id: 's-in-progress',
+          ownerUserId: 'u-1',
+          startedAtMs: 3000,
+          // endedAtMs: null → in-progress
+          createdAtMs: 3000,
+          updatedAtMs: 3000,
+        );
+        await repo.createSession(session);
+        final segId = 'seg-s-in-progress';
+        await repo.createSegment(
+          SessionSegment(
+            id: segId,
+            sessionId: 's-in-progress',
+            orderIndex: 0,
+            segmentType: 'main',
             createdAtMs: 3000,
             updatedAtMs: 3000,
-          );
-          await repo.createSession(session);
-          final segId = 'seg-s-in-progress';
-          await repo.createSegment(
-            SessionSegment(
-              id: segId,
-              sessionId: 's-in-progress',
-              orderIndex: 0,
-              segmentType: 'main',
-              createdAtMs: 3000,
-              updatedAtMs: 3000,
-            ),
-          );
-          final effortId = 'eff-s-in-progress';
-          await repo.createEffort(
-            SegmentEffort(
-              id: effortId,
-              segmentId: segId,
-              orderIndex: 0,
-              effortKind: 'set',
-              exerciseId: ex.id,
-              createdAtMs: 3000,
-              updatedAtMs: 3000,
-            ),
-          );
-          await repo.createObservation(
-            EffortObservation(
-              id: 'obs-reps-in-progress',
-              effortId: effortId,
-              metricId: 'metric-reps',
-              valueInt: 5,
-              createdAtMs: 3000,
-              updatedAtMs: 3000,
-            ),
-          );
-          await repo.createObservation(
-            EffortObservation(
-              id: 'obs-weight-in-progress',
-              effortId: effortId,
-              metricId: 'metric-weight',
-              valueReal: 90.0, // e1RM 105
-              createdAtMs: 3001,
-              updatedAtMs: 3001,
-            ),
-          );
+          ),
+        );
+        final effortId = 'eff-s-in-progress';
+        await repo.createEffort(
+          SegmentEffort(
+            id: effortId,
+            segmentId: segId,
+            orderIndex: 0,
+            effortKind: 'set',
+            exerciseId: ex.id,
+            createdAtMs: 3000,
+            updatedAtMs: 3000,
+          ),
+        );
+        await repo.createObservation(
+          EffortObservation(
+            id: 'obs-reps-in-progress',
+            effortId: effortId,
+            metricId: 'metric-reps',
+            valueInt: 5,
+            createdAtMs: 3000,
+            updatedAtMs: 3000,
+          ),
+        );
+        await repo.createObservation(
+          EffortObservation(
+            id: 'obs-weight-in-progress',
+            effortId: effortId,
+            metricId: 'metric-weight',
+            valueReal: 90.0, // e1RM 105
+            createdAtMs: 3001,
+            updatedAtMs: 3001,
+          ),
+        );
 
-          final service = StatsProgressService(repo);
-          // Zero-arg (toast path): in-progress excluded → 70.0.
-          expect(await service.getAllTimeBestE1RM(ex.id), 70.0);
-          // Explicit exclude (summary path): same answer, 70.0.
-          expect(
-            await service.getAllTimeBestE1RM(
-              ex.id,
-              excludeSessionId: 's-in-progress',
-            ),
-            70.0,
-          );
-          // And the in-progress session's e1RM does NOT show up in
-          // either call — its 105.0 must remain hidden.
-        },
-      );
+        final service = StatsProgressService(repo);
+        // Zero-arg (toast path): in-progress excluded → 70.0.
+        expect(await service.getAllTimeBestE1RM(ex.id), 70.0);
+        // Explicit exclude (summary path): same answer, 70.0.
+        expect(
+          await service.getAllTimeBestE1RM(
+            ex.id,
+            excludeSessionId: 's-in-progress',
+          ),
+          70.0,
+        );
+        // And the in-progress session's e1RM does NOT show up in
+        // either call — its 105.0 must remain hidden.
+      });
 
       // S-T-008: getAllTimeBestE1RM(excludeSessionId) excludes only
       // the named session.
-      test(
-        'S-T-008 getAllTimeBestE1RM(excludeSessionId) '
-        'excludes only the named session',
-        () async {
-          final repo = await _freshRepo();
-          final exercises = await repo.getExercises();
-          final ex = exercises.first;
+      test('S-T-008 getAllTimeBestE1RM(excludeSessionId) '
+          'excludes only the named session', () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final ex = exercises.first;
 
-          await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-1',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
-            exerciseId: ex.id,
-            reps: 5,
-            weight: 60.0, // e1RM 70.0
-          );
-          await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-2',
-            startedAtMs: 3000,
-            endedAtMs: 4000,
-            exerciseId: ex.id,
-            reps: 5,
-            weight: 80.0, // e1RM ~93.33
-          );
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-1',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 60.0, // e1RM 70.0
+        );
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-2',
+          startedAtMs: 3000,
+          endedAtMs: 4000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 80.0, // e1RM ~93.33
+        );
 
-          final service = StatsProgressService(repo);
-          // Unfiltered: max of both = ~93.33.
-          expect(
-            await service.getAllTimeBestE1RM(ex.id),
-            closeTo(93.3333, 0.001),
-          );
-          // Exclude s-2: just s-1 = 70.0.
-          expect(
-            await service.getAllTimeBestE1RM(
-              ex.id,
-              excludeSessionId: 's-2',
-            ),
-            70.0,
-          );
-          // Exclude s-1: just s-2 = ~93.33.
-          expect(
-            await service.getAllTimeBestE1RM(
-              ex.id,
-              excludeSessionId: 's-1',
-            ),
-            closeTo(93.3333, 0.001),
-          );
-          // Excluding an unrelated id is a no-op.
-          expect(
-            await service.getAllTimeBestE1RM(
-              ex.id,
-              excludeSessionId: 's-does-not-exist',
-            ),
-            closeTo(93.3333, 0.001),
-          );
-        },
-      );
+        final service = StatsProgressService(repo);
+        // Unfiltered: max of both = ~93.33.
+        expect(
+          await service.getAllTimeBestE1RM(ex.id),
+          closeTo(93.3333, 0.001),
+        );
+        // Exclude s-2: just s-1 = 70.0.
+        expect(
+          await service.getAllTimeBestE1RM(ex.id, excludeSessionId: 's-2'),
+          70.0,
+        );
+        // Exclude s-1: just s-2 = ~93.33.
+        expect(
+          await service.getAllTimeBestE1RM(ex.id, excludeSessionId: 's-1'),
+          closeTo(93.3333, 0.001),
+        );
+        // Excluding an unrelated id is a no-op.
+        expect(
+          await service.getAllTimeBestE1RM(
+            ex.id,
+            excludeSessionId: 's-does-not-exist',
+          ),
+          closeTo(93.3333, 0.001),
+        );
+      });
 
       // ── Stats & Summary Fix Pack — PR 1 (PR de-duplication) ─────────────
       //
@@ -1072,83 +1037,77 @@ void main() {
 
       // S-001: same exercise in 3 cloned blocks, all beating the prior
       // best → exactly one PR entry at the true maximum.
-      test(
-        'S-001 same exercise in 3 cloned blocks → exactly one PR entry '
-        'at the true maximum',
-        () async {
-          final repo = await _freshRepo();
-          final exercises = await repo.getExercises();
-          final ex = exercises.first;
+      test('S-001 same exercise in 3 cloned blocks → exactly one PR entry '
+          'at the true maximum', () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final ex = exercises.first;
 
-          // Prior history: 60 × 5 → e1RM 70.0.
-          await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-prior',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
+        // Prior history: 60 × 5 → e1RM 70.0.
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-prior',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 60.0,
+        );
+        final currentSession = await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-current',
+          startedAtMs: 3000,
+          endedAtMs: 4000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 70.0, // e1RM ~81.67
+        );
+
+        // Three `ExerciseSummary` entries for the same exercise,
+        // simulating three cloned blocks that each logged the
+        // same set. Each entry's `bestE1RM` is the same — the
+        // session's only qualifying effort — but they are
+        // independent `ExerciseSummary` rows so the bug-fix has
+        // to actually collapse them.
+        const newE1rm = 70.0 * (1 + 5 / 30);
+        final prs = await SessionSummaryService(repo).computePRs([
+          ExerciseSummary(
             exerciseId: ex.id,
-            reps: 5,
-            weight: 60.0,
-          );
-          final currentSession = await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-current',
-            startedAtMs: 3000,
-            endedAtMs: 4000,
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 3,
+            bestWeight: 70.0,
+            bestE1RM: newE1rm,
+            executionOrder: 0,
+            blockId: 'block-1',
+          ),
+          ExerciseSummary(
             exerciseId: ex.id,
-            reps: 5,
-            weight: 70.0, // e1RM ~81.67
-          );
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 3,
+            bestWeight: 70.0,
+            bestE1RM: newE1rm,
+            executionOrder: 1,
+            blockId: 'block-2',
+          ),
+          ExerciseSummary(
+            exerciseId: ex.id,
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 3,
+            bestWeight: 70.0,
+            bestE1RM: newE1rm,
+            executionOrder: 2,
+            blockId: 'block-3',
+          ),
+        ], currentSessionId: currentSession.id);
 
-          // Three `ExerciseSummary` entries for the same exercise,
-          // simulating three cloned blocks that each logged the
-          // same set. Each entry's `bestE1RM` is the same — the
-          // session's only qualifying effort — but they are
-          // independent `ExerciseSummary` rows so the bug-fix has
-          // to actually collapse them.
-          const newE1rm = 70.0 * (1 + 5 / 30);
-          final prs = await SessionSummaryService(repo).computePRs(
-            [
-              ExerciseSummary(
-                exerciseId: ex.id,
-                name: ex.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 70.0,
-                bestE1RM: newE1rm,
-                executionOrder: 0,
-                blockId: 'block-1',
-              ),
-              ExerciseSummary(
-                exerciseId: ex.id,
-                name: ex.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 70.0,
-                bestE1RM: newE1rm,
-                executionOrder: 1,
-                blockId: 'block-2',
-              ),
-              ExerciseSummary(
-                exerciseId: ex.id,
-                name: ex.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 70.0,
-                bestE1RM: newE1rm,
-                executionOrder: 2,
-                blockId: 'block-3',
-              ),
-            ],
-            currentSessionId: currentSession.id,
-          );
-
-          expect(prs, hasLength(1));
-          expect(prs.first.exerciseName, ex.name);
-          expect(prs.first.newBest, closeTo(newE1rm, 0.001));
-          expect(prs.first.previousBest, 70.0);
-        },
-      );
+        expect(prs, hasLength(1));
+        expect(prs.first.exerciseName, ex.name);
+        expect(prs.first.newBest, closeTo(newE1rm, 0.001));
+        expect(prs.first.previousBest, 70.0);
+      });
 
       // S-002: two different exercises, each in multiple blocks → one
       // entry each, at their respective maximums.
@@ -1197,61 +1156,58 @@ void main() {
           const newE1rmA = 80.0 * (1 + 5 / 30);
           const newE1rmB = 70.0 * (1 + 5 / 30);
 
-          final prs = await SessionSummaryService(repo).computePRs(
-            [
-              ExerciseSummary(
-                exerciseId: exA.id,
-                name: exA.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 80.0,
-                bestE1RM: newE1rmA,
-                executionOrder: 0,
-                blockId: 'A-block-1',
-              ),
-              ExerciseSummary(
-                exerciseId: exA.id,
-                name: exA.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 80.0,
-                bestE1RM: newE1rmA,
-                executionOrder: 1,
-                blockId: 'A-block-2',
-              ),
-              ExerciseSummary(
-                exerciseId: exA.id,
-                name: exA.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 80.0,
-                bestE1RM: newE1rmA,
-                executionOrder: 2,
-                blockId: 'A-block-3',
-              ),
-              ExerciseSummary(
-                exerciseId: exB.id,
-                name: exB.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 70.0,
-                bestE1RM: newE1rmB,
-                executionOrder: 3,
-                blockId: 'B-block-1',
-              ),
-              ExerciseSummary(
-                exerciseId: exB.id,
-                name: exB.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 70.0,
-                bestE1RM: newE1rmB,
-                executionOrder: 4,
-                blockId: 'B-block-2',
-              ),
-            ],
-            currentSessionId: currentSession.id,
-          );
+          final prs = await SessionSummaryService(repo).computePRs([
+            ExerciseSummary(
+              exerciseId: exA.id,
+              name: exA.name,
+              effortKind: 'set',
+              setsCompleted: 3,
+              bestWeight: 80.0,
+              bestE1RM: newE1rmA,
+              executionOrder: 0,
+              blockId: 'A-block-1',
+            ),
+            ExerciseSummary(
+              exerciseId: exA.id,
+              name: exA.name,
+              effortKind: 'set',
+              setsCompleted: 3,
+              bestWeight: 80.0,
+              bestE1RM: newE1rmA,
+              executionOrder: 1,
+              blockId: 'A-block-2',
+            ),
+            ExerciseSummary(
+              exerciseId: exA.id,
+              name: exA.name,
+              effortKind: 'set',
+              setsCompleted: 3,
+              bestWeight: 80.0,
+              bestE1RM: newE1rmA,
+              executionOrder: 2,
+              blockId: 'A-block-3',
+            ),
+            ExerciseSummary(
+              exerciseId: exB.id,
+              name: exB.name,
+              effortKind: 'set',
+              setsCompleted: 3,
+              bestWeight: 70.0,
+              bestE1RM: newE1rmB,
+              executionOrder: 3,
+              blockId: 'B-block-1',
+            ),
+            ExerciseSummary(
+              exerciseId: exB.id,
+              name: exB.name,
+              effortKind: 'set',
+              setsCompleted: 3,
+              bestWeight: 70.0,
+              bestE1RM: newE1rmB,
+              executionOrder: 4,
+              blockId: 'B-block-2',
+            ),
+          ], currentSessionId: currentSession.id);
 
           expect(prs, hasLength(2));
           final byName = {for (final p in prs) p.exerciseName: p};
@@ -1264,132 +1220,120 @@ void main() {
 
       // S-003: cloned block that does NOT beat the prior best →
       // zero record entries for that exercise.
-      test(
-        'S-003 cloned blocks below prior best → zero PR entries',
-        () async {
-          final repo = await _freshRepo();
-          final exercises = await repo.getExercises();
-          final ex = exercises.first;
+      test('S-003 cloned blocks below prior best → zero PR entries', () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final ex = exercises.first;
 
-          // Prior history: 80 × 5 → e1RM ~93.33 (high bar).
-          await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-prior',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
+        // Prior history: 80 × 5 → e1RM ~93.33 (high bar).
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-prior',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 80.0,
+        );
+        final currentSession = await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-current',
+          startedAtMs: 3000,
+          endedAtMs: 4000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 70.0, // e1RM ~81.67 — strictly below 93.33
+        );
+
+        // Two cloned blocks, both below the prior best.
+        const belowBest = 70.0 * (1 + 5 / 30);
+        final prs = await SessionSummaryService(repo).computePRs([
+          ExerciseSummary(
             exerciseId: ex.id,
-            reps: 5,
-            weight: 80.0,
-          );
-          final currentSession = await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-current',
-            startedAtMs: 3000,
-            endedAtMs: 4000,
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 3,
+            bestWeight: 70.0,
+            bestE1RM: belowBest,
+            executionOrder: 0,
+            blockId: 'block-1',
+          ),
+          ExerciseSummary(
             exerciseId: ex.id,
-            reps: 5,
-            weight: 70.0, // e1RM ~81.67 — strictly below 93.33
-          );
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 3,
+            bestWeight: 70.0,
+            bestE1RM: belowBest,
+            executionOrder: 1,
+            blockId: 'block-2',
+          ),
+        ], currentSessionId: currentSession.id);
 
-          // Two cloned blocks, both below the prior best.
-          const belowBest = 70.0 * (1 + 5 / 30);
-          final prs = await SessionSummaryService(repo).computePRs(
-            [
-              ExerciseSummary(
-                exerciseId: ex.id,
-                name: ex.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 70.0,
-                bestE1RM: belowBest,
-                executionOrder: 0,
-                blockId: 'block-1',
-              ),
-              ExerciseSummary(
-                exerciseId: ex.id,
-                name: ex.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 70.0,
-                bestE1RM: belowBest,
-                executionOrder: 1,
-                blockId: 'block-2',
-              ),
-            ],
-            currentSessionId: currentSession.id,
-          );
-
-          expect(prs, isEmpty);
-        },
-      );
+        expect(prs, isEmpty);
+      });
 
       // S-004: collapsing across blocks picks the maximum even when
       // entries disagree on `bestE1RM` (e.g. block-1 had 70 kg × 5,
       // block-2 had 80 kg × 5 — same exercise, different block
       // maxima). The single surviving entry must be at 80 × 5.
-      test(
-        'S-004 collapsing picks the maximum across blocks',
-        () async {
-          final repo = await _freshRepo();
-          final exercises = await repo.getExercises();
-          final ex = exercises.first;
+      test('S-004 collapsing picks the maximum across blocks', () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final ex = exercises.first;
 
-          await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-prior',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
+        await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-prior',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 60.0, // e1RM 70.0
+        );
+        final currentSession = await _seedCompletedSetSession(
+          repo,
+          sessionId: 's-current',
+          startedAtMs: 3000,
+          endedAtMs: 4000,
+          exerciseId: ex.id,
+          reps: 5,
+          weight: 80.0,
+        );
+
+        const e1rm70 = 70.0 * (1 + 5 / 30); // ~81.67
+        const e1rm80 = 80.0 * (1 + 5 / 30); // ~93.33
+
+        final prs = await SessionSummaryService(repo).computePRs([
+          // Lower block — appears first in executionOrder but is
+          // NOT the session maximum.
+          ExerciseSummary(
             exerciseId: ex.id,
-            reps: 5,
-            weight: 60.0, // e1RM 70.0
-          );
-          final currentSession = await _seedCompletedSetSession(
-            repo,
-            sessionId: 's-current',
-            startedAtMs: 3000,
-            endedAtMs: 4000,
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 3,
+            bestWeight: 70.0,
+            bestE1RM: e1rm70,
+            executionOrder: 0,
+            blockId: 'block-lower',
+          ),
+          // Higher block — must win.
+          ExerciseSummary(
             exerciseId: ex.id,
-            reps: 5,
-            weight: 80.0,
-          );
+            name: ex.name,
+            effortKind: 'set',
+            setsCompleted: 3,
+            bestWeight: 80.0,
+            bestE1RM: e1rm80,
+            executionOrder: 1,
+            blockId: 'block-higher',
+          ),
+        ], currentSessionId: currentSession.id);
 
-          const e1rm70 = 70.0 * (1 + 5 / 30); // ~81.67
-          const e1rm80 = 80.0 * (1 + 5 / 30); // ~93.33
-
-          final prs = await SessionSummaryService(repo).computePRs(
-            [
-              // Lower block — appears first in executionOrder but is
-              // NOT the session maximum.
-              ExerciseSummary(
-                exerciseId: ex.id,
-                name: ex.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 70.0,
-                bestE1RM: e1rm70,
-                executionOrder: 0,
-                blockId: 'block-lower',
-              ),
-              // Higher block — must win.
-              ExerciseSummary(
-                exerciseId: ex.id,
-                name: ex.name,
-                effortKind: 'set',
-                setsCompleted: 3,
-                bestWeight: 80.0,
-                bestE1RM: e1rm80,
-                executionOrder: 1,
-                blockId: 'block-higher',
-              ),
-            ],
-            currentSessionId: currentSession.id,
-          );
-
-          expect(prs, hasLength(1));
-          expect(prs.first.newBest, closeTo(e1rm80, 0.001));
-          expect(prs.first.previousBest, 70.0);
-        },
-      );
+        expect(prs, hasLength(1));
+        expect(prs.first.newBest, closeTo(e1rm80, 0.001));
+        expect(prs.first.previousBest, 70.0);
+      });
     });
 
     group('session summary redesign helpers', () {
@@ -1625,8 +1569,8 @@ void main() {
               id: 'rest-wide',
               effortId: effortId,
               entryIndex: 0,
-              restStartMs: sessionStart - 5000,  // 5 s before session
-              restEndMs: sessionEnd + 5000,       // 5 s after session
+              restStartMs: sessionStart - 5000, // 5 s before session
+              restEndMs: sessionEnd + 5000, // 5 s after session
               createdAtMs: sessionStart,
               updatedAtMs: sessionEnd,
             ),
@@ -1659,64 +1603,61 @@ void main() {
         },
       );
 
-      test(
-        'buildGroupMetrics counts timed entries as rounds for cardio',
-        () async {
-          final repo = await _freshRepo();
-          final service = SessionSummaryService(repo);
+      test('buildGroupMetrics counts timed entries as rounds for cardio', () async {
+        final repo = await _freshRepo();
+        final service = SessionSummaryService(repo);
 
-          // NOTE: totalVolume is pre-computed and passed in here — this test
-          // validates grouping/metric logic, not the write-path kg canonicalization.
-          // Round-trip canonicalization is covered in data_tracking_fixes_test.dart.
-          final summary = SessionSummary(
-            sessionId: 's1',
-            title: 'test',
-            startedAtMs: 1000,
-            endedAtMs: 2000,
-            totalDurationMs: 1000,
-            totalVolume: 1200,
-            totalSets: 5,
-            totalRounds: 3,
-            totalCardioDurationMs: 90000,
-            totalDrillDurationMs: 45000,
-            exercises: [
-              ExerciseSummary(
-                exerciseId: 'a',
-                name: 'Run',
-                effortKind: 'timed',
-                setsCompleted: 4,
-                bestWeight: null,
-                executionOrder: 0,
-                totalDurationMs: 90000,
-              ),
-              ExerciseSummary(
-                exerciseId: 'b',
-                name: 'Plank',
-                effortKind: 'drill',
-                setsCompleted: 2,
-                bestWeight: null,
-                executionOrder: 1,
-                totalDurationMs: 45000,
-              ),
-              ExerciseSummary(
-                exerciseId: 'c',
-                name: 'Spar',
-                effortKind: 'round',
-                setsCompleted: 3,
-                bestWeight: null,
-                executionOrder: 2,
-                totalRounds: 3,
-              ),
-            ],
-          );
+        // NOTE: totalVolume is pre-computed and passed in here — this test
+        // validates grouping/metric logic, not the write-path kg canonicalization.
+        // Round-trip canonicalization is covered in data_tracking_fixes_test.dart.
+        final summary = SessionSummary(
+          sessionId: 's1',
+          title: 'test',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          totalDurationMs: 1000,
+          totalVolume: 1200,
+          totalSets: 5,
+          totalRounds: 3,
+          totalCardioDurationMs: 90000,
+          totalDrillDurationMs: 45000,
+          exercises: [
+            ExerciseSummary(
+              exerciseId: 'a',
+              name: 'Run',
+              effortKind: 'timed',
+              setsCompleted: 4,
+              bestWeight: null,
+              executionOrder: 0,
+              totalDurationMs: 90000,
+            ),
+            ExerciseSummary(
+              exerciseId: 'b',
+              name: 'Plank',
+              effortKind: 'drill',
+              setsCompleted: 2,
+              bestWeight: null,
+              executionOrder: 1,
+              totalDurationMs: 45000,
+            ),
+            ExerciseSummary(
+              exerciseId: 'c',
+              name: 'Spar',
+              effortKind: 'round',
+              setsCompleted: 3,
+              bestWeight: null,
+              executionOrder: 2,
+              totalRounds: 3,
+            ),
+          ],
+        );
 
-          final metrics = await service.buildGroupMetrics(summary);
-          expect(metrics['cardio']?.primaryCount, 4);
-          expect(metrics['cardio']?.effortDurationMs, 90000);
-          expect(metrics['rounds']?.primaryCount, 3);
-          expect(metrics['isometric']?.primaryCount, 2);
-        },
-      );
+        final metrics = await service.buildGroupMetrics(summary);
+        expect(metrics['cardio']?.primaryCount, 4);
+        expect(metrics['cardio']?.effortDurationMs, 90000);
+        expect(metrics['rounds']?.primaryCount, 3);
+        expect(metrics['isometric']?.primaryCount, 2);
+      });
     });
 
     // ── saveRoutineFromDraft ──────────────────────────────────────────────
@@ -2445,9 +2386,15 @@ void main() {
         await service.fireEffortTimerAlert('digital_buzzer');
       });
 
-      expect(logs.where((m) => m.contains('[TimerAlertService][web]')), isNotEmpty);
+      expect(
+        logs.where((m) => m.contains('[TimerAlertService][web]')),
+        isNotEmpty,
+      );
       expect(logs.where((m) => m.contains('alert=effort_timer')), isNotEmpty);
-      expect(logs.where((m) => m.contains('soundId=digital_buzzer')), isNotEmpty);
+      expect(
+        logs.where((m) => m.contains('soundId=digital_buzzer')),
+        isNotEmpty,
+      );
     });
 
     test('logs rest ping alert with sound id on web', () async {
@@ -2457,7 +2404,10 @@ void main() {
         await service.fireRestPingAlert('soft_chime');
       });
 
-      expect(logs.where((m) => m.contains('[TimerAlertService][web]')), isNotEmpty);
+      expect(
+        logs.where((m) => m.contains('[TimerAlertService][web]')),
+        isNotEmpty,
+      );
       expect(logs.where((m) => m.contains('alert=rest_ping')), isNotEmpty);
       expect(logs.where((m) => m.contains('soundId=soft_chime')), isNotEmpty);
     });
@@ -2469,7 +2419,10 @@ void main() {
         await service.playPreview('signal_tone');
       });
 
-      expect(logs.where((m) => m.contains('[TimerAlertService][web]')), isNotEmpty);
+      expect(
+        logs.where((m) => m.contains('[TimerAlertService][web]')),
+        isNotEmpty,
+      );
       expect(logs.where((m) => m.contains('alert=sound_preview')), isNotEmpty);
       expect(logs.where((m) => m.contains('soundId=signal_tone')), isNotEmpty);
     });

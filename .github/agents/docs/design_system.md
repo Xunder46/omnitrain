@@ -4,7 +4,8 @@
 `lib/core/constants/omni_theme.dart`, and every surface under `lib/widgets/` and
 `lib/features/`. It also governs the values the watch clients **mirror** from
 those tokens — button shapes, radii, and heights reused by
-`lib/watch/logging/`, `lib/watch/start/`, and
+`lib/watch/widgets/watch_controls.dart`, `lib/watch/logging/`,
+`lib/watch/nutrition/`, `lib/watch/start/`, and
 `watch/watchos/Sources/WatchSessionEngine/`.
 
 **Not in scope: wrist-only layout geometry.** Spacing and screen-level

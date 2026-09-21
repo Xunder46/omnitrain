@@ -22,9 +22,11 @@
     "type": {
       "enum": [
         "routines_down",
+        "foods_down",
         "exercise_push",
         "structure_change",
         "observations_up",
+        "receipt",
         "session_lifecycle",
         "session_snapshot",
         "timer_state"

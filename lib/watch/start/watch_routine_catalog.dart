@@ -40,7 +40,9 @@ class WatchCatalogExercise {
   }
 
   static List<String> _capabilities(Object? value) =>
-      ((value as List?) ?? const []).whereType<String>().toList(growable: false);
+      ((value as List?) ?? const []).whereType<String>().toList(
+        growable: false,
+      );
 
   final String exerciseId;
   final String name;
@@ -104,9 +106,8 @@ class WatchRoutineEffort {
 
   /// The slot this effort becomes when the routine is started. Keyed by
   /// effort, so a routine that benches in two segments yields two slots.
-  Map<String, Object?> get slot => catalogExercise.toSlot(
-    sessionExerciseId: 'sx-$effortId',
-  );
+  Map<String, Object?> get slot =>
+      catalogExercise.toSlot(sessionExerciseId: 'sx-$effortId');
 
   /// This effort as a catalog exercise, for the fallback list.
   WatchCatalogExercise get catalogExercise => WatchCatalogExercise(
@@ -239,9 +240,9 @@ class WatchRoutinesDown {
   factory WatchRoutinesDown.fromCatalog(WatchRoutineCatalogRecord record) =>
       WatchRoutinesDown(
         generatedAt: record.generatedAt,
-        routines: record.routines.map(WatchRoutine.fromJson).toList(
-          growable: false,
-        ),
+        routines: record.routines
+            .map(WatchRoutine.fromJson)
+            .toList(growable: false),
         fallbackExercises: record.fallbackExercises
             .map(WatchCatalogExercise.fromJson)
             .toList(growable: false),

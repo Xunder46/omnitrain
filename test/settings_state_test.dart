@@ -195,50 +195,38 @@ void main() {
     },
   );
 
-  test(
-    'SettingsState normalizes invalid stored height unit to cm',
-    () async {
-      final repository = MockWorkoutRepository();
-      await repository.initialize();
-      await repository.setPreferenceString(
-        'preferred_height_unit',
-        'inches',
-      );
+  test('SettingsState normalizes invalid stored height unit to cm', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    await repository.setPreferenceString('preferred_height_unit', 'inches');
 
-      final settingsState = SettingsState(repository, fakePreferencesService());
-      await settingsState.initialize();
+    final settingsState = SettingsState(repository, fakePreferencesService());
+    await settingsState.initialize();
 
-      expect(settingsState.preferredHeightUnit, 'cm');
-    },
-  );
+    expect(settingsState.preferredHeightUnit, 'cm');
+  });
 
-  test(
-    'setPreferredHeightUnit normalizes unknown values to cm',
-    () async {
-      final repository = MockWorkoutRepository();
-      await repository.initialize();
+  test('setPreferredHeightUnit normalizes unknown values to cm', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
 
-      final settingsState = SettingsState(repository, fakePreferencesService());
-      await settingsState.initialize();
-      await settingsState.setPreferredHeightUnit('something_else');
+    final settingsState = SettingsState(repository, fakePreferencesService());
+    await settingsState.initialize();
+    await settingsState.setPreferredHeightUnit('something_else');
 
-      expect(settingsState.preferredHeightUnit, 'cm');
-    },
-  );
+    expect(settingsState.preferredHeightUnit, 'cm');
+  });
 
-  test(
-    'setPreferredHeightUnit normalizes FTIN (uppercase) to ftin',
-    () async {
-      final repository = MockWorkoutRepository();
-      await repository.initialize();
+  test('setPreferredHeightUnit normalizes FTIN (uppercase) to ftin', () async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
 
-      final settingsState = SettingsState(repository, fakePreferencesService());
-      await settingsState.initialize();
-      await settingsState.setPreferredHeightUnit('FTIN');
+    final settingsState = SettingsState(repository, fakePreferencesService());
+    await settingsState.initialize();
+    await settingsState.setPreferredHeightUnit('FTIN');
 
-      expect(settingsState.preferredHeightUnit, 'ftin');
-    },
-  );
+    expect(settingsState.preferredHeightUnit, 'ftin');
+  });
 
   test('SettingsState defaults feeling survey to enabled', () async {
     final repository = MockWorkoutRepository();
@@ -348,22 +336,19 @@ void main() {
     expect(colors.textMuted, const Color(0xFF7FAA7F));
   });
 
-  test(
-    'Malachite Core textMuted contrast is verified by palette contract',
-    () {
-      // D-15: Re-pinned honestly at 5.5 per product ruling.
-      // textMuted vs surface fell from 6.29 to 5.51 because Item 3 lightened
-      // the surface while D-4 deliberately left textMuted alone. 5.51 clears
-      // WCAG AA with margin; the old 6.0 was a self-imposed comfort bar.
-      // This test remains as a sanity check complementing check 4 of the
-      // palette_legibility_contract_test.dart.
-      final colors = OmniTheme.colorsForTheme(AppTheme.malachiteCore);
-      expect(
-        _contrastRatio(colors.textMuted, colors.surface),
-        greaterThanOrEqualTo(5.5),
-      );
-    },
-  );
+  test('Malachite Core textMuted contrast is verified by palette contract', () {
+    // D-15: Re-pinned honestly at 5.5 per product ruling.
+    // textMuted vs surface fell from 6.29 to 5.51 because Item 3 lightened
+    // the surface while D-4 deliberately left textMuted alone. 5.51 clears
+    // WCAG AA with margin; the old 6.0 was a self-imposed comfort bar.
+    // This test remains as a sanity check complementing check 4 of the
+    // palette_legibility_contract_test.dart.
+    final colors = OmniTheme.colorsForTheme(AppTheme.malachiteCore);
+    expect(
+      _contrastRatio(colors.textMuted, colors.surface),
+      greaterThanOrEqualTo(5.5),
+    );
+  });
 
   test('Malachite Core secondary contrast is verified by palette contract', () {
     // D-16: Re-pinned at 3.0 per product ruling.
@@ -380,21 +365,24 @@ void main() {
   // ─── Startup theme adoption ───────────────────────────────────────────────
 
   group('readPersistedTheme', () {
-    test('returns the saved theme without constructing a SettingsState', () async {
-      final repo = MockWorkoutRepository();
-      await repo.initialize();
+    test(
+      'returns the saved theme without constructing a SettingsState',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
 
-      final settings = SettingsState(repo, fakePreferencesService());
-      await settings.initialize();
-      await settings.setAppTheme(AppTheme.crimsonDojo);
+        final settings = SettingsState(repo, fakePreferencesService());
+        await settings.initialize();
+        await settings.setAppTheme(AppTheme.crimsonDojo);
 
-      // The startup path reads through this before any SettingsState exists,
-      // so it must resolve the same key and value the state writes.
-      expect(
-        await SettingsState.readPersistedTheme(repo),
-        AppTheme.crimsonDojo,
-      );
-    });
+        // The startup path reads through this before any SettingsState exists,
+        // so it must resolve the same key and value the state writes.
+        expect(
+          await SettingsState.readPersistedTheme(repo),
+          AppTheme.crimsonDojo,
+        );
+      },
+    );
 
     test('falls back to the canonical theme when nothing is saved', () async {
       final repo = MockWorkoutRepository();

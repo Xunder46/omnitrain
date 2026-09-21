@@ -1,0 +1,10 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-receipt-1",
+  "type": "receipt",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:01:00Z",
+  "payload": {
+    "entryIds": ["e-nutrition-oatmeal-1", "e-nutrition-almonds-1"]
+  }
+}

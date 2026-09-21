@@ -49,7 +49,7 @@ public func deriveFallbackExercises(
     return offered
 }
 
-/// What happened to a `routines_down` message.
+/// What happened to a reference-data message — `routines_down` or `foods_down`.
 public struct WatchCatalogSyncResult {
     /// True when this message became the catalog the watch reads. A conformant
     /// message older than the cached one is understood and dropped, so it is
@@ -153,25 +153,9 @@ public final class WatchSessionStartPaths {
     /// The message is stored whole and the newest one wins, so the list the user
     /// sees updates on the next background sync with no action from them (S-004).
     public func applyRoutinesDown(_ envelope: [String: Any]) async -> WatchCatalogSyncResult {
-        if let validator {
-            let version = envelope["protocolVersion"]
-            if (version as? NSNumber)?.intValue != SyncProtocolValidator.protocolVersion {
-                return WatchCatalogSyncResult(
-                    applied: false,
-                    rejections: [
-                        SyncProtocolRejection(
-                            code: SyncRejectionCode.unsupportedProtocolVersion,
-                            path: "$.protocolVersion",
-                            message: "unsupported protocol version; the payload was not read"
-                        )
-                    ]
-                )
-            }
-
-            let rejections = validator.validateEnvelope(envelope)
-            if !rejections.isEmpty {
-                return WatchCatalogSyncResult(applied: false, rejections: rejections)
-            }
+        let rejections = SyncProtocolValidator.incomingRejections(validator, envelope)
+        if !rejections.isEmpty {
+            return WatchCatalogSyncResult(applied: false, rejections: rejections)
         }
 
         guard let sent = try? WatchRoutinesDown(envelope: envelope) else {
@@ -283,6 +267,11 @@ public final class WatchSessionStartPaths {
 extension StoredWatchRecord {
     var routineCatalogRow: WatchRoutineCatalogRecord? {
         if case .routineCatalog(let row) = self { return row }
+        return nil
+    }
+
+    var foodCatalogRow: WatchFoodCatalogRecord? {
+        if case .foodCatalog(let row) = self { return row }
         return nil
     }
 }

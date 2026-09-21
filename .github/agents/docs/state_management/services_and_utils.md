@@ -322,11 +322,113 @@ observations merging into one ordered record) and by
 **Files**: `lib/watch/start/watch_sync_orchestrator.dart`,
 `watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift`
 
-Routes arriving messages to their owner — reference data to the start paths,
-session state to the engine — and owns the connect exchange that
-`PROTOCOL.md`'s "Idempotency and reconciliation" section specifies. Verified by
-`test/live_mirroring_test.dart` (`S-009`) and by watchOS
+Routes arriving messages to their owner — reference data to the start paths or
+the nutrition state, session state to the engine — and owns the connect
+exchange that `PROTOCOL.md`'s "Idempotency and reconciliation" section
+specifies. Verified by `test/live_mirroring_test.dart` (`S-009`) and by watchOS
 `WatchLiveMirroringTests.testJoiningAsksForASnapshotRatherThanOfferingOne`.
+
+### `WatchNutritionState`
+
+**Files**: `lib/watch/nutrition/watch_nutrition_state.dart`,
+`watch/watchos/Sources/WatchSessionEngine/WatchNutritionState.swift`
+
+The wrist's quick-log: the food list the phone sent down, the food and portion
+the user has picked, and the observation confirming them produces. It owns no
+storage of its own — the synced list is a `WatchFoodCatalogRecord`, the
+wrist's own usage is derived from `WatchSessionEngine.nutritionLog`, and the
+log itself goes through `WatchSessionEngine.logNutrition`, so a quick-log is an
+observation rather than a parallel pipeline.
+
+A quick-log is the one log on the wrist that needs no session: eating is not a
+training event, and `observations_up` requires a `sessionId`, so a log taken
+with no workout running carries the day's nutrition-log id
+(`WatchNutritionSession`) while one taken mid-session rides that session. It is
+not acknowledged by a snapshot: the phone's mirror does not hold a nutrition
+session, so the entry never comes back that way, and confirmation comes from
+the `receipt` message the phone sends instead. The portion control's detents
+and bounds are not the wrist's to choose:
+`watch/contract/watch_nutrition_contract.json` carries them and both clients'
+suites assert against it.
+
+Verified by `test/watch_nutrition_quick_log_test.dart` (S-001 to S-006) and by
+watchOS `WatchNutritionQuickLogTests`.
+
+### The wrist's food list, and why its order is the phone's rule
+
+The watch shows the phone's Foods I Eat list in the phone's order — categories
+alphabetically, foods the phone files under nothing last, foods alphabetically
+inside each — because the phone owns the catalog and the cut of it the user
+eats. That rule lives once, in `lib/core/utils/foods_i_eat_order.dart`, as the
+`foodsIEatSections` function the phone's `NutritionScreen` renders; the wrist's
+`deriveWatchFoodList` applies the same rule to the synced rows and then lifts
+what the wrist itself logged most recently to the front, the same shape
+`deriveFallbackExercises` uses for the offline exercise list.
+
+Two implementations rather than one because the inputs differ: the phone has
+`Food` and `FoodGroup` rows, the wrist has the protocol's row maps. The values
+they must agree on are pinned by `watch/contract/watch_nutrition_contract.json`
+— phone order, wrist order after a known log history, and the portion bounds —
+which `test/watch_nutrition_quick_log_test.dart` (S-003) and watchOS
+`WatchNutritionQuickLogTests.testTheWristDerivesTheContractsOrder` both read.
+A change to the ordering on either platform therefore fails the other's suite.
+
+### `WatchReferenceSync`
+
+**File**: `lib/core/utils/watch_reference_sync.dart`
+
+Builds the reference-data messages the phone sends down — currently
+`foods_down` — and nothing else. Building and carrying are separate jobs, so it
+hands back an envelope and owns no transport. The order it sends in is the
+phone's own Foods I Eat order rather than a rule the wrist has to be told, and
+the energy per serving comes from `calculateCalories` rather than being derived
+a second time. It sits beside `foods_i_eat_order.dart` because it is a pure
+function over the phone's models, with no state and no storage. Verified by
+`test/watch_nutrition_quick_log_test.dart` (S-003), and called from the phone QA
+harness (`lib/state/watch/live_session_mirror_debug_main.dart`) so a desktop run
+sends what the app would send.
+
+### `WatchIncomingRouter`
+
+**File**: `lib/state/watch/watch_incoming_router.dart`
+
+The one place a message arriving from a wrist is handed to its owners:
+`LiveSessionMirrorState` and `WatchNutritionLogBridge`. Both are asked about
+every message, and each answers for itself which messages are its own — the
+mirror by session identity, the day log by observation kind — so a message that
+belongs to both is not forced to pick one, and a caller does not have to know
+that a quick-log can be session news and food intake at once. Verified by
+`test/watch_nutrition_quick_log_test.dart` (S-002), whose cases cover a
+standalone quick-log, a session's own message, and a quick-log taken with a
+session running.
+
+### `WatchNutritionLogBridge`
+
+**File**: `lib/state/watch/watch_nutrition_log_bridge.dart`
+
+The phone's half of a quick-log: it turns the wrist's `nutrition_quick_log`
+events into the phone's own day log through `NutritionState.logConsumedFoodAt`.
+A quick-log is filed by the phone's rule, not the bridge's — one row per food
+per day means a redelivered message updates the row it made the first time, so
+"exactly once" needs no ledger of its own. A food the library no longer holds is
+reported rather than guessed at: with no food there are no macros to freeze onto
+a row.
+
+It is also the sender of the `receipt` that acknowledges those observations —
+including the ones it could not place, since what a receipt asserts is that the
+phone holds the observation, not that the day log changed. It answers a message
+it refused to read with nothing at all. What the wrist does with the receipt is
+`WatchSessionEngine.confirmObservations` — an append of its own, so a relaunch
+can still tell what it may drop — and `pruneConfirmed`, which is the only way
+the observation box gives rows back. Both are exercised by
+`test/watch_nutrition_quick_log_test.dart` ("the phone’s receipt is what lets the
+watch drop the row", "a food the phone cannot place is not owed forever") and by
+`WatchNutritionQuickLogTests.testThePhonesReceiptIsWhatLetsTheWatchDropTheRow`.
+
+The other half of the same problem is on the mirror: `LiveSessionMirrorState`
+ignores any message it consumes whose `sessionId` is not the session it holds
+(`session_snapshot` excepted), because a quick-log taken with no workout running
+names the day, and filing a meal under a workout is worse than dropping it.
 
 ### Invariants
 
@@ -340,6 +442,27 @@ duplicates`) and by watchOS
 (`WatchSessionEngine.entries`), not an edit: the stored observation row is never
 rewritten. Verified by `test/watch_session_engine_test.dart` (`S-004 append-only
 enforcement at the storage API`).
+- **An incoming message has one gate.** `SyncProtocolValidator.evaluateOrAccept`
+(Dart) and `SyncProtocolValidator.incomingRejections` (Swift) own the version
+check and the conformance verdict, including the case of a receiver that carries
+no schemas — a receiver that cannot read is not a receiver that should refuse.
+Every receiver that takes a message from a peer goes through it: the live
+mirror, the nutrition log bridge, and each engine's `_requireConformingIncoming`
+/ `requireConformingIncoming`, which differ only in what they do with a
+refusal. Verified by `test/sync_protocol_fixtures_test.dart` (`the receiver
+gate`), which exercises the shared gate directly, including its no-schema
+branch; the per-receiver outcomes are covered by
+`test/live_mirroring_test.dart` and `test/watch_session_engine_test.dart`.
+- **Outbound is a different question from inbound.** The gate above judges what
+a peer sent. What this build is willing to *send* is `requireConformant`, and it
+asks `validateEnvelope` directly because the version on an envelope this build
+wrote is not in doubt. Every message the app builds goes through one builder,
+`phoneEnvelope` (`lib/core/sync_protocol/phone_envelope.dart`), so its producers
+cannot spell the envelope's fields differently — `buildFoodsDown`,
+`snapshotEnvelope`, the mirror's own messages and `receiptFor`. The QA harness at
+`lib/watch/debug/watch_start_debug_main.dart` is the exception: its two seeds are
+`const` fixtures standing in for a transport no desktop run has, and a `const`
+cannot call a function. Verified by the protocol fixture suites.
 
 ## Watch Sensors and the Platform Workout
 

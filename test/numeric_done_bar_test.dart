@@ -29,68 +29,70 @@ void main() {
       },
     );
 
-    testWidgets(
-      'Done bar does not appear when a free-text field is focused',
-      (tester) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: TextField(
-                decoration: const InputDecoration(labelText: 'Session note'),
-                maxLines: null,
-                keyboardType: TextInputType.multiline,
-              ),
+    testWidgets('Done bar does not appear when a free-text field is focused', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TextField(
+              decoration: const InputDecoration(labelText: 'Session note'),
+              maxLines: null,
+              keyboardType: TextInputType.multiline,
             ),
           ),
-        );
+        ),
+      );
 
-        await tester.tap(find.byType(TextField));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byType(TextField));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Done'), findsNothing);
-      },
-    );
+      expect(find.text('Done'), findsNothing);
+    });
 
-    testWidgets(
-      'Done bar disappears after the numeric field loses focus',
-      (tester) async {
-        final numericFocus = FocusNode();
-        final otherFocus = FocusNode();
+    testWidgets('Done bar disappears after the numeric field loses focus', (
+      tester,
+    ) async {
+      final numericFocus = FocusNode();
+      final otherFocus = FocusNode();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Column(
-                children: [
-                  NumericFieldWithDoneBar(
-                    focusNode: numericFocus,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Reps'),
-                  ),
-                  TextField(
-                    focusNode: otherFocus,
-                    decoration: const InputDecoration(labelText: 'Note'),
-                  ),
-                ],
-              ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                NumericFieldWithDoneBar(
+                  focusNode: numericFocus,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Reps'),
+                ),
+                TextField(
+                  focusNode: otherFocus,
+                  decoration: const InputDecoration(labelText: 'Note'),
+                ),
+              ],
             ),
           ),
-        );
+        ),
+      );
 
-        await tester.tap(find.byWidgetPredicate(
+      await tester.tap(
+        find.byWidgetPredicate(
           (w) => w is TextField && w.decoration?.labelText == 'Reps',
-        ));
-        await tester.pumpAndSettle();
-        expect(find.text('Done'), findsOneWidget);
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Done'), findsOneWidget);
 
-        // Move focus to the free-text field — Done bar should disappear
-        await tester.tap(find.byWidgetPredicate(
+      // Move focus to the free-text field — Done bar should disappear
+      await tester.tap(
+        find.byWidgetPredicate(
           (w) => w is TextField && w.decoration?.labelText == 'Note',
-        ));
-        await tester.pumpAndSettle();
-        expect(find.text('Done'), findsNothing);
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Done'), findsNothing);
+    });
   });
 
   group('Numeric Done accessory bar — commit and dismiss', () {

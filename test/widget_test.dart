@@ -57,7 +57,9 @@ Future<void> _pumpSession(
         routineState: routineState,
         sessionSummaryService: sessionSummaryService,
         timerAlertService: timerAlertService ?? FakeTimerAlertService(),
-        settingsState: settingsState ?? SettingsState(MockWorkoutRepository(), fakePreferencesService()),
+        settingsState:
+            settingsState ??
+            SettingsState(MockWorkoutRepository(), fakePreferencesService()),
         restNotificationService:
             restNotificationService ?? FakeRestNotificationService(),
         editMode: editMode,
@@ -118,10 +120,7 @@ void main() {
 
     // The empty state renders Add Exercise as an OutlinedButton (equally
     // weighted with Add Block per PR 6 / S-003).
-    expect(
-      find.widgetWithText(OutlinedButton, 'Add Exercise'),
-      findsOneWidget,
-    );
+    expect(find.widgetWithText(OutlinedButton, 'Add Exercise'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -237,50 +236,51 @@ void main() {
     );
   });
 
-  testWidgets('rest notifications schedule on rest start and cancel on rest end', (
-    WidgetTester tester,
-  ) async {
-    final deps = await _setupSession();
-    final restService = FakeRestNotificationService();
-    final settings = SettingsState(deps.repository, fakePreferencesService());
-    await settings.initialize();
-    await settings.setRestPingInterval(60);
+  testWidgets(
+    'rest notifications schedule on rest start and cancel on rest end',
+    (WidgetTester tester) async {
+      final deps = await _setupSession();
+      final restService = FakeRestNotificationService();
+      final settings = SettingsState(deps.repository, fakePreferencesService());
+      await settings.initialize();
+      await settings.setRestPingInterval(60);
 
-    final exercise = (await deps.repository.getExercises()).firstWhere(
-      (e) => e.capabilities.contains('reps'),
-    );
-    final effortId = await deps.workoutState.addExerciseToSession(
-      exercise,
-      chosenMetric: 'reps',
-    );
-    await deps.workoutState.addEntry(effortId);
-    await deps.workoutState.updateEntryValue(effortId, 0, 'reps', 8);
-    await deps.workoutState.updateEntryValue(effortId, 1, 'reps', 6);
+      final exercise = (await deps.repository.getExercises()).firstWhere(
+        (e) => e.capabilities.contains('reps'),
+      );
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.updateEntryValue(effortId, 0, 'reps', 8);
+      await deps.workoutState.updateEntryValue(effortId, 1, 'reps', 6);
 
-    await _pumpSession(
-      tester,
-      workoutState: deps.workoutState,
-      routineState: deps.routineState,
-      sessionSummaryService: deps.sessionSummaryService,
-      settingsState: settings,
-      restNotificationService: restService,
-    );
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+        settingsState: settings,
+        restNotificationService: restService,
+      );
 
-    await tester.tap(find.text(exercise.name));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text(exercise.name));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Log Set'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Log Set'));
+      await tester.pumpAndSettle();
 
-    expect(restService.scheduled.length, 1);
-    expect(restService.scheduled.first.intervalSecs, 60);
-    expect(restService.scheduled.first.playSound, isFalse);
+      expect(restService.scheduled.length, 1);
+      expect(restService.scheduled.first.intervalSecs, 60);
+      expect(restService.scheduled.first.playSound, isFalse);
 
-    await tester.tap(find.text('Log Set'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Log Set'));
+      await tester.pumpAndSettle();
 
-    expect(restService.cancelCallCount, greaterThan(0));
-  });
+      expect(restService.cancelCallCount, greaterThan(0));
+    },
+  );
 
   testWidgets('timed effort schedules on start and cancels on pause', (
     WidgetTester tester,
@@ -295,12 +295,7 @@ void main() {
       timedExercise,
       effortKindOverride: 'timed',
     );
-    await deps.workoutState.updateEntryValue(
-      effortId,
-      0,
-      'duration',
-      30,
-    );
+    await deps.workoutState.updateEntryValue(effortId, 0, 'duration', 30);
 
     await _pumpSession(
       tester,
@@ -331,126 +326,134 @@ void main() {
 
     // UI state in mixin is not updated when pausing via state method directly.
     // Verify the timed entry is in paused state via workoutState instead.
-    final timedInstances = deps.workoutState.getTimedInstancesForEffort(effortId);
+    final timedInstances = deps.workoutState.getTimedInstancesForEffort(
+      effortId,
+    );
     expect(timedInstances, isNotEmpty);
     expect(timedInstances.first.state, TimedState.paused);
   });
 
-  testWidgets('background lifecycle reschedules active effort notification with sound and resume cancels it', (
-    WidgetTester tester,
-  ) async {
-    final deps = await _setupSession(modality: 'cardio_endurance');
-    final restService = FakeRestNotificationService();
+  testWidgets(
+    'background lifecycle reschedules active effort notification with sound and resume cancels it',
+    (WidgetTester tester) async {
+      final deps = await _setupSession(modality: 'cardio_endurance');
+      final restService = FakeRestNotificationService();
 
-    final timedExercise = (await deps.repository.getExercises()).firstWhere(
-      (e) => e.capabilities.contains('time'),
-    );
-    final effortId = await deps.workoutState.addExerciseToSession(
-      timedExercise,
-      effortKindOverride: 'timed',
-    );
-    await deps.workoutState.updateEntryValue(effortId, 0, 'duration', 30);
+      final timedExercise = (await deps.repository.getExercises()).firstWhere(
+        (e) => e.capabilities.contains('time'),
+      );
+      final effortId = await deps.workoutState.addExerciseToSession(
+        timedExercise,
+        effortKindOverride: 'timed',
+      );
+      await deps.workoutState.updateEntryValue(effortId, 0, 'duration', 30);
 
-    await _pumpSession(
-      tester,
-      workoutState: deps.workoutState,
-      routineState: deps.routineState,
-      sessionSummaryService: deps.sessionSummaryService,
-      restNotificationService: restService,
-    );
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+        restNotificationService: restService,
+      );
 
-    await tester.tap(find.text(timedExercise.name));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text(timedExercise.name));
+      await tester.pumpAndSettle();
 
-    // Start via the dedicated Start button (outer GestureDetector removed per B-02-1).
-    await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
-    await tester.pump();
-    expect(restService.effortSchedules, isNotEmpty);
-    expect(restService.effortSchedules.last.playSound, isFalse);
+      // Start via the dedicated Start button (outer GestureDetector removed per B-02-1).
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+      await tester.pump();
+      expect(restService.effortSchedules, isNotEmpty);
+      expect(restService.effortSchedules.last.playSound, isFalse);
 
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    await tester.pump();
-    expect(restService.effortSchedules.last.playSound, isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(restService.effortSchedules.last.playSound, isTrue);
 
-    final cancelsBeforeResume = restService.effortCancelCallCount;
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pump();
-    expect(restService.effortCancelCallCount, greaterThan(cancelsBeforeResume));
-  });
+      final cancelsBeforeResume = restService.effortCancelCallCount;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(
+        restService.effortCancelCallCount,
+        greaterThan(cancelsBeforeResume),
+      );
+    },
+  );
 
-  testWidgets('manual advance cancels pending effort expiry notification for timed timer', (
-    WidgetTester tester,
-  ) async {
-    final deps = await _setupSession(modality: 'cardio_endurance');
-    final restService = FakeRestNotificationService();
+  testWidgets(
+    'manual advance cancels pending effort expiry notification for timed timer',
+    (WidgetTester tester) async {
+      final deps = await _setupSession(modality: 'cardio_endurance');
+      final restService = FakeRestNotificationService();
 
-    final timedExercise = (await deps.repository.getExercises()).firstWhere(
-      (e) => e.capabilities.contains('time'),
-    );
-    final effortId = await deps.workoutState.addExerciseToSession(
-      timedExercise,
-      effortKindOverride: 'timed',
-    );
-    await deps.workoutState.updateEntryValue(effortId, 0, 'duration', 30);
-    await deps.workoutState.updateEntryValue(effortId, 0, 'distance', 0.3);
+      final timedExercise = (await deps.repository.getExercises()).firstWhere(
+        (e) => e.capabilities.contains('time'),
+      );
+      final effortId = await deps.workoutState.addExerciseToSession(
+        timedExercise,
+        effortKindOverride: 'timed',
+      );
+      await deps.workoutState.updateEntryValue(effortId, 0, 'duration', 30);
+      await deps.workoutState.updateEntryValue(effortId, 0, 'distance', 0.3);
 
-    await _pumpSession(
-      tester,
-      workoutState: deps.workoutState,
-      routineState: deps.routineState,
-      sessionSummaryService: deps.sessionSummaryService,
-      restNotificationService: restService,
-    );
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+        restNotificationService: restService,
+      );
 
-    await tester.tap(find.text(timedExercise.name));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text(timedExercise.name));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
-    await tester.pump();
-    final cancelBeforeLog = restService.effortCancelCallCount;
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+      await tester.pump();
+      final cancelBeforeLog = restService.effortCancelCallCount;
 
-    await tester.tap(find.text('Log Interval'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Log Interval'));
+      await tester.pumpAndSettle();
 
-    expect(restService.effortCancelCallCount, greaterThan(cancelBeforeLog));
-  });
+      expect(restService.effortCancelCallCount, greaterThan(cancelBeforeLog));
+    },
+  );
 
-  testWidgets('round timer schedules effort expiry and uses selected effort sound', (
-    WidgetTester tester,
-  ) async {
-    final deps = await _setupSession(modality: 'sports');
-    final restService = FakeRestNotificationService();
-    final settings = SettingsState(deps.repository, fakePreferencesService());
-    await settings.initialize();
-    await settings.setEffortTimerSound('digital_buzzer');
+  testWidgets(
+    'round timer schedules effort expiry and uses selected effort sound',
+    (WidgetTester tester) async {
+      final deps = await _setupSession(modality: 'sports');
+      final restService = FakeRestNotificationService();
+      final settings = SettingsState(deps.repository, fakePreferencesService());
+      await settings.initialize();
+      await settings.setEffortTimerSound('digital_buzzer');
 
-    final roundExercise = (await deps.repository.getExercises()).firstWhere(
-      (e) => e.capabilities.contains('rounds'),
-      orElse: () => (throw StateError('No rounds exercise in seeded data')),
-    );
-    await deps.workoutState.addExerciseToSession(
-      roundExercise,
-      effortKindOverride: 'round',
-    );
+      final roundExercise = (await deps.repository.getExercises()).firstWhere(
+        (e) => e.capabilities.contains('rounds'),
+        orElse: () => (throw StateError('No rounds exercise in seeded data')),
+      );
+      await deps.workoutState.addExerciseToSession(
+        roundExercise,
+        effortKindOverride: 'round',
+      );
 
-    await _pumpSession(
-      tester,
-      workoutState: deps.workoutState,
-      routineState: deps.routineState,
-      sessionSummaryService: deps.sessionSummaryService,
-      settingsState: settings,
-      restNotificationService: restService,
-    );
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+        settingsState: settings,
+        restNotificationService: restService,
+      );
 
-    await tester.tap(find.text(roundExercise.name));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text(roundExercise.name));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
-    await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+      await tester.pump();
 
-    expect(restService.effortSchedules.length, 1);
-    expect(restService.effortSchedules.first.soundId, 'digital_buzzer');
-  });
+      expect(restService.effortSchedules.length, 1);
+      expect(restService.effortSchedules.first.soundId, 'digital_buzzer');
+    },
+  );
 
   testWidgets('round timer pause cancels and resume reschedules effort expiry', (
     WidgetTester tester,
@@ -516,81 +519,83 @@ void main() {
     );
   });
 
-  testWidgets('round manual advance cancels pending effort expiry notification', (
-    WidgetTester tester,
-  ) async {
-    final deps = await _setupSession(modality: 'sports');
-    final restService = FakeRestNotificationService();
+  testWidgets(
+    'round manual advance cancels pending effort expiry notification',
+    (WidgetTester tester) async {
+      final deps = await _setupSession(modality: 'sports');
+      final restService = FakeRestNotificationService();
 
-    final roundExercise = (await deps.repository.getExercises()).firstWhere(
-      (e) => e.capabilities.contains('rounds'),
-      orElse: () => (throw StateError('No rounds exercise in seeded data')),
-    );
-    final effortId = await deps.workoutState.addExerciseToSession(
-      roundExercise,
-      effortKindOverride: 'round',
-    );
-    await deps.workoutState.updateEntryValue(effortId, 0, 'rounds', 3);
+      final roundExercise = (await deps.repository.getExercises()).firstWhere(
+        (e) => e.capabilities.contains('rounds'),
+        orElse: () => (throw StateError('No rounds exercise in seeded data')),
+      );
+      final effortId = await deps.workoutState.addExerciseToSession(
+        roundExercise,
+        effortKindOverride: 'round',
+      );
+      await deps.workoutState.updateEntryValue(effortId, 0, 'rounds', 3);
 
-    await _pumpSession(
-      tester,
-      workoutState: deps.workoutState,
-      routineState: deps.routineState,
-      sessionSummaryService: deps.sessionSummaryService,
-      restNotificationService: restService,
-    );
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+        restNotificationService: restService,
+      );
 
-    await tester.tap(find.text(roundExercise.name));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text(roundExercise.name));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
-    await tester.pump();
-    final cancelsBeforeLog = restService.effortCancelCallCount;
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+      await tester.pump();
+      final cancelsBeforeLog = restService.effortCancelCallCount;
 
-    await tester.tap(find.text('Log Period'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Log Period'));
+      await tester.pumpAndSettle();
 
-    expect(restService.effortCancelCallCount, greaterThan(cancelsBeforeLog));
-  });
+      expect(restService.effortCancelCallCount, greaterThan(cancelsBeforeLog));
+    },
+  );
 
-  testWidgets('foreground timed expiry fires in-app once and cancels effort notification', (
-    WidgetTester tester,
-  ) async {
-    final deps = await _setupSession(modality: 'cardio_endurance');
-    final restService = FakeRestNotificationService();
-    final timerAlertService = FakeTimerAlertService();
+  testWidgets(
+    'foreground timed expiry fires in-app once and cancels effort notification',
+    (WidgetTester tester) async {
+      final deps = await _setupSession(modality: 'cardio_endurance');
+      final restService = FakeRestNotificationService();
+      final timerAlertService = FakeTimerAlertService();
 
-    final timedExercise = (await deps.repository.getExercises()).firstWhere(
-      (e) => e.capabilities.contains('time'),
-    );
-    final effortId = await deps.workoutState.addExerciseToSession(
-      timedExercise,
-      effortKindOverride: 'timed',
-    );
-    await deps.workoutState.updateEntryValue(effortId, 0, 'duration', 1);
+      final timedExercise = (await deps.repository.getExercises()).firstWhere(
+        (e) => e.capabilities.contains('time'),
+      );
+      final effortId = await deps.workoutState.addExerciseToSession(
+        timedExercise,
+        effortKindOverride: 'timed',
+      );
+      await deps.workoutState.updateEntryValue(effortId, 0, 'duration', 1);
 
-    await _pumpSession(
-      tester,
-      workoutState: deps.workoutState,
-      routineState: deps.routineState,
-      sessionSummaryService: deps.sessionSummaryService,
-      timerAlertService: timerAlertService,
-      restNotificationService: restService,
-    );
+      await _pumpSession(
+        tester,
+        workoutState: deps.workoutState,
+        routineState: deps.routineState,
+        sessionSummaryService: deps.sessionSummaryService,
+        timerAlertService: timerAlertService,
+        restNotificationService: restService,
+      );
 
-    await tester.tap(find.text(timedExercise.name));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text(timedExercise.name));
+      await tester.pumpAndSettle();
 
-    // Start via the dedicated Start button (outer GestureDetector removed per B-02-1).
-    await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
-    await tester.pump();
-    await tester.pumpAndSettle();
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
+      // Start via the dedicated Start button (outer GestureDetector removed per B-02-1).
+      await tester.tap(find.widgetWithText(FilledButton, 'Start').first);
+      await tester.pump();
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
 
-    expect(timerAlertService.effortAlertSoundIds.length, 1);
-    expect(restService.effortCancelCallCount, greaterThan(0));
-  });
+      expect(timerAlertService.effortAlertSoundIds.length, 1);
+      expect(restService.effortCancelCallCount, greaterThan(0));
+    },
+  );
 
   testWidgets('Resistance shows Rest overlay after logging set', (
     WidgetTester tester,
@@ -708,8 +713,10 @@ void main() {
 
       // Two reps-capable exercises — need at least two in seed data.
       final allExercises = await deps.repository.getExercises();
-      final repsExercises =
-          allExercises.where((e) => e.capabilities.contains('reps')).take(2).toList();
+      final repsExercises = allExercises
+          .where((e) => e.capabilities.contains('reps'))
+          .take(2)
+          .toList();
       expect(
         repsExercises.length,
         greaterThanOrEqualTo(2),
@@ -771,12 +778,14 @@ void main() {
       expect(
         openRests,
         hasLength(1),
-        reason: 'exactly one open rest for exercise1 after logging its only set',
+        reason:
+            'exactly one open rest for exercise1 after logging its only set',
       );
       expect(
         openRests.first.entryIndex,
         1,
-        reason: 'open rest is at entryIndex=1 — the index the fixed code will pass to shouldFireRestPing',
+        reason:
+            'open rest is at entryIndex=1 — the index the fixed code will pass to shouldFireRestPing',
       );
     },
   );

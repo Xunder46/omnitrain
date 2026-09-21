@@ -21,6 +21,7 @@ class WatchStartScreen extends StatelessWidget {
     super.key,
     required this.paths,
     this.onSessionStarted,
+    this.onOpenNutrition,
   });
 
   final WatchSessionStartPaths paths;
@@ -29,12 +30,22 @@ class WatchStartScreen extends StatelessWidget {
   /// starts — the watch app owns navigation, not this widget.
   final void Function(WatchSessionRecord session)? onSessionStarted;
 
+  /// Opens the quick-log surface. Left null, the tile is not offered.
+  ///
+  /// Nutrition logging is independent of training sessions, so this sits on the
+  /// home surface rather than behind a workout (S-006).
+  final VoidCallback? onOpenNutrition;
+
   /// Wrist-scale layout: the phone's spacing tokens are sized for a full-width
   /// screen, so the watch carries its own two values rather than scaling a
   /// phone token down.
   static const double surfaceInset = 8;
   static const double surfaceInsetCompact = 4;
   static const double rowGap = 4;
+
+  /// The home surface's way into the quick-log, which is reachable with no
+  /// workout running.
+  static const String logFoodLabel = 'Log food';
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +66,13 @@ class WatchStartScreen extends StatelessWidget {
               ),
               const SizedBox(height: rowGap),
               _freeWorkoutButton(context),
+              if (onOpenNutrition != null) ...[
+                const SizedBox(height: rowGap),
+                WatchUtilityButton(
+                  label: logFoodLabel,
+                  onPressed: onOpenNutrition!,
+                ),
+              ],
               if (paths.phoneReachable) ...[
                 const SizedBox(height: rowGap),
                 const SearchOnPhoneHint(),

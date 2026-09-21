@@ -57,15 +57,6 @@ class WatchSessionStartPaths {
 
   static String _uuid() => _uuidV4.v4();
 
-  /// A message the watch has no schema set to judge — it cannot be wrong if
-  /// nothing can read it.
-  static final SyncMessageDecision _accepted = SyncMessageDecision(
-    decision: SyncProtocolValidator.acceptDecision,
-    reason: 'accepted',
-    respondWithSnapshot: false,
-    rejections: const [],
-  );
-
   final WatchSessionEngine _engine;
   final WatchSessionStore _store;
   final SyncProtocolValidator? _validator;
@@ -135,12 +126,10 @@ class WatchSessionStartPaths {
   Future<WatchCatalogSyncResult> applyRoutinesDown(
     Map<String, Object?> envelope,
   ) async {
-    final decision =
-        _validator?.evaluateIncoming(
-          envelope,
-          receiverVersion: SyncProtocolValidator.protocolVersion,
-        ) ??
-        _accepted;
+    final decision = SyncProtocolValidator.evaluateOrAccept(
+      _validator,
+      envelope,
+    );
     if (!decision.accepted) {
       return WatchCatalogSyncResult(decision: decision, applied: false);
     }
@@ -230,7 +219,8 @@ class WatchSessionStartPaths {
   /// own id rather than being swallowed as a duplicate.
   String _availableSlotId(WatchCatalogExercise exercise) {
     final taken = {
-      for (final slot in _engine.session?.exercises ?? const <Map<String, Object?>>[])
+      for (final slot
+          in _engine.session?.exercises ?? const <Map<String, Object?>>[])
         slot['sessionExerciseId'],
     };
 

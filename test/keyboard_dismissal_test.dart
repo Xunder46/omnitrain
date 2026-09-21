@@ -96,10 +96,7 @@ void main() {
                 children: [
                   TextField(focusNode: focusNode),
                   for (int i = 0; i < 30; i++)
-                    SizedBox(
-                      height: 48,
-                      child: Text('Row $i'),
-                    ),
+                    SizedBox(height: 48, child: Text('Row $i')),
                 ],
               ),
             ),

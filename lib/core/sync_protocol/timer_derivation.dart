@@ -82,9 +82,7 @@ class TimerInstants {
     final planned = plannedDurationMs;
     if (planned == null) return null;
 
-    return startedAt.add(
-      Duration(milliseconds: planned + accumulatedPauseMs),
-    );
+    return startedAt.add(Duration(milliseconds: planned + accumulatedPauseMs));
   }
 }
 

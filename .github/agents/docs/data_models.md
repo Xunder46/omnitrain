@@ -299,7 +299,7 @@ Methods: `fromString(String?)` parses storage format (`'count'` or `'grams'`, de
 
 ### FoodGroup
 
-User-created grouping category for foods (e.g., "Proteins", "Vegetables"). Foods with `groupId == null` render in a trailing "Ungrouped" section.
+User-created grouping category for foods (e.g., "Proteins", "Vegetables"). How a food's group decides its place in the Foods I Eat list is `foodsIEatSections` (`lib/core/utils/foods_i_eat_order.dart`) — never restated here, because the card, the sync payload and the watch all read that one function.
 
 Methods: `fromMap(Map)`, `toMap()`, `copyWith()`.
 

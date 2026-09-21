@@ -56,10 +56,8 @@ class EditFoodScreen extends StatefulWidget {
   }) {
     return OmniNavigator.push<void>(
       context,
-      (context) => EditFoodScreen(
-        food: food,
-        foodLibraryState: foodLibraryState,
-      ),
+      (context) =>
+          EditFoodScreen(food: food, foodLibraryState: foodLibraryState),
     );
   }
 
@@ -90,10 +88,7 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
         skipPopOnSave: true,
         onSave: (draft) async {
           try {
-            await widget.foodLibraryState.updateCatalogFood(
-              widget.food,
-              draft,
-            );
+            await widget.foodLibraryState.updateCatalogFood(widget.food, draft);
             return true;
           } catch (_) {
             return false;
@@ -108,10 +103,7 @@ class _EditFoodScreenState extends State<EditFoodScreen> {
         // controllers (a half-typed name, say) are preserved.
         onImageSave: (draft) async {
           try {
-            await widget.foodLibraryState.updateCatalogFood(
-              widget.food,
-              draft,
-            );
+            await widget.foodLibraryState.updateCatalogFood(widget.food, draft);
             return true;
           } catch (_) {
             return false;

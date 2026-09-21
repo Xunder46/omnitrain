@@ -281,14 +281,13 @@ Map<String, Object?> _twoRoutineMessage(WatchRoutineEffort effort) {
 /// A push at [index], carrying the contract's own slot so the only thing that
 /// varies between cases is the position.
 Map<String, Object?> _pushAt(int index) {
-  final envelope = _asObject(_asObject(_contract()['exercisePush'])['envelope']);
+  final envelope = _asObject(
+    _asObject(_contract()['exercisePush'])['envelope'],
+  );
   return {
     ...envelope,
     'messageId': 'msg-push-at-$index',
-    'payload': {
-      ..._asObject(envelope['payload']),
-      'insertAtIndex': index,
-    },
+    'payload': {..._asObject(envelope['payload']), 'insertAtIndex': index},
   };
 }
 
@@ -303,10 +302,7 @@ void main() {
   /// The phone's first message, applied and cached.
   Future<void> syncFirstMessage() async {
     final fallback = _asObject(_contract()['fallback']);
-    await harness.syncRoutinesDown(
-      watch,
-      _asObject(fallback['routinesDown']),
-    );
+    await harness.syncRoutinesDown(watch, _asObject(fallback['routinesDown']));
   }
 
   group('S-003 fallback list derivation', () {
@@ -319,9 +315,9 @@ void main() {
         );
 
         final derived = deriveFallbackExercises(
-          recents: _objects(fallback['recents'])
-              .map((json) => WatchCatalogExercise.fromJson(json))
-              .toList(),
+          recents: _objects(
+            fallback['recents'],
+          ).map((json) => WatchCatalogExercise.fromJson(json)).toList(),
           syncedFallback: sent.fallbackExercises,
           routines: sent.routines,
         );
@@ -354,58 +350,68 @@ void main() {
       );
     });
 
-    test('the stored list covers every exercise a synced routine names', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
+    test(
+      'the stored list covers every exercise a synced routine names',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
 
-      final referenced = watch.paths.routines
-          .expand((routine) => routine.referencedExercises)
-          .map((exercise) => exercise.exerciseId);
+        final referenced = watch.paths.routines
+            .expand((routine) => routine.referencedExercises)
+            .map((exercise) => exercise.exerciseId);
 
-      final offered = watch.paths.fallbackExercises
-          .map((exercise) => exercise.exerciseId)
-          .toSet();
-      expect(offered, containsAll(referenced));
-    });
+        final offered = watch.paths.fallbackExercises
+            .map((exercise) => exercise.exerciseId)
+            .toSet();
+        expect(offered, containsAll(referenced));
+      },
+    );
   });
 
   group('S-001 start from a routine, phone offline', () {
-    test('creates the routine\'s structure and loads the first exercise', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      final expected = _objects(
-        _asObject(_contract()['routineSession'])['expectedSlots'],
-      );
+    test(
+      'creates the routine\'s structure and loads the first exercise',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final expected = _objects(
+          _asObject(_contract()['routineSession'])['expectedSlots'],
+        );
 
-      final session = await watch.paths.startFromRoutine('routine-push-a');
+        final session = await watch.paths.startFromRoutine('routine-push-a');
 
-      expect(session.status, WatchSessionStatus.active);
-      expect(session.currentExerciseIndex, 0);
-      expect(session.exercises, expected);
-      expect(watch.engine.currentExercise, expected.first);
+        expect(session.status, WatchSessionStatus.active);
+        expect(session.currentExerciseIndex, 0);
+        expect(session.exercises, expected);
+        expect(watch.engine.currentExercise, expected.first);
 
-      // The first exercise reaches the logging surface as its own effort kind,
-      // off the capabilities the routine carried — not a guess from the name.
-      expect(watch.surface.effortKind, WatchEffortKind.set);
-      expect(watch.surface.exerciseName, 'Barbell Bench Press');
-      expect(watch.surface.fields, isNotEmpty);
-    });
+        // The first exercise reaches the logging surface as its own effort kind,
+        // off the capabilities the routine carried — not a guess from the name.
+        expect(watch.surface.effortKind, WatchEffortKind.set);
+        expect(watch.surface.exerciseName, 'Barbell Bench Press');
+        expect(watch.surface.fields, isNotEmpty);
+      },
+    );
 
-    test('a relaunch with no phone still lists the routines and starts one', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
+    test(
+      'a relaunch with no phone still lists the routines and starts one',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
 
-      // Gone: engine, start paths, in-memory state. Left: the store.
-      final relaunched = await harness.launch();
+        // Gone: engine, start paths, in-memory state. Left: the store.
+        final relaunched = await harness.launch();
 
-      expect(
-        relaunched.paths.routines.map((routine) => routine.name),
-        ['Push A'],
-      );
-      final session = await relaunched.paths.startFromRoutine('routine-push-a');
-      expect(session.exercises, hasLength(3));
-      expect(relaunched.paths.phoneReachable, isFalse);
-    });
+        expect(relaunched.paths.routines.map((routine) => routine.name), [
+          'Push A',
+        ]);
+        final session = await relaunched.paths.startFromRoutine(
+          'routine-push-a',
+        );
+        expect(session.exercises, hasLength(3));
+        expect(relaunched.paths.phoneReachable, isFalse);
+      },
+    );
 
     test('lists every synced routine, and starts any one of them', () async {
       watch = await harness.launch();
@@ -434,202 +440,241 @@ void main() {
       expect(watch.surface.exerciseName, 'Pull-Up');
     });
 
-    test('the started session survives a kill, with its structure and start instant', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      final started = await watch.paths.startFromRoutine('routine-push-a');
+    test(
+      'the started session survives a kill, with its structure and start instant',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final started = await watch.paths.startFromRoutine('routine-push-a');
 
-      harness.clock.advance(const Duration(minutes: 12));
-      final relaunched = await harness.launch();
+        harness.clock.advance(const Duration(minutes: 12));
+        final relaunched = await harness.launch();
 
-      expect(relaunched.engine.session, isNotNull);
-      expect(relaunched.engine.session!.sessionId, started.sessionId);
-      expect(relaunched.engine.session!.startedAt, started.startedAt);
-      expect(relaunched.engine.session!.exercises, started.exercises);
-    });
+        expect(relaunched.engine.session, isNotNull);
+        expect(relaunched.engine.session!.sessionId, started.sessionId);
+        expect(relaunched.engine.session!.startedAt, started.startedAt);
+        expect(relaunched.engine.session!.exercises, started.exercises);
+      },
+    );
   });
 
   group('S-002 free workout, phone offline', () {
-    test('starts empty and adds a fallback-list exercise with its own surface', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      final fallback = _asObject(_contract()['fallback']);
-      final bench = watch.paths.fallbackExercises.firstWhere(
-        (exercise) => exercise.exerciseId == 'ex-barbell-bench-press',
-      );
+    test(
+      'starts empty and adds a fallback-list exercise with its own surface',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final fallback = _asObject(_contract()['fallback']);
+        final bench = watch.paths.fallbackExercises.firstWhere(
+          (exercise) => exercise.exerciseId == 'ex-barbell-bench-press',
+        );
 
-      final started = await watch.paths.startFreeWorkout();
-      expect(started.exercises, isEmpty);
-      expect(started.modality, isNull);
+        final started = await watch.paths.startFreeWorkout();
+        expect(started.exercises, isEmpty);
+        expect(started.modality, isNull);
 
-      final session = await watch.paths.addExerciseToSession(bench);
+        final session = await watch.paths.addExerciseToSession(bench);
 
-      expect(session.exercises, hasLength(1));
-      expect(
-        session.exercises.first['sessionExerciseId'],
-        fallback['expectedPickerSlotId'],
-      );
-      expect(session.exercises.first['exerciseId'], bench.exerciseId);
-      expect(watch.surface.effortKind, WatchEffortKind.set);
-      expect(watch.surface.exerciseName, 'Barbell Bench Press');
+        expect(session.exercises, hasLength(1));
+        expect(
+          session.exercises.first['sessionExerciseId'],
+          fallback['expectedPickerSlotId'],
+        );
+        expect(session.exercises.first['exerciseId'], bench.exerciseId);
+        expect(watch.surface.effortKind, WatchEffortKind.set);
+        expect(watch.surface.exerciseName, 'Barbell Bench Press');
 
-      await watch.surface.log();
+        await watch.surface.log();
 
-      final events = harness
-          .emittedOf('observations_up')
-          .expand((envelope) => _objects(_asObject(envelope['payload'])['events']));
-      expect(events, hasLength(1));
-      expect(events.first['exerciseId'], 'ex-barbell-bench-press');
-      expect(_validator().validateEnvelope(harness.emittedOf('observations_up').single), isEmpty);
+        final events = harness
+            .emittedOf('observations_up')
+            .expand(
+              (envelope) => _objects(_asObject(envelope['payload'])['events']),
+            );
+        expect(events, hasLength(1));
+        expect(events.first['exerciseId'], 'ex-barbell-bench-press');
+        expect(
+          _validator().validateEnvelope(
+            harness.emittedOf('observations_up').single,
+          ),
+          isEmpty,
+        );
 
-      // Persisted, not just emitted: the register's outcome is that the entry
-      // survives whatever happens to the app next.
-      expect(
-        (await harness.store.readAll()).observations.map(
-          (observation) => observation.entryId,
-        ),
-        [events.first['entryId']],
-      );
-    });
+        // Persisted, not just emitted: the register's outcome is that the entry
+        // survives whatever happens to the app next.
+        expect(
+          (await harness.store.readAll()).observations.map(
+            (observation) => observation.entryId,
+          ),
+          [events.first['entryId']],
+        );
+      },
+    );
 
-    test('the exercise added mid-session becomes the one being logged', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      final plank = watch.paths.fallbackExercises.firstWhere(
-        (exercise) => exercise.exerciseId == 'ex-plank',
-      );
+    test(
+      'the exercise added mid-session becomes the one being logged',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final plank = watch.paths.fallbackExercises.firstWhere(
+          (exercise) => exercise.exerciseId == 'ex-plank',
+        );
 
-      await watch.paths.startFreeWorkout();
-      final session = await watch.paths.addExerciseToSession(plank);
+        await watch.paths.startFreeWorkout();
+        final session = await watch.paths.addExerciseToSession(plank);
 
-      expect(session.currentExerciseIndex, 0);
-      expect(watch.surface.exerciseName, 'Plank');
-      expect(watch.surface.effortKind, WatchEffortKind.drill);
-    });
+        expect(session.currentExerciseIndex, 0);
+        expect(watch.surface.exerciseName, 'Plank');
+        expect(watch.surface.effortKind, WatchEffortKind.drill);
+      },
+    );
 
-    test('a free workout started offline is still there after a relaunch', () async {
-      watch = await harness.launch();
-      final started = await watch.paths.startFreeWorkout();
+    test(
+      'a free workout started offline is still there after a relaunch',
+      () async {
+        watch = await harness.launch();
+        final started = await watch.paths.startFreeWorkout();
 
-      final relaunched = await harness.launch();
+        final relaunched = await harness.launch();
 
-      expect(relaunched.engine.session!.sessionId, started.sessionId);
-      expect(relaunched.engine.session!.exercises, isEmpty);
-    });
+        expect(relaunched.engine.session!.sessionId, started.sessionId);
+        expect(relaunched.engine.session!.exercises, isEmpty);
+      },
+    );
   });
 
   group('S-006 session-started lifecycle event', () {
-    test('starting from a routine emits one conformant session-started event', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      final expected = _asObject(_contract()['sessionStarted']);
+    test(
+      'starting from a routine emits one conformant session-started event',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final expected = _asObject(_contract()['sessionStarted']);
 
-      final session = await watch.paths.startFromRoutine('routine-push-a');
+        final session = await watch.paths.startFromRoutine('routine-push-a');
 
-      final lifecycle = harness.emittedOf('session_lifecycle');
-      expect(lifecycle, hasLength(1));
-      final envelope = lifecycle.single;
-      expect(_validator().validateEnvelope(envelope), isEmpty);
-      expect(envelope['origin'], expected['origin']);
-      expect(envelope['sessionId'], session.sessionId);
-      expect(_asObject(envelope['payload']), {
-        'state': expected['state'],
-        'at': utcIso(session.startedAt),
-      });
+        final lifecycle = harness.emittedOf('session_lifecycle');
+        expect(lifecycle, hasLength(1));
+        final envelope = lifecycle.single;
+        expect(_validator().validateEnvelope(envelope), isEmpty);
+        expect(envelope['origin'], expected['origin']);
+        expect(envelope['sessionId'], session.sessionId);
+        expect(_asObject(envelope['payload']), {
+          'state': expected['state'],
+          'at': utcIso(session.startedAt),
+        });
 
-      // The protocol's own fixture, not just the schemas: the family's shape and
-      // the origin the register names are the fixture's, so a change to either
-      // side shows up here.
-      final fixture = _readJson('$_protocolRoot/fixtures/valid/session_lifecycle.json');
-      expect(envelope['type'], fixture['type']);
-      expect(envelope['origin'], fixture['origin']);
-      expect(
-        _asObject(fixture['payload'])['state'],
-        isNot(expected['state']),
-        reason: 'the fixture is the advanced shape; started carries no index',
-      );
-    });
+        // The protocol's own fixture, not just the schemas: the family's shape and
+        // the origin the register names are the fixture's, so a change to either
+        // side shows up here.
+        final fixture = _readJson(
+          '$_protocolRoot/fixtures/valid/session_lifecycle.json',
+        );
+        expect(envelope['type'], fixture['type']);
+        expect(envelope['origin'], fixture['origin']);
+        expect(
+          _asObject(fixture['payload'])['state'],
+          isNot(expected['state']),
+          reason: 'the fixture is the advanced shape; started carries no index',
+        );
+      },
+    );
 
-    test('a free workout emits the same event, and a relaunch does not re-emit it', () async {
-      watch = await harness.launch();
+    test(
+      'a free workout emits the same event, and a relaunch does not re-emit it',
+      () async {
+        watch = await harness.launch();
 
-      await watch.paths.startFreeWorkout();
-      await harness.launch();
+        await watch.paths.startFreeWorkout();
+        await harness.launch();
 
-      final lifecycle = harness.emittedOf('session_lifecycle');
-      expect(lifecycle, hasLength(1), reason: 'one per session start');
-      expect(_asObject(lifecycle.single['payload'])['state'], 'started');
-    });
+        final lifecycle = harness.emittedOf('session_lifecycle');
+        expect(lifecycle, hasLength(1), reason: 'one per session start');
+        expect(_asObject(lifecycle.single['payload'])['state'], 'started');
+      },
+    );
 
-    test('advancing and finishing report themselves, and nothing else', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      await watch.paths.startFromRoutine('routine-push-a');
+    test(
+      'advancing and finishing report themselves, and nothing else',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        await watch.paths.startFromRoutine('routine-push-a');
 
-      await watch.engine.advanceExercise();
-      await watch.engine.finishSession();
+        await watch.engine.advanceExercise();
+        await watch.engine.finishSession();
 
-      final payloads = harness
-          .emittedOf('session_lifecycle')
-          .map((envelope) => _asObject(envelope['payload']))
-          .toList();
-      expect(payloads.map((payload) => payload['state']), [
-        'started',
-        'exercise_advanced',
-        'completed',
-      ]);
-      expect(payloads[1]['exerciseIndex'], 1);
-      expect(payloads[2].containsKey('exerciseIndex'), isFalse);
-      expect(
-        harness
+        final payloads = harness
             .emittedOf('session_lifecycle')
-            .expand(_validator().validateEnvelope),
-        isEmpty,
-      );
+            .map((envelope) => _asObject(envelope['payload']))
+            .toList();
+        expect(payloads.map((payload) => payload['state']), [
+          'started',
+          'exercise_advanced',
+          'completed',
+        ]);
+        expect(payloads[1]['exerciseIndex'], 1);
+        expect(payloads[2].containsKey('exerciseIndex'), isFalse);
+        expect(
+          harness
+              .emittedOf('session_lifecycle')
+              .expand(_validator().validateEnvelope),
+          isEmpty,
+        );
 
-      // The advanced event is the one the protocol's fixture pins, field for
-      // field — including the index, which no other state may carry.
-      final fixture = _readJson('$_protocolRoot/fixtures/valid/session_lifecycle.json');
-      expect(payloads[1].keys.toSet(), _asObject(fixture['payload']).keys.toSet());
-      expect(_asObject(fixture['payload'])['state'], payloads[1]['state']);
-    });
+        // The advanced event is the one the protocol's fixture pins, field for
+        // field — including the index, which no other state may carry.
+        final fixture = _readJson(
+          '$_protocolRoot/fixtures/valid/session_lifecycle.json',
+        );
+        expect(
+          payloads[1].keys.toSet(),
+          _asObject(fixture['payload']).keys.toSet(),
+        );
+        expect(_asObject(fixture['payload'])['state'], payloads[1]['state']);
+      },
+    );
   });
 
   group('S-005 phone push adds an exercise to the live session', () {
-    test('inserts at the chosen position and stays on the same exercise', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      await watch.paths.startFromRoutine('routine-push-a');
-      final push = _asObject(_contract()['exercisePush']);
+    test(
+      'inserts at the chosen position and stays on the same exercise',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        await watch.paths.startFromRoutine('routine-push-a');
+        final push = _asObject(_contract()['exercisePush']);
 
-      for (var i = 0; i < (push['startIndex']! as int); i++) {
-        await watch.engine.advanceExercise();
-      }
-      final before = watch.engine.currentExercise!['sessionExerciseId'];
+        for (var i = 0; i < (push['startIndex']! as int); i++) {
+          await watch.engine.advanceExercise();
+        }
+        final before = watch.engine.currentExercise!['sessionExerciseId'];
 
-      expect(
-        await watch.orchestrator.receive(_asObject(push['envelope'])),
-        isTrue,
-      );
+        expect(
+          await watch.orchestrator.receive(_asObject(push['envelope'])),
+          isTrue,
+        );
 
-      final expected = _asObject(_contract()['routineSession']);
-      expect(
-        watch.engine.session!.exercises
-            .map((slot) => slot['sessionExerciseId']),
-        _strings(push['expectedSlotIds']),
-      );
-      expect(
-        watch.engine.currentExercise!['sessionExerciseId'],
-        push['expectedCurrentSlotId'],
-        reason: 'the push is not a request to move the user elsewhere',
-      );
-      expect(
-        watch.engine.currentExercise!['sessionExerciseId'],
-        before,
-        reason: 'the position follows the exercise, not the index',
-      );
-      expect(expected['routineId'], 'routine-push-a');
-    });
+        final expected = _asObject(_contract()['routineSession']);
+        expect(
+          watch.engine.session!.exercises.map(
+            (slot) => slot['sessionExerciseId'],
+          ),
+          _strings(push['expectedSlotIds']),
+        );
+        expect(
+          watch.engine.currentExercise!['sessionExerciseId'],
+          push['expectedCurrentSlotId'],
+          reason: 'the push is not a request to move the user elsewhere',
+        );
+        expect(
+          watch.engine.currentExercise!['sessionExerciseId'],
+          before,
+          reason: 'the position follows the exercise, not the index',
+        );
+        expect(expected['routineId'], 'routine-push-a');
+      },
+    );
 
     test('the pushed exercise logs with its own effort kind', () async {
       watch = await harness.launch();
@@ -648,47 +693,63 @@ void main() {
         await watch.engine.advanceExercise();
       }
 
-      expect(watch.engine.currentExercise!['sessionExerciseId'], push['pushedSlotId']);
+      expect(
+        watch.engine.currentExercise!['sessionExerciseId'],
+        push['pushedSlotId'],
+      );
       expect(watch.surface.effortKind, WatchEffortKind.set);
 
       await watch.surface.log();
       final events = _objects(
-        _asObject(harness.emittedOf('observations_up').last['payload'])['events'],
+        _asObject(
+          harness.emittedOf('observations_up').last['payload'],
+        )['events'],
       );
       expect(events, hasLength(1));
       expect(events.first['sessionExerciseId'], push['pushedSlotId']);
       expect(events.first['exerciseId'], 'ex-front-squat');
     });
 
-    test('a push before the current exercise leaves the user where they were', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      await watch.paths.startFromRoutine('routine-push-a');
+    test(
+      'a push before the current exercise leaves the user where they were',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        await watch.paths.startFromRoutine('routine-push-a');
 
-      await watch.engine.advanceExercise();
-      await watch.engine.advanceExercise();
-      expect(watch.engine.currentExercise!['sessionExerciseId'], 'sx-eff-pullup');
-      expect(watch.engine.session!.currentExerciseIndex, 2);
+        await watch.engine.advanceExercise();
+        await watch.engine.advanceExercise();
+        expect(
+          watch.engine.currentExercise!['sessionExerciseId'],
+          'sx-eff-pullup',
+        );
+        expect(watch.engine.session!.currentExerciseIndex, 2);
 
-      await watch.orchestrator.receive(_pushAt(0));
+        await watch.orchestrator.receive(_pushAt(0));
 
-      expect(
-        watch.engine.session!.exercises.map(
-          (slot) => slot['sessionExerciseId'],
-        ),
-        ['sx-push-front-squat', 'sx-eff-bench', 'sx-eff-plank', 'sx-eff-pullup'],
-      );
-      expect(
-        watch.engine.currentExercise!['sessionExerciseId'],
-        'sx-eff-pullup',
-        reason: 'inserting earlier in the ladder must not move the user',
-      );
-      expect(
-        watch.engine.session!.currentExerciseIndex,
-        3,
-        reason: 'the position follows the exercise, so it shifts with it',
-      );
-    });
+        expect(
+          watch.engine.session!.exercises.map(
+            (slot) => slot['sessionExerciseId'],
+          ),
+          [
+            'sx-push-front-squat',
+            'sx-eff-bench',
+            'sx-eff-plank',
+            'sx-eff-pullup',
+          ],
+        );
+        expect(
+          watch.engine.currentExercise!['sessionExerciseId'],
+          'sx-eff-pullup',
+          reason: 'inserting earlier in the ladder must not move the user',
+        );
+        expect(
+          watch.engine.session!.currentExerciseIndex,
+          3,
+          reason: 'the position follows the exercise, so it shifts with it',
+        );
+      },
+    );
 
     test('a re-delivered push changes nothing', () async {
       watch = await harness.launch();
@@ -722,33 +783,42 @@ void main() {
       );
 
       expect(watch.engine.session!.exercises, before.exercises);
-      expect(watch.engine.session!.currentExerciseIndex, before.currentExerciseIndex);
+      expect(
+        watch.engine.session!.currentExerciseIndex,
+        before.currentExerciseIndex,
+      );
     });
   });
 
   group('S-004 routine edit propagates', () {
-    test('a newer message replaces the cached routine with no user action', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      final edit = _asObject(_contract()['routineEdit']);
+    test(
+      'a newer message replaces the cached routine with no user action',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final edit = _asObject(_contract()['routineEdit']);
 
-      await harness.syncRoutinesDown(watch, _asObject(edit['routinesDown']));
+        await harness.syncRoutinesDown(watch, _asObject(edit['routinesDown']));
 
-      expect(watch.paths.routines, hasLength(1));
-      expect(watch.paths.routines.single.name, edit['expectedRoutineName']);
-      expect(
-        watch.paths.routines.single.slots.map(
-          (slot) => slot['sessionExerciseId'],
-        ),
-        _strings(edit['expectedSlotIds']),
-      );
-      expect(
-        watch.paths.syncedAt,
-        DateTime.parse(
-          _asObject(_asObject(edit['routinesDown'])['payload'])['generatedAt']! as String,
-        ).toUtc(),
-      );
-    });
+        expect(watch.paths.routines, hasLength(1));
+        expect(watch.paths.routines.single.name, edit['expectedRoutineName']);
+        expect(
+          watch.paths.routines.single.slots.map(
+            (slot) => slot['sessionExerciseId'],
+          ),
+          _strings(edit['expectedSlotIds']),
+        );
+        expect(
+          watch.paths.syncedAt,
+          DateTime.parse(
+            _asObject(
+                  _asObject(edit['routinesDown'])['payload'],
+                )['generatedAt']!
+                as String,
+          ).toUtc(),
+        );
+      },
+    );
 
     test('an older message does not roll the cache back', () async {
       watch = await harness.launch();
@@ -769,37 +839,46 @@ void main() {
       expect(watch.paths.routines.single.name, 'Push A (deload)');
     });
 
-    test('a message whose fallback list misses a routine exercise is rejected', () async {
-      watch = await harness.launch();
-      final invalid = _readJson(
-        '$_protocolRoot/fixtures/invalid/routines_down_unlisted_fallback_exercise.json',
-      );
+    test(
+      'a message whose fallback list misses a routine exercise is rejected',
+      () async {
+        watch = await harness.launch();
+        final invalid = _readJson(
+          '$_protocolRoot/fixtures/invalid/routines_down_unlisted_fallback_exercise.json',
+        );
 
-      final result = await watch.paths.applyRoutinesDown(invalid);
+        final result = await watch.paths.applyRoutinesDown(invalid);
 
-      expect(result.applied, isFalse);
-      expect(result.decision.rejections, isNotEmpty);
-      expect(watch.paths.routines, isEmpty);
-    });
+        expect(result.applied, isFalse);
+        expect(result.decision.rejections, isNotEmpty);
+        expect(watch.paths.routines, isEmpty);
+      },
+    );
 
-    test('syncing appends a row: nothing already stored is rewritten', () async {
-      watch = await harness.launch();
-      final fallback = _asObject(_contract()['fallback']);
-      final edit = _asObject(_contract()['routineEdit']);
+    test(
+      'syncing appends a row: nothing already stored is rewritten',
+      () async {
+        watch = await harness.launch();
+        final fallback = _asObject(_contract()['fallback']);
+        final edit = _asObject(_contract()['routineEdit']);
 
-      await harness.syncRoutinesDown(watch, _asObject(fallback['routinesDown']));
-      await harness.syncRoutinesDown(watch, _asObject(edit['routinesDown']));
-      final contents = await harness.store.readAll();
+        await harness.syncRoutinesDown(
+          watch,
+          _asObject(fallback['routinesDown']),
+        );
+        await harness.syncRoutinesDown(watch, _asObject(edit['routinesDown']));
+        final contents = await harness.store.readAll();
 
-      expect(contents.routineCatalogs, hasLength(2));
-      expect(
-        contents.routineCatalogs.map(
-          (catalog) => _asObject(catalog.routines.single)['name'],
-        ),
-        ['Push A', 'Push A (deload)'],
-        reason: 'the log keeps both versions; the newest one wins',
-      );
-    });
+        expect(contents.routineCatalogs, hasLength(2));
+        expect(
+          contents.routineCatalogs.map(
+            (catalog) => _asObject(catalog.routines.single)['name'],
+          ),
+          ['Push A', 'Push A (deload)'],
+          reason: 'the log keeps both versions; the newest one wins',
+        );
+      },
+    );
   });
 
   group('S-007 modality / effort-kind parity with the phone', () {
@@ -816,109 +895,131 @@ void main() {
       }
     });
 
-    test('a routine-named effort renders as the kind its capabilities imply', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      final sent = WatchRoutinesDown.fromEnvelope(
-        _asObject(_asObject(_contract()['fallback'])['routinesDown']),
-      );
-      final session = await watch.paths.startFromRoutine('routine-push-a');
-
-      // Walk the session the way the user would, asking the real surface what
-      // each exercise is.
-      final rendered = <String, String>{};
-      while (true) {
-        final slot = watch.engine.currentExercise!;
-        rendered[slot['exerciseId']! as String] = watch.surface.effortKind;
-        if (session.exercises.length - 1 <=
-            watch.engine.session!.currentExerciseIndex) {
-          break;
-        }
-        await watch.engine.advanceExercise();
-      }
-
-      for (final effort in sent.routines.expand((routine) => routine.efforts)) {
-        expect(
-          rendered[effort.exerciseId],
-          _phoneEffortKind(effort.capabilities),
-          reason: '${effort.exerciseName} renders as the phone resolves it',
+    test(
+      'a routine-named effort renders as the kind its capabilities imply',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        final sent = WatchRoutinesDown.fromEnvelope(
+          _asObject(_asObject(_contract()['fallback'])['routinesDown']),
         );
-      }
+        final session = await watch.paths.startFromRoutine('routine-push-a');
 
-      // A slot on the wire carries capabilities and no effort kind, so the
-      // wrist resolves one — and `Plank` is stored as `timed` on the phone
-      // while its `hold` capability wins in the shared precedence. The wrist
-      // shows a hold, which is what the exercise is. Recorded rather than
-      // papered over: this is the one effort where the two disagree.
-      expect(
-        [
-          for (final effort in sent.routines.expand((routine) => routine.efforts))
-            if (effort.effortKind != _phoneEffortKind(effort.capabilities))
-              '${effort.exerciseName}: ${effort.effortKind} → '
-                  '${_phoneEffortKind(effort.capabilities)}',
-        ],
-        ['Plank: timed → drill'],
-      );
-    });
+        // Walk the session the way the user would, asking the real surface what
+        // each exercise is.
+        final rendered = <String, String>{};
+        while (true) {
+          final slot = watch.engine.currentExercise!;
+          rendered[slot['exerciseId']! as String] = watch.surface.effortKind;
+          if (session.exercises.length - 1 <=
+              watch.engine.session!.currentExerciseIndex) {
+            break;
+          }
+          await watch.engine.advanceExercise();
+        }
 
-    test('a pushed exercise and a routine exercise with the same capabilities agree', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      await watch.paths.startFromRoutine('routine-push-a');
-      final push = _asObject(_contract()['exercisePush']);
-      await watch.orchestrator.receive(_asObject(push['envelope']));
+        for (final effort in sent.routines.expand(
+          (routine) => routine.efforts,
+        )) {
+          expect(
+            rendered[effort.exerciseId],
+            _phoneEffortKind(effort.capabilities),
+            reason: '${effort.exerciseName} renders as the phone resolves it',
+          );
+        }
 
-      final pushed = watch.engine.session!.exercises.firstWhere(
-        (slot) => slot['sessionExerciseId'] == push['pushedSlotId'],
-      );
-      final routineSlot = watch.engine.session!.exercises.first;
-      expect(pushed['capabilities'], routineSlot['capabilities']);
-      expect(
-        await effortKindFor(
-          _strings(pushed['capabilities']),
-          harness.clock.call,
-        ),
-        watch.surface.effortKind,
-        reason: 'same capabilities, same surface, wherever the exercise came from',
-      );
-    });
+        // A slot on the wire carries capabilities and no effort kind, so the
+        // wrist resolves one — and `Plank` is stored as `timed` on the phone
+        // while its `hold` capability wins in the shared precedence. The wrist
+        // shows a hold, which is what the exercise is. Recorded rather than
+        // papered over: this is the one effort where the two disagree.
+        expect(
+          [
+            for (final effort in sent.routines.expand(
+              (routine) => routine.efforts,
+            ))
+              if (effort.effortKind != _phoneEffortKind(effort.capabilities))
+                '${effort.exerciseName}: ${effort.effortKind} → '
+                    '${_phoneEffortKind(effort.capabilities)}',
+          ],
+          ['Plank: timed → drill'],
+        );
+      },
+    );
+
+    test(
+      'a pushed exercise and a routine exercise with the same capabilities agree',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        await watch.paths.startFromRoutine('routine-push-a');
+        final push = _asObject(_contract()['exercisePush']);
+        await watch.orchestrator.receive(_asObject(push['envelope']));
+
+        final pushed = watch.engine.session!.exercises.firstWhere(
+          (slot) => slot['sessionExerciseId'] == push['pushedSlotId'],
+        );
+        final routineSlot = watch.engine.session!.exercises.first;
+        expect(pushed['capabilities'], routineSlot['capabilities']);
+        expect(
+          await effortKindFor(
+            _strings(pushed['capabilities']),
+            harness.clock.call,
+          ),
+          watch.surface.effortKind,
+          reason:
+              'same capabilities, same surface, wherever the exercise came from',
+        );
+      },
+    );
   });
 
   group('proactive sync', () {
-    test('connect pulls everything; reconnect asks only for what changed', () async {
-      watch = await harness.launch();
-      final fallback = _asObject(_contract()['fallback']);
+    test(
+      'connect pulls everything; reconnect asks only for what changed',
+      () async {
+        watch = await harness.launch();
+        final fallback = _asObject(_contract()['fallback']);
 
-      await watch.orchestrator.sync();
-      expect(harness.transport.requested, [null]);
+        await watch.orchestrator.sync();
+        expect(harness.transport.requested, [null]);
 
-      await harness.syncRoutinesDown(watch, _asObject(fallback['routinesDown']));
-      harness.transport.isPhoneReachable = true;
-      await watch.orchestrator.sync(reconnect: true);
+        await harness.syncRoutinesDown(
+          watch,
+          _asObject(fallback['routinesDown']),
+        );
+        harness.transport.isPhoneReachable = true;
+        await watch.orchestrator.sync(reconnect: true);
 
-      expect(
-        harness.transport.requested,
-        [null, watch.paths.syncedAt],
-        reason: 'the second request carries the catalog it already has',
-      );
-      expect(watch.paths.phoneReachable, isTrue);
-    });
+        expect(
+          harness.transport.requested,
+          [null, watch.paths.syncedAt],
+          reason: 'the second request carries the catalog it already has',
+        );
+        expect(watch.paths.phoneReachable, isTrue);
+      },
+    );
 
-    test('an unreachable phone never blocks the routines the watch already has', () async {
-      watch = await harness.launch();
-      await syncFirstMessage();
+    test(
+      'an unreachable phone never blocks the routines the watch already has',
+      () async {
+        watch = await harness.launch();
+        await syncFirstMessage();
 
-      harness.transport.isPhoneReachable = false;
-      await watch.orchestrator.sync();
+        harness.transport.isPhoneReachable = false;
+        await watch.orchestrator.sync();
 
-      expect(watch.paths.phoneReachable, isFalse);
-      expect(watch.paths.routines, hasLength(1));
-      expect(watch.paths.fallbackExercises, isNotEmpty);
-    });
+        expect(watch.paths.phoneReachable, isFalse);
+        expect(watch.paths.routines, hasLength(1));
+        expect(watch.paths.fallbackExercises, isNotEmpty);
+      },
+    );
   });
 
   group('start surfaces', () {
-    testWidgets('the start screen lists synced routines and starts one', (tester) async {
+    testWidgets('the start screen lists synced routines and starts one', (
+      tester,
+    ) async {
       watch = await harness.launch();
       await syncFirstMessage();
       WatchSessionRecord? started;
@@ -940,55 +1041,56 @@ void main() {
       expect(started!.exercises, hasLength(3));
     });
 
-    testWidgets('free workout opens the picker, which offers exactly the fallback list', (
-      tester,
-    ) async {
-      watch = await harness.launch();
-      await syncFirstMessage();
-      WatchSessionRecord? started;
+    testWidgets(
+      'free workout opens the picker, which offers exactly the fallback list',
+      (tester) async {
+        watch = await harness.launch();
+        await syncFirstMessage();
+        WatchSessionRecord? started;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: WatchStartScreen(
-            paths: watch.paths,
-            onSessionStarted: (session) => started = session,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: WatchStartScreen(
+              paths: watch.paths,
+              onSessionStarted: (session) => started = session,
+            ),
           ),
-        ),
-      );
-
-      await tester.tap(find.text('Free workout'));
-      await tester.pumpAndSettle();
-
-      expect(
-        started,
-        isNull,
-        reason: 'an empty session with nothing to log is not ready yet',
-      );
-      for (final exercise in watch.paths.fallbackExercises) {
-        expect(
-          find.text(exercise.name),
-          findsOneWidget,
-          reason: '${exercise.name} is in the fallback list',
         );
-      }
-      expect(
-        find.text('Barbell Row'),
-        findsNothing,
-        reason: 'exercises the phone never synced are not offered',
-      );
 
-      await tester.tap(find.text('Plank'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Free workout'));
+        await tester.pumpAndSettle();
 
-      expect(started, isNotNull);
-      expect(started!.exercises, hasLength(1));
-      expect(started!.exercises.first['exerciseId'], 'ex-plank');
-      expect(
-        find.text('Free workout'),
-        findsOneWidget,
-        reason: 'the list dismisses itself: a pick is the whole request',
-      );
-    });
+        expect(
+          started,
+          isNull,
+          reason: 'an empty session with nothing to log is not ready yet',
+        );
+        for (final exercise in watch.paths.fallbackExercises) {
+          expect(
+            find.text(exercise.name),
+            findsOneWidget,
+            reason: '${exercise.name} is in the fallback list',
+          );
+        }
+        expect(
+          find.text('Barbell Row'),
+          findsNothing,
+          reason: 'exercises the phone never synced are not offered',
+        );
+
+        await tester.tap(find.text('Plank'));
+        await tester.pumpAndSettle();
+
+        expect(started, isNotNull);
+        expect(started!.exercises, hasLength(1));
+        expect(started!.exercises.first['exerciseId'], 'ex-plank');
+        expect(
+          find.text('Free workout'),
+          findsOneWidget,
+          reason: 'the list dismisses itself: a pick is the whole request',
+        );
+      },
+    );
 
     testWidgets('an empty fallback list says so instead of showing nothing', (
       tester,

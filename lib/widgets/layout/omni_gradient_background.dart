@@ -44,8 +44,8 @@ class OmniGradientBackground extends StatelessWidget {
       // per-screen logic.
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final isLarge = constraints.maxWidth >=
-              OmniTheme.kColumnMinActivationWidth;
+          final isLarge =
+              constraints.maxWidth >= OmniTheme.kColumnMinActivationWidth;
           Widget content = child;
           if (isLarge) {
             content = Center(

@@ -166,7 +166,10 @@ class StatsProgressService {
     // bucket that drives the "who appears in Strength/Cardio"
     // decision is windowed.
     final periods = await _repository.getPeriods();
-    final window = resolveWindow(periods: periods, completedSessions: completed);
+    final window = resolveWindow(
+      periods: periods,
+      completedSessions: completed,
+    );
 
     // exerciseId → { training-day → list of SetTuple } (loaded sets)
     final setsByExercise = <String, Map<DateTime, List<_SetTuple>>>{};
@@ -190,8 +193,14 @@ class StatsProgressService {
 
     for (final session in completed) {
       if (!_sessionInWindow(session, window)) continue;
-      final sessionDt = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
-      final sessionDay = DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final sessionDt = DateTime.fromMillisecondsSinceEpoch(
+        session.startedAtMs,
+      );
+      final sessionDay = DateTime(
+        sessionDt.year,
+        sessionDt.month,
+        sessionDt.day,
+      );
 
       final segments = (await _loadHistory()).segmentsOf(session.id);
       for (final segment in segments) {
@@ -383,12 +392,14 @@ class StatsProgressService {
         }
       }
 
-      topLifts.add(LiftProgress(
-        exerciseName: name,
-        e1RmTrend: e1RmTrend,
-        volumeTrend: volumeTrend,
-        repsTrend: repsTrend,
-      ));
+      topLifts.add(
+        LiftProgress(
+          exerciseName: name,
+          e1RmTrend: e1RmTrend,
+          volumeTrend: volumeTrend,
+          repsTrend: repsTrend,
+        ),
+      );
 
       // ── PR detection: weight axis (only on weight-axis exercises) ──
       double bestSoFar = 0;
@@ -396,11 +407,9 @@ class StatsProgressService {
         for (final point in e1RmTrend) {
           if (point.value > bestSoFar) {
             bestSoFar = point.value;
-            allPRs.add(StatsPR(
-              exerciseName: name,
-              e1Rm: point.value,
-              date: point.date,
-            ));
+            allPRs.add(
+              StatsPR(exerciseName: name, e1Rm: point.value, date: point.date),
+            );
           }
         }
       }
@@ -416,11 +425,9 @@ class StatsProgressService {
           final reps = point.value.toInt();
           if (reps > bestRepsSoFar) {
             bestRepsSoFar = reps;
-            allPRs.add(StatsPR(
-              exerciseName: name,
-              reps: reps,
-              date: point.date,
-            ));
+            allPRs.add(
+              StatsPR(exerciseName: name, reps: reps, date: point.date),
+            );
           }
         }
       }
@@ -473,12 +480,14 @@ class StatsProgressService {
         if (cd.distanceM != null && cd.distanceM! > 0) {
           pace = cd.durationSecs / (cd.distanceM! / 1000.0);
         }
-        trend.add(CardioTrendPoint(
-          date: day,
-          durationSecs: cd.durationSecs,
-          distanceM: cd.distanceM,
-          paceSecPerKm: pace,
-        ));
+        trend.add(
+          CardioTrendPoint(
+            date: day,
+            durationSecs: cd.durationSecs,
+            distanceM: cd.distanceM,
+            paceSecPerKm: pace,
+          ),
+        );
       }
 
       topCardio.add(CardioProgress(exerciseName: name, trend: trend));
@@ -494,12 +503,14 @@ class StatsProgressService {
       final trend = <CardioTrendPoint>[];
       for (final day in days) {
         final dd = dayMap[day]!;
-        trend.add(CardioTrendPoint(
-          date: day,
-          durationSecs: dd.durationSecs,
-          distanceM: null,
-          paceSecPerKm: null,
-        ));
+        trend.add(
+          CardioTrendPoint(
+            date: day,
+            durationSecs: dd.durationSecs,
+            distanceM: null,
+            paceSecPerKm: null,
+          ),
+        );
       }
 
       topIsometric.add(DrillProgress(exerciseName: name, trend: trend));
@@ -515,12 +526,14 @@ class StatsProgressService {
       final trend = <CardioTrendPoint>[];
       for (final day in days) {
         final rd = dayMap[day]!;
-        trend.add(CardioTrendPoint(
-          date: day,
-          durationSecs: rd.durationSecs,
-          distanceM: null,
-          paceSecPerKm: null,
-        ));
+        trend.add(
+          CardioTrendPoint(
+            date: day,
+            durationSecs: rd.durationSecs,
+            distanceM: null,
+            paceSecPerKm: null,
+          ),
+        );
       }
 
       topSports.add(RoundProgress(exerciseName: name, trend: trend));
@@ -599,23 +612,17 @@ class StatsProgressService {
         // not just the winning set, so a day where the heaviest
         // set was pure bodyweight but a later weighted set still
         // used extra weight keeps the annotation.
-        final extraWeight =
-            (entry['extra-weight'] as num?)?.toDouble() ?? 0.0;
+        final extraWeight = (entry['extra-weight'] as num?)?.toDouble() ?? 0.0;
         final dayMap = repsByExercise.putIfAbsent(exerciseId, () => {});
         final existing = dayMap[sessionDay];
-        final dayMaxExtra =
-            [existing?.extraWeightKg ?? 0.0, extraWeight]
-                .reduce((a, b) => a > b ? a : b);
+        final dayMaxExtra = [
+          existing?.extraWeightKg ?? 0.0,
+          extraWeight,
+        ].reduce((a, b) => a > b ? a : b);
         if (existing == null) {
-          dayMap[sessionDay] = _RepsDay(
-            reps: reps,
-            extraWeightKg: extraWeight,
-          );
+          dayMap[sessionDay] = _RepsDay(reps: reps, extraWeightKg: extraWeight);
         } else if (reps > existing.reps) {
-          dayMap[sessionDay] = _RepsDay(
-            reps: reps,
-            extraWeightKg: dayMaxExtra,
-          );
+          dayMap[sessionDay] = _RepsDay(reps: reps, extraWeightKg: dayMaxExtra);
         } else if (dayMaxExtra > existing.extraWeightKg) {
           // Today's heaviest set isn't this one, but a later
           // (non-winning) set just bumped the day's max added
@@ -701,8 +708,9 @@ class StatsProgressService {
     if (existing == null) {
       dayMap[sessionDay] = _DrillDay(durationSecs: totalDuration);
     } else {
-      dayMap[sessionDay] =
-          _DrillDay(durationSecs: existing.durationSecs + totalDuration);
+      dayMap[sessionDay] = _DrillDay(
+        durationSecs: existing.durationSecs + totalDuration,
+      );
     }
   }
 
@@ -730,8 +738,9 @@ class StatsProgressService {
     if (existing == null) {
       dayMap[sessionDay] = _RoundDay(durationSecs: totalDuration);
     } else {
-      dayMap[sessionDay] =
-          _RoundDay(durationSecs: existing.durationSecs + totalDuration);
+      dayMap[sessionDay] = _RoundDay(
+        durationSecs: existing.durationSecs + totalDuration,
+      );
     }
   }
 
@@ -769,24 +778,28 @@ class StatsProgressService {
       Duration(days: kTopExerciseRecencyDays),
     );
 
-    final ranked = data.entries.map((e) {
-      final days = e.value;
-      DateTime? mostRecent;
-      for (final d in days) {
-        if (mostRecent == null || d.isAfter(mostRecent)) mostRecent = d;
-      }
-      return (
-        id: e.key,
-        count: days.length,
-        lastDay: mostRecent,
-        name: nameCache[e.key] ?? e.key,
-      );
-    }).where((e) => e.lastDay != null && !e.lastDay!.isBefore(cutoff)).toList()
-      ..sort((a, b) {
-        final countCmp = b.count.compareTo(a.count);
-        if (countCmp != 0) return countCmp;
-        return a.name.compareTo(b.name);
-      });
+    final ranked =
+        data.entries
+            .map((e) {
+              final days = e.value;
+              DateTime? mostRecent;
+              for (final d in days) {
+                if (mostRecent == null || d.isAfter(mostRecent)) mostRecent = d;
+              }
+              return (
+                id: e.key,
+                count: days.length,
+                lastDay: mostRecent,
+                name: nameCache[e.key] ?? e.key,
+              );
+            })
+            .where((e) => e.lastDay != null && !e.lastDay!.isBefore(cutoff))
+            .toList()
+          ..sort((a, b) {
+            final countCmp = b.count.compareTo(a.count);
+            if (countCmp != 0) return countCmp;
+            return a.name.compareTo(b.name);
+          });
 
     return ranked.take(n).map((e) => e.id).toList();
   }
@@ -859,8 +872,7 @@ class StatsProgressService {
       final dayKey = r.dateMs;
       // Per-row, pre-rounded calories. Sum is a sum-of-rounded
       // values; matches the calorie ring's total.
-      dayCalories[dayKey] =
-          (dayCalories[dayKey] ?? 0) + r.caloriesConsumed;
+      dayCalories[dayKey] = (dayCalories[dayKey] ?? 0) + r.caloriesConsumed;
       // Macro grams: accumulate as double, round once at the end.
       final scale = r.amountConsumed / r.referenceAmount;
       dayProteinD[dayKey] = (dayProteinD[dayKey] ?? 0) + r.protein * scale;
@@ -976,8 +988,7 @@ class StatsProgressService {
     final sessions = (await _loadHistory()).sessions;
     var completed = sessions.where((s) => s.endedAtMs != null).toList();
     if (excludeSessionId != null) {
-      completed =
-          completed.where((s) => s.id != excludeSessionId).toList();
+      completed = completed.where((s) => s.id != excludeSessionId).toList();
     }
 
     double best = 0.0;
@@ -989,10 +1000,11 @@ class StatsProgressService {
           if (effort.effortKind != 'set') continue;
           if (effort.exerciseId != exerciseId) continue;
 
-          final observations =
-              (await _loadHistory()).observationsOf(effort.id);
-          final entries =
-              ObservationGrouper.groupByEffortKind('set', observations);
+          final observations = (await _loadHistory()).observationsOf(effort.id);
+          final entries = ObservationGrouper.groupByEffortKind(
+            'set',
+            observations,
+          );
           for (final entry in entries) {
             final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
             final reps = entry['reps'] as int? ?? 0;
@@ -1059,10 +1071,11 @@ class StatsProgressService {
           if (effort.effortKind != 'set') continue;
           if (effort.exerciseId != exerciseId) continue;
 
-          final observations =
-              (await _loadHistory()).observationsOf(effort.id);
-          final entries =
-              ObservationGrouper.groupByEffortKind('set', observations);
+          final observations = (await _loadHistory()).observationsOf(effort.id);
+          final entries = ObservationGrouper.groupByEffortKind(
+            'set',
+            observations,
+          );
           for (final entry in entries) {
             final weight = (entry['weight'] as num?)?.toDouble() ?? 0.0;
             final reps = entry['reps'] as int? ?? 0;
@@ -1106,8 +1119,15 @@ class StatsProgressService {
   }) {
     final today = now ?? DateTime.now();
     final todayMidnight = DateTime(today.year, today.month, today.day);
-    final todayEnd =
-        DateTime(today.year, today.month, today.day, 23, 59, 59, 999);
+    final todayEnd = DateTime(
+      today.year,
+      today.month,
+      today.day,
+      23,
+      59,
+      59,
+      999,
+    );
     final todayMidnightMs = todayMidnight.millisecondsSinceEpoch;
 
     // 1) Active training period that covers today and contains
@@ -1159,8 +1179,7 @@ class StatsProgressService {
         recentDays: 0,
       );
     }
-    final sortedDesc = distinctDays.toList()
-      ..sort((a, b) => b.compareTo(a));
+    final sortedDesc = distinctDays.toList()..sort((a, b) => b.compareTo(a));
     final selected = sortedDesc.take(n).toList()..sort();
     final earliest = selected.first;
     return StatsWindow(
@@ -1177,8 +1196,7 @@ class StatsProgressService {
   /// ends; the helper centralizes the boundary check so the
   /// selection iteration and the future consumers all agree.
   static bool _sessionInWindow(TrainingSession session, StatsWindow window) {
-    return session.startedAtMs >=
-            window.fromMs.millisecondsSinceEpoch &&
+    return session.startedAtMs >= window.fromMs.millisecondsSinceEpoch &&
         session.startedAtMs <= window.toMs.millisecondsSinceEpoch;
   }
 
@@ -1188,7 +1206,7 @@ class StatsProgressService {
   /// The window decides which exercises are eligible; the trend
   /// itself reaches back to every training day for those exercises.
   Future<Map<String, Map<DateTime, List<_SetTuple>>>>
-      _buildFullSetsForExercises(
+  _buildFullSetsForExercises(
     List<TrainingSession> completed,
     List<String> exerciseIds,
   ) async {
@@ -1206,8 +1224,11 @@ class StatsProgressService {
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(
         session.startedAtMs,
       );
-      final sessionDay =
-          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final sessionDay = DateTime(
+        sessionDt.year,
+        sessionDt.month,
+        sessionDt.day,
+      );
       final segments = (await _loadHistory()).segmentsOf(session.id);
       for (final segment in segments) {
         final efforts = (await _loadHistory()).effortsOf(segment.id);
@@ -1242,8 +1263,11 @@ class StatsProgressService {
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(
         session.startedAtMs,
       );
-      final sessionDay =
-          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final sessionDay = DateTime(
+        sessionDt.year,
+        sessionDt.month,
+        sessionDt.day,
+      );
       final segments = (await _loadHistory()).segmentsOf(session.id);
       for (final segment in segments) {
         final efforts = (await _loadHistory()).effortsOf(segment.id);
@@ -1260,8 +1284,7 @@ class StatsProgressService {
 
   /// Builds a per-selected-exercise full-history cardio trend map.
   /// See [_buildFullSetsForExercises] for the parallel contract.
-  Future<Map<String, Map<DateTime, _CardioDay>>>
-      _buildFullCardioForExercises(
+  Future<Map<String, Map<DateTime, _CardioDay>>> _buildFullCardioForExercises(
     List<TrainingSession> completed,
     List<String> exerciseIds,
   ) async {
@@ -1273,8 +1296,11 @@ class StatsProgressService {
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(
         session.startedAtMs,
       );
-      final sessionDay =
-          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final sessionDay = DateTime(
+        sessionDt.year,
+        sessionDt.month,
+        sessionDt.day,
+      );
       final segments = (await _loadHistory()).segmentsOf(session.id);
       for (final segment in segments) {
         final efforts = (await _loadHistory()).effortsOf(segment.id);
@@ -1292,8 +1318,7 @@ class StatsProgressService {
   /// Builds a per-selected-exercise full-history drill trend map.
   /// Filters by `effortKind == 'drill'` and sums hold times per day.
   /// See [_buildFullCardioForExercises] for the parallel contract.
-  Future<Map<String, Map<DateTime, _DrillDay>>>
-      _buildFullDrillForExercises(
+  Future<Map<String, Map<DateTime, _DrillDay>>> _buildFullDrillForExercises(
     List<TrainingSession> completed,
     List<String> exerciseIds,
   ) async {
@@ -1305,8 +1330,11 @@ class StatsProgressService {
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(
         session.startedAtMs,
       );
-      final sessionDay =
-          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final sessionDay = DateTime(
+        sessionDt.year,
+        sessionDt.month,
+        sessionDt.day,
+      );
       final segments = (await _loadHistory()).segmentsOf(session.id);
       for (final segment in segments) {
         final efforts = (await _loadHistory()).effortsOf(segment.id);
@@ -1324,8 +1352,7 @@ class StatsProgressService {
   /// Builds a per-selected-exercise full-history round trend map.
   /// Filters by `effortKind == 'round'` and sums round times per day.
   /// See [_buildFullCardioForExercises] for the parallel contract.
-  Future<Map<String, Map<DateTime, _RoundDay>>>
-      _buildFullRoundForExercises(
+  Future<Map<String, Map<DateTime, _RoundDay>>> _buildFullRoundForExercises(
     List<TrainingSession> completed,
     List<String> exerciseIds,
   ) async {
@@ -1337,8 +1364,11 @@ class StatsProgressService {
       final sessionDt = DateTime.fromMillisecondsSinceEpoch(
         session.startedAtMs,
       );
-      final sessionDay =
-          DateTime(sessionDt.year, sessionDt.month, sessionDt.day);
+      final sessionDay = DateTime(
+        sessionDt.year,
+        sessionDt.month,
+        sessionDt.day,
+      );
       final segments = (await _loadHistory()).segmentsOf(session.id);
       for (final segment in segments) {
         final efforts = (await _loadHistory()).effortsOf(segment.id);
@@ -1352,7 +1382,6 @@ class StatsProgressService {
     }
     return result;
   }
-
 
   /// Returns the per-day actuals (re-using the existing
   /// `computeNutritionTrend` aggregation) and a piecewise
@@ -1375,8 +1404,7 @@ class StatsProgressService {
     // actuals day. Each save point produces one step on the
     // piecewise line. The line is bound to the actuals' x-axis
     // so the chart can overlay it directly.
-    final actualsDays = actuals.map((p) => p.date).toList()
-      ..sort();
+    final actualsDays = actuals.map((p) => p.date).toList()..sort();
     final lastDay = actualsDays.last;
 
     // Walk every saved target (via the repository's "get on
@@ -1395,8 +1423,7 @@ class StatsProgressService {
       earliestDay.month,
       earliestDay.day,
     ).millisecondsSinceEpoch;
-    final firstTarget =
-        await _repository.getNutritionTargetForDate(firstMs);
+    final firstTarget = await _repository.getNutritionTargetForDate(firstMs);
     if (firstTarget == null) {
       // No target has ever been saved before / on the first
       // actuals day. The line stays empty.
@@ -1430,18 +1457,19 @@ class StatsProgressService {
       }
     }
 
-    final targetLine = steps.entries
-        .map(
-          (e) => NutritionAdherenceTargetPoint(
-            date: e.key,
-            calories: e.value.calories,
-            protein: e.value.protein,
-            carbs: e.value.carbs,
-            fat: e.value.fat,
-          ),
-        )
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final targetLine =
+        steps.entries
+            .map(
+              (e) => NutritionAdherenceTargetPoint(
+                date: e.key,
+                calories: e.value.calories,
+                protein: e.value.protein,
+                carbs: e.value.carbs,
+                fat: e.value.fat,
+              ),
+            )
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     return NutritionAdherence(actuals: actuals, targetLine: targetLine);
   }
 }

@@ -41,6 +41,7 @@ const double _kSessionScrollBottomExtra = 24.0;
 const double _kBottomControlsClearance = 140.0 + _kSessionScrollBottomExtra;
 const double _kBackFromDetailBottomPeekFraction = 0.05;
 const Duration _kTimerUpdateInterval = Duration(seconds: 1);
+
 /// Animation duration used to coordinate the rest-timer strip's
 /// appearance and disappearance with the scrollable's bottom
 /// padding so the content does not jolt underneath the user. The
@@ -134,6 +135,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   // - Ascending bests each trigger once (each exceeds the previous session best)
   // See `.github/agents/plans/pr-celebration-throttle-plan.md`.
   final Map<String, double> _sessionRunningBestE1RM = {};
+
   /// Session-scoped running max-reps per exercise. Mirror of
   /// [_sessionRunningBestE1RM] for the bodyweight PR axis —
   /// populated by [_maybeShowPRToast] when a bodyweight set beats
@@ -308,9 +310,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     Map<String, dynamic> a,
     Map<String, dynamic> b,
   ) {
-    final topCompare = _exerciseTopLevelOrder(a).compareTo(
-      _exerciseTopLevelOrder(b),
-    );
+    final topCompare = _exerciseTopLevelOrder(
+      a,
+    ).compareTo(_exerciseTopLevelOrder(b));
     if (topCompare != 0) return topCompare;
 
     final aId = a['id'] as String? ?? '';
@@ -322,12 +324,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     Map<String, dynamic> a,
     Map<String, dynamic> b,
   ) {
-    final blockCompare = _exerciseBlockOrder(a).compareTo(_exerciseBlockOrder(b));
+    final blockCompare = _exerciseBlockOrder(
+      a,
+    ).compareTo(_exerciseBlockOrder(b));
     if (blockCompare != 0) return blockCompare;
 
-    final topCompare = _exerciseTopLevelOrder(a).compareTo(
-      _exerciseTopLevelOrder(b),
-    );
+    final topCompare = _exerciseTopLevelOrder(
+      a,
+    ).compareTo(_exerciseTopLevelOrder(b));
     if (topCompare != 0) return topCompare;
 
     final aId = a['id'] as String? ?? '';
@@ -346,8 +350,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
   List<({SessionBlock? block, Map<String, dynamic>? exercise})>
   _buildNonRollingTopLevelItems(List<Map<String, dynamic>> source) {
     final blocks = widget.workoutState.getSessionBlocks();
-    final standaloneExercises = source.where((e) => e['blockId'] == null).toList()
-      ..sort(_compareExercisesByTopLevelOrder);
+    final standaloneExercises =
+        source.where((e) => e['blockId'] == null).toList()
+          ..sort(_compareExercisesByTopLevelOrder);
 
     final items = <({SessionBlock? block, Map<String, dynamic>? exercise})>[];
     for (final block in blocks) {
@@ -362,12 +367,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         return _compareExercisesByTopLevelOrder(a.exercise!, b.exercise!);
       }
 
-      final aTopLevel =
-          a.block != null
+      final aTopLevel = a.block != null
           ? _blockTopLevelOrder(a.block!)
           : _exerciseTopLevelOrder(a.exercise!);
-      final bTopLevel =
-          b.block != null
+      final bTopLevel = b.block != null
           ? _blockTopLevelOrder(b.block!)
           : _exerciseTopLevelOrder(b.exercise!);
 
@@ -896,9 +899,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           if (newE1rm > sessionBest) {
             if (!mounted) return;
             final messenger = ScaffoldMessenger.of(context);
-            messenger.showSnackBar(
-              PRToast.buildPRSnackBar(Theme.of(context)),
-            );
+            messenger.showSnackBar(PRToast.buildPRSnackBar(Theme.of(context)));
             _sessionRunningBestE1RM[exerciseId] = newE1rm;
           }
         }
@@ -915,9 +916,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
         if (reps > sessionBest) {
           if (!mounted) return;
           final messenger = ScaffoldMessenger.of(context);
-          messenger.showSnackBar(
-            PRToast.buildRepPRSnackBar(Theme.of(context)),
-          );
+          messenger.showSnackBar(PRToast.buildRepPRSnackBar(Theme.of(context)));
           _sessionRunningBestReps[exerciseId] = reps;
         }
       }
@@ -1037,8 +1036,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
     final effortKind = exercise['effortKind'] as String? ?? 'set';
     final cachedEntries =
         exercise['entries'] as List<Map<String, dynamic>>? ?? const [];
-    final hasLoad = (exercise['capabilities'] as List?)?.contains('load') ??
-        false;
+    final hasLoad =
+        (exercise['capabilities'] as List?)?.contains('load') ?? false;
 
     if (cachedEntries.length >= WorkoutConstants.maxEntriesPerEffort) return;
 
@@ -1054,10 +1053,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
       // by every successful `updateEntryValue` → repository write,
       // so this reads whatever the user has typed so far in the
       // current session.
-      final liveEntries = widget.workoutState
-          .getExercisesWithEntries()
-          .firstWhere((e) => e['id'] == effortId)['entries']
-          as List;
+      final liveEntries =
+          widget.workoutState.getExercisesWithEntries().firstWhere(
+                (e) => e['id'] == effortId,
+              )['entries']
+              as List;
       final lastEntry = liveEntries.isEmpty
           ? null
           : liveEntries.last as Map<String, dynamic>;
@@ -1581,10 +1581,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           _listScrollController.position.maxScrollExtent > 0) {
         final position = _listScrollController.position;
         final max = position.maxScrollExtent;
-        final target = (max -
-                (position.viewportDimension *
-                    _kBackFromDetailBottomPeekFraction))
-            .clamp(0.0, max);
+        final target =
+            (max -
+                    (position.viewportDimension *
+                        _kBackFromDetailBottomPeekFraction))
+                .clamp(0.0, max);
         _listScrollController.jumpTo(target);
 
         // Re-apply on the next frame in case late layout changes alter extent.
@@ -1592,10 +1593,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen>
           if (!mounted || !_listScrollController.hasClients) return;
           final settled = _listScrollController.position;
           final settledMax = settled.maxScrollExtent;
-          final settledTarget = (settledMax -
-                  (settled.viewportDimension *
-                      _kBackFromDetailBottomPeekFraction))
-              .clamp(0.0, settledMax);
+          final settledTarget =
+              (settledMax -
+                      (settled.viewportDimension *
+                          _kBackFromDetailBottomPeekFraction))
+                  .clamp(0.0, settledMax);
           _listScrollController.jumpTo(settledTarget);
         });
       }

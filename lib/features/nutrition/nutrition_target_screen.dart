@@ -27,10 +27,7 @@ import '../../widgets/layout/omni_bottom_cta.dart';
 class NutritionTargetScreen extends StatefulWidget {
   final NutritionState nutritionState;
 
-  const NutritionTargetScreen({
-    super.key,
-    required this.nutritionState,
-  });
+  const NutritionTargetScreen({super.key, required this.nutritionState});
 
   @override
   State<NutritionTargetScreen> createState() => _NutritionTargetScreenState();
@@ -100,25 +97,18 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Daily Calorie Target'),
-        ),
+        appBar: AppBar(title: const Text('Daily Calorie Target')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Daily Calorie Target'),
-      ),
+      appBar: AppBar(title: const Text('Daily Calorie Target')),
       // The Save button is the screen's primary bottom action. It
       // uses the shared `OmniBottomCTA` so it inherits the
       // app-wide width, height, corner radius, and safe-area
       // vertical anchor (see `OmniTheme.bottomCTA*` tokens).
-      bottomNavigationBar: OmniBottomCTA(
-        label: 'Save',
-        onPressed: _save,
-      ),
+      bottomNavigationBar: OmniBottomCTA(label: 'Save', onPressed: _save),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
           16,
@@ -200,8 +190,8 @@ class _NutritionTargetScreenState extends State<NutritionTargetScreen> {
                 'ratios are informational and derived from what you '
                 'log, not from target values.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: OmniTheme.colors.textMuted,
-                    ),
+                  color: OmniTheme.colors.textMuted,
+                ),
               ),
             ],
           ),

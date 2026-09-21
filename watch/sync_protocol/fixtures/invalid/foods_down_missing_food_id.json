@@ -1,0 +1,21 @@
+{
+  "protocolVersion": 1,
+  "messageId": "msg-foods-2",
+  "type": "foods_down",
+  "origin": "phone",
+  "sentAt": "2026-07-13T17:00:00Z",
+  "payload": {
+    "generatedAt": "2026-07-13T17:00:00Z",
+    "categories": [{ "categoryId": "foodcat-carbs", "name": "Carbs" }],
+    "foods": [
+      {
+        "name": "Oatmeal",
+        "categoryId": "foodcat-carbs",
+        "referenceAmount": 100,
+        "referenceLabel": "g",
+        "caloriesPerServing": 190,
+        "defaultServings": 1.5
+      }
+    ]
+  }
+}

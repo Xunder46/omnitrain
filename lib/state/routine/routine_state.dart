@@ -736,8 +736,8 @@ class RoutineState extends ChangeNotifier {
             t.setIndex == setIndex,
       );
 
-        final now = DateTime.now().millisecondsSinceEpoch;
-        final targetId = existingIndex >= 0
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final targetId = existingIndex >= 0
           ? _currentTargets[existingIndex].id
           : _buildTargetId(templateEffortId, metricId, setIndex);
 
@@ -1298,9 +1298,9 @@ class RoutineSnapshot {
     required List<TemplateSegment> segments,
     required Map<String, List<TemplateEffort>> effortsBySegment,
     required Map<String, List<TemplateTarget>> targetsByEffort,
-  })  : _segments = segments,
-        _effortsBySegment = effortsBySegment,
-        _targetsByEffort = targetsByEffort;
+  }) : _segments = segments,
+       _effortsBySegment = effortsBySegment,
+       _targetsByEffort = targetsByEffort;
 
   factory RoutineSnapshot.fromState(
     WorkoutTemplate? template,

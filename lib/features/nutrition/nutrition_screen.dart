@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
+import '../../core/utils/foods_i_eat_order.dart';
 import '../../data/models/models.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition_state.dart';
@@ -294,25 +295,6 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
     required this.nutritionState,
   });
 
-  /// Sort groups alphabetically (case-insensitive). Pure helper so it can
-  /// be reasoned about (and refactored) independently of build.
-  static List<FoodGroup> _sortedGroups(List<FoodGroup> groups) =>
-      _sortedByName<FoodGroup>(groups, (g) => g.name);
-
-  /// Sort foods alphabetically (case-insensitive).
-  static List<Food> _sortedFoods(List<Food> foods) =>
-      _sortedByName<Food>(foods, (f) => f.name);
-
-  /// Generic case-insensitive alphabetical sort by a `name` accessor. Pure;
-  /// does not mutate the input list.
-  static List<T> _sortedByName<T>(List<T> items, String Function(T) nameOf) {
-    final copy = [...items];
-    copy.sort(
-      (a, b) => nameOf(a).toLowerCase().compareTo(nameOf(b).toLowerCase()),
-    );
-    return copy;
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -326,7 +308,6 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
           );
         }
 
-        final groups = _sortedGroups(foodLibraryState.activeFoodGroups);
         final foods = foodLibraryState.foods;
 
         // Empty state: show whenever the user's Foods I Eat list is empty,
@@ -347,58 +328,25 @@ class _FoodLibraryBrowseSection extends StatelessWidget {
           );
         }
 
-        // Bucket foods by FoodGroup id (D-1 / S-042). The category
-        // label is the FoodGroup's name from the live cache; null
-        // groupId maps to the synthetic "Uncategorized" section. The
-        // section header mirrors the Categories tab exactly — the
-        // rename propagates here on the next notifyListeners.
-        //
-        // A food whose `groupId` no longer resolves to an active
-        // category (the category was deleted, or was never seeded
-        // because the user already had one by that name) buckets
-        // into Ungrouped. Keying it by the dangling id instead
-        // would drop the food from this card entirely, because the
-        // section order below is built from the active categories.
-        final activeGroupIds = {for (final g in groups) g.id};
-        final Map<String, List<Food>> byGroup = {};
-        for (final f in foods) {
-          final gid = f.groupId;
-          final key = (gid != null && activeGroupIds.contains(gid)) ? gid : '';
-          byGroup.putIfAbsent(key, () => []).add(f);
-        }
-
-        // Sort: groups alpha (case-insensitive) by name, "Uncategorized"
-        // last. The empty key is our sentinel for Uncategorized.
-        final groupNameById = <String, String>{
-          for (final g in groups) g.id: g.name,
-        };
-        String labelFor(String groupId) {
-          if (groupId.isEmpty) return 'Uncategorized';
-          return groupNameById[groupId] ?? 'Uncategorized';
-        }
-
-        final orderedGroupIds = <String>[];
-        for (final g in groups) {
-          if (byGroup.containsKey(g.id)) orderedGroupIds.add(g.id);
-        }
-        if (byGroup.containsKey('')) orderedGroupIds.add('');
-
-        final List<Widget> children = [];
-        for (final groupId in orderedGroupIds) {
-          final groupFoods = _sortedFoods(byGroup[groupId] ?? const <Food>[]);
-          children.add(
-            _GroupBlock(
-              groupName: labelFor(groupId),
-              foods: groupFoods,
-              foodLibraryState: foodLibraryState,
-              nutritionState: nutritionState,
-            ),
-          );
-        }
+        // The list order is the phone's own rule, in one place:
+        // `foodsIEatSections` is the function the wrist's synced list is
+        // checked against (S-003 of the watch nutrition plan).
+        final sections = foodsIEatSections(
+          foods: foods,
+          groups: foodLibraryState.activeFoodGroups,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: children,
+          children: [
+            for (final section in sections)
+              _GroupBlock(
+                groupName: section.title,
+                foods: section.foods,
+                foodLibraryState: foodLibraryState,
+                nutritionState: nutritionState,
+              ),
+          ],
         );
       },
     );

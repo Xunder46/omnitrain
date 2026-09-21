@@ -77,8 +77,11 @@ void main() {
       final managedFile = File(
         p.join(imageStorage.service.managedDirectoryPath, basename!),
       );
-      expect(managedFile.existsSync(), isTrue,
-          reason: 'seed photo must exist on disk');
+      expect(
+        managedFile.existsSync(),
+        isTrue,
+        reason: 'seed photo must exist on disk',
+      );
 
       // A legacy library-only custom: isCatalog = false and no
       // catalog twin, so My Foods renders it and the row tap
@@ -119,13 +122,19 @@ void main() {
       // Row tap opens the editor for this food.
       await tester.tap(find.text('Grandma\'s Stew'));
       await tester.pumpAndSettle();
-      expect(find.text('Edit Food'), findsOneWidget,
-          reason: 'row tap must open the food editor');
+      expect(
+        find.text('Edit Food'),
+        findsOneWidget,
+        reason: 'row tap must open the food editor',
+      );
 
       // Tap the × on the photo tile — and nothing else. No Save.
       final clearButton = find.byTooltip('Remove photo');
-      expect(clearButton, findsOneWidget,
-          reason: 'a user-set photo must offer a remove affordance');
+      expect(
+        clearButton,
+        findsOneWidget,
+        reason: 'a user-set photo must offer a remove affordance',
+      );
       await tester.runAsync(() async {
         await tester.tap(clearButton);
         // The clear awaits a real repository write and a real
@@ -137,11 +146,18 @@ void main() {
       // The photo is gone from the data layer, so it stays gone
       // when the user backs out and reopens the food.
       final reloaded = (await repo.getFoodById(foodId))!;
-      expect(reloaded.imagePath, isNull,
-          reason: 'the × must clear the photo in the data layer, not just '
-              'in the form');
-      expect(managedFile.existsSync(), isFalse,
-          reason: 'the orphaned managed file must be cleaned up (D-7)');
+      expect(
+        reloaded.imagePath,
+        isNull,
+        reason:
+            'the × must clear the photo in the data layer, not just '
+            'in the form',
+      );
+      expect(
+        managedFile.existsSync(),
+        isFalse,
+        reason: 'the orphaned managed file must be cleaned up (D-7)',
+      );
     },
   );
 }

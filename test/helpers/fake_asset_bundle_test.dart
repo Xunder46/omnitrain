@@ -13,7 +13,6 @@
 // Without this file, the failure mode is invisible: the bundled-photo tests
 // would still pass, just for the wrong reason.
 
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -34,8 +33,11 @@ void main() {
         // The manifest key resolves. This is the call
         // `AssetManifest.loadFromAssetBundle` makes internally.
         final manifest = await bundle.load('AssetManifest.bin');
-        expect(manifest.lengthInBytes, greaterThan(0),
-            reason: 'manifest must be served so path validation succeeds');
+        expect(
+          manifest.lengthInBytes,
+          greaterThan(0),
+          reason: 'manifest must be served so path validation succeeds',
+        );
       },
     );
 
@@ -68,9 +70,7 @@ void main() {
                 child: SizedBox(
                   width: 64,
                   height: 64,
-                  child: Image.asset(
-                    'assets/images/food_chicken_breast.webp',
-                  ),
+                  child: Image.asset('assets/images/food_chicken_breast.webp'),
                 ),
               ),
             ),
@@ -79,13 +79,22 @@ void main() {
         await tester.pumpAndSettle();
 
         final imageWidget = tester.widget<Image>(find.byType(Image));
-        expect(imageWidget.image, isA<AssetImage>(),
-            reason: 'Image.asset must produce an AssetImage-backed widget');
+        expect(
+          imageWidget.image,
+          isA<AssetImage>(),
+          reason: 'Image.asset must produce an AssetImage-backed widget',
+        );
         final renderBox = tester.renderObject<RenderBox>(find.byType(Image));
-        expect(renderBox.size.width, greaterThan(0),
-            reason: 'declared asset must render to a non-zero width');
-        expect(renderBox.size.height, greaterThan(0),
-            reason: 'declared asset must render to a non-zero height');
+        expect(
+          renderBox.size.width,
+          greaterThan(0),
+          reason: 'declared asset must render to a non-zero width',
+        );
+        expect(
+          renderBox.size.height,
+          greaterThan(0),
+          reason: 'declared asset must render to a non-zero height',
+        );
       },
     );
 
@@ -108,8 +117,11 @@ void main() {
         } catch (e) {
           thrown = e;
         }
-        expect(thrown, isA<FlutterError>(),
-            reason: 'undeclared asset must throw FlutterError');
+        expect(
+          thrown,
+          isA<FlutterError>(),
+          reason: 'undeclared asset must throw FlutterError',
+        );
 
         // The asset path IS in the pubspec manifest (it's declared), so
         // `Image.asset`'s path validation succeeds. The failure surfaces
@@ -137,10 +149,14 @@ void main() {
         // production fall-through. If the helper still throws for
         // declared-but-missing assets, `Image.asset`'s render path would
         // silently misbehave in production too — this assertion would fail.
-        expect(find.byType(ColoredBox), findsOneWidget,
-            reason: 'undeclared-but-declared-in-pubspec asset must fall '
-                'through to errorBuilder, exactly as a real missing file '
-                'would');
+        expect(
+          find.byType(ColoredBox),
+          findsOneWidget,
+          reason:
+              'undeclared-but-declared-in-pubspec asset must fall '
+              'through to errorBuilder, exactly as a real missing file '
+              'would',
+        );
         // The original Image is still in the tree (errorBuilder replaces
         // its paint, not the widget itself).
         expect(find.byType(Image), findsOneWidget);
@@ -156,23 +172,24 @@ void main() {
         // validation. This is the "did you typo the asset key" guard.
         final bundle = FakeAssetBundle(const {});
 
-        expect(bundle.isDeclaredAsset('assets/images/does_not_exist.webp'),
-            isFalse);
+        expect(
+          bundle.isDeclaredAsset('assets/images/does_not_exist.webp'),
+          isFalse,
+        );
       },
     );
 
-    test(
-      'isDeclaredAsset mirrors manifest contents exactly',
-      () {
-        // Use a manifest-listed path and a non-listed path.
-        final bundle = FakeAssetBundle(const {});
-        expect(bundle.isDeclaredAsset('assets/images/food_chicken_breast.webp'),
-            isTrue,
-            reason: 'pubspec-declared bundled photo must be reported as '
-                'declared');
-        expect(bundle.isDeclaredAsset('not/in/manifest/at/all.png'),
-            isFalse);
-      },
-    );
+    test('isDeclaredAsset mirrors manifest contents exactly', () {
+      // Use a manifest-listed path and a non-listed path.
+      final bundle = FakeAssetBundle(const {});
+      expect(
+        bundle.isDeclaredAsset('assets/images/food_chicken_breast.webp'),
+        isTrue,
+        reason:
+            'pubspec-declared bundled photo must be reported as '
+            'declared',
+      );
+      expect(bundle.isDeclaredAsset('not/in/manifest/at/all.png'), isFalse);
+    });
   });
 }

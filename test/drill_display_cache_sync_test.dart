@@ -28,8 +28,9 @@ Future<String> _addDrillEffort(
   MockWorkoutRepository repo,
 ) async {
   final exercises = await repo.getExercises();
-  final drillExercise =
-      exercises.firstWhere((e) => e.capabilities.contains('time'));
+  final drillExercise = exercises.firstWhere(
+    (e) => e.capabilities.contains('time'),
+  );
   final effortId = await workoutState.addExerciseToSession(
     drillExercise,
     chosenMetric: 'duration',
@@ -66,8 +67,10 @@ void main() {
           isTrue,
           reason: 'new rest should be open for entryIndex 1',
         );
-        final elapsedAfterStart =
-            workoutState.getRestElapsedSeconds(effortId, 1);
+        final elapsedAfterStart = workoutState.getRestElapsedSeconds(
+          effortId,
+          1,
+        );
         expect(
           elapsedAfterStart,
           greaterThanOrEqualTo(0),
@@ -76,8 +79,10 @@ void main() {
 
         // Wait a bit and verify the rest is still counting
         await Future.delayed(const Duration(milliseconds: 100));
-        final elapsedAfterWait =
-            workoutState.getRestElapsedSeconds(effortId, 1);
+        final elapsedAfterWait = workoutState.getRestElapsedSeconds(
+          effortId,
+          1,
+        );
         expect(
           elapsedAfterWait,
           greaterThanOrEqualTo(elapsedAfterStart),

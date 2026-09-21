@@ -29,9 +29,10 @@ class _InteractiveLogoState extends State<InteractiveLogo>
       vsync: this,
       duration: const Duration(milliseconds: 150),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.9,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -94,10 +95,7 @@ class _InteractiveLogoState extends State<InteractiveLogo>
     );
 
     if (!reduceMotion) {
-      content = ScaleTransition(
-        scale: _scaleAnimation,
-        child: content,
-      );
+      content = ScaleTransition(scale: _scaleAnimation, child: content);
     } else if (_isPressed) {
       content = Transform.scale(scale: 0.9, child: content);
     }

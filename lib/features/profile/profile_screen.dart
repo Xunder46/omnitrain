@@ -184,10 +184,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     const maxCharsPerLine = 6.0;
 
     // Calculate font size based on the longest word so all words are consistent
-    final longestWordLength = words.map((w) => w.length).reduce((a, b) => a > b ? a : b);
+    final longestWordLength = words
+        .map((w) => w.length)
+        .reduce((a, b) => a > b ? a : b);
     final fontSize = longestWordLength <= maxCharsPerLine
         ? baseFontSize
-        : (baseFontSize * maxCharsPerLine / longestWordLength).clamp(14.0, baseFontSize);
+        : (baseFontSize * maxCharsPerLine / longestWordLength).clamp(
+            14.0,
+            baseFontSize,
+          );
 
     return Material(
       color: Colors.transparent,

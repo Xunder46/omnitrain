@@ -112,7 +112,9 @@ class CatalogRefreshService {
   /// that step always resolves. There is no touched-entry check here: muscle
   /// groups are app-authored reference data with no user-editing surface.
   Future<void> _refreshMuscleGroups() async {
-    final existing = {for (final g in await _repository.getMuscleGroups()) g.id: g};
+    final existing = {
+      for (final g in await _repository.getMuscleGroups()) g.id: g,
+    };
 
     for (final bundled in _source.muscleGroups) {
       final current = existing[bundled.id];

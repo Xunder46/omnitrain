@@ -104,9 +104,7 @@ class HealthSyncService {
       final samples = await _platform.readBodyWeightSince(since);
       if (samples.isEmpty) return const [];
 
-      final imported = [
-        for (final sample in samples) _entryFor(sample),
-      ];
+      final imported = [for (final sample in samples) _entryFor(sample)];
       for (final entry in imported) {
         await _repository.saveMeasurementEntry(entry);
       }

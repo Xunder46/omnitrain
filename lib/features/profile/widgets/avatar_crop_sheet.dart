@@ -178,13 +178,12 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
   /// photo rather than its top-left corner.
   static Matrix4 _centeredMatrix(Size imageSize, double side) {
     final child = _coverChildSize(imageSize, side);
-    return Matrix4.identity()
-      ..translateByDouble(
-        -(child.width - side) / 2,
-        -(child.height - side) / 2,
-        0,
-        1,
-      );
+    return Matrix4.identity()..translateByDouble(
+      -(child.width - side) / 2,
+      -(child.height - side) / 2,
+      0,
+      1,
+    );
   }
 
   Future<void> _onConfirm() async {
@@ -216,9 +215,9 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to capture crop: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to capture crop: $e')));
     }
   }
 
@@ -253,9 +252,9 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
                 'Pinch & drag to position',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: OmniTheme.colors.textSecondary,
-                      letterSpacing: 0.4,
-                    ),
+                  color: OmniTheme.colors.textSecondary,
+                  letterSpacing: 0.4,
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -289,8 +288,10 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
       _centeredForSide = viewportSide;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _transformationController.value =
-            _centeredMatrix(imageSize, viewportSide);
+        _transformationController.value = _centeredMatrix(
+          imageSize,
+          viewportSide,
+        );
       });
     }
 
@@ -308,18 +309,14 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
             // are preview chrome, not part of the avatar.
             RepaintBoundary(
               key: _boundaryKey,
-              child: ClipRect(
-                child: _buildImageLayer(viewportSide, imageSize),
-              ),
+              child: ClipRect(child: _buildImageLayer(viewportSide, imageSize)),
             ),
             // The circular dim overlay is a preview aid — the
             // persisted image is the full square viewport. The
             // overlay is `IgnorePointer`d so it never blocks the
             // `InteractiveViewer`'s gesture detector underneath.
             const IgnorePointer(
-              child: CustomPaint(
-                painter: _CircularCropOverlayPainter(),
-              ),
+              child: CustomPaint(painter: _CircularCropOverlayPainter()),
             ),
           ],
         ),
@@ -409,8 +406,9 @@ class _AvatarCropSheetState extends State<AvatarCropSheet> {
                     Theme.of(context).colorScheme.primary,
                   ),
                 ),
-                onPressed:
-                    _isSaving ? null : () => Navigator.of(context).pop(null),
+                onPressed: _isSaving
+                    ? null
+                    : () => Navigator.of(context).pop(null),
                 child: const Text('Cancel'),
               ),
             ),

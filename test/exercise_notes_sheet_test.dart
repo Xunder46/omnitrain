@@ -24,7 +24,10 @@ Future<void> _pumpWorkoutSessionScreen(
         routineState: routineState,
         sessionSummaryService: sessionSummaryService,
         timerAlertService: FakeTimerAlertService(),
-        settingsState: SettingsState(MockWorkoutRepository(), fakePreferencesService()),
+        settingsState: SettingsState(
+          MockWorkoutRepository(),
+          fakePreferencesService(),
+        ),
       ),
     ),
   );

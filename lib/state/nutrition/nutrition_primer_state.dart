@@ -85,8 +85,7 @@ class NutritionPrimerState extends ChangeNotifier {
   /// gets the primer at least once.
   Future<void> init() async {
     try {
-      final persisted =
-          await _repository.getPreferenceBool(preferenceKey);
+      final persisted = await _repository.getPreferenceBool(preferenceKey);
       _seen = persisted;
     } catch (_) {
       // Leave `_seen = false` (the safer default — show the

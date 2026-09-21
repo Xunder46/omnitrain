@@ -239,14 +239,17 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('StatsProgressService.getAllTimeBestE1RM', () {
-    test('returns 0.0 when no sessions exist at all (S-001 / first-ever)', () async {
-      final repo = await _freshRepo();
-      final exercises = await repo.getExercises();
-      final exA = exercises.first;
+    test(
+      'returns 0.0 when no sessions exist at all (S-001 / first-ever)',
+      () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final exA = exercises.first;
 
-      final service = StatsProgressService(repo);
-      expect(await service.getAllTimeBestE1RM(exA.id), 0.0);
-    });
+        final service = StatsProgressService(repo);
+        expect(await service.getAllTimeBestE1RM(exA.id), 0.0);
+      },
+    );
 
     test('returns 0.0 when sessions exist but none for the exercise', () async {
       final repo = await _freshRepo();
@@ -267,96 +270,102 @@ void main() {
       expect(await service.getAllTimeBestE1RM('ex-DOES-NOT-EXIST'), 0.0);
     });
 
-    test('returns the single set e1RM when one completed session has one set', () async {
-      final repo = await _freshRepo();
-      final exercises = await repo.getExercises();
-      final exA = exercises.first;
+    test(
+      'returns the single set e1RM when one completed session has one set',
+      () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final exA = exercises.first;
 
-      await _seedCompletedSetSession(
-        repo,
-        sessionId: 's-1',
-        startedAtMs: 1000,
-        endedAtMs: 2000,
-        exerciseId: exA.id,
-        reps: 5,
-        weight: 60.0,
-      );
-
-      final service = StatsProgressService(repo);
-      expect(await service.getAllTimeBestE1RM(exA.id), 70.0);
-    });
-
-    test('returns the max across multiple sets in the same completed session', () async {
-      final repo = await _freshRepo();
-      final exercises = await repo.getExercises();
-      final exA = exercises.first;
-
-      // Session with three set entries at different weights.
-      final session = TrainingSession(
-        id: 's-1',
-        ownerUserId: 'u-1',
-        startedAtMs: 1000,
-        endedAtMs: 5000,
-        createdAtMs: 1000,
-        updatedAtMs: 5000,
-      );
-      await repo.createSession(session);
-
-      final segId = 'seg-s-1';
-      await repo.createSegment(
-        SessionSegment(
-          id: segId,
+        await _seedCompletedSetSession(
+          repo,
           sessionId: 's-1',
-          orderIndex: 0,
-          segmentType: 'main',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: exA.id,
+          reps: 5,
+          weight: 60.0,
+        );
+
+        final service = StatsProgressService(repo);
+        expect(await service.getAllTimeBestE1RM(exA.id), 70.0);
+      },
+    );
+
+    test(
+      'returns the max across multiple sets in the same completed session',
+      () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final exA = exercises.first;
+
+        // Session with three set entries at different weights.
+        final session = TrainingSession(
+          id: 's-1',
+          ownerUserId: 'u-1',
+          startedAtMs: 1000,
+          endedAtMs: 5000,
           createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
+          updatedAtMs: 5000,
+        );
+        await repo.createSession(session);
 
-      // Three efforts, each with a single set entry.
-      for (final entry in [
-        (reps: 5, weight: 60.0), // e1RM 70.0
-        (reps: 3, weight: 80.0), // e1RM 88.0
-        (reps: 1, weight: 100.0), // e1RM 103.33
-      ]) {
-        final effortId = 'eff-${entry.reps}-${entry.weight}';
-        await repo.createEffort(
-          SegmentEffort(
-            id: effortId,
-            segmentId: segId,
-            orderIndex: entry.reps,
-            effortKind: 'set',
-            exerciseId: exA.id,
+        final segId = 'seg-s-1';
+        await repo.createSegment(
+          SessionSegment(
+            id: segId,
+            sessionId: 's-1',
+            orderIndex: 0,
+            segmentType: 'main',
             createdAtMs: 1000,
             updatedAtMs: 1000,
           ),
         );
-        await repo.createObservation(
-          EffortObservation(
-            id: 'obs-reps-$effortId',
-            effortId: effortId,
-            metricId: 'metric-reps',
-            valueInt: entry.reps,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-        await repo.createObservation(
-          EffortObservation(
-            id: 'obs-weight-$effortId',
-            effortId: effortId,
-            metricId: 'metric-weight',
-            valueReal: entry.weight,
-            createdAtMs: 1000,
-            updatedAtMs: 1000,
-          ),
-        );
-      }
 
-      final service = StatsProgressService(repo);
-      expect(await service.getAllTimeBestE1RM(exA.id), closeTo(103.33, 0.01));
-    });
+        // Three efforts, each with a single set entry.
+        for (final entry in [
+          (reps: 5, weight: 60.0), // e1RM 70.0
+          (reps: 3, weight: 80.0), // e1RM 88.0
+          (reps: 1, weight: 100.0), // e1RM 103.33
+        ]) {
+          final effortId = 'eff-${entry.reps}-${entry.weight}';
+          await repo.createEffort(
+            SegmentEffort(
+              id: effortId,
+              segmentId: segId,
+              orderIndex: entry.reps,
+              effortKind: 'set',
+              exerciseId: exA.id,
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+          );
+          await repo.createObservation(
+            EffortObservation(
+              id: 'obs-reps-$effortId',
+              effortId: effortId,
+              metricId: 'metric-reps',
+              valueInt: entry.reps,
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+          );
+          await repo.createObservation(
+            EffortObservation(
+              id: 'obs-weight-$effortId',
+              effortId: effortId,
+              metricId: 'metric-weight',
+              valueReal: entry.weight,
+              createdAtMs: 1000,
+              updatedAtMs: 1000,
+            ),
+          );
+        }
+
+        final service = StatsProgressService(repo);
+        expect(await service.getAllTimeBestE1RM(exA.id), closeTo(103.33, 0.01));
+      },
+    );
 
     test('returns the max across multiple completed sessions', () async {
       final repo = await _freshRepo();
@@ -527,68 +536,71 @@ void main() {
       expect(await service.getAllTimeBestE1RM(exA.id), 0.0);
     });
 
-    test('returns 0.0 when sessions exist but all sets have weight=0 or reps=0', () async {
-      final repo = await _freshRepo();
-      final exercises = await repo.getExercises();
-      final exA = exercises.first;
+    test(
+      'returns 0.0 when sessions exist but all sets have weight=0 or reps=0',
+      () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        final exA = exercises.first;
 
-      // A strength effort with weight=0 (skipped or uninitialized).
-      final session = TrainingSession(
-        id: 's-empty',
-        ownerUserId: 'u-1',
-        startedAtMs: 1000,
-        endedAtMs: 2000,
-        createdAtMs: 1000,
-        updatedAtMs: 2000,
-      );
-      await repo.createSession(session);
-      final segId = 'seg-s-empty';
-      await repo.createSegment(
-        SessionSegment(
-          id: segId,
-          sessionId: 's-empty',
-          orderIndex: 0,
-          segmentType: 'main',
+        // A strength effort with weight=0 (skipped or uninitialized).
+        final session = TrainingSession(
+          id: 's-empty',
+          ownerUserId: 'u-1',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
           createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      final effortId = 'eff-empty';
-      await repo.createEffort(
-        SegmentEffort(
-          id: effortId,
-          segmentId: segId,
-          orderIndex: 0,
-          effortKind: 'set',
-          exerciseId: exA.id,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createObservation(
-        EffortObservation(
-          id: 'obs-reps-empty',
-          effortId: effortId,
-          metricId: 'metric-reps',
-          valueInt: 5,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
-      await repo.createObservation(
-        EffortObservation(
-          id: 'obs-weight-empty',
-          effortId: effortId,
-          metricId: 'metric-weight',
-          valueReal: 0.0,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        ),
-      );
+          updatedAtMs: 2000,
+        );
+        await repo.createSession(session);
+        final segId = 'seg-s-empty';
+        await repo.createSegment(
+          SessionSegment(
+            id: segId,
+            sessionId: 's-empty',
+            orderIndex: 0,
+            segmentType: 'main',
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        final effortId = 'eff-empty';
+        await repo.createEffort(
+          SegmentEffort(
+            id: effortId,
+            segmentId: segId,
+            orderIndex: 0,
+            effortKind: 'set',
+            exerciseId: exA.id,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repo.createObservation(
+          EffortObservation(
+            id: 'obs-reps-empty',
+            effortId: effortId,
+            metricId: 'metric-reps',
+            valueInt: 5,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
+        await repo.createObservation(
+          EffortObservation(
+            id: 'obs-weight-empty',
+            effortId: effortId,
+            metricId: 'metric-weight',
+            valueReal: 0.0,
+            createdAtMs: 1000,
+            updatedAtMs: 1000,
+          ),
+        );
 
-      final service = StatsProgressService(repo);
-      expect(await service.getAllTimeBestE1RM(exA.id), 0.0);
-    });
+        final service = StatsProgressService(repo);
+        expect(await service.getAllTimeBestE1RM(exA.id), 0.0);
+      },
+    );
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -597,141 +609,150 @@ void main() {
   // ══════════════════════════════════════════════════════════════════════════
 
   group('S-009: in-session PR threshold matches Stats PR computation', () {
-    test('identical seed → standing best agrees between Arm A (Stats) and Arm B (in-session)', () async {
-      // Anchor both timestamps to local-midnight of recent days
-      // (2 days ago and 1 day ago) so the new recency floor
-      // (`StatsProgressService.kTopExerciseRecencyDays`) keeps the
-      // exercise eligible for selection. Noon UTC was previously
-      // used so the local training-day buckets cleanly; local
-      // midnight does the same for the tests that only check the
-      // e1RM/pr values, not the wall-clock time of day.
-      final today = DateTime.now();
-      final todayMidnight = DateTime(today.year, today.month, today.day);
-      final sOldDay = todayMidnight.subtract(const Duration(days: 2));
-      final sNewDay = todayMidnight.subtract(const Duration(days: 1));
-      final sOldStartMs = sOldDay.millisecondsSinceEpoch;
-      final sOldEndMs = sOldDay.add(const Duration(hours: 1)).millisecondsSinceEpoch;
-      final sNewStartMs = sNewDay.millisecondsSinceEpoch;
-      final sNewEndMs = sNewDay.add(const Duration(hours: 1)).millisecondsSinceEpoch;
+    test(
+      'identical seed → standing best agrees between Arm A (Stats) and Arm B (in-session)',
+      () async {
+        // Anchor both timestamps to local-midnight of recent days
+        // (2 days ago and 1 day ago) so the new recency floor
+        // (`StatsProgressService.kTopExerciseRecencyDays`) keeps the
+        // exercise eligible for selection. Noon UTC was previously
+        // used so the local training-day buckets cleanly; local
+        // midnight does the same for the tests that only check the
+        // e1RM/pr values, not the wall-clock time of day.
+        final today = DateTime.now();
+        final todayMidnight = DateTime(today.year, today.month, today.day);
+        final sOldDay = todayMidnight.subtract(const Duration(days: 2));
+        final sNewDay = todayMidnight.subtract(const Duration(days: 1));
+        final sOldStartMs = sOldDay.millisecondsSinceEpoch;
+        final sOldEndMs = sOldDay
+            .add(const Duration(hours: 1))
+            .millisecondsSinceEpoch;
+        final sNewStartMs = sNewDay.millisecondsSinceEpoch;
+        final sNewEndMs = sNewDay
+            .add(const Duration(hours: 1))
+            .millisecondsSinceEpoch;
 
-      // Arm A — Stats-screen view: both sessions are completed, so
-      // the Stats PR detector walks both per-day e1RM points.
-      final armA = await _freshRepo();
-      final exA = (await armA.getExercises()).first;
-      await _seedCompletedSetSession(
-        armA,
-        sessionId: 's-old',
-        startedAtMs: sOldStartMs,
-        endedAtMs: sOldEndMs,
-        exerciseId: exA.id,
-        reps: 5,
-        weight: 60.0,
-      );
-      await _seedCompletedSetSession(
-        armA,
-        sessionId: 's-new',
-        startedAtMs: sNewStartMs,
-        endedAtMs: sNewEndMs,
-        exerciseId: exA.id,
-        reps: 5,
-        weight: 70.0,
-      );
-
-      final statsData = await StatsProgressService(armA).computeProgressData();
-      // The lift is the only set-based exercise, so it lands in topLifts[0].
-      final lift = statsData.topLifts.firstWhere(
-        (l) => l.exerciseName == exA.name,
-      );
-      // Two training days → two trend points.
-      expect(lift.e1RmTrend, hasLength(2));
-      // Day 1: 60 × (1 + 5/30) = 70.0
-      expect(lift.e1RmTrend.first.value, 70.0);
-      // Day 2: 70 × (1 + 5/30) ≈ 81.667
-      expect(lift.e1RmTrend.last.value, closeTo(81.6667, 0.001));
-      // The Stats PR detector saw s-new as a new PR.
-      expect(statsData.recentPRs, isNotEmpty);
-      expect(statsData.recentPRs.first.e1Rm, closeTo(81.6667, 0.001));
-
-      // Arm B — in-session view: s-new is in-progress. The toast
-      // queries the standing best at the moment of the just-logged
-      // set; the just-logged set MUST be excluded from that query
-      // (D-2 contract; otherwise the standing best would include the
-      // very set we're trying to celebrate as a PR, masking the
-      // celebration).
-      final armB = await _freshRepo();
-      final exB = (await armB.getExercises()).first;
-      await _seedCompletedSetSession(
-        armB,
-        sessionId: 's-old',
-        startedAtMs: sOldStartMs,
-        endedAtMs: sOldEndMs,
-        exerciseId: exB.id,
-        reps: 5,
-        weight: 60.0,
-      );
-      await _seedInProgressSetSession(
-        armB,
-        sessionId: 's-new',
-        startedAtMs: sNewStartMs,
-        exerciseId: exB.id,
-        reps: 5,
-        weight: 70.0,
-      );
-
-      final standingBest =
-          await StatsProgressService(armB).getAllTimeBestE1RM(exB.id);
-      // The standing best at the moment of the new set is 70.0
-      // (s-old). The just-logged set in s-new is excluded.
-      expect(standingBest, 70.0);
-
-      // The just-logged set's e1RM is ~81.67, which is strictly
-      // greater than 70.0 → the in-session toast would fire.
-      final newE1rm = StatsProgressService.epley1RM(70.0, 5)!;
-      expect(newE1rm, greaterThan(standingBest));
-
-      // Parity assertion: the in-session query (Arm B) returns the
-      // same number as the day-1 point of the Stats trend (Arm A).
-      // This is the single source of truth the prompt calls out:
-      // if either side changes, this test fails loudly.
-      expect(standingBest, lift.e1RmTrend.first.value);
-    });
-  });
-group('S-001: first-ever strength set fires PR toast', () {
-    testWidgets(
-      'S-001a: no prior history → first logged set fires the toast',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final exercises = await repo.getExercises();
-        final exA = exercises.first;
-
-        final workoutState = WorkoutState(repo);
-        await workoutState.createNewSession(modality: 'resistance_lifting');
-
-        final deps = await pumpLiveSessionScreen(
-          tester,
-          repo: repo,
-          workoutState: workoutState,
+        // Arm A — Stats-screen view: both sessions are completed, so
+        // the Stats PR detector walks both per-day e1RM points.
+        final armA = await _freshRepo();
+        final exA = (await armA.getExercises()).first;
+        await _seedCompletedSetSession(
+          armA,
+          sessionId: 's-old',
+          startedAtMs: sOldStartMs,
+          endedAtMs: sOldEndMs,
           exerciseId: exA.id,
-          exerciseName: exA.name,
           reps: 5,
-          weightKg: 60.0,
+          weight: 60.0,
+        );
+        await _seedCompletedSetSession(
+          armA,
+          sessionId: 's-new',
+          startedAtMs: sNewStartMs,
+          endedAtMs: sNewEndMs,
+          exerciseId: exA.id,
+          reps: 5,
+          weight: 70.0,
         );
 
-        await deps.openDetailView();
+        final statsData = await StatsProgressService(
+          armA,
+        ).computeProgressData();
+        // The lift is the only set-based exercise, so it lands in topLifts[0].
+        final lift = statsData.topLifts.firstWhere(
+          (l) => l.exerciseName == exA.name,
+        );
+        // Two training days → two trend points.
+        expect(lift.e1RmTrend, hasLength(2));
+        // Day 1: 60 × (1 + 5/30) = 70.0
+        expect(lift.e1RmTrend.first.value, 70.0);
+        // Day 2: 70 × (1 + 5/30) ≈ 81.667
+        expect(lift.e1RmTrend.last.value, closeTo(81.6667, 0.001));
+        // The Stats PR detector saw s-new as a new PR.
+        expect(statsData.recentPRs, isNotEmpty);
+        expect(statsData.recentPRs.first.e1Rm, closeTo(81.6667, 0.001));
 
-        // 60 kg × 5 reps → e1RM 70.0. No prior history for exA →
-        // standing best is 0.0 → 70.0 > 0.0 → PR.
-        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+        // Arm B — in-session view: s-new is in-progress. The toast
+        // queries the standing best at the moment of the just-logged
+        // set; the just-logged set MUST be excluded from that query
+        // (D-2 contract; otherwise the standing best would include the
+        // very set we're trying to celebrate as a PR, masking the
+        // celebration).
+        final armB = await _freshRepo();
+        final exB = (await armB.getExercises()).first;
+        await _seedCompletedSetSession(
+          armB,
+          sessionId: 's-old',
+          startedAtMs: sOldStartMs,
+          endedAtMs: sOldEndMs,
+          exerciseId: exB.id,
+          reps: 5,
+          weight: 60.0,
+        );
+        await _seedInProgressSetSession(
+          armB,
+          sessionId: 's-new',
+          startedAtMs: sNewStartMs,
+          exerciseId: exB.id,
+          reps: 5,
+          weight: 70.0,
+        );
 
-        // The SnackBar's content is reachable via `find.text` because
-        // `ScaffoldMessenger` renders it inside the Overlay.
-        expect(find.text('Congrats! New PR'), findsOneWidget);
-        expect(find.byIcon(Icons.emoji_events), findsOneWidget);
+        final standingBest = await StatsProgressService(
+          armB,
+        ).getAllTimeBestE1RM(exB.id);
+        // The standing best at the moment of the new set is 70.0
+        // (s-old). The just-logged set in s-new is excluded.
+        expect(standingBest, 70.0);
+
+        // The just-logged set's e1RM is ~81.67, which is strictly
+        // greater than 70.0 → the in-session toast would fire.
+        final newE1rm = StatsProgressService.epley1RM(70.0, 5)!;
+        expect(newE1rm, greaterThan(standingBest));
+
+        // Parity assertion: the in-session query (Arm B) returns the
+        // same number as the day-1 point of the Stats trend (Arm A).
+        // This is the single source of truth the prompt calls out:
+        // if either side changes, this test fails loudly.
+        expect(standingBest, lift.e1RmTrend.first.value);
       },
     );
+  });
+  group('S-001: first-ever strength set fires PR toast', () {
+    testWidgets('S-001a: no prior history → first logged set fires the toast', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final exercises = await repo.getExercises();
+      final exA = exercises.first;
+
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(modality: 'resistance_lifting');
+
+      final deps = await pumpLiveSessionScreen(
+        tester,
+        repo: repo,
+        workoutState: workoutState,
+        exerciseId: exA.id,
+        exerciseName: exA.name,
+        reps: 5,
+        weightKg: 60.0,
+      );
+
+      await deps.openDetailView();
+
+      // 60 kg × 5 reps → e1RM 70.0. No prior history for exA →
+      // standing best is 0.0 → 70.0 > 0.0 → PR.
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // The SnackBar's content is reachable via `find.text` because
+      // `ScaffoldMessenger` renders it inside the Overlay.
+      expect(find.text('Congrats! New PR'), findsOneWidget);
+      expect(find.byIcon(Icons.emoji_events), findsOneWidget);
+    });
   });
 
   group('S-002: a set beating the prior best fires the toast', () {
@@ -743,8 +764,7 @@ group('S-001: first-ever strength set fires PR toast', () {
         final exA = (await repo.getExercises()).first;
 
         // Seed a completed session with 60 kg × 5 reps (e1RM 70.0).
-        final sOldStartMs =
-            DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
+        final sOldStartMs = DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
         await _seedCompletedSetSession(
           repo,
           sessionId: 's-old',
@@ -779,46 +799,44 @@ group('S-001: first-ever strength set fires PR toast', () {
   });
 
   group('S-003: a set equal to the prior best does NOT fire', () {
-    testWidgets(
-      'S-003a: 60 kg standing best → 60 kg × 5 reps → no toast',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final exA = (await repo.getExercises()).first;
+    testWidgets('S-003a: 60 kg standing best → 60 kg × 5 reps → no toast', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final exA = (await repo.getExercises()).first;
 
-        final sOldStartMs =
-            DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
-        await _seedCompletedSetSession(
-          repo,
-          sessionId: 's-old',
-          startedAtMs: sOldStartMs,
-          endedAtMs: sOldStartMs + 3600000,
-          exerciseId: exA.id,
-          reps: 5,
-          weight: 60.0,
-        );
+      final sOldStartMs = DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
+      await _seedCompletedSetSession(
+        repo,
+        sessionId: 's-old',
+        startedAtMs: sOldStartMs,
+        endedAtMs: sOldStartMs + 3600000,
+        exerciseId: exA.id,
+        reps: 5,
+        weight: 60.0,
+      );
 
-        final workoutState = WorkoutState(repo);
-        await workoutState.createNewSession(modality: 'resistance_lifting');
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(modality: 'resistance_lifting');
 
-        final deps = await pumpLiveSessionScreen(
-          tester,
-          repo: repo,
-          workoutState: workoutState,
-          exerciseId: exA.id,
-          exerciseName: exA.name,
-          reps: 5,
-          weightKg: 60.0, // e1RM 70.0 == 70.0 → NOT a PR (strict >)
-        );
+      final deps = await pumpLiveSessionScreen(
+        tester,
+        repo: repo,
+        workoutState: workoutState,
+        exerciseId: exA.id,
+        exerciseName: exA.name,
+        reps: 5,
+        weightKg: 60.0, // e1RM 70.0 == 70.0 → NOT a PR (strict >)
+      );
 
-        await deps.openDetailView();
-        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+      await deps.openDetailView();
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
-        expect(find.text('Congrats! New PR'), findsNothing);
-      },
-    );
+      expect(find.text('Congrats! New PR'), findsNothing);
+    });
   });
 
   // Throttle tests: The main throttle behavior is covered by S-008a which verifies
@@ -827,46 +845,44 @@ group('S-001: first-ever strength set fires PR toast', () {
   // test infrastructure to properly handle SnackBar dismissal timing.
 
   group('S-004: a set below the prior best does NOT fire', () {
-    testWidgets(
-      'S-004a: 60 kg standing best → 50 kg × 3 reps → no toast',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final exA = (await repo.getExercises()).first;
+    testWidgets('S-004a: 60 kg standing best → 50 kg × 3 reps → no toast', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final exA = (await repo.getExercises()).first;
 
-        final sOldStartMs =
-            DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
-        await _seedCompletedSetSession(
-          repo,
-          sessionId: 's-old',
-          startedAtMs: sOldStartMs,
-          endedAtMs: sOldStartMs + 3600000,
-          exerciseId: exA.id,
-          reps: 5,
-          weight: 60.0,
-        );
+      final sOldStartMs = DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
+      await _seedCompletedSetSession(
+        repo,
+        sessionId: 's-old',
+        startedAtMs: sOldStartMs,
+        endedAtMs: sOldStartMs + 3600000,
+        exerciseId: exA.id,
+        reps: 5,
+        weight: 60.0,
+      );
 
-        final workoutState = WorkoutState(repo);
-        await workoutState.createNewSession(modality: 'resistance_lifting');
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(modality: 'resistance_lifting');
 
-        final deps = await pumpLiveSessionScreen(
-          tester,
-          repo: repo,
-          workoutState: workoutState,
-          exerciseId: exA.id,
-          exerciseName: exA.name,
-          reps: 3,
-          weightKg: 50.0, // 50 × (1 + 3/30) = 55.0 < 70.0 → not a PR
-        );
+      final deps = await pumpLiveSessionScreen(
+        tester,
+        repo: repo,
+        workoutState: workoutState,
+        exerciseId: exA.id,
+        exerciseName: exA.name,
+        reps: 3,
+        weightKg: 50.0, // 50 × (1 + 3/30) = 55.0 < 70.0 → not a PR
+      );
 
-        await deps.openDetailView();
-        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+      await deps.openDetailView();
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
-        expect(find.text('Congrats! New PR'), findsNothing);
-      },
-    );
+      expect(find.text('Congrats! New PR'), findsNothing);
+    });
   });
 
   group('S-005: non-strength efforts never trigger the toast', () {
@@ -919,167 +935,168 @@ group('S-001: first-ever strength set fires PR toast', () {
   });
 
   group('S-006: edit mode never triggers a toast', () {
-    testWidgets(
-      'S-006a: opening a completed session in edit mode → no toast',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final exA = (await repo.getExercises()).first;
+    testWidgets('S-006a: opening a completed session in edit mode → no toast', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final exA = (await repo.getExercises()).first;
 
-        // Seed a completed session with 60 kg × 5 reps (e1RM 70.0).
-        final sOldStartMs =
-            DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
-        await _seedCompletedSetSession(
-          repo,
-          sessionId: 's-old',
-          startedAtMs: sOldStartMs,
-          endedAtMs: sOldStartMs + 3600000,
-          exerciseId: exA.id,
-          reps: 5,
-          weight: 60.0,
-        );
+      // Seed a completed session with 60 kg × 5 reps (e1RM 70.0).
+      final sOldStartMs = DateTime.utc(2025, 1, 1, 12).millisecondsSinceEpoch;
+      await _seedCompletedSetSession(
+        repo,
+        sessionId: 's-old',
+        startedAtMs: sOldStartMs,
+        endedAtMs: sOldStartMs + 3600000,
+        exerciseId: exA.id,
+        reps: 5,
+        weight: 60.0,
+      );
 
-        final workoutState = WorkoutState(repo);
-        // Open the completed session in edit mode.
-        final session = (await repo.getAllSessions()).first;
-        await workoutState.loadHistoricalSession(session.id);
+      final workoutState = WorkoutState(repo);
+      // Open the completed session in edit mode.
+      final session = (await repo.getAllSessions()).first;
+      await workoutState.loadHistoricalSession(session.id);
 
-        final deps = await pumpLiveSessionScreen(
-          tester,
-          repo: repo,
-          workoutState: workoutState,
-          exerciseId: exA.id,
-          exerciseName: exA.name,
-          reps: 5,
-          weightKg: 80.0, // 80 × (1 + 5/30) ≈ 93.33 > 70.0 → would be PR if not edit
-          editMode: true,
-        );
+      final deps = await pumpLiveSessionScreen(
+        tester,
+        repo: repo,
+        workoutState: workoutState,
+        exerciseId: exA.id,
+        exerciseName: exA.name,
+        reps: 5,
+        weightKg:
+            80.0, // 80 × (1 + 5/30) ≈ 93.33 > 70.0 → would be PR if not edit
+        editMode: true,
+      );
 
-        await deps.openDetailView();
-        // Pump a few frames to flush any latent showSnackBar.
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+      await deps.openDetailView();
+      // Pump a few frames to flush any latent showSnackBar.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
-        expect(find.text('Congrats! New PR'), findsNothing);
-      },
-    );
+      expect(find.text('Congrats! New PR'), findsNothing);
+    });
   });
 
   group('S-007: a skipped set (zero reps) does not trigger a toast', () {
-    testWidgets(
-      'S-007a: reps=0 → isSkippedSetKindEntry → no toast',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final exA = (await repo.getExercises()).first;
+    testWidgets('S-007a: reps=0 → isSkippedSetKindEntry → no toast', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(400, 1000));
+      final repo = await _freshRepo();
+      final exA = (await repo.getExercises()).first;
 
-        final workoutState = WorkoutState(repo);
-        await workoutState.createNewSession(modality: 'resistance_lifting');
+      final workoutState = WorkoutState(repo);
+      await workoutState.createNewSession(modality: 'resistance_lifting');
 
-        // reps=0, weight=100. The screen's `_logSet` computes
-        // `isSkippedSetKindEntry = effortKind == 'set' && reps <= 0` →
-        // true → the PR check is skipped.
-        final deps = await pumpLiveSessionScreen(
-          tester,
-          repo: repo,
-          workoutState: workoutState,
-          exerciseId: exA.id,
-          exerciseName: exA.name,
-          reps: 0,
-          weightKg: 100.0,
-        );
+      // reps=0, weight=100. The screen's `_logSet` computes
+      // `isSkippedSetKindEntry = effortKind == 'set' && reps <= 0` →
+      // true → the PR check is skipped.
+      final deps = await pumpLiveSessionScreen(
+        tester,
+        repo: repo,
+        workoutState: workoutState,
+        exerciseId: exA.id,
+        exerciseName: exA.name,
+        reps: 0,
+        weightKg: 100.0,
+      );
 
-        await deps.openDetailView();
-        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+      await deps.openDetailView();
+      await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
-        expect(find.text('Congrats! New PR'), findsNothing);
-      },
-    );
+      expect(find.text('Congrats! New PR'), findsNothing);
+    });
   });
 
-  group('S-008: multiple beating sets in the same session each fire a toast',
-      () {
-    testWidgets(
-      'S-008a: three beating sets with no prior history → three SnackBars',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(400, 1000));
-        final repo = await _freshRepo();
-        final exA = (await repo.getExercises()).first;
+  group(
+    'S-008: multiple beating sets in the same session each fire a toast',
+    () {
+      testWidgets(
+        'S-008a: three beating sets with no prior history → three SnackBars',
+        (WidgetTester tester) async {
+          await tester.binding.setSurfaceSize(const Size(400, 1000));
+          final repo = await _freshRepo();
+          final exA = (await repo.getExercises()).first;
 
-        final workoutState = WorkoutState(repo);
-        await workoutState.markExerciseInfoHintSeen();
-        await workoutState.markExerciseNotesHintSeen();
-        await workoutState.createNewSession(modality: 'resistance_lifting');
+          final workoutState = WorkoutState(repo);
+          await workoutState.markExerciseInfoHintSeen();
+          await workoutState.markExerciseNotesHintSeen();
+          await workoutState.createNewSession(modality: 'resistance_lifting');
 
-        // Add one strength effort with three set entries.
-        final effortId = await workoutState.addExerciseToSession(
-          exA,
-          chosenMetric: 'reps',
-        );
-        await workoutState.addEntry(effortId);
-        await workoutState.addEntry(effortId);
+          // Add one strength effort with three set entries.
+          final effortId = await workoutState.addExerciseToSession(
+            exA,
+            chosenMetric: 'reps',
+          );
+          await workoutState.addEntry(effortId);
+          await workoutState.addEntry(effortId);
 
-        // Pre-populate the three entries with escalating weights.
-        await workoutState.updateEntryValue(effortId, 0, 'reps', 5);
-        await workoutState.updateEntryValue(effortId, 0, 'weight', 60.0);
-        await workoutState.updateEntryValue(effortId, 1, 'reps', 3);
-        await workoutState.updateEntryValue(effortId, 1, 'weight', 80.0);
-        await workoutState.updateEntryValue(effortId, 2, 'reps', 1);
-        await workoutState.updateEntryValue(effortId, 2, 'weight', 100.0);
+          // Pre-populate the three entries with escalating weights.
+          await workoutState.updateEntryValue(effortId, 0, 'reps', 5);
+          await workoutState.updateEntryValue(effortId, 0, 'weight', 60.0);
+          await workoutState.updateEntryValue(effortId, 1, 'reps', 3);
+          await workoutState.updateEntryValue(effortId, 1, 'weight', 80.0);
+          await workoutState.updateEntryValue(effortId, 2, 'reps', 1);
+          await workoutState.updateEntryValue(effortId, 2, 'weight', 100.0);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: WorkoutSessionScreen(
-              workoutState: workoutState,
-              routineState: RoutineState(repo),
-              sessionSummaryService: SessionSummaryService(repo),
-              timerAlertService: FakeTimerAlertService(),
-              settingsState: SettingsState(repo, fakePreferencesService()),
+          await tester.pumpWidget(
+            MaterialApp(
+              home: WorkoutSessionScreen(
+                workoutState: workoutState,
+                routineState: RoutineState(repo),
+                sessionSummaryService: SessionSummaryService(repo),
+                timerAlertService: FakeTimerAlertService(),
+                settingsState: SettingsState(repo, fakePreferencesService()),
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
+          );
+          await tester.pumpAndSettle();
 
-        // The screen starts on the list view (single exercise, default
-        // landing). Tap the exercise name to open the detail view.
-        await tester.tap(find.text(exA.name));
-        await tester.pumpAndSettle();
+          // The screen starts on the list view (single exercise, default
+          // landing). Tap the exercise name to open the detail view.
+          await tester.tap(find.text(exA.name));
+          await tester.pumpAndSettle();
 
-        // Log set 1 → toast 1.
-        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
-        expect(find.text('Congrats! New PR'), findsOneWidget);
+          // Log set 1 → toast 1.
+          await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 50));
+          expect(find.text('Congrats! New PR'), findsOneWidget);
 
-        // Let set 1's 4 s SnackBar timer fire and dismiss before we
-        // log set 2. Pump 5 s (> 4 s) so the timer definitely expires
-        // and the SnackBar is fully out of the Overlay.
-        await tester.pumpAndSettle(const Duration(seconds: 5));
+          // Let set 1's 4 s SnackBar timer fire and dismiss before we
+          // log set 2. Pump 5 s (> 4 s) so the timer definitely expires
+          // and the SnackBar is fully out of the Overlay.
+          await tester.pumpAndSettle(const Duration(seconds: 5));
 
-        // Set 2 is now current; tap Log again.
-        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
-        expect(find.text('Congrats! New PR'), findsOneWidget);
+          // Set 2 is now current; tap Log again.
+          await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 50));
+          expect(find.text('Congrats! New PR'), findsOneWidget);
 
-        await tester.pumpAndSettle(const Duration(seconds: 5));
+          await tester.pumpAndSettle(const Duration(seconds: 5));
 
-        // Set 3 is now current; tap Log again.
-        await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
-        expect(find.text('Congrats! New PR'), findsOneWidget);
-      },
-    );
-  });
+          // Set 3 is now current; tap Log again.
+          await tester.tap(find.widgetWithText(FilledButton, 'Log Set'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 50));
+          expect(find.text('Congrats! New PR'), findsOneWidget);
+        },
+      );
+    },
+  );
 
-  group('S-010: Free Training (null modality) with a set effort fires a PR',
-      () {
-    testWidgets(
-      'S-010a: null modality + set effort + no history → toast',
-      (WidgetTester tester) async {
+  group(
+    'S-010: Free Training (null modality) with a set effort fires a PR',
+    () {
+      testWidgets('S-010a: null modality + set effort + no history → toast', (
+        WidgetTester tester,
+      ) async {
         await tester.binding.setSurfaceSize(const Size(400, 1000));
         final repo = await _freshRepo();
         final exA = (await repo.getExercises()).first;
@@ -1106,9 +1123,9 @@ group('S-001: first-ever strength set fires PR toast', () {
         await tester.pump(const Duration(milliseconds: 50));
 
         expect(find.text('Congrats! New PR'), findsOneWidget);
-      },
-    );
-  });
+      });
+    },
+  );
 
   group('S-011: a 30-day-old standing best is still the standing best', () {
     testWidgets(
@@ -1239,7 +1256,6 @@ group('S-001: first-ever strength set fires PR toast', () {
   });
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Phase 2 — in-session wiring
 //
@@ -1256,14 +1272,17 @@ group('S-001: first-ever strength set fires PR toast', () {
 /// view. The screen starts on the list view; tests that need the
 /// per-set detail view call [openDetailView] after this to tap into
 /// the exercise.
-Future<({
-  MockWorkoutRepository repo,
-  WorkoutState workoutState,
-  RoutineState routineState,
-  SessionSummaryService sessionSummaryService,
-  SettingsState settingsState,
-  Future<void> Function() openDetailView,
-})> pumpLiveSessionScreen(
+Future<
+  ({
+    MockWorkoutRepository repo,
+    WorkoutState workoutState,
+    RoutineState routineState,
+    SessionSummaryService sessionSummaryService,
+    SettingsState settingsState,
+    Future<void> Function() openDetailView,
+  })
+>
+pumpLiveSessionScreen(
   WidgetTester tester, {
   required MockWorkoutRepository repo,
   required WorkoutState workoutState,

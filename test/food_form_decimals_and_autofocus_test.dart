@@ -51,105 +51,108 @@ void main() {
   // migration) and the new `REAL` row, casting via
   // `((m['k'] as num?) ?? 0.0).toDouble()`.
 
-  group('Food macros: fromMap accepts INTEGER and REAL values (S-007/S-008)', () {
-    test('REAL value (1.5) round-trips as 1.5 (S-007)', () {
-      final food = Food.fromMap(<String, dynamic>{
-        'id': 'food-real-1',
-        'name': 'Olive oil',
-        'unit_type': 'grams',
-        'reference_amount': 100.0,
-        'reference_label': 'g',
-        'is_catalog': 0,
-        'protein': 0.0,
-        'carbs': 0.0,
-        'fiber': null,
-        'fat': 1.5,
-        'sodium': null,
-        'is_archived': 0,
-        'created_at_ms': 1000,
-        'updated_at_ms': 1000,
+  group(
+    'Food macros: fromMap accepts INTEGER and REAL values (S-007/S-008)',
+    () {
+      test('REAL value (1.5) round-trips as 1.5 (S-007)', () {
+        final food = Food.fromMap(<String, dynamic>{
+          'id': 'food-real-1',
+          'name': 'Olive oil',
+          'unit_type': 'grams',
+          'reference_amount': 100.0,
+          'reference_label': 'g',
+          'is_catalog': 0,
+          'protein': 0.0,
+          'carbs': 0.0,
+          'fiber': null,
+          'fat': 1.5,
+          'sodium': null,
+          'is_archived': 0,
+          'created_at_ms': 1000,
+          'updated_at_ms': 1000,
+        });
+        expect(food.fat, 1.5);
+        expect(food.protein, 0.0);
+        expect(food.fiber, isNull);
+        expect(food.sodium, isNull);
       });
-      expect(food.fat, 1.5);
-      expect(food.protein, 0.0);
-      expect(food.fiber, isNull);
-      expect(food.sodium, isNull);
-    });
 
-    test('INTEGER value (31) round-trips as 31.0 (S-008 back-compat)', () {
-      final food = Food.fromMap(<String, dynamic>{
-        'id': 'food-int-1',
-        'name': 'Chicken',
-        'unit_type': 'grams',
-        'reference_amount': 100.0,
-        'reference_label': 'g',
-        'is_catalog': 0,
-        'protein': 31,
-        'carbs': 0,
-        'fiber': 0,
-        'fat': 4,
-        'sodium': 50,
-        'is_archived': 0,
-        'created_at_ms': 1000,
-        'updated_at_ms': 1000,
+      test('INTEGER value (31) round-trips as 31.0 (S-008 back-compat)', () {
+        final food = Food.fromMap(<String, dynamic>{
+          'id': 'food-int-1',
+          'name': 'Chicken',
+          'unit_type': 'grams',
+          'reference_amount': 100.0,
+          'reference_label': 'g',
+          'is_catalog': 0,
+          'protein': 31,
+          'carbs': 0,
+          'fiber': 0,
+          'fat': 4,
+          'sodium': 50,
+          'is_archived': 0,
+          'created_at_ms': 1000,
+          'updated_at_ms': 1000,
+        });
+        expect(food.protein, 31.0);
+        expect(food.carbs, 0.0);
+        expect(food.fiber, 0.0);
+        expect(food.fat, 4.0);
+        expect(food.sodium, 50.0);
       });
-      expect(food.protein, 31.0);
-      expect(food.carbs, 0.0);
-      expect(food.fiber, 0.0);
-      expect(food.fat, 4.0);
-      expect(food.sodium, 50.0);
-    });
 
-    test('ConsumedFood fromMap accepts REAL and INTEGER macros', () {
-      final realRow = ConsumedFood.fromMap(<String, dynamic>{
-        'id': 'c-real-1',
-        'logged_at_ms': 1000,
-        'date_ms': 0,
-        'source_food_id': 'f-1',
-        'name': 'Snack',
-        'unit_type': 'grams',
-        'reference_amount': 100.0,
-        'reference_label': 'g',
-        'protein': 0.0,
-        'carbs': 0.0,
-        'fiber': 0.0,
-        'fat': 1.5,
-        'sodium': null,
-        'amount_consumed': 100.0,
-        'target_calories': 2000.0,
-        'target_protein': 0.0,
-        'target_carbs': 0.0,
-        'target_fat': 0.0,
-        'created_at_ms': 1000,
-        'updated_at_ms': 1000,
-      });
-      expect(realRow.fat, 1.5);
+      test('ConsumedFood fromMap accepts REAL and INTEGER macros', () {
+        final realRow = ConsumedFood.fromMap(<String, dynamic>{
+          'id': 'c-real-1',
+          'logged_at_ms': 1000,
+          'date_ms': 0,
+          'source_food_id': 'f-1',
+          'name': 'Snack',
+          'unit_type': 'grams',
+          'reference_amount': 100.0,
+          'reference_label': 'g',
+          'protein': 0.0,
+          'carbs': 0.0,
+          'fiber': 0.0,
+          'fat': 1.5,
+          'sodium': null,
+          'amount_consumed': 100.0,
+          'target_calories': 2000.0,
+          'target_protein': 0.0,
+          'target_carbs': 0.0,
+          'target_fat': 0.0,
+          'created_at_ms': 1000,
+          'updated_at_ms': 1000,
+        });
+        expect(realRow.fat, 1.5);
 
-      final intRow = ConsumedFood.fromMap(<String, dynamic>{
-        'id': 'c-int-1',
-        'logged_at_ms': 1000,
-        'date_ms': 0,
-        'source_food_id': 'f-1',
-        'name': 'Snack',
-        'unit_type': 'grams',
-        'reference_amount': 100.0,
-        'reference_label': 'g',
-        'protein': 31,
-        'carbs': 0,
-        'fiber': 0,
-        'fat': 4,
-        'sodium': 50,
-        'amount_consumed': 100.0,
-        'target_calories': 2000.0,
-        'target_protein': 0.0,
-        'target_carbs': 0.0,
-        'target_fat': 0.0,
-        'created_at_ms': 1000,
-        'updated_at_ms': 1000,
+        final intRow = ConsumedFood.fromMap(<String, dynamic>{
+          'id': 'c-int-1',
+          'logged_at_ms': 1000,
+          'date_ms': 0,
+          'source_food_id': 'f-1',
+          'name': 'Snack',
+          'unit_type': 'grams',
+          'reference_amount': 100.0,
+          'reference_label': 'g',
+          'protein': 31,
+          'carbs': 0,
+          'fiber': 0,
+          'fat': 4,
+          'sodium': 50,
+          'amount_consumed': 100.0,
+          'target_calories': 2000.0,
+          'target_protein': 0.0,
+          'target_carbs': 0.0,
+          'target_fat': 0.0,
+          'created_at_ms': 1000,
+          'updated_at_ms': 1000,
+        });
+        expect(intRow.protein, 31.0);
+        expect(intRow.sodium, 50.0);
       });
-      expect(intRow.protein, 31.0);
-      expect(intRow.sodium, 50.0);
-    });
-  });
+    },
+  );
 
   // ─── S-001 / S-002 / S-003: decimal input & validation ──────────────
 
@@ -190,10 +193,7 @@ void main() {
           find.byKey(const Key('food_form_name')),
           'Half-fat snack',
         );
-        await tester.enterText(
-          find.byKey(const Key('food_form_fat')),
-          '0.5',
-        );
+        await tester.enterText(find.byKey(const Key('food_form_fat')), '0.5');
         await tester.pump();
         controller.submit();
         await tester.pumpAndSettle();
@@ -323,15 +323,16 @@ void main() {
         // first one triggered when the field is empty after
         // stripping. This is the user-facing behaviour we
         // exercise here.
-        await tester.enterText(
-          find.byKey(const Key('food_form_carbs')),
-          'abc',
-        );
+        await tester.enterText(find.byKey(const Key('food_form_carbs')), 'abc');
         await tester.pump();
         controller.submit();
         await tester.pumpAndSettle();
 
-        expect(saveCalled, isFalse, reason: 'save must be blocked by validator');
+        expect(
+          saveCalled,
+          isFalse,
+          reason: 'save must be blocked by validator',
+        );
         // "Required" surfaces for required macros whose input
         // was filtered down to empty. This is the visible
         // behaviour of the `^\d*\.?\d*$` formatter + the
@@ -345,67 +346,63 @@ void main() {
   // ─── S-004 / S-005 / S-006: focus selection ──────────────────────────
 
   group('FoodForm: auto-select on focus (S-004/S-005/S-006)', () {
-    testWidgets(
-      'focusing a pre-filled macro field selects all text (S-004)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(_formSurface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets('focusing a pre-filled macro field selects all text (S-004)', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(_formSurface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = MockWorkoutRepository();
-        await repo.initialize();
-        final state = FoodLibraryState(repo);
+      final repo = MockWorkoutRepository();
+      await repo.initialize();
+      final state = FoodLibraryState(repo);
 
-        const initial = Food(
-          id: 'food-focus-1',
-          name: 'Pre-filled Food',
-          groupId: null,
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          isCatalog: true,
-          protein: 31,
-          carbs: 0,
-          fiber: 0,
-          fat: 4,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        );
+      const initial = Food(
+        id: 'food-focus-1',
+        name: 'Pre-filled Food',
+        groupId: null,
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: 'g',
+        isCatalog: true,
+        protein: 31,
+        carbs: 0,
+        fiber: 0,
+        fat: 4,
+        createdAtMs: 1000,
+        updatedAtMs: 1000,
+      );
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: FoodForm(
-                initial: initial,
-                foodLibraryState: state,
-                onSave: (_) async => true,
-                skipPopOnSave: true,
-              ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FoodForm(
+              initial: initial,
+              foodLibraryState: state,
+              onSave: (_) async => true,
+              skipPopOnSave: true,
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Tap into the pre-filled Fat field. The select-all
-        // listener runs on focus gain, so after the tap, the
-        // controller's selection should span the entire text.
-        await tester.tap(find.byKey(const Key('food_form_fat')));
-        await tester.pumpAndSettle();
+      // Tap into the pre-filled Fat field. The select-all
+      // listener runs on focus gain, so after the tap, the
+      // controller's selection should span the entire text.
+      await tester.tap(find.byKey(const Key('food_form_fat')));
+      await tester.pumpAndSettle();
 
-        final field = tester.widget<TextFormField>(
-          find.byKey(const Key('food_form_fat')),
-        );
-        final controller = field.controller!;
-        expect(controller.text, '4.0');
-        expect(
-          controller.selection,
-          TextSelection(
-            baseOffset: 0,
-            extentOffset: controller.text.length,
-          ),
-          reason: 'pre-filled fat should be fully selected on focus',
-        );
-      },
-    );
+      final field = tester.widget<TextFormField>(
+        find.byKey(const Key('food_form_fat')),
+      );
+      final controller = field.controller!;
+      expect(controller.text, '4.0');
+      expect(
+        controller.selection,
+        TextSelection(baseOffset: 0, extentOffset: controller.text.length),
+        reason: 'pre-filled fat should be fully selected on focus',
+      );
+    });
 
     testWidgets(
       'focusing an empty Notes field is a no-op (no exception) (S-005)',

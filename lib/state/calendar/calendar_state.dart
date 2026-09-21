@@ -149,8 +149,9 @@ class CalendarState extends ChangeNotifier {
       // linkedSessionId pointing to the real TrainingSession, which is already
       // represented in completedSessions. Including them would produce a
       // duplicate dot on the calendar for the same day.
-      final unlinkedPlannedSessions =
-          plannedSessions.where((p) => p.linkedSessionId == null).toList();
+      final unlinkedPlannedSessions = plannedSessions
+          .where((p) => p.linkedSessionId == null)
+          .toList();
 
       final entries = <CalendarEntry>[
         ...completedSessions.map(CalendarEntry.fromSession),
@@ -395,11 +396,12 @@ class CalendarState extends ChangeNotifier {
 
   /// Longest consecutive-day run of completed sessions within [_entriesByDay].
   int _longestRunInMonth() {
-    final completedDayMs = _entriesByDay.entries
-        .where((e) => e.value.any((entry) => entry.isCompleted))
-        .map((e) => e.key)
-        .toList()
-      ..sort();
+    final completedDayMs =
+        _entriesByDay.entries
+            .where((e) => e.value.any((entry) => entry.isCompleted))
+            .map((e) => e.key)
+            .toList()
+          ..sort();
 
     if (completedDayMs.isEmpty) return 0;
 

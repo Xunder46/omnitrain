@@ -134,8 +134,11 @@ Future<Uint8List> _capture(WidgetTester tester, Uint8List sourceBytes) async {
   });
   await tester.pumpAndSettle();
 
-  expect(find.byType(AvatarCropSheet), findsNothing,
-      reason: 'sheet must pop after capture');
+  expect(
+    find.byType(AvatarCropSheet),
+    findsNothing,
+    reason: 'sheet must pop after capture',
+  );
   expect(captured, isNotNull, reason: 'confirm must return capture bytes');
   return captured!;
 }
@@ -199,11 +202,15 @@ void main() {
           pixels = await _decodePixels(captured);
         });
 
-        expect(pixels.width, pixels.height,
-            reason: 'the avatar capture is square');
+        expect(
+          pixels.width,
+          pixels.height,
+          reason: 'the avatar capture is square',
+        );
         _expectAllOpaqueRed(
           pixels,
-          reason: 'a 2:1 source must cover the square viewport, not be '
+          reason:
+              'a 2:1 source must cover the square viewport, not be '
               'letterboxed into it',
         );
       },
@@ -226,7 +233,8 @@ void main() {
 
         _expectAllOpaqueRed(
           pixels,
-          reason: 'a 1:2 source must cover the square viewport, not be '
+          reason:
+              'a 1:2 source must cover the square viewport, not be '
               'letterboxed into it',
         );
       },
@@ -253,7 +261,8 @@ void main() {
         // hairline ring (lightened pixels on the circle's edge).
         _expectAllOpaqueRed(
           pixels,
-          reason: 'the dim scrim / hairline ring must not be baked into the '
+          reason:
+              'the dim scrim / hairline ring must not be baked into the '
               'saved avatar',
         );
       },

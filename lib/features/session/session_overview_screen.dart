@@ -144,10 +144,7 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
     return Scaffold(
       backgroundColor: themeColors.backgroundTop,
       extendBodyBehindAppBar: true,
-      appBar: OmniBackHeader(
-        title: 'Workout Session',
-        subtitle: modalityName,
-      ),
+      appBar: OmniBackHeader(title: 'Workout Session', subtitle: modalityName),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -274,8 +271,12 @@ class _SessionOverviewScreenState extends State<SessionOverviewScreen> {
                                     ),
                                     dismissLabel: 'Cancel',
                                     confirmLabel: 'Remove',
-                                    dismissKey: const Key('session-overview-remove-exercise-cancel'),
-                                    confirmKey: const Key('session-overview-remove-exercise-confirm'),
+                                    dismissKey: const Key(
+                                      'session-overview-remove-exercise-cancel',
+                                    ),
+                                    confirmKey: const Key(
+                                      'session-overview-remove-exercise-confirm',
+                                    ),
                                     isDestructive: true,
                                   );
                                   if (confirmed && mounted) {

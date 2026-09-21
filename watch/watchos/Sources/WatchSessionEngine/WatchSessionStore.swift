@@ -35,13 +35,18 @@ public struct WatchStoreContents {
     /// the catalog that applies.
     public let routineCatalogs: [WatchRoutineCatalogRecord]
 
+    /// The food lists the phone sent down, oldest first. The newest row is the
+    /// list that applies.
+    public let foodCatalogs: [WatchFoodCatalogRecord]
+
     public init(
         sessions: [WatchSessionRecord] = [],
         observations: [WatchObservationRecord] = [],
         timers: [WatchTimerRecord] = [],
         confirmations: [WatchConfirmationRecord] = [],
         sensorSamples: [WatchSensorSampleRecord] = [],
-        routineCatalogs: [WatchRoutineCatalogRecord] = []
+        routineCatalogs: [WatchRoutineCatalogRecord] = [],
+        foodCatalogs: [WatchFoodCatalogRecord] = []
     ) {
         self.sessions = sessions
         self.observations = observations
@@ -49,12 +54,13 @@ public struct WatchStoreContents {
         self.confirmations = confirmations
         self.sensorSamples = sensorSamples
         self.routineCatalogs = routineCatalogs
+        self.foodCatalogs = foodCatalogs
     }
 
     public var isEmpty: Bool {
         sessions.isEmpty && observations.isEmpty && timers.isEmpty
             && confirmations.isEmpty && sensorSamples.isEmpty
-            && routineCatalogs.isEmpty
+            && routineCatalogs.isEmpty && foodCatalogs.isEmpty
     }
 }
 
@@ -136,6 +142,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         var confirmations: [WatchConfirmationRecord] = []
         var sensorSamples: [WatchSensorSampleRecord] = []
         var routineCatalogs: [WatchRoutineCatalogRecord] = []
+        var foodCatalogs: [WatchFoodCatalogRecord] = []
 
         for row in rows {
             switch row {
@@ -145,6 +152,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             case .sensorSample(let value): sensorSamples.append(value)
             case .confirmation(let value): confirmations.append(value)
             case .routineCatalog(let value): routineCatalogs.append(value)
+            case .foodCatalog(let value): foodCatalogs.append(value)
             }
         }
 
@@ -154,7 +162,8 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             timers: timers,
             confirmations: confirmations,
             sensorSamples: sensorSamples,
-            routineCatalogs: routineCatalogs
+            routineCatalogs: routineCatalogs,
+            foodCatalogs: foodCatalogs
         )
     }
 

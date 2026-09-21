@@ -12,10 +12,10 @@ class StartupFailureDiagnosticWriter {
   final _BaseDirectoryResolver _resolveBaseDirectory;
 
   StartupFailureDiagnosticWriter.create()
-      : _resolveBaseDirectory = _defaultBaseDirectory;
+    : _resolveBaseDirectory = _defaultBaseDirectory;
 
   StartupFailureDiagnosticWriter.fromBaseDirectory(String baseDirectory)
-      : _resolveBaseDirectory = (() async => baseDirectory);
+    : _resolveBaseDirectory = (() async => baseDirectory);
 
   static Future<String> _defaultBaseDirectory() async {
     if (Platform.isAndroid) {

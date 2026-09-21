@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../inputs/numeric_field_with_done_bar.dart';
@@ -157,14 +156,14 @@ class _MetricEditDialogState extends State<_MetricEditDialog> {
       content: NumericFieldWithDoneBar(
         controller: _controller,
         keyboardType: TextInputType.numberWithOptions(
-          signed: widget.metricType == 'weight' ||
+          signed:
+              widget.metricType == 'weight' ||
               widget.metricType == 'extra-weight',
-          decimal: widget.metricType == 'weight' ||
+          decimal:
+              widget.metricType == 'weight' ||
               widget.metricType == 'extra-weight',
         ),
-        decoration: InputDecoration(
-          labelText: widget.unitLabel,
-        ),
+        decoration: InputDecoration(labelText: widget.unitLabel),
         textAlign: TextAlign.center,
         autofocus: true,
         onChanged: (_) {},

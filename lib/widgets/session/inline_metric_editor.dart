@@ -191,18 +191,11 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            displayText,
-            textAlign: TextAlign.center,
-            style: valueStyle,
-          ),
+          Text(displayText, textAlign: TextAlign.center, style: valueStyle),
           const SizedBox(width: 8),
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: Text(
-              widget.unitLabel.toUpperCase(),
-              style: unitStyle,
-            ),
+            child: Text(widget.unitLabel.toUpperCase(), style: unitStyle),
           ),
         ],
       );
@@ -233,9 +226,7 @@ class _InlineMetricEditorState extends State<InlineMetricEditor> {
     final contentRow = Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        tappableValue,
-      ],
+      children: [tappableValue],
     );
 
     // ── Outer GestureDetector (retains onTap for timer-toggle callers) ────────

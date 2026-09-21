@@ -24,7 +24,7 @@ class ZenHaloPainter extends CustomPainter {
     // Create the Enso arc path (leaving ~19% gap = ~290° sweep = 5.06 radians)
     final sweepAngle = 5.06; // radians (~290°)
     final baseStartAngle = -math.pi / 2; // Start at top
-    
+
     // Apply rotation to the arc itself
     final startAngle = baseStartAngle + rotationAngle;
 
@@ -65,7 +65,9 @@ class ZenHaloPainter extends CustomPainter {
       final taperPaint = Paint()
         ..shader = shader
         ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth * 0.43 // Taper to ~43% of original
+        ..strokeWidth =
+            strokeWidth *
+            0.43 // Taper to ~43% of original
         ..strokeCap = StrokeCap.round
         ..isAntiAlias = true;
 

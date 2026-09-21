@@ -58,10 +58,7 @@ Future<MockWorkoutRepository> _freshRepo() async {
   return repo;
 }
 
-Future<Exercise> _getExerciseById(
-  MockWorkoutRepository repo,
-  String id,
-) async {
+Future<Exercise> _getExerciseById(MockWorkoutRepository repo, String id) async {
   final exercises = await repo.getExercises();
   return exercises.firstWhere((e) => e.id == id);
 }
@@ -275,8 +272,7 @@ void main() {
         expect(
           find.byType(StartupFailureScreen),
           findsNothing,
-          reason:
-              'S-002: entering preparing must remove the failure screen.',
+          reason: 'S-002: entering preparing must remove the failure screen.',
         );
         expect(find.text('RECOVERED-SURFACE'), findsNothing);
 
@@ -364,75 +360,74 @@ void main() {
       },
     );
 
-    testWidgets(
-      'S-003b: vertical fling does not change exercise',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await _buildSessionDeps(modality: 'resistance_lifting');
-        final repo = await _freshRepo();
-        final squat = await _getExerciseById(repo, 'exercise-barbell-squat');
-        final rounds = await _getExerciseById(
-          repo,
-          'exercise-heavy-bag-rounds',
-        );
+    testWidgets('S-003b: vertical fling does not change exercise', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildSessionDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final squat = await _getExerciseById(repo, 'exercise-barbell-squat');
+      final rounds = await _getExerciseById(repo, 'exercise-heavy-bag-rounds');
 
-        await deps.workoutState.addExerciseToSession(squat, chosenMetric: 'reps');
-        await deps.workoutState.addExerciseToSession(
-          rounds,
-          effortKindOverride: 'round',
-        );
+      await deps.workoutState.addExerciseToSession(squat, chosenMetric: 'reps');
+      await deps.workoutState.addExerciseToSession(
+        rounds,
+        effortKindOverride: 'round',
+      );
 
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _openDetailView(tester, 'Barbell Back Squat');
-        expect(find.text('Barbell Back Squat'), findsOneWidget);
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Barbell Back Squat');
+      expect(find.text('Barbell Back Squat'), findsOneWidget);
 
-        // Fling upward — must NOT advance to the next exercise.
-        await tester.fling(find.byType(Scaffold).first, const Offset(0, -500), 1200);
-        await tester.pumpAndSettle();
+      // Fling upward — must NOT advance to the next exercise.
+      await tester.fling(
+        find.byType(Scaffold).first,
+        const Offset(0, -500),
+        1200,
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.text('Barbell Back Squat'),
-          findsOneWidget,
-          reason: 'S-003: vertical swipe must not advance the exercise.',
-        );
-        expect(find.text('Heavy Bag Rounds'), findsNothing);
-      },
-    );
+      expect(
+        find.text('Barbell Back Squat'),
+        findsOneWidget,
+        reason: 'S-003: vertical swipe must not advance the exercise.',
+      );
+      expect(find.text('Heavy Bag Rounds'), findsNothing);
+    });
 
-    testWidgets(
-      'S-003c: horizontal fling does not change set',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await _buildSessionDeps(modality: 'resistance_lifting');
-        final repo = await _freshRepo();
-        final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
-        final effortId = await deps.workoutState.addExerciseToSession(
-          exercise,
-          chosenMetric: 'reps',
-        );
-        await deps.workoutState.addEntry(effortId);
-        await deps.workoutState.addEntry(effortId);
+    testWidgets('S-003c: horizontal fling does not change set', (
+      WidgetTester tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildSessionDeps(modality: 'resistance_lifting');
+      final repo = await _freshRepo();
+      final exercise = await _getExerciseById(repo, 'exercise-barbell-squat');
+      final effortId = await deps.workoutState.addExerciseToSession(
+        exercise,
+        chosenMetric: 'reps',
+      );
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.addEntry(effortId);
 
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _openDetailView(tester, 'Barbell Back Squat');
-        expect(find.text('Set 1 of 3'), findsOneWidget);
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, 'Barbell Back Squat');
+      expect(find.text('Set 1 of 3'), findsOneWidget);
 
-        // Fling left — must NOT advance to set 2.
-        await tester.fling(
-          find.byType(Scaffold).first,
-          const Offset(-500, 0),
-          1200,
-        );
-        await tester.pumpAndSettle();
+      // Fling left — must NOT advance to set 2.
+      await tester.fling(
+        find.byType(Scaffold).first,
+        const Offset(-500, 0),
+        1200,
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.text('Set 1 of 3'),
-          findsOneWidget,
-          reason: 'S-003: horizontal swipe must not advance the set.',
-        );
-        expect(find.text('Set 2 of 3'), findsNothing);
-      },
-    );
+      expect(
+        find.text('Set 1 of 3'),
+        findsOneWidget,
+        reason: 'S-003: horizontal swipe must not advance the set.',
+      );
+      expect(find.text('Set 2 of 3'), findsNothing);
+    });
 
     testWidgets(
       'S-003d: explicit Previous/Next arrows still navigate between sets',
@@ -485,8 +480,11 @@ void main() {
 
         final beforeReps =
             tester
-                .widget<InlineMetricEditor>(find.byType(InlineMetricEditor).first)
-                .currentValue as int;
+                    .widget<InlineMetricEditor>(
+                      find.byType(InlineMetricEditor).first,
+                    )
+                    .currentValue
+                as int;
 
         await tester.tap(find.byType(InlineMetricEditor).first);
         await tester.pumpAndSettle();
@@ -500,8 +498,11 @@ void main() {
 
         final afterReps =
             tester
-                .widget<InlineMetricEditor>(find.byType(InlineMetricEditor).first)
-                .currentValue as int;
+                    .widget<InlineMetricEditor>(
+                      find.byType(InlineMetricEditor).first,
+                    )
+                    .currentValue
+                as int;
 
         expect(
           afterReps,

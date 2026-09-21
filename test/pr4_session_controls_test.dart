@@ -47,10 +47,7 @@ Future<_SessionHarness> _pumpSession(
       (e) => e.capabilities.contains(chosenMetric),
       orElse: () => exercises.first,
     );
-    await workoutState.addExerciseToSession(
-      first,
-      chosenMetric: chosenMetric,
-    );
+    await workoutState.addExerciseToSession(first, chosenMetric: chosenMetric);
   }
 
   final screen = WorkoutSessionScreen(
@@ -65,10 +62,7 @@ Future<_SessionHarness> _pumpSession(
   return _SessionHarness(workoutState, screen);
 }
 
-Future<void> _pumpScreen(
-  WidgetTester tester,
-  _SessionHarness harness,
-) async {
+Future<void> _pumpScreen(WidgetTester tester, _SessionHarness harness) async {
   await tester.pumpWidget(MaterialApp(home: harness.screen));
   await tester.pumpAndSettle();
 }
@@ -80,9 +74,8 @@ Future<void> _logSetToOpenRest(
   WidgetTester tester,
   _SessionHarness harness,
 ) async {
-  final effortId = harness.workoutState
-      .getExercisesWithEntries()
-      .first['id'] as String;
+  final effortId =
+      harness.workoutState.getExercisesWithEntries().first['id'] as String;
   await harness.workoutState.updateEntryValue(effortId, 0, 'reps', 8);
   await tester.tap(find.byType(ListTile).first);
   await tester.pumpAndSettle();
@@ -92,50 +85,47 @@ Future<void> _logSetToOpenRest(
 
 void main() {
   group('Rest tile — UI state mirroring', () {
-    testWidgets(
-      'rest chip is visible after Log Set opens a rest window',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        final harness = await _pumpSession(repo);
-        await _pumpScreen(tester, harness);
+    testWidgets('rest chip is visible after Log Set opens a rest window', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final harness = await _pumpSession(repo);
+      await _pumpScreen(tester, harness);
 
-        await _logSetToOpenRest(tester, harness);
+      await _logSetToOpenRest(tester, harness);
 
-        expect(
-          find.byKey(const Key('rest-overlay-chip')),
-          findsOneWidget,
-          reason: 'rest chip must appear when a rest window is open',
-        );
-        final effortId = harness.workoutState
-            .getExercisesWithEntries()
-            .first['id'] as String;
-        expect(
-          harness.workoutState.isRestPaused(effortId, 1),
-          isFalse,
-          reason: 'rest is running right after Log Set',
-        );
-      },
-    );
+      expect(
+        find.byKey(const Key('rest-overlay-chip')),
+        findsOneWidget,
+        reason: 'rest chip must appear when a rest window is open',
+      );
+      final effortId =
+          harness.workoutState.getExercisesWithEntries().first['id'] as String;
+      expect(
+        harness.workoutState.isRestPaused(effortId, 1),
+        isFalse,
+        reason: 'rest is running right after Log Set',
+      );
+    });
 
-    testWidgets(
-      'rest chip meets 48-dp touch-target minimum',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        final harness = await _pumpSession(repo);
-        await _pumpScreen(tester, harness);
+    testWidgets('rest chip meets 48-dp touch-target minimum', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final harness = await _pumpSession(repo);
+      await _pumpScreen(tester, harness);
 
-        await _logSetToOpenRest(tester, harness);
+      await _logSetToOpenRest(tester, harness);
 
-        final chipRect = tester.getRect(
-          find.byKey(const Key('rest-overlay-chip')),
-        );
-        expect(
-          chipRect.height,
-          greaterThanOrEqualTo(48),
-          reason: 'rest chip must meet 48-dp touch-target floor',
-        );
-      },
-    );
+      final chipRect = tester.getRect(
+        find.byKey(const Key('rest-overlay-chip')),
+      );
+      expect(
+        chipRect.height,
+        greaterThanOrEqualTo(48),
+        reason: 'rest chip must meet 48-dp touch-target floor',
+      );
+    });
 
     testWidgets(
       'three visual states — running shows meditation icon, paused swaps to pause icon (same size)',
@@ -155,9 +145,9 @@ void main() {
         // Pause the rest via the public state API. The screen's
         // ticker-driven rebuild picks up the new state on the next
         // 1-second tick.
-        final effortId = harness.workoutState
-            .getExercisesWithEntries()
-            .first['id'] as String;
+        final effortId =
+            harness.workoutState.getExercisesWithEntries().first['id']
+                as String;
         await harness.workoutState.pauseRest(effortId, 1);
         await tester.pump(const Duration(seconds: 1));
         await tester.pump();
@@ -180,16 +170,15 @@ void main() {
   });
 
   group('Discard Session — confirm/cancel flows', () {
-    Finder _discardFinder() =>
-        find.widgetWithText(OutlinedButton, 'Discard');
+    Finder _discardFinder() => find.widgetWithText(OutlinedButton, 'Discard');
 
     // The confirmation dialog also contains a "Discard" action —
     // scope its finder to the AlertDialog so the screen-level button
     // does not collide with the dialog action.
     Finder _dialogDiscardFinder() => find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.widgetWithText(FilledButton, 'Discard'),
-        );
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, 'Discard'),
+    );
 
     testWidgets(
       'discard button is visible in the session-details (list) view',
@@ -229,38 +218,36 @@ void main() {
       },
     );
 
-    testWidgets(
-      'cancel preserves all session-owned data and timers',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        final harness = await _pumpSession(repo);
-        await _pumpScreen(tester, harness);
+    testWidgets('cancel preserves all session-owned data and timers', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final harness = await _pumpSession(repo);
+      await _pumpScreen(tester, harness);
 
-        final effortId = harness.workoutState
-            .getExercisesWithEntries()
-            .first['id'] as String;
-        await harness.workoutState.recordRestStart(effortId, 1);
-        await tester.pumpAndSettle();
+      final effortId =
+          harness.workoutState.getExercisesWithEntries().first['id'] as String;
+      await harness.workoutState.recordRestStart(effortId, 1);
+      await tester.pumpAndSettle();
 
-        final sessionId = harness.workoutState.currentSession!.id;
+      final sessionId = harness.workoutState.currentSession!.id;
 
-        // Open the discard dialog → tap Cancel.
-        await tester.tap(_discardFinder());
-        await tester.pumpAndSettle();
-        expect(find.text('Discard session?'), findsOneWidget);
-        await tester.tap(find.text('Cancel'));
-        await tester.pumpAndSettle();
+      // Open the discard dialog → tap Cancel.
+      await tester.tap(_discardFinder());
+      await tester.pumpAndSettle();
+      expect(find.text('Discard session?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
 
-        // Session is still in the repo.
-        expect(await repo.getSession(sessionId), isNotNull);
-        // The WorkoutSessionScreen is still mounted.
-        expect(find.byType(WorkoutSessionScreen), findsOneWidget);
-        // The rest record is still open (restEndMs is null).
-        final rests = harness.workoutState.getEntryRests(effortId);
-        expect(rests, isNotEmpty);
-        expect(rests.first.restEndMs, isNull);
-      },
-    );
+      // Session is still in the repo.
+      expect(await repo.getSession(sessionId), isNotNull);
+      // The WorkoutSessionScreen is still mounted.
+      expect(find.byType(WorkoutSessionScreen), findsOneWidget);
+      // The rest record is still open (restEndMs is null).
+      final rests = harness.workoutState.getEntryRests(effortId);
+      expect(rests, isNotEmpty);
+      expect(rests.first.restEndMs, isNull);
+    });
 
     testWidgets(
       'confirm removes full session aggregate (state + repo cleared)',
@@ -294,25 +281,24 @@ void main() {
       },
     );
 
-    testWidgets(
-      'discard button is hidden in edit mode',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        // edit mode requires a completed session.
-        final harness = await _pumpSession(
-          repo,
-          editMode: true,
-          endSessionFirst: true,
-        );
-        await _pumpScreen(tester, harness);
+    testWidgets('discard button is hidden in edit mode', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      // edit mode requires a completed session.
+      final harness = await _pumpSession(
+        repo,
+        editMode: true,
+        endSessionFirst: true,
+      );
+      await _pumpScreen(tester, harness);
 
-        // In edit mode the Discard button is hidden — its onPressed
-        // is disabled but the widget still mounts. Verify that the
-        // OutlinedButton is present but disabled.
-        final discard = tester.widget<OutlinedButton>(_discardFinder());
-        expect(discard.onPressed, isNull);
-      },
-    );
+      // In edit mode the Discard button is hidden — its onPressed
+      // is disabled but the widget still mounts. Verify that the
+      // OutlinedButton is present but disabled.
+      final discard = tester.widget<OutlinedButton>(_discardFinder());
+      expect(discard.onPressed, isNull);
+    });
 
     testWidgets(
       'discard header button matches compact secondary action height (40dp)',
@@ -346,25 +332,13 @@ void main() {
         final infoRect = tester.getRect(
           find.byKey(const Key('exercise-info-button')),
         );
-        expect(
-          notesRect.height,
-          OmniTheme.headerSecondaryActionSize,
-        );
-        expect(
-          infoRect.height,
-          OmniTheme.headerSecondaryActionSize,
-        );
+        expect(notesRect.height, OmniTheme.headerSecondaryActionSize);
+        expect(infoRect.height, OmniTheme.headerSecondaryActionSize);
 
         // And the three secondary actions are exactly the same height
         // in absolute terms — the consolidated token guarantees it.
-        expect(
-          discardRect.height,
-          notesRect.height,
-        );
-        expect(
-          discardRect.height,
-          infoRect.height,
-        );
+        expect(discardRect.height, notesRect.height);
+        expect(discardRect.height, infoRect.height);
       },
     );
   });

@@ -189,7 +189,9 @@ ThemeData buildTheme({
 
   const Color outlineGround = Color(0x66FFFFFF); // white at 0x66 (D-8)
   const Color outlineVariantGround = Color(0x30FFFFFF); // white at 0x30 (D-9)
-  const Color onSurfaceVariantGround = Color(0x99FFFFFF); // white at 60% (D-11 constraint)
+  const Color onSurfaceVariantGround = Color(
+    0x99FFFFFF,
+  ); // white at 60% (D-11 constraint)
 
   late Color primaryContainer;
   late Color onPrimaryContainer;
@@ -226,7 +228,9 @@ ThemeData buildTheme({
       surfaceContainerLow = const Color(0xFF0F1F33);
       surfaceContainer = const Color(0xFF152A42);
       surfaceContainerHigh = const Color(0xFF1A3450);
-      surfaceContainerHighest = const Color(0xFF1F3E5E); // ≥2 L* above surface #102842
+      surfaceContainerHighest = const Color(
+        0xFF1F3E5E,
+      ); // ≥2 L* above surface #102842
       onSurfaceVariant = onSurfaceVariantGround;
       surfaceTint = primary;
       inverseSurface = const Color(0xFFE0E7F1);
@@ -248,7 +252,9 @@ ThemeData buildTheme({
       surfaceContainerLow = const Color(0xFF28160B);
       surfaceContainer = const Color(0xFF341D10);
       surfaceContainerHigh = const Color(0xFF402415);
-      surfaceContainerHighest = const Color(0xFF4C2B1A); // ≥2 L* above surface #3A2712
+      surfaceContainerHighest = const Color(
+        0xFF4C2B1A,
+      ); // ≥2 L* above surface #3A2712
       onSurfaceVariant = onSurfaceVariantGround;
       surfaceTint = primary;
       inverseSurface = const Color(0xFFEEDFD6);
@@ -270,7 +276,9 @@ ThemeData buildTheme({
       surfaceContainerLow = const Color(0xFF141414);
       surfaceContainer = const Color(0xFF1E1E1E);
       surfaceContainerHigh = const Color(0xFF282828);
-      surfaceContainerHighest = const Color(0xFF323232); // ≥2 L* above surface #262626
+      surfaceContainerHighest = const Color(
+        0xFF323232,
+      ); // ≥2 L* above surface #262626
       onSurfaceVariant = onSurfaceVariantGround;
       surfaceTint = primary;
       inverseSurface = const Color(0xFFE0E0E0);
@@ -292,7 +300,9 @@ ThemeData buildTheme({
       surfaceContainerLow = const Color(0xFF151028);
       surfaceContainer = const Color(0xFF1F1A3A);
       surfaceContainerHigh = const Color(0xFF292448);
-      surfaceContainerHighest = const Color(0xFF332E56); // ≥2 L* above surface #2A2350
+      surfaceContainerHighest = const Color(
+        0xFF332E56,
+      ); // ≥2 L* above surface #2A2350
       onSurfaceVariant = onSurfaceVariantGround;
       surfaceTint = primary;
       inverseSurface = const Color(0xFFDDD1E7);
@@ -314,7 +324,9 @@ ThemeData buildTheme({
       surfaceContainerLow = const Color(0xFF1B0D08);
       surfaceContainer = const Color(0xFF27140F);
       surfaceContainerHigh = const Color(0xFF331B16);
-      surfaceContainerHighest = const Color(0xFF3F221B); // ≥2 L* above surface #3A1A16
+      surfaceContainerHighest = const Color(
+        0xFF3F221B,
+      ); // ≥2 L* above surface #3A1A16
       onSurfaceVariant = onSurfaceVariantGround;
       surfaceTint = primary;
       inverseSurface = const Color(0xFFEED7D3);
@@ -336,7 +348,9 @@ ThemeData buildTheme({
       surfaceContainerLow = const Color(0xFF0D1610);
       surfaceContainer = const Color(0xFF161F18);
       surfaceContainerHigh = const Color(0xFF1F281F);
-      surfaceContainerHighest = const Color(0xFF283227); // ≥2 L* above surface #182E1B
+      surfaceContainerHighest = const Color(
+        0xFF283227,
+      ); // ≥2 L* above surface #182E1B
       onSurfaceVariant = onSurfaceVariantGround;
       surfaceTint = primary;
       inverseSurface = const Color(0xFFDFE5DC);

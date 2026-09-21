@@ -115,14 +115,15 @@ class _MacroDonutChartState extends State<MacroDonutChart> {
     final bandInnerRadius = bandMidRadius - widget.strokeWidth / 2;
     final bandOuterRadius = bandMidRadius + widget.strokeWidth / 2;
 
-    final opacities = widget.sectionOpacities ??
-        List<double>.filled(sections.length, 1.0);
+    final opacities =
+        widget.sectionOpacities ?? List<double>.filled(sections.length, 1.0);
 
     // In-band label styling. The painter has no `BuildContext`,
     // so the widget reads the theme once and forwards the
     // resolved text style + light/dark label colors.
     final theme = Theme.of(context);
-    final labelTextStyle = theme.textTheme.labelSmall?.copyWith(
+    final labelTextStyle =
+        theme.textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w700,
           fontFeatures: const [FontFeature.tabularFigures()],
         ) ??
@@ -434,11 +435,7 @@ class MacroLabel {
   /// text centered on this point. `null` when [text] is `null`.
   final Offset? position;
 
-  const MacroLabel({
-    required this.sectionName,
-    this.text,
-    this.position,
-  });
+  const MacroLabel({required this.sectionName, this.text, this.position});
 }
 
 /// Compute the in-band label for every section. Pure / no widget
@@ -481,11 +478,7 @@ List<MacroLabel> computeMacroLabels({
       cx + midR * math.cos(s.midAngleRadians),
       cy + midR * math.sin(s.midAngleRadians),
     );
-    result.add(MacroLabel(
-      sectionName: s.name,
-      text: text,
-      position: pos,
-    ));
+    result.add(MacroLabel(sectionName: s.name, text: text, position: pos));
   }
   return result;
 }
@@ -608,10 +601,7 @@ class _MacroDonutPainter extends CustomPainter {
         ..strokeCap = StrokeCap.butt
         ..color = Colors.white.withValues(alpha: 0.35 * opacity);
       canvas.drawArc(
-        Rect.fromCircle(
-          center: center,
-          radius: radius - strokeWidth / 2 + 1,
-        ),
+        Rect.fromCircle(center: center, radius: radius - strokeWidth / 2 + 1),
         s.startAngleRadians,
         s.sweepAngleRadians,
         false,
@@ -628,8 +618,8 @@ class _MacroDonutPainter extends CustomPainter {
       final labelText = label.text;
       final labelPos = label.position;
       if (labelText == null || labelPos == null) continue;
-      final labelColor = ThemeData.estimateBrightnessForColor(s.color) ==
-              Brightness.light
+      final labelColor =
+          ThemeData.estimateBrightnessForColor(s.color) == Brightness.light
           ? darkLabelColor
           : lightLabelColor;
       final labelPainter = TextPainter(
@@ -719,13 +709,15 @@ class MacroFocusContent extends StatelessWidget {
     // bold); "Protein" / "Fat" / "Fiber" are shorter. The
     // second line can stretch longer; "30 g · 25%"
     // (~22 chars) still fits comfortably at labelSmall.
-    final nameStyle = theme.textTheme.titleSmall?.copyWith(
+    final nameStyle =
+        theme.textTheme.titleSmall?.copyWith(
           color: themeColors.textDominant,
           fontWeight: FontWeight.w700,
           fontFeatures: const [FontFeature.tabularFigures()],
         ) ??
         const TextStyle();
-    final detailStyle = theme.textTheme.labelSmall?.copyWith(
+    final detailStyle =
+        theme.textTheme.labelSmall?.copyWith(
           color: themeColors.textMuted,
           fontFeatures: const [FontFeature.tabularFigures()],
         ) ??
@@ -745,10 +737,7 @@ class MacroFocusContent extends StatelessWidget {
             Container(
               width: 6,
               height: 6,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 4),
             Text(name, style: nameStyle),

@@ -11,6 +11,14 @@
 /// be turned into a protocol message without translation tables.
 library;
 
+import '../../core/sync_protocol/wire_timestamps.dart';
+
+// The protocol's wire shape for a timestamp belongs to the protocol, not to the
+// watch: `lib/core/sync_protocol/wire_timestamps.dart` owns it, and the watch
+// tree keeps reading it through here, where its records are built.
+export '../../core/sync_protocol/wire_timestamps.dart'
+    show utcIso, parseUtcIso, parseOptionalUtcIso;
+
 /// Session status values, matching `session_snapshot.payload.status`.
 abstract final class WatchSessionStatus {
   static const String active = 'active';
@@ -43,6 +51,41 @@ abstract final class WatchLifecycleState {
   static const String exerciseAdvanced = 'exercise_advanced';
   static const String completed = 'completed';
   static const String abandoned = 'abandoned';
+}
+
+/// The `kind` an observation carries, matching `observations_up`'s event enum
+/// (PROTOCOL.md, "Message families").
+abstract final class WatchObservationKind {
+  static const String set = 'set';
+  static const String timed = 'timed';
+  static const String round = 'round';
+  static const String hold = 'hold';
+
+  /// A food the user quick-logged. The one kind that is not tied to a session
+  /// slot: it names a food and a portion, and nothing else.
+  static const String nutritionQuickLog = 'nutrition_quick_log';
+
+  static const List<String> all = [set, timed, round, hold, nutritionQuickLog];
+}
+
+/// The session id a nutrition quick-log carries when the wrist has no session
+/// to put it in.
+///
+/// `observations_up` requires a non-empty `sessionId`, and the quick-log
+/// surface is reachable with no workout running — eating is not a training
+/// event. A log taken outside a session therefore names the day's nutrition
+/// log rather than inventing a training session; a log taken while a session is
+/// running rides that session instead, so it is part of the workout's story.
+abstract final class WatchNutritionSession {
+  static const String prefix = 'nutrition-';
+
+  /// The id standalone quick-logs logged at [loggedAt] carry, in UTC.
+  static String idFor(DateTime loggedAt) {
+    final utc = loggedAt.toUtc();
+    final month = utc.month.toString().padLeft(2, '0');
+    final day = utc.day.toString().padLeft(2, '0');
+    return '$prefix${utc.year}-$month-$day';
+  }
 }
 
 /// What a sensor sample measures, and in which unit.
@@ -110,6 +153,7 @@ sealed class WatchRecord {
       WatchRoutineCatalogRecord.type => WatchRoutineCatalogRecord.fromJson(
         json,
       ),
+      WatchFoodCatalogRecord.type => WatchFoodCatalogRecord.fromJson(json),
       _ => throw FormatException('unknown watch record type: $type'),
     };
   }
@@ -228,7 +272,8 @@ final class WatchObservationRecord extends WatchRecord {
 
   static const String type = 'observation';
 
-  /// Effort kind: `set`, `timed`, `round`, `hold`, or `nutrition_quick_log`.
+  /// Effort kind: one of [WatchObservationKind] — `set`, `timed`, `round`,
+  /// `hold`, or `nutrition_quick_log`.
   final String kind;
 
   /// The protocol event, exactly as it will be sent.
@@ -604,16 +649,77 @@ final class WatchRoutineCatalogRecord extends WatchRecord {
       );
 }
 
-/// A UTC timestamp in the protocol's wire shape: `YYYY-MM-DDTHH:MM:SS(.sss)Z`.
-String utcIso(DateTime instant) {
-  final iso = instant.toUtc().toIso8601String();
-  return iso.endsWith('Z') ? iso : '${iso}Z';
+/// The reference data a `foods_down` message carries: the foods the wrist may
+/// quick-log, and the categories that order them.
+///
+/// The same shape of row as [WatchRoutineCatalogRecord] and for the same
+/// reason: it is the phone's data, the watch only reads it, and it belongs to
+/// no session — so its `sessionId` is empty and a sync appends a new row rather
+/// than editing the one before it. What the wrist itself logged recently is
+/// *not* stored here either: it is derived from the observations the store
+/// already holds.
+final class WatchFoodCatalogRecord extends WatchRecord {
+  const WatchFoodCatalogRecord({
+    required super.recordId,
+    required super.recordedAt,
+    required this.generatedAt,
+    this.foods = const [],
+    this.categories = const [],
+    super.sequence,
+  }) : super(sessionId: '');
+
+  static const String type = 'food_catalog';
+
+  /// When the phone generated this view of the food list. A message older than
+  /// the cached one is not a newer truth, so it is ignored.
+  final DateTime generatedAt;
+
+  /// The foods as `foods_down` carried them, in the phone's own array order —
+  /// which is not the order the wrist shows: the derivation reorders them.
+  final List<Map<String, Object?>> foods;
+
+  /// The phone's active food categories, in the phone's own array order.
+  final List<Map<String, Object?>> categories;
+
+  @override
+  String get recordType => type;
+
+  @override
+  WatchFoodCatalogRecord withSequence(int sequence) => WatchFoodCatalogRecord(
+    recordId: recordId,
+    recordedAt: recordedAt,
+    generatedAt: generatedAt,
+    foods: foods,
+    categories: categories,
+    sequence: sequence,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    'recordType': type,
+    'recordId': recordId,
+    'sessionId': sessionId,
+    'recordedAt': utcIso(recordedAt),
+    'sequence': sequence,
+    'generatedAt': utcIso(generatedAt),
+    'foods': foods,
+    'categories': categories,
+  };
+
+  static WatchFoodCatalogRecord fromJson(Map<String, Object?> json) =>
+      WatchFoodCatalogRecord(
+        recordId: json['recordId']! as String,
+        recordedAt: parseUtcIso(json['recordedAt']),
+        generatedAt: parseUtcIso(json['generatedAt']),
+        foods: ((json['foods'] as List?) ?? const [])
+            .map(asJsonObject)
+            .toList(growable: false),
+        categories: ((json['categories'] as List?) ?? const [])
+            .map(asJsonObject)
+            .toList(growable: false),
+        sequence: (json['sequence'] as int?) ?? 0,
+      );
 }
-
-DateTime parseUtcIso(Object? value) => DateTime.parse(value! as String).toUtc();
-
-DateTime? parseOptionalUtcIso(Object? value) =>
-    value == null ? null : parseUtcIso(value);
 
 /// Narrows a decoded JSON value to a string-keyed map.
 Map<String, Object?> asJsonObject(Object? value) =>

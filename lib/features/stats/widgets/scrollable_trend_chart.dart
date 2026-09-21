@@ -236,15 +236,18 @@ class _ScrollableTrendChartState extends State<ScrollableTrendChart> {
               // stay legible on narrow viewports.
               final perPointWidth = viewportWidth <= 0
                   ? kScrollableTrendMinPerPointWidth
-                  : (viewportWidth / widget.maxVisiblePoints)
-                      .clamp(kScrollableTrendMinPerPointWidth, double.infinity);
+                  : (viewportWidth / widget.maxVisiblePoints).clamp(
+                      kScrollableTrendMinPerPointWidth,
+                      double.infinity,
+                    );
               final scrollable = widget.pointCount > widget.maxVisiblePoints;
               // Compute natural plot width. For scrollable data (pointCount >
               // maxVisiblePoints), add horizontal margins to prevent edge
               // points and labels from clipping (D-4). For sparse non-scrollable
               // data, no margins needed (data sits in viewport).
-              final horizontalMargin =
-                  scrollable ? kScrollableTrendHorizontalMargin : 0.0;
+              final horizontalMargin = scrollable
+                  ? kScrollableTrendHorizontalMargin
+                  : 0.0;
               final naturalWidth =
                   widget.pointCount * perPointWidth + 2 * horizontalMargin;
               final plotWidth = naturalWidth > viewportWidth
@@ -265,8 +268,9 @@ class _ScrollableTrendChartState extends State<ScrollableTrendChart> {
                           padding: const EdgeInsets.symmetric(
                             horizontal: kScrollableTrendHorizontalMargin,
                           ),
-                          child: widget.chartBuilder(plotWidth -
-                              2 * kScrollableTrendHorizontalMargin),
+                          child: widget.chartBuilder(
+                            plotWidth - 2 * kScrollableTrendHorizontalMargin,
+                          ),
                         )
                       : widget.chartBuilder(plotWidth),
                 ),
@@ -310,7 +314,11 @@ class _PinnedYAxis extends StatelessWidget {
     // the labels, so the labels render at min, min+interval,
     // …, max).
     final values = <double>[];
-    for (double v = bounds.min; v <= bounds.max + bounds.interval / 2; v += bounds.interval) {
+    for (
+      double v = bounds.min;
+      v <= bounds.max + bounds.interval / 2;
+      v += bounds.interval
+    ) {
       values.add(v);
       if (values.length > 12) break; // hard cap to avoid runaway loops
     }
@@ -333,10 +341,7 @@ class _PinnedYAxis extends StatelessWidget {
                     // Bare numeric value, no unit. Unit appears once
                     // in the dedicated position below the labels (D-3).
                     v.toStringAsFixed(0),
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: themeColors.textMuted,
-                    ),
+                    style: TextStyle(fontSize: 9, color: themeColors.textMuted),
                     maxLines: 1,
                     softWrap: false,
                     overflow: TextOverflow.clip,
@@ -352,10 +357,7 @@ class _PinnedYAxis extends StatelessWidget {
             padding: const EdgeInsets.only(right: 4, top: 4),
             child: Text(
               unitLabel,
-              style: TextStyle(
-                fontSize: 9,
-                color: themeColors.textMuted,
-              ),
+              style: TextStyle(fontSize: 9, color: themeColors.textMuted),
               maxLines: 1,
               softWrap: false,
               overflow: TextOverflow.clip,

@@ -71,7 +71,10 @@ void main() {
                         routineState: routineState,
                         sessionSummaryService: sessionSummaryService,
                         timerAlertService: FakeTimerAlertService(),
-                        settingsState: SettingsState(MockWorkoutRepository(), fakePreferencesService()),
+                        settingsState: SettingsState(
+                          MockWorkoutRepository(),
+                          fakePreferencesService(),
+                        ),
                         editMode: true,
                       ),
                     ),

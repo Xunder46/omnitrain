@@ -175,10 +175,15 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                     selected: selected,
                     selectedColor: color.withOpacity(0.25),
                     checkmarkColor: color,
-                    labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: selected ? color : OmniTheme.colors.textSecondary,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    ),
+                    labelStyle: Theme.of(context).textTheme.labelMedium
+                        ?.copyWith(
+                          color: selected
+                              ? color
+                              : OmniTheme.colors.textSecondary,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
                     onSelected: (val) {
                       setState(() {
                         if (val) {
@@ -219,7 +224,10 @@ class _CreatePeriodScreenState extends State<CreatePeriodScreen> {
                         color: color,
                         shape: BoxShape.circle,
                         border: isSelected
-                            ? Border.all(color: OmniTheme.colors.textDominant, width: 3)
+                            ? Border.all(
+                                color: OmniTheme.colors.textDominant,
+                                width: 3,
+                              )
                             : null,
                       ),
                       child: isSelected

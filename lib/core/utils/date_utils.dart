@@ -13,9 +13,15 @@ class OmniDateUtils {
   static int todayMidnightMs() => startOfDayMs(DateTime.now());
 
   /// Returns the epoch-ms of the end of the given day (23:59:59.999 local time).
-  static int endOfDayMs(DateTime date) =>
-      DateTime(date.year, date.month, date.day, 23, 59, 59, 999)
-          .millisecondsSinceEpoch;
+  static int endOfDayMs(DateTime date) => DateTime(
+    date.year,
+    date.month,
+    date.day,
+    23,
+    59,
+    59,
+    999,
+  ).millisecondsSinceEpoch;
 
   /// True if [date] is in a past day relative to today (local time).
   static bool isPastDay(DateTime date) {
@@ -67,11 +73,9 @@ class OmniDateUtils {
       leadingBlanks = (firstOfMonth.weekday - 1) % 7;
     }
 
-    final daysInMonth =
-        DateTime(year, month + 1, 0).day; // day 0 of next month
+    final daysInMonth = DateTime(year, month + 1, 0).day; // day 0 of next month
 
-    final totalCells =
-        ((leadingBlanks + daysInMonth) / 7).ceil() * 7;
+    final totalCells = ((leadingBlanks + daysInMonth) / 7).ceil() * 7;
 
     return List<DateTime?>.generate(totalCells, (i) {
       final dayIndex = i - leadingBlanks;
@@ -83,8 +87,18 @@ class OmniDateUtils {
   /// Short month name (e.g. "Mar").
   static String shortMonthName(int month) {
     const names = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return names[(month - 1).clamp(0, 11)];
   }
@@ -92,8 +106,18 @@ class OmniDateUtils {
   /// Full month name (e.g. "March").
   static String fullMonthName(int month) {
     const names = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return names[(month - 1).clamp(0, 11)];
   }
@@ -108,9 +132,10 @@ class OmniDateUtils {
     final end = fromMs(endMs);
     final sameYear = start.year == end.year;
     final startStr = '${shortMonthName(start.month)} ${start.day}';
-    final endStr =
-        '${shortMonthName(end.month)} ${end.day}, ${end.year}';
-    return sameYear ? '$startStr – $endStr' : '$startStr, ${start.year} – $endStr';
+    final endStr = '${shortMonthName(end.month)} ${end.day}, ${end.year}';
+    return sameYear
+        ? '$startStr – $endStr'
+        : '$startStr, ${start.year} – $endStr';
   }
 
   /// Formats a duration in milliseconds as "Xh Ym" (rounded to the nearest

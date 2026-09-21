@@ -81,8 +81,8 @@ class ImageStorageService {
   ImageStorageService.fromBaseDirectory(
     String baseDirectory, {
     List<String>? extraCandidateDirs,
-  })  : _managedDir = p.normalize(p.join(baseDirectory, _managedSubdir)),
-        _candidateDirs = List.unmodifiable(extraCandidateDirs ?? const []);
+  }) : _managedDir = p.normalize(p.join(baseDirectory, _managedSubdir)),
+       _candidateDirs = List.unmodifiable(extraCandidateDirs ?? const []);
 
   /// Async factory that resolves the app documents directory via
   /// `path_provider`. Use from `main.dart` at app start.

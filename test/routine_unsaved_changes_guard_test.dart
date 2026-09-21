@@ -55,10 +55,7 @@ Future<_RoutineDeps> _buildDeps() async {
   );
 }
 
-Future<Exercise> _getExerciseById(
-  MockWorkoutRepository repo,
-  String id,
-) async {
+Future<Exercise> _getExerciseById(MockWorkoutRepository repo, String id) async {
   final exercises = await repo.getExercises();
   return exercises.firstWhere((e) => e.id == id);
 }
@@ -70,10 +67,7 @@ typedef _RoutineDeps = ({
   SettingsState settingsState,
 });
 
-Widget _buildScreen(
-  _RoutineDeps deps, {
-  String? templateId,
-}) {
+Widget _buildScreen(_RoutineDeps deps, {String? templateId}) {
   return MaterialApp(
     home: RoutineSetupScreen(
       routineState: deps.routineState,
@@ -88,10 +82,7 @@ Future<void> _pumpAndSettle(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _seedExistingRoutine(
-  _RoutineDeps deps,
-  String name,
-) async {
+Future<void> _seedExistingRoutine(_RoutineDeps deps, String name) async {
   await deps.routineState.createNewRoutine(name);
   await deps.routineState.saveRoutine();
 }
@@ -100,7 +91,10 @@ Future<void> _tapHeaderBack(WidgetTester tester) async {
   // The OmniBackHeader always renders an IconButton with Icons.arrow_back.
   final backBtn = find
       .byWidgetPredicate(
-        (w) => w is IconButton && w.icon is Icon && (w.icon as Icon).icon == Icons.arrow_back,
+        (w) =>
+            w is IconButton &&
+            w.icon is Icon &&
+            (w.icon as Icon).icon == Icons.arrow_back,
       )
       .first;
   await tester.tap(backBtn);
@@ -144,21 +138,20 @@ void main() {
       },
     );
 
-    testWidgets(
-      'new routine with no edits: header back pops without dialog',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await deps.routineState.createNewRoutine('Untouched new');
+    testWidgets('new routine with no edits: header back pops without dialog', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await deps.routineState.createNewRoutine('Untouched new');
 
-        await tester.pumpWidget(_buildScreen(deps));
-        await _pumpAndSettle(tester);
+      await tester.pumpWidget(_buildScreen(deps));
+      await _pumpAndSettle(tester);
 
-        await _tapHeaderBack(tester);
+      await _tapHeaderBack(tester);
 
-        expect(find.text('Unsaved changes'), findsNothing);
-        expect(find.byType(RoutineSetupScreen), findsNothing);
-      },
-    );
+      expect(find.text('Unsaved changes'), findsNothing);
+      expect(find.byType(RoutineSetupScreen), findsNothing);
+    });
 
     testWidgets(
       'new routine with no edits: bottom Cancel pops without dialog',
@@ -227,7 +220,10 @@ void main() {
       final dialogFinder = find.byType(AlertDialog);
       expect(dialogFinder, findsOneWidget);
       expect(
-        find.descendant(of: dialogFinder, matching: find.text('Unsaved changes')),
+        find.descendant(
+          of: dialogFinder,
+          matching: find.text('Unsaved changes'),
+        ),
         findsOneWidget,
       );
       expect(
@@ -251,231 +247,221 @@ void main() {
       expect(find.byType(RoutineSetupScreen), findsOneWidget);
     }
 
-    testWidgets(
-      'name change triggers dialog on header back',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await seedAndPumpExisting(tester, deps);
+    testWidgets('name change triggers dialog on header back', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await seedAndPumpExisting(tester, deps);
 
-        // Edit name via state — the canonical contract — and also
-        // sync the in-screen TextField so the UI reflects the new
-        // baseline when we leave the dialog.
-        await deps.routineState.updateRoutineName('Renamed');
-        await tester.enterText(
-          find.widgetWithText(TextField, 'Routine Name'),
-          'Renamed',
-        );
-        await _pumpAndSettle(tester);
+      // Edit name via state — the canonical contract — and also
+      // sync the in-screen TextField so the UI reflects the new
+      // baseline when we leave the dialog.
+      await deps.routineState.updateRoutineName('Renamed');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Routine Name'),
+        'Renamed',
+      );
+      await _pumpAndSettle(tester);
 
-        await _tapHeaderBack(tester);
-        await expectDialogAndKeepEditing(tester, deps);
+      await _tapHeaderBack(tester);
+      await expectDialogAndKeepEditing(tester, deps);
 
-        // Name preserved on Keep-Editing.
-        final fieldFinder = find.widgetWithText(TextField, 'Routine Name');
-        final field = tester.widget<TextField>(fieldFinder);
-        expect(field.controller!.text, 'Renamed');
-      },
-    );
+      // Name preserved on Keep-Editing.
+      final fieldFinder = find.widgetWithText(TextField, 'Routine Name');
+      final field = tester.widget<TextField>(fieldFinder);
+      expect(field.controller!.text, 'Renamed');
+    });
 
-    testWidgets(
-      'description change triggers dialog on header back',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await seedAndPumpExisting(tester, deps);
+    testWidgets('description change triggers dialog on header back', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await seedAndPumpExisting(tester, deps);
 
-        await deps.routineState.updateRoutineDescription('A description');
+      await deps.routineState.updateRoutineDescription('A description');
 
-        await _tapHeaderBack(tester);
-        await expectDialogAndKeepEditing(tester, deps);
-      },
-    );
+      await _tapHeaderBack(tester);
+      await expectDialogAndKeepEditing(tester, deps);
+    });
 
-    testWidgets(
-      'focus modality change triggers dialog on header back',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await seedAndPumpExisting(tester, deps);
+    testWidgets('focus modality change triggers dialog on header back', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await seedAndPumpExisting(tester, deps);
 
-        // Update the focus modality directly via state to avoid the
-        // fragile dropdown interaction in widget tests. The state is
-        // the canonical contract; the UI's dropdown just calls
-        // updateRoutineFocusModality.
-        await deps.routineState.updateRoutineFocusModality(
-          Modality.resistanceLifting,
-        );
+      // Update the focus modality directly via state to avoid the
+      // fragile dropdown interaction in widget tests. The state is
+      // the canonical contract; the UI's dropdown just calls
+      // updateRoutineFocusModality.
+      await deps.routineState.updateRoutineFocusModality(
+        Modality.resistanceLifting,
+      );
 
-        await _tapHeaderBack(tester);
-        await expectDialogAndKeepEditing(tester, deps);
-      },
-    );
+      await _tapHeaderBack(tester);
+      await expectDialogAndKeepEditing(tester, deps);
+    });
 
-    testWidgets(
-      'add-exercise triggers dialog on header back',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await seedAndPumpExisting(tester, deps);
+    testWidgets('add-exercise triggers dialog on header back', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await seedAndPumpExisting(tester, deps);
 
-        // Drive the add-exercise mutation through the state directly
-        // — the UI's exercise picker is exercised in dedicated tests,
-        // and the dirty-state contract doesn't depend on the picker.
-        final ex = await _getExerciseById(deps.repo, 'exercise-barbell-squat');
-        await deps.routineState.addExerciseToRoutine(ex, 'set');
+      // Drive the add-exercise mutation through the state directly
+      // — the UI's exercise picker is exercised in dedicated tests,
+      // and the dirty-state contract doesn't depend on the picker.
+      final ex = await _getExerciseById(deps.repo, 'exercise-barbell-squat');
+      await deps.routineState.addExerciseToRoutine(ex, 'set');
 
-        await _tapHeaderBack(tester);
-        await expectDialogAndKeepEditing(tester, deps);
-      },
-    );
+      await _tapHeaderBack(tester);
+      await expectDialogAndKeepEditing(tester, deps);
+    });
 
-    testWidgets(
-      'set-target change triggers dialog on header back',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        // Seed an existing routine with one exercise so we can edit
-        // a set target.
-        await deps.routineState.createNewRoutine('Target routine');
-        final ex = await _getExerciseById(deps.repo, 'exercise-barbell-squat');
-        final effortId = await deps.routineState.addExerciseToRoutine(ex, 'set');
-        await deps.routineState.setTargetValue(
-          effortId,
-          'metric-reps',
-          'unit-reps',
-          setIndex: 0,
-          targetInt: 10,
-        );
-        await deps.routineState.saveRoutine();
-        final templateId = deps.routineState.currentTemplate!.id;
+    testWidgets('set-target change triggers dialog on header back', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      // Seed an existing routine with one exercise so we can edit
+      // a set target.
+      await deps.routineState.createNewRoutine('Target routine');
+      final ex = await _getExerciseById(deps.repo, 'exercise-barbell-squat');
+      final effortId = await deps.routineState.addExerciseToRoutine(ex, 'set');
+      await deps.routineState.setTargetValue(
+        effortId,
+        'metric-reps',
+        'unit-reps',
+        setIndex: 0,
+        targetInt: 10,
+      );
+      await deps.routineState.saveRoutine();
+      final templateId = deps.routineState.currentTemplate!.id;
 
-        deps.routineState.clearCurrentRoutine();
-        await deps.routineState.loadRoutineForEditing(templateId);
+      deps.routineState.clearCurrentRoutine();
+      await deps.routineState.loadRoutineForEditing(templateId);
 
-        // Re-render with the loaded routine so the screen sees the new
-        // baseline.
-        await tester.pumpWidget(_buildScreen(deps, templateId: templateId));
-        await _pumpAndSettle(tester);
+      // Re-render with the loaded routine so the screen sees the new
+      // baseline.
+      await tester.pumpWidget(_buildScreen(deps, templateId: templateId));
+      await _pumpAndSettle(tester);
 
-        // Mutate a set target via state — the canonical dirty trigger.
-        await deps.routineState.setTargetValue(
-          effortId,
-          'metric-reps',
-          'unit-reps',
-          setIndex: 0,
-          targetInt: 12,
-        );
+      // Mutate a set target via state — the canonical dirty trigger.
+      await deps.routineState.setTargetValue(
+        effortId,
+        'metric-reps',
+        'unit-reps',
+        setIndex: 0,
+        targetInt: 12,
+      );
 
-        await _tapHeaderBack(tester);
-        await expectDialogAndKeepEditing(tester, deps);
-      },
-    );
+      await _tapHeaderBack(tester);
+      await expectDialogAndKeepEditing(tester, deps);
+    });
 
-    testWidgets(
-      'add-block triggers dialog on header back',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await seedAndPumpExisting(tester, deps);
+    testWidgets('add-block triggers dialog on header back', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await seedAndPumpExisting(tester, deps);
 
-        // Drive add-block through state directly to avoid the
-        // nested-popup-bouncing interaction in tests.
-        final segments = deps.routineState.currentSegments;
-        await deps.routineState.addSegment(
-          segmentType: 'accessory',
-          name: 'Accessory Block',
-        );
+      // Drive add-block through state directly to avoid the
+      // nested-popup-bouncing interaction in tests.
+      final segments = deps.routineState.currentSegments;
+      await deps.routineState.addSegment(
+        segmentType: 'accessory',
+        name: 'Accessory Block',
+      );
 
-        await _tapHeaderBack(tester);
-        await expectDialogAndKeepEditing(tester, deps);
-        // silence unused
-        segments.toString();
-      },
-    );
+      await _tapHeaderBack(tester);
+      await expectDialogAndKeepEditing(tester, deps);
+      // silence unused
+      segments.toString();
+    });
 
-    testWidgets(
-      'rename-block triggers dialog on header back',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await seedAndPumpExisting(tester, deps);
+    testWidgets('rename-block triggers dialog on header back', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await seedAndPumpExisting(tester, deps);
 
-        // Drive the rename through state directly.
-        final segments = deps.routineState.currentSegments;
-        await deps.routineState.updateSegment(
-          segments.first.id,
-          name: 'Renamed Block',
-          segmentType: 'main',
-        );
+      // Drive the rename through state directly.
+      final segments = deps.routineState.currentSegments;
+      await deps.routineState.updateSegment(
+        segments.first.id,
+        name: 'Renamed Block',
+        segmentType: 'main',
+      );
 
-        await _tapHeaderBack(tester);
-        await expectDialogAndKeepEditing(tester, deps);
-      },
-    );
+      await _tapHeaderBack(tester);
+      await expectDialogAndKeepEditing(tester, deps);
+    });
 
-    testWidgets(
-      'bottom Cancel triggers dialog when dirty',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await seedAndPumpExisting(tester, deps);
+    testWidgets('bottom Cancel triggers dialog when dirty', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await seedAndPumpExisting(tester, deps);
 
-        await deps.routineState.updateRoutineName('Some new name');
+      await deps.routineState.updateRoutineName('Some new name');
 
-        await _tapCancelButton(tester);
-        await expectDialogAndKeepEditing(tester, deps);
-      },
-    );
+      await _tapCancelButton(tester);
+      await expectDialogAndKeepEditing(tester, deps);
+    });
 
-    testWidgets(
-      'system back gesture triggers dialog when dirty',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
-        await seedAndPumpExisting(tester, deps);
+    testWidgets('system back gesture triggers dialog when dirty', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
+      await seedAndPumpExisting(tester, deps);
 
-        await deps.routineState.updateRoutineName('Some new name');
+      await deps.routineState.updateRoutineName('Some new name');
 
-        // The header back arrow is the same code path that the system
-        // back gesture fires in tests.
-        await _tapHeaderBack(tester);
-        await expectDialogAndKeepEditing(tester, deps);
-      },
-    );
+      // The header back arrow is the same code path that the system
+      // back gesture fires in tests.
+      await _tapHeaderBack(tester);
+      await expectDialogAndKeepEditing(tester, deps);
+    });
   });
 
   // ── S-003: Discard/save reset correctly ────────────────────────────────
 
   group('S-003 — Discard and Save reset correctly', () {
-    testWidgets(
-      'discard on a new routine persists nothing',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
+    testWidgets('discard on a new routine persists nothing', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
 
-        await tester.pumpWidget(_buildScreen(deps));
-        await _pumpAndSettle(tester);
+      await tester.pumpWidget(_buildScreen(deps));
+      await _pumpAndSettle(tester);
 
-        // Make a dirty edit via the TextField so the in-screen
-        // controller and the state are aligned.
-        await tester.enterText(
-          find.widgetWithText(TextField, 'Routine Name'),
-          'Changed name',
-        );
-        await _pumpAndSettle(tester);
+      // Make a dirty edit via the TextField so the in-screen
+      // controller and the state are aligned.
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Routine Name'),
+        'Changed name',
+      );
+      await _pumpAndSettle(tester);
 
-        // Attempt to exit.
-        await _tapHeaderBack(tester);
-        await _pumpAndSettle(tester);
+      // Attempt to exit.
+      await _tapHeaderBack(tester);
+      await _pumpAndSettle(tester);
 
-        // Confirm Discard — in the dialog subtree so we don't hit the
-        // bottom Discard by mistake if one ever appears.
-        final dialogFinder = find.byType(AlertDialog);
-        expect(dialogFinder, findsOneWidget);
-        await tester.tap(
-          find.descendant(of: dialogFinder, matching: find.text('Discard')),
-        );
-        await _pumpAndSettle(tester);
+      // Confirm Discard — in the dialog subtree so we don't hit the
+      // bottom Discard by mistake if one ever appears.
+      final dialogFinder = find.byType(AlertDialog);
+      expect(dialogFinder, findsOneWidget);
+      await tester.tap(
+        find.descendant(of: dialogFinder, matching: find.text('Discard')),
+      );
+      await _pumpAndSettle(tester);
 
-        // Screen is gone.
-        expect(find.byType(RoutineSetupScreen), findsNothing);
+      // Screen is gone.
+      expect(find.byType(RoutineSetupScreen), findsNothing);
 
-        // Repository has no template with that name.
-        final templates = await deps.repo.getTemplates();
-        expect(templates.where((t) => t.name == 'Changed name'), isEmpty);
-      },
-    );
+      // Repository has no template with that name.
+      final templates = await deps.repo.getTemplates();
+      expect(templates.where((t) => t.name == 'Changed name'), isEmpty);
+    });
 
     testWidgets(
       'discard on existing routine leaves stored hierarchy unchanged',
@@ -483,7 +469,10 @@ void main() {
         final deps = await _buildDeps();
         await deps.routineState.createNewRoutine('Existing dirty');
         final ex = await _getExerciseById(deps.repo, 'exercise-barbell-squat');
-        final effortId = await deps.routineState.addExerciseToRoutine(ex, 'set');
+        final effortId = await deps.routineState.addExerciseToRoutine(
+          ex,
+          'set',
+        );
         await deps.routineState.setTargetValue(
           effortId,
           'metric-reps',
@@ -545,50 +534,50 @@ void main() {
       },
     );
 
-    testWidgets(
-      'save resets baseline so immediate exit does not prompt',
-      (WidgetTester tester) async {
-        final deps = await _buildDeps();
+    testWidgets('save resets baseline so immediate exit does not prompt', (
+      WidgetTester tester,
+    ) async {
+      final deps = await _buildDeps();
 
-        await tester.pumpWidget(_buildScreen(deps));
-        await _pumpAndSettle(tester);
+      await tester.pumpWidget(_buildScreen(deps));
+      await _pumpAndSettle(tester);
 
-        // Capture the new routine's id so we can verify the save
-        // resets the baseline without re-mounting the editor (which
-        // would re-trigger the home-route Navigator state in the test
-        // environment).
-        final newRoutineId = deps.routineState.currentTemplate!.id;
+      // Capture the new routine's id so we can verify the save
+      // resets the baseline without re-mounting the editor (which
+      // would re-trigger the home-route Navigator state in the test
+      // environment).
+      final newRoutineId = deps.routineState.currentTemplate!.id;
 
-        // The screen created a new routine with default name 'New Routine'.
-        // Edit the name via the TextField so the in-screen controller is
-        // also updated (the state-aligned path the real UI uses).
-        await tester.enterText(
-          find.widgetWithText(TextField, 'Routine Name'),
-          'Saved name',
-        );
-        await _pumpAndSettle(tester);
+      // The screen created a new routine with default name 'New Routine'.
+      // Edit the name via the TextField so the in-screen controller is
+      // also updated (the state-aligned path the real UI uses).
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Routine Name'),
+        'Saved name',
+      );
+      await _pumpAndSettle(tester);
 
-        expect(deps.routineState.hasUnsavedChanges, isTrue);
+      expect(deps.routineState.hasUnsavedChanges, isTrue);
 
-        // Save.
-        await _tapSaveButton(tester);
-        await _pumpAndSettle(tester);
+      // Save.
+      await _tapSaveButton(tester);
+      await _pumpAndSettle(tester);
 
-        // The screen should have popped.
-        expect(find.byType(RoutineSetupScreen), findsNothing);
+      // The screen should have popped.
+      expect(find.byType(RoutineSetupScreen), findsNothing);
 
-        // The baseline is reset in RoutineState so the routine is now
-        // indistinguishable from a freshly loaded existing routine —
-        // verify directly via the state contract.
-        deps.routineState.clearCurrentRoutine();
-        await deps.routineState.loadRoutineForEditing(newRoutineId);
-        expect(
-          deps.routineState.hasUnsavedChanges,
-          isFalse,
-          reason: 'Successful save must reset the baseline so the next '
-              'exit does not re-prompt.',
-        );
-      },
-    );
+      // The baseline is reset in RoutineState so the routine is now
+      // indistinguishable from a freshly loaded existing routine —
+      // verify directly via the state contract.
+      deps.routineState.clearCurrentRoutine();
+      await deps.routineState.loadRoutineForEditing(newRoutineId);
+      expect(
+        deps.routineState.hasUnsavedChanges,
+        isFalse,
+        reason:
+            'Successful save must reset the baseline so the next '
+            'exit does not re-prompt.',
+      );
+    });
   });
 }

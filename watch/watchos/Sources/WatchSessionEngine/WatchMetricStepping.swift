@@ -50,6 +50,11 @@ public struct WatchUnitPreferences: Equatable {
 
 /// What one rotary detent does, per metric.
 public enum WatchMetricStepping {
+    /// Points of crown travel that count as one detent on every wrist surface.
+    /// A Digital Crown detent and a Wear OS rotary notch both arrive as a scroll
+    /// or a drag, and the Flutter surface accumulates against the same number.
+    public static let pointsPerDetent: Double = 32
+
     /// Load moves in the saved increment: 2.5 kg, or the 5 lb plate the user
     /// thinks in — converted once here, so the display reads exactly 5 lb.
     public static let kilogramsPerDetent = 2.5

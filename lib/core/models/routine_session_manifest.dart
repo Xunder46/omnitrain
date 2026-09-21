@@ -10,10 +10,7 @@ class RoutineSessionManifest {
   final WorkoutTemplate template;
   final List<SessionSegmentEntry> segments;
 
-  RoutineSessionManifest({
-    required this.template,
-    required this.segments,
-  });
+  RoutineSessionManifest({required this.template, required this.segments});
 
   /// Flattened list of exercises across all blocks.
   List<SessionExerciseEntry> get exercises =>
@@ -32,10 +29,7 @@ class SessionSegmentEntry {
   final TemplateSegment segment;
   final List<SessionExerciseEntry> exercises;
 
-  SessionSegmentEntry({
-    required this.segment,
-    required this.exercises,
-  });
+  SessionSegmentEntry({required this.segment, required this.exercises});
 
   bool get isEmpty => exercises.isEmpty;
 }

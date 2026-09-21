@@ -81,84 +81,104 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Pipeline schema documentation', () {
-    test(
-      'sqlite_schema.sql and sqlite_seed.sql execute against an in-memory '
-      'test database and produce the documented seed rows',
-      () async {
-        _initFfi();
+    test('sqlite_schema.sql and sqlite_seed.sql execute against an in-memory '
+        'test database and produce the documented seed rows', () async {
+      _initFfi();
 
-        // Repo root is the parent of `test/` — load the SQL files directly
-        // from disk, the way the agent pipeline docs reference them, not
-        // through any live app source file.
-        final repoRoot = Directory.current.path;
-        final schemaSql =
-            await File('$repoRoot/scripts/sqlite_schema.sql').readAsString();
-        final seedSql =
-            await File('$repoRoot/scripts/sqlite_seed.sql').readAsString();
+      // Repo root is the parent of `test/` — load the SQL files directly
+      // from disk, the way the agent pipeline docs reference them, not
+      // through any live app source file.
+      final repoRoot = Directory.current.path;
+      final schemaSql = await File(
+        '$repoRoot/scripts/sqlite_schema.sql',
+      ).readAsString();
+      final seedSql = await File(
+        '$repoRoot/scripts/sqlite_seed.sql',
+      ).readAsString();
 
-        final db = await databaseFactory.openDatabase(
-          inMemoryDatabasePath,
-          options: OpenDatabaseOptions(
-            version: 1,
-            onConfigure: (db) async {
-              await db.execute('PRAGMA foreign_keys = ON');
-            },
-          ),
-        );
+      final db = await databaseFactory.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onConfigure: (db) async {
+            await db.execute('PRAGMA foreign_keys = ON');
+          },
+        ),
+      );
 
-        for (final stmt in _executableStatements(schemaSql)) {
-          await db.execute(stmt);
-        }
-        for (final stmt in _executableStatements(seedSql)) {
-          await db.execute(stmt);
-        }
+      for (final stmt in _executableStatements(schemaSql)) {
+        await db.execute(stmt);
+      }
+      for (final stmt in _executableStatements(seedSql)) {
+        await db.execute(stmt);
+      }
 
-        // Sanity-check the seed output. These rows come from the seed file,
-        // not from any app source — if the pipeline docs drift, these
-        // assertions fail first.
-        final units = await db.query('app_unit', where: 'key = ?', whereArgs: ['kg']);
-        expect(units, isNotEmpty, reason: 'app_unit seed for kg is missing');
+      // Sanity-check the seed output. These rows come from the seed file,
+      // not from any app source — if the pipeline docs drift, these
+      // assertions fail first.
+      final units = await db.query(
+        'app_unit',
+        where: 'key = ?',
+        whereArgs: ['kg'],
+      );
+      expect(units, isNotEmpty, reason: 'app_unit seed for kg is missing');
 
-        final cmUnits = await db.query(
-          'app_unit',
-          where: 'id = ?',
-          whereArgs: ['unit-cm'],
-        );
-        expect(cmUnits, isNotEmpty, reason: 'app_unit seed for unit-cm is missing');
+      final cmUnits = await db.query(
+        'app_unit',
+        where: 'id = ?',
+        whereArgs: ['unit-cm'],
+      );
+      expect(
+        cmUnits,
+        isNotEmpty,
+        reason: 'app_unit seed for unit-cm is missing',
+      );
 
-        final pctUnits = await db.query(
-          'app_unit',
-          where: 'id = ?',
-          whereArgs: ['unit-pct'],
-        );
-        expect(pctUnits, isNotEmpty, reason: 'app_unit seed for unit-pct is missing');
+      final pctUnits = await db.query(
+        'app_unit',
+        where: 'id = ?',
+        whereArgs: ['unit-pct'],
+      );
+      expect(
+        pctUnits,
+        isNotEmpty,
+        reason: 'app_unit seed for unit-pct is missing',
+      );
 
-        final metrics = await db.query(
-          'app_metric_definition',
-          where: 'key = ?',
-          whereArgs: ['reps'],
-        );
-        expect(metrics, isNotEmpty,
-            reason: 'app_metric_definition seed for reps is missing');
+      final metrics = await db.query(
+        'app_metric_definition',
+        where: 'key = ?',
+        whereArgs: ['reps'],
+      );
+      expect(
+        metrics,
+        isNotEmpty,
+        reason: 'app_metric_definition seed for reps is missing',
+      );
 
-        final profileTables = await db.query(
-          'sqlite_master',
-          where: 'type = ? AND name = ?',
-          whereArgs: ['table', 'app_user_profile'],
-        );
-        expect(profileTables, isNotEmpty,
-            reason: 'app_user_profile table missing from schema');
+      final profileTables = await db.query(
+        'sqlite_master',
+        where: 'type = ? AND name = ?',
+        whereArgs: ['table', 'app_user_profile'],
+      );
+      expect(
+        profileTables,
+        isNotEmpty,
+        reason: 'app_user_profile table missing from schema',
+      );
 
-        final measurementTables = await db.query(
-          'sqlite_master',
-          where: 'type = ? AND name = ?',
-          whereArgs: ['table', 'app_body_measurement_entry'],
-        );
-        expect(measurementTables, isNotEmpty,
-            reason: 'app_body_measurement_entry table missing from schema');
+      final measurementTables = await db.query(
+        'sqlite_master',
+        where: 'type = ? AND name = ?',
+        whereArgs: ['table', 'app_body_measurement_entry'],
+      );
+      expect(
+        measurementTables,
+        isNotEmpty,
+        reason: 'app_body_measurement_entry table missing from schema',
+      );
 
-        await db.close();
-      },
-    );
+      await db.close();
+    });
   });
 }

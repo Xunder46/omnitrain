@@ -20,8 +20,7 @@ void main() {
   /// viewport width is deterministic. Captures the plotWidth the
   /// chartBuilder was invoked with and the inner scroll position
   /// after the first layout pass.
-  Future<({double plotWidth, double scrollPixels, double scrollMax})>
-      pumpChart(
+  Future<({double plotWidth, double scrollPixels, double scrollMax})> pumpChart(
     WidgetTester tester, {
     required int pointCount,
     int maxVisiblePoints = 8,
@@ -96,35 +95,29 @@ void main() {
       expect(r.plotWidth, 12 * (viewport / 8));
     });
 
-    testWidgets(
-        'with >maxVisiblePoints: plot width = points × '
+    testWidgets('with >maxVisiblePoints: plot width = points × '
         '(viewport / maxVisiblePoints), floored at 28', (tester) async {
       // viewport=336 (400 - 64 pinned axis), maxVisiblePoints=8 →
       // per-point = 336/8 = 42 (no floor hit).
       // 12 points → plot width = 12 × 42 = 504.
       const pinnedAxis = kScrollableTrendPinnedAxisWidth;
       final viewport = 400.0 - pinnedAxis;
-      final r = await pumpChart(
-        tester,
-        pointCount: 12,
-        maxVisiblePoints: 8,
-      );
+      final r = await pumpChart(tester, pointCount: 12, maxVisiblePoints: 8);
       expect(r.plotWidth, 12 * (viewport / 8));
     });
 
-    testWidgets(
-        'with ≤maxVisiblePoints: plot fills the viewport (no scroll)',
-        (tester) async {
+    testWidgets('with ≤maxVisiblePoints: plot fills the viewport (no scroll)', (
+      tester,
+    ) async {
       const pinnedAxis = kScrollableTrendPinnedAxisWidth;
       final viewport = 400.0 - pinnedAxis;
-      final r = await pumpChart(
-        tester,
-        pointCount: 3,
-        maxVisiblePoints: 8,
-      );
+      final r = await pumpChart(tester, pointCount: 3, maxVisiblePoints: 8);
       expect(r.plotWidth, viewport);
-      expect(r.scrollMax, 0,
-          reason: 'no scroll extent when plot fits viewport');
+      expect(
+        r.scrollMax,
+        0,
+        reason: 'no scroll extent when plot fits viewport',
+      );
     });
 
     testWidgets('per-point width is floored at 28 dp', (tester) async {
@@ -143,8 +136,7 @@ void main() {
   });
 
   group('ScrollableTrendChart — newest-first open (D-2 follow-on)', () {
-    testWidgets(
-        'with >maxVisiblePoints: opens scrolled to maxScrollExtent '
+    testWidgets('with >maxVisiblePoints: opens scrolled to maxScrollExtent '
         '(S-101/S-103)', (tester) async {
       final r = await pumpChart(tester, pointCount: 12);
       expect(
@@ -155,8 +147,7 @@ void main() {
       expect(r.scrollMax, greaterThan(0));
     });
 
-    testWidgets(
-        'does NOT use reverse:true on the inner scroll view '
+    testWidgets('does NOT use reverse:true on the inner scroll view '
         '(data is not mirrored — S-103)', (tester) async {
       final r = await pumpChart(tester, pointCount: 12);
       // The position is at maxScrollExtent (rightmost), but reverse:true
@@ -174,31 +165,27 @@ void main() {
 
   group('ScrollableTrendChart — no popup (D-4)', () {
     testWidgets(
-        'chartBuilder-provided LineTouchData(enabled: false) never surfaces '
-        'a Tooltip ancestor', (tester) async {
-      await pumpChart(
-        tester,
-        pointCount: 12,
-        touchEnabled: false,
-      );
-      // Tap on the line chart.
-      await tester.tap(find.byType(LineChart));
-      await tester.pumpAndSettle();
-      expect(find.byType(Tooltip), findsNothing);
-    });
+      'chartBuilder-provided LineTouchData(enabled: false) never surfaces '
+      'a Tooltip ancestor',
+      (tester) async {
+        await pumpChart(tester, pointCount: 12, touchEnabled: false);
+        // Tap on the line chart.
+        await tester.tap(find.byType(LineChart));
+        await tester.pumpAndSettle();
+        expect(find.byType(Tooltip), findsNothing);
+      },
+    );
   });
 
   group('ScrollableTrendChart — layout invariants', () {
-    testWidgets(
-        'renders exactly one pinned-axis column on the left '
+    testWidgets('renders exactly one pinned-axis column on the left '
         'and one scrollable plot on the right', (tester) async {
       await pumpChart(tester, pointCount: 12);
       // The Row's first child is the pinned column; verify its width.
       final pinnedColumn = tester.widget<SizedBox>(
-        find.descendant(
-          of: find.byType(Row),
-          matching: find.byType(SizedBox),
-        ).first,
+        find
+            .descendant(of: find.byType(Row), matching: find.byType(SizedBox))
+            .first,
       );
       expect(pinnedColumn.width, kScrollableTrendPinnedAxisWidth);
       expect(pinnedColumn.height, kScrollableTrendChartHeight);

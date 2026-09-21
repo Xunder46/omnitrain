@@ -69,7 +69,8 @@ class NumericFieldWithDoneBar extends StatefulWidget {
   });
 
   @override
-  State<NumericFieldWithDoneBar> createState() => _NumericFieldWithDoneBarState();
+  State<NumericFieldWithDoneBar> createState() =>
+      _NumericFieldWithDoneBarState();
 }
 
 class _NumericFieldWithDoneBarState extends State<NumericFieldWithDoneBar> {
@@ -155,8 +156,9 @@ class _NumericFieldWithDoneBarState extends State<NumericFieldWithDoneBar> {
                       foregroundColor: Theme.of(context).colorScheme.primary,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+                        borderRadius: BorderRadius.circular(
+                          OmniTheme.buttonUtilityRadius,
+                        ),
                       ),
                     ),
                     onPressed: () {

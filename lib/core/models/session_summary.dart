@@ -70,6 +70,7 @@ class ExerciseSummary {
   /// the in-workout celebration, the Stats screen, and the Session
   /// Summary all compare against.
   final double? bestE1RM;
+
   /// Highest **reps** across this exercise's bodyweight sets (sets
   /// with `weight == 0`) in the session. `null` when no set in the
   /// session is a bodyweight set, and for non-`set` effort kinds.
@@ -82,6 +83,7 @@ class ExerciseSummary {
   /// — the extra weight is an annotation only, never an axis
   /// switch.
   final int? bestReps;
+
   /// Positional index preserving original execution order (0-based).
   final int executionOrder;
 

@@ -226,73 +226,72 @@ void main() {
     // Fix: _handleEffortTimerExpired now chains recordRestStart() (and
     // scheduleRestPings) after the round/timed future resolves, mirroring
     // the manual _logSet path.
-    testWidgets(
-      'S-BUG-001c: auto-expired round shows the rest overlay chip',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(600, 1200));
-        final deps = await _buildDeps(modality: 'resistance_lifting');
+    testWidgets('S-BUG-001c: auto-expired round shows the rest overlay chip', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(600, 1200));
+      final deps = await _buildDeps(modality: 'resistance_lifting');
 
-        final helperRepo = await _freshRepo();
-        final exercises = await helperRepo.getExercises();
-        final roundExercise = exercises.firstWhere(
-          (e) => e.capabilities.contains('rounds'),
-        );
+      final helperRepo = await _freshRepo();
+      final exercises = await helperRepo.getExercises();
+      final roundExercise = exercises.firstWhere(
+        (e) => e.capabilities.contains('rounds'),
+      );
 
-        final effortId = await deps.workoutState.addExerciseToSession(
-          roundExercise,
-          effortKindOverride: 'round',
-        );
-        // Add round 1 so a "next entry" exists to attach the rest to.
-        await deps.workoutState.addEntry(effortId);
-        await deps.workoutState.updateRoundPlannedDuration(effortId, 0, 2);
-        await deps.workoutState.updateRoundPlannedDuration(effortId, 1, 2);
+      final effortId = await deps.workoutState.addExerciseToSession(
+        roundExercise,
+        effortKindOverride: 'round',
+      );
+      // Add round 1 so a "next entry" exists to attach the rest to.
+      await deps.workoutState.addEntry(effortId);
+      await deps.workoutState.updateRoundPlannedDuration(effortId, 0, 2);
+      await deps.workoutState.updateRoundPlannedDuration(effortId, 1, 2);
 
-        await tester.pumpWidget(_buildSessionScreen(deps));
-        await _openDetailView(tester, roundExercise.name);
+      await tester.pumpWidget(_buildSessionScreen(deps));
+      await _openDetailView(tester, roundExercise.name);
 
-        // Before the timer runs, no rest chip is shown.
-        expect(find.byKey(const Key('rest-overlay-chip')), findsNothing);
+      // Before the timer runs, no rest chip is shown.
+      expect(find.byKey(const Key('rest-overlay-chip')), findsNothing);
 
-        // Start round 0.
-        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
-        await tester.pumpAndSettle();
+      // Start round 0.
+      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+      await tester.pumpAndSettle();
 
-        // Let the wall clock pass the 2 s target.
-        await tester.runAsync(() async {
-          await Future.delayed(const Duration(seconds: 3));
-        });
-        // Fire the periodic tick so _handleEffortTimerExpired runs.
-        await tester.pump(const Duration(seconds: 1));
-        await tester.pumpAndSettle();
+      // Let the wall clock pass the 2 s target.
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(seconds: 3));
+      });
+      // Fire the periodic tick so _handleEffortTimerExpired runs.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
 
-        // Round 0 is now auto-completed. The rest chip for round 1 must
-        // be present, even though the user never tapped "Log Period".
-        expect(
-          find.byKey(const Key('rest-overlay-chip')),
-          findsOneWidget,
-          reason:
-              'auto-expired round must open a rest so the overlay chip '
-              'appears (parity with the manual Log Period path)',
-        );
+      // Round 0 is now auto-completed. The rest chip for round 1 must
+      // be present, even though the user never tapped "Log Period".
+      expect(
+        find.byKey(const Key('rest-overlay-chip')),
+        findsOneWidget,
+        reason:
+            'auto-expired round must open a rest so the overlay chip '
+            'appears (parity with the manual Log Period path)',
+      );
 
-        // And the rest record is actually persisted to the repository
-        // with restEndMs == null (open rest).
-        final rests = deps.workoutState.getEntryRests(effortId);
-        final openRests = rests.where((r) => r.restEndMs == null).toList();
-        expect(
-          openRests,
-          isNotEmpty,
-          reason:
-              'auto-expiry must persist an open rest record for the next '
-              'round entry',
-        );
-        expect(
-          openRests.first.entryIndex,
-          1,
-          reason: 'rest must be associated with the next round (index 1)',
-        );
-      },
-    );
+      // And the rest record is actually persisted to the repository
+      // with restEndMs == null (open rest).
+      final rests = deps.workoutState.getEntryRests(effortId);
+      final openRests = rests.where((r) => r.restEndMs == null).toList();
+      expect(
+        openRests,
+        isNotEmpty,
+        reason:
+            'auto-expiry must persist an open rest record for the next '
+            'round entry',
+      );
+      expect(
+        openRests.first.entryIndex,
+        1,
+        reason: 'rest must be associated with the next round (index 1)',
+      );
+    });
 
     // S-BUG-002: Parity — manual "Log Round" path also clears the lock.
     //
@@ -384,8 +383,11 @@ void main() {
         await tester.pumpAndSettle();
 
         // "LOGGED" must not appear — the effort is still in progress.
-        expect(find.text('LOGGED'), findsNothing,
-            reason: 'count-up timed effort must not auto-log');
+        expect(
+          find.text('LOGGED'),
+          findsNothing,
+          reason: 'count-up timed effort must not auto-log',
+        );
 
         // "Log Interval" must still be available for manual logging.
         expect(

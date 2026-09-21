@@ -18,15 +18,12 @@ import '../features/startup/startup_preparing_screen.dart';
 /// never user-visible), and re-shows the failure screen so the user
 /// can tap Retry.
 typedef StartupRunner = Future<Widget> Function();
-typedef StartupFailureLogger = void Function(Object error, StackTrace stackTrace);
-typedef StartupFailureReporter = Future<void> Function(
-  Object error,
-  StackTrace stackTrace,
-);
-typedef StartupFailureDiagnosticPersister = Future<void> Function(
-  Object error,
-  StackTrace stackTrace,
-);
+typedef StartupFailureLogger =
+    void Function(Object error, StackTrace stackTrace);
+typedef StartupFailureReporter =
+    Future<void> Function(Object error, StackTrace stackTrace);
+typedef StartupFailureDiagnosticPersister =
+    Future<void> Function(Object error, StackTrace stackTrace);
 
 final _startupFailureDiagnosticWriter = StartupFailureDiagnosticWriter.create();
 
@@ -89,13 +86,13 @@ class StartupRoot extends StatefulWidget {
     StartupFailureReporter? onStartupFailureReported,
     StartupFailureDiagnosticPersister? onStartupFailurePersisted,
     ThemeData? failureTheme,
-  })  : onStartupFailureLogged =
-            onStartupFailureLogged ?? _defaultStartupFailureLogger,
-        onStartupFailureReported =
-            onStartupFailureReported ?? _defaultStartupFailureReporter,
-      onStartupFailurePersisted =
-        onStartupFailurePersisted ?? _defaultStartupFailurePersister,
-        failureTheme = failureTheme ?? _defaultFailureTheme();
+  }) : onStartupFailureLogged =
+           onStartupFailureLogged ?? _defaultStartupFailureLogger,
+       onStartupFailureReported =
+           onStartupFailureReported ?? _defaultStartupFailureReporter,
+       onStartupFailurePersisted =
+           onStartupFailurePersisted ?? _defaultStartupFailurePersister,
+       failureTheme = failureTheme ?? _defaultFailureTheme();
   // Not const — the default failure theme is computed at
   // construction time (it routes through `buildTheme`).
 

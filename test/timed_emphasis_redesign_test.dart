@@ -112,7 +112,9 @@ Future<_SessionDeps> _buildFreeSessionDeps({
   final exercise = _testExercise(effortKind, includeLoad: includeLoad);
   await repo.createExercise(exercise);
 
-  await workoutState.createNewSession(modality: _modalityForEffortKind(effortKind));
+  await workoutState.createNewSession(
+    modality: _modalityForEffortKind(effortKind),
+  );
   final effortId = await workoutState.addExerciseToSession(
     exercise,
     effortKindOverride: effortKind,
@@ -168,9 +170,9 @@ Future<_SessionDeps> _buildRoutineSessionDeps({
   await routineState.saveRoutine();
   final templateId = routineState.currentTemplate!.id;
 
-  final manifest = await RoutineSessionService(repo).buildSessionFromTemplate(
-    templateId,
-  );
+  final manifest = await RoutineSessionService(
+    repo,
+  ).buildSessionFromTemplate(templateId);
   await workoutState.createNewSession(
     modality: _modalityForEffortKind(effortKind),
     routineTemplateId: templateId,
@@ -219,7 +221,10 @@ Future<_RoutineSetupDeps> _buildRoutineSetupDeps({
   );
 }
 
-Future<void> _openSessionDetail(WidgetTester tester, String exerciseName) async {
+Future<void> _openSessionDetail(
+  WidgetTester tester,
+  String exerciseName,
+) async {
   await tester.pumpAndSettle();
   final labelMatches = find.text(exerciseName);
   if (labelMatches.evaluate().isEmpty) {
@@ -241,7 +246,10 @@ Future<void> _openSessionDetail(WidgetTester tester, String exerciseName) async 
   await tester.pumpAndSettle();
 }
 
-Future<void> _openRoutineDetail(WidgetTester tester, String exerciseName) async {
+Future<void> _openRoutineDetail(
+  WidgetTester tester,
+  String exerciseName,
+) async {
   await tester.pumpAndSettle();
   final labelMatches = find.text(exerciseName);
   if (labelMatches.evaluate().isEmpty) {

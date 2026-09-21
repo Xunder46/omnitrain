@@ -286,7 +286,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       body: Text(
         _isHistoricalView
             ? 'This will permanently delete this session from your history '
-                'and return to the previous screen.'
+                  'and return to the previous screen.'
             : 'This will remove all session data and return to Home.',
       ),
       dismissLabel: 'Cancel',
@@ -635,18 +635,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
               }
             },
             itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'edit',
-                child: Text('Edit Session'),
-              ),
-              PopupMenuItem(
-                value: 'save',
-                child: Text('Save as Routine'),
-              ),
-              PopupMenuItem(
-                value: 'discard',
-                child: Text('Discard'),
-              ),
+              PopupMenuItem(value: 'edit', child: Text('Edit Session')),
+              PopupMenuItem(value: 'save', child: Text('Save as Routine')),
+              PopupMenuItem(value: 'discard', child: Text('Discard')),
             ],
           ),
         ],
@@ -782,8 +773,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   Widget _buildCalendarHeader(ThemeData theme) {
     // Use the historical session's month when viewing one, so the
     // header label matches the grid below it.
-    final monthLabel =
-        '${_monthName(_viewMonth.month)} ${_viewMonth.year}';
+    final monthLabel = '${_monthName(_viewMonth.month)} ${_viewMonth.year}';
     return OmniCardHeader(
       title: monthLabel,
       actions: [_buildOpenCalendarButton()],

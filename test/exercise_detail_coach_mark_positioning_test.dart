@@ -130,14 +130,13 @@ Future<void> _expectGlowCenteredOnInfoIcon(
         'Coach-mark glow must centre on the info icon glyph at every '
         'viewport width and text scale.',
   );
-  expect(
-    (glowCenter.dy - iconCenter.dy).abs(),
-    lessThan(tolerance),
-  );
+  expect((glowCenter.dy - iconCenter.dy).abs(), lessThan(tolerance));
 }
 
-Future<({WorkoutState workoutState, RoutineState routineState, Exercise exercise})>
-    _primeSessionForCoachMark(WidgetTester tester) async {
+Future<
+  ({WorkoutState workoutState, RoutineState routineState, Exercise exercise})
+>
+_primeSessionForCoachMark(WidgetTester tester) async {
   final repository = MockWorkoutRepository();
   await repository.initialize();
   // Notes hint already seen so that the info hint is the first to fire.
@@ -223,10 +222,7 @@ void main() {
             'Coach-mark glow must centre on the info icon glyph, not the '
             'wrapping IconButton box.',
       );
-      expect(
-        (glowCenter.dy - iconCenter.dy).abs(),
-        lessThan(2.0),
-      );
+      expect((glowCenter.dy - iconCenter.dy).abs(), lessThan(2.0));
     },
   );
 
@@ -280,10 +276,7 @@ void main() {
             'Coach-mark glow must centre on the notes icon glyph, not the '
             'wrapping IconButton box.',
       );
-      expect(
-        (glowCenter.dy - iconCenter.dy).abs(),
-        lessThan(2.0),
-      );
+      expect((glowCenter.dy - iconCenter.dy).abs(), lessThan(2.0));
     },
   );
 
@@ -298,42 +291,39 @@ void main() {
   // ─────────────────────────────────────────────────────────────────────────
   group('S-001: info-icon coach mark glow centres on the icon glyph across '
       'widths and text scales', () {
-    testWidgets(
-      'S-001a: small width (iPhone-class, 360 dp)',
-      (WidgetTester tester) async {
-        tester.view.physicalSize = const Size(720, 1600);
-        tester.view.devicePixelRatio = 2.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets('S-001a: small width (iPhone-class, 360 dp)', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(720, 1600);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-        final prime = await _primeSessionForCoachMark(tester);
-        await _expectGlowCenteredOnInfoIcon(tester, prime.exercise);
-      },
-    );
+      final prime = await _primeSessionForCoachMark(tester);
+      await _expectGlowCenteredOnInfoIcon(tester, prime.exercise);
+    });
 
-    testWidgets(
-      'S-001b: medium width (default ~600 dp)',
-      (WidgetTester tester) async {
-        // Default test viewport is ~800×600 logical; tighten to a
-        // standard "medium" phone (iPhone Pro Max family) without
-        // forcing a device pixel ratio override.
-        final prime = await _primeSessionForCoachMark(tester);
-        await _expectGlowCenteredOnInfoIcon(tester, prime.exercise);
-      },
-    );
+    testWidgets('S-001b: medium width (default ~600 dp)', (
+      WidgetTester tester,
+    ) async {
+      // Default test viewport is ~800×600 logical; tighten to a
+      // standard "medium" phone (iPhone Pro Max family) without
+      // forcing a device pixel ratio override.
+      final prime = await _primeSessionForCoachMark(tester);
+      await _expectGlowCenteredOnInfoIcon(tester, prime.exercise);
+    });
 
-    testWidgets(
-      'S-001c: large width (tablet-class, 840 dp)',
-      (WidgetTester tester) async {
-        tester.view.physicalSize = const Size(1680, 2800);
-        tester.view.devicePixelRatio = 2.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
+    testWidgets('S-001c: large width (tablet-class, 840 dp)', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(1680, 2800);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-        final prime = await _primeSessionForCoachMark(tester);
-        await _expectGlowCenteredOnInfoIcon(tester, prime.exercise);
-      },
-    );
+      final prime = await _primeSessionForCoachMark(tester);
+      await _expectGlowCenteredOnInfoIcon(tester, prime.exercise);
+    });
 
     testWidgets(
       'S-001d: maximum text scale (the icon must still be the anchor)',
@@ -355,10 +345,7 @@ void main() {
         await workoutState.createNewSession(modality: 'resistance_lifting');
         final exercises = await repo.getExercises();
         final exercise = exercises.first;
-        await workoutState.addExerciseToSession(
-          exercise,
-          chosenMetric: 'reps',
-        );
+        await workoutState.addExerciseToSession(exercise, chosenMetric: 'reps');
 
         await _pumpSessionScreenWithTextScale(
           tester,
@@ -474,9 +461,8 @@ void main() {
         // Navigator via MaterialApp.builder.
         await tester.pumpWidget(
           MaterialApp(
-            builder: (context, child) => OmniGradientBackground(
-              child: child ?? const SizedBox.shrink(),
-            ),
+            builder: (context, child) =>
+                OmniGradientBackground(child: child ?? const SizedBox.shrink()),
             home: WorkoutSessionScreen(
               workoutState: workoutState,
               routineState: routineState,

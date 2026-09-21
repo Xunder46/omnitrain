@@ -54,7 +54,10 @@ void main() {
           Colors.white.withValues(alpha: 0.6),
           colors.surface,
         );
-        final secondaryTextContrast = contrastRatio(secondaryTextComposited, colors.surface);
+        final secondaryTextContrast = contrastRatio(
+          secondaryTextComposited,
+          colors.surface,
+        );
         if (secondaryTextContrast < 4.5) {
           results[theme.name]!.add(
             'Check 5 FAIL: secondary text (60% white) vs surface contrast = $secondaryTextContrast (required ≥ 4.5:1)',
@@ -100,7 +103,10 @@ void main() {
 
         // Check 10: On-secondary label vs secondary accent: contrast ≥ 4.5:1
         final onSecondary = getOnSecondaryForTheme(theme);
-        final onSecondaryContrast = contrastRatio(onSecondary, colors.secondary);
+        final onSecondaryContrast = contrastRatio(
+          onSecondary,
+          colors.secondary,
+        );
         if (onSecondaryContrast < 4.5) {
           results[theme.name]!.add(
             'Check 10 FAIL: onSecondary vs secondary contrast = $onSecondaryContrast (required ≥ 4.5:1)',
@@ -127,7 +133,10 @@ void main() {
           scheme.outline,
           colors.surface,
         );
-        final outlineContrast = contrastRatio(outlineComposited, colors.surface);
+        final outlineContrast = contrastRatio(
+          outlineComposited,
+          colors.surface,
+        );
         if (outlineContrast < 3.0) {
           results[theme.name]!.add(
             'Check 11 FAIL: outline ${scheme.outline} vs surface contrast = $outlineContrast (required ≥ 3:1)',
@@ -139,7 +148,10 @@ void main() {
           scheme.outlineVariant,
           colors.surface,
         );
-        final outlineVariantContrast = contrastRatio(outlineVariantComposited, colors.surface);
+        final outlineVariantContrast = contrastRatio(
+          outlineVariantComposited,
+          colors.surface,
+        );
         if (outlineVariantContrast < 1.8) {
           results[theme.name]!.add(
             'Check 12 FAIL: outlineVariant ${scheme.outlineVariant} vs surface contrast = $outlineVariantContrast (required ≥ 1.8:1)',
@@ -170,7 +182,10 @@ void main() {
           // Fallback if not defined (should fail the test)
           onSurfaceVariant = Colors.white.withValues(alpha: 0.6);
         }
-        final onSurfaceVariantContrast = contrastRatio(onSurfaceVariant, colors.surface);
+        final onSurfaceVariantContrast = contrastRatio(
+          onSurfaceVariant,
+          colors.surface,
+        );
         if (onSurfaceVariantContrast < 4.5) {
           results[theme.name]!.add(
             'Check 14 FAIL: onSurfaceVariant ${onSurfaceVariant} vs surface contrast = $onSurfaceVariantContrast (required ≥ 4.5:1)',
@@ -253,7 +268,9 @@ void main() {
       }
 
       if (allFailures.isNotEmpty) {
-        fail('Palette legibility contract violations:\n${allFailures.join('\n')}');
+        fail(
+          'Palette legibility contract violations:\n${allFailures.join('\n')}',
+        );
       }
     });
   });
@@ -275,8 +292,10 @@ Color _compositeOverSurface(Color foreground, Color background) {
   final fgAlpha = foreground.alpha / 255.0;
 
   final r = (foreground.red * fgAlpha + background.red * (1 - fgAlpha)).round();
-  final g = (foreground.green * fgAlpha + background.green * (1 - fgAlpha)).round();
-  final b = (foreground.blue * fgAlpha + background.blue * (1 - fgAlpha)).round();
+  final g = (foreground.green * fgAlpha + background.green * (1 - fgAlpha))
+      .round();
+  final b = (foreground.blue * fgAlpha + background.blue * (1 - fgAlpha))
+      .round();
 
   return Color.fromARGB(255, r, g, b);
 }

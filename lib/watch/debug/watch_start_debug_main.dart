@@ -16,6 +16,8 @@ import 'package:flutter/material.dart';
 
 import '../logging/watch_logging_screen.dart';
 import '../logging/watch_logging_state.dart';
+import '../nutrition/watch_nutrition_screen.dart';
+import '../nutrition/watch_nutrition_state.dart';
 import '../session/in_memory_watch_session_store.dart';
 import '../session/watch_records.dart';
 import '../session/watch_session_engine.dart';
@@ -138,6 +140,71 @@ const Map<String, Object?> _routinesDown = {
   },
 };
 
+/// Five foods in three categories, shaped exactly as the phone would send
+/// them — the same dataset the protocol fixture and the parity contract use.
+const Map<String, Object?> _foodsDown = {
+  'protocolVersion': 1,
+  'messageId': 'msg-debug-foods-1',
+  'type': 'foods_down',
+  'origin': 'phone',
+  'sentAt': '2026-07-13T17:00:00Z',
+  'payload': {
+    'generatedAt': '2026-07-13T17:00:00Z',
+    'categories': [
+      {'categoryId': 'foodcat-protein', 'name': 'Protein'},
+      {'categoryId': 'foodcat-carbs', 'name': 'Carbs'},
+      {'categoryId': 'foodcat-fruit', 'name': 'Fruit'},
+    ],
+    'foods': [
+      {
+        'foodId': 'food-oatmeal',
+        'name': 'Oatmeal',
+        'categoryId': 'foodcat-carbs',
+        'referenceAmount': 100,
+        'referenceLabel': 'g',
+        'caloriesPerServing': 190,
+        'defaultServings': 1.5,
+      },
+      {
+        'foodId': 'food-banana',
+        'name': 'Banana',
+        'categoryId': 'foodcat-fruit',
+        'referenceAmount': 1,
+        'referenceLabel': 'banana',
+        'caloriesPerServing': 105,
+        'defaultServings': 1,
+      },
+      {
+        'foodId': 'food-egg',
+        'name': 'Egg',
+        'categoryId': 'foodcat-protein',
+        'referenceAmount': 1,
+        'referenceLabel': 'egg',
+        'caloriesPerServing': 78,
+        'defaultServings': 2,
+      },
+      {
+        'foodId': 'food-greek-yogurt',
+        'name': 'Greek Yogurt',
+        'categoryId': 'foodcat-protein',
+        'referenceAmount': 1,
+        'referenceLabel': 'cup',
+        'caloriesPerServing': 130,
+        'defaultServings': 1,
+      },
+      {
+        'foodId': 'food-almonds',
+        'name': 'Almonds',
+        'categoryId': null,
+        'referenceAmount': 30,
+        'referenceLabel': 'g',
+        'caloriesPerServing': 170,
+        'defaultServings': 1,
+      },
+    ],
+  },
+};
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -194,10 +261,15 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
     engine: _engine,
     store: _store,
   );
+  late final WatchNutritionState _nutrition = WatchNutritionState(
+    engine: _engine,
+    store: _store,
+  );
   late final WatchSyncOrchestrator _orchestrator = WatchSyncOrchestrator(
     transport: _transport,
     paths: _paths,
     engine: _engine,
+    nutrition: _nutrition,
   );
 
   @override
@@ -206,11 +278,13 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
     _sync();
   }
 
-  /// The launch sequence: restore, then take the catalog the phone sent.
+  /// The launch sequence: restore, then take the catalogs the phone sent.
   Future<void> _sync() async {
     await _engine.restore();
     await _paths.restore();
+    await _nutrition.restore();
     await _orchestrator.receive(_routinesDown);
+    await _orchestrator.receive(_foodsDown);
     if (mounted) setState(() {});
   }
 
@@ -219,7 +293,9 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
   /// have been given.
   String get _handedOver {
     if (_transport.sent.isEmpty) return 'Nothing handed over yet.';
-    final types = _transport.sent.map((envelope) => envelope['type']).join(', ');
+    final types = _transport.sent
+        .map((envelope) => envelope['type'])
+        .join(', ');
     return 'Handed over: $types';
   }
 
@@ -233,6 +309,7 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
               child: WatchStartScreen(
                 paths: _paths,
                 onSessionStarted: _openLogging,
+                onOpenNutrition: _openNutrition,
               ),
             ),
             SwitchListTile(
@@ -263,6 +340,14 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
       MaterialPageRoute<void>(
         builder: (context) =>
             WatchLoggingScreen(state: WatchLoggingState(engine: _engine)),
+      ),
+    );
+  }
+
+  void _openNutrition() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => WatchNutritionScreen(state: _nutrition),
       ),
     );
   }

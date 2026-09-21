@@ -21,8 +21,7 @@ class NutritionState extends ChangeNotifier {
 
   /// Returns the most recent cached or loaded target for [dateMs], if any.
   /// Does not trigger a repository fetch.
-  NutritionTarget? getCachedTargetForDate(int dateMs) =>
-      _targetsByDate[dateMs];
+  NutritionTarget? getCachedTargetForDate(int dateMs) => _targetsByDate[dateMs];
 
   // ─── Consumed foods (today's day-log) ──────────────────────────────────
   // Source of truth for the calorie ring on the nutrition page. Backed by
@@ -41,10 +40,8 @@ class NutritionState extends ChangeNotifier {
 
   /// Sums `caloriesConsumed` across the cached [consumedToday] list.
   /// Returns 0 for an empty list. Pure / derived — no repo call.
-  int get todayConsumedCalories => _consumedToday.fold<int>(
-        0,
-        (sum, c) => sum + c.caloriesConsumed,
-      );
+  int get todayConsumedCalories =>
+      _consumedToday.fold<int>(0, (sum, c) => sum + c.caloriesConsumed);
 
   // ─── Daily water log ───────────────────────────────────────────────────
   // Source of truth for the water tracker on the bottom-right of the
@@ -151,7 +148,9 @@ class NutritionState extends ChangeNotifier {
   /// Save nutrition target for a specific date and propagate forward
   /// to future dates that still have the old values.
   Future<void> saveNutritionTargetForDate(
-      int dateMs, NutritionTarget target) async {
+    int dateMs,
+    NutritionTarget target,
+  ) async {
     _isLoading = true;
     notifyListeners();
 
@@ -217,10 +216,7 @@ class NutritionState extends ChangeNotifier {
   }
 
   Future<void> saveNutritionTarget(NutritionTarget target) async {
-    await saveNutritionTargetForDate(
-      OmniDateUtils.todayMidnightMs(),
-      target,
-    );
+    await saveNutritionTargetForDate(OmniDateUtils.todayMidnightMs(), target);
   }
 
   // ─── Consumed-food operations (today's day-log) ───────────────────────
@@ -339,10 +335,7 @@ class NutritionState extends ChangeNotifier {
     try {
       final id = await _repository.createConsumedFood(entry);
       // Refresh the cache so the ring rebuilds without a separate load.
-      _consumedToday = [
-        ..._consumedToday,
-        entry.copyWith(id: id),
-      ];
+      _consumedToday = [..._consumedToday, entry.copyWith(id: id)];
       // Write-through: update the food row's `lastAmountConsumed`
       // so the next time the user opens Foods I Eat, this row
       // pre-fills with the amount they just logged (June 2026,
@@ -516,26 +509,32 @@ class NutritionState extends ChangeNotifier {
   /// (which is also rounded once) and avoids per-row rounding drift —
   /// e.g. a 30g-protein-per-100g food at 1.5 portions contributes
   /// 0.45 g per row; rounding per row to 0 would erase the entry.
-  int get todayConsumedProtein => _consumedToday.fold<double>(
+  int get todayConsumedProtein => _consumedToday
+      .fold<double>(
         0,
         (sum, c) => sum + c.protein * c.amountConsumed / c.referenceAmount,
-      ).round();
+      )
+      .round();
 
   /// Sum of `(carbs * amountConsumed / referenceAmount)` across the
   /// cached [consumedToday] list, accumulated as a double and rounded
   /// once at the end. Returns 0 for an empty list.
-  int get todayConsumedCarbs => _consumedToday.fold<double>(
+  int get todayConsumedCarbs => _consumedToday
+      .fold<double>(
         0,
         (sum, c) => sum + c.carbs * c.amountConsumed / c.referenceAmount,
-      ).round();
+      )
+      .round();
 
   /// Sum of `(fat * amountConsumed / referenceAmount)` across the
   /// cached [consumedToday] list, accumulated as a double and rounded
   /// once at the end. Returns 0 for an empty list.
-  int get todayConsumedFat => _consumedToday.fold<double>(
+  int get todayConsumedFat => _consumedToday
+      .fold<double>(
         0,
         (sum, c) => sum + c.fat * c.amountConsumed / c.referenceAmount,
-      ).round();
+      )
+      .round();
 
   /// Sum of `(fiber * amountConsumed / referenceAmount)` across the
   /// cached [consumedToday] list, accumulated as a double and rounded
@@ -546,11 +545,12 @@ class NutritionState extends ChangeNotifier {
   /// separates **net carbs** (`carbs - fiber`) from **fiber**, so this
   /// getter returns the raw fiber grams — net carbs must be derived at
   /// the chart site as `max(0, todayConsumedCarbs - todayConsumedFiber)`.
-  int get todayConsumedFiber => _consumedToday.fold<double>(
+  int get todayConsumedFiber => _consumedToday
+      .fold<double>(
         0,
-        (sum, c) =>
-            sum + (c.fiber ?? 0) * c.amountConsumed / c.referenceAmount,
-      ).round();
+        (sum, c) => sum + (c.fiber ?? 0) * c.amountConsumed / c.referenceAmount,
+      )
+      .round();
 
   /// Sum of `(sodium * amountConsumed / referenceAmount)` across the
   /// cached [consumedToday] list, accumulated as a double and rounded
@@ -563,11 +563,13 @@ class NutritionState extends ChangeNotifier {
   /// as 0 (the field defaults to null and is treated as 0 here) —
   /// the ring card renders "Na 0 mg" until those days are re-logged
   /// with the new code path.
-  int get todayConsumedSodium => _consumedToday.fold<double>(
+  int get todayConsumedSodium => _consumedToday
+      .fold<double>(
         0,
         (sum, c) =>
             sum + (c.sodium ?? 0) * c.amountConsumed / c.referenceAmount,
-      ).round();
+      )
+      .round();
 
   // ─── Per-macro calorie contributions (D-4 / D-5) ───────────────────────
   // The home nutrition strip (D-5) needs the calorie contribution of
@@ -586,39 +588,42 @@ class NutritionState extends ChangeNotifier {
   // the total.
 
   /// Protein calories today: `protein × amountConsumed / referenceAmount × 4`.
-  int get todayProteinKcal => _consumedToday.fold<double>(
+  int get todayProteinKcal => _consumedToday
+      .fold<double>(
         0,
         (sum, c) => sum + c.protein * c.amountConsumed / c.referenceAmount * 4,
-      ).round();
+      )
+      .round();
 
   /// Total-carbs calories today: `carbs × amountConsumed / referenceAmount × 4`.
   /// (D-5: "total-carb calories for blue". Net-carbs is the donut's
   /// keto view per D-4 and is intentionally NOT what the strip uses.)
-  int get todayTotalCarbsKcal => _consumedToday.fold<double>(
+  int get todayTotalCarbsKcal => _consumedToday
+      .fold<double>(
         0,
         (sum, c) => sum + c.carbs * c.amountConsumed / c.referenceAmount * 4,
-      ).round();
+      )
+      .round();
 
   /// Net-carbs calories today: `(carbs - fiber) × amountConsumed / referenceAmount × 4`.
   /// Uses the same net-carbs formula as the donut chart for consistent macro percentage
   /// calculations across the app (home strip bar and nutrition donut chart).
-  int get todayNetCarbsKcal => _consumedToday.fold<double>(
-        0,
-        (sum, c) {
-          final netCarbs = c.carbs - (c.fiber ?? 0);
-          return sum +
-              (netCarbs > 0 ? netCarbs : 0) *
-                  c.amountConsumed /
-                  c.referenceAmount *
-                  4;
-        },
-      ).round();
+  int get todayNetCarbsKcal => _consumedToday.fold<double>(0, (sum, c) {
+    final netCarbs = c.carbs - (c.fiber ?? 0);
+    return sum +
+        (netCarbs > 0 ? netCarbs : 0) *
+            c.amountConsumed /
+            c.referenceAmount *
+            4;
+  }).round();
 
   /// Fat calories today: `fat × amountConsumed / referenceAmount × 9`.
-  int get todayFatKcal => _consumedToday.fold<double>(
+  int get todayFatKcal => _consumedToday
+      .fold<double>(
         0,
         (sum, c) => sum + c.fat * c.amountConsumed / c.referenceAmount * 9,
-      ).round();
+      )
+      .round();
 
   /// Sum of the three per-macro calorie contributions. Differs from
   /// [todayConsumedCalories] only by the rounding-once contract:
@@ -636,8 +641,8 @@ class NutritionState extends ChangeNotifier {
   /// `consumedToday` sorted by `loggedAtMs` ascending. Returns a new
   /// list (the cache stays in insertion order; this getter is for
   /// presentation and for deterministic test ordering).
-  List<ConsumedFood> get consumedTodaySorted => [..._consumedToday]
-    ..sort((a, b) => a.loggedAtMs.compareTo(b.loggedAtMs));
+  List<ConsumedFood> get consumedTodaySorted =>
+      [..._consumedToday]..sort((a, b) => a.loggedAtMs.compareTo(b.loggedAtMs));
 
   /// Reload today's consumed foods from the repository and return the
   /// resulting cache. Sugar for [loadConsumedToday] at call sites

@@ -24,6 +24,7 @@ class WatchStoreContents {
     this.sensorSamples = const [],
     this.confirmations = const [],
     this.routineCatalogs = const [],
+    this.foodCatalogs = const [],
   });
 
   final List<WatchSessionRecord> sessions;
@@ -45,13 +46,18 @@ class WatchStoreContents {
   /// the catalog that applies.
   final List<WatchRoutineCatalogRecord> routineCatalogs;
 
+  /// The food lists the phone sent down, oldest first. The newest row is the
+  /// list that applies.
+  final List<WatchFoodCatalogRecord> foodCatalogs;
+
   bool get isEmpty =>
       sessions.isEmpty &&
       observations.isEmpty &&
       timers.isEmpty &&
       sensorSamples.isEmpty &&
       confirmations.isEmpty &&
-      routineCatalogs.isEmpty;
+      routineCatalogs.isEmpty &&
+      foodCatalogs.isEmpty;
 }
 
 abstract class WatchSessionStore {

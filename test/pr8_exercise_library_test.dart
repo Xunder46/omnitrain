@@ -655,76 +655,74 @@ void main() {
 
   // ── Info icon removal (exercise-library-info-icon-removal-plan.md) ──────
   group('Info icon removal from library rows (S-1, S-2, S-4)', () {
-    testWidgets(
-      'S-1: library rows do NOT render trailing info icon',
-      (WidgetTester tester) async {
-        // Scenario S-1: Library row without info icon
-        // Verify that the library screen's exercise rows have no trailing
-        // info icon (after implementation). This test will fail until
-        // the icon is removed from exercise_library_screen.dart.
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        final bundle = _buildState(repo);
-        final custom = _customExercise('ex-s1', 'Test Exercise S-1');
-        await repo.createExercise(custom);
+    testWidgets('S-1: library rows do NOT render trailing info icon', (
+      WidgetTester tester,
+    ) async {
+      // Scenario S-1: Library row without info icon
+      // Verify that the library screen's exercise rows have no trailing
+      // info icon (after implementation). This test will fail until
+      // the icon is removed from exercise_library_screen.dart.
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+      final custom = _customExercise('ex-s1', 'Test Exercise S-1');
+      await repo.createExercise(custom);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ExerciseLibraryScreen(
-              exerciseLibraryState: bundle.state,
-              workoutState: bundle.workout,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryScreen(
+            exerciseLibraryState: bundle.state,
+            workoutState: bundle.workout,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // The library screen must NOT have any exercise_row_details_button
-        // (the info icon used to be in the trailing position).
-        // Before implementation: this test will FAIL because the icon exists.
-        // After implementation: this test will PASS because the icon is removed.
-        expect(
-          find.byKey(const Key('exercise_row_details_button')),
-          findsNothing,
-          reason: 'Library rows must not have the info icon in trailing position',
-        );
-      },
-    );
+      // The library screen must NOT have any exercise_row_details_button
+      // (the info icon used to be in the trailing position).
+      // Before implementation: this test will FAIL because the icon exists.
+      // After implementation: this test will PASS because the icon is removed.
+      expect(
+        find.byKey(const Key('exercise_row_details_button')),
+        findsNothing,
+        reason: 'Library rows must not have the info icon in trailing position',
+      );
+    });
 
-    testWidgets(
-      'S-2: library row tap opens management detail screen',
-      (WidgetTester tester) async {
-        // Scenario S-2: Library row tap opens management screen
-        // This behavior is unchanged by the icon removal.
-        // NOTE: This test asserts behavior that already works (row tap
-        // already opens the detail screen), so it has no red-first evidence
-        // of a bug. It is a regression guard: if row-tap breaks during
-        // implementation, this test will catch it.
-        await tester.binding.setSurfaceSize(const Size(800, 1200));
-        final repo = await _freshRepo();
-        final bundle = _buildState(repo);
-        final custom = _customExercise('ex-s2', 'Test Exercise S-2');
-        await repo.createExercise(custom);
+    testWidgets('S-2: library row tap opens management detail screen', (
+      WidgetTester tester,
+    ) async {
+      // Scenario S-2: Library row tap opens management screen
+      // This behavior is unchanged by the icon removal.
+      // NOTE: This test asserts behavior that already works (row tap
+      // already opens the detail screen), so it has no red-first evidence
+      // of a bug. It is a regression guard: if row-tap breaks during
+      // implementation, this test will catch it.
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      final repo = await _freshRepo();
+      final bundle = _buildState(repo);
+      final custom = _customExercise('ex-s2', 'Test Exercise S-2');
+      await repo.createExercise(custom);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: ExerciseLibraryDetailScreen(
-              exercise: custom,
-              libraryState: bundle.state,
-              workoutState: bundle.workout,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExerciseLibraryDetailScreen(
+            exercise: custom,
+            libraryState: bundle.state,
+            workoutState: bundle.workout,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Verify the action bar is visible (Copy/Edit/Remove buttons).
-        // For a custom exercise, we expect Edit and Remove.
-        expect(
-          find.byKey(const Key('exercise_library_edit_button')),
-          findsOneWidget,
-          reason: 'Detail screen for custom must show Edit button',
-        );
-      },
-    );
+      // Verify the action bar is visible (Copy/Edit/Remove buttons).
+      // For a custom exercise, we expect Edit and Remove.
+      expect(
+        find.byKey(const Key('exercise_library_edit_button')),
+        findsOneWidget,
+        reason: 'Detail screen for custom must show Edit button',
+      );
+    });
 
     testWidgets(
       'S-4: library detail screen content and action buttons aligned at 16pt',
@@ -773,7 +771,9 @@ void main() {
         // Find the action bar container by its key.
         // The _ManagementActionBar is now wrapped in a Container with
         // Key('exercise_library_action_bar'). Measure its top-left corner.
-        final actionBarFinder = find.byKey(const Key('exercise_library_action_bar'));
+        final actionBarFinder = find.byKey(
+          const Key('exercise_library_action_bar'),
+        );
         expect(
           actionBarFinder,
           findsOneWidget,
@@ -799,7 +799,8 @@ void main() {
         expect(
           delta,
           closeTo(0.0, 0.5),
-          reason: 'Metadata and action bar must be aligned; '
+          reason:
+              'Metadata and action bar must be aligned; '
               'current delta is ${delta.toStringAsFixed(1)}pt '
               '(bug: content at 32pt, buttons at 16pt)',
         );

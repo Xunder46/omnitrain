@@ -98,10 +98,10 @@ class MockWorkoutRepository implements WorkoutRepository {
   int _catalogVersion = 0;
   final Map<String, bool> _seedEntryTouched = {};
 
-// Data-migration version sequence: mirrors the Hive-backed meta-box
-// layout (`data_version` int + `data_version_last_from`/`_last_to` ints).
-// Defaults to `1` so legacy installs trigger the back-compat shim on
-// first launch under the new system.
+  // Data-migration version sequence: mirrors the Hive-backed meta-box
+  // layout (`data_version` int + `data_version_last_from`/`_last_to` ints).
+  // Defaults to `1` so legacy installs trigger the back-compat shim on
+  // first launch under the new system.
   int _dataVersion = 1;
   int? _dataVersionLastFrom;
   int? _dataVersionLastTo;
@@ -633,8 +633,9 @@ class MockWorkoutRepository implements WorkoutRepository {
   Future<Map<String, List<EffortObservation>>> getObservationsByEffort() async {
     final grouped = <String, List<EffortObservation>>{};
     for (final observation in _observations.values) {
-      (grouped[observation.effortId] ??= <EffortObservation>[])
-          .add(observation);
+      (grouped[observation.effortId] ??= <EffortObservation>[]).add(
+        observation,
+      );
     }
     return grouped;
   }

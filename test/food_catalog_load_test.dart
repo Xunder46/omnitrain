@@ -243,25 +243,20 @@ void main() {
   });
 
   group('MockWorkoutRepository catalog loading', () {
-    test(
-      'getCatalogFoods returns 166 visible foods after initialize; 168 with '
-      'includeArchived: true',
-      () async {
-        final repo = await _freshRepo();
-        // Default non-archived read returns the 166 visible rows —
-        // `beer_regular` and `red_wine` are bundled as hidden (the
-        // app's calorie model cannot represent their alcohol-
-        // derived energy — see
-        // `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
-        final catalogFoods = await repo.getCatalogFoods();
-        expect(catalogFoods.length, 166);
-        // Diagnostic read sees every row on disk.
-        final allCatalogFoods = await repo.getCatalogFoods(
-          includeArchived: true,
-        );
-        expect(allCatalogFoods.length, 168);
-      },
-    );
+    test('getCatalogFoods returns 166 visible foods after initialize; 168 with '
+        'includeArchived: true', () async {
+      final repo = await _freshRepo();
+      // Default non-archived read returns the 166 visible rows —
+      // `beer_regular` and `red_wine` are bundled as hidden (the
+      // app's calorie model cannot represent their alcohol-
+      // derived energy — see
+      // `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`).
+      final catalogFoods = await repo.getCatalogFoods();
+      expect(catalogFoods.length, 166);
+      // Diagnostic read sees every row on disk.
+      final allCatalogFoods = await repo.getCatalogFoods(includeArchived: true);
+      expect(allCatalogFoods.length, 168);
+    });
 
     test('all catalog foods have required fields', () async {
       final repo = await _freshRepo();
@@ -350,9 +345,9 @@ void main() {
       // are bundled as hidden and are grams-type (see S-007 /
       // S-008 / S-009); the default non-archived read would drop
       // them and this length assertion would fail.
-      final weightFoods = (await repo.getCatalogFoods(includeArchived: true))
-          .where((food) => food.unitType == FoodUnitType.grams)
-          .toList();
+      final weightFoods = (await repo.getCatalogFoods(
+        includeArchived: true,
+      )).where((food) => food.unitType == FoodUnitType.grams).toList();
 
       expect(weightFoods, hasLength(105));
       for (final food in weightFoods) {
@@ -395,75 +390,73 @@ void main() {
       expect(catalog['orange_juice']!.referenceAmount, 100);
     });
 
+    test('no catalog row has fiber greater than or equal to carbs '
+        '(except the carbs=0, fiber=0 default)', () async {
+      // Fibre is a component of carbohydrate, not an addition to
+      // it. `fiber > carbs` is a data authoring error that
+      // surfaces as negative net carbs on the user's log. But
+      // `fiber == carbs` is also wrong: it lands net carbs at
+      // exactly zero, which silently turns a real food into a
+      // zero-net-carb item on the user's tally. The guard
+      // previously used `lessThanOrEqualTo(carbs)`, which let
+      // equality pass — `almond_butter` (fiber=3, carbs=3) is
+      // the regression case that surfaced the hole.
+      //
+      // The rule: a row is valid iff `fiber < carbs` whenever
+      // `carbs > 0`. For `carbs == 0` the natural default is
+      // `fiber == 0` (oils, butter, and meats carry no
+      // carbohydrate and therefore no fibre — a non-zero fiber
+      // with zero carbs is impossible by nutrition).
+      final repo = await _freshRepo();
+      for (final food in await repo.getCatalogFoods()) {
+        final fiber = food.fiber ?? 0;
+        final valid = food.carbs > 0 ? fiber < food.carbs : fiber == 0;
+        expect(
+          valid,
+          isTrue,
+          reason:
+              '${food.id} declares fiber=$fiber with carbs=${food.carbs}; '
+              'a row is valid only when '
+              '(carbs > 0 && fiber < carbs) || '
+              '(carbs == 0 && fiber == 0). Equality fails this rule '
+              'because it produces a zero-net-carb tally that is '
+              'almost certainly not what the row was authored to '
+              'say — almond_butter (fiber=3, carbs=3) was the '
+              'regression case for this extension.',
+        );
+      }
+    });
+
     test(
-      'no catalog row has fiber greater than or equal to carbs '
-      '(except the carbs=0, fiber=0 default)',
+      'every catalog row with carbs > 0 has strictly positive net carbs',
       () async {
-        // Fibre is a component of carbohydrate, not an addition to
-        // it. `fiber > carbs` is a data authoring error that
-        // surfaces as negative net carbs on the user's log. But
-        // `fiber == carbs` is also wrong: it lands net carbs at
-        // exactly zero, which silently turns a real food into a
-        // zero-net-carb item on the user's tally. The guard
-        // previously used `lessThanOrEqualTo(carbs)`, which let
-        // equality pass — `almond_butter` (fiber=3, carbs=3) is
-        // the regression case that surfaced the hole.
-        //
-        // The rule: a row is valid iff `fiber < carbs` whenever
-        // `carbs > 0`. For `carbs == 0` the natural default is
-        // `fiber == 0` (oils, butter, and meats carry no
-        // carbohydrate and therefore no fibre — a non-zero fiber
-        // with zero carbs is impossible by nutrition).
+        // Net carbs = carbs - fiber. The fiber guard above ensures
+        // `carbs - fiber` is non-negative, but does not catch the
+        // equality case where the difference is exactly zero. This
+        // test pins the derived value to be *strictly* greater than
+        // zero for any row that actually carries carbohydrate —
+        // `almond_butter` (fiber=3, carbs=3, net carbs=0) is the
+        // regression case.
         final repo = await _freshRepo();
         for (final food in await repo.getCatalogFoods()) {
+          if (food.carbs <= 0) continue;
           final fiber = food.fiber ?? 0;
-          final valid =
-              food.carbs > 0 ? fiber < food.carbs : fiber == 0;
+          final netCarbs = food.carbs - fiber;
           expect(
-            valid,
+            netCarbs > 0,
             isTrue,
             reason:
-                '${food.id} declares fiber=$fiber with carbs=${food.carbs}; '
-                'a row is valid only when '
-                '(carbs > 0 && fiber < carbs) || '
-                '(carbs == 0 && fiber == 0). Equality fails this rule '
-                'because it produces a zero-net-carb tally that is '
-                'almost certainly not what the row was authored to '
-                'say — almond_butter (fiber=3, carbs=3) was the '
-                'regression case for this extension.',
+                '${food.id} has carbs=${food.carbs} and fiber=$fiber, '
+                'giving net carbs=$netCarbs; a row that carries any '
+                'carbohydrate must have strictly positive net carbs. '
+                'Zero net carbs means the fiber entry is wrong (or the '
+                'carbs entry is), not that the food is genuinely '
+                'zero-net — almond_butter (fiber=3, carbs=3) was the '
+                'regression case.',
           );
         }
       },
     );
-
-    test('every catalog row with carbs > 0 has strictly positive net carbs',
-        () async {
-      // Net carbs = carbs - fiber. The fiber guard above ensures
-      // `carbs - fiber` is non-negative, but does not catch the
-      // equality case where the difference is exactly zero. This
-      // test pins the derived value to be *strictly* greater than
-      // zero for any row that actually carries carbohydrate —
-      // `almond_butter` (fiber=3, carbs=3, net carbs=0) is the
-      // regression case.
-      final repo = await _freshRepo();
-      for (final food in await repo.getCatalogFoods()) {
-        if (food.carbs <= 0) continue;
-        final fiber = food.fiber ?? 0;
-        final netCarbs = food.carbs - fiber;
-        expect(
-          netCarbs > 0,
-          isTrue,
-          reason:
-              '${food.id} has carbs=${food.carbs} and fiber=$fiber, '
-              'giving net carbs=$netCarbs; a row that carries any '
-              'carbohydrate must have strictly positive net carbs. '
-              'Zero net carbs means the fiber entry is wrong (or the '
-              'carbs entry is), not that the food is genuinely '
-              'zero-net — almond_butter (fiber=3, carbs=3) was the '
-              'regression case.',
-        );
-      }
-    });
 
     test('every catalog row reports a non-negative net carb value', () async {
       // Pin the derived value directly. The two newer guards above
@@ -492,7 +485,8 @@ void main() {
       expect(sports, isNotNull);
       expect(cola, isNotNull);
       // At least one of {calories, carbs, sodium} differs.
-      final differs = sports!.calories != cola!.calories ||
+      final differs =
+          sports!.calories != cola!.calories ||
           sports.carbs != cola.carbs ||
           sports.sodium != cola.sodium;
       expect(
@@ -642,9 +636,7 @@ void main() {
       // the full 168.
       final catalogFoods = await repo.getCatalogFoods();
       expect(catalogFoods.length, 166);
-      final allCatalogFoods = await repo.getCatalogFoods(
-        includeArchived: true,
-      );
+      final allCatalogFoods = await repo.getCatalogFoods(includeArchived: true);
       expect(allCatalogFoods.length, 168);
     });
 
@@ -654,52 +646,49 @@ void main() {
     // the real foods) and the identity (id, name, group, unit,
     // reference, macros, sodium) are preserved so the rows can
     // be brought back later by reversing the JSON decision.
-    test(
-      'S-003: bundled beer_regular and red_wine load as hidden with full '
-      'nutrition intact',
-      () async {
-        final repo = await _freshRepo();
-        final all = await repo.getCatalogFoods(includeArchived: true);
-        expect(
-          all.length,
-          168,
-          reason: 'bundled catalog row count must stay at 168',
-        );
+    test('S-003: bundled beer_regular and red_wine load as hidden with full '
+        'nutrition intact', () async {
+      final repo = await _freshRepo();
+      final all = await repo.getCatalogFoods(includeArchived: true);
+      expect(
+        all.length,
+        168,
+        reason: 'bundled catalog row count must stay at 168',
+      );
 
-        final beer = await repo.getCatalogFoodById('beer_regular');
-        final wine = await repo.getCatalogFoodById('red_wine');
-        expect(beer, isNotNull, reason: 'beer_regular still in catalog');
-        expect(wine, isNotNull, reason: 'red_wine still in catalog');
+      final beer = await repo.getCatalogFoodById('beer_regular');
+      final wine = await repo.getCatalogFoodById('red_wine');
+      expect(beer, isNotNull, reason: 'beer_regular still in catalog');
+      expect(wine, isNotNull, reason: 'red_wine still in catalog');
 
-        expect(beer!.isArchived, isTrue);
-        expect(wine!.isArchived, isTrue);
+      expect(beer!.isArchived, isTrue);
+      expect(wine!.isArchived, isTrue);
 
-        // Identity and nutrition preserved.
-        expect(beer.id, 'beer_regular');
-        expect(beer.name, 'Beer, regular');
-        expect(beer.groupId, 'food-group-drinks');
-        expect(beer.unitType, FoodUnitType.grams);
-        expect(beer.referenceAmount, 100);
-        expect(beer.referenceLabel, 'ml');
-        expect(beer.protein, 0.5);
-        expect(beer.carbs, 3.6);
-        expect(beer.fat, 0);
-        expect(beer.fiber, 0);
-        expect(beer.sodium, 10);
+      // Identity and nutrition preserved.
+      expect(beer.id, 'beer_regular');
+      expect(beer.name, 'Beer, regular');
+      expect(beer.groupId, 'food-group-drinks');
+      expect(beer.unitType, FoodUnitType.grams);
+      expect(beer.referenceAmount, 100);
+      expect(beer.referenceLabel, 'ml');
+      expect(beer.protein, 0.5);
+      expect(beer.carbs, 3.6);
+      expect(beer.fat, 0);
+      expect(beer.fiber, 0);
+      expect(beer.sodium, 10);
 
-        expect(wine.id, 'red_wine');
-        expect(wine.name, 'Red wine');
-        expect(wine.groupId, 'food-group-drinks');
-        expect(wine.unitType, FoodUnitType.grams);
-        expect(wine.referenceAmount, 100);
-        expect(wine.referenceLabel, 'ml');
-        expect(wine.protein, 0.1);
-        expect(wine.carbs, 2.6);
-        expect(wine.fat, 0);
-        expect(wine.fiber, 0);
-        expect(wine.sodium, 6);
-      },
-    );
+      expect(wine.id, 'red_wine');
+      expect(wine.name, 'Red wine');
+      expect(wine.groupId, 'food-group-drinks');
+      expect(wine.unitType, FoodUnitType.grams);
+      expect(wine.referenceAmount, 100);
+      expect(wine.referenceLabel, 'ml');
+      expect(wine.protein, 0.1);
+      expect(wine.carbs, 2.6);
+      expect(wine.fat, 0);
+      expect(wine.fiber, 0);
+      expect(wine.sodium, 6);
+    });
 
     // S-004: the default `getCatalogFoods()` (non-archived view)
     // excludes the two hidden rows; the diagnostic
@@ -850,9 +839,7 @@ void main() {
       // cannot represent their alcohol-derived energy).
       final catalogFoods = await repo.getCatalogFoods();
       expect(catalogFoods.length, 166);
-      final allCatalogFoods = await repo.getCatalogFoods(
-        includeArchived: true,
-      );
+      final allCatalogFoods = await repo.getCatalogFoods(includeArchived: true);
       expect(allCatalogFoods.length, 168);
     });
 
@@ -961,7 +948,8 @@ void main() {
         isTrue,
         reason: 'assets/data/food_catalog.json not found at project root',
       );
-      final decoded = jsonDecode(asset.readAsStringSync()) as Map<String, dynamic>;
+      final decoded =
+          jsonDecode(asset.readAsStringSync()) as Map<String, dynamic>;
       jsonFoods = (decoded['foods'] as List<dynamic>)
           .cast<Map<String, dynamic>>();
       jsonCount = jsonFoods.length;
@@ -998,20 +986,18 @@ void main() {
     // `FoodLibraryState` also matches the catalog; this test stays
     // narrow on the JSON alone so a JSON-only regression surfaces
     // here first.)
-    test(
-      'S-003: every row has a unique id',
-      () {
-        final ids = jsonFoods.map((f) => f['id'] as String).toList();
-        final unique = ids.toSet();
-        expect(
-          unique.length,
-          ids.length,
-          reason: 'duplicate id in the catalog: '
-              '${ids.where((id) => ids.where((x) => x == id).length > 1).toSet()}',
-        );
-        expect(unique.length, jsonCount);
-      },
-    );
+    test('S-003: every row has a unique id', () {
+      final ids = jsonFoods.map((f) => f['id'] as String).toList();
+      final unique = ids.toSet();
+      expect(
+        unique.length,
+        ids.length,
+        reason:
+            'duplicate id in the catalog: '
+            '${ids.where((id) => ids.where((x) => x == id).length > 1).toSet()}',
+      );
+      expect(unique.length, jsonCount);
+    });
 
     // S-004: every row's `category` resolves to one of the nine
     // seeded default `FoodGroup`s. A new category that was added
@@ -1020,32 +1006,28 @@ void main() {
     // "Ungrouped" — a hidden authoring defect that the user would
     // discover only when their food did not appear under the
     // expected filter.
-    test(
-      'S-004: every row\'s category resolves to a seeded default group',
-      () {
-        final validGroupIds = SeedData.defaultFoodGroups
-            .map((g) => g.id)
-            .toSet();
-        for (final raw in jsonFoods) {
-          final id = raw['id'] as String;
-          final category = (raw['category'] as String).toLowerCase();
-          final resolved = FoodCatalogLoaderTestAccess
-              .resolveCategoryToGroupId(category);
-          expect(
-            resolved,
-            isNotNull,
-            reason: '$id has category="$category" with no groupId mapping',
-          );
-          expect(
-            validGroupIds.contains(resolved),
-            isTrue,
-            reason:
-                '$id resolved to "$resolved", which is not in '
-                'SeedData.defaultFoodGroups',
-          );
-        }
-      },
-    );
+    test('S-004: every row\'s category resolves to a seeded default group', () {
+      final validGroupIds = SeedData.defaultFoodGroups.map((g) => g.id).toSet();
+      for (final raw in jsonFoods) {
+        final id = raw['id'] as String;
+        final category = (raw['category'] as String).toLowerCase();
+        final resolved = FoodCatalogLoaderTestAccess.resolveCategoryToGroupId(
+          category,
+        );
+        expect(
+          resolved,
+          isNotNull,
+          reason: '$id has category="$category" with no groupId mapping',
+        );
+        expect(
+          validGroupIds.contains(resolved),
+          isTrue,
+          reason:
+              '$id resolved to "$resolved", which is not in '
+              'SeedData.defaultFoodGroups',
+        );
+      }
+    });
 
     // S-002: calorie reconciliation with ±1 kcal tolerance. The
     // JSON-recorded calorie for every non-exempt row must equal
@@ -1081,92 +1063,87 @@ void main() {
     // tautological. The real comparison is against the JSON's
     // *recorded* calorie figure — the value the authoring pass
     // wrote into the asset. That is what the ±1 kcal band protects.
-    test(
-      'S-002: every row reconciles calories within ±1 kcal, with only '
-      'beer_regular and red_wine as named exceptions',
-      () async {
-        final repo = await _freshRepo();
-        final catalogFoods = await repo.getCatalogFoods(includeArchived: true);
+    test('S-002: every row reconciles calories within ±1 kcal, with only '
+        'beer_regular and red_wine as named exceptions', () async {
+      final repo = await _freshRepo();
+      final catalogFoods = await repo.getCatalogFoods(includeArchived: true);
 
-        // Index the JSON rows by id so we can pull the recorded
-        // calorie figure (the `food.calories` getter is computed
-        // from the macros and would trivially equal itself).
-        final jsonById = <String, Map<String, dynamic>>{
-          for (final raw in jsonFoods) raw['id'] as String: raw,
-        };
+      // Index the JSON rows by id so we can pull the recorded
+      // calorie figure (the `food.calories` getter is computed
+      // from the macros and would trivially equal itself).
+      final jsonById = <String, Map<String, dynamic>>{
+        for (final raw in jsonFoods) raw['id'] as String: raw,
+      };
 
-        // The exception list must be exactly two members. Any
-        // drift in this list is a silent authoring regression.
-        const calorieExemptIds = {'beer_regular', 'red_wine'};
+      // The exception list must be exactly two members. Any
+      // drift in this list is a silent authoring regression.
+      const calorieExemptIds = {'beer_regular', 'red_wine'};
+      expect(
+        calorieExemptIds.length,
+        2,
+        reason:
+            'calorie exemption list must have exactly two members; '
+            'ethanol is the only reason a row is exempt, and the only '
+            'two rows shipping with alcohol-derived energy are '
+            'beer_regular and red_wine',
+      );
+      expect(
+        calorieExemptIds.contains('beer_regular'),
+        isTrue,
+        reason: 'beer_regular must remain on the exemption list',
+      );
+      expect(
+        calorieExemptIds.contains('red_wine'),
+        isTrue,
+        reason: 'red_wine must remain on the exemption list',
+      );
+
+      final exemptRows = catalogFoods
+          .where((f) => calorieExemptIds.contains(f.id))
+          .toList();
+      expect(
+        exemptRows.length,
+        2,
+        reason:
+            'the catalog must contain exactly two exempt rows ('
+            'beer_regular and red_wine); a row count drift here '
+            'indicates an undeclared exemption or a missing row',
+      );
+
+      // ±1 kcal tolerance. The JSON-recorded calorie must equal
+      // the value derived from the same JSON row's macros within
+      // one calorie. The two alcohol rows are skipped.
+      const kcalTolerance = 1;
+      for (final food in catalogFoods) {
+        if (calorieExemptIds.contains(food.id)) continue;
+        final jsonRow = jsonById[food.id]!;
+        final recorded = ((jsonRow['calories'] as num?) ?? 0).toDouble();
+        // Derive from the JSON's macros so this test is
+        // independent of how the loader happens to round. (The
+        // loader passes macros through unchanged, but using the
+        // JSON values directly keeps the comparison anchored to
+        // the authoring rule.)
+        final protein = ((jsonRow['protein'] as num?) ?? 0).toDouble();
+        final carbs = ((jsonRow['carbs'] as num?) ?? 0).toDouble();
+        final fat = ((jsonRow['fat'] as num?) ?? 0).toDouble();
+        final computed = (protein * 4 + carbs * 4 + fat * 9).round();
+        final diff = (recorded - computed).abs();
         expect(
-          calorieExemptIds.length,
-          2,
-          reason:
-              'calorie exemption list must have exactly two members; '
-              'ethanol is the only reason a row is exempt, and the only '
-              'two rows shipping with alcohol-derived energy are '
-              'beer_regular and red_wine',
-        );
-        expect(
-          calorieExemptIds.contains('beer_regular'),
+          diff <= kcalTolerance,
           isTrue,
-          reason: 'beer_regular must remain on the exemption list',
-        );
-        expect(
-          calorieExemptIds.contains('red_wine'),
-          isTrue,
-          reason: 'red_wine must remain on the exemption list',
-        );
-
-        final exemptRows = catalogFoods
-            .where((f) => calorieExemptIds.contains(f.id))
-            .toList();
-        expect(
-          exemptRows.length,
-          2,
           reason:
-              'the catalog must contain exactly two exempt rows ('
-              'beer_regular and red_wine); a row count drift here '
-              'indicates an undeclared exemption or a missing row',
+              '${food.id} (${food.name}) recorded calorie=$recorded '
+              'differs from the value derived from its macros '
+              '(protein=$protein, carbs=$carbs, fat=$fat) '
+              'by $diff kcal; the calorie check tolerates at most '
+              '$kcalTolerance kcal of disagreement. Rows whose '
+              'macros land on a `.5` kcal boundary (e.g. 136.5) '
+              'may round either way; larger discrepancies indicate '
+              'a real authoring problem and must be fixed at the '
+              'source rather than widened here.',
         );
-
-        // ±1 kcal tolerance. The JSON-recorded calorie must equal
-        // the value derived from the same JSON row's macros within
-        // one calorie. The two alcohol rows are skipped.
-        const kcalTolerance = 1;
-        for (final food in catalogFoods) {
-          if (calorieExemptIds.contains(food.id)) continue;
-          final jsonRow = jsonById[food.id]!;
-          final recorded =
-              ((jsonRow['calories'] as num?) ?? 0).toDouble();
-          // Derive from the JSON's macros so this test is
-          // independent of how the loader happens to round. (The
-          // loader passes macros through unchanged, but using the
-          // JSON values directly keeps the comparison anchored to
-          // the authoring rule.)
-          final protein = ((jsonRow['protein'] as num?) ?? 0).toDouble();
-          final carbs = ((jsonRow['carbs'] as num?) ?? 0).toDouble();
-          final fat = ((jsonRow['fat'] as num?) ?? 0).toDouble();
-          final computed =
-              (protein * 4 + carbs * 4 + fat * 9).round();
-          final diff = (recorded - computed).abs();
-          expect(
-            diff <= kcalTolerance,
-            isTrue,
-            reason:
-                '${food.id} (${food.name}) recorded calorie=$recorded '
-                'differs from the value derived from its macros '
-                '(protein=$protein, carbs=$carbs, fat=$fat) '
-                'by $diff kcal; the calorie check tolerates at most '
-                '$kcalTolerance kcal of disagreement. Rows whose '
-                'macros land on a `.5` kcal boundary (e.g. 136.5) '
-                'may round either way; larger discrepancies indicate '
-                'a real authoring problem and must be fixed at the '
-                'source rather than widened here.',
-          );
-        }
-      },
-    );
+      }
+    });
 
     // S-002 tolerance boundary: pin the ±1 kcal rule itself.
     // Construct two synthetic JSON snippets, parse each through
@@ -1175,19 +1152,18 @@ void main() {
     // discrepancy must pass; a 2-calorie discrepancy must fail.
     // This locks the tolerance so a future author cannot quietly
     // widen the band without breaking CI.
-    test(
-      'S-002 tolerance boundary: 1-calorie discrepancy passes, 2 fails',
-      () {
-        const probeId = 'tolerance-probe';
+    test('S-002 tolerance boundary: 1-calorie discrepancy passes, 2 fails', () {
+      const probeId = 'tolerance-probe';
 
-        // Macros sum to exactly 100.0 kcal — round() returns 100.
-        // Recorded is 101 (1 above) for the passing case, 102 (2
-        // above) for the failing case.
-        const baseMacros = '''
+      // Macros sum to exactly 100.0 kcal — round() returns 100.
+      // Recorded is 101 (1 above) for the passing case, 102 (2
+      // above) for the failing case.
+      const baseMacros = '''
         "protein": 4,
         "carbs": 3,
         "fat": 8''';
-        final passJson = '''
+      final passJson =
+          '''
         {
           "version": 2,
           "foods": [
@@ -1204,7 +1180,8 @@ void main() {
           ]
         }
         ''';
-        final failJson = '''
+      final failJson =
+          '''
         {
           "version": 2,
           "foods": [
@@ -1222,52 +1199,54 @@ void main() {
         }
         ''';
 
-        // The same predicate the catalog S-002 uses — derived
-        // from the JSON's macros, compared to the JSON's recorded
-        // calorie, within the tolerance.
-        bool reconciles(Map<String, dynamic> jsonRow, int tolerance) {
-          final recorded = ((jsonRow['calories'] as num?) ?? 0).toDouble();
-          final p = ((jsonRow['protein'] as num?) ?? 0).toDouble();
-          final c = ((jsonRow['carbs'] as num?) ?? 0).toDouble();
-          final f = ((jsonRow['fat'] as num?) ?? 0).toDouble();
-          final computed = (p * 4 + c * 4 + f * 9).round();
-          return (recorded - computed).abs() <= tolerance;
-        }
+      // The same predicate the catalog S-002 uses — derived
+      // from the JSON's macros, compared to the JSON's recorded
+      // calorie, within the tolerance.
+      bool reconciles(Map<String, dynamic> jsonRow, int tolerance) {
+        final recorded = ((jsonRow['calories'] as num?) ?? 0).toDouble();
+        final p = ((jsonRow['protein'] as num?) ?? 0).toDouble();
+        final c = ((jsonRow['carbs'] as num?) ?? 0).toDouble();
+        final f = ((jsonRow['fat'] as num?) ?? 0).toDouble();
+        final computed = (p * 4 + c * 4 + f * 9).round();
+        return (recorded - computed).abs() <= tolerance;
+      }
 
-        final passRows = FoodCatalogLoader.parseCatalogJson(passJson);
-        final failRows = FoodCatalogLoader.parseCatalogJson(failJson);
+      final passRows = FoodCatalogLoader.parseCatalogJson(passJson);
+      final failRows = FoodCatalogLoader.parseCatalogJson(failJson);
 
-        // Pull the original JSON rows back out for the
-        // reconciliation predicate — `Food.calories` is computed,
-        // so we cannot use the parsed model here.
-        final passJsonRow = (jsonDecode(passJson) as Map<String, dynamic>)
-            .cast<String, dynamic>()['foods']
-            .first as Map<String, dynamic>;
-        final failJsonRow = (jsonDecode(failJson) as Map<String, dynamic>)
-            .cast<String, dynamic>()['foods']
-            .first as Map<String, dynamic>;
+      // Pull the original JSON rows back out for the
+      // reconciliation predicate — `Food.calories` is computed,
+      // so we cannot use the parsed model here.
+      final passJsonRow =
+          (jsonDecode(passJson) as Map<String, dynamic>)
+                  .cast<String, dynamic>()['foods']
+                  .first
+              as Map<String, dynamic>;
+      final failJsonRow =
+          (jsonDecode(failJson) as Map<String, dynamic>)
+                  .cast<String, dynamic>()['foods']
+                  .first
+              as Map<String, dynamic>;
 
-        // Sanity: each probe parses to a single row.
-        expect(passRows, hasLength(1));
-        expect(failRows, hasLength(1));
+      // Sanity: each probe parses to a single row.
+      expect(passRows, hasLength(1));
+      expect(failRows, hasLength(1));
 
-        // 1-calorie off → passes at tolerance 1.
-        expect(
-          reconciles(passJsonRow, 1),
-          isTrue,
-          reason:
-              'a 1-calorie discrepancy must pass the S-002 ±1 kcal rule',
-        );
-        // 2-calorie off → fails at tolerance 1.
-        expect(
-          reconciles(failJsonRow, 1),
-          isFalse,
-          reason:
-              'a 2-calorie discrepancy must fail the S-002 ±1 kcal rule; '
-              'widening the tolerance breaks this test',
-        );
-      },
-    );
+      // 1-calorie off → passes at tolerance 1.
+      expect(
+        reconciles(passJsonRow, 1),
+        isTrue,
+        reason: 'a 1-calorie discrepancy must pass the S-002 ±1 kcal rule',
+      );
+      // 2-calorie off → fails at tolerance 1.
+      expect(
+        reconciles(failJsonRow, 1),
+        isFalse,
+        reason:
+            'a 2-calorie discrepancy must fail the S-002 ±1 kcal rule; '
+            'widening the tolerance breaks this test',
+      );
+    });
 
     // S-001: seed ↔ JSON field-for-field parity. This is the test
     // whose absence let the seed drift 18 entries behind the JSON
@@ -1276,92 +1255,90 @@ void main() {
     // to a FoodGroup.id, which is what the loader writes to
     // `groupId`), unitType, referenceAmount, referenceLabel,
     // protein, carbs, fiber, fat, sodium, and the hidden state.
-    test(
-      'S-001: seed and JSON agree field-for-field on every row '
-      '(drift guard)',
-      () {
-        final seedFoods = FoodCatalogSeed.sampleCatalogFoods;
-        expect(seedFoods.length, jsonCount);
+    test('S-001: seed and JSON agree field-for-field on every row '
+        '(drift guard)', () {
+      final seedFoods = FoodCatalogSeed.sampleCatalogFoods;
+      expect(seedFoods.length, jsonCount);
 
-        final seedById = {for (final f in seedFoods) f.id: f};
+      final seedById = {for (final f in seedFoods) f.id: f};
 
-        for (final raw in jsonFoods) {
-          final id = raw['id'] as String;
-          final seeded = seedById[id];
-          expect(
-            seeded,
-            isNotNull,
-            reason:
-                'Seed is missing id "$id" that the JSON publishes. '
-                'Re-run `dart run scripts/generate_food_catalog_seed.dart` '
-                'after editing the JSON.',
-          );
+      for (final raw in jsonFoods) {
+        final id = raw['id'] as String;
+        final seeded = seedById[id];
+        expect(
+          seeded,
+          isNotNull,
+          reason:
+              'Seed is missing id "$id" that the JSON publishes. '
+              'Re-run `dart run scripts/generate_food_catalog_seed.dart` '
+              'after editing the JSON.',
+        );
 
-          // Resolve the JSON's `category` to a FoodGroup.id using
-          // the same map the production loader uses, so the
-          // assertion checks the same conversion the runtime
-          // performs.
-          final category = (raw['category'] as String).toLowerCase();
-          final expectedGroupId =
-              FoodCatalogLoaderTestAccess.resolveCategoryToGroupId(category);
+        // Resolve the JSON's `category` to a FoodGroup.id using
+        // the same map the production loader uses, so the
+        // assertion checks the same conversion the runtime
+        // performs.
+        final category = (raw['category'] as String).toLowerCase();
+        final expectedGroupId =
+            FoodCatalogLoaderTestAccess.resolveCategoryToGroupId(category);
 
-          expect(seeded!.id, id, reason: '$id: .id');
-          expect(seeded.name, raw['name'] as String, reason: '$id: .name');
-          expect(seeded.groupId, expectedGroupId, reason: '$id: .groupId');
-          expect(
-            seeded.unitType,
-            FoodUnitType.fromString(raw['unitType'] as String),
-            reason: '$id: .unitType',
-          );
-          expect(
-            seeded.referenceAmount,
-            (raw['referenceAmount'] as num).toDouble(),
-            reason: '$id: .referenceAmount',
-          );
-          expect(
-            seeded.referenceLabel,
-            raw['referenceLabel'] as String,
-            reason: '$id: .referenceLabel',
-          );
-          expect(
-            seeded.protein,
-            ((raw['protein'] as num?) ?? 0.0).toDouble(),
-            reason: '$id: .protein',
-          );
-          expect(
-            seeded.carbs,
-            ((raw['carbs'] as num?) ?? 0.0).toDouble(),
-            reason: '$id: .carbs',
-          );
-          expect(
-            seeded.fiber,
-            (raw['fiber'] as num?)?.toDouble(),
-            reason: '$id: .fiber',
-          );
-          expect(
-            seeded.fat,
-            ((raw['fat'] as num?) ?? 0.0).toDouble(),
-            reason: '$id: .fat',
-          );
-          expect(
-            seeded.sodium,
-            (raw['sodium_mg'] as num?)?.toDouble(),
-            reason: '$id: .sodium',
-          );
-          // Hidden state introduced in the preceding PR. The JSON's
-          // `hidden: true` must reach the seed as `isArchived: true`
-          // so the two carriers cannot drift on this field.
-          expect(
-            seeded.isArchived,
-            raw['hidden'] == true,
-            reason: '$id: .isArchived — JSON `hidden` and seed '
-                '`isArchived` disagree; re-run '
-                '`dart run scripts/generate_food_catalog_seed.dart` '
-                'after editing the JSON',
-          );
-        }
-      },
-    );
+        expect(seeded!.id, id, reason: '$id: .id');
+        expect(seeded.name, raw['name'] as String, reason: '$id: .name');
+        expect(seeded.groupId, expectedGroupId, reason: '$id: .groupId');
+        expect(
+          seeded.unitType,
+          FoodUnitType.fromString(raw['unitType'] as String),
+          reason: '$id: .unitType',
+        );
+        expect(
+          seeded.referenceAmount,
+          (raw['referenceAmount'] as num).toDouble(),
+          reason: '$id: .referenceAmount',
+        );
+        expect(
+          seeded.referenceLabel,
+          raw['referenceLabel'] as String,
+          reason: '$id: .referenceLabel',
+        );
+        expect(
+          seeded.protein,
+          ((raw['protein'] as num?) ?? 0.0).toDouble(),
+          reason: '$id: .protein',
+        );
+        expect(
+          seeded.carbs,
+          ((raw['carbs'] as num?) ?? 0.0).toDouble(),
+          reason: '$id: .carbs',
+        );
+        expect(
+          seeded.fiber,
+          (raw['fiber'] as num?)?.toDouble(),
+          reason: '$id: .fiber',
+        );
+        expect(
+          seeded.fat,
+          ((raw['fat'] as num?) ?? 0.0).toDouble(),
+          reason: '$id: .fat',
+        );
+        expect(
+          seeded.sodium,
+          (raw['sodium_mg'] as num?)?.toDouble(),
+          reason: '$id: .sodium',
+        );
+        // Hidden state introduced in the preceding PR. The JSON's
+        // `hidden: true` must reach the seed as `isArchived: true`
+        // so the two carriers cannot drift on this field.
+        expect(
+          seeded.isArchived,
+          raw['hidden'] == true,
+          reason:
+              '$id: .isArchived — JSON `hidden` and seed '
+              '`isArchived` disagree; re-run '
+              '`dart run scripts/generate_food_catalog_seed.dart` '
+              'after editing the JSON',
+        );
+      }
+    });
   });
 
   group('Default food group categories seeded from catalog', () {
@@ -1791,7 +1768,11 @@ void main() {
         ids.length,
         reason: 'All catalog food IDs must be unique',
       );
-      expect(uniqueIds.length, 168, reason: 'Should have exactly 168 unique IDs');
+      expect(
+        uniqueIds.length,
+        168,
+        reason: 'Should have exactly 168 unique IDs',
+      );
     });
   });
 
@@ -1806,161 +1787,173 @@ void main() {
   });
 
   group('S-008: Non-negative nutrition values for new foods', () {
-    test('all 61 new foods (43 + 18) have non-negative nutrition values',
-        () async {
-      final repo = await _freshRepo();
-      final catalogFoods = await repo.getCatalogFoods();
+    test(
+      'all 61 new foods (43 + 18) have non-negative nutrition values',
+      () async {
+        final repo = await _freshRepo();
+        final catalogFoods = await repo.getCatalogFoods();
 
-      // IDs of the 43 new foods (per the plan fixture)
-      const newFoodIds = {
-        'tilapia',
-        'pork_tenderloin',
-        'beef_jerky',
-        'kidney_beans',
-        'edamame',
-        'sardines_oil',
-        'corn_tortilla',
-        'pita_bread',
-        'french_fries',
-        'couscous',
-        'waffle',
-        'raspberries',
-        'cherries',
-        'kiwi',
-        'cantaloupe',
-        'dates',
-        'cauliflower',
-        'asparagus',
-        'brussels_sprouts',
-        'kale',
-        'celery',
-        'sour_cream',
-        'swiss_cheese',
-        'feta_cheese',
-        'milk_2pct',
-        'pistachios',
-        'pumpkin_seeds',
-        'sunflower_seeds',
-        'tortilla_chips',
-        'pizza_slice',
-        'chocolate_chip_cookie',
-        'donut_glazed',
-        'guacamole',
-        'ramen_prepared',
-        'bbq_sauce',
-        'hot_sauce',
-        'sugar_granulated',
-        'marinara_sauce',
-        'beer_regular',
-        'red_wine',
-        'oat_milk',
-        'sports_drink',
-        'green_tea',
-        ..._newIdsSince150,
-      };
+        // IDs of the 43 new foods (per the plan fixture)
+        const newFoodIds = {
+          'tilapia',
+          'pork_tenderloin',
+          'beef_jerky',
+          'kidney_beans',
+          'edamame',
+          'sardines_oil',
+          'corn_tortilla',
+          'pita_bread',
+          'french_fries',
+          'couscous',
+          'waffle',
+          'raspberries',
+          'cherries',
+          'kiwi',
+          'cantaloupe',
+          'dates',
+          'cauliflower',
+          'asparagus',
+          'brussels_sprouts',
+          'kale',
+          'celery',
+          'sour_cream',
+          'swiss_cheese',
+          'feta_cheese',
+          'milk_2pct',
+          'pistachios',
+          'pumpkin_seeds',
+          'sunflower_seeds',
+          'tortilla_chips',
+          'pizza_slice',
+          'chocolate_chip_cookie',
+          'donut_glazed',
+          'guacamole',
+          'ramen_prepared',
+          'bbq_sauce',
+          'hot_sauce',
+          'sugar_granulated',
+          'marinara_sauce',
+          'beer_regular',
+          'red_wine',
+          'oat_milk',
+          'sports_drink',
+          'green_tea',
+          ..._newIdsSince150,
+        };
 
-      for (final food in catalogFoods) {
-        if (!newFoodIds.contains(food.id)) {
-          continue;
+        for (final food in catalogFoods) {
+          if (!newFoodIds.contains(food.id)) {
+            continue;
+          }
+
+          expect(
+            food.protein >= 0,
+            isTrue,
+            reason: '${food.id} protein must be non-negative',
+          );
+          expect(
+            food.carbs >= 0,
+            isTrue,
+            reason: '${food.id} carbs must be non-negative',
+          );
+          expect(
+            food.fiber == null || food.fiber! >= 0,
+            isTrue,
+            reason: '${food.id} fiber must be non-negative',
+          );
+          expect(
+            food.fat >= 0,
+            isTrue,
+            reason: '${food.id} fat must be non-negative',
+          );
+          expect(
+            food.sodium == null || food.sodium! >= 0,
+            isTrue,
+            reason: '${food.id} sodium must be non-negative',
+          );
         }
-
-        expect(
-          food.protein >= 0,
-          isTrue,
-          reason: '${food.id} protein must be non-negative',
-        );
-        expect(
-          food.carbs >= 0,
-          isTrue,
-          reason: '${food.id} carbs must be non-negative',
-        );
-        expect(
-          food.fiber == null || food.fiber! >= 0,
-          isTrue,
-          reason: '${food.id} fiber must be non-negative',
-        );
-        expect(
-          food.fat >= 0,
-          isTrue,
-          reason: '${food.id} fat must be non-negative',
-        );
-        expect(
-          food.sodium == null || food.sodium! >= 0,
-          isTrue,
-          reason: '${food.id} sodium must be non-negative',
-        );
-      }
-    });
+      },
+    );
   });
 
   group('S-009: All nutrition fields declared for new foods', () {
-    test('all 61 new foods (43 + 18) have all nutrition fields present',
-        () async {
-      final repo = await _freshRepo();
-      final catalogFoods = await repo.getCatalogFoods();
+    test(
+      'all 61 new foods (43 + 18) have all nutrition fields present',
+      () async {
+        final repo = await _freshRepo();
+        final catalogFoods = await repo.getCatalogFoods();
 
-      const newFoodIds = {
-        'tilapia',
-        'pork_tenderloin',
-        'beef_jerky',
-        'kidney_beans',
-        'edamame',
-        'sardines_oil',
-        'corn_tortilla',
-        'pita_bread',
-        'french_fries',
-        'couscous',
-        'waffle',
-        'raspberries',
-        'cherries',
-        'kiwi',
-        'cantaloupe',
-        'dates',
-        'cauliflower',
-        'asparagus',
-        'brussels_sprouts',
-        'kale',
-        'celery',
-        'sour_cream',
-        'swiss_cheese',
-        'feta_cheese',
-        'milk_2pct',
-        'pistachios',
-        'pumpkin_seeds',
-        'sunflower_seeds',
-        'tortilla_chips',
-        'pizza_slice',
-        'chocolate_chip_cookie',
-        'donut_glazed',
-        'guacamole',
-        'ramen_prepared',
-        'bbq_sauce',
-        'hot_sauce',
-        'sugar_granulated',
-        'marinara_sauce',
-        'beer_regular',
-        'red_wine',
-        'oat_milk',
-        'sports_drink',
-        'green_tea',
-        ..._newIdsSince150,
-      };
+        const newFoodIds = {
+          'tilapia',
+          'pork_tenderloin',
+          'beef_jerky',
+          'kidney_beans',
+          'edamame',
+          'sardines_oil',
+          'corn_tortilla',
+          'pita_bread',
+          'french_fries',
+          'couscous',
+          'waffle',
+          'raspberries',
+          'cherries',
+          'kiwi',
+          'cantaloupe',
+          'dates',
+          'cauliflower',
+          'asparagus',
+          'brussels_sprouts',
+          'kale',
+          'celery',
+          'sour_cream',
+          'swiss_cheese',
+          'feta_cheese',
+          'milk_2pct',
+          'pistachios',
+          'pumpkin_seeds',
+          'sunflower_seeds',
+          'tortilla_chips',
+          'pizza_slice',
+          'chocolate_chip_cookie',
+          'donut_glazed',
+          'guacamole',
+          'ramen_prepared',
+          'bbq_sauce',
+          'hot_sauce',
+          'sugar_granulated',
+          'marinara_sauce',
+          'beer_regular',
+          'red_wine',
+          'oat_milk',
+          'sports_drink',
+          'green_tea',
+          ..._newIdsSince150,
+        };
 
-      for (final food in catalogFoods) {
-        if (!newFoodIds.contains(food.id)) {
-          continue;
+        for (final food in catalogFoods) {
+          if (!newFoodIds.contains(food.id)) {
+            continue;
+          }
+
+          // All required macro fields must be present and non-null
+          // Protein, carbs, fat are never null
+          expect(
+            food.protein.isFinite,
+            isTrue,
+            reason: '${food.id} protein invalid',
+          );
+          expect(
+            food.carbs.isFinite,
+            isTrue,
+            reason: '${food.id} carbs invalid',
+          );
+          expect(food.fat.isFinite, isTrue, reason: '${food.id} fat invalid');
+          // Fiber and sodium should be non-null for catalog foods (per plan D-7)
+          expect(food.fiber != null, isTrue, reason: '${food.id} fiber null');
+          expect(food.sodium != null, isTrue, reason: '${food.id} sodium null');
         }
-
-        // All required macro fields must be present and non-null
-        // Protein, carbs, fat are never null
-        expect(food.protein.isFinite, isTrue, reason: '${food.id} protein invalid');
-        expect(food.carbs.isFinite, isTrue, reason: '${food.id} carbs invalid');
-        expect(food.fat.isFinite, isTrue, reason: '${food.id} fat invalid');
-        // Fiber and sodium should be non-null for catalog foods (per plan D-7)
-        expect(food.fiber != null, isTrue, reason: '${food.id} fiber null');
-        expect(food.sodium != null, isTrue, reason: '${food.id} sodium null');
-      }
-    });
+      },
+    );
   });
 
   group('S-010: Per-category counts match binding distribution', () {
@@ -1984,7 +1977,8 @@ void main() {
         final categoryName = food.groupId != null
             ? groupNameById[food.groupId] ?? 'Ungrouped'
             : 'Ungrouped';
-        countByCategory[categoryName] = (countByCategory[categoryName] ?? 0) + 1;
+        countByCategory[categoryName] =
+            (countByCategory[categoryName] ?? 0) + 1;
       }
 
       // Every category has at least one food. Hard-coded per-category
@@ -2116,113 +2110,117 @@ void main() {
   });
 
   group('S-012: New foods are searchable by name', () {
-    test('all 61 new foods (43 + 18) return exactly one match when searched by name',
-        () async {
-      final repo = await _freshRepo();
-      final state = FoodLibraryState(repo);
-      await state.loadCatalogFoods();
+    test(
+      'all 61 new foods (43 + 18) return exactly one match when searched by name',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
 
-      final newFoodsWithNames = <String, String>{
-        'tilapia': 'Tilapia, cooked',
-        'pork_tenderloin': 'Pork tenderloin, cooked',
-        'beef_jerky': 'Beef jerky',
-        'kidney_beans': 'Kidney beans, cooked',
-        'edamame': 'Edamame, shelled',
-        'sardines_oil': 'Sardines, canned in oil',
-        'corn_tortilla': 'Corn tortilla',
-        'pita_bread': 'Pita bread',
-        'french_fries': 'French fries',
-        'couscous': 'Couscous, cooked',
-        'waffle': 'Waffle',
-        'raspberries': 'Raspberries',
-        'cherries': 'Cherries',
-        'kiwi': 'Kiwi, medium',
-        'cantaloupe': 'Cantaloupe',
-        'dates': 'Dates, medjool',
-        'cauliflower': 'Cauliflower',
-        'asparagus': 'Asparagus',
-        'brussels_sprouts': 'Brussels sprouts',
-        'kale': 'Kale',
-        'celery': 'Celery',
-        'sour_cream': 'Sour cream',
-        'swiss_cheese': 'Swiss cheese',
-        'feta_cheese': 'Feta cheese',
-        'milk_2pct': '2% milk',
-        'pistachios': 'Pistachios',
-        'pumpkin_seeds': 'Pumpkin seeds',
-        'sunflower_seeds': 'Sunflower seeds',
-        'tortilla_chips': 'Tortilla chips',
-        'pizza_slice': 'Pizza, cheese, slice',
-        'chocolate_chip_cookie': 'Cookie, chocolate chip',
-        'donut_glazed': 'Donut, glazed',
-        'guacamole': 'Guacamole',
-        'ramen_prepared': 'Instant ramen, prepared',
-        'bbq_sauce': 'BBQ sauce',
-        'hot_sauce': 'Hot sauce',
-        'sugar_granulated': 'Sugar, granulated',
-        'marinara_sauce': 'Marinara sauce',
-        // `beer_regular` and `red_wine` are bundled as hidden
-        // (see `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`)
-        // — they are present in the catalog row count and resolvable
-        // by id (S-003, S-006), but the user-facing search filter
-        // excludes them. The S-005 search test in
-        // `food_library_test.dart` is the contract for that.
-        'oat_milk': 'Oat milk',
-        'sports_drink': 'Sports drink',
-        'green_tea': 'Green tea, unsweetened',
-        ..._newNamesSince150,
-      };
+        final newFoodsWithNames = <String, String>{
+          'tilapia': 'Tilapia, cooked',
+          'pork_tenderloin': 'Pork tenderloin, cooked',
+          'beef_jerky': 'Beef jerky',
+          'kidney_beans': 'Kidney beans, cooked',
+          'edamame': 'Edamame, shelled',
+          'sardines_oil': 'Sardines, canned in oil',
+          'corn_tortilla': 'Corn tortilla',
+          'pita_bread': 'Pita bread',
+          'french_fries': 'French fries',
+          'couscous': 'Couscous, cooked',
+          'waffle': 'Waffle',
+          'raspberries': 'Raspberries',
+          'cherries': 'Cherries',
+          'kiwi': 'Kiwi, medium',
+          'cantaloupe': 'Cantaloupe',
+          'dates': 'Dates, medjool',
+          'cauliflower': 'Cauliflower',
+          'asparagus': 'Asparagus',
+          'brussels_sprouts': 'Brussels sprouts',
+          'kale': 'Kale',
+          'celery': 'Celery',
+          'sour_cream': 'Sour cream',
+          'swiss_cheese': 'Swiss cheese',
+          'feta_cheese': 'Feta cheese',
+          'milk_2pct': '2% milk',
+          'pistachios': 'Pistachios',
+          'pumpkin_seeds': 'Pumpkin seeds',
+          'sunflower_seeds': 'Sunflower seeds',
+          'tortilla_chips': 'Tortilla chips',
+          'pizza_slice': 'Pizza, cheese, slice',
+          'chocolate_chip_cookie': 'Cookie, chocolate chip',
+          'donut_glazed': 'Donut, glazed',
+          'guacamole': 'Guacamole',
+          'ramen_prepared': 'Instant ramen, prepared',
+          'bbq_sauce': 'BBQ sauce',
+          'hot_sauce': 'Hot sauce',
+          'sugar_granulated': 'Sugar, granulated',
+          'marinara_sauce': 'Marinara sauce',
+          // `beer_regular` and `red_wine` are bundled as hidden
+          // (see `.github/agents/plans/2026-08-08-retire-alcohol-catalog-rows-plan.md`)
+          // — they are present in the catalog row count and resolvable
+          // by id (S-003, S-006), but the user-facing search filter
+          // excludes them. The S-005 search test in
+          // `food_library_test.dart` is the contract for that.
+          'oat_milk': 'Oat milk',
+          'sports_drink': 'Sports drink',
+          'green_tea': 'Green tea, unsweetened',
+          ..._newNamesSince150,
+        };
 
-      for (final foodName in newFoodsWithNames.values) {
-        final results = await state.searchCatalogFoods(foodName);
-        expect(
-          results,
-          isNotEmpty,
-          reason: 'Search for "$foodName" should return at least one result',
-        );
-        expect(
-          results.length,
-          1,
-          reason:
-              'Search for "$foodName" should return exactly one result, got ${results.length}',
-        );
-      }
-    });
+        for (final foodName in newFoodsWithNames.values) {
+          final results = await state.searchCatalogFoods(foodName);
+          expect(
+            results,
+            isNotEmpty,
+            reason: 'Search for "$foodName" should return at least one result',
+          );
+          expect(
+            results.length,
+            1,
+            reason:
+                'Search for "$foodName" should return exactly one result, got ${results.length}',
+          );
+        }
+      },
+    );
   });
 
   group('S-013: Bundled catalog ID set exhaustive and matches catalog', () {
-    test('FoodLibraryState._bundledCatalogFoodIds matches all 168 catalog IDs',
-        () async {
-      final repo = await _freshRepo();
-      // Use the diagnostic `includeArchived: true` read so the
-      // assertion covers every row on disk — `beer_regular` and
-      // `red_wine` are bundled as hidden (S-007 / S-008 / S-009)
-      // and so are filtered out of the default non-archived read.
-      // The bundled-id-set contract is about provenance (which ids
-      // were authored by the bundling team vs. created at runtime),
-      // not about visibility — a hidden bundled row is still a
-      // bundled row and must still resolve through
-      // `isBundledCatalogFood`.
-      final catalogFoods = await repo.getCatalogFoods(includeArchived: true);
+    test(
+      'FoodLibraryState._bundledCatalogFoodIds matches all 168 catalog IDs',
+      () async {
+        final repo = await _freshRepo();
+        // Use the diagnostic `includeArchived: true` read so the
+        // assertion covers every row on disk — `beer_regular` and
+        // `red_wine` are bundled as hidden (S-007 / S-008 / S-009)
+        // and so are filtered out of the default non-archived read.
+        // The bundled-id-set contract is about provenance (which ids
+        // were authored by the bundling team vs. created at runtime),
+        // not about visibility — a hidden bundled row is still a
+        // bundled row and must still resolve through
+        // `isBundledCatalogFood`.
+        final catalogFoods = await repo.getCatalogFoods(includeArchived: true);
 
-      // Extract the bundled catalog IDs by calling isBundledCatalogFood
-      // on all catalog foods. We test this by checking that the state
-      // correctly identifies all catalog foods as bundled.
-      final state = FoodLibraryState(repo);
-      await state.loadCatalogFoods();
+        // Extract the bundled catalog IDs by calling isBundledCatalogFood
+        // on all catalog foods. We test this by checking that the state
+        // correctly identifies all catalog foods as bundled.
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
 
-      final catalogIds = catalogFoods.map((f) => f.id).toSet();
-      expect(catalogIds.length, 168, reason: 'Catalog should have 168 foods');
+        final catalogIds = catalogFoods.map((f) => f.id).toSet();
+        expect(catalogIds.length, 168, reason: 'Catalog should have 168 foods');
 
-      // All catalog food IDs should be recognized as bundled
-      for (final id in catalogIds) {
-        expect(
-          state.isBundledCatalogFood(id),
-          isTrue,
-          reason: '$id should be in the bundled catalog ID set',
-        );
-      }
-    });
+        // All catalog food IDs should be recognized as bundled
+        for (final id in catalogIds) {
+          expect(
+            state.isBundledCatalogFood(id),
+            isTrue,
+            reason: '$id should be in the bundled catalog ID set',
+          );
+        }
+      },
+    );
   });
 
   group('S-014: Generated seed mirrors JSON entry-for-entry', () {
@@ -2246,22 +2244,26 @@ void main() {
         168,
         reason: 'Loader should produce 168 foods',
       );
-      expect(
-        seedFoods.length,
-        168,
-        reason: 'Seed should contain 168 foods',
-      );
+      expect(seedFoods.length, 168, reason: 'Seed should contain 168 foods');
 
       final seedById = {for (final f in seedFoods) f.id: f};
 
       for (final loaded in loaderFoods) {
         final seeded = seedById[loaded.id];
-        expect(seeded, isNotNull, reason: 'ID ${loaded.id} in loader but not seed');
+        expect(
+          seeded,
+          isNotNull,
+          reason: 'ID ${loaded.id} in loader but not seed',
+        );
 
         // Field-for-field equality
         expect(loaded.id, seeded!.id, reason: '${loaded.id} .id');
         expect(loaded.name, seeded.name, reason: '${loaded.id} .name');
-        expect(loaded.calories, seeded.calories, reason: '${loaded.id} .calories');
+        expect(
+          loaded.calories,
+          seeded.calories,
+          reason: '${loaded.id} .calories',
+        );
         expect(loaded.protein, seeded.protein, reason: '${loaded.id} .protein');
         expect(loaded.carbs, seeded.carbs, reason: '${loaded.id} .carbs');
         expect(loaded.fiber, seeded.fiber, reason: '${loaded.id} .fiber');

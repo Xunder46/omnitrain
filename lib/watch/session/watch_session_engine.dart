@@ -407,6 +407,9 @@ class WatchSessionEngine {
         final before = _session;
         final after = await applyExercisePush(envelope);
         return !identical(before, after);
+      case 'receipt':
+        _requireConformingIncoming(envelope);
+        return _applyReceipt(envelope);
       case 'observations_up':
         // The watch's own product; a phone has no business sending one. It is
         // still read, so a peer speaking another version is refused here rather
@@ -1022,6 +1025,58 @@ class WatchSessionEngine {
     Map<String, Object?> event,
   ) async {
     final session = _requireSession();
+    return _appendObservation(event, sessionId: session.sessionId);
+  }
+
+  /// Persists a food the user quick-logged, and emits it for the phone.
+  ///
+  /// The one entry point on the wrist that does not need a session: eating is
+  /// not a training event, and the surface is reachable with no workout
+  /// running (S-006). A log taken while a session is running rides it — a snack
+  /// mid-workout is part of that session's story — and one taken without a
+  /// session carries the nutrition log's own id, because `observations_up`
+  /// requires a session id and the wrist will not invent a workout
+  /// ([WatchNutritionSession]).
+  ///
+  /// [servings] is the portion as a multiple of the food's reference amount,
+  /// and [calories] what the phone quoted for it — the event is
+  /// self-contained, so the phone materialises the entry without asking the
+  /// wrist a question.
+  Future<WatchObservationRecord> logNutrition({
+    required String foodId,
+    required double servings,
+    double? calories,
+    DateTime? loggedAt,
+  }) {
+    final now = loggedAt ?? _clock();
+    final entryId = _newId();
+    return _appendObservation({
+      'entryId': entryId,
+      'eventId': entryId,
+      'kind': WatchObservationKind.nutritionQuickLog,
+      'loggedAt': utcIso(now),
+      'foodId': foodId,
+      'servings': servings,
+      'calories': ?calories,
+    }, sessionId: _session?.sessionId ?? WatchNutritionSession.idFor(now));
+  }
+
+  /// The nutrition quick-logs the wrist has taken, oldest first — every
+  /// session's, because the surface is reachable with none.
+  ///
+  /// Read back out of the rows storage already held, which is what makes the
+  /// food that moves to the top of the wrist's list survive a relaunch.
+  List<WatchObservationRecord> get nutritionLog => List.unmodifiable([
+    for (final observation in _observations)
+      if (observation.kind == WatchObservationKind.nutritionQuickLog)
+        observation,
+  ]);
+
+  /// Storage first, emission second — the order every log on the watch follows.
+  Future<WatchObservationRecord> _appendObservation(
+    Map<String, Object?> event, {
+    required String sessionId,
+  }) async {
     final eventId = event['eventId'];
     final recordId = eventId is String && eventId.isNotEmpty
         ? eventId
@@ -1030,14 +1085,14 @@ class WatchSessionEngine {
 
     final record = WatchObservationRecord(
       recordId: recordId,
-      sessionId: session.sessionId,
+      sessionId: sessionId,
       recordedAt: now,
       kind: (event['kind'] as String?) ?? '',
       payload: event,
     );
 
     final envelope = _observationsUp(
-      session.sessionId,
+      sessionId,
       record,
       sentAt: now,
       messageId: _messageIdFor(recordId),
@@ -1092,15 +1147,25 @@ class WatchSessionEngine {
   ///
   /// Emission is not a hand-off of state: it is a projection of the stored
   /// rows, so replaying after a kill sends the same events with the same
-  /// identifiers.
+  /// identifiers. A nutrition quick-log taken with no session (S-006) is owed
+  /// just like an in-session one, and carries the id it was stored under.
   List<Map<String, Object?>> pendingObservations() {
     final session = _session;
-    if (session == null) return const [];
     return [
-      for (final observation in observations)
-        if (observation.confirmedAt == null)
+      if (session != null)
+        for (final observation in observations)
+          if (observation.confirmedAt == null)
+            _observationsUp(
+              session.sessionId,
+              observation,
+              sentAt: observation.recordedAt,
+              messageId: _messageIdFor(observation.recordId),
+            ),
+      for (final observation in nutritionLog)
+        if (observation.confirmedAt == null &&
+            observation.sessionId != session?.sessionId)
           _observationsUp(
-            session.sessionId,
+            observation.sessionId,
             observation,
             sentAt: observation.recordedAt,
             messageId: _messageIdFor(observation.recordId),
@@ -1240,7 +1305,6 @@ class WatchSessionEngine {
   /// A receipt is an append of its own: the watch must remember what it may
   /// drop across a relaunch, without rewriting an observation.
   Future<List<String>> confirmObservations(Iterable<String> entryIds) async {
-    final session = _requireSession();
     final wanted = entryIds.toSet();
     final acknowledged = [
       for (final observation in _observations)
@@ -1254,7 +1318,9 @@ class WatchSessionEngine {
     await _store.append(
       WatchConfirmationRecord(
         recordId: _newId(),
-        sessionId: session.sessionId,
+        // A receipt names the session it belongs to; a standalone nutrition
+        // quick-log has none, so the row's own id stands in.
+        sessionId: _session?.sessionId ?? acknowledged.first.sessionId,
         recordedAt: now,
         observationIds: [
           for (final observation in acknowledged) observation.recordId,
@@ -1413,12 +1479,9 @@ class WatchSessionEngine {
   /// conformance. A message from a peer speaking another version is rejected
   /// without being interpreted (PROTOCOL.md, "Versioning policy").
   void _requireConformingIncoming(Map<String, Object?> envelope) {
-    final validator = _validator;
-    if (validator == null) return;
-
-    final decision = validator.evaluateIncoming(
+    final decision = SyncProtocolValidator.evaluateOrAccept(
+      _validator,
       envelope,
-      receiverVersion: SyncProtocolValidator.protocolVersion,
     );
     if (decision.accepted) return;
 
@@ -1426,6 +1489,24 @@ class WatchSessionEngine {
       message: 'refusing to apply a non-conformant message: ${decision.reason}',
       rejections: decision.rejections,
     );
+  }
+
+  /// Applies the phone's acknowledgement of the observations it has taken on.
+  ///
+  /// A receipt is the one message about entries that is not session state: a
+  /// quick-log taken with no workout running names a session the phone does not
+  /// hold, so the snapshot — the other way the watch learns an entry arrived —
+  /// can never carry it back. Without this the wrist would owe those rows for
+  /// the life of the install and could never prune them.
+  ///
+  /// Only the ids it names are confirmed; an id the watch does not hold is not
+  /// an error, it is news about another client's log.
+  Future<bool> _applyReceipt(Map<String, Object?> envelope) async {
+    final payload = asJsonObject(envelope['payload']);
+    final entryIds = [
+      for (final id in payload['entryIds']! as List) id! as String,
+    ];
+    return (await confirmObservations(entryIds)).isNotEmpty;
   }
 
   WatchSessionRecord _requireSession() {

@@ -22,7 +22,7 @@ public final class WatchLoggingModel: ObservableObject {
     /// Points of crown travel that count as one detent — the same value the
     /// Flutter surface accumulates against, so a detent means the same thing on
     /// both wrists.
-    public static let pointsPerDetent: Double = 32
+    public static let pointsPerDetent: Double = WatchMetricStepping.pointsPerDetent
 
     private let haptics: WatchHaptics
     private lazy var milestones = WatchTimerHaptics(state.engine)

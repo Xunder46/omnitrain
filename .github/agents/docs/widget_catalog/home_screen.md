@@ -130,15 +130,18 @@ its colour marker plus grams and percentage. Passed to `CalorieRing` as its cent
 ### `FoodLibraryBrowseSection` (private to `NutritionScreen`)
 
 **File**: `lib/features/nutrition/nutrition_screen.dart` (private `_FoodLibraryBrowseSection`,
-plus private `_GroupBlock` and `_FoodRow` helpers)
+plus private `_GroupBlock`)
 
 Read-only, grouped list of foods for the "Foods I Eat" card on `NutritionScreen`. Branches on
-`FoodLibraryState` into loading, empty, and data states. Groups sort alphabetically
-(case-insensitive) with "Ungrouped" always last.
+`FoodLibraryState` into loading, empty, and data states.
 
-Responsible for the grouped list layout only — `LogFoodRow` owns the logging affordance itself.
-Calories are computed via `calculateCalories(food)` from `lib/core/utils/food_helpers.dart`;
-calories are never stored on the `Food` model. Archived groups and archived foods are excluded.
+The grouping and order are `foodsIEatSections` in `lib/core/utils/foods_i_eat_order.dart` — the
+single owner of the rule for both this card and the watch's synced list. Verified by
+`test/watch_nutrition_quick_log_test.dart` (S-003).
+
+Rows are `LogFoodRow` (`lib/features/nutrition/widgets/log_food_row.dart`), which owns the logging
+affordance; this section owns the grouped list layout only. Archived groups and archived foods are
+excluded.
 
 ---
 

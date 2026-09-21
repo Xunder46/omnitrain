@@ -42,7 +42,7 @@ class RestNotificationService {
     InitializationSettings initializationSettings, {
     DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
     DidReceiveBackgroundNotificationResponseCallback?
-        onDidReceiveBackgroundNotificationResponse,
+    onDidReceiveBackgroundNotificationResponse,
   })?
   _pluginInitializeOverride;
   final Future<void> Function(AndroidNotificationChannel channel)?
@@ -115,7 +115,7 @@ class RestNotificationService {
       InitializationSettings initializationSettings, {
       DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
       DidReceiveBackgroundNotificationResponseCallback?
-          onDidReceiveBackgroundNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse,
     })?
     pluginInitializeOverride,
     Future<void> Function(AndroidNotificationChannel channel)?
@@ -144,8 +144,10 @@ class RestNotificationService {
       requestSoundPermission: false,
     );
 
-    final initSettings =
-        const InitializationSettings(android: androidInit, iOS: iosInit);
+    final initSettings = const InitializationSettings(
+      android: androidInit,
+      iOS: iosInit,
+    );
     if (_pluginInitializeOverride != null) {
       await _pluginInitializeOverride(initSettings);
     } else {

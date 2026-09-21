@@ -49,9 +49,11 @@ public final class SyncProtocolValidator {
 
     public static let messageTypes = [
         "routines_down",
+        "foods_down",
         "exercise_push",
         "structure_change",
         "observations_up",
+        "receipt",
         "session_lifecycle",
         "session_snapshot",
         "timer_state",
@@ -70,6 +72,33 @@ public final class SyncProtocolValidator {
 
     public func hasSchema(for messageType: String) -> Bool {
         documents[schemaPath(for: messageType)] != nil
+    }
+
+    /// The rejections for `envelope`, or an empty array when the receiver
+    /// carries no schema set to judge with or the message conforms.
+    ///
+    /// A receiver that ships without the schemas cannot tell a conformant
+    /// message from a malformed one, and a receiver that cannot read is not a
+    /// receiver that should refuse. Every entry point gates incoming messages
+    /// through here so none of them can answer that question differently.
+    public static func incomingRejections(
+        _ validator: SyncProtocolValidator?,
+        _ envelope: [String: Any]
+    ) -> [SyncProtocolRejection] {
+        guard let validator else { return [] }
+
+        let version = envelope["protocolVersion"]
+        if (version as? NSNumber)?.intValue != protocolVersion {
+            return [
+                SyncProtocolRejection(
+                    code: SyncRejectionCode.unsupportedProtocolVersion,
+                    path: "$.protocolVersion",
+                    message: "unsupported protocol version; the payload was not read"
+                )
+            ]
+        }
+
+        return validator.validateEnvelope(envelope)
     }
 
     /// Returns an empty array when `message` conforms to protocol v1.
@@ -125,6 +154,8 @@ public final class SyncProtocolValidator {
             return snapshotRejections(payload)
         case "observations_up":
             return duplicateEventRejections(payload)
+        case "receipt":
+            return duplicateAcknowledgementRejections(payload)
         case "routines_down":
             return fallbackCoverageRejections(payload)
         default:
@@ -236,6 +267,27 @@ public final class SyncProtocolValidator {
                 SyncRejectionCode.semanticViolation,
                 "\(Self.root).payload.events",
                 "the same eventId appears twice: \(duplicates.joined(separator: ", "))"
+            )
+        ]
+    }
+
+    /// One entry may be acknowledged once per receipt — the same id twice says
+    /// nothing more the second time, and a sender that does it is confused about
+    /// what it holds.
+    private func duplicateAcknowledgementRejections(_ payload: [String: Any]) -> [SyncProtocolRejection] {
+        var seen = Set<String>()
+        var duplicates: [String] = []
+        for entryId in payload["entryIds"] as? [Any] ?? [] {
+            guard let entryId = entryId as? String else { continue }
+            if !seen.insert(entryId).inserted { duplicates.append(entryId) }
+        }
+        guard !duplicates.isEmpty else { return [] }
+
+        return [
+            rejection(
+                SyncRejectionCode.semanticViolation,
+                "\(Self.root).payload.entryIds",
+                "the same entryId appears twice: \(duplicates.joined(separator: ", "))"
             )
         ]
     }

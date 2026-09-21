@@ -52,32 +52,28 @@ Future<void> _pumpNutritionScreen(
 
 void main() {
   group('S-002: nutrition target control is a labelled button', () {
-    testWidgets(
-      'S-002a: shows "Set target" when no target is saved',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        final nutritionState = NutritionState(repo);
-        final foodLibraryState = FoodLibraryState(repo);
-        await nutritionState.loadNutritionTarget();
+    testWidgets('S-002a: shows "Set target" when no target is saved', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await nutritionState.loadNutritionTarget();
 
-        await _pumpNutritionScreen(
-          tester,
-          repo: repo,
-          nutritionState: nutritionState,
-          foodLibraryState: foodLibraryState,
-        );
+      await _pumpNutritionScreen(
+        tester,
+        repo: repo,
+        nutritionState: nutritionState,
+        foodLibraryState: foodLibraryState,
+      );
 
-        // The old icon-only `edit_targets_icon` key is gone.
-        expect(find.byKey(const Key('edit_targets_icon')), findsNothing);
+      // The old icon-only `edit_targets_icon` key is gone.
+      expect(find.byKey(const Key('edit_targets_icon')), findsNothing);
 
-        // The new labelled control is present with the absent-target label.
-        expect(
-          find.byKey(const Key('nutrition_target_button')),
-          findsOneWidget,
-        );
-        expect(find.text('Set target'), findsOneWidget);
-      },
-    );
+      // The new labelled control is present with the absent-target label.
+      expect(find.byKey(const Key('nutrition_target_button')), findsOneWidget);
+      expect(find.text('Set target'), findsOneWidget);
+    });
 
     testWidgets(
       'S-002b: shows "Change target" when a target is already saved',
@@ -107,29 +103,28 @@ void main() {
       },
     );
 
-    testWidgets(
-      'S-002c: tap opens the same NutritionTargetScreen',
-      (WidgetTester tester) async {
-        final repo = await _freshRepo();
-        final nutritionState = NutritionState(repo);
-        final foodLibraryState = FoodLibraryState(repo);
-        await nutritionState.loadNutritionTarget();
+    testWidgets('S-002c: tap opens the same NutritionTargetScreen', (
+      WidgetTester tester,
+    ) async {
+      final repo = await _freshRepo();
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await nutritionState.loadNutritionTarget();
 
-        await _pumpNutritionScreen(
-          tester,
-          repo: repo,
-          nutritionState: nutritionState,
-          foodLibraryState: foodLibraryState,
-        );
+      await _pumpNutritionScreen(
+        tester,
+        repo: repo,
+        nutritionState: nutritionState,
+        foodLibraryState: foodLibraryState,
+      );
 
-        await tester.tap(find.byKey(const Key('nutrition_target_button')));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nutrition_target_button')));
+      await tester.pumpAndSettle();
 
-        // The target-setting surface is unchanged.
-        expect(find.byType(NutritionTargetScreen), findsOneWidget);
-        expect(find.text('Daily Calorie Target'), findsOneWidget);
-      },
-    );
+      // The target-setting surface is unchanged.
+      expect(find.byType(NutritionTargetScreen), findsOneWidget);
+      expect(find.text('Daily Calorie Target'), findsOneWidget);
+    });
 
     testWidgets(
       'S-002d: tap opens the same screen when a target is already saved',

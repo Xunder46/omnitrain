@@ -7,10 +7,7 @@ class NoiseOverlayPainter extends CustomPainter {
   final double opacity;
   final double scale;
 
-  NoiseOverlayPainter({
-    required this.opacity,
-    required this.scale,
-  });
+  NoiseOverlayPainter({required this.opacity, required this.scale});
 
   /// Simple pseudo-random noise using Perlin-like approach
   /// Returns value between 0 and 1
@@ -53,7 +50,7 @@ class NoiseOverlayPainter extends CustomPainter {
     // Generate sparse grain across the entire canvas
     // Larger steps = fewer visible grain particles = more subtle
     final stepSize = scale;
-    
+
     for (double y = 0; y < size.height; y += stepSize) {
       for (double x = 0; x < size.width; x += stepSize) {
         // Generate noise value for this position

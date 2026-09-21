@@ -17,17 +17,24 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/navigation/navigation.dart';
 import '../../core/services/preferences_service.dart';
+import '../../core/utils/watch_reference_sync.dart';
+import '../../data/models/models.dart';
 import '../../data/repositories/mock_workout_repository.dart';
 import '../../features/session/live_session_screen.dart';
+import '../../state/food_library_state.dart';
+import '../../state/nutrition_state.dart';
 import '../../state/settings/settings_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../watch/logging/watch_logging_state.dart';
+import '../../watch/nutrition/watch_nutrition_state.dart';
 import '../../watch/session/in_memory_watch_session_store.dart';
 import '../../watch/session/watch_session_engine.dart';
 import '../../watch/session/watch_session_store.dart';
 import '../../watch/start/watch_session_start_paths.dart';
 import '../../watch/start/watch_sync_orchestrator.dart';
 import 'live_session_mirror_state.dart';
+import 'watch_incoming_router.dart';
+import 'watch_nutrition_log_bridge.dart';
 
 /// Whether the QA surface was compiled in. The entry point below refuses to
 /// mount without it, so a release build carries nothing.
@@ -115,10 +122,15 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
     engine: _engine,
     store: _store,
   );
+  late final WatchNutritionState _wristNutrition = WatchNutritionState(
+    engine: _engine,
+    store: _store,
+  );
   late final WatchSyncOrchestrator _orchestrator = WatchSyncOrchestrator(
     transport: _watchTransport,
     paths: _paths,
     engine: _engine,
+    nutrition: _wristNutrition,
   );
   late final LiveSessionMirrorState _mirror = LiveSessionMirrorState(
     transport: _phoneTransport,
@@ -136,13 +148,26 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
   /// The wrist's view of the same session, for the side-by-side readout.
   late final WatchLoggingState _wrist = WatchLoggingState(engine: _engine);
 
+  /// Points a message from the wrist at both of its owners. Built with the
+  /// phone states on first use, so the harness renders before a repository is
+  /// touched.
+  WatchIncomingRouter? _router;
+
+  /// The phone states once they exist — what the readout reads the day log
+  /// through.
+  _PhoneStates? _states;
+
+  /// How many rows the phone's day log holds. The day log's own count rather
+  /// than a tally of messages: a food the wrist logged twice is one row.
+  int get _dayLogRows => _states?.nutrition.consumedToday.length ?? 0;
+
   String _note = 'not started';
 
   @override
   void initState() {
     super.initState();
-    _link.toPhone = _mirror.receive;
-    _link.toWatch = _orchestrator.receive;
+    _link.toPhone = _receiveFromWrist;
+    _link.toWatch = _receiveFromPhone;
     _mirror.addListener(_repaint);
     _launch();
   }
@@ -157,16 +182,73 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
     if (mounted) setState(() {});
   }
 
+  /// The shipping router over the shipping states: session news to the mirror,
+  /// and the food the user logged to the phone's own day log.
+  Future<WatchIncomingRouter> _incomingRouter() async {
+    final built = _router;
+    if (built != null) return built;
+
+    final states = _states = await _phoneStates;
+    return _router = WatchIncomingRouter(
+      mirror: _mirror,
+      nutrition: WatchNutritionLogBridge(
+        nutrition: states.nutrition,
+        library: states.foodLibrary,
+        transport: _phoneTransport,
+      ),
+    );
+  }
+
+  /// One message arriving from the wrist. A quick-log leaves a row in the day
+  /// log, which is what the Phone readout counts.
+  Future<void> _receiveFromWrist(Map<String, Object?> envelope) async {
+    final receipt = await (await _incomingRouter()).receive(envelope);
+    if (receipt.loggedFood) {
+      _note = 'phone filed a quick-log: $_dayLogRows rows in the day log';
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// One message arriving from the phone. A receipt is the phone taking
+  /// responsibility for what the wrist sent, which is the only thing that
+  /// empties the wrist's `owed to phone` line.
+  Future<void> _receiveFromPhone(Map<String, Object?> envelope) async {
+    final changed = await _orchestrator.receive(envelope);
+    if (!changed || !mounted) return;
+    _note = envelope['type'] == 'receipt'
+        ? 'phone took what the wrist sent: '
+              '${_engine.pendingObservations().length} owed'
+        : 'phone sent ${envelope['type']}';
+    setState(() {});
+  }
+
   Future<void> _launch() async {
     await _engine.restore();
     await _paths.restore();
+    await _wristNutrition.restore();
     await _engine.createSession(
       modality: 'resistance_lifting',
       exercises: _slots,
     );
     await _orchestrator.sync();
+    await _syncPhoneLists();
     _note = 'session started on the wrist';
     setState(() {});
+  }
+
+  /// The reference data the phone would send down, built by the phone's own
+  /// builder from the phone's own library. The harness carries no radio, but the
+  /// producer is the shipping one — as is the bridge the answers come back
+  /// through.
+  Future<void> _syncPhoneLists() async {
+    final states = await _phoneStates;
+    await _orchestrator.receive(
+      WatchReferenceSync.buildFoodsDown(
+        foods: states.foodLibrary.foods,
+        groups: states.foodLibrary.activeFoodGroups,
+        generatedAt: DateTime.now().toUtc(),
+      ),
+    );
   }
 
   @override
@@ -189,6 +271,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
             title: 'Wrist',
             lines: [
               'exercise: ${_wrist.exerciseName ?? "none"}',
+              'foods synced: ${_wristNutrition.foods.length}',
               'revision: ${_engine.session?.revision ?? 0}',
               'entries: ${_engine.entries.length}',
               'owed to phone: ${_engine.pendingObservations().length}',
@@ -202,6 +285,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
               'revision: ${_mirror.state['revision']}',
               'entries: ${(_mirror.state['entries']! as List).length}',
               'sent: ${_phoneTransport.sent.length}',
+              'day log: $_dayLogRows rows from the wrist',
             ],
           ),
           Padding(
@@ -213,6 +297,7 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
             runSpacing: 8,
             children: [
               _actionButton(onPressed: _logOnWrist, label: 'Log a set'),
+              _actionButton(onPressed: _logFoodOnWrist, label: 'Log a food'),
               _actionButton(onPressed: _advanceWrist, label: 'Next exercise'),
               _actionButton(
                 onPressed: _reorderOnPhone,
@@ -230,22 +315,34 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
   }
 
   /// The states the live session screen needs to search the catalog and to show
-  /// loads in the saved unit. Built on first use so the harness's own screen
-  /// never waits on a repository.
-  late final Future<({WorkoutState workoutState, SettingsState settingsState})>
-  _phoneStates = _buildPhoneStates();
+  /// loads in the saved unit, plus the nutrition side the day log needs. Built
+  /// on first use so the harness's own screen never waits on a repository.
+  late final Future<_PhoneStates> _phoneStates = _buildPhoneStates();
 
-  static Future<({WorkoutState workoutState, SettingsState settingsState})>
-  _buildPhoneStates() async {
+  static Future<_PhoneStates> _buildPhoneStates() async {
     final repository = MockWorkoutRepository();
     await repository.initialize();
+    for (final group in _seedFoodGroups) {
+      await repository.createFoodGroup(group);
+    }
+    for (final food in _seedFoods) {
+      await repository.createFood(food);
+    }
+
     final preferences = PreferencesServiceImpl();
     await preferences.init();
     final settingsState = SettingsState(repository, preferences);
     await settingsState.initialize();
-    return (
+
+    final foodLibrary = FoodLibraryState(repository);
+    await foodLibrary.loadFoodGroups();
+    await foodLibrary.loadFoods();
+
+    return _PhoneStates(
       workoutState: WorkoutState(repository),
       settingsState: settingsState,
+      foodLibrary: foodLibrary,
+      nutrition: NutritionState(repository),
     );
   }
 
@@ -302,6 +399,24 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
   Future<void> _advanceWrist() async {
     await _engine.advanceExercise();
     _note = 'wrist advanced';
+    setState(() {});
+  }
+
+  /// The loop this harness exists to show: a quick-log taken on the wrist with
+  /// a workout running rides that session, is carried up, and is filed by the
+  /// phone's day log rather than by the mirror.
+  Future<void> _logFoodOnWrist() async {
+    final foods = _wristNutrition.foods;
+    if (foods.isEmpty) {
+      _note = 'the wrist has no synced foods yet';
+      setState(() {});
+      return;
+    }
+
+    final food = foods.first;
+    _wristNutrition.select(food.foodId);
+    await _wristNutrition.logSelected();
+    _note = 'logged ${food.name} on the wrist';
     setState(() {});
   }
 
@@ -400,6 +515,103 @@ class _Link {
     }
   }
 }
+
+/// The states the harness's phone half runs on.
+class _PhoneStates {
+  const _PhoneStates({
+    required this.workoutState,
+    required this.settingsState,
+    required this.foodLibrary,
+    required this.nutrition,
+  });
+
+  final WorkoutState workoutState;
+  final SettingsState settingsState;
+  final FoodLibraryState foodLibrary;
+  final NutritionState nutrition;
+}
+
+/// The phone's own foods, so the harness's food messages are built from a
+/// library the way the app builds them rather than hand-written. Macros are the
+/// only thing the wire derives from; the rest the wrist reads as sent.
+final List<FoodGroup> _seedFoodGroups = [
+  FoodGroup(
+    id: 'foodcat-protein',
+    name: 'Protein',
+    createdAtMs: 0,
+    updatedAtMs: 0,
+  ),
+  FoodGroup(id: 'foodcat-carbs', name: 'Carbs', createdAtMs: 0, updatedAtMs: 0),
+  FoodGroup(id: 'foodcat-fruit', name: 'Fruit', createdAtMs: 0, updatedAtMs: 0),
+];
+
+final List<Food> _seedFoods = [
+  _seedFood(
+    'food-oatmeal',
+    'Oatmeal',
+    groupId: 'foodcat-carbs',
+    protein: 5,
+    carbs: 34,
+    fat: 3.5,
+    lastAmountConsumed: 150,
+  ),
+  _seedFood(
+    'food-banana',
+    'Banana',
+    groupId: 'foodcat-fruit',
+    referenceAmount: 1,
+    referenceLabel: 'banana',
+    protein: 1.3,
+    carbs: 23,
+    fat: 0.3,
+  ),
+  _seedFood(
+    'food-egg',
+    'Egg',
+    groupId: 'foodcat-protein',
+    referenceAmount: 1,
+    referenceLabel: 'egg',
+    protein: 6.3,
+    carbs: 0.6,
+    fat: 5.3,
+  ),
+  _seedFood(
+    'food-greek-yogurt',
+    'Greek Yogurt',
+    groupId: 'foodcat-protein',
+    referenceAmount: 1,
+    referenceLabel: 'cup',
+    protein: 18,
+    carbs: 8,
+    fat: 4,
+  ),
+  _seedFood('food-almonds', 'Almonds', protein: 6, carbs: 6, fat: 15),
+];
+
+Food _seedFood(
+  String id,
+  String name, {
+  String? groupId,
+  double referenceAmount = 100,
+  String referenceLabel = 'g',
+  required double protein,
+  required double carbs,
+  required double fat,
+  double? lastAmountConsumed,
+}) => Food(
+  id: id,
+  name: name,
+  groupId: groupId,
+  unitType: FoodUnitType.grams,
+  referenceAmount: referenceAmount,
+  referenceLabel: referenceLabel,
+  protein: protein,
+  carbs: carbs,
+  fat: fat,
+  lastAmountConsumed: lastAmountConsumed,
+  createdAtMs: 0,
+  updatedAtMs: 0,
+);
 
 /// The link, watch end.
 class _WatchTransport implements WatchSyncTransport {

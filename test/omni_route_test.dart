@@ -7,8 +7,9 @@ import 'package:omnitrain/widgets/layout/omni_gradient_background.dart';
 void main() {
   // ── Test 1: Route primitive construction ──────────────────────────────────
 
-  testWidgets('OmniRoute wraps page in OmniGradientBackground',
-      (WidgetTester tester) async {
+  testWidgets('OmniRoute wraps page in OmniGradientBackground', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
@@ -35,42 +36,44 @@ void main() {
   // ── Test 2: Transition occlusion ──────────────────────────────────────────
 
   testWidgets(
-      'previous screen content is not visible after OmniRoute animation settles',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: Column(
-              children: [
-                const Text('Previous Screen'),
-                ElevatedButton(
-                  onPressed: () => OmniNavigator.push(
-                    context,
-                    (_) => const Scaffold(body: Text('Incoming Screen')),
+    'previous screen content is not visible after OmniRoute animation settles',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Column(
+                children: [
+                  const Text('Previous Screen'),
+                  ElevatedButton(
+                    onPressed: () => OmniNavigator.push(
+                      context,
+                      (_) => const Scaffold(body: Text('Incoming Screen')),
+                    ),
+                    child: const Text('Push'),
                   ),
-                  child: const Text('Push'),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    await tester.tap(find.text('Push'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Push'));
+      await tester.pumpAndSettle();
 
-    // With opaque = true the Navigator culls the underlying route; its content
-    // should not appear in the rendered widget tree after the transition settles.
-    expect(find.text('Incoming Screen'), findsOneWidget);
-    expect(find.text('Previous Screen'), findsNothing);
-  });
+      // With opaque = true the Navigator culls the underlying route; its content
+      // should not appear in the rendered widget tree after the transition settles.
+      expect(find.text('Incoming Screen'), findsOneWidget);
+      expect(find.text('Previous Screen'), findsNothing);
+    },
+  );
 
   // ── Test 3: iOS edge-swipe-back ───────────────────────────────────────────
 
-  testWidgets('iOS edge-swipe-back gesture pops an OmniRoute',
-      (WidgetTester tester) async {
+  testWidgets('iOS edge-swipe-back gesture pops an OmniRoute', (
+    WidgetTester tester,
+  ) async {
     // CupertinoPageTransitionsBuilder is used on all platforms.
     // Force iOS here so the edge-swipe-back gesture recognizer is active.
     await tester.pumpWidget(
@@ -96,8 +99,9 @@ void main() {
 
     // Simulate iOS back swipe: start within _kBackGestureWidth (20px) from
     // the left edge, drag far enough right to complete the pop.
-    final TestGesture gesture =
-        await tester.startGesture(const Offset(5.0, 300.0));
+    final TestGesture gesture = await tester.startGesture(
+      const Offset(5.0, 300.0),
+    );
     await gesture.moveBy(const Offset(500.0, 0.0));
     await gesture.up();
     await tester.pumpAndSettle();
@@ -108,8 +112,9 @@ void main() {
 
   // ── Test 4: Theme switching mid-route ─────────────────────────────────────
 
-  testWidgets('OmniGradientBackground on active OmniRoute reads updated theme',
-      (WidgetTester tester) async {
+  testWidgets('OmniGradientBackground on active OmniRoute reads updated theme', (
+    WidgetTester tester,
+  ) async {
     // Ensure a known starting theme.
     OmniTheme.activeTheme = AppTheme.abyssalNeon;
 
@@ -144,7 +149,10 @@ void main() {
 
     // The new colors must differ from the initial ones (confirming token distinction).
     final updatedColors = OmniTheme.colorsForTheme(AppTheme.forgeEmber);
-    expect(updatedColors.backgroundTop, isNot(equals(initialColors.backgroundTop)));
+    expect(
+      updatedColors.backgroundTop,
+      isNot(equals(initialColors.backgroundTop)),
+    );
 
     // The OmniGradientBackground widget is still present (no crash on theme change).
     expect(find.byType(OmniGradientBackground), findsWidgets);
@@ -156,41 +164,42 @@ void main() {
   // ── Test 5: App-level gradient preservation ───────────────────────────────
 
   testWidgets(
-      'app-level OmniGradientBackground is still present after pushing a screen',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        builder: (context, child) => OmniGradientBackground(
-          child: child ?? const SizedBox.shrink(),
-        ),
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: ElevatedButton(
-              onPressed: () => OmniNavigator.push(
-                context,
-                (_) => const Scaffold(body: Text('New Screen')),
+    'app-level OmniGradientBackground is still present after pushing a screen',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) =>
+              OmniGradientBackground(child: child ?? const SizedBox.shrink()),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: ElevatedButton(
+                onPressed: () => OmniNavigator.push(
+                  context,
+                  (_) => const Scaffold(body: Text('New Screen')),
+                ),
+                child: const Text('Push'),
               ),
-              child: const Text('Push'),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    // Before push: exactly one OmniGradientBackground (the app-level one).
-    expect(find.byType(OmniGradientBackground), findsOneWidget);
+      // Before push: exactly one OmniGradientBackground (the app-level one).
+      expect(find.byType(OmniGradientBackground), findsOneWidget);
 
-    await tester.tap(find.text('Push'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Push'));
+      await tester.pumpAndSettle();
 
-    // After push: app-level + route-level = at least two.
-    expect(find.byType(OmniGradientBackground), findsAtLeastNWidgets(2));
-  });
+      // After push: app-level + route-level = at least two.
+      expect(find.byType(OmniGradientBackground), findsAtLeastNWidgets(2));
+    },
+  );
 
   // ── Test 6: Fade variant ──────────────────────────────────────────────────
 
-  testWidgets('OmniFadeRoute wraps destination in OmniGradientBackground',
-      (WidgetTester tester) async {
+  testWidgets('OmniFadeRoute wraps destination in OmniGradientBackground', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
@@ -225,8 +234,10 @@ void main() {
           home: Builder(
             builder: (context) => Scaffold(
               body: ElevatedButton(
-                onPressed: () =>
-                    OmniNavigator.push(context, (_) => const Scaffold(body: Text('Pushed'))),
+                onPressed: () => OmniNavigator.push(
+                  context,
+                  (_) => const Scaffold(body: Text('Pushed')),
+                ),
                 child: const Text('Push'),
               ),
             ),
@@ -239,8 +250,9 @@ void main() {
       expect(find.text('Pushed'), findsOneWidget);
     });
 
-    testWidgets('pushReplacement replaces the current route',
-        (WidgetTester tester) async {
+    testWidgets('pushReplacement replaces the current route', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Builder(
@@ -269,8 +281,9 @@ void main() {
       expect(find.text('Original'), findsNothing);
     });
 
-    testWidgets('pushReplacementFade replaces with fade transition',
-        (WidgetTester tester) async {
+    testWidgets('pushReplacementFade replaces with fade transition', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Builder(
@@ -294,8 +307,9 @@ void main() {
       expect(find.text('FadeReplace'), findsNothing);
     });
 
-    testWidgets('popUntil pops to the first route',
-        (WidgetTester tester) async {
+    testWidgets('popUntil pops to the first route', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Builder(
@@ -351,47 +365,46 @@ void main() {
   // ── Test 8: Slide transition on Android ──────────────────────────────────
 
   testWidgets(
-      'OmniRoute uses slide transition on Android (both routes present mid-animation)',
-      (WidgetTester tester) async {
-    // Set Android platform — OmniRoute must now use CupertinoPageTransitionsBuilder
-    // uniformly, so a slide animation runs and both routes are briefly visible.
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(platform: TargetPlatform.android),
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: ElevatedButton(
-              onPressed: () => OmniNavigator.push(
-                context,
-                (_) => const Scaffold(body: Text('Android Destination')),
+    'OmniRoute uses slide transition on Android (both routes present mid-animation)',
+    (WidgetTester tester) async {
+      // Set Android platform — OmniRoute must now use CupertinoPageTransitionsBuilder
+      // uniformly, so a slide animation runs and both routes are briefly visible.
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(platform: TargetPlatform.android),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: ElevatedButton(
+                onPressed: () => OmniNavigator.push(
+                  context,
+                  (_) => const Scaffold(body: Text('Android Destination')),
+                ),
+                child: const Text('Open'),
               ),
-              child: const Text('Open'),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    await tester.tap(find.text('Open'));
-    // Advance a single frame — the slide animation is mid-flight.
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('Open'));
+      // Advance a single frame — the slide animation is mid-flight.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
-    // The incoming screen must already be in the tree (animation started).
-    expect(find.text('Android Destination'), findsOneWidget);
+      // The incoming screen must already be in the tree (animation started).
+      expect(find.text('Android Destination'), findsOneWidget);
 
-    // Settle fully — only the destination remains.
-    await tester.pumpAndSettle();
-    expect(find.text('Android Destination'), findsOneWidget);
-    expect(find.text('Open'), findsNothing);
-  });
+      // Settle fully — only the destination remains.
+      await tester.pumpAndSettle();
+      expect(find.text('Android Destination'), findsOneWidget);
+      expect(find.text('Open'), findsNothing);
+    },
+  );
 
   // ── Test 9: transitionDuration is non-zero ───────────────────────────────
 
   test('OmniRoute.transitionDuration is non-zero', () {
-    final route = OmniRoute<void>(
-      builder: (_) => const SizedBox.shrink(),
-    );
+    final route = OmniRoute<void>(builder: (_) => const SizedBox.shrink());
     expect(route.transitionDuration, greaterThan(Duration.zero));
   });
 }

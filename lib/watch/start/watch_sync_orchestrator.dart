@@ -15,6 +15,7 @@
 ///    send what changed rather than the whole set.
 library;
 
+import '../nutrition/watch_nutrition_state.dart';
 import '../session/watch_session_engine.dart';
 import 'watch_session_start_paths.dart';
 
@@ -43,13 +44,19 @@ class WatchSyncOrchestrator {
     required WatchSyncTransport transport,
     required WatchSessionStartPaths paths,
     required WatchSessionEngine engine,
+    WatchNutritionState? nutrition,
   }) : _transport = transport,
        _paths = paths,
-       _engine = engine;
+       _engine = engine,
+       _nutrition = nutrition;
 
   final WatchSyncTransport _transport;
   final WatchSessionStartPaths _paths;
   final WatchSessionEngine _engine;
+
+  /// The quick-log surface's synced food list, when the app hosts one. A watch
+  /// without the surface has nothing to do with a `foods_down`.
+  final WatchNutritionState? _nutrition;
 
   /// Brings the watch up to date with the phone: the routines, and then the
   /// session state the two devices do not share yet.
@@ -66,9 +73,7 @@ class WatchSyncOrchestrator {
   /// asks of both devices on connect.
   Future<void> sync({bool reconnect = false}) async {
     _paths.phoneReachable = _transport.isPhoneReachable;
-    await _transport.requestRoutines(
-      since: reconnect ? _paths.syncedAt : null,
-    );
+    await _transport.requestRoutines(since: reconnect ? _paths.syncedAt : null);
     await _sendOwedObservations();
     await _exchangeSessionState();
   }
@@ -117,11 +122,17 @@ class WatchSyncOrchestrator {
       case 'routines_down':
         final result = await _paths.applyRoutinesDown(envelope);
         return result.applied;
+      case 'foods_down':
+        final nutrition = _nutrition;
+        if (nutrition == null) return false;
+        final result = await nutrition.applyFoodsDown(envelope);
+        return result.applied;
       case 'exercise_push':
       case 'session_snapshot':
       case 'structure_change':
       case 'session_lifecycle':
       case 'timer_state':
+      case 'receipt':
       case 'observations_up':
         try {
           return await _engine.applyMessage(envelope);

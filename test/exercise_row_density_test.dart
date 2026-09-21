@@ -98,12 +98,8 @@ Future<Exercise> _pumpFilteredRow(
 
 /// Resolve the (single) tile, its title, and the info button for the
 /// currently-filtered picker.
-({
-  Finder tile,
-  Finder title,
-  Finder infoButton,
-  String exerciseName,
-}) _resolveRow(WidgetTester tester, String exerciseName) {
+({Finder tile, Finder title, Finder infoButton, String exerciseName})
+_resolveRow(WidgetTester tester, String exerciseName) {
   final tiles = find.byType(ListTile);
   expect(tiles, findsOneWidget);
   final firstTile = tiles.first;
@@ -121,215 +117,199 @@ Future<Exercise> _pumpFilteredRow(
 void main() {
   // ── S-001 — info control top edge aligns with title line ─────────────
   group('S-001: info control alignment', () {
-    testWidgets(
-      'info control top edge aligns with the title line on a row '
-      'whose chip Wrap spans two lines',
-      (WidgetTester tester) async {
-        const exerciseName = 'Density ThreeMuscleWrapsToTwo';
-        await _pumpFilteredRow(
-          tester,
-          surface: const Size(390, 844),
-          nameToken: 'ThreeMuscleWrapsToTwo',
-          // 3 muscle chips + discipline → 4 chips, wraps to 2 lines.
-          muscleIds: const [
-            'muscle-chest',
-            'muscle-triceps',
-            'muscle-shoulders',
-          ],
-        );
+    testWidgets('info control top edge aligns with the title line on a row '
+        'whose chip Wrap spans two lines', (WidgetTester tester) async {
+      const exerciseName = 'Density ThreeMuscleWrapsToTwo';
+      await _pumpFilteredRow(
+        tester,
+        surface: const Size(390, 844),
+        nameToken: 'ThreeMuscleWrapsToTwo',
+        // 3 muscle chips + discipline → 4 chips, wraps to 2 lines.
+        muscleIds: const ['muscle-chest', 'muscle-triceps', 'muscle-shoulders'],
+      );
 
-        final row = _resolveRow(tester, exerciseName);
-        final infoRect = tester.getRect(row.infoButton);
-        final titleRect = tester.getRect(row.title);
+      final row = _resolveRow(tester, exerciseName);
+      final infoRect = tester.getRect(row.infoButton);
+      final titleRect = tester.getRect(row.title);
 
-        // `titleAlignment: ListTileTitleAlignment.top` anchors the
-        // trailing widget to the top of the row. The title Text starts
-        // at the same row top (modulo ListTile's vertical padding).
-        // We allow a 6 dp slack to absorb sub-pixel rounding.
-        expect(
-          (infoRect.top - titleRect.top).abs(),
-          lessThanOrEqualTo(6.0),
-          reason:
-              'Info control top must align with the title-line top (was '
-              'vertically centred against the full row). infoRect.top='
-              '${infoRect.top}, titleRect.top=${titleRect.top}',
-        );
-      },
-    );
+      // `titleAlignment: ListTileTitleAlignment.top` anchors the
+      // trailing widget to the top of the row. The title Text starts
+      // at the same row top (modulo ListTile's vertical padding).
+      // We allow a 6 dp slack to absorb sub-pixel rounding.
+      expect(
+        (infoRect.top - titleRect.top).abs(),
+        lessThanOrEqualTo(6.0),
+        reason:
+            'Info control top must align with the title-line top (was '
+            'vertically centred against the full row). infoRect.top='
+            '${infoRect.top}, titleRect.top=${titleRect.top}',
+      );
+    });
   });
 
   // ── S-002 — row height returns toward pre-PR-7 baseline ─────────────
   group('S-002: row height budget', () {
-    testWidgets(
-      '3-chip row (1 discipline + 2 muscles) renders with chips on a '
-      'single line and stays within the pre-PR-7 row-height budget',
-      (WidgetTester tester) async {
-        const exerciseName = 'Density ThreeChipOneLine';
-        await _pumpFilteredRow(
-          tester,
-          surface: const Size(390, 844),
-          nameToken: 'ThreeChipOneLine',
-          // 2 short muscle chips + discipline → 3 chips, fits on one
-          // line on the 390 dp surface.
-          muscleIds: const ['muscle-back', 'muscle-core'],
-        );
+    testWidgets('3-chip row (1 discipline + 2 muscles) renders with chips on a '
+        'single line and stays within the pre-PR-7 row-height budget', (
+      WidgetTester tester,
+    ) async {
+      const exerciseName = 'Density ThreeChipOneLine';
+      await _pumpFilteredRow(
+        tester,
+        surface: const Size(390, 844),
+        nameToken: 'ThreeChipOneLine',
+        // 2 short muscle chips + discipline → 3 chips, fits on one
+        // line on the 390 dp surface.
+        muscleIds: const ['muscle-back', 'muscle-core'],
+      );
 
-        final row = _resolveRow(tester, exerciseName);
-        final height = tester.getSize(row.tile).height;
-        // Pre-PR-7 baseline for a single-line-chip row on this surface
-        // was roughly 110 dp (title 24 + desc 32 + chip 30 + padding 24).
-        // We allow a 150 dp ceiling for the post-fix layout — it
-        // includes the trailing info control and the titleAlignment
-        // top-anchor's vertical padding overhead.
-        expect(
-          height,
-          lessThanOrEqualTo(150.0),
-          reason:
-              'Single-line-chip row must stay within the pre-PR-7 '
-              'row-height budget (actual=${height}).',
-        );
-      },
-    );
+      final row = _resolveRow(tester, exerciseName);
+      final height = tester.getSize(row.tile).height;
+      // Pre-PR-7 baseline for a single-line-chip row on this surface
+      // was roughly 110 dp (title 24 + desc 32 + chip 30 + padding 24).
+      // We allow a 150 dp ceiling for the post-fix layout — it
+      // includes the trailing info control and the titleAlignment
+      // top-anchor's vertical padding overhead.
+      expect(
+        height,
+        lessThanOrEqualTo(150.0),
+        reason:
+            'Single-line-chip row must stay within the pre-PR-7 '
+            'row-height budget (actual=${height}).',
+      );
+    });
   });
 
   // ── S-003 — chip wrap only when required ──────────────────────────────
   group('S-003: chip wrap behaviour', () {
-    testWidgets(
-      '3-chip row keeps all chips on a single line',
-      (WidgetTester tester) async {
-        const exerciseName = 'Density ThreeChipSingle';
-        await _pumpFilteredRow(
-          tester,
-          surface: const Size(390, 844),
-          nameToken: 'ThreeChipSingle',
-          muscleIds: const ['muscle-back', 'muscle-core'],
-        );
+    testWidgets('3-chip row keeps all chips on a single line', (
+      WidgetTester tester,
+    ) async {
+      const exerciseName = 'Density ThreeChipSingle';
+      await _pumpFilteredRow(
+        tester,
+        surface: const Size(390, 844),
+        nameToken: 'ThreeChipSingle',
+        muscleIds: const ['muscle-back', 'muscle-core'],
+      );
 
-        final row = _resolveRow(tester, exerciseName);
-        final wrapFinder = find.descendant(
-          of: row.tile,
-          matching: find.byType(Wrap),
-        );
-        expect(wrapFinder, findsOneWidget);
-        final chips = tester
-            .widgetList<Chip>(find.descendant(
-              of: wrapFinder,
-              matching: find.byType(Chip),
-            ))
-            .toList();
-        // 1 discipline (Rowing) + 2 muscles (Back, Core) = 3 chips.
-        expect(chips.length, equals(3));
-        // The Wrap's height is exactly one chip tall.
-        final wrapHeight = tester.getSize(wrapFinder.first).height;
-        expect(
-          wrapHeight,
-          lessThanOrEqualTo(36.0),
-          reason:
-              'Wrap height (${wrapHeight}) must fit a single chip line '
-              'for a 3-chip row',
-        );
-      },
-    );
+      final row = _resolveRow(tester, exerciseName);
+      final wrapFinder = find.descendant(
+        of: row.tile,
+        matching: find.byType(Wrap),
+      );
+      expect(wrapFinder, findsOneWidget);
+      final chips = tester
+          .widgetList<Chip>(
+            find.descendant(of: wrapFinder, matching: find.byType(Chip)),
+          )
+          .toList();
+      // 1 discipline (Rowing) + 2 muscles (Back, Core) = 3 chips.
+      expect(chips.length, equals(3));
+      // The Wrap's height is exactly one chip tall.
+      final wrapHeight = tester.getSize(wrapFinder.first).height;
+      expect(
+        wrapHeight,
+        lessThanOrEqualTo(36.0),
+        reason:
+            'Wrap height (${wrapHeight}) must fit a single chip line '
+            'for a 3-chip row',
+      );
+    });
 
-    testWidgets(
-      '5-chip row wraps to two lines and never leaves a single chip '
-      'alone on the last line',
-      (WidgetTester tester) async {
-        const exerciseName = 'Density FiveChip';
-        await _pumpFilteredRow(
-          tester,
-          surface: const Size(390, 844),
-          nameToken: 'FiveChip',
-          // 4 muscle chips + discipline → 5 chips. The fix MUST leave
-          // enough horizontal room that the last line carries ≥ 2
-          // chips (no orphan chip).
-          muscleIds: const [
-            'muscle-back',
-            'muscle-chest',
-            'muscle-biceps',
-            'muscle-core',
-          ],
-        );
+    testWidgets('5-chip row wraps to two lines and never leaves a single chip '
+        'alone on the last line', (WidgetTester tester) async {
+      const exerciseName = 'Density FiveChip';
+      await _pumpFilteredRow(
+        tester,
+        surface: const Size(390, 844),
+        nameToken: 'FiveChip',
+        // 4 muscle chips + discipline → 5 chips. The fix MUST leave
+        // enough horizontal room that the last line carries ≥ 2
+        // chips (no orphan chip).
+        muscleIds: const [
+          'muscle-back',
+          'muscle-chest',
+          'muscle-biceps',
+          'muscle-core',
+        ],
+      );
 
-        final row = _resolveRow(tester, exerciseName);
-        final chipFinder = find.descendant(
-          of: row.tile,
-          matching: find.byType(Chip),
-        );
-        expect(chipFinder, findsNWidgets(5));
+      final row = _resolveRow(tester, exerciseName);
+      final chipFinder = find.descendant(
+        of: row.tile,
+        matching: find.byType(Chip),
+      );
+      expect(chipFinder, findsNWidgets(5));
 
-        // Group chips by their Y-coordinate (each Y is one line of the
-        // Wrap). Then assert the last line has ≥ 2 chips.
-        final lines = <double, int>{};
-        for (final element in chipFinder.evaluate()) {
-          final rect = tester.getRect(find.byWidget(element.widget));
-          // Bucket by 4 dp so chips on the same line land in the same key.
-          final key = (rect.top / 4).round() * 4.0;
-          lines[key] = (lines[key] ?? 0) + 1;
-        }
-        final lineKeys = lines.keys.toList()..sort();
-        expect(
-          lineKeys,
-          isNotEmpty,
-          reason: '5-chip row must produce at least one Wrap line',
-        );
-        // The last line carries the leftover chips; if it's exactly
-        // one chip on its own line the layout has wasted vertical
-        // density.
-        final lastLineCount = lines[lineKeys.last]!;
-        expect(
-          lastLineCount,
-          greaterThanOrEqualTo(2),
-          reason:
-              'Last wrap line must carry ≥ 2 chips (no orphan). '
-              'Lines: $lines',
-        );
-      },
-    );
+      // Group chips by their Y-coordinate (each Y is one line of the
+      // Wrap). Then assert the last line has ≥ 2 chips.
+      final lines = <double, int>{};
+      for (final element in chipFinder.evaluate()) {
+        final rect = tester.getRect(find.byWidget(element.widget));
+        // Bucket by 4 dp so chips on the same line land in the same key.
+        final key = (rect.top / 4).round() * 4.0;
+        lines[key] = (lines[key] ?? 0) + 1;
+      }
+      final lineKeys = lines.keys.toList()..sort();
+      expect(
+        lineKeys,
+        isNotEmpty,
+        reason: '5-chip row must produce at least one Wrap line',
+      );
+      // The last line carries the leftover chips; if it's exactly
+      // one chip on its own line the layout has wasted vertical
+      // density.
+      final lastLineCount = lines[lineKeys.last]!;
+      expect(
+        lastLineCount,
+        greaterThanOrEqualTo(2),
+        reason:
+            'Last wrap line must carry ≥ 2 chips (no orphan). '
+            'Lines: $lines',
+      );
+    });
   });
 
   // ── S-004 — info control tap area ≥ 44 dp × 44 dp ────────────────────
   group('S-004: tap area + non-overlap', () {
-    testWidgets(
-      'info control hit rect is at least 44 dp × 44 dp and does not '
-      'overlap the row-body left half',
-      (WidgetTester tester) async {
-        const exerciseName = 'Density TapArea';
-        await _pumpFilteredRow(
-          tester,
-          surface: const Size(390, 844),
-          nameToken: 'TapArea',
-          muscleIds: const ['muscle-back', 'muscle-core'],
-        );
+    testWidgets('info control hit rect is at least 44 dp × 44 dp and does not '
+        'overlap the row-body left half', (WidgetTester tester) async {
+      const exerciseName = 'Density TapArea';
+      await _pumpFilteredRow(
+        tester,
+        surface: const Size(390, 844),
+        nameToken: 'TapArea',
+        muscleIds: const ['muscle-back', 'muscle-core'],
+      );
 
-        final row = _resolveRow(tester, exerciseName);
-        final infoRect = tester.getRect(row.infoButton);
+      final row = _resolveRow(tester, exerciseName);
+      final infoRect = tester.getRect(row.infoButton);
 
-        // 44 × 44 platform minimum — the IconButton hit-test rect.
-        expect(
-          infoRect.width,
-          greaterThanOrEqualTo(44.0),
-          reason: 'info button width (${infoRect.width}) must clear 44 dp',
-        );
-        expect(
-          infoRect.height,
-          greaterThanOrEqualTo(44.0),
-          reason: 'info button height (${infoRect.height}) must clear 44 dp',
-        );
+      // 44 × 44 platform minimum — the IconButton hit-test rect.
+      expect(
+        infoRect.width,
+        greaterThanOrEqualTo(44.0),
+        reason: 'info button width (${infoRect.width}) must clear 44 dp',
+      );
+      expect(
+        infoRect.height,
+        greaterThanOrEqualTo(44.0),
+        reason: 'info button height (${infoRect.height}) must clear 44 dp',
+      );
 
-        // The hit-test rect must NOT extend past the row's centre so
-        // the left half remains a clean row-body tap target.
-        final tileRect = tester.getRect(row.tile);
-        final tileMidX = tileRect.left + tileRect.width / 2;
-        expect(
-          infoRect.left,
-          greaterThan(tileMidX - 1.0),
-          reason:
-              'info button must not intrude into the row-body tap area '
-              '(mid=${tileMidX}, infoRect.left=${infoRect.left})',
-        );
-      },
-    );
+      // The hit-test rect must NOT extend past the row's centre so
+      // the left half remains a clean row-body tap target.
+      final tileRect = tester.getRect(row.tile);
+      final tileMidX = tileRect.left + tileRect.width / 2;
+      expect(
+        infoRect.left,
+        greaterThan(tileMidX - 1.0),
+        reason:
+            'info button must not intrude into the row-body tap area '
+            '(mid=${tileMidX}, infoRect.left=${infoRect.left})',
+      );
+    });
   });
 
   // ── S-005 + S-006 — interaction regression guard for PR-7 contract ──
@@ -434,55 +414,48 @@ void main() {
 
   // ── S-007 — narrow-surface density regression guard ───────────────────
   group('S-007: narrow-surface density', () {
-    testWidgets(
-      '3-chip row height on 360 × 800 stays within the absolute '
-      'budget, allowing for one extra chip-wrap line',
-      (WidgetTester tester) async {
-        // First measure on 390 × 844.
-        await _pumpFilteredRow(
-          tester,
-          surface: const Size(390, 844),
-          nameToken: 'NarrowSurfaceGuard',
-          muscleIds: const ['muscle-back', 'muscle-core'],
-        );
-        final row390 = _resolveRow(
-          tester,
-          'Density NarrowSurfaceGuard',
-        );
-        final height390 = tester.getSize(row390.tile).height;
+    testWidgets('3-chip row height on 360 × 800 stays within the absolute '
+        'budget, allowing for one extra chip-wrap line', (
+      WidgetTester tester,
+    ) async {
+      // First measure on 390 × 844.
+      await _pumpFilteredRow(
+        tester,
+        surface: const Size(390, 844),
+        nameToken: 'NarrowSurfaceGuard',
+        muscleIds: const ['muscle-back', 'muscle-core'],
+      );
+      final row390 = _resolveRow(tester, 'Density NarrowSurfaceGuard');
+      final height390 = tester.getSize(row390.tile).height;
 
-        // Then measure on the narrowest supported width.
-        await _pumpFilteredRow(
-          tester,
-          surface: const Size(360, 800),
-          nameToken: 'NarrowSurfaceGuardNarrow',
-          muscleIds: const ['muscle-back', 'muscle-core'],
-        );
-        final row360 = _resolveRow(
-          tester,
-          'Density NarrowSurfaceGuardNarrow',
-        );
-        final height360 = tester.getSize(row360.tile).height;
+      // Then measure on the narrowest supported width.
+      await _pumpFilteredRow(
+        tester,
+        surface: const Size(360, 800),
+        nameToken: 'NarrowSurfaceGuardNarrow',
+        muscleIds: const ['muscle-back', 'muscle-core'],
+      );
+      final row360 = _resolveRow(tester, 'Density NarrowSurfaceGuardNarrow');
+      final height360 = tester.getSize(row360.tile).height;
 
-        // At 360 dp, the subtitle column loses ~30 dp of width vs the
-        // 390 dp surface — that single-line chip wrap can fall to a
-        // 2-line wrap (an extra chip-line height of ~30 dp). The fix
-        // MUST keep the row within an absolute 180 dp ceiling so 3+
-        // exercises still fit on a phone-height list area.
-        expect(
-          height360 - height390,
-          lessThanOrEqualTo(40.0),
-          reason:
-              'Narrow-surface row must not balloon by more than one '
-              'extra wrap line vs 390 dp '
-              '(390=$height390, 360=$height360)',
-        );
-        expect(
-          height360,
-          lessThanOrEqualTo(180.0),
-          reason: 'Absolute narrow-row height budget check',
-        );
-      },
-    );
+      // At 360 dp, the subtitle column loses ~30 dp of width vs the
+      // 390 dp surface — that single-line chip wrap can fall to a
+      // 2-line wrap (an extra chip-line height of ~30 dp). The fix
+      // MUST keep the row within an absolute 180 dp ceiling so 3+
+      // exercises still fit on a phone-height list area.
+      expect(
+        height360 - height390,
+        lessThanOrEqualTo(40.0),
+        reason:
+            'Narrow-surface row must not balloon by more than one '
+            'extra wrap line vs 390 dp '
+            '(390=$height390, 360=$height360)',
+      );
+      expect(
+        height360,
+        lessThanOrEqualTo(180.0),
+        reason: 'Absolute narrow-row height budget check',
+      );
+    });
   });
 }

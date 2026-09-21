@@ -227,11 +227,11 @@ class SessionSummaryService {
 
     for (final summary in byExerciseId.values) {
       final bestE1RM = summary.bestE1RM!;
-      final previousBest =
-          await StatsProgressService(_repository).getAllTimeBestE1RM(
-        summary.exerciseId,
-        excludeSessionId: currentSessionId,
-      );
+      final previousBest = await StatsProgressService(_repository)
+          .getAllTimeBestE1RM(
+            summary.exerciseId,
+            excludeSessionId: currentSessionId,
+          );
 
       if (bestE1RM > previousBest) {
         results.add(
@@ -267,11 +267,11 @@ class SessionSummaryService {
 
     for (final summary in repsByExerciseId.values) {
       final bestReps = summary.bestReps!;
-      final previousBest =
-          await StatsProgressService(_repository).getAllTimeBestReps(
-        summary.exerciseId,
-        excludeSessionId: currentSessionId,
-      );
+      final previousBest = await StatsProgressService(_repository)
+          .getAllTimeBestReps(
+            summary.exerciseId,
+            excludeSessionId: currentSessionId,
+          );
 
       if (bestReps > previousBest) {
         results.add(

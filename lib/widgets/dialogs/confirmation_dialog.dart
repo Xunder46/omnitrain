@@ -246,11 +246,12 @@ class _ThreeChoiceDialog extends StatelessWidget {
                     side: WidgetStateProperty.all(
                       BorderSide(color: theme.colorScheme.error),
                     ),
-                    foregroundColor:
-                        WidgetStateProperty.all(theme.colorScheme.error),
+                    foregroundColor: WidgetStateProperty.all(
+                      theme.colorScheme.error,
+                    ),
                   ),
-                  onPressed: () => Navigator.of(context)
-                      .pop(UnsavedChangesAction.discard),
+                  onPressed: () =>
+                      Navigator.of(context).pop(UnsavedChangesAction.discard),
                   child: const Text('Discard'),
                 ),
               ),

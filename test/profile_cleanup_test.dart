@@ -131,37 +131,42 @@ void main() {
       final types = ProfileMeasurements.additional
           .map((definition) => definition.type)
           .toSet();
-      expect(types, containsAll(<String>{
-        'bodyweight',
-        'body_fat_pct',
-        'waist_cm',
-        'lean_mass',
-        'hips_cm',
-        'thigh_cm',
-        'chest_cm',
-        'arm_cm',
-      }));
+      expect(
+        types,
+        containsAll(<String>{
+          'bodyweight',
+          'body_fat_pct',
+          'waist_cm',
+          'lean_mass',
+          'hips_cm',
+          'thigh_cm',
+          'chest_cm',
+          'arm_cm',
+        }),
+      );
       expect(types.length, 8);
     });
   });
 
   group('S-004: measurement list order is the exact specified sequence', () {
-    test('matches: Body Weight, Body Fat, Waist, Lean Mass, Hips, Thigh, Chest, Arm',
-        () {
-      final types = ProfileMeasurements.additional
-          .map((definition) => definition.type)
-          .toList();
-      expect(types, <String>[
-        'bodyweight',
-        'body_fat_pct',
-        'waist_cm',
-        'lean_mass',
-        'hips_cm',
-        'thigh_cm',
-        'chest_cm',
-        'arm_cm',
-      ]);
-    });
+    test(
+      'matches: Body Weight, Body Fat, Waist, Lean Mass, Hips, Thigh, Chest, Arm',
+      () {
+        final types = ProfileMeasurements.additional
+            .map((definition) => definition.type)
+            .toList();
+        expect(types, <String>[
+          'bodyweight',
+          'body_fat_pct',
+          'waist_cm',
+          'lean_mass',
+          'hips_cm',
+          'thigh_cm',
+          'chest_cm',
+          'arm_cm',
+        ]);
+      },
+    );
   });
 
   // ── State — S-005 / S-007 ─────────────────────────────────────────────────
@@ -183,10 +188,7 @@ void main() {
     });
 
     test('computes correctly for 80 kg @ 15% body fat → 68 kg', () async {
-      final state = await _seededState(
-        bodyWeightKg: 80.0,
-        bodyFatPct: 15.0,
-      );
+      final state = await _seededState(bodyWeightKg: 80.0, bodyFatPct: 15.0);
       expect(state.computedLeanMassKg, closeTo(68.0, 0.0001));
     });
 
@@ -196,13 +198,25 @@ void main() {
       final state = ProfileState(repo);
       await state.loadProfile();
       await state.loadLatestMeasurements(['height']);
-      await state.logMeasurement('bodyweight', 80.0, 'unit-kg',
-          recordedAtMs: 1000);
-      await state.logMeasurement('body_fat_pct', 15.0, 'unit-pct',
-          recordedAtMs: 1100);
+      await state.logMeasurement(
+        'bodyweight',
+        80.0,
+        'unit-kg',
+        recordedAtMs: 1000,
+      );
+      await state.logMeasurement(
+        'body_fat_pct',
+        15.0,
+        'unit-pct',
+        recordedAtMs: 1100,
+      );
       expect(state.computedLeanMassKg, closeTo(68.0, 0.0001));
-      await state.logMeasurement('bodyweight', 82.0, 'unit-kg',
-          recordedAtMs: 1200);
+      await state.logMeasurement(
+        'bodyweight',
+        82.0,
+        'unit-kg',
+        recordedAtMs: 1200,
+      );
       expect(state.computedLeanMassKg, closeTo(69.7, 0.0001));
     });
 
@@ -212,34 +226,49 @@ void main() {
       final state = ProfileState(repo);
       await state.loadProfile();
       await state.loadLatestMeasurements(['height']);
-      await state.logMeasurement('bodyweight', 80.0, 'unit-kg',
-          recordedAtMs: 1000);
-      await state.logMeasurement('body_fat_pct', 15.0, 'unit-pct',
-          recordedAtMs: 1100);
+      await state.logMeasurement(
+        'bodyweight',
+        80.0,
+        'unit-kg',
+        recordedAtMs: 1000,
+      );
+      await state.logMeasurement(
+        'body_fat_pct',
+        15.0,
+        'unit-pct',
+        recordedAtMs: 1100,
+      );
       expect(state.computedLeanMassKg, closeTo(68.0, 0.0001));
-      await state.logMeasurement('body_fat_pct', 12.0, 'unit-pct',
-          recordedAtMs: 1200);
+      await state.logMeasurement(
+        'body_fat_pct',
+        12.0,
+        'unit-pct',
+        recordedAtMs: 1200,
+      );
       expect(state.computedLeanMassKg, closeTo(70.4, 0.0001));
     });
   });
 
   group('S-002/S-003: height persistence via updateHeight()', () {
-    test('updateHeight persists a height entry the next load can read', () async {
-      final repo = MockWorkoutRepository();
-      await repo.initialize();
-      final state = ProfileState(repo);
-      await state.loadProfile();
-      await state.loadLatestMeasurements(['height']);
+    test(
+      'updateHeight persists a height entry the next load can read',
+      () async {
+        final repo = MockWorkoutRepository();
+        await repo.initialize();
+        final state = ProfileState(repo);
+        await state.loadProfile();
+        await state.loadLatestMeasurements(['height']);
 
-      expect(state.latestHeightCm, isNull);
+        expect(state.latestHeightCm, isNull);
 
-      await state.updateHeight(182.0);
+        await state.updateHeight(182.0);
 
-      expect(state.latestHeightCm, closeTo(182.0, 0.0001));
-      final history = await state.getMeasurementHistory('height');
-      expect(history.first.value, 182.0);
-      expect(history.first.unitId, 'unit-cm');
-    });
+        expect(state.latestHeightCm, closeTo(182.0, 0.0001));
+        final history = await state.getMeasurementHistory('height');
+        expect(history.first.value, 182.0);
+        expect(history.first.unitId, 'unit-cm');
+      },
+    );
 
     test('a pre-existing height is preserved through updateHeight()', () async {
       final repo = MockWorkoutRepository();
@@ -263,8 +292,7 @@ void main() {
       expect(state.latestHeightCm, closeTo(180.0, 0.0001));
 
       final history = await state.getMeasurementHistory('height');
-      expect(history.map((e) => e.value),
-          containsAll(<double>[178.0, 180.0]));
+      expect(history.map((e) => e.value), containsAll(<double>[178.0, 180.0]));
     });
   });
 
@@ -293,134 +321,141 @@ void main() {
     });
   });
 
-  group('S-002/S-003: Profile identity area renders an editable height value',
-      () {
-    testWidgets('shows the existing height value next to the name', (tester) async {
-      final state = await _seededState(heightCm: 180.0);
-      final settings = await _settings();
-      await _pumpProfileScreen(
+  group(
+    'S-002/S-003: Profile identity area renders an editable height value',
+    () {
+      testWidgets('shows the existing height value next to the name', (
         tester,
-        profileState: state,
-        settingsState: settings,
-      );
+      ) async {
+        final state = await _seededState(heightCm: 180.0);
+        final settings = await _settings();
+        await _pumpProfileScreen(
+          tester,
+          profileState: state,
+          settingsState: settings,
+        );
 
-      // The height value is rendered as a tap target inside the
-      // identity area (key `profile_identity_height_value`).
-      expect(
-        find.byKey(const Key('profile_identity_height_value')),
-        findsOneWidget,
-      );
-      // The text "180 cm" must be present in the identity area.
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('profile_identity_height_value')),
-          matching: find.text('180 cm'),
-        ),
-        findsOneWidget,
-      );
-    });
+        // The height value is rendered as a tap target inside the
+        // identity area (key `profile_identity_height_value`).
+        expect(
+          find.byKey(const Key('profile_identity_height_value')),
+          findsOneWidget,
+        );
+        // The text "180 cm" must be present in the identity area.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('profile_identity_height_value')),
+            matching: find.text('180 cm'),
+          ),
+          findsOneWidget,
+        );
+      });
 
-    testWidgets('tapping the height value opens an editor that persists', (
-      tester,
-    ) async {
-      final state = await _seededState(heightCm: 180.0);
-      final settings = await _settings();
-      await _pumpProfileScreen(
+      testWidgets('tapping the height value opens an editor that persists', (
         tester,
-        profileState: state,
-        settingsState: settings,
-      );
+      ) async {
+        final state = await _seededState(heightCm: 180.0);
+        final settings = await _settings();
+        await _pumpProfileScreen(
+          tester,
+          profileState: state,
+          settingsState: settings,
+        );
 
-      // Tap the height value (the InkWell wraps the row).
-      await tester.tap(find.byKey(const Key('profile_identity_height_value')));
-      await tester.pumpAndSettle();
+        // Tap the height value (the InkWell wraps the row).
+        await tester.tap(
+          find.byKey(const Key('profile_identity_height_value')),
+        );
+        await tester.pumpAndSettle();
 
-      // The dialog is the local _HeightDialog (cm mode → single field).
-      expect(find.text('Edit Height'), findsOneWidget);
-      expect(find.text('Value (cm)'), findsOneWidget);
+        // The dialog is the local _HeightDialog (cm mode → single field).
+        expect(find.text('Edit Height'), findsOneWidget);
+        expect(find.text('Value (cm)'), findsOneWidget);
 
-      // Clear the field, type a new value, tap Save.
-      await tester.enterText(find.byType(TextField).first, '182');
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
+        // Clear the field, type a new value, tap Save.
+        await tester.enterText(find.byType(TextField).first, '182');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
 
-      expect(state.latestHeightCm, closeTo(182.0, 0.0001));
-      // The identity area re-renders the new value.
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('profile_identity_height_value')),
-          matching: find.text('182 cm'),
-        ),
-        findsOneWidget,
-      );
-    });
-  });
+        expect(state.latestHeightCm, closeTo(182.0, 0.0001));
+        // The identity area re-renders the new value.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('profile_identity_height_value')),
+            matching: find.text('182 cm'),
+          ),
+          findsOneWidget,
+        );
+      });
+    },
+  );
 
   group('S-004: charted cards render in the exact specified order', () {
-    testWidgets('headers top-to-bottom: BODY WEIGHT, BODY FAT, WAIST, LEAN MASS, HIPS, THIGH, CHEST, ARM',
-        (tester) async {
-      final state = await _seededState();
-      final settings = await _settings();
-      await _pumpProfileScreen(
-        tester,
-        profileState: state,
-        settingsState: settings,
-      );
+    testWidgets(
+      'headers top-to-bottom: BODY WEIGHT, BODY FAT, WAIST, LEAN MASS, HIPS, THIGH, CHEST, ARM',
+      (tester) async {
+        final state = await _seededState();
+        final settings = await _settings();
+        await _pumpProfileScreen(
+          tester,
+          profileState: state,
+          settingsState: settings,
+        );
 
-      final expected = <String>[
-        'BODY WEIGHT',
-        'BODY FAT',
-        'WAIST',
-        'LEAN MASS',
-        'HIPS',
-        'THIGH',
-        'CHEST',
-        'ARM',
-      ];
-      final headers = tester
-          .widgetList<Text>(
-            find.descendant(
-              of: find.byType(ProfileScreen),
-              matching: find.byType(Text),
-            ),
-          )
-          .map((w) => w.data)
-          .whereType<String>()
-          .where((t) => expected.contains(t))
-          .toList();
-      // The first occurrence of each header in render order is the
-      // authoritative order on screen.
-      final seen = <String>[];
-      for (final t in headers) {
-        if (!seen.contains(t)) seen.add(t);
-      }
-      expect(seen, expected);
-    });
+        final expected = <String>[
+          'BODY WEIGHT',
+          'BODY FAT',
+          'WAIST',
+          'LEAN MASS',
+          'HIPS',
+          'THIGH',
+          'CHEST',
+          'ARM',
+        ];
+        final headers = tester
+            .widgetList<Text>(
+              find.descendant(
+                of: find.byType(ProfileScreen),
+                matching: find.byType(Text),
+              ),
+            )
+            .map((w) => w.data)
+            .whereType<String>()
+            .where((t) => expected.contains(t))
+            .toList();
+        // The first occurrence of each header in render order is the
+        // authoritative order on screen.
+        final seen = <String>[];
+        for (final t in headers) {
+          if (!seen.contains(t)) seen.add(t);
+        }
+        expect(seen, expected);
+      },
+    );
   });
 
   group('S-005/S-006: Lean Mass card is read-only and computed', () {
-    testWidgets('renders the computed lean mass value when both inputs are present',
-        (tester) async {
-      final state = await _seededState(
-        bodyWeightKg: 80.0,
-        bodyFatPct: 15.0,
-      );
-      final settings = await _settings();
-      await _pumpProfileScreen(
-        tester,
-        profileState: state,
-        settingsState: settings,
-      );
+    testWidgets(
+      'renders the computed lean mass value when both inputs are present',
+      (tester) async {
+        final state = await _seededState(bodyWeightKg: 80.0, bodyFatPct: 15.0);
+        final settings = await _settings();
+        await _pumpProfileScreen(
+          tester,
+          profileState: state,
+          settingsState: settings,
+        );
 
-      // 80 × (1 - 0.15) = 68. The value column reads "68 kg".
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('profile_lean_mass_card')),
-          matching: find.text('68 kg'),
-        ),
-        findsOneWidget,
-      );
-    });
+        // 80 × (1 - 0.15) = 68. The value column reads "68 kg".
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('profile_lean_mass_card')),
+            matching: find.text('68 kg'),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     // S-301 / S-302 / S-303: Lean Mass caption never shows a
     // mid-expression ellipsis. The full formula must be present in
@@ -432,10 +467,7 @@ void main() {
       'caption renders the full derivation formula (no mid-expression '
       'ellipsis)',
       (tester) async {
-        final state = await _seededState(
-          bodyWeightKg: 80.0,
-          bodyFatPct: 15.0,
-        );
+        final state = await _seededState(bodyWeightKg: 80.0, bodyFatPct: 15.0);
         final settings = await _settings();
         await _pumpProfileScreen(
           tester,
@@ -479,7 +511,8 @@ void main() {
             matching: find.textContaining('…'),
           ),
           findsNothing,
-          reason: 'Lean Mass formula must not end in a `…` truncation '
+          reason:
+              'Lean Mass formula must not end in a `…` truncation '
               'marker.',
         );
 
@@ -509,10 +542,7 @@ void main() {
     );
 
     testWidgets('no manual add button on the Lean Mass card', (tester) async {
-      final state = await _seededState(
-        bodyWeightKg: 80.0,
-        bodyFatPct: 15.0,
-      );
+      final state = await _seededState(bodyWeightKg: 80.0, bodyFatPct: 15.0);
       final settings = await _settings();
       await _pumpProfileScreen(
         tester,
@@ -540,10 +570,18 @@ void main() {
       final state = ProfileState(repo);
       await state.loadProfile();
       await state.loadLatestMeasurements(['height']);
-      await state.logMeasurement('bodyweight', 80.0, 'unit-kg',
-          recordedAtMs: 1000);
-      await state.logMeasurement('body_fat_pct', 15.0, 'unit-pct',
-          recordedAtMs: 1100);
+      await state.logMeasurement(
+        'bodyweight',
+        80.0,
+        'unit-kg',
+        recordedAtMs: 1000,
+      );
+      await state.logMeasurement(
+        'body_fat_pct',
+        15.0,
+        'unit-pct',
+        recordedAtMs: 1100,
+      );
       final settings = await _settings();
       await _pumpProfileScreen(
         tester,
@@ -557,8 +595,12 @@ void main() {
         ),
         findsOneWidget,
       );
-      await state.logMeasurement('bodyweight', 82.0, 'unit-kg',
-          recordedAtMs: 1200);
+      await state.logMeasurement(
+        'bodyweight',
+        82.0,
+        'unit-kg',
+        recordedAtMs: 1200,
+      );
       await tester.pumpAndSettle();
       // 82 × 0.85 = 69.7 → displays as "69.7 kg" via the existing
       // 1dp-or-whole-number formatter.
@@ -572,66 +614,69 @@ void main() {
     });
   });
 
-  group('S-007: Lean Mass shows not-yet-available when an input is missing',
-      () {
-    testWidgets('shows em-dash when body fat is missing', (tester) async {
-      final state = await _seededState(bodyWeightKg: 80.0);
-      final settings = await _settings();
-      await _pumpProfileScreen(
-        tester,
-        profileState: state,
-        settingsState: settings,
-      );
+  group(
+    'S-007: Lean Mass shows not-yet-available when an input is missing',
+    () {
+      testWidgets('shows em-dash when body fat is missing', (tester) async {
+        final state = await _seededState(bodyWeightKg: 80.0);
+        final settings = await _settings();
+        await _pumpProfileScreen(
+          tester,
+          profileState: state,
+          settingsState: settings,
+        );
 
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('profile_lean_mass_card')),
-          matching: find.text('—'),
-        ),
-        findsOneWidget,
-      );
-    });
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('profile_lean_mass_card')),
+            matching: find.text('—'),
+          ),
+          findsOneWidget,
+        );
+      });
 
-    testWidgets('shows em-dash when body weight is missing', (tester) async {
-      final state = await _seededState(bodyFatPct: 15.0);
-      final settings = await _settings();
-      await _pumpProfileScreen(
-        tester,
-        profileState: state,
-        settingsState: settings,
-      );
+      testWidgets('shows em-dash when body weight is missing', (tester) async {
+        final state = await _seededState(bodyFatPct: 15.0);
+        final settings = await _settings();
+        await _pumpProfileScreen(
+          tester,
+          profileState: state,
+          settingsState: settings,
+        );
 
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('profile_lean_mass_card')),
-          matching: find.text('—'),
-        ),
-        findsOneWidget,
-      );
-    });
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('profile_lean_mass_card')),
+            matching: find.text('—'),
+          ),
+          findsOneWidget,
+        );
+      });
 
-    testWidgets('shows em-dash when neither input is set', (tester) async {
-      final state = await _seededState();
-      final settings = await _settings();
-      await _pumpProfileScreen(
-        tester,
-        profileState: state,
-        settingsState: settings,
-      );
+      testWidgets('shows em-dash when neither input is set', (tester) async {
+        final state = await _seededState();
+        final settings = await _settings();
+        await _pumpProfileScreen(
+          tester,
+          profileState: state,
+          settingsState: settings,
+        );
 
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('profile_lean_mass_card')),
-          matching: find.text('—'),
-        ),
-        findsOneWidget,
-      );
-    });
-  });
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('profile_lean_mass_card')),
+            matching: find.text('—'),
+          ),
+          findsOneWidget,
+        );
+      });
+    },
+  );
 
   group('S-008: untouched measurements keep their original chrome', () {
-    testWidgets('Body Weight renders chart + value + add button as before',
-        (tester) async {
+    testWidgets('Body Weight renders chart + value + add button as before', (
+      tester,
+    ) async {
       final state = await _seededState(bodyWeightKg: 80.0);
       final settings = await _settings();
       await _pumpProfileScreen(
@@ -657,7 +702,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: find.byKey(bwKey), matching: find.byIcon(Icons.add)),
+        find.descendant(
+          of: find.byKey(bwKey),
+          matching: find.byIcon(Icons.add),
+        ),
         findsOneWidget,
       );
       expect(
@@ -670,64 +718,70 @@ void main() {
     });
   });
 
-  group('Settings height preview stays in sync with Profile identity height',
-      () {
-    testWidgets('editing height on Profile is reflected by the Settings preview',
+  group(
+    'Settings height preview stays in sync with Profile identity height',
+    () {
+      testWidgets(
+        'editing height on Profile is reflected by the Settings preview',
         (tester) async {
-      final repo = MockWorkoutRepository();
-      await repo.initialize();
-      await repo.saveMeasurementEntry(
-        BodyMeasurementEntry(
-          id: 'pre-h',
-          measurementType: 'height',
-          value: 180.0,
-          unitId: 'unit-cm',
-          recordedAtMs: 1000,
-        ),
-      );
-      final profileState = ProfileState(repo);
-      final settingsState = SettingsState(repo, fakePreferencesService());
-      await settingsState.initialize();
-      await profileState.loadProfile();
-      await profileState.loadLatestMeasurements(['height']);
-
-      // 1. Pump Profile screen, edit height to 182.
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ProfileScreen(
-            profileState: profileState,
-            settingsState: settingsState,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('profile_identity_height_value')));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).first, '182');
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-
-      // 2. Pump Settings screen and assert the preview reads 182 cm.
-      // We construct SettingsScreen directly so this test stays
-      // independent of routing.
-      // (SettingsScreen reads `profileState.getMeasurementHistory('height')`
-      // so a re-render is enough.)
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: _SettingsPreviewOnly(
-              profileState: profileState,
-              settingsState: settingsState,
+          final repo = MockWorkoutRepository();
+          await repo.initialize();
+          await repo.saveMeasurementEntry(
+            BodyMeasurementEntry(
+              id: 'pre-h',
+              measurementType: 'height',
+              value: 180.0,
+              unitId: 'unit-cm',
+              recordedAtMs: 1000,
             ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+          );
+          final profileState = ProfileState(repo);
+          final settingsState = SettingsState(repo, fakePreferencesService());
+          await settingsState.initialize();
+          await profileState.loadProfile();
+          await profileState.loadLatestMeasurements(['height']);
 
-      expect(find.text('182 cm'), findsOneWidget);
-    });
-  });
+          // 1. Pump Profile screen, edit height to 182.
+          await tester.pumpWidget(
+            MaterialApp(
+              home: ProfileScreen(
+                profileState: profileState,
+                settingsState: settingsState,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.byKey(const Key('profile_identity_height_value')),
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextField).first, '182');
+          await tester.tap(find.text('Save'));
+          await tester.pumpAndSettle();
+
+          // 2. Pump Settings screen and assert the preview reads 182 cm.
+          // We construct SettingsScreen directly so this test stays
+          // independent of routing.
+          // (SettingsScreen reads `profileState.getMeasurementHistory('height')`
+          // so a re-render is enough.)
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: _SettingsPreviewOnly(
+                  profileState: profileState,
+                  settingsState: settingsState,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.text('182 cm'), findsOneWidget);
+        },
+      );
+    },
+  );
 }
 
 /// Minimal Settings-screen body that renders ONLY the height preview

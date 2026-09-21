@@ -168,7 +168,9 @@ void main() {
       expect(entry['skipped'], isFalse);
 
       final observations = await repository.getEffortObservations(effortId);
-      final repsObs = observations.firstWhere((o) => o.metricId == 'metric-reps');
+      final repsObs = observations.firstWhere(
+        (o) => o.metricId == 'metric-reps',
+      );
       expect(repsObs.valueInt, 8);
       expect(repsObs.valueBool, isFalse);
     });
@@ -208,28 +210,30 @@ void main() {
 
     // ── Single-exercise kg session ──────────────────────────────────────────
 
-    test('single-exercise kg session: totalVolume is reps × weight in kg',
-        () async {
-      final repo = await _freshRepo();
-      final exercises = await repo.getExercises();
-      // Use _buildCompletedSession to avoid timestamp-collision issues in the
-      // sequential observation grouper. One set × 10 reps × 100 kg = 1000 kg.
-      final session = await _buildCompletedSession(
-        repo,
-        sessionId: 'kg-session',
-        startedAtMs: 1000,
-        endedAtMs: 2000,
-        exerciseId: exercises.first.id,
-        reps: 10,
-        weightKg: 100.0,
-      );
+    test(
+      'single-exercise kg session: totalVolume is reps × weight in kg',
+      () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
+        // Use _buildCompletedSession to avoid timestamp-collision issues in the
+        // sequential observation grouper. One set × 10 reps × 100 kg = 1000 kg.
+        final session = await _buildCompletedSession(
+          repo,
+          sessionId: 'kg-session',
+          startedAtMs: 1000,
+          endedAtMs: 2000,
+          exerciseId: exercises.first.id,
+          reps: 10,
+          weightKg: 100.0,
+        );
 
-      final state = WorkoutState(repo);
-      await state.loadHistoricalSession(session.id);
-      final summary = state.computeSessionSummary();
+        final state = WorkoutState(repo);
+        await state.loadHistoricalSession(session.id);
+        final summary = state.computeSessionSummary();
 
-      expect(summary.totalVolume, closeTo(1000.0, 0.01));
-    });
+        expect(summary.totalVolume, closeTo(1000.0, 0.01));
+      },
+    );
 
     // ── Single-exercise lbs session ─────────────────────────────────────────
 
@@ -314,35 +318,37 @@ void main() {
 
     // ── Multi-exercise session ───────────────────────────────────────────────
 
-    test('multi-exercise session: totalVolume is summed across exercises',
-        () async {
-      final repo = await _freshRepo();
-      final exercises = await repo.getExercises();
+    test(
+      'multi-exercise session: totalVolume is summed across exercises',
+      () async {
+        final repo = await _freshRepo();
+        final exercises = await repo.getExercises();
 
-      final state = WorkoutState(repo);
-      await state.createNewSession();
+        final state = WorkoutState(repo);
+        await state.createNewSession();
 
-      // Exercise A: 1 set × 8 reps × 60 kg = 480
-      final effortA = await state.addExerciseToSession(
-        exercises[0],
-        chosenMetric: 'reps',
-      );
-      await state.updateEntryValue(effortA, 0, 'reps', 8);
-      await state.updateEntryValue(effortA, 0, 'weight', 60.0);
+        // Exercise A: 1 set × 8 reps × 60 kg = 480
+        final effortA = await state.addExerciseToSession(
+          exercises[0],
+          chosenMetric: 'reps',
+        );
+        await state.updateEntryValue(effortA, 0, 'reps', 8);
+        await state.updateEntryValue(effortA, 0, 'weight', 60.0);
 
-      // Exercise B: 1 set × 5 reps × 100 kg = 500
-      final effortB = await state.addExerciseToSession(
-        exercises[1],
-        chosenMetric: 'reps',
-      );
-      await state.updateEntryValue(effortB, 0, 'reps', 5);
-      await state.updateEntryValue(effortB, 0, 'weight', 100.0);
+        // Exercise B: 1 set × 5 reps × 100 kg = 500
+        final effortB = await state.addExerciseToSession(
+          exercises[1],
+          chosenMetric: 'reps',
+        );
+        await state.updateEntryValue(effortB, 0, 'reps', 5);
+        await state.updateEntryValue(effortB, 0, 'weight', 100.0);
 
-      await state.endSession();
-      final summary = state.computeSessionSummary();
+        await state.endSession();
+        final summary = state.computeSessionSummary();
 
-      expect(summary.totalVolume, closeTo(480.0 + 500.0, 0.01));
-    });
+        expect(summary.totalVolume, closeTo(480.0 + 500.0, 0.01));
+      },
+    );
 
     // ── Bilateral-capable exercise ───────────────────────────────────────────
 
@@ -384,46 +390,43 @@ void main() {
 
     // ── Volume comparison delta for lbs user ─────────────────────────────────
 
-    test(
-      'volume comparison delta is correct for lbs user',
-      () async {
-        final repo = await _freshRepo();
-        final exercises = await repo.getExercises();
-        final exId = exercises.first.id;
-        final service = SessionSummaryService(repo);
+    test('volume comparison delta is correct for lbs user', () async {
+      final repo = await _freshRepo();
+      final exercises = await repo.getExercises();
+      final exId = exercises.first.id;
+      final service = SessionSummaryService(repo);
 
-        // Previous session: 10 reps × 40 kg (stored canonically).
-        await _buildCompletedSession(
-          repo,
-          sessionId: 'prev',
-          startedAtMs: 1000,
-          endedAtMs: 2000,
-          exerciseId: exId,
-          reps: 10,
-          weightKg: 40.0,
-        );
+      // Previous session: 10 reps × 40 kg (stored canonically).
+      await _buildCompletedSession(
+        repo,
+        sessionId: 'prev',
+        startedAtMs: 1000,
+        endedAtMs: 2000,
+        exerciseId: exId,
+        reps: 10,
+        weightKg: 40.0,
+      );
 
-        // Current session: 10 reps × 50 kg.
-        final currSession = await _buildCompletedSession(
-          repo,
-          sessionId: 'curr',
-          startedAtMs: 5000,
-          endedAtMs: 6000,
-          exerciseId: exId,
-          reps: 10,
-          weightKg: 50.0,
-        );
+      // Current session: 10 reps × 50 kg.
+      final currSession = await _buildCompletedSession(
+        repo,
+        sessionId: 'curr',
+        startedAtMs: 5000,
+        endedAtMs: 6000,
+        exerciseId: exId,
+        reps: 10,
+        weightKg: 50.0,
+      );
 
-        final result = await service.compareToPreviousSession(
-          currSession,
-          500.0, // currentVolume = 10 × 50 kg
-        );
+      final result = await service.compareToPreviousSession(
+        currSession,
+        500.0, // currentVolume = 10 × 50 kg
+      );
 
-        // Delta should be 100 kg (not inflated by ×2.20462).
-        expect(result.previousVolume, closeTo(400.0, 0.01));
-        expect(result.delta, closeTo(100.0, 0.01));
-      },
-    );
+      // Delta should be 100 kg (not inflated by ×2.20462).
+      expect(result.previousVolume, closeTo(400.0, 0.01));
+      expect(result.delta, closeTo(100.0, 0.01));
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -616,8 +619,11 @@ void main() {
         for (final lbs in [5.0, 10.0, 35.0, 100.0, 225.0]) {
           final kg = UnitFormatter.toCanonicalWeight(lbs, lbsSettings);
           final backToLbs = UnitFormatter.convertWeight(kg, lbsSettings);
-          expect(backToLbs, closeTo(lbs, 0.001),
-              reason: '$lbs lbs → $kg kg → $backToLbs lbs (should be $lbs)');
+          expect(
+            backToLbs,
+            closeTo(lbs, 0.001),
+            reason: '$lbs lbs → $kg kg → $backToLbs lbs (should be $lbs)',
+          );
         }
       },
     );

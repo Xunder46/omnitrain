@@ -15,7 +15,8 @@ class BlockTypes {
   // Effort kinds (used in app_segment_effort.effort_kind)
   // In most cases, effort_kind matches segment_type
   static const String set = 'set'; // Individual set within strength_sets
-  static const String interval = 'interval'; // Individual interval within distance_intervals
+  static const String interval =
+      'interval'; // Individual interval within distance_intervals
   static const String round = 'round'; // Individual round within round_based
   static const String timed = 'timed'; // For timed_activity
   static const String amrap = 'amrap'; // For amrap_for_time

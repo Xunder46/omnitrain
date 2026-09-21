@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 
-enum AppTheme { abyssalNeon, forgeEmber, obsidianVolt, voidPulse, crimsonDojo, malachiteCore }
+enum AppTheme {
+  abyssalNeon,
+  forgeEmber,
+  obsidianVolt,
+  voidPulse,
+  crimsonDojo,
+  malachiteCore,
+}
 
 /// Themed palette for the macro-distribution donut chart. Slots map 1:1
 /// to the four sections drawn by `MacroDonutChart`:
@@ -30,11 +37,7 @@ typedef MacroChartPalette = ({
 /// for carbs, and a muted amber for fat. Values are tuned per
 /// theme so each tone clears against its respective `surface`
 /// while staying restrained (no bright/saturated primaries).
-typedef StripMacroPalette = ({
-  Color protein,
-  Color carbs,
-  Color fat,
-});
+typedef StripMacroPalette = ({Color protein, Color carbs, Color fat});
 
 typedef OmniThemeColors = ({
   Color backgroundTop,
@@ -67,8 +70,7 @@ class OmniTheme {
 
   static AppTheme get activeTheme => activeThemeListenable.value;
 
-  static set activeTheme(AppTheme theme) =>
-      activeThemeListenable.value = theme;
+  static set activeTheme(AppTheme theme) => activeThemeListenable.value = theme;
 
   // Unified macro palette colors (abyssalNeon stripMacros base values)
   // Applied to both macroChart and stripMacros across all themes
@@ -215,7 +217,9 @@ class OmniTheme {
           backgroundBottom: Color(0xFF060C08),
           surface: Color(0xFF182E1B),
           primary: Color(0xFF24B85A),
-          secondary: Color(0xFF10863E), // D-14: Corrected to 3.11:1 vs surface, 4.66:1 white label
+          secondary: Color(
+            0xFF10863E,
+          ), // D-14: Corrected to 3.11:1 vs surface, 4.66:1 white label
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
           textMuted: Color(0xFF7FAA7F),
@@ -588,18 +592,9 @@ class OmniTheme {
         color: textPrimary,
       ),
       // Body — descriptions, row content
-      bodyLarge: TextStyle(
-        fontSize: 15,
-        color: textPrimary,
-      ),
-      bodyMedium: TextStyle(
-        fontSize: 14,
-        color: textSecondary,
-      ),
-      bodySmall: TextStyle(
-        fontSize: 13,
-        color: textSecondary,
-      ),
+      bodyLarge: TextStyle(fontSize: 15, color: textPrimary),
+      bodyMedium: TextStyle(fontSize: 14, color: textSecondary),
+      bodySmall: TextStyle(fontSize: 13, color: textSecondary),
       // Labels — dense instrumentation, chips, metadata
       labelLarge: TextStyle(
         fontSize: 14,

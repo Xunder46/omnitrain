@@ -67,26 +67,41 @@ class _TempRepo {
   static Future<_TempRepo> create(String src) async {
     final parent = Directory.systemTemp.createTempSync('omnitrain_gate3_');
     final dst = '${parent.path}/repo';
-    final hasRsync = await Process.run('which', <String>['rsync'])
-            .then((r) => r.exitCode == 0);
+    final hasRsync = await Process.run('which', <String>[
+      'rsync',
+    ]).then((r) => r.exitCode == 0);
     ProcessResult result;
     if (hasRsync) {
       result = await Process.run('rsync', <String>[
         '-a',
-        '--exclude', '.git',
-        '--exclude', '.dart_tool',
-        '--exclude', 'build',
-        '--exclude', '.build',
-        '--exclude', 'ios/Pods',
-        '--exclude', 'ios/.symlinks',
-        '--exclude', 'ios/Flutter/Flutter.framework',
-        '--exclude', 'ios/Flutter/ephemeral',
-        '--exclude', 'macos/Pods',
-        '--exclude', 'macos/Flutter/Flutter.framework',
-        '--exclude', 'macos/Flutter/ephemeral',
-        '--exclude', '.venv',
-        '--exclude', '.claude',
-        '--exclude', '.idea',
+        '--exclude',
+        '.git',
+        '--exclude',
+        '.dart_tool',
+        '--exclude',
+        'build',
+        '--exclude',
+        '.build',
+        '--exclude',
+        'ios/Pods',
+        '--exclude',
+        'ios/.symlinks',
+        '--exclude',
+        'ios/Flutter/Flutter.framework',
+        '--exclude',
+        'ios/Flutter/ephemeral',
+        '--exclude',
+        'macos/Pods',
+        '--exclude',
+        'macos/Flutter/Flutter.framework',
+        '--exclude',
+        'macos/Flutter/ephemeral',
+        '--exclude',
+        '.venv',
+        '--exclude',
+        '.claude',
+        '--exclude',
+        '.idea',
         '$src/',
         dst,
       ]);
@@ -99,26 +114,23 @@ class _TempRepo {
     final repo = _TempRepo._(dst);
     // Use a per-repo identity so the synthetic commit has an author.
     await Process.run('git', <String>['init', '-q', dst]);
-    await Process.run(
-      'git',
-      <String>['config', 'user.email', 'gate-test@omnitrain'],
-      workingDirectory: dst,
-    );
-    await Process.run(
-      'git',
-      <String>['config', 'user.name', 'Gate Test'],
-      workingDirectory: dst,
-    );
-    await Process.run(
-      'git',
-      <String>['add', '-A'],
-      workingDirectory: dst,
-    );
-    await Process.run(
-      'git',
-      <String>['commit', '-q', '-m', 'gate test seed'],
-      workingDirectory: dst,
-    );
+    await Process.run('git', <String>[
+      'config',
+      'user.email',
+      'gate-test@omnitrain',
+    ], workingDirectory: dst);
+    await Process.run('git', <String>[
+      'config',
+      'user.name',
+      'Gate Test',
+    ], workingDirectory: dst);
+    await Process.run('git', <String>['add', '-A'], workingDirectory: dst);
+    await Process.run('git', <String>[
+      'commit',
+      '-q',
+      '-m',
+      'gate test seed',
+    ], workingDirectory: dst);
     // Truncate the .last-released-build file inside the temp copy
     // so the existing repo's old "last released" build number does
     // not interact with the current pubspec version. Set it to 0 —
@@ -169,10 +181,10 @@ io.sentry.Sentry: pi:io.sentry.Sentry
   /// central directory entries, which `unzip -l` and ZipFile
   /// both surface. A two-file AAB with AndroidManifest + the kept
   /// raw resources is sufficient and parses cleanly.
-  Future<void> writeFakeAabWith(
-      {required Iterable<String> keptRawResources}) async {
-    final outDir =
-        Directory('$path/build/app/outputs/bundle/release');
+  Future<void> writeFakeAabWith({
+    required Iterable<String> keptRawResources,
+  }) async {
+    final outDir = Directory('$path/build/app/outputs/bundle/release');
     outDir.createSync(recursive: true);
     final aabPath = '${outDir.path}/app-release.aab';
     await _writeZip(aabPath, <_ZipEntry>[
@@ -197,21 +209,15 @@ io.sentry.Sentry: pi:io.sentry.Sentry
     outDir.createSync(recursive: true);
     final ipaPath = '${outDir.path}/Runner.ipa';
     await _writeZip(ipaPath, <_ZipEntry>[
-      _ZipEntry(
-        'Runner.app/Runner',
-        <int>[
-          ...utf8Bytes(
-            'OmniTrain iOS binary placeholder. '
-            'Sentry DSN here: $dsn '
-            '(synthetic, test-only).',
-          ),
-          ...List<int>.filled(64, 0x20),
-        ],
-      ),
-      _ZipEntry(
-        'Runner.app/Info.plist',
-        <int>[0x3C, 0x3F, 0x78, 0x6D, 0x6C],
-      ),
+      _ZipEntry('Runner.app/Runner', <int>[
+        ...utf8Bytes(
+          'OmniTrain iOS binary placeholder. '
+          'Sentry DSN here: $dsn '
+          '(synthetic, test-only).',
+        ),
+        ...List<int>.filled(64, 0x20),
+      ]),
+      _ZipEntry('Runner.app/Info.plist', <int>[0x3C, 0x3F, 0x78, 0x6D, 0x6C]),
     ]);
   }
 
@@ -268,8 +274,12 @@ Future<void> _writeZip(String path, List<_ZipEntry> entries) async {
   }
   // -X strips extra filesystem metadata so the zip is deterministic
   // across runs.
-  final result = await Process.run(
-      'zip', <String>['-qX', '-r', path, '.'], workingDirectory: tmp.path);
+  final result = await Process.run('zip', <String>[
+    '-qX',
+    '-r',
+    path,
+    '.',
+  ], workingDirectory: tmp.path);
   if (result.exitCode != 0) {
     throw StateError('zip failed: ${result.stderr}');
   }
@@ -310,8 +320,10 @@ void main() {
     canRun = hasZip && hasUnzip;
     if (!canRun) {
       // ignore: avoid_print
-      print('SKIP: zip and/or unzip not on PATH — required for the '
-          '§11r / §11s gate tests.');
+      print(
+        'SKIP: zip and/or unzip not on PATH — required for the '
+        '§11r / §11s gate tests.',
+      );
     }
   });
 
@@ -327,149 +339,177 @@ void main() {
       await repo.dispose();
     });
 
-    test(
-      'GREEN: seeds.txt contains the kept flutter_local_notifications '
-      'classes — §11r passes for code protection',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        repo.writeGreenSeeds();
-        await repo.writeFakeAabWith(
-          keptRawResources: <String>{
-            'boxing_bell',
-            'digital_buzzer',
-            'soft_chime',
-            'double_tap',
-            'signal_tone',
-          },
-        );
+    test('GREEN: seeds.txt contains the kept flutter_local_notifications '
+        'classes — §11r passes for code protection', () async {
+      if (!canRun) {
+        return;
+      }
+      repo.writeGreenSeeds();
+      await repo.writeFakeAabWith(
+        keptRawResources: <String>{
+          'boxing_bell',
+          'digital_buzzer',
+          'soft_chime',
+          'double_tap',
+          'signal_tone',
+        },
+      );
 
-        final result = await repo.runGate(fakeBuild: 'ok');
+      final result = await repo.runGate(fakeBuild: 'ok');
 
-        expect(result.exitCode, 0,
-            reason: 'Gate must pass for the post-fix state');
-        final output = '${result.stdout}\n${result.stderr}';
-        // Failure sentinels — any of these firing means §11r is
-        // incorrectly tripping.
-        expect(
-          output,
-          isNot(contains('notification code protection did not apply')),
-          reason: 'Code-protection failure message must not appear',
-        );
-        expect(
-          output,
-          isNot(contains('notification resource protection did not apply')),
-          reason: 'Resource-protection failure message must not appear',
-        );
-        // The OK path should produce a positive signal that future
-        // readers can grep for.
-        expect(output, contains('notification code protection'),
-            reason: '§11r must announce which protection it verified');
-      },
-    );
+      expect(
+        result.exitCode,
+        0,
+        reason: 'Gate must pass for the post-fix state',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      // Failure sentinels — any of these firing means §11r is
+      // incorrectly tripping.
+      expect(
+        output,
+        isNot(contains('notification code protection did not apply')),
+        reason: 'Code-protection failure message must not appear',
+      );
+      expect(
+        output,
+        isNot(contains('notification resource protection did not apply')),
+        reason: 'Resource-protection failure message must not appear',
+      );
+      // The OK path should produce a positive signal that future
+      // readers can grep for.
+      expect(
+        output,
+        contains('notification code protection'),
+        reason: '§11r must announce which protection it verified',
+      );
+    });
 
-    test(
-      'RED: seeds.txt omits the kept flutter_local_notifications '
-      'classes — §11r fails for code protection',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        repo.writeRedSeeds();
-        await repo.writeFakeAabWith(
-          keptRawResources: <String>{
-            'boxing_bell',
-            'digital_buzzer',
-            'soft_chime',
-            'double_tap',
-            'signal_tone',
-          },
-        );
+    test('RED: seeds.txt omits the kept flutter_local_notifications '
+        'classes — §11r fails for code protection', () async {
+      if (!canRun) {
+        return;
+      }
+      repo.writeRedSeeds();
+      await repo.writeFakeAabWith(
+        keptRawResources: <String>{
+          'boxing_bell',
+          'digital_buzzer',
+          'soft_chime',
+          'double_tap',
+          'signal_tone',
+        },
+      );
 
-        final result = await repo.runGate(fakeBuild: 'ok');
+      final result = await repo.runGate(fakeBuild: 'ok');
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when the kept notification '
-                'classes did not survive R8');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('notification code protection'),
-            reason: 'Failure message must name the check');
-        expect(output,
-            contains('com.dexterous.flutterlocalnotifications'),
-            reason: 'Failure message must name the expected classes');
-        expect(output, contains('every notification schedule'),
-            reason: 'Failure message must name the user-facing '
-                'consequence');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when the kept notification '
+            'classes did not survive R8',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        contains('notification code protection'),
+        reason: 'Failure message must name the check',
+      );
+      expect(
+        output,
+        contains('com.dexterous.flutterlocalnotifications'),
+        reason: 'Failure message must name the expected classes',
+      );
+      expect(
+        output,
+        contains('every notification schedule'),
+        reason:
+            'Failure message must name the user-facing '
+            'consequence',
+      );
+    });
 
-    test(
-      'RED: AAB is missing the raw sound resources declared in '
-      'keep.xml — §11r fails for resource protection',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        repo.writeGreenSeeds();
-        await repo.writeFakeAabWith(
-          keptRawResources: <String>{},
-        );
+    test('RED: AAB is missing the raw sound resources declared in '
+        'keep.xml — §11r fails for resource protection', () async {
+      if (!canRun) {
+        return;
+      }
+      repo.writeGreenSeeds();
+      await repo.writeFakeAabWith(keptRawResources: <String>{});
 
-        final result = await repo.runGate(fakeBuild: 'ok');
+      final result = await repo.runGate(fakeBuild: 'ok');
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when the raw sound resources '
-                'are missing from the produced AAB');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('notification resource protection'),
-            reason: 'Failure message must name the check');
-        expect(output, contains('boxing_bell'),
-            reason: 'Failure message must name at least one '
-                'expected resource so the reader knows what '
-                'keep.xml declared');
-        expect(output, contains('PlatformException'),
-            reason: 'Failure message must name the runtime '
-                'consequence (RawResourceAndroidNotificationSound '
-                'throws invalid_sound when the resource is missing)');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when the raw sound resources '
+            'are missing from the produced AAB',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        contains('notification resource protection'),
+        reason: 'Failure message must name the check',
+      );
+      expect(
+        output,
+        contains('boxing_bell'),
+        reason:
+            'Failure message must name at least one '
+            'expected resource so the reader knows what '
+            'keep.xml declared',
+      );
+      expect(
+        output,
+        contains('PlatformException'),
+        reason:
+            'Failure message must name the runtime '
+            'consequence (RawResourceAndroidNotificationSound '
+            'throws invalid_sound when the resource is missing)',
+      );
+    });
 
-    test(
-      'RED: build output is absent — §11r fails rather than silently '
-      'passing (PASS-BY-DEFAULT IS REJECTED)',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // No seeds.txt, no AAB. The fake-build flag is set to
-        // `ok` so §11s succeeds, isolating §11r. Per the
-        // acceptance criterion: missing output must fail, never
-        // pass by default.
-        final result = await repo.runGate(fakeBuild: 'ok');
+    test('RED: build output is absent — §11r fails rather than silently '
+        'passing (PASS-BY-DEFAULT IS REJECTED)', () async {
+      if (!canRun) {
+        return;
+      }
+      // No seeds.txt, no AAB. The fake-build flag is set to
+      // `ok` so §11s succeeds, isolating §11r. Per the
+      // acceptance criterion: missing output must fail, never
+      // pass by default.
+      final result = await repo.runGate(fakeBuild: 'ok');
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when the expected build output '
-                'is absent (acceptance criterion: '
-                '"fails rather than passing by default when '
-                'expected build output is missing entirely")');
-        final output = '${result.stdout}\n${result.stderr}';
-        // The failure message must make clear that the missing
-        // build output IS the failure cause — not silently
-        // pass-through.
-        final tellsCause =
-            output.contains('expected build output') ||
-                output.contains('release build did not produce') ||
-                output.contains('seeds.txt') ||
-                output.contains('app-release.aab') ||
-                output.contains('app-release.apk');
-        expect(tellsCause, isTrue,
-            reason: 'Failure message must name the missing build '
-                'output so the reader knows §11s produced nothing '
-                'usable, rather than discovering it via the '
-                '"blocking error" summary alone');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'Gate must fail when the expected build output '
+            'is absent (acceptance criterion: '
+            '"fails rather than passing by default when '
+            'expected build output is missing entirely")',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      // The failure message must make clear that the missing
+      // build output IS the failure cause — not silently
+      // pass-through.
+      final tellsCause =
+          output.contains('expected build output') ||
+          output.contains('release build did not produce') ||
+          output.contains('seeds.txt') ||
+          output.contains('app-release.aab') ||
+          output.contains('app-release.apk');
+      expect(
+        tellsCause,
+        isTrue,
+        reason:
+            'Failure message must name the missing build '
+            'output so the reader knows §11s produced nothing '
+            'usable, rather than discovering it via the '
+            '"blocking error" summary alone',
+      );
+    });
   });
 
   group('pre-release gate — §11s release build must succeed', () {
@@ -483,46 +523,51 @@ void main() {
       await repo.dispose();
     });
 
-    test(
-      'GREEN: fake-build hook reports success — §11s passes',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        repo.writeGreenSeeds();
-        await repo.writeFakeAabWith(
-          keptRawResources: <String>{
-            'boxing_bell',
-            'digital_buzzer',
-            'soft_chime',
-            'double_tap',
-            'signal_tone',
-          },
-        );
+    test('GREEN: fake-build hook reports success — §11s passes', () async {
+      if (!canRun) {
+        return;
+      }
+      repo.writeGreenSeeds();
+      await repo.writeFakeAabWith(
+        keptRawResources: <String>{
+          'boxing_bell',
+          'digital_buzzer',
+          'soft_chime',
+          'double_tap',
+          'signal_tone',
+        },
+      );
 
-        final result = await repo.runGate(fakeBuild: 'ok');
+      final result = await repo.runGate(fakeBuild: 'ok');
 
-        expect(result.exitCode, 0,
-            reason: 'Gate must pass when the fake-build hook '
-                'reports success');
-        final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('release build'),
-            reason: '§11s must announce which check it ran');
-        // Failure sentinels — none of these should fire when the
-        // build succeeded.
-        expect(
-          output,
-          isNot(contains('release build could not be produced')),
-          reason: 'Build-success message must not appear as a '
-              'failure',
-        );
-        expect(
-          output,
-          isNot(contains('build error')),
-          reason: 'No underlying-build-error message should fire',
-        );
-      },
-    );
+      expect(
+        result.exitCode,
+        0,
+        reason:
+            'Gate must pass when the fake-build hook '
+            'reports success',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      expect(
+        output,
+        contains('release build'),
+        reason: '§11s must announce which check it ran',
+      );
+      // Failure sentinels — none of these should fire when the
+      // build succeeded.
+      expect(
+        output,
+        isNot(contains('release build could not be produced')),
+        reason:
+            'Build-success message must not appear as a '
+            'failure',
+      );
+      expect(
+        output,
+        isNot(contains('build error')),
+        reason: 'No underlying-build-error message should fire',
+      );
+    });
 
     test(
       'RED: fake-build hook reports failure — §11s fails AND the '
@@ -531,34 +576,50 @@ void main() {
         if (!canRun) {
           return;
         }
-        const fakeError = 'error: bracket-list-expression cannot '
+        const fakeError =
+            'error: bracket-list-expression cannot '
             'match empty list.';
         final result = await repo.runGate(fakeBuild: 'fail:$fakeError');
 
-        expect(result.exitCode, 1,
-            reason: 'Gate must fail when the release build '
-                'returns non-zero');
+        expect(
+          result.exitCode,
+          1,
+          reason:
+              'Gate must fail when the release build '
+              'returns non-zero',
+        );
         final output = '${result.stdout}\n${result.stderr}';
-        expect(output, contains('release build could not be produced'),
-            reason: 'Failure message must name the check');
-        expect(output, contains(fakeError),
-            reason: 'The underlying build error text must be '
-                'surfaced in the gate output — it may NOT be '
-                'masked by a friendly summary that drops the '
-                'actual diagnostic');
+        expect(
+          output,
+          contains('release build could not be produced'),
+          reason: 'Failure message must name the check',
+        );
+        expect(
+          output,
+          contains(fakeError),
+          reason:
+              'The underlying build error text must be '
+              'surfaced in the gate output — it may NOT be '
+              'masked by a friendly summary that drops the '
+              'actual diagnostic',
+        );
         // The reader at release time should not need to reconstruct
         // the history of this incident to know what to do — the
         // message must connect the dots between the build error
         // and the action required.
         final tellsWhyReleaseIsBlocked =
             output.contains('configuration could not compile') ||
-                output.contains('configuration changes') ||
-                output.contains('cannot ship');
-        expect(tellsWhyReleaseIsBlocked, isTrue,
-            reason: 'Failure message must connect the dot for a '
-                'reader at release time: this gate catches a '
-                'broken configuration so a release cannot ship '
-                'with a build that does not compile');
+            output.contains('configuration changes') ||
+            output.contains('cannot ship');
+        expect(
+          tellsWhyReleaseIsBlocked,
+          isTrue,
+          reason:
+              'Failure message must connect the dot for a '
+              'reader at release time: this gate catches a '
+              'broken configuration so a release cannot ship '
+              'with a build that does not compile',
+        );
       },
     );
   });
@@ -574,55 +635,63 @@ void main() {
       await repo.dispose();
     });
 
-    test(
-      'the §11r / §11s section as a whole fails when ANY single '
-      'subcheck fails (pre-existing pattern from §11k–§11q)',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // Code protection OK; resource protection NOT OK; build OK.
-        // The whole section must fail.
-        repo.writeGreenSeeds();
-        await repo.writeFakeAabWith(keptRawResources: <String>{});
-        final result = await repo.runGate(fakeBuild: 'ok');
+    test('the §11r / §11s section as a whole fails when ANY single '
+        'subcheck fails (pre-existing pattern from §11k–§11q)', () async {
+      if (!canRun) {
+        return;
+      }
+      // Code protection OK; resource protection NOT OK; build OK.
+      // The whole section must fail.
+      repo.writeGreenSeeds();
+      await repo.writeFakeAabWith(keptRawResources: <String>{});
+      final result = await repo.runGate(fakeBuild: 'ok');
 
-        expect(result.exitCode, 1,
-            reason: 'A single failing subcheck must fail the gate '
-                'as a whole, matching the §11k–§11q "single '
-                'blocking error blocks release" convention');
-        final output = '${result.stdout}\n${result.stderr}';
-        // The §11k–§11q pattern: every individual ✗ must count as
-        // a blocking error, and the summary at the bottom lists
-        // them all.
-        expect(output, contains('✗'),
-            reason: 'Summary must contain at least one ✗ marker');
-        expect(output, contains('blocking error'),
-            reason: 'Summary must surface that the gate has at '
-                'least one blocking error');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            'A single failing subcheck must fail the gate '
+            'as a whole, matching the §11k–§11q "single '
+            'blocking error blocks release" convention',
+      );
+      final output = '${result.stdout}\n${result.stderr}';
+      // The §11k–§11q pattern: every individual ✗ must count as
+      // a blocking error, and the summary at the bottom lists
+      // them all.
+      expect(
+        output,
+        contains('✗'),
+        reason: 'Summary must contain at least one ✗ marker',
+      );
+      expect(
+        output,
+        contains('blocking error'),
+        reason:
+            'Summary must surface that the gate has at '
+            'least one blocking error',
+      );
+    });
 
-    test(
-      '--fast does NOT skip §11r / §11s (they are not heavy; they '
-      'ARE the gate)',
-      () async {
-        if (!canRun) {
-          return;
-        }
-        // Force both checks red; even with --fast the gate must
-        // still catch them.
-        repo.writeRedSeeds();
-        await repo.writeFakeAabWith(keptRawResources: <String>{});
-        final result =
-            await repo.runGate(fakeBuild: 'fail:synthetic');
+    test('--fast does NOT skip §11r / §11s (they are not heavy; they '
+        'ARE the gate)', () async {
+      if (!canRun) {
+        return;
+      }
+      // Force both checks red; even with --fast the gate must
+      // still catch them.
+      repo.writeRedSeeds();
+      await repo.writeFakeAabWith(keptRawResources: <String>{});
+      final result = await repo.runGate(fakeBuild: 'fail:synthetic');
 
-        expect(result.exitCode, 1,
-            reason: '§11r / §11s must run under --fast — the '
-                'opposite would mean a developer running the '
-                'fast variant skips the actual gate');
-      },
-    );
+      expect(
+        result.exitCode,
+        1,
+        reason:
+            '§11r / §11s must run under --fast — the '
+            'opposite would mean a developer running the '
+            'fast variant skips the actual gate',
+      );
+    });
   });
 }
 

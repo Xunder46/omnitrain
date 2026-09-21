@@ -66,16 +66,14 @@ void main() {
       expect(find.byKey(const Key('carbs_field')), findsNothing);
       expect(find.byKey(const Key('fat_field')), findsNothing);
       // The implied-calories helper is gone.
-      expect(
-        find.byKey(const Key('implied_calories_readout')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('implied_calories_readout')), findsNothing);
       // Save button is still present.
       expect(find.text('Save'), findsOneWidget);
     });
 
-    testWidgets('pre-fills from a previously saved target (calories only)',
-        (tester) async {
+    testWidgets('pre-fills from a previously saved target (calories only)', (
+      tester,
+    ) async {
       final repo = await _freshRepo();
       final state = NutritionState(repo);
       // Pre-save a target with macros non-zero. The form should still
@@ -175,8 +173,11 @@ void main() {
         // inline in the form body. The old inline Spacer()+SizedBox
         // pattern is gone.
         final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-        expect(scaffold.bottomNavigationBar, isA<OmniBottomCTA>(),
-            reason: 'Primary bottom CTA must be Scaffold.bottomNavigationBar');
+        expect(
+          scaffold.bottomNavigationBar,
+          isA<OmniBottomCTA>(),
+          reason: 'Primary bottom CTA must be Scaffold.bottomNavigationBar',
+        );
         expect(find.text('Save'), findsOneWidget);
 
         // Find the FilledButton (not the text inside it) so the
@@ -192,19 +193,14 @@ void main() {
         // assertion holds on both phone- and tablet-class
         // surfaces.
         final column = contentColumnRectFor(surface.width);
-        final expectedLeft =
-            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
         final expectedRight =
-            column.left +
-            column.width -
-            OmniTheme.bottomCTAHorizontalPadding;
+            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
         expect(buttonRect.left, closeTo(expectedLeft, 0.5));
         expect(buttonRect.right, closeTo(expectedRight, 0.5));
-        expect(
-          buttonRect.height,
-          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
-        );
-        final expectedBottom = surface.height -
+        expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
+        final expectedBottom =
+            surface.height -
             tester.view.padding.bottom / tester.view.devicePixelRatio -
             OmniTheme.bottomCTAVerticalBottomPadding;
         expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
@@ -229,7 +225,8 @@ void main() {
           home: NutritionScreen(
             nutritionState: state,
             foodLibraryState: foodLibraryState,
-            nutritionPrimerState: primer,),
+            nutritionPrimerState: primer,
+          ),
         ),
       );
       // Let initState's loads (target + consumed + library) resolve.
@@ -257,10 +254,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CalorieRingCard(
-              nutritionState: nutrition,
-              onEditTap: () {},
-            ),
+            body: CalorieRingCard(nutritionState: nutrition, onEditTap: () {}),
           ),
         ),
       );
@@ -270,68 +264,62 @@ void main() {
       expect(find.text('Na 0 mg'), findsOneWidget);
     });
 
-    testWidgets(
-      'renders scaled sum when a sodium-bearing food is logged '
-      '(null sodium → 0)',
-      (tester) async {
-        final repo = await _freshRepo();
-        final nutrition = NutritionState(repo);
-        final foodLib = FoodLibraryState(repo);
-        await nutrition.loadConsumedToday();
-        await nutrition.loadNutritionTarget();
+    testWidgets('renders scaled sum when a sodium-bearing food is logged '
+        '(null sodium → 0)', (tester) async {
+      final repo = await _freshRepo();
+      final nutrition = NutritionState(repo);
+      final foodLib = FoodLibraryState(repo);
+      await nutrition.loadConsumedToday();
+      await nutrition.loadNutritionTarget();
 
-        // Per-100g chicken with sodium = 74 mg, plus an avocado with
-        // sodium = null (treated as 0). Log 200 g of chicken (2x
-        // reference) and 100 g of avocado.
-        final chicken = Food(
-          id: 'food-chicken-sodium',
-          name: 'Chicken Breast',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100.0,
-          referenceLabel: 'g',
-          protein: 31,
-          carbs: 0,
-          fat: 4,
-          sodium: 74,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        );
-        final avocado = Food(
-          id: 'food-avocado-sodium',
-          name: 'Avocado',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100.0,
-          referenceLabel: 'g',
-          protein: 2,
-          carbs: 9,
-          fat: 15,
-          sodium: null,
-          createdAtMs: 1000,
-          updatedAtMs: 1000,
-        );
-        await foodLib.createFood(chicken);
-        await foodLib.createFood(avocado);
+      // Per-100g chicken with sodium = 74 mg, plus an avocado with
+      // sodium = null (treated as 0). Log 200 g of chicken (2x
+      // reference) and 100 g of avocado.
+      final chicken = Food(
+        id: 'food-chicken-sodium',
+        name: 'Chicken Breast',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100.0,
+        referenceLabel: 'g',
+        protein: 31,
+        carbs: 0,
+        fat: 4,
+        sodium: 74,
+        createdAtMs: 1000,
+        updatedAtMs: 1000,
+      );
+      final avocado = Food(
+        id: 'food-avocado-sodium',
+        name: 'Avocado',
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100.0,
+        referenceLabel: 'g',
+        protein: 2,
+        carbs: 9,
+        fat: 15,
+        sodium: null,
+        createdAtMs: 1000,
+        updatedAtMs: 1000,
+      );
+      await foodLib.createFood(chicken);
+      await foodLib.createFood(avocado);
 
-        await nutrition.logConsumedFoodAt(chicken, 200.0);
-        await nutrition.logConsumedFoodAt(avocado, 100.0);
+      await nutrition.logConsumedFoodAt(chicken, 200.0);
+      await nutrition.logConsumedFoodAt(avocado, 100.0);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: CalorieRingCard(
-                nutritionState: nutrition,
-                onEditTap: () {},
-              ),
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CalorieRingCard(nutritionState: nutrition, onEditTap: () {}),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // 200g chicken × 74mg/100g = 148 mg; 100g avocado × null = 0.
-        // Total: 148 mg.
-        expect(find.text('Na 148 mg'), findsOneWidget);
-      },
-    );
+      // 200g chicken × 74mg/100g = 148 mg; 100g avocado × null = 0.
+      // Total: 148 mg.
+      expect(find.text('Na 148 mg'), findsOneWidget);
+    });
 
     testWidgets('comma-grouped thousands (1,250 mg)', (tester) async {
       final repo = await _freshRepo();
@@ -360,10 +348,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CalorieRingCard(
-              nutritionState: nutrition,
-              onEditTap: () {},
-            ),
+            body: CalorieRingCard(nutritionState: nutrition, onEditTap: () {}),
           ),
         ),
       );
@@ -408,10 +393,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CalorieRingCard(
-              nutritionState: nutrition,
-              onEditTap: () {},
-            ),
+            body: CalorieRingCard(nutritionState: nutrition, onEditTap: () {}),
           ),
         ),
       );
@@ -419,58 +401,43 @@ void main() {
       return nutrition;
     }
 
-    testWidgets(
-      'renders glass icon, "250 ml" annotation, minus + count + plus '
-      '(S-001 / S-008)',
-      (tester) async {
-        await pumpRingWithWater(tester, glasses: 3);
+    testWidgets('renders glass icon, "250 ml" annotation, minus + count + plus '
+        '(S-001 / S-008)', (tester) async {
+      await pumpRingWithWater(tester, glasses: 3);
 
-        // The control subtree is present.
-        expect(
-          find.byKey(const Key('water_tracker_control')),
-          findsOneWidget,
-        );
-        // The "250 ml" annotation is on-screen — the user can see the
-        // per-glass amount without interacting.
-        expect(find.text('250 ml'), findsOneWidget);
-        // The count is derived from the stored ml (750 ml → 3).
-        expect(find.text('3'), findsOneWidget);
-        // Plus / minus affordances are present.
-        expect(
-          find.byKey(const Key('water_tracker_plus')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('water_tracker_minus')),
-          findsOneWidget,
-        );
-      },
-    );
+      // The control subtree is present.
+      expect(find.byKey(const Key('water_tracker_control')), findsOneWidget);
+      // The "250 ml" annotation is on-screen — the user can see the
+      // per-glass amount without interacting.
+      expect(find.text('250 ml'), findsOneWidget);
+      // The count is derived from the stored ml (750 ml → 3).
+      expect(find.text('3'), findsOneWidget);
+      // Plus / minus affordances are present.
+      expect(find.byKey(const Key('water_tracker_plus')), findsOneWidget);
+      expect(find.byKey(const Key('water_tracker_minus')), findsOneWidget);
+    });
 
-    testWidgets(
-      'cold start with no water logged → count 0, minus disabled '
-      '(S-001 / S-010)',
-      (tester) async {
-        await pumpRingWithWater(tester, glasses: 0);
+    testWidgets('cold start with no water logged → count 0, minus disabled '
+        '(S-001 / S-010)', (tester) async {
+      await pumpRingWithWater(tester, glasses: 0);
 
-        // Count reads 0.
-        expect(find.text('0'), findsOneWidget);
-        // The minus IconButton has `onPressed == null` (disabled).
-        final minusButton = tester.widget<IconButton>(
-          find.byKey(const Key('water_tracker_minus')),
-        );
-        expect(
-          minusButton.onPressed,
-          isNull,
-          reason: 'minus button must be disabled when glasses == 0',
-        );
-        // The plus IconButton is enabled.
-        final plusButton = tester.widget<IconButton>(
-          find.byKey(const Key('water_tracker_plus')),
-        );
-        expect(plusButton.onPressed, isNotNull);
-      },
-    );
+      // Count reads 0.
+      expect(find.text('0'), findsOneWidget);
+      // The minus IconButton has `onPressed == null` (disabled).
+      final minusButton = tester.widget<IconButton>(
+        find.byKey(const Key('water_tracker_minus')),
+      );
+      expect(
+        minusButton.onPressed,
+        isNull,
+        reason: 'minus button must be disabled when glasses == 0',
+      );
+      // The plus IconButton is enabled.
+      final plusButton = tester.widget<IconButton>(
+        find.byKey(const Key('water_tracker_plus')),
+      );
+      expect(plusButton.onPressed, isNotNull);
+    });
 
     testWidgets(
       'tapping plus increments the count by exactly 1 glass (S-002)',
@@ -503,128 +470,114 @@ void main() {
       },
     );
 
-    testWidgets(
-      'no text field or keyboard is ever invoked (S-009)',
-      (tester) async {
-        await pumpRingWithWater(tester, glasses: 2);
+    testWidgets('no text field or keyboard is ever invoked (S-009)', (
+      tester,
+    ) async {
+      await pumpRingWithWater(tester, glasses: 2);
 
-        // No text-entry widgets in the water subtree.
-        final waterFinder = find.byKey(const Key('water_tracker_control'));
-        expect(
-          find.descendant(of: waterFinder, matching: find.byType(TextField)),
-          findsNothing,
-        );
-        expect(
-          find.descendant(
-            of: waterFinder,
-            matching: find.byType(TextFormField),
-          ),
-          findsNothing,
-        );
-        expect(
-          find.descendant(
-            of: waterFinder,
-            matching: find.byType(EditableText),
-          ),
-          findsNothing,
-        );
-      },
-    );
+      // No text-entry widgets in the water subtree.
+      final waterFinder = find.byKey(const Key('water_tracker_control'));
+      expect(
+        find.descendant(of: waterFinder, matching: find.byType(TextField)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: waterFinder, matching: find.byType(TextFormField)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: waterFinder, matching: find.byType(EditableText)),
+        findsNothing,
+      );
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════
   // S-041 — Focused-macro center: grams + % of consumed calories
   // ═══════════════════════════════════════════════════════════════════════
-  group(
-    'CalorieRingCard — focused-macro center (D-4 / S-041)',
-    () {
-      /// Build a state, log the given foods, and pump the ring card.
-      Future<NutritionState> pumpRing(
-        WidgetTester tester, {
-        required List<({Food food, double amount})> entries,
-      }) async {
-        final repo = await _freshRepo();
-        final foodLib = FoodLibraryState(repo);
-        final nutrition = NutritionState(repo);
-        await nutrition.loadConsumedToday();
-        await nutrition.loadNutritionTarget();
-        for (final e in entries) {
-          await foodLib.createFood(e.food);
-          await nutrition.logConsumedFoodAt(e.food, e.amount);
-        }
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: CalorieRingCard(
-                nutritionState: nutrition,
-                onEditTap: () {},
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        return nutrition;
+  group('CalorieRingCard — focused-macro center (D-4 / S-041)', () {
+    /// Build a state, log the given foods, and pump the ring card.
+    Future<NutritionState> pumpRing(
+      WidgetTester tester, {
+      required List<({Food food, double amount})> entries,
+    }) async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+      await nutrition.loadConsumedToday();
+      await nutrition.loadNutritionTarget();
+      for (final e in entries) {
+        await foodLib.createFood(e.food);
+        await nutrition.logConsumedFoodAt(e.food, e.amount);
       }
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CalorieRingCard(nutritionState: nutrition, onEditTap: () {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return nutrition;
+    }
 
-      testWidgets(
-        'no focused section → no "of target" / "of calories" copy in center',
-        (tester) async {
-          // Log nothing; default center should show only the calories
-          // total, not a macro focus.
-          await pumpRing(tester, entries: const []);
-          // The default center is the calorie ring's "0 kcal" view;
-          // there is no macro name or "%" present.
-          expect(find.textContaining('of calories'), findsNothing);
-          expect(find.textContaining('of target'), findsNothing);
-        },
+    testWidgets(
+      'no focused section → no "of target" / "of calories" copy in center',
+      (tester) async {
+        // Log nothing; default center should show only the calories
+        // total, not a macro focus.
+        await pumpRing(tester, entries: const []);
+        // The default center is the calorie ring's "0 kcal" view;
+        // there is no macro name or "%" present.
+        expect(find.textContaining('of calories'), findsNothing);
+        expect(find.textContaining('of target'), findsNothing);
+      },
+    );
+
+    testWidgets('focused Protein shows grams + "%", no "of target"', (
+      tester,
+    ) async {
+      // 200g of a 31P/0C/4F per-100g chicken.
+      // Protein kcal = 200/100 * 31 * 4 = 248.
+      // Fat kcal = 200/100 * 4 * 9 = 72.
+      // Total kcal = 320. Protein share = 248/320 = 77.5% → 78%.
+      await pumpRing(
+        tester,
+        entries: [
+          (
+            food: Food(
+              id: 'p-chicken',
+              name: 'Chicken',
+              unitType: FoodUnitType.grams,
+              referenceAmount: 100.0,
+              referenceLabel: 'g',
+              protein: 31,
+              carbs: 0,
+              fat: 4,
+              createdAtMs: 1,
+              updatedAtMs: 1,
+            ),
+            amount: 200.0,
+          ),
+        ],
       );
 
-      testWidgets(
-        'focused Protein shows grams + "%", no "of target"',
-        (tester) async {
-          // 200g of a 31P/0C/4F per-100g chicken.
-          // Protein kcal = 200/100 * 31 * 4 = 248.
-          // Fat kcal = 200/100 * 4 * 9 = 72.
-          // Total kcal = 320. Protein share = 248/320 = 77.5% → 78%.
-          await pumpRing(
-            tester,
-            entries: [
-              (
-                food: Food(
-                  id: 'p-chicken',
-                  name: 'Chicken',
-                  unitType: FoodUnitType.grams,
-                  referenceAmount: 100.0,
-                  referenceLabel: 'g',
-                  protein: 31,
-                  carbs: 0,
-                  fat: 4,
-                  createdAtMs: 1,
-                  updatedAtMs: 1,
-                ),
-                amount: 200.0,
-              ),
-            ],
-          );
+      // Tap the Protein section of the donut.
+      // The donut's section hit-test resolves to the section index
+      // on tap; we just trigger a tap on a point in the donut band
+      // (outer 240-px square, mid-top region).
+      final donut = find.byType(GestureDetector).first;
+      // We can't easily hit-test the donut without resolving the
+      // section's exact angle; instead, just verify the center
+      // defaults are correct (no focus = no "of target" / "of
+      // calories" copy).
+      expect(donut, findsWidgets);
 
-          // Tap the Protein section of the donut.
-          // The donut's section hit-test resolves to the section index
-          // on tap; we just trigger a tap on a point in the donut band
-          // (outer 240-px square, mid-top region).
-          final donut = find.byType(GestureDetector).first;
-          // We can't easily hit-test the donut without resolving the
-          // section's exact angle; instead, just verify the center
-          // defaults are correct (no focus = no "of target" / "of
-          // calories" copy).
-          expect(donut, findsWidgets);
-
-          // Default (no focus) center: no "%" copy yet.
-          expect(find.textContaining('of calories'), findsNothing);
-          expect(find.textContaining('of target'), findsNothing);
-        },
-      );
-    },
-  );
+      // Default (no focus) center: no "%" copy yet.
+      expect(find.textContaining('of calories'), findsNothing);
+      expect(find.textContaining('of target'), findsNothing);
+    });
+  });
 
   group('FoodLibraryBrowse', () {
     testWidgets('renders all groups and foods with macros visible', (
@@ -730,7 +683,8 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutritionState,
             foodLibraryState: foodLibraryState,
-            nutritionPrimerState: primer,),
+            nutritionPrimerState: primer,
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -870,7 +824,8 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutritionState,
             foodLibraryState: foodLibraryState,
-            nutritionPrimerState: primer,),
+            nutritionPrimerState: primer,
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -917,7 +872,8 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+              nutritionPrimerState: primer,
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -953,40 +909,40 @@ void main() {
       },
     );
 
-    testWidgets(
-      'empty state appears with zero groups and zero foods',
-      (tester) async {
-        final repo = await _freshRepo();
-        final primer = await buildNutritionPrimerState(repo);
-        // Archive all default groups
-        for (final g in await repo.getFoodGroups()) {
-          await repo.archiveFoodGroup(g.id);
-        }
+    testWidgets('empty state appears with zero groups and zero foods', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
+      // Archive all default groups
+      for (final g in await repo.getFoodGroups()) {
+        await repo.archiveFoodGroup(g.id);
+      }
 
-        final nutritionState = NutritionState(repo);
-        final foodLibraryState = FoodLibraryState(repo);
-        await foodLibraryState.loadFoodGroups();
-        await foodLibraryState.loadFoods();
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadFoodGroups();
+      await foodLibraryState.loadFoods();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: NutritionScreen(
-              nutritionState: nutritionState,
-              foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutritionState,
+            foodLibraryState: foodLibraryState,
+            nutritionPrimerState: primer,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Empty state should still appear even with zero groups
-        expect(
-          find.textContaining('Foods I Eat list is empty'),
-          findsOneWidget,
-          reason: 'Empty state should appear with zero groups',
-        );
-        expect(find.text('Uncategorized'), findsNothing);
-      },
-    );
+      // Empty state should still appear even with zero groups
+      expect(
+        find.textContaining('Foods I Eat list is empty'),
+        findsOneWidget,
+        reason: 'Empty state should appear with zero groups',
+      );
+      expect(find.text('Uncategorized'), findsNothing);
+    });
 
     testWidgets(
       'empty state disappears and food renders when one food is added',
@@ -1030,7 +986,8 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+              nutritionPrimerState: primer,
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -1048,163 +1005,165 @@ void main() {
       },
     );
 
-    testWidgets(
-      'empty state reappears when last food is removed',
-      (tester) async {
-        final repo = await _freshRepo();
-        final primer = await buildNutritionPrimerState(repo);
-        const now = 1700000000000;
+    testWidgets('empty state reappears when last food is removed', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
+      const now = 1700000000000;
 
-        // Create a food group and one food
-        await repo.createFoodGroup(
-          const FoodGroup(
-            id: 'g-test',
-            name: 'Test Group',
-            createdAtMs: now,
-            updatedAtMs: now,
-          ),
-        );
-        const testFood = Food(
-          id: 'f-test',
-          name: 'Test Food',
-          unitType: FoodUnitType.grams,
-          groupId: 'g-test',
-          referenceAmount: 100.0,
-          referenceLabel: 'g',
-          protein: 10,
-          carbs: 10,
-          fat: 5,
+      // Create a food group and one food
+      await repo.createFoodGroup(
+        const FoodGroup(
+          id: 'g-test',
+          name: 'Test Group',
           createdAtMs: now,
           updatedAtMs: now,
-        );
-        await repo.createFood(testFood);
+        ),
+      );
+      const testFood = Food(
+        id: 'f-test',
+        name: 'Test Food',
+        unitType: FoodUnitType.grams,
+        groupId: 'g-test',
+        referenceAmount: 100.0,
+        referenceLabel: 'g',
+        protein: 10,
+        carbs: 10,
+        fat: 5,
+        createdAtMs: now,
+        updatedAtMs: now,
+      );
+      await repo.createFood(testFood);
 
-        final nutritionState = NutritionState(repo);
-        final foodLibraryState = FoodLibraryState(repo);
-        await foodLibraryState.loadFoodGroups();
-        await foodLibraryState.loadFoods();
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadFoodGroups();
+      await foodLibraryState.loadFoods();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: NutritionScreen(
-              nutritionState: nutritionState,
-              foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutritionState,
+            foodLibraryState: foodLibraryState,
+            nutritionPrimerState: primer,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Food is visible
-        expect(find.text('Test Food'), findsOneWidget);
+      // Food is visible
+      expect(find.text('Test Food'), findsOneWidget);
 
-        // Remove the food
-        await repo.removeFood(testFood.id);
-        await foodLibraryState.loadFoods();
+      // Remove the food
+      await repo.removeFood(testFood.id);
+      await foodLibraryState.loadFoods();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: NutritionScreen(
-              nutritionState: nutritionState,
-              foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutritionState,
+            foodLibraryState: foodLibraryState,
+            nutritionPrimerState: primer,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Empty state should reappear
-        expect(
-          find.textContaining('Foods I Eat list is empty'),
-          findsOneWidget,
-          reason: 'Empty state should reappear when last food is removed',
-        );
-        // Food should be gone
-        expect(find.text('Test Food'), findsNothing);
-      },
-    );
+      // Empty state should reappear
+      expect(
+        find.textContaining('Foods I Eat list is empty'),
+        findsOneWidget,
+        reason: 'Empty state should reappear when last food is removed',
+      );
+      // Food should be gone
+      expect(find.text('Test Food'), findsNothing);
+    });
 
-    testWidgets(
-      'empty state visible regardless of group count variation',
-      (tester) async {
-        final repo = await _freshRepo();
-        final primer = await buildNutritionPrimerState(repo);
-        const now = 1700000000000;
+    testWidgets('empty state visible regardless of group count variation', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
+      const now = 1700000000000;
 
-        // Create several custom groups (in addition to 9 defaults)
-        await repo.createFoodGroup(
-          const FoodGroup(
-            id: 'g-custom-1',
-            name: 'Custom 1',
-            createdAtMs: now,
-            updatedAtMs: now,
+      // Create several custom groups (in addition to 9 defaults)
+      await repo.createFoodGroup(
+        const FoodGroup(
+          id: 'g-custom-1',
+          name: 'Custom 1',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+      await repo.createFoodGroup(
+        const FoodGroup(
+          id: 'g-custom-2',
+          name: 'Custom 2',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+      // Keep foods list empty throughout
+
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadFoodGroups();
+      await foodLibraryState.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutritionState,
+            foodLibraryState: foodLibraryState,
+            nutritionPrimerState: primer,
           ),
-        );
-        await repo.createFoodGroup(
-          const FoodGroup(
-            id: 'g-custom-2',
-            name: 'Custom 2',
-            createdAtMs: now,
-            updatedAtMs: now,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Empty state should appear with many groups and empty foods
+      expect(
+        find.textContaining('Foods I Eat list is empty'),
+        findsOneWidget,
+        reason: 'Empty state should appear with many groups but zero foods',
+      );
+      // No group headers should render
+      expect(find.text('Browse Proteins'), findsNothing);
+      expect(find.text('Custom 1'), findsNothing);
+      expect(find.text('Custom 2'), findsNothing);
+    });
+
+    testWidgets('regression: "No foods in library" string does not appear', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final primer = await buildNutritionPrimerState(repo);
+
+      final nutritionState = NutritionState(repo);
+      final foodLibraryState = FoodLibraryState(repo);
+      await foodLibraryState.loadFoodGroups();
+      await foodLibraryState.loadFoods();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NutritionScreen(
+            nutritionState: nutritionState,
+            foodLibraryState: foodLibraryState,
+            nutritionPrimerState: primer,
           ),
-        );
-        // Keep foods list empty throughout
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        final nutritionState = NutritionState(repo);
-        final foodLibraryState = FoodLibraryState(repo);
-        await foodLibraryState.loadFoodGroups();
-        await foodLibraryState.loadFoods();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: NutritionScreen(
-              nutritionState: nutritionState,
-              foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Empty state should appear with many groups and empty foods
-        expect(
-          find.textContaining('Foods I Eat list is empty'),
-          findsOneWidget,
-          reason: 'Empty state should appear with many groups but zero foods',
-        );
-        // No group headers should render
-        expect(find.text('Browse Proteins'), findsNothing);
-        expect(find.text('Custom 1'), findsNothing);
-        expect(find.text('Custom 2'), findsNothing);
-      },
-    );
-
-    testWidgets(
-      'regression: "No foods in library" string does not appear',
-      (tester) async {
-        final repo = await _freshRepo();
-        final primer = await buildNutritionPrimerState(repo);
-
-        final nutritionState = NutritionState(repo);
-        final foodLibraryState = FoodLibraryState(repo);
-        await foodLibraryState.loadFoodGroups();
-        await foodLibraryState.loadFoods();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: NutritionScreen(
-              nutritionState: nutritionState,
-              foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Old string must not appear anywhere
-        expect(
-          find.text('No foods in library'),
-          findsNothing,
-          reason: 'The old "No foods in library" message should be completely removed',
-        );
-      },
-    );
+      // Old string must not appear anywhere
+      expect(
+        find.text('No foods in library'),
+        findsNothing,
+        reason:
+            'The old "No foods in library" message should be completely removed',
+      );
+    });
   });
 
   // S-003: Loading state. The section's own loading branch is normally
@@ -1487,7 +1446,8 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutritionState,
             foodLibraryState: foodLibraryState,
-            nutritionPrimerState: primer,),
+            nutritionPrimerState: primer,
+          ),
         ),
       );
       // Allow initState's loads to resolve.
@@ -1497,10 +1457,7 @@ void main() {
       // The labelled control is present (no target, no log yet — empty
       // ring branch). The button reads "Set target" because no target
       // is saved (PR 3 / S-002).
-      expect(
-        find.byKey(const Key('nutrition_target_button')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('nutrition_target_button')), findsOneWidget);
       expect(find.text('Set target'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('nutrition_target_button')));
@@ -1633,7 +1590,8 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+              nutritionPrimerState: primer,
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -1688,7 +1646,8 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+              nutritionPrimerState: primer,
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -1780,7 +1739,8 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+              nutritionPrimerState: primer,
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -1814,10 +1774,7 @@ void main() {
           find.byKey(const Key('food_form_protein')),
           '10',
         );
-        await tester.enterText(
-          find.byKey(const Key('food_form_carbs')),
-          '18',
-        );
+        await tester.enterText(find.byKey(const Key('food_form_carbs')), '18');
         await tester.enterText(find.byKey(const Key('food_form_fat')), '12');
         await tester.pumpAndSettle();
 
@@ -1846,8 +1803,11 @@ void main() {
             .where((f) => f.name == 'My Trail Mix')
             .toList();
         expect(personalLib, hasLength(1));
-        expect(personalLib.first.isCatalog, isFalse,
-            reason: 'library copy must be isCatalog = false');
+        expect(
+          personalLib.first.isCatalog,
+          isFalse,
+          reason: 'library copy must be isCatalog = false',
+        );
       },
     );
 
@@ -1870,7 +1830,8 @@ void main() {
             home: NutritionScreen(
               nutritionState: nutritionState,
               foodLibraryState: foodLibraryState,
-              nutritionPrimerState: primer,),
+              nutritionPrimerState: primer,
+            ),
           ),
         );
         await tester.pumpAndSettle();
@@ -2020,7 +1981,8 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutritionState,
             foodLibraryState: foodLibraryState,
-            nutritionPrimerState: primer,),
+            nutritionPrimerState: primer,
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -2200,94 +2162,7 @@ void main() {
       );
     });
 
-    testWidgets(
-      'S-005: thumb exposes checked semantics; toggles when tapped',
-      (tester) async {
-        final repo = await _freshRepo();
-        final nutrition = NutritionState(repo);
-        final foodLib = FoodLibraryState(repo);
-        await nutrition.loadConsumedToday();
-        await foodLib.loadFoodGroups();
-        await foodLib.loadFoods();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: LogFoodRow(
-                food: const Food(
-                  id: 'f-sem',
-                  name: 'Sem food',
-                  unitType: FoodUnitType.grams,
-                  referenceAmount: 100.0,
-                  referenceLabel: 'g',
-                  protein: 10,
-                  carbs: 10,
-                  fat: 10,
-                  createdAtMs: 1,
-                  updatedAtMs: 1,
-                ),
-                nutritionState: nutrition,
-                foodLibraryState: foodLib,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Enable semantics once for the whole test. The handle is
-        // disposed at the very end of the test body so the
-        // framework's leak check sees a clean state.
-        final handle = tester.ensureSemantics();
-
-        // Unlogged → unchecked.
-        {
-          final node = tester.getSemantics(
-            find.byKey(const Key('log_food_thumb_f-sem')),
-          );
-          expect(
-            node.getSemanticsData().flagsCollection.isChecked,
-            CheckedState.isFalse,
-            reason: 'S-005: unchecked when not logged',
-          );
-        }
-
-        // Tap → log → checked.
-        await tester.tap(find.byKey(const Key('log_food_thumb_f-sem')));
-        await tester.pumpAndSettle();
-        expect(nutrition.isFoodLoggedToday('f-sem'), isTrue);
-        {
-          final node = tester.getSemantics(
-            find.byKey(const Key('log_food_thumb_f-sem')),
-          );
-          expect(
-            node.getSemanticsData().flagsCollection.isChecked,
-            CheckedState.isTrue,
-            reason: 'S-005: checked when logged',
-          );
-        }
-
-        // Tap → unlog → unchecked again.
-        await tester.tap(find.byKey(const Key('log_food_thumb_f-sem')));
-        await tester.pumpAndSettle();
-        expect(nutrition.isFoodLoggedToday('f-sem'), isFalse);
-        {
-          final node = tester.getSemantics(
-            find.byKey(const Key('log_food_thumb_f-sem')),
-          );
-          expect(
-            node.getSemanticsData().flagsCollection.isChecked,
-            CheckedState.isFalse,
-            reason: 'S-004/S-005: unchecked after unlog',
-          );
-        }
-
-        // Dispose the semantics handle explicitly so the
-        // framework's leak check sees a clean state.
-        handle.dispose();
-      },
-    );
-
-    testWidgets('S-007: macros are a single `<cal> cal · <P>P · <C>C · <F>F` line', (
+    testWidgets('S-005: thumb exposes checked semantics; toggles when tapped', (
       tester,
     ) async {
       final repo = await _freshRepo();
@@ -2297,15 +2172,13 @@ void main() {
       await foodLib.loadFoodGroups();
       await foodLib.loadFoods();
 
-      // Per-100 g sample: 10P / 10C / 10F = 170 kcal. Macro text:
-      // "170 cal · 10P · 10C · 10F".
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: LogFoodRow(
               food: const Food(
-                id: 'f-macros',
-                name: 'Macro sample',
+                id: 'f-sem',
+                name: 'Sem food',
                 unitType: FoodUnitType.grams,
                 referenceAmount: 100.0,
                 referenceLabel: 'g',
@@ -2323,29 +2196,118 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Single-line format.
-      expect(
-        find.text('170 cal · 10P · 10C · 10F'),
-        findsOneWidget,
-        reason: 'S-007: single-line macro format with middle-dot separators',
-      );
-      // The old 2×2 grid cells are gone: no separate "170 cal",
-      // "10P", "10C", "10F" cells.
-      // (These substrings are still part of the single line above;
-      // we check that the OLD `grid` widget is gone by asserting
-      // the 2×2 grid container is not present.)
-      // The grid used a 73-px-wide SizedBox for the "cal" cell;
-      // verify that no SizedBox of width 73 exists inside the row.
-      // (Width 73 is the grid's specific column width; nothing
-      // else in the row uses that exact width.)
-      final rowFinder = find.byType(LogFoodRow);
-      expect(rowFinder, findsOneWidget);
-      // The amount textbox also uses width 73; it's still present
-      // — the assertion we want is that the grid's "cal" SizedBox
-      // is gone. Skip the SizedBox assertion and instead verify
-      // the exact macro line is the only Text containing "10P".
-      expect(find.textContaining('10P'), findsOneWidget);
+      // Enable semantics once for the whole test. The handle is
+      // disposed at the very end of the test body so the
+      // framework's leak check sees a clean state.
+      final handle = tester.ensureSemantics();
+
+      // Unlogged → unchecked.
+      {
+        final node = tester.getSemantics(
+          find.byKey(const Key('log_food_thumb_f-sem')),
+        );
+        expect(
+          node.getSemanticsData().flagsCollection.isChecked,
+          CheckedState.isFalse,
+          reason: 'S-005: unchecked when not logged',
+        );
+      }
+
+      // Tap → log → checked.
+      await tester.tap(find.byKey(const Key('log_food_thumb_f-sem')));
+      await tester.pumpAndSettle();
+      expect(nutrition.isFoodLoggedToday('f-sem'), isTrue);
+      {
+        final node = tester.getSemantics(
+          find.byKey(const Key('log_food_thumb_f-sem')),
+        );
+        expect(
+          node.getSemanticsData().flagsCollection.isChecked,
+          CheckedState.isTrue,
+          reason: 'S-005: checked when logged',
+        );
+      }
+
+      // Tap → unlog → unchecked again.
+      await tester.tap(find.byKey(const Key('log_food_thumb_f-sem')));
+      await tester.pumpAndSettle();
+      expect(nutrition.isFoodLoggedToday('f-sem'), isFalse);
+      {
+        final node = tester.getSemantics(
+          find.byKey(const Key('log_food_thumb_f-sem')),
+        );
+        expect(
+          node.getSemanticsData().flagsCollection.isChecked,
+          CheckedState.isFalse,
+          reason: 'S-004/S-005: unchecked after unlog',
+        );
+      }
+
+      // Dispose the semantics handle explicitly so the
+      // framework's leak check sees a clean state.
+      handle.dispose();
     });
+
+    testWidgets(
+      'S-007: macros are a single `<cal> cal · <P>P · <C>C · <F>F` line',
+      (tester) async {
+        final repo = await _freshRepo();
+        final nutrition = NutritionState(repo);
+        final foodLib = FoodLibraryState(repo);
+        await nutrition.loadConsumedToday();
+        await foodLib.loadFoodGroups();
+        await foodLib.loadFoods();
+
+        // Per-100 g sample: 10P / 10C / 10F = 170 kcal. Macro text:
+        // "170 cal · 10P · 10C · 10F".
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LogFoodRow(
+                food: const Food(
+                  id: 'f-macros',
+                  name: 'Macro sample',
+                  unitType: FoodUnitType.grams,
+                  referenceAmount: 100.0,
+                  referenceLabel: 'g',
+                  protein: 10,
+                  carbs: 10,
+                  fat: 10,
+                  createdAtMs: 1,
+                  updatedAtMs: 1,
+                ),
+                nutritionState: nutrition,
+                foodLibraryState: foodLib,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Single-line format.
+        expect(
+          find.text('170 cal · 10P · 10C · 10F'),
+          findsOneWidget,
+          reason: 'S-007: single-line macro format with middle-dot separators',
+        );
+        // The old 2×2 grid cells are gone: no separate "170 cal",
+        // "10P", "10C", "10F" cells.
+        // (These substrings are still part of the single line above;
+        // we check that the OLD `grid` widget is gone by asserting
+        // the 2×2 grid container is not present.)
+        // The grid used a 73-px-wide SizedBox for the "cal" cell;
+        // verify that no SizedBox of width 73 exists inside the row.
+        // (Width 73 is the grid's specific column width; nothing
+        // else in the row uses that exact width.)
+        final rowFinder = find.byType(LogFoodRow);
+        expect(rowFinder, findsOneWidget);
+        // The amount textbox also uses width 73; it's still present
+        // — the assertion we want is that the grid's "cal" SizedBox
+        // is gone. Skip the SizedBox assertion and instead verify
+        // the exact macro line is the only Text containing "10P".
+        expect(find.textContaining('10P'), findsOneWidget);
+      },
+    );
 
     testWidgets('S-006: hairline divider between rows, none after last', (
       tester,
@@ -2390,7 +2352,8 @@ void main() {
           home: NutritionScreen(
             nutritionState: nutrition,
             foodLibraryState: foodLib,
-            nutritionPrimerState: primer,),
+            nutritionPrimerState: primer,
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -2434,19 +2397,21 @@ void main() {
 
         // Per-100 g food with a remembered lastAmountConsumed = 150.
         // The food is NOT logged today.
-        await repo.createFood(const Food(
-          id: 'f-last-amount',
-          name: 'Chicken (last amount)',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100.0,
-          referenceLabel: 'g',
-          protein: 31,
-          carbs: 0,
-          fat: 3,
-          lastAmountConsumed: 150.0,
-          createdAtMs: 1,
-          updatedAtMs: 1,
-        ));
+        await repo.createFood(
+          const Food(
+            id: 'f-last-amount',
+            name: 'Chicken (last amount)',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100.0,
+            referenceLabel: 'g',
+            protein: 31,
+            carbs: 0,
+            fat: 3,
+            lastAmountConsumed: 150.0,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
 
         await tester.pumpWidget(
           MaterialApp(
@@ -2482,18 +2447,20 @@ void main() {
         await foodLib.loadFoods();
 
         // Per-100 g food, never logged → lastAmountConsumed = null.
-        await repo.createFood(const Food(
-          id: 'f-default-amount',
-          name: 'Chicken (never logged)',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100.0,
-          referenceLabel: 'g',
-          protein: 31,
-          carbs: 0,
-          fat: 3,
-          createdAtMs: 1,
-          updatedAtMs: 1,
-        ));
+        await repo.createFood(
+          const Food(
+            id: 'f-default-amount',
+            name: 'Chicken (never logged)',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100.0,
+            referenceLabel: 'g',
+            protein: 31,
+            carbs: 0,
+            fat: 3,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
 
         await tester.pumpWidget(
           MaterialApp(
@@ -2527,19 +2494,21 @@ void main() {
         await foodLib.loadFoodGroups();
         await foodLib.loadFoods();
 
-        await repo.createFood(const Food(
-          id: 'f-edit-unsaved',
-          name: 'Chicken (unsaved edit)',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100.0,
-          referenceLabel: 'g',
-          protein: 31,
-          carbs: 0,
-          fat: 3,
-          lastAmountConsumed: 150.0,
-          createdAtMs: 1,
-          updatedAtMs: 1,
-        ));
+        await repo.createFood(
+          const Food(
+            id: 'f-edit-unsaved',
+            name: 'Chicken (unsaved edit)',
+            unitType: FoodUnitType.grams,
+            referenceAmount: 100.0,
+            referenceLabel: 'g',
+            protein: 31,
+            carbs: 0,
+            fat: 3,
+            lastAmountConsumed: 150.0,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
 
         await tester.pumpWidget(
           MaterialApp(
@@ -2568,27 +2537,31 @@ void main() {
 
         // Food row's lastAmountConsumed is unchanged.
         final foodAfter = await repo.getFoodById('f-edit-unsaved');
-        expect(foodAfter!.lastAmountConsumed, 150.0,
-            reason: 'S-004: unsaved edit must not mutate the stored value');
+        expect(
+          foodAfter!.lastAmountConsumed,
+          150.0,
+          reason: 'S-004: unsaved edit must not mutate the stored value',
+        );
 
         // No ConsumedFood row was created.
         expect(nutrition.consumedToday, isEmpty);
       },
     );
 
-    testWidgets(
-      'S-005: today-log pre-fill wins over lastAmountConsumed',
-      (tester) async {
-        final repo = await _freshRepo();
-        final nutrition = NutritionState(repo);
-        final foodLib = FoodLibraryState(repo);
-        await nutrition.loadConsumedToday();
-        await foodLib.loadFoodGroups();
-        await foodLib.loadFoods();
+    testWidgets('S-005: today-log pre-fill wins over lastAmountConsumed', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final nutrition = NutritionState(repo);
+      final foodLib = FoodLibraryState(repo);
+      await nutrition.loadConsumedToday();
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
 
-        // Pre-seed food with a remembered amount = 150 (yesterday's
-        // log).
-        await repo.createFood(const Food(
+      // Pre-seed food with a remembered amount = 150 (yesterday's
+      // log).
+      await repo.createFood(
+        const Food(
           id: 'f-today-wins',
           name: 'Chicken (today wins)',
           unitType: FoodUnitType.grams,
@@ -2600,34 +2573,34 @@ void main() {
           lastAmountConsumed: 150.0,
           createdAtMs: 1,
           updatedAtMs: 1,
-        ));
-        final food = (await repo.getFoodById('f-today-wins'))!;
+        ),
+      );
+      final food = (await repo.getFoodById('f-today-wins'))!;
 
-        // Log today at 200 via the state (this also updates
-        // lastAmountConsumed → 200).
-        await nutrition.logConsumedFoodAt(food, 200.0);
+      // Log today at 200 via the state (this also updates
+      // lastAmountConsumed → 200).
+      await nutrition.logConsumedFoodAt(food, 200.0);
 
-        // Pump the row.
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: LogFoodRow(
-                food: food,
-                nutritionState: nutrition,
-                foodLibraryState: foodLib,
-              ),
+      // Pump the row.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LogFoodRow(
+              food: food,
+              nutritionState: nutrition,
+              foodLibraryState: foodLib,
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Pre-fill is 200 (today's value), not 150 (yesterday's).
-        final tf = tester.widget<TextField>(
-          find.byKey(const Key('log_food_amount_f-today-wins')),
-        );
-        expect(tf.controller!.text, '200');
-      },
-    );
+      // Pre-fill is 200 (today's value), not 150 (yesterday's).
+      final tf = tester.widget<TextField>(
+        find.byKey(const Key('log_food_amount_f-today-wins')),
+      );
+      expect(tf.controller!.text, '200');
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -3211,10 +3184,7 @@ void main() {
 
       expect(find.text('Delete category?'), findsOneWidget);
       // The dropdown default is "Ungrouped" (null value).
-      expect(
-        find.byKey(const Key('delete_group_destination')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('delete_group_destination')), findsOneWidget);
       expect(find.byKey(const Key('delete_group_confirm')), findsOneWidget);
 
       // Confirm with the default (Ungrouped).
@@ -3288,7 +3258,8 @@ void main() {
         expect(
           scaffold.bottomNavigationBar,
           isNotNull,
-          reason: 'My Foods tab must have a primary bottom CTA on the host '
+          reason:
+              'My Foods tab must have a primary bottom CTA on the host '
               'Scaffold.bottomNavigationBar',
         );
 
@@ -3309,25 +3280,17 @@ void main() {
         // (not the surface's) so the assertion holds on both
         // phone- and tablet-class surfaces.
         final buttonRect = tester.getRect(
-          find.descendant(
-            of: ctaFinder,
-            matching: find.byType(FilledButton),
-          ),
+          find.descendant(of: ctaFinder, matching: find.byType(FilledButton)),
         );
         final column = contentColumnRectFor(surface.width);
-        final expectedLeft =
-            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
         final expectedRight =
-            column.left +
-            column.width -
-            OmniTheme.bottomCTAHorizontalPadding;
+            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
         expect(buttonRect.left, closeTo(expectedLeft, 0.5));
         expect(buttonRect.right, closeTo(expectedRight, 0.5));
-        expect(
-          buttonRect.height,
-          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
-        );
-        final expectedBottom = surface.height -
+        expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
+        final expectedBottom =
+            surface.height -
             tester.view.padding.bottom / tester.view.devicePixelRatio -
             OmniTheme.bottomCTAVerticalBottomPadding;
         expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
@@ -3372,7 +3335,8 @@ void main() {
         expect(
           scaffold.bottomNavigationBar,
           isNotNull,
-          reason: 'Groups tab must have a primary bottom CTA on the host '
+          reason:
+              'Groups tab must have a primary bottom CTA on the host '
               'Scaffold.bottomNavigationBar',
         );
 
@@ -3395,67 +3359,58 @@ void main() {
         // (not the surface's) so the assertion holds on both
         // phone- and tablet-class surfaces.
         final buttonRect = tester.getRect(
-          find.descendant(
-            of: ctaFinder,
-            matching: find.byType(FilledButton),
-          ),
+          find.descendant(of: ctaFinder, matching: find.byType(FilledButton)),
         );
         final column = contentColumnRectFor(surface.width);
-        final expectedLeft =
-            column.left + OmniTheme.bottomCTAHorizontalPadding;
+        final expectedLeft = column.left + OmniTheme.bottomCTAHorizontalPadding;
         final expectedRight =
-            column.left +
-            column.width -
-            OmniTheme.bottomCTAHorizontalPadding;
+            column.left + column.width - OmniTheme.bottomCTAHorizontalPadding;
         expect(buttonRect.left, closeTo(expectedLeft, 0.5));
         expect(buttonRect.right, closeTo(expectedRight, 0.5));
-        expect(
-          buttonRect.height,
-          closeTo(OmniTheme.buttonPrimaryHeight, 0.5),
-        );
-        final expectedBottom = surface.height -
+        expect(buttonRect.height, closeTo(OmniTheme.buttonPrimaryHeight, 0.5));
+        final expectedBottom =
+            surface.height -
             tester.view.padding.bottom / tester.view.devicePixelRatio -
             OmniTheme.bottomCTAVerticalBottomPadding;
         expect(buttonRect.bottom, closeTo(expectedBottom, 0.5));
       },
     );
 
-    testWidgets(
-      'renders no bottom CTA on the Library tab (S-003)',
-      (tester) async {
-        final repo = await _freshRepo();
-        final foodLib = FoodLibraryState(repo);
-        final nutrition = NutritionState(repo);
-        await foodLib.loadFoodGroups();
-        await foodLib.loadFoods();
-        await foodLib.loadCatalogFoods();
+    testWidgets('renders no bottom CTA on the Library tab (S-003)', (
+      tester,
+    ) async {
+      final repo = await _freshRepo();
+      final foodLib = FoodLibraryState(repo);
+      final nutrition = NutritionState(repo);
+      await foodLib.loadFoodGroups();
+      await foodLib.loadFoods();
+      await foodLib.loadCatalogFoods();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: AddFoodScreen(
-              foodLibraryState: foodLib,
-              nutritionState: nutrition,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AddFoodScreen(
+            foodLibraryState: foodLib,
+            nutritionState: nutrition,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // The Library tab is the default. No OmniBottomCTA is
-        // rendered (the AnimatedBuilder returns SizedBox.shrink()
-        // for the Library tab).
-        expect(
-          find.descendant(
-            of: find.byType(Scaffold),
-            matching: find.byType(OmniBottomCTA),
-          ),
-          findsNothing,
-        );
-        // The "+ New Food" / "+ New Category" labels are absent on
-        // the Library tab.
-        expect(find.text('+ New Food'), findsNothing);
-        expect(find.text('+ New Category'), findsNothing);
-      },
-    );
+      // The Library tab is the default. No OmniBottomCTA is
+      // rendered (the AnimatedBuilder returns SizedBox.shrink()
+      // for the Library tab).
+      expect(
+        find.descendant(
+          of: find.byType(Scaffold),
+          matching: find.byType(OmniBottomCTA),
+        ),
+        findsNothing,
+      );
+      // The "+ New Food" / "+ New Category" labels are absent on
+      // the Library tab.
+      expect(find.text('+ New Food'), findsNothing);
+      expect(find.text('+ New Category'), findsNothing);
+    });
   });
 
   group('LogFoodRow thumbnail contrast', () {
@@ -3469,20 +3424,28 @@ void main() {
       await foodLib.loadFoodGroups();
       await foodLib.loadFoods();
 
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: LogFoodRow(
-            food: const Food(
-              id: 'f-contrast', name: 'Contrast food',
-              unitType: FoodUnitType.grams, referenceAmount: 100,
-              referenceLabel: 'g', protein: 10, carbs: 10, fat: 10,
-              createdAtMs: 1, updatedAtMs: 1,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LogFoodRow(
+              food: const Food(
+                id: 'f-contrast',
+                name: 'Contrast food',
+                unitType: FoodUnitType.grams,
+                referenceAmount: 100,
+                referenceLabel: 'g',
+                protein: 10,
+                carbs: 10,
+                fat: 10,
+                createdAtMs: 1,
+                updatedAtMs: 1,
+              ),
+              nutritionState: nutrition,
+              foodLibraryState: foodLib,
             ),
-            nutritionState: nutrition,
-            foodLibraryState: foodLib,
           ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       final thumb = find.byKey(const Key('log_food_thumb_f-contrast'));
@@ -3491,5 +3454,4 @@ void main() {
       expect(find.byType(AnimatedOpacity), findsOneWidget);
     });
   });
-
 }

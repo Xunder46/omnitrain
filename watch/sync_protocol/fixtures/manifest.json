@@ -3,10 +3,12 @@
   "description": "Conformance fixture register. Every fixture file in this directory is listed here exactly once; the Dart validator, the watchOS suite, and the Wear OS suite walk this manifest rather than a hardcoded list. Every reconciliation fixture is replayed by the conformance test and must converge on its `expected` state; each entry under `scenarios` records the property the fixture pins, and the plan scenario it belongs to where there is one (`scenario` is null for fixtures that pin a protocol rule rather than a plan scenario).",
   "valid": [
     { "path": "valid/routines_down.json", "type": "routines_down" },
+    { "path": "valid/foods_down.json", "type": "foods_down" },
     { "path": "valid/exercise_push.json", "type": "exercise_push" },
     { "path": "valid/structure_change.json", "type": "structure_change" },
     { "path": "valid/observations_up.json", "type": "observations_up" },
     { "path": "valid/observations_up_distance_and_load.json", "type": "observations_up" },
+    { "path": "valid/receipt.json", "type": "receipt" },
     { "path": "valid/session_lifecycle.json", "type": "session_lifecycle" },
     { "path": "valid/session_snapshot.json", "type": "session_snapshot" },
     { "path": "valid/timer_state.json", "type": "timer_state" }
@@ -23,6 +25,18 @@
       "type": "routines_down",
       "expectedCode": "semantic_violation",
       "expectedReasonContains": "fallbackExercises"
+    },
+    {
+      "path": "invalid/foods_down_missing_food_id.json",
+      "type": "foods_down",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "foodId"
+    },
+    {
+      "path": "invalid/receipt_missing_entry_ids.json",
+      "type": "receipt",
+      "expectedCode": "missing_required_field",
+      "expectedReasonContains": "entryIds"
     },
     {
       "path": "invalid/exercise_push_unknown_origin.json",

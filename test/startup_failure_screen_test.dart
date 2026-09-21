@@ -75,9 +75,7 @@ void main() {
       'S-001 — copy has no developer terminology and the Retry control is present',
       (WidgetTester tester) async {
         await tester.pumpWidget(
-          MaterialApp(
-            home: StartupFailureScreen(onRetry: () {}),
-          ),
+          MaterialApp(home: StartupFailureScreen(onRetry: () {})),
         );
         await tester.pumpAndSettle();
 
@@ -310,9 +308,7 @@ void main() {
         var reportCalls = 0;
 
         Future<Widget> succeedImmediately() async {
-          return const MaterialApp(
-            home: Scaffold(body: Text('SUCCESS-ONLY')),
-          );
+          return const MaterialApp(home: Scaffold(body: Text('SUCCESS-ONLY')));
         }
 
         await tester.pumpWidget(
@@ -343,7 +339,8 @@ void main() {
         final app = await app_main.runStartup(
           createRepository: () async => MockWorkoutRepository(),
           createPreferencesService: () => _FakePreferencesService(),
-          createTimerAlertService: () => TimerAlertService.forTesting(isWeb: true),
+          createTimerAlertService: () =>
+              TimerAlertService.forTesting(isWeb: true),
           createRestNotificationService: () =>
               _FailingRestNotificationService(initError, initStack),
           createImageStorageService: () async => null,
@@ -360,14 +357,14 @@ void main() {
           startupIssue.single.error.toString(),
           contains('Non-fatal startup notification initialization failure'),
         );
-        expect(
-          startupIssue.single.error.toString(),
-          contains('invalid_icon'),
-        );
+        expect(startupIssue.single.error.toString(), contains('invalid_icon'));
         expect(identical(startupIssue.single.stackTrace, initStack), isTrue);
 
         final myApp = app as MyApp;
-        expect(myApp.restNotificationService, isNot(isA<_FailingRestNotificationService>()));
+        expect(
+          myApp.restNotificationService,
+          isNot(isA<_FailingRestNotificationService>()),
+        );
       },
     );
 
@@ -411,7 +408,8 @@ void main() {
         final app = await app_main.runStartup(
           createRepository: () async => MockWorkoutRepository(),
           createPreferencesService: () => _FakePreferencesService(),
-          createTimerAlertService: () => TimerAlertService.forTesting(isWeb: true),
+          createTimerAlertService: () =>
+              TimerAlertService.forTesting(isWeb: true),
           createRestNotificationService: () => notificationService,
           createImageStorageService: () async => null,
           loadAppVersionInfo: () async =>

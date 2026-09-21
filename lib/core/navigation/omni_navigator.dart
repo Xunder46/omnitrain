@@ -15,11 +15,13 @@ abstract final class OmniNavigator {
     bool fullscreenDialog = false,
     RouteSettings? settings,
   }) {
-    return Navigator.of(context).push(OmniRoute<T>(
-      builder: builder,
-      settings: settings,
-      fullscreenDialog: fullscreenDialog,
-    ));
+    return Navigator.of(context).push(
+      OmniRoute<T>(
+        builder: builder,
+        settings: settings,
+        fullscreenDialog: fullscreenDialog,
+      ),
+    );
   }
 
   /// Replace the current route with [builder] using [OmniRoute].

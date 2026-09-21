@@ -362,6 +362,9 @@ public final class WatchSessionEngine {
             // rather than quietly ignored (PROTOCOL.md, "Versioning policy").
             try requireConformingIncoming(envelope)
             return false
+        case "receipt":
+            try requireConformingIncoming(envelope)
+            return await applyReceipt(envelope)
         default:
             return false
         }
@@ -496,6 +499,23 @@ public final class WatchSessionEngine {
             )
         )
         return true
+    }
+
+    /// Applies the phone's receipt: the observations behind `entryIds` are the
+    /// phone's now, so the watch may stop re-sending them (PROTOCOL.md,
+    /// "Idempotency and reconciliation").
+    ///
+    /// The receipt carries no sessionId on purpose: a standalone nutrition
+    /// quick-log has no session to name, and `session_snapshot` is never the
+    /// acknowledgement for one — the phone's mirror does not hold a nutrition
+    /// session, so the entry would never come back that way.
+    ///
+    /// Returns true when it acknowledged something the watch still owed.
+    private func applyReceipt(_ envelope: [String: Any]) async -> Bool {
+        let payload = (envelope["payload"] as? [String: Any]) ?? [:]
+        let entryIds = (payload["entryIds"] as? [Any] ?? []).compactMap { $0 as? String }
+        guard !entryIds.isEmpty else { return false }
+        return !(await confirmObservations(entryIds)).isEmpty
     }
 
     /// Applies an incremental timer update: the kinds it names are adopted or
@@ -884,20 +904,78 @@ public final class WatchSessionEngine {
         _ event: [String: Any]
     ) async throws -> WatchObservationRecord {
         let session = requireSession()
+        return try await appendObservation(event, sessionId: session.sessionId)
+    }
+
+    /// Persists a food the user quick-logged, and emits it for the phone.
+    ///
+    /// The one entry point on the wrist that does not need a session: eating is
+    /// not a training event, and the surface is reachable with no workout
+    /// running (S-006). A log taken while a session is running rides it — a
+    /// snack mid-workout is part of that session's story — and one taken
+    /// without a session carries the nutrition log's own id, because
+    /// `observations_up` requires a session id and the wrist will not invent a
+    /// workout (`WatchNutritionSession`).
+    ///
+    /// `servings` is the portion as a multiple of the food's reference amount,
+    /// and `calories` what the phone quoted for it — the event is
+    /// self-contained, so the phone materialises the entry without asking the
+    /// wrist a question.
+    @discardableResult
+    public func logNutrition(
+        foodId: String,
+        servings: Double,
+        calories: Double? = nil,
+        loggedAt: Date? = nil
+    ) async throws -> WatchObservationRecord {
+        let now = loggedAt ?? clock()
+        let entryId = newId()
+        var event: [String: Any] = [
+            "entryId": entryId,
+            "eventId": entryId,
+            "kind": WatchObservationKind.nutritionQuickLog,
+            "loggedAt": utcIso(now),
+            "foodId": foodId,
+            "servings": servings,
+        ]
+        if let calories { event["calories"] = calories }
+
+        return try await appendObservation(
+            event,
+            sessionId: current?.sessionId ?? WatchNutritionSession.idFor(now)
+        )
+    }
+
+    /// The nutrition quick-logs the wrist has taken, oldest first — every
+    /// session's, because the surface is reachable with none.
+    ///
+    /// Read back out of the rows storage already held, which is what makes the
+    /// food that moves to the top of the wrist's list survive a relaunch.
+    public var nutritionLog: [WatchObservationRecord] {
+        storedObservations.filter { $0.kind == WatchObservationKind.nutritionQuickLog }
+    }
+
+    /// Storage first, emission second — the order every log on the watch
+    /// follows.
+    @discardableResult
+    private func appendObservation(
+        _ event: [String: Any],
+        sessionId: String
+    ) async throws -> WatchObservationRecord {
         let eventId = event["eventId"] as? String
         let recordId = eventId.flatMap { $0.isEmpty ? nil : $0 } ?? newId()
         let now = clock()
 
         let record = WatchObservationRecord(
             recordId: recordId,
-            sessionId: session.sessionId,
+            sessionId: sessionId,
             recordedAt: now,
             kind: event["kind"] as? String ?? "",
             payload: event
         )
 
         let envelope = observationsUp(
-            sessionId: session.sessionId,
+            sessionId: sessionId,
             record: record,
             sentAt: now,
             messageId: messageId(for: recordId)
@@ -999,17 +1077,35 @@ public final class WatchSessionEngine {
     /// Emission is a projection of the stored rows, so replaying after a kill
     /// sends the same events with the same identifiers.
     public func pendingObservations() -> [[String: Any]] {
-        guard let session = current else { return [] }
-        return observations
-            .filter { $0.confirmedAt == nil }
+        var pending: [[String: Any]] = []
+
+        if let session = current {
+            pending += observations
+                .filter { $0.confirmedAt == nil }
+                .map { observation in
+                    observationsUp(
+                        sessionId: session.sessionId,
+                        record: observation,
+                        sentAt: observation.recordedAt,
+                        messageId: messageId(for: observation.recordId)
+                    )
+                }
+        }
+
+        // A quick-log taken with no session (S-006) is owed just like an
+        // in-session one, and carries the id it was stored under.
+        pending += nutritionLog
+            .filter { $0.confirmedAt == nil && $0.sessionId != current?.sessionId }
             .map { observation in
                 observationsUp(
-                    sessionId: session.sessionId,
+                    sessionId: observation.sessionId,
                     record: observation,
                     sentAt: observation.recordedAt,
                     messageId: messageId(for: observation.recordId)
                 )
             }
+
+        return pending
     }
 
     // MARK: - Timers
@@ -1147,7 +1243,6 @@ public final class WatchSessionEngine {
     /// A receipt is an append of its own: the watch must remember what it may
     /// drop across a relaunch, without rewriting an observation.
     public func confirmObservations(_ entryIds: [String]) async -> [String] {
-        guard let session = current else { return [] }
         let wanted = Set(entryIds)
         let acknowledged = storedObservations.filter {
             wanted.contains($0.entryId) && $0.confirmedAt == nil
@@ -1159,7 +1254,10 @@ public final class WatchSessionEngine {
             .confirmation(
                 WatchConfirmationRecord(
                     recordId: newId(),
-                    sessionId: session.sessionId,
+                    // A receipt names the session it belongs to; a standalone
+                    // nutrition quick-log has none, so the row's own id stands
+                    // in.
+                    sessionId: current?.sessionId ?? acknowledged[0].sessionId,
                     recordedAt: now,
                     observationIds: acknowledged.map(\.recordId)
                 )
@@ -1269,27 +1367,10 @@ public final class WatchSessionEngine {
     /// conformance. A message from a peer speaking another version is rejected
     /// without being interpreted (PROTOCOL.md, "Versioning policy").
     private func requireConformingIncoming(_ envelope: [String: Any]) throws {
-        guard let validator else { return }
-
-        let version = envelope["protocolVersion"]
-        if (version as? NSNumber)?.intValue != SyncProtocolValidator.protocolVersion {
-            throw WatchEmissionRejected(
-                message: "refusing to apply a message that advertises "
-                    + "\(version ?? "nil")",
-                rejections: [
-                    SyncProtocolRejection(
-                        code: SyncRejectionCode.unsupportedProtocolVersion,
-                        path: "$.protocolVersion",
-                        message: "unsupported protocol version; the payload was not read"
-                    )
-                ]
-            )
-        }
-
-        let rejections = validator.validateEnvelope(envelope)
+        let rejections = SyncProtocolValidator.incomingRejections(validator, envelope)
         guard rejections.isEmpty else {
             throw WatchEmissionRejected(
-                message: "refusing to apply a non-conformant message: "
+                message: "refusing to apply a message this build cannot read: "
                     + "\(rejections[0].description)",
                 rejections: rejections
             )

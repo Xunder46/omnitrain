@@ -104,9 +104,11 @@ class SyncProtocolValidator {
 
   static const List<String> messageTypes = [
     'routines_down',
+    'foods_down',
     'exercise_push',
     'structure_change',
     'observations_up',
+    'receipt',
     'session_lifecycle',
     'session_snapshot',
     'timer_state',
@@ -169,6 +171,31 @@ class SyncProtocolValidator {
     return _semanticRejections(message);
   }
 
+  /// The verdict for [message] from [validator], or an accept when the receiver
+  /// carries no schema set to judge with.
+  ///
+  /// A build that ships without the schemas cannot tell a conformant message
+  /// from a malformed one, and a receiver that cannot read is not a receiver
+  /// that should refuse. Every entry point gates incoming messages through here
+  /// so none of them can answer that question differently.
+  static SyncMessageDecision evaluateOrAccept(
+    SyncProtocolValidator? validator,
+    Map<String, Object?> message,
+  ) {
+    final verdict = validator?.evaluateIncoming(
+      message,
+      receiverVersion: protocolVersion,
+    );
+    if (verdict != null) return verdict;
+
+    return const SyncMessageDecision(
+      decision: acceptDecision,
+      reason: 'accepted',
+      respondWithSnapshot: false,
+      rejections: [],
+    );
+  }
+
   /// The receiver-side gate: version first, then conformance.
   ///
   /// The version check runs before validation on purpose — a payload written
@@ -224,6 +251,8 @@ class SyncProtocolValidator {
         return _snapshotRejections(payload);
       case 'observations_up':
         return _duplicateEventRejections(payload);
+      case 'receipt':
+        return _duplicateAcknowledgementRejections(payload);
       case 'routines_down':
         return _fallbackCoverageRejections(payload);
       default:
@@ -280,7 +309,9 @@ class SyncProtocolValidator {
   /// A slot id addresses an exercise for the life of the session, so a snapshot
   /// that reuses one is ambiguous: the receiver could not tell the two slots
   /// apart. The same `exerciseId` in two slots is legitimate and not reported.
-  List<SyncProtocolRejection> _duplicateSlotRejections(List<Object?> exercises) {
+  List<SyncProtocolRejection> _duplicateSlotRejections(
+    List<Object?> exercises,
+  ) {
     final seen = <String>{};
     final duplicates = <String>[];
     for (final exercise in exercises) {
@@ -340,6 +371,27 @@ class SyncProtocolValidator {
         code: _semanticViolation,
         path: '$_root.payload.events',
         message: 'the same eventId appears twice: ${duplicates.join(', ')}',
+      ),
+    ];
+  }
+
+  /// One entry may be acknowledged once per receipt — the same id twice says
+  /// nothing more the second time, and a sender that does it is confused about
+  /// what it holds.
+  List<SyncProtocolRejection> _duplicateAcknowledgementRejections(
+    Map<String, Object?> payload,
+  ) {
+    final seen = <String>{};
+    final duplicates = <String>[];
+    for (final entryId in payload['entryIds']! as List) {
+      if (!seen.add(entryId! as String)) duplicates.add(entryId);
+    }
+    if (duplicates.isEmpty) return const [];
+    return [
+      SyncProtocolRejection(
+        code: _semanticViolation,
+        path: '$_root.payload.entryIds',
+        message: 'the same entryId appears twice: ${duplicates.join(', ')}',
       ),
     ];
   }

@@ -275,10 +275,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
   ///
   /// The picker only opens when the user explicitly taps Add Exercise.
   /// Add Block calls `workoutState.addSessionBlock()` directly.
-  Widget _buildAddExerciseAndBlockBar(
-    ThemeData theme, {
-    String? segmentId,
-  }) {
+  Widget _buildAddExerciseAndBlockBar(ThemeData theme, {String? segmentId}) {
     final addExercise = SizedBox(
       width: double.infinity,
       height: OmniTheme.buttonPrimaryHeight,
@@ -288,9 +285,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         style: ButtonStyle(
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                OmniTheme.buttonBorderRadius,
-              ),
+              borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
             ),
           ),
         ),
@@ -313,16 +308,11 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
         style: ButtonStyle(
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(
-                OmniTheme.buttonBorderRadius,
-              ),
+              borderRadius: BorderRadius.circular(OmniTheme.buttonBorderRadius),
             ),
           ),
         ),
-        child: const FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text('Add Block'),
-        ),
+        child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Add Block')),
       ),
     );
 
@@ -330,11 +320,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          addExercise,
-          const SizedBox(height: 12),
-          addBlock,
-        ],
+        children: [addExercise, const SizedBox(height: 12), addBlock],
       ),
     );
   }
@@ -365,7 +351,8 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                             duration: _kRestStripAnimationDuration,
                             curve: Curves.easeOut,
                             padding: EdgeInsets.only(
-                              bottom: _kBottomControlsClearance +
+                              bottom:
+                                  _kBottomControlsClearance +
                                   (showRestStrip
                                       ? OmniTheme.restStripHeight
                                       : 0),
@@ -386,9 +373,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                             0,
                             0,
                             _kBottomControlsClearance +
-                                (showRestStrip
-                                    ? OmniTheme.restStripHeight
-                                    : 0),
+                                (showRestStrip ? OmniTheme.restStripHeight : 0),
                           ),
                           children: [
                             for (int i = 0; i < blocks.length; i++)
@@ -491,8 +476,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                 right: 0,
                 bottom: 0,
                 child: OmniBottomCTA(
-                  label:
-                      widget.editMode ? 'Save Changes' : 'Finish Workout',
+                  label: widget.editMode ? 'Save Changes' : 'Finish Workout',
                   onPressed: widget.editMode
                       ? _saveEditChanges
                       : _showFinishSessionDialog,
@@ -529,9 +513,7 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
                       8,
                       0,
                       _kBottomControlsClearance +
-                          (showRestStrip
-                              ? OmniTheme.restStripHeight
-                              : 0),
+                          (showRestStrip ? OmniTheme.restStripHeight : 0),
                     ),
                     children: [
                       for (final item in items)
@@ -818,94 +800,91 @@ extension _SessionListViewBuilders on _WorkoutSessionScreenState {
       // scenario S-003.
       body: Stack(
         children: [
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(theme),
+          SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(theme),
 
-                  const SizedBox(height: 0),
+                const SizedBox(height: 0),
 
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: AnimatedPadding(
-                            duration: _kRestStripAnimationDuration,
-                            curve: Curves.easeOut,
-                            padding: EdgeInsets.only(
-                              bottom: showRestStrip
-                                  ? OmniTheme.restStripHeight
-                                  : 0,
-                            ),
-                            child: SingleChildScrollView(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    _buildMetricWidget(
-                                      exercise,
-                                      currentEntry,
-                                      effortKind,
-                                      theme,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    _buildSetProgress(
-                                      entries.length,
-                                      effortKind,
-                                      theme,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    _buildSetIndicator(
-                                      entries.length,
-                                      effortKind,
-                                      theme,
-                                    ),
-                                    SizedBox(
-                                      height:
-                                          24 + _kSessionScrollBottomExtra,
-                                    ),
-                                  ],
-                                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: AnimatedPadding(
+                          duration: _kRestStripAnimationDuration,
+                          curve: Curves.easeOut,
+                          padding: EdgeInsets.only(
+                            bottom: showRestStrip
+                                ? OmniTheme.restStripHeight
+                                : 0,
+                          ),
+                          child: SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _buildMetricWidget(
+                                    exercise,
+                                    currentEntry,
+                                    effortKind,
+                                    theme,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _buildSetProgress(
+                                    entries.length,
+                                    effortKind,
+                                    theme,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildSetIndicator(
+                                    entries.length,
+                                    effortKind,
+                                    theme,
+                                  ),
+                                  SizedBox(
+                                    height: 24 + _kSessionScrollBottomExtra,
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
+                      ),
 
-                        // Docked rest-timer strip directly above the
-                        // set controls. Visibility is governed by the
-                        // shared _shouldShowRestOverlay() helper
-                        // (covers edit-mode, running effort, and
-                        // cross-effort rest scenarios in one rule).
-                        // The strip's height animates in sync with
-                        // the scrollable's bottom padding so the
-                        // content can scroll clear of it and the
-                        // strip collapses to zero when no rest is
-                        // open.
-                        RestTimerStrip(
-                          visible: showRestStrip,
-                          child: _buildRestOverlayChip(
-                            theme,
-                            _formatGlobalRestElapsed(),
-                          ),
+                      // Docked rest-timer strip directly above the
+                      // set controls. Visibility is governed by the
+                      // shared _shouldShowRestOverlay() helper
+                      // (covers edit-mode, running effort, and
+                      // cross-effort rest scenarios in one rule).
+                      // The strip's height animates in sync with
+                      // the scrollable's bottom padding so the
+                      // content can scroll clear of it and the
+                      // strip collapses to zero when no rest is
+                      // open.
+                      RestTimerStrip(
+                        visible: showRestStrip,
+                        child: _buildRestOverlayChip(
+                          theme,
+                          _formatGlobalRestElapsed(),
                         ),
+                      ),
 
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                          child: _buildSetControls(theme),
-                        ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                        child: _buildSetControls(theme),
+                      ),
 
-                        const SizedBox(height: 32),
-                      ],
-                    ),
+                      const SizedBox(height: 32),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
     );
   }
 

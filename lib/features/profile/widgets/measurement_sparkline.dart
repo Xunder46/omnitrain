@@ -93,10 +93,10 @@ class MeasurementSparkline extends StatefulWidget {
   /// Source of the measurement history (loaded via `getMeasurementHistory`).
   final ProfileState profileState;
 
-/// Injected for symmetry with the surrounding surface chrome.
-/// No longer used internally (A18 dropped the unit suffix from the
-/// y-axis labels). Reserved for future hooks (e.g. unit-aware
-/// tooltip overlays).
+  /// Injected for symmetry with the surrounding surface chrome.
+  /// No longer used internally (A18 dropped the unit suffix from the
+  /// y-axis labels). Reserved for future hooks (e.g. unit-aware
+  /// tooltip overlays).
   final SettingsState settingsState;
 
   /// Tapping anywhere inside the sparkline area fires this callback.
@@ -178,17 +178,14 @@ class _MeasurementSparklineState extends State<MeasurementSparkline> {
     return Center(
       child: Text(
         'No history yet',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: OmniTheme.colors.textMuted,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium?.copyWith(color: OmniTheme.colors.textMuted),
       ),
     );
   }
 
-  Widget _lineChart(
-    BuildContext context,
-    List<BodyMeasurementEntry> entries,
-  ) {
+  Widget _lineChart(BuildContext context, List<BodyMeasurementEntry> entries) {
     final theme = Theme.of(context);
 
     final values = entries.map((e) => e.value).toList();
@@ -400,8 +397,7 @@ class _SparklinePainter extends CustomPainter {
 
     final effectiveChartWidth =
         size.width - yAxisLineX - paddingLeft - paddingRight;
-    final effectiveChartHeight =
-        xAxisLineY - paddingTop - paddingBottom;
+    final effectiveChartHeight = xAxisLineY - paddingTop - paddingBottom;
 
     final timestamps = entries.map((e) => e.recordedAtMs).toList();
     final minMs = timestamps.reduce((a, b) => a < b ? a : b);

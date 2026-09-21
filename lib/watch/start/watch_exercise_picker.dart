@@ -93,10 +93,7 @@ class WatchExercisePickerScreen extends StatelessWidget {
   /// the session over, so the user lands on the logging surface. Adding another
   /// later is the same flow again — the wrist never makes a pick feel like a
   /// half-finished form.
-  Future<void> _add(
-    BuildContext context,
-    WatchCatalogExercise exercise,
-  ) async {
+  Future<void> _add(BuildContext context, WatchCatalogExercise exercise) async {
     final session = await paths.addExerciseToSession(exercise);
     if (!context.mounted) return;
     Navigator.of(context).pop();

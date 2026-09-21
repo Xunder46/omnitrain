@@ -47,14 +47,20 @@ public final class WatchSyncOrchestrator {
     private let paths: WatchSessionStartPaths
     private let engine: WatchSessionEngine
 
+    /// The quick-log surface's synced food list, when the app hosts one. A
+    /// watch without the surface has nothing to do with a `foods_down`.
+    private let nutrition: WatchNutritionState?
+
     public init(
         transport: WatchSyncTransport,
         paths: WatchSessionStartPaths,
-        engine: WatchSessionEngine
+        engine: WatchSessionEngine,
+        nutrition: WatchNutritionState? = nil
     ) {
         self.transport = transport
         self.paths = paths
         self.engine = engine
+        self.nutrition = nutrition
     }
 
     /// Brings the watch up to date with the phone: the routines, and then the
@@ -108,8 +114,12 @@ public final class WatchSyncOrchestrator {
         switch envelope["type"] as? String {
         case "routines_down":
             return await paths.applyRoutinesDown(envelope).applied
+        case "foods_down":
+            guard let nutrition else { return false }
+            return await nutrition.applyFoodsDown(envelope).applied
         case "exercise_push", "session_snapshot", "structure_change",
-             "session_lifecycle", "timer_state", "observations_up":
+             "session_lifecycle", "timer_state", "observations_up",
+             "receipt":
             do {
                 return try await engine.applyMessage(envelope)
             } catch {

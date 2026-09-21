@@ -19,7 +19,7 @@ class ProfileState extends ChangeNotifier {
   final ImageStorageService? _imageStorage;
 
   ProfileState(this._repository, {ImageStorageService? imageStorage})
-      : _imageStorage = imageStorage;
+    : _imageStorage = imageStorage;
 
   /// Non-null accessor for the image storage helper. Screens that
   /// host the avatar picker (`ProfileScreen`) read this to perform
@@ -71,12 +71,10 @@ class ProfileState extends ChangeNotifier {
   double? get latestHeightCm => _latestMeasurements['height']?.value;
 
   /// Latest body weight in canonical kilograms.
-  double? get latestBodyWeightKg =>
-      _latestMeasurements['bodyweight']?.value;
+  double? get latestBodyWeightKg => _latestMeasurements['bodyweight']?.value;
 
   /// Latest body fat percentage (canonical unit is `unit-pct`).
-  double? get latestBodyFatPct =>
-      _latestMeasurements['body_fat_pct']?.value;
+  double? get latestBodyFatPct => _latestMeasurements['body_fat_pct']?.value;
 
   /// Computed lean mass in canonical kilograms:
   ///

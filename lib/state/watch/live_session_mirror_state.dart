@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/sync_protocol/message_validator.dart';
+import '../../core/sync_protocol/phone_envelope.dart';
 import '../../core/sync_protocol/session_reconciler.dart';
 import '../../core/sync_protocol/timer_derivation.dart';
 import '../../watch/session/watch_records.dart';
@@ -148,19 +149,29 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// applied like any other, and the phone then re-asserts what it holds of its
   /// own, because structure is the phone's to own (authority rule 2).
   Future<MirrorOutcome> receive(Map<String, Object?> envelope) async {
-    final validator = _validator;
-    if (validator != null) {
-      final decision = validator.evaluateIncoming(
-        envelope,
-        receiverVersion: SyncProtocolValidator.protocolVersion,
-      );
-      if (!decision.accepted) {
-        if (decision.respondWithSnapshot) await sendSnapshot();
-        return MirrorOutcome.refused;
-      }
+    final decision = SyncProtocolValidator.evaluateOrAccept(
+      _validator,
+      envelope,
+    );
+    if (!decision.accepted) {
+      if (decision.respondWithSnapshot) await sendSnapshot();
+      return MirrorOutcome.refused;
     }
 
     if (!_consumedTypes.contains(envelope['type'])) {
+      return MirrorOutcome.ignored;
+    }
+
+    // A message about a session this mirror is not holding is not this mirror's
+    // news. A nutrition quick-log taken with no workout running names the day it
+    // was logged on, and folding it into whatever session happens to be live
+    // would file a meal under a workout.
+    //
+    // The snapshot is the one message that may name a session this mirror does
+    // not hold yet: it is how a session started on the wrist becomes renderable
+    // here at all.
+    if (envelope['type'] != 'session_snapshot' &&
+        !_namesMirroredSession(envelope)) {
       return MirrorOutcome.ignored;
     }
 
@@ -189,6 +200,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
   static bool _holdsLadder(Map<String, Object?> state) =>
       _objects(state['exercises']).isNotEmpty;
 
+  /// True when [envelope] names the session this mirror holds. An envelope that
+  /// names none at all is not a session's news either, and is equally not this
+  /// mirror's to fold.
+  bool _namesMirroredSession(Map<String, Object?> envelope) {
+    final sessionId = envelope['sessionId'];
+    return sessionId is String && sessionId == state['sessionId'];
+  }
+
   /// The message types that carry live session state. Everything else the
   /// protocol defines is another surface's news: conformant, and none of this
   /// mirror's business.
@@ -215,15 +234,13 @@ class LiveSessionMirrorState extends ChangeNotifier {
     String? messageId,
   }) {
     final converged = state ?? this.state;
-    return {
-      'protocolVersion': SyncProtocolValidator.protocolVersion,
-      'messageId': messageId ?? _newId(),
-      'sessionId': converged['sessionId'],
-      'type': 'session_snapshot',
-      'origin': 'phone',
-      'sentAt': utcIso(_clock()),
-      'payload': converged,
-    };
+    return phoneEnvelope(
+      type: 'session_snapshot',
+      messageId: messageId ?? _newId(),
+      sentAt: _clock(),
+      sessionId: converged['sessionId'] as String?,
+      payload: converged,
+    );
   }
 
   /// The phone's answer to a snapshot that reports a different session.
@@ -425,15 +442,14 @@ class LiveSessionMirrorState extends ChangeNotifier {
     await _transport.send(envelope);
   }
 
-  Map<String, Object?> _envelope(String type, Map<String, Object?> payload) => {
-    'protocolVersion': SyncProtocolValidator.protocolVersion,
-    'messageId': _newId(),
-    'sessionId': state['sessionId'],
-    'type': type,
-    'origin': 'phone',
-    'sentAt': utcIso(_clock()),
-    'payload': payload,
-  };
+  Map<String, Object?> _envelope(String type, Map<String, Object?> payload) =>
+      phoneEnvelope(
+        type: type,
+        messageId: _newId(),
+        sentAt: _clock(),
+        sessionId: state['sessionId'] as String?,
+        payload: payload,
+      );
 
   // ---------------------------------------------------------------------------
   // Disagreement

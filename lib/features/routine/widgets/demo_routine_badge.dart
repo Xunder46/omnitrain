@@ -23,10 +23,7 @@ class DemoRoutineBadge extends StatelessWidget {
     final background = scheme.primary.withOpacity(0.16);
 
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 6 : 8,
-        vertical: 2,
-      ),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 8, vertical: 2),
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),

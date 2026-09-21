@@ -178,7 +178,9 @@ void main() {
             continue;
           }
           final resolved = File(Uri.file('$baseDir/$target').toFilePath());
-          final resolvedPath = resolved.absolute.uri.normalizePath().toFilePath();
+          final resolvedPath = resolved.absolute.uri
+              .normalizePath()
+              .toFilePath();
           if (!File(resolvedPath).existsSync() &&
               !Directory(resolvedPath).existsSync()) {
             broken.add('${file.path} -> $target');
@@ -208,11 +210,9 @@ void main() {
         for (final match in linkPattern.allMatches(content)) {
           final target = match.group(1)!.trim();
           if (target.startsWith('http')) continue;
-          final resolvedPath = File(Uri.file('$baseDir/$target').toFilePath())
-              .absolute
-              .uri
-              .normalizePath()
-              .toFilePath();
+          final resolvedPath = File(
+            Uri.file('$baseDir/$target').toFilePath(),
+          ).absolute.uri.normalizePath().toFilePath();
           linkedTargets.add(resolvedPath);
         }
       }
@@ -327,7 +327,9 @@ void main() {
         for (var i = 0; i < lines.length; i++) {
           final line = lines[i];
           if (flowHeading.hasMatch(line)) {
-            offenders.add('${file.path}:${i + 1}: flow heading — ${line.trim()}');
+            offenders.add(
+              '${file.path}:${i + 1}: flow heading — ${line.trim()}',
+            );
           } else if (arrowChain.hasMatch(line) && userAction.hasMatch(line)) {
             offenders.add(
               '${file.path}:${i + 1}: user-action arrow chain — ${line.trim()}',

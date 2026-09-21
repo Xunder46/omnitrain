@@ -63,6 +63,9 @@ half-typed number from being persisted as a real entry.
 
 The row's selected and unselected states are visually distinct without relying on colour alone.
 
+Calories are derived from the macros, never stored on `Food` — `calculateCalories` in
+`lib/core/utils/food_helpers.dart` is the owner of that derivation.
+
 ### `FoodThumbnail`
 
 **File**: `lib/features/nutrition/widgets/food_thumbnail.dart`

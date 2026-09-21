@@ -37,6 +37,7 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
     final sensorSamples = <WatchSensorSampleRecord>[];
     final confirmations = <WatchConfirmationRecord>[];
     final routineCatalogs = <WatchRoutineCatalogRecord>[];
+    final foodCatalogs = <WatchFoodCatalogRecord>[];
 
     for (final row in _rows) {
       switch (row) {
@@ -52,6 +53,8 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
           confirmations.add(confirmation);
         case final WatchRoutineCatalogRecord catalog:
           routineCatalogs.add(catalog);
+        case final WatchFoodCatalogRecord catalog:
+          foodCatalogs.add(catalog);
       }
     }
 
@@ -64,6 +67,7 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
       sensorSamples: List.unmodifiable(sensorSamples),
       confirmations: List.unmodifiable(confirmations),
       routineCatalogs: List.unmodifiable(routineCatalogs),
+      foodCatalogs: List.unmodifiable(foodCatalogs),
     );
   }
 

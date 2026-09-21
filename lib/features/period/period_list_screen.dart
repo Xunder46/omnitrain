@@ -186,9 +186,7 @@ class _PeriodRow extends StatelessWidget {
                 child: Text(
                   'Current',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary,
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

@@ -96,37 +96,363 @@ void main() {
   // ─── S-001: missing category ──────────────────────────────────────────
 
   group('FoodForm: orphan category (S-001 / S-002)', () {
-    testWidgets(
-      'builds successfully when the food\'s groupId is not in '
-      'the active list (S-001)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(_formSurface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets('builds successfully when the food\'s groupId is not in '
+        'the active list (S-001)', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(_formSurface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final (repo, state) = await _setupState();
+      final (repo, state) = await _setupState();
 
-        // Seed a catalog food whose groupId is the seeded
-        // `food-group-dairy`, then archive that group so the
-        // active list no longer contains it. The food's
-        // `groupId` remains `food-group-dairy`, so the
-        // dropdown's `initialValue` is a stale id.
-        await repo.seedCatalogFood(
-          _catalogFood(
-            id: 'food-orphan-dairy',
-            name: 'Milk, whole',
-            groupId: 'food-group-dairy',
+      // Seed a catalog food whose groupId is the seeded
+      // `food-group-dairy`, then archive that group so the
+      // active list no longer contains it. The food's
+      // `groupId` remains `food-group-dairy`, so the
+      // dropdown's `initialValue` is a stale id.
+      await repo.seedCatalogFood(
+        _catalogFood(
+          id: 'food-orphan-dairy',
+          name: 'Milk, whole',
+          groupId: 'food-group-dairy',
+        ),
+      );
+      await repo.archiveFoodGroup('food-group-dairy');
+      await state.loadCatalogFoods();
+      await state.loadFoodGroups(includeArchived: true);
+
+      final initial = state.catalogFoods.firstWhere(
+        (f) => f.id == 'food-orphan-dairy',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FoodForm(
+              initial: initial,
+              foodLibraryState: state,
+              onSave: (_) async => true,
+              skipPopOnSave: true,
+            ),
           ),
-        );
-        await repo.archiveFoodGroup('food-group-dairy');
-        await state.loadCatalogFoods();
-        await state.loadFoodGroups(includeArchived: true);
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        final initial = state.catalogFoods
-            .firstWhere((f) => f.id == 'food-orphan-dairy');
+      // No `FlutterError` from the dropdown — the form is on
+      // screen. We assert this by ensuring the form's name
+      // field rendered.
+      expect(find.byKey(const Key('food_form_name')), findsOneWidget);
+      expect(find.byKey(const Key('food_form_group')), findsOneWidget);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
+      // The food's stored groupId is still 'food-group-dairy'
+      // — the form's selected value must reflect that even
+      // though the active list does not contain it.
+      // The dropdown button text is the synthesised item
+      // label; the test asserts the label includes the
+      // "(no longer available)" hint OR an "(archived)"
+      // hint, depending on whether the group is still in
+      // the full cache. The selected value's label is
+      // rendered inside the inner DropdownButton, so we
+      // locate it by walking the widget tree from the
+      // outer DropdownButtonFormField.
+      final dropdown = tester.widget<DropdownButtonFormField<String?>>(
+        find.byKey(const Key('food_form_group')),
+      );
+      expect(dropdown.initialValue, 'food-group-dairy');
+      // The selected Text appears inside the inner
+      // DropdownButton; locate it under the form key.
+      final innerButtonFinder = find.descendant(
+        of: find.byKey(const Key('food_form_group')),
+        matching: find.byWidgetPredicate(
+          (w) => w is Text && w.data != null && w.data!.contains('Dairy'),
+        ),
+      );
+      expect(
+        innerButtonFinder,
+        findsOneWidget,
+        reason: 'synthesised item must still surface the group name',
+      );
+      // Distinguish-from-active check: the label must
+      // contain either "(no longer available)" or
+      // "(archived)".
+      final labelWidget = tester.widget<Text>(innerButtonFinder);
+      final label = labelWidget.data!;
+      expect(
+        label.contains('no longer available') || label.contains('archived'),
+        isTrue,
+        reason:
+            'synthesised item must distinguish itself from active '
+            'categories so the user sees the category is not in '
+            'their active list',
+      );
+    });
+
+    testWidgets('builds successfully when the food\'s groupId corresponds to '
+        'an archived group (S-002)', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(_formSurface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final (repo, state) = await _setupState();
+
+      await repo.seedCatalogFood(
+        _catalogFood(
+          id: 'food-archived-cat',
+          name: 'Yogurt',
+          groupId: 'food-group-dairy',
+        ),
+      );
+      await repo.archiveFoodGroup('food-group-dairy');
+      await state.loadCatalogFoods();
+      await state.loadFoodGroups(includeArchived: true);
+
+      final initial = state.catalogFoods.firstWhere(
+        (f) => f.id == 'food-archived-cat',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FoodForm(
+              initial: initial,
+              foodLibraryState: state,
+              onSave: (_) async => true,
+              skipPopOnSave: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No crash; the archived group's row is surfaced as the
+      // selected value (still resolvable from the full cache).
+      expect(find.byKey(const Key('food_form_name')), findsOneWidget);
+      final dropdown = tester.widget<DropdownButtonFormField<String?>>(
+        find.byKey(const Key('food_form_group')),
+      );
+      expect(dropdown.initialValue, 'food-group-dairy');
+      final labelFinder = find.descendant(
+        of: find.byKey(const Key('food_form_group')),
+        matching: find.byWidgetPredicate(
+          (w) => w is Text && w.data != null && w.data!.contains('archived'),
+        ),
+      );
+      expect(
+        labelFinder,
+        findsOneWidget,
+        reason: 'archived item must surface an "(archived)" hint',
+      );
+    });
+
+    testWidgets('the food\'s stored groupId is the selected value on open '
+        'in both S-001 and S-002 cases — not silently replaced with '
+        '"Ungrouped" (S-001 / S-002)', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(_formSurface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final (repo, state) = await _setupState();
+
+      await repo.seedCatalogFood(
+        _catalogFood(
+          id: 'food-keeps-cat',
+          name: 'Cheese',
+          groupId: 'food-group-dairy',
+        ),
+      );
+      await repo.archiveFoodGroup('food-group-dairy');
+      await state.loadCatalogFoods();
+      await state.loadFoodGroups(includeArchived: true);
+
+      final initial = state.catalogFoods.firstWhere(
+        (f) => f.id == 'food-keeps-cat',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FoodForm(
+              initial: initial,
+              foodLibraryState: state,
+              onSave: (_) async => true,
+              skipPopOnSave: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final dropdown = tester.widget<DropdownButtonFormField<String?>>(
+        find.byKey(const Key('food_form_group')),
+      );
+      expect(
+        dropdown.initialValue,
+        'food-group-dairy',
+        reason: 'initialValue must match the food\'s stored groupId',
+      );
+      // No "Ungrouped" defaulting: there is no item with
+      // value null at the top of the items list whose label
+      // is "Ungrouped" being pre-selected.
+      expect(dropdown.initialValue, isNotNull);
+    });
+
+    testWidgets('saving without touching the category leaves the food\'s '
+        'stored groupId byte-identical (S-003)', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(_formSurface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final (repo, state) = await _setupState();
+
+      await repo.seedCatalogFood(
+        _catalogFood(
+          id: 'food-save-untouched',
+          name: 'Butter',
+          groupId: 'food-group-dairy',
+        ),
+      );
+      await repo.archiveFoodGroup('food-group-dairy');
+      await state.loadCatalogFoods();
+      await state.loadFoodGroups(includeArchived: true);
+
+      final initial = state.catalogFoods.firstWhere(
+        (f) => f.id == 'food-save-untouched',
+      );
+
+      FoodDraft? capturedDraft;
+      final controller = FoodFormController();
+      addTearDown(controller.detach);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FoodForm(
+              initial: initial,
+              foodLibraryState: state,
+              controller: controller,
+              onSave: (draft) async {
+                capturedDraft = draft;
+                // Route through the real state path so the
+                // persisted row matches the cached row.
+                await state.updateCatalogFood(initial, draft);
+                return true;
+              },
+              skipPopOnSave: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Submit without touching the dropdown.
+      controller.submit();
+      await tester.pumpAndSettle();
+
+      // The draft's groupId is the food's stored groupId
+      // (byte-identical).
+      expect(capturedDraft, isNotNull);
+      expect(capturedDraft!.groupId, 'food-group-dairy');
+      // The persisted row is also byte-identical on groupId.
+      final reloaded = await repo.getCatalogFoodById('food-save-untouched');
+      expect(reloaded, isNotNull);
+      expect(reloaded!.groupId, 'food-group-dairy');
+    });
+
+    testWidgets('selecting a valid category and saving persists the new '
+        'groupId (S-004)', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(_formSurface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final (repo, state) = await _setupState();
+
+      await repo.seedCatalogFood(
+        _catalogFood(
+          id: 'food-pick-new-cat',
+          name: 'Yogurt, plain',
+          groupId: 'food-group-dairy',
+        ),
+      );
+      await repo.archiveFoodGroup('food-group-dairy');
+      await state.loadCatalogFoods();
+      await state.loadFoodGroups(includeArchived: true);
+
+      final initial = state.catalogFoods.firstWhere(
+        (f) => f.id == 'food-pick-new-cat',
+      );
+
+      // The Proteins group is still active.
+      final proteins = state.activeFoodGroups.firstWhere(
+        (g) => g.id == 'food-group-proteins',
+      );
+
+      FoodDraft? capturedDraft;
+      final controller = FoodFormController();
+      addTearDown(controller.detach);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: FoodForm(
+              initial: initial,
+              foodLibraryState: state,
+              controller: controller,
+              onSave: (draft) async {
+                capturedDraft = draft;
+                await state.updateCatalogFood(initial, draft);
+                return true;
+              },
+              skipPopOnSave: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap the dropdown and pick Proteins. The dropdown
+      // selection is the only state change; macros / name
+      // are untouched.
+      await tester.tap(find.byKey(const Key('food_form_group')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(proteins.name).last);
+      await tester.pumpAndSettle();
+
+      controller.submit();
+      await tester.pumpAndSettle();
+
+      expect(capturedDraft, isNotNull);
+      expect(capturedDraft!.groupId, 'food-group-proteins');
+
+      final reloaded = await repo.getCatalogFoodById('food-pick-new-cat');
+      expect(reloaded, isNotNull);
+      expect(reloaded!.groupId, 'food-group-proteins');
+    });
+
+    testWidgets('opening and immediately backing out produces no change to '
+        'the food\'s stored data (S-005)', (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(_formSurface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final (repo, state) = await _setupState();
+
+      await repo.seedCatalogFood(
+        _catalogFood(
+          id: 'food-backout',
+          name: 'Almond milk',
+          groupId: 'food-group-dairy',
+        ),
+      );
+      await repo.archiveFoodGroup('food-group-dairy');
+      await state.loadCatalogFoods();
+      await state.loadFoodGroups(includeArchived: true);
+
+      final initial = state.catalogFoods.firstWhere(
+        (f) => f.id == 'food-backout',
+      );
+
+      final navigatorKey = GlobalKey<NavigatorState>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          home: Scaffold(body: Container()),
+          onGenerateRoute: (settings) => MaterialPageRoute<void>(
+            builder: (_) => Scaffold(
               body: FoodForm(
                 initial: initial,
                 foodLibraryState: state,
@@ -135,366 +461,37 @@ void main() {
               ),
             ),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // No `FlutterError` from the dropdown — the form is on
-        // screen. We assert this by ensuring the form's name
-        // field rendered.
-        expect(find.byKey(const Key('food_form_name')), findsOneWidget);
-        expect(find.byKey(const Key('food_form_group')), findsOneWidget);
+      // Push the editor route.
+      navigatorKey.currentState!.pushNamed('/');
+      await tester.pumpAndSettle();
+      // Wait for the dropdown crash to be resolved (RED
+      // before the fix); we still pop either way.
+      try {
+        // Pop without touching the form, mirroring a back
+        // gesture. The form was opened and never had its
+        // onSave invoked.
+        navigatorKey.currentState!.pop();
+      } catch (_) {
+        // best-effort — the assertion below is the contract.
+      }
+      await tester.pumpAndSettle();
 
-        // The food's stored groupId is still 'food-group-dairy'
-        // — the form's selected value must reflect that even
-        // though the active list does not contain it.
-        // The dropdown button text is the synthesised item
-        // label; the test asserts the label includes the
-        // "(no longer available)" hint OR an "(archived)"
-        // hint, depending on whether the group is still in
-        // the full cache. The selected value's label is
-        // rendered inside the inner DropdownButton, so we
-        // locate it by walking the widget tree from the
-        // outer DropdownButtonFormField.
-        final dropdown = tester.widget<DropdownButtonFormField<String?>>(
-          find.byKey(const Key('food_form_group')),
-        );
-        expect(dropdown.initialValue, 'food-group-dairy');
-        // The selected Text appears inside the inner
-        // DropdownButton; locate it under the form key.
-        final innerButtonFinder = find.descendant(
-          of: find.byKey(const Key('food_form_group')),
-          matching: find.byWidgetPredicate(
-            (w) => w is Text && w.data != null && w.data!.contains('Dairy'),
-          ),
-        );
-        expect(innerButtonFinder, findsOneWidget,
-            reason: 'synthesised item must still surface the group name');
-        // Distinguish-from-active check: the label must
-        // contain either "(no longer available)" or
-        // "(archived)".
-        final labelWidget =
-            tester.widget<Text>(innerButtonFinder);
-        final label = labelWidget.data!;
-        expect(
-          label.contains('no longer available') ||
-              label.contains('archived'),
-          isTrue,
-          reason: 'synthesised item must distinguish itself from active '
-              'categories so the user sees the category is not in '
-              'their active list',
-        );
-      },
-    );
-
-    testWidgets(
-      'builds successfully when the food\'s groupId corresponds to '
-      'an archived group (S-002)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(_formSurface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final (repo, state) = await _setupState();
-
-        await repo.seedCatalogFood(
-          _catalogFood(
-            id: 'food-archived-cat',
-            name: 'Yogurt',
-            groupId: 'food-group-dairy',
-          ),
-        );
-        await repo.archiveFoodGroup('food-group-dairy');
-        await state.loadCatalogFoods();
-        await state.loadFoodGroups(includeArchived: true);
-
-        final initial = state.catalogFoods
-            .firstWhere((f) => f.id == 'food-archived-cat');
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: FoodForm(
-                initial: initial,
-                foodLibraryState: state,
-                onSave: (_) async => true,
-                skipPopOnSave: true,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // No crash; the archived group's row is surfaced as the
-        // selected value (still resolvable from the full cache).
-        expect(find.byKey(const Key('food_form_name')), findsOneWidget);
-        final dropdown = tester.widget<DropdownButtonFormField<String?>>(
-          find.byKey(const Key('food_form_group')),
-        );
-        expect(dropdown.initialValue, 'food-group-dairy');
-        final labelFinder = find.descendant(
-          of: find.byKey(const Key('food_form_group')),
-          matching: find.byWidgetPredicate(
-            (w) => w is Text && w.data != null && w.data!.contains('archived'),
-          ),
-        );
-        expect(labelFinder, findsOneWidget,
-            reason: 'archived item must surface an "(archived)" hint');
-      },
-    );
-
-    testWidgets(
-      'the food\'s stored groupId is the selected value on open '
-      'in both S-001 and S-002 cases — not silently replaced with '
-      '"Ungrouped" (S-001 / S-002)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(_formSurface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final (repo, state) = await _setupState();
-
-        await repo.seedCatalogFood(
-          _catalogFood(
-            id: 'food-keeps-cat',
-            name: 'Cheese',
-            groupId: 'food-group-dairy',
-          ),
-        );
-        await repo.archiveFoodGroup('food-group-dairy');
-        await state.loadCatalogFoods();
-        await state.loadFoodGroups(includeArchived: true);
-
-        final initial = state.catalogFoods
-            .firstWhere((f) => f.id == 'food-keeps-cat');
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: FoodForm(
-                initial: initial,
-                foodLibraryState: state,
-                onSave: (_) async => true,
-                skipPopOnSave: true,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        final dropdown = tester.widget<DropdownButtonFormField<String?>>(
-          find.byKey(const Key('food_form_group')),
-        );
-        expect(
-          dropdown.initialValue,
-          'food-group-dairy',
-          reason: 'initialValue must match the food\'s stored groupId',
-        );
-        // No "Ungrouped" defaulting: there is no item with
-        // value null at the top of the items list whose label
-        // is "Ungrouped" being pre-selected.
-        expect(dropdown.initialValue, isNotNull);
-      },
-    );
-
-    testWidgets(
-      'saving without touching the category leaves the food\'s '
-      'stored groupId byte-identical (S-003)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(_formSurface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final (repo, state) = await _setupState();
-
-        await repo.seedCatalogFood(
-          _catalogFood(
-            id: 'food-save-untouched',
-            name: 'Butter',
-            groupId: 'food-group-dairy',
-          ),
-        );
-        await repo.archiveFoodGroup('food-group-dairy');
-        await state.loadCatalogFoods();
-        await state.loadFoodGroups(includeArchived: true);
-
-        final initial = state.catalogFoods
-            .firstWhere((f) => f.id == 'food-save-untouched');
-
-        FoodDraft? capturedDraft;
-        final controller = FoodFormController();
-        addTearDown(controller.detach);
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: FoodForm(
-                initial: initial,
-                foodLibraryState: state,
-                controller: controller,
-                onSave: (draft) async {
-                  capturedDraft = draft;
-                  // Route through the real state path so the
-                  // persisted row matches the cached row.
-                  await state.updateCatalogFood(initial, draft);
-                  return true;
-                },
-                skipPopOnSave: true,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Submit without touching the dropdown.
-        controller.submit();
-        await tester.pumpAndSettle();
-
-        // The draft's groupId is the food's stored groupId
-        // (byte-identical).
-        expect(capturedDraft, isNotNull);
-        expect(capturedDraft!.groupId, 'food-group-dairy');
-        // The persisted row is also byte-identical on groupId.
-        final reloaded = await repo.getCatalogFoodById('food-save-untouched');
-        expect(reloaded, isNotNull);
-        expect(reloaded!.groupId, 'food-group-dairy');
-      },
-    );
-
-    testWidgets(
-      'selecting a valid category and saving persists the new '
-      'groupId (S-004)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(_formSurface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final (repo, state) = await _setupState();
-
-        await repo.seedCatalogFood(
-          _catalogFood(
-            id: 'food-pick-new-cat',
-            name: 'Yogurt, plain',
-            groupId: 'food-group-dairy',
-          ),
-        );
-        await repo.archiveFoodGroup('food-group-dairy');
-        await state.loadCatalogFoods();
-        await state.loadFoodGroups(includeArchived: true);
-
-        final initial = state.catalogFoods
-            .firstWhere((f) => f.id == 'food-pick-new-cat');
-
-        // The Proteins group is still active.
-        final proteins = state.activeFoodGroups
-            .firstWhere((g) => g.id == 'food-group-proteins');
-
-        FoodDraft? capturedDraft;
-        final controller = FoodFormController();
-        addTearDown(controller.detach);
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: FoodForm(
-                initial: initial,
-                foodLibraryState: state,
-                controller: controller,
-                onSave: (draft) async {
-                  capturedDraft = draft;
-                  await state.updateCatalogFood(initial, draft);
-                  return true;
-                },
-                skipPopOnSave: true,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Tap the dropdown and pick Proteins. The dropdown
-        // selection is the only state change; macros / name
-        // are untouched.
-        await tester.tap(find.byKey(const Key('food_form_group')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text(proteins.name).last);
-        await tester.pumpAndSettle();
-
-        controller.submit();
-        await tester.pumpAndSettle();
-
-        expect(capturedDraft, isNotNull);
-        expect(capturedDraft!.groupId, 'food-group-proteins');
-
-        final reloaded = await repo.getCatalogFoodById('food-pick-new-cat');
-        expect(reloaded, isNotNull);
-        expect(reloaded!.groupId, 'food-group-proteins');
-      },
-    );
-
-    testWidgets(
-      'opening and immediately backing out produces no change to '
-      'the food\'s stored data (S-005)',
-      (WidgetTester tester) async {
-        await tester.binding.setSurfaceSize(_formSurface);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-
-        final (repo, state) = await _setupState();
-
-        await repo.seedCatalogFood(
-          _catalogFood(
-            id: 'food-backout',
-            name: 'Almond milk',
-            groupId: 'food-group-dairy',
-          ),
-        );
-        await repo.archiveFoodGroup('food-group-dairy');
-        await state.loadCatalogFoods();
-        await state.loadFoodGroups(includeArchived: true);
-
-        final initial = state.catalogFoods
-            .firstWhere((f) => f.id == 'food-backout');
-
-        final navigatorKey = GlobalKey<NavigatorState>();
-
-        await tester.pumpWidget(
-          MaterialApp(
-            navigatorKey: navigatorKey,
-            home: Scaffold(body: Container()),
-            onGenerateRoute: (settings) => MaterialPageRoute<void>(
-              builder: (_) => Scaffold(
-                body: FoodForm(
-                  initial: initial,
-                  foodLibraryState: state,
-                  onSave: (_) async => true,
-                  skipPopOnSave: true,
-                ),
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Push the editor route.
-        navigatorKey.currentState!.pushNamed('/');
-        await tester.pumpAndSettle();
-        // Wait for the dropdown crash to be resolved (RED
-        // before the fix); we still pop either way.
-        try {
-          // Pop without touching the form, mirroring a back
-          // gesture. The form was opened and never had its
-          // onSave invoked.
-          navigatorKey.currentState!.pop();
-        } catch (_) {
-          // best-effort — the assertion below is the contract.
-        }
-        await tester.pumpAndSettle();
-
-        // The persisted row is byte-identical.
-        final reloaded = await repo.getCatalogFoodById('food-backout');
-        expect(reloaded, isNotNull);
-        expect(reloaded!.name, initial.name);
-        expect(reloaded.groupId, initial.groupId);
-        expect(reloaded.protein, initial.protein);
-        expect(reloaded.fat, initial.fat);
-        expect(reloaded.updatedAtMs, initial.updatedAtMs,
-            reason: 'no save happened; updatedAtMs must not advance');
-      },
-    );
+      // The persisted row is byte-identical.
+      final reloaded = await repo.getCatalogFoodById('food-backout');
+      expect(reloaded, isNotNull);
+      expect(reloaded!.name, initial.name);
+      expect(reloaded.groupId, initial.groupId);
+      expect(reloaded.protein, initial.protein);
+      expect(reloaded.fat, initial.fat);
+      expect(
+        reloaded.updatedAtMs,
+        initial.updatedAtMs,
+        reason: 'no save happened; updatedAtMs must not advance',
+      );
+    });
   });
 }

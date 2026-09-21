@@ -124,10 +124,7 @@ class OmniBottomCTA extends StatelessWidget {
                     ),
                   ),
                 ),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(label),
-                ),
+                child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
               ),
             ),
           ),

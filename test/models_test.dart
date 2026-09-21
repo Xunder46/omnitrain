@@ -576,32 +576,38 @@ void main() {
       expect(obj.state, RoundState.notStarted);
     });
 
-    test('_stateFromMap infers finished from timestamps when state column missing', () {
-      final map = {
-        'id': 'r-1',
-        'effort_id': 'e-1',
-        'round_index': 0,
-        'finished_at_ms': 5000,
-        'started_at_ms': 1000,
-        'created_at_ms': 100,
-        'updated_at_ms': 200,
-      };
-      final obj = RoundInstance.fromMap(map);
-      expect(obj.state, RoundState.finished);
-    });
+    test(
+      '_stateFromMap infers finished from timestamps when state column missing',
+      () {
+        final map = {
+          'id': 'r-1',
+          'effort_id': 'e-1',
+          'round_index': 0,
+          'finished_at_ms': 5000,
+          'started_at_ms': 1000,
+          'created_at_ms': 100,
+          'updated_at_ms': 200,
+        };
+        final obj = RoundInstance.fromMap(map);
+        expect(obj.state, RoundState.finished);
+      },
+    );
 
-    test('_stateFromMap infers active from startedAtMs when state column missing', () {
-      final map = {
-        'id': 'r-1',
-        'effort_id': 'e-1',
-        'round_index': 0,
-        'started_at_ms': 1000,
-        'created_at_ms': 100,
-        'updated_at_ms': 200,
-      };
-      final obj = RoundInstance.fromMap(map);
-      expect(obj.state, RoundState.active);
-    });
+    test(
+      '_stateFromMap infers active from startedAtMs when state column missing',
+      () {
+        final map = {
+          'id': 'r-1',
+          'effort_id': 'e-1',
+          'round_index': 0,
+          'started_at_ms': 1000,
+          'created_at_ms': 100,
+          'updated_at_ms': 200,
+        };
+        final obj = RoundInstance.fromMap(map);
+        expect(obj.state, RoundState.active);
+      },
+    );
 
     test('_stateFromMap infers notStarted when no timestamps and no state', () {
       final map = {
@@ -979,19 +985,22 @@ void main() {
       expect(updated.entryIndex, 3);
     });
 
-    test('fromMap defaults restIsPaused to false and restPausedAtMs to null', () {
-      final obj = EntryRest.fromMap({
-        'id': 'er-1',
-        'effort_id': 'e-1',
-        'entry_index': 0,
-        'rest_start_ms': 1000,
-        'created_at_ms': 100,
-        'updated_at_ms': 200,
-      });
-      expect(obj.restIsPaused, isFalse);
-      expect(obj.restPausedAtMs, isNull);
-      expect(obj.restPausedDurationMs, 0);
-    });
+    test(
+      'fromMap defaults restIsPaused to false and restPausedAtMs to null',
+      () {
+        final obj = EntryRest.fromMap({
+          'id': 'er-1',
+          'effort_id': 'e-1',
+          'entry_index': 0,
+          'rest_start_ms': 1000,
+          'created_at_ms': 100,
+          'updated_at_ms': 200,
+        });
+        expect(obj.restIsPaused, isFalse);
+        expect(obj.restPausedAtMs, isNull);
+        expect(obj.restPausedDurationMs, 0);
+      },
+    );
 
     test('fromMap coerces restIsPaused from int to bool', () {
       final paused = EntryRest.fromMap({
@@ -1327,19 +1336,19 @@ void main() {
 
   group('Food', () {
     Food baseFood({String? imagePath}) => Food(
-          id: 'food-1',
-          name: 'Chicken breast, skinless',
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          protein: 31,
-          carbs: 0,
-          fiber: 0,
-          fat: 4,
-          imagePath: imagePath,
-          createdAtMs: 1700000000000,
-          updatedAtMs: 1700000000000,
-        );
+      id: 'food-1',
+      name: 'Chicken breast, skinless',
+      unitType: FoodUnitType.grams,
+      referenceAmount: 100,
+      referenceLabel: 'g',
+      protein: 31,
+      carbs: 0,
+      fiber: 0,
+      fat: 4,
+      imagePath: imagePath,
+      createdAtMs: 1700000000000,
+      updatedAtMs: 1700000000000,
+    );
 
     test('imagePath round-trips through fromMap/toMap', () {
       final obj = baseFood(imagePath: '/tmp/photos/chicken.jpg');

@@ -19,10 +19,7 @@ class EffortDefaults {
     switch (effortKind) {
       case 'set':
         // Resistance training: reps + weight
-        return {
-          MetricIds.reps: 10,
-          MetricIds.weight: 0.0,
-        };
+        return {MetricIds.reps: 10, MetricIds.weight: 0.0};
       case 'timed':
         // Cardio/endurance: duration + optional distance + optional extra weight
         return {
@@ -42,22 +39,13 @@ class EffortDefaults {
         };
       case 'drill':
         // Isometric / holds / skill work: duration + extra weight (negative = band assist, positive = added load)
-        return {
-          MetricIds.duration: 0,
-          MetricIds.extraWeight: 0.0,
-        };
+        return {MetricIds.duration: 0, MetricIds.extraWeight: 0.0};
       case 'interval':
         // Distance intervals: distance + optional duration
-        return {
-          MetricIds.distance: 0.0,
-          MetricIds.duration: 0,
-        };
+        return {MetricIds.distance: 0.0, MetricIds.duration: 0};
       default:
         // Fallback to set-based (reps + weight)
-        return {
-          MetricIds.reps: 10,
-          MetricIds.weight: 0.0,
-        };
+        return {MetricIds.reps: 10, MetricIds.weight: 0.0};
     }
   }
 
@@ -91,7 +79,9 @@ class EffortDefaults {
       case 'round':
         return [];
       case 'drill':
-        return [MetricIds.extraWeight]; // Extra load carried/worn during the hold (negative = band assist, positive = added load)
+        return [
+          MetricIds.extraWeight,
+        ]; // Extra load carried/worn during the hold (negative = band assist, positive = added load)
       case 'interval':
         return [MetricIds.duration]; // Optional duration for intervals
       default:

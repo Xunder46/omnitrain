@@ -122,9 +122,9 @@ Future<_SessionDeps> _buildRoutineSessionDeps({required AppTheme theme}) async {
   await routineState.saveRoutine();
   final templateId = routineState.currentTemplate!.id;
 
-  final manifest = await RoutineSessionService(repo).buildSessionFromTemplate(
-    templateId,
-  );
+  final manifest = await RoutineSessionService(
+    repo,
+  ).buildSessionFromTemplate(templateId);
   await workoutState.createNewSession(
     modality: 'sports',
     routineTemplateId: templateId,
@@ -144,7 +144,9 @@ Future<_SessionDeps> _buildRoutineSessionDeps({required AppTheme theme}) async {
   );
 }
 
-Future<_RoutineSetupDeps> _buildRoutineSetupDeps({required AppTheme theme}) async {
+Future<_RoutineSetupDeps> _buildRoutineSetupDeps({
+  required AppTheme theme,
+}) async {
   final repo = await _freshRepo();
   final routineState = RoutineState(repo);
   final workoutState = WorkoutState(repo);
@@ -171,7 +173,10 @@ Future<_RoutineSetupDeps> _buildRoutineSetupDeps({required AppTheme theme}) asyn
   );
 }
 
-Future<void> _openSessionDetail(WidgetTester tester, String exerciseName) async {
+Future<void> _openSessionDetail(
+  WidgetTester tester,
+  String exerciseName,
+) async {
   await tester.pumpAndSettle();
   final labelMatches = find.text(exerciseName);
   expect(labelMatches, findsAtLeastNWidgets(1));
@@ -191,7 +196,10 @@ Future<void> _openSessionDetail(WidgetTester tester, String exerciseName) async 
   await tester.pumpAndSettle();
 }
 
-Future<void> _openRoutineDetail(WidgetTester tester, String exerciseName) async {
+Future<void> _openRoutineDetail(
+  WidgetTester tester,
+  String exerciseName,
+) async {
   await tester.pumpAndSettle();
   final labelMatches = find.text(exerciseName);
   if (labelMatches.evaluate().isNotEmpty) {
@@ -226,7 +234,10 @@ Text _statusLineText(
   final iconFinder = find.byIcon(icon);
   expect(iconFinder, findsOneWidget);
   final statusRow = find.ancestor(of: iconFinder, matching: find.byType(Row));
-  final labelFinder = find.descendant(of: statusRow.first, matching: find.text(label));
+  final labelFinder = find.descendant(
+    of: statusRow.first,
+    matching: find.text(label),
+  );
   expect(labelFinder, findsOneWidget);
   return tester.widget<Text>(labelFinder);
 }
@@ -246,7 +257,9 @@ Finder _sessionProgressDots() {
 
 void main() {
   group('Sports effort emphasis redesign', () {
-    testWidgets('S-001 free session stopped hierarchy is correct', (tester) async {
+    testWidgets('S-001 free session stopped hierarchy is correct', (
+      tester,
+    ) async {
       final deps = await _buildFreeSessionDeps(theme: AppTheme.abyssalNeon);
       final colors = OmniTheme.colorsForTheme(AppTheme.abyssalNeon);
 
@@ -283,7 +296,9 @@ void main() {
       );
       expect(stoppedText.style?.color, colors.textMuted);
 
-      final playIcon = tester.widget<Icon>(find.byIcon(Icons.play_circle_outline));
+      final playIcon = tester.widget<Icon>(
+        find.byIcon(Icons.play_circle_outline),
+      );
       expect(playIcon.color, colors.textMuted);
 
       final periodCount = tester.widget<Text>(find.text('Period 1 of 1'));
@@ -292,7 +307,9 @@ void main() {
       expect(find.widgetWithText(FilledButton, 'Start'), findsOneWidget);
     });
 
-    testWidgets('S-002 free session running hierarchy is correct', (tester) async {
+    testWidgets('S-002 free session running hierarchy is correct', (
+      tester,
+    ) async {
       final deps = await _buildFreeSessionDeps(theme: AppTheme.abyssalNeon);
       final colors = OmniTheme.colorsForTheme(AppTheme.abyssalNeon);
 
@@ -328,51 +345,56 @@ void main() {
       );
       expect(runningText.style?.color, colors.textMuted);
 
-      final pauseIcon = tester.widget<Icon>(find.byIcon(Icons.pause_circle_outline));
+      final pauseIcon = tester.widget<Icon>(
+        find.byIcon(Icons.pause_circle_outline),
+      );
       expect(pauseIcon.color, colors.textMuted);
     });
 
-    testWidgets('S-003 routine-backed session matches stopped and running hierarchy', (
-      tester,
-    ) async {
-      final deps = await _buildRoutineSessionDeps(theme: AppTheme.abyssalNeon);
-      final colors = OmniTheme.colorsForTheme(AppTheme.abyssalNeon);
-
-      await tester.pumpWidget(
-        _themeWrappedApp(
+    testWidgets(
+      'S-003 routine-backed session matches stopped and running hierarchy',
+      (tester) async {
+        final deps = await _buildRoutineSessionDeps(
           theme: AppTheme.abyssalNeon,
-          home: WorkoutSessionScreen(
-            workoutState: deps.workoutState,
-            routineState: deps.routineState,
-            sessionSummaryService: deps.sessionSummaryService,
-            settingsState: deps.settingsState,
-            timerAlertService: FakeTimerAlertService(),
+        );
+        final colors = OmniTheme.colorsForTheme(AppTheme.abyssalNeon);
+
+        await tester.pumpWidget(
+          _themeWrappedApp(
+            theme: AppTheme.abyssalNeon,
+            home: WorkoutSessionScreen(
+              workoutState: deps.workoutState,
+              routineState: deps.routineState,
+              sessionSummaryService: deps.sessionSummaryService,
+              settingsState: deps.settingsState,
+              timerAlertService: FakeTimerAlertService(),
+            ),
           ),
-        ),
-      );
+        );
 
-      await _openSessionDetail(tester, deps.exercise.name);
+        await _openSessionDetail(tester, deps.exercise.name);
 
-      final periodText = tester.widget<Text>(find.text('PERIOD 1'));
-      expect(periodText.style?.color, colors.textSecondary);
+        final periodText = tester.widget<Text>(find.text('PERIOD 1'));
+        expect(periodText.style?.color, colors.textSecondary);
 
-      final stoppedText = _statusLineText(
-        tester,
-        icon: Icons.play_circle_outline,
-        label: 'STOPPED',
-      );
-      expect(stoppedText.style?.color, colors.textMuted);
+        final stoppedText = _statusLineText(
+          tester,
+          icon: Icons.play_circle_outline,
+          label: 'STOPPED',
+        );
+        expect(stoppedText.style?.color, colors.textMuted);
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Start'));
-      await tester.pump();
+        await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+        await tester.pump();
 
-      final runningText = _statusLineText(
-        tester,
-        icon: Icons.pause_circle_outline,
-        label: 'RUNNING',
-      );
-      expect(runningText.style?.color, colors.textMuted);
-    });
+        final runningText = _statusLineText(
+          tester,
+          icon: Icons.pause_circle_outline,
+          label: 'RUNNING',
+        );
+        expect(runningText.style?.color, colors.textMuted);
+      },
+    );
 
     testWidgets('S-004 routine setup sports hierarchy is dominant+neutral', (
       tester,
@@ -386,7 +408,7 @@ void main() {
           home: RoutineSetupScreen(
             routineState: deps.routineState,
             workoutState: deps.workoutState,
-              templateId: deps.templateId,
+            templateId: deps.templateId,
             settingsState: deps.settingsState,
           ),
         ),
@@ -409,7 +431,9 @@ void main() {
       expect(periodCount.style?.color, colors.textSecondary);
     });
 
-    testWidgets('accent appears only on current dot and primary action', (tester) async {
+    testWidgets('accent appears only on current dot and primary action', (
+      tester,
+    ) async {
       final deps = await _buildFreeSessionDeps(theme: AppTheme.abyssalNeon);
 
       await tester.pumpWidget(
@@ -443,95 +467,111 @@ void main() {
       expect(accentedDots, 1);
     });
 
-    testWidgets('S-005 theme parity across free, routine-backed, and routine-setup', (
-      tester,
-    ) async {
-      for (final themeValue in AppTheme.values) {
-        final colors = OmniTheme.colorsForTheme(themeValue);
+    testWidgets(
+      'S-005 theme parity across free, routine-backed, and routine-setup',
+      (tester) async {
+        for (final themeValue in AppTheme.values) {
+          final colors = OmniTheme.colorsForTheme(themeValue);
 
-        final freeDeps = await _buildFreeSessionDeps(theme: themeValue);
-        await tester.pumpWidget(
-          _themeWrappedApp(
-            theme: themeValue,
-            home: WorkoutSessionScreen(
-              workoutState: freeDeps.workoutState,
-              routineState: freeDeps.routineState,
-              sessionSummaryService: freeDeps.sessionSummaryService,
-              settingsState: freeDeps.settingsState,
-              timerAlertService: FakeTimerAlertService(),
+          final freeDeps = await _buildFreeSessionDeps(theme: themeValue);
+          await tester.pumpWidget(
+            _themeWrappedApp(
+              theme: themeValue,
+              home: WorkoutSessionScreen(
+                workoutState: freeDeps.workoutState,
+                routineState: freeDeps.routineState,
+                sessionSummaryService: freeDeps.sessionSummaryService,
+                settingsState: freeDeps.settingsState,
+                timerAlertService: FakeTimerAlertService(),
+              ),
             ),
-          ),
-        );
-        await _openSessionDetail(tester, freeDeps.exercise.name);
-        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textSecondary);
-        expect(
-          tester
-              .widget<InlineMetricEditor>(
-                find.byWidgetPredicate(
-                  (widget) => widget is InlineMetricEditor && widget.metricType == 'duration',
-                ),
-              )
-              .emphasisTier,
-          MetricEmphasisTier.dominant,
-        );
-        expect(
-          _statusLineText(
-            tester,
-            icon: Icons.play_circle_outline,
-            label: 'STOPPED',
-          ).style?.color,
-          colors.textMuted,
-        );
+          );
+          await _openSessionDetail(tester, freeDeps.exercise.name);
+          expect(
+            tester.widget<Text>(find.text('PERIOD 1')).style?.color,
+            colors.textSecondary,
+          );
+          expect(
+            tester
+                .widget<InlineMetricEditor>(
+                  find.byWidgetPredicate(
+                    (widget) =>
+                        widget is InlineMetricEditor &&
+                        widget.metricType == 'duration',
+                  ),
+                )
+                .emphasisTier,
+            MetricEmphasisTier.dominant,
+          );
+          expect(
+            _statusLineText(
+              tester,
+              icon: Icons.play_circle_outline,
+              label: 'STOPPED',
+            ).style?.color,
+            colors.textMuted,
+          );
 
-        final routineSessionDeps = await _buildRoutineSessionDeps(theme: themeValue);
-        await tester.pumpWidget(
-          _themeWrappedApp(
+          final routineSessionDeps = await _buildRoutineSessionDeps(
             theme: themeValue,
-            home: WorkoutSessionScreen(
-              workoutState: routineSessionDeps.workoutState,
-              routineState: routineSessionDeps.routineState,
-              sessionSummaryService: routineSessionDeps.sessionSummaryService,
-              settingsState: routineSessionDeps.settingsState,
-              timerAlertService: FakeTimerAlertService(),
+          );
+          await tester.pumpWidget(
+            _themeWrappedApp(
+              theme: themeValue,
+              home: WorkoutSessionScreen(
+                workoutState: routineSessionDeps.workoutState,
+                routineState: routineSessionDeps.routineState,
+                sessionSummaryService: routineSessionDeps.sessionSummaryService,
+                settingsState: routineSessionDeps.settingsState,
+                timerAlertService: FakeTimerAlertService(),
+              ),
             ),
-          ),
-        );
-        await _openSessionDetail(tester, routineSessionDeps.exercise.name);
-        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textSecondary);
-        expect(
-          _statusLineText(
-            tester,
-            icon: Icons.play_circle_outline,
-            label: 'STOPPED',
-          ).style?.color,
-          colors.textMuted,
-        );
+          );
+          await _openSessionDetail(tester, routineSessionDeps.exercise.name);
+          expect(
+            tester.widget<Text>(find.text('PERIOD 1')).style?.color,
+            colors.textSecondary,
+          );
+          expect(
+            _statusLineText(
+              tester,
+              icon: Icons.play_circle_outline,
+              label: 'STOPPED',
+            ).style?.color,
+            colors.textMuted,
+          );
 
-        final setupDeps = await _buildRoutineSetupDeps(theme: themeValue);
-        await tester.pumpWidget(
-          _themeWrappedApp(
-            theme: themeValue,
-            home: RoutineSetupScreen(
-              routineState: setupDeps.routineState,
-              workoutState: setupDeps.workoutState,
+          final setupDeps = await _buildRoutineSetupDeps(theme: themeValue);
+          await tester.pumpWidget(
+            _themeWrappedApp(
+              theme: themeValue,
+              home: RoutineSetupScreen(
+                routineState: setupDeps.routineState,
+                workoutState: setupDeps.workoutState,
                 templateId: setupDeps.templateId,
-              settingsState: setupDeps.settingsState,
+                settingsState: setupDeps.settingsState,
+              ),
             ),
-          ),
-        );
-        await _openRoutineDetail(tester, setupDeps.exercise.name);
-        expect(tester.widget<Text>(find.text('PERIOD 1')).style?.color, colors.textSecondary);
-        expect(
-          tester
-              .widget<InlineMetricEditor>(
-                find.byWidgetPredicate(
-                  (widget) => widget is InlineMetricEditor && widget.metricType == 'duration',
-                ),
-              )
-              .emphasisTier,
-          MetricEmphasisTier.dominant,
-        );
-      }
-    });
+          );
+          await _openRoutineDetail(tester, setupDeps.exercise.name);
+          expect(
+            tester.widget<Text>(find.text('PERIOD 1')).style?.color,
+            colors.textSecondary,
+          );
+          expect(
+            tester
+                .widget<InlineMetricEditor>(
+                  find.byWidgetPredicate(
+                    (widget) =>
+                        widget is InlineMetricEditor &&
+                        widget.metricType == 'duration',
+                  ),
+                )
+                .emphasisTier,
+            MetricEmphasisTier.dominant,
+          );
+        }
+      },
+    );
   });
 }

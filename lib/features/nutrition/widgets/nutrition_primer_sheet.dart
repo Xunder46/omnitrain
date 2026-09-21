@@ -160,11 +160,7 @@ class _PrimerBlock extends StatelessWidget {
   final String label;
   final String body;
 
-  const _PrimerBlock({
-    super.key,
-    required this.label,
-    required this.body,
-  });
+  const _PrimerBlock({super.key, required this.label, required this.body});
 
   @override
   Widget build(BuildContext context) {

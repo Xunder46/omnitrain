@@ -228,7 +228,8 @@ void main() {
               final text = details.exceptionAsString();
               final isVerticalOverflow =
                   text.contains('overflowed') &&
-                  (text.contains('on the bottom') || text.contains('on the top'));
+                  (text.contains('on the bottom') ||
+                      text.contains('on the top'));
               if (isVerticalOverflow) {
                 overflows.add(text.split('\n').first);
               } else if (text.contains('overflowed')) {

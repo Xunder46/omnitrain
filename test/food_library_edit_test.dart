@@ -44,74 +44,68 @@ Food _libraryFood({
 
 void main() {
   group('FoodLibraryState updateCustomFood', () {
-    test(
-      'updates the cached food and notifies listeners (S-001)',
-      () async {
-        final repo = await _freshRepo();
-        final state = FoodLibraryState(repo);
-        await state.createFood(_libraryFood(id: 'food-edit-1', protein: 31));
-        await state.loadFoods();
+    test('updates the cached food and notifies listeners (S-001)', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await state.createFood(_libraryFood(id: 'food-edit-1', protein: 31));
+      await state.loadFoods();
 
-        var notifications = 0;
-        state.addListener(() => notifications++);
+      var notifications = 0;
+      state.addListener(() => notifications++);
 
-        await state.updateCustomFood(
-          id: 'food-edit-1',
-          name: 'Edit Me',
-          groupId: null,
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          protein: 35, // <-- changed
-          carbs: 0,
-          fiber: 0,
-          fat: 4,
-          imagePath: null,
-        );
+      await state.updateCustomFood(
+        id: 'food-edit-1',
+        name: 'Edit Me',
+        groupId: null,
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: 'g',
+        protein: 35, // <-- changed
+        carbs: 0,
+        fiber: 0,
+        fat: 4,
+        imagePath: null,
+      );
 
-        // Cache reflects the new protein.
-        final updated = state.foods.firstWhere((f) => f.id == 'food-edit-1');
-        expect(updated.protein, 35);
-        expect(updated.fat, 4);
-        expect(updated.updatedAtMs, greaterThanOrEqualTo(updated.createdAtMs));
-        // Listener was notified.
-        expect(notifications, greaterThanOrEqualTo(1));
-      },
-    );
+      // Cache reflects the new protein.
+      final updated = state.foods.firstWhere((f) => f.id == 'food-edit-1');
+      expect(updated.protein, 35);
+      expect(updated.fat, 4);
+      expect(updated.updatedAtMs, greaterThanOrEqualTo(updated.createdAtMs));
+      // Listener was notified.
+      expect(notifications, greaterThanOrEqualTo(1));
+    });
 
-    test(
-      'persists the update through the repository (round-trip)',
-      () async {
-        final repo = await _freshRepo();
-        final state = FoodLibraryState(repo);
-        await state.createFood(_libraryFood(id: 'food-rt-1', name: 'Before'));
-        await state.loadFoods();
+    test('persists the update through the repository (round-trip)', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await state.createFood(_libraryFood(id: 'food-rt-1', name: 'Before'));
+      await state.loadFoods();
 
-        await state.updateCustomFood(
-          id: 'food-rt-1',
-          name: 'After',
-          groupId: null,
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          protein: 11,
-          carbs: 22,
-          fiber: 3,
-          fat: 4,
-          imagePath: '/tmp/x.jpg',
-        );
+      await state.updateCustomFood(
+        id: 'food-rt-1',
+        name: 'After',
+        groupId: null,
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: 'g',
+        protein: 11,
+        carbs: 22,
+        fiber: 3,
+        fat: 4,
+        imagePath: '/tmp/x.jpg',
+      );
 
-        // Re-read from the repository (cache-miss path).
-        final reloaded = await repo.getFoodById('food-rt-1');
-        expect(reloaded, isNotNull);
-        expect(reloaded!.name, 'After');
-        expect(reloaded.protein, 11);
-        expect(reloaded.carbs, 22);
-        expect(reloaded.fiber, 3);
-        expect(reloaded.fat, 4);
-        expect(reloaded.imagePath, '/tmp/x.jpg');
-      },
-    );
+      // Re-read from the repository (cache-miss path).
+      final reloaded = await repo.getFoodById('food-rt-1');
+      expect(reloaded, isNotNull);
+      expect(reloaded!.name, 'After');
+      expect(reloaded.protein, 11);
+      expect(reloaded.carbs, 22);
+      expect(reloaded.fiber, 3);
+      expect(reloaded.fat, 4);
+      expect(reloaded.imagePath, '/tmp/x.jpg');
+    });
 
     test(
       'editing a catalog-copy in the library leaves the source catalog row untouched (S-002)',
@@ -159,39 +153,36 @@ void main() {
       },
     );
 
-    test(
-      'imagePath null clears the cached image (S-004)',
-      () async {
-        final repo = await _freshRepo();
-        final state = FoodLibraryState(repo);
-        await state.createFood(
-          _libraryFood(id: 'food-img-1', imagePath: '/tmp/a.jpg'),
-        );
-        await state.loadFoods();
+    test('imagePath null clears the cached image (S-004)', () async {
+      final repo = await _freshRepo();
+      final state = FoodLibraryState(repo);
+      await state.createFood(
+        _libraryFood(id: 'food-img-1', imagePath: '/tmp/a.jpg'),
+      );
+      await state.loadFoods();
 
-        expect(
-          state.foods.firstWhere((f) => f.id == 'food-img-1').imagePath,
-          '/tmp/a.jpg',
-        );
+      expect(
+        state.foods.firstWhere((f) => f.id == 'food-img-1').imagePath,
+        '/tmp/a.jpg',
+      );
 
-        await state.updateCustomFood(
-          id: 'food-img-1',
-          name: 'Edit Me',
-          groupId: null,
-          unitType: FoodUnitType.grams,
-          referenceAmount: 100,
-          referenceLabel: 'g',
-          protein: 10,
-          carbs: 20,
-          fiber: 0,
-          fat: 5,
-          imagePath: null, // <-- cleared
-        );
+      await state.updateCustomFood(
+        id: 'food-img-1',
+        name: 'Edit Me',
+        groupId: null,
+        unitType: FoodUnitType.grams,
+        referenceAmount: 100,
+        referenceLabel: 'g',
+        protein: 10,
+        carbs: 20,
+        fiber: 0,
+        fat: 5,
+        imagePath: null, // <-- cleared
+      );
 
-        final cleared = state.foods.firstWhere((f) => f.id == 'food-img-1');
-        expect(cleared.imagePath, isNull);
-      },
-    );
+      final cleared = state.foods.firstWhere((f) => f.id == 'food-img-1');
+      expect(cleared.imagePath, isNull);
+    });
 
     test(
       'fiber is stored separately from carbs and round-trips (S-005)',
@@ -344,56 +335,62 @@ void main() {
   }
 
   group('FoodLibraryState updateCatalogFood', () {
-    test('updates a bundled catalog food and notifies listeners (S-001)', () async {
-      final repo = await _freshRepo();
-      // Seed a bundled catalog row directly.
-      await repo.seedCatalogFood(
-        catalogFood(id: 'catalog-bundled-1', protein: 31),
-      );
+    test(
+      'updates a bundled catalog food and notifies listeners (S-001)',
+      () async {
+        final repo = await _freshRepo();
+        // Seed a bundled catalog row directly.
+        await repo.seedCatalogFood(
+          catalogFood(id: 'catalog-bundled-1', protein: 31),
+        );
 
-      final state = FoodLibraryState(repo);
-      await state.loadCatalogFoods();
-      final original = state.catalogFoods.firstWhere(
-        (f) => f.id == 'catalog-bundled-1',
-      );
+        final state = FoodLibraryState(repo);
+        await state.loadCatalogFoods();
+        final original = state.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-bundled-1',
+        );
 
-      var notifications = 0;
-      state.addListener(() => notifications++);
+        var notifications = 0;
+        state.addListener(() => notifications++);
 
-      await state.updateCatalogFood(
-        original,
-        catalogDraft(name: 'Renamed Bundled', protein: 50),
-      );
+        await state.updateCatalogFood(
+          original,
+          catalogDraft(name: 'Renamed Bundled', protein: 50),
+        );
 
-      // Cache reflects the new value.
-      final updated = state.catalogFoods.firstWhere(
-        (f) => f.id == 'catalog-bundled-1',
-      );
-      expect(updated.name, 'Renamed Bundled');
-      expect(updated.protein, 50);
-      expect(updated.isCatalog, isTrue);
-      expect(updated.updatedAtMs, greaterThanOrEqualTo(updated.createdAtMs));
-      // Listener was notified.
-      expect(notifications, greaterThanOrEqualTo(1));
-      // Repository persists the change.
-      final fromRepo = await repo.getCatalogFoodById('catalog-bundled-1');
-      expect(fromRepo!.protein, 50);
-    });
+        // Cache reflects the new value.
+        final updated = state.catalogFoods.firstWhere(
+          (f) => f.id == 'catalog-bundled-1',
+        );
+        expect(updated.name, 'Renamed Bundled');
+        expect(updated.protein, 50);
+        expect(updated.isCatalog, isTrue);
+        expect(updated.updatedAtMs, greaterThanOrEqualTo(updated.createdAtMs));
+        // Listener was notified.
+        expect(notifications, greaterThanOrEqualTo(1));
+        // Repository persists the change.
+        final fromRepo = await repo.getCatalogFoodById('catalog-bundled-1');
+        expect(fromRepo!.protein, 50);
+      },
+    );
 
-    test('throws on a non-catalog food (library row is not editable here)', () async {
-      final repo = await _freshRepo();
-      final state = FoodLibraryState(repo);
-      await state.createFood(_libraryFood(id: 'lib-row-1'));
-      final libRow = state.foods.first;
+    test(
+      'throws on a non-catalog food (library row is not editable here)',
+      () async {
+        final repo = await _freshRepo();
+        final state = FoodLibraryState(repo);
+        await state.createFood(_libraryFood(id: 'lib-row-1'));
+        final libRow = state.foods.first;
 
-      expect(
-        () => state.updateCatalogFood(
-          libRow,
-          catalogDraft(name: 'Should Not Work'),
-        ),
-        throwsStateError,
-      );
-    });
+        expect(
+          () => state.updateCatalogFood(
+            libRow,
+            catalogDraft(name: 'Should Not Work'),
+          ),
+          throwsStateError,
+        );
+      },
+    );
 
     test('throws when the catalog food is not in the cache', () async {
       final repo = await _freshRepo();
@@ -401,10 +398,7 @@ void main() {
       final phantom = catalogFood(id: 'phantom-id');
 
       expect(
-        () => state.updateCatalogFood(
-          phantom,
-          catalogDraft(name: 'Phantom'),
-        ),
+        () => state.updateCatalogFood(phantom, catalogDraft(name: 'Phantom')),
         throwsException,
       );
     });
@@ -460,9 +454,10 @@ void main() {
 
         // Seed a catalog food that starts in Group A.
         await repo.seedCatalogFood(
-          catalogFood(id: 'catalog-group-1', name: 'Grouped Food').copyWith(
-            groupId: groupA,
-          ),
+          catalogFood(
+            id: 'catalog-group-1',
+            name: 'Grouped Food',
+          ).copyWith(groupId: groupA),
         );
 
         await state.loadCatalogFoods();
@@ -484,11 +479,7 @@ void main() {
         );
         await state.updateCatalogFood(
           catalogSource,
-          catalogDraft(
-            name: 'Grouped Food',
-            protein: 10,
-            groupId: groupB,
-          ),
+          catalogDraft(name: 'Grouped Food', protein: 10, groupId: groupB),
         );
 
         // The linked library copy's groupId must follow.
@@ -529,10 +520,7 @@ void main() {
         final catalogSource = state.catalogFoods.firstWhere(
           (f) => f.id == 'catalog-ungroup-1',
         );
-        await state.updateCatalogFood(
-          catalogSource,
-          catalogDraft(),
-        );
+        await state.updateCatalogFood(catalogSource, catalogDraft());
 
         final libAfter = state.foods.firstWhere(
           (f) => f.catalogId == 'catalog-ungroup-1',
@@ -552,9 +540,10 @@ void main() {
 
         // Seed a catalog food in Group A.
         await repo.seedCatalogFood(
-          catalogFood(id: 'catalog-legacy-1', name: 'Legacy Test').copyWith(
-            groupId: groupA,
-          ),
+          catalogFood(
+            id: 'catalog-legacy-1',
+            name: 'Legacy Test',
+          ).copyWith(groupId: groupA),
         );
 
         await state.loadCatalogFoods();
@@ -578,9 +567,7 @@ void main() {
         await state.loadFoods();
 
         // Sanity: the legacy row has no catalogId (legacy data).
-        final legacyBefore = state.foods.firstWhere(
-          (f) => f.id == legacyId,
-        );
+        final legacyBefore = state.foods.firstWhere((f) => f.id == legacyId);
         expect(legacyBefore.catalogId, isNull);
         expect(legacyBefore.groupId, groupA);
 
@@ -590,18 +577,12 @@ void main() {
         );
         await state.updateCatalogFood(
           catalogSource,
-          catalogDraft(
-            name: 'Legacy Test',
-            protein: 10,
-            groupId: groupB,
-          ),
+          catalogDraft(name: 'Legacy Test', protein: 10, groupId: groupB),
         );
 
         // The legacy row must pick up the new groupId (via identity
         // match) and be upgraded to durable linkage.
-        final legacyAfter = state.foods.firstWhere(
-          (f) => f.id == legacyId,
-        );
+        final legacyAfter = state.foods.firstWhere((f) => f.id == legacyId);
         expect(legacyAfter.groupId, groupB);
         expect(legacyAfter.catalogId, 'catalog-legacy-1');
       },
@@ -626,14 +607,10 @@ void main() {
         // food row's `lastAmountConsumed` directly via the repo, then
         // reload the cache so the state's `_foods` map reflects it.
         final before = await repo.getFoodById(libraryId);
-        await repo.updateFood(
-          before!.copyWith(lastAmountConsumed: 100.0),
-        );
+        await repo.updateFood(before!.copyWith(lastAmountConsumed: 100.0));
         await state.loadFoods();
 
-        final libBefore = state.foods.firstWhere(
-          (f) => f.id == libraryId,
-        );
+        final libBefore = state.foods.firstWhere((f) => f.id == libraryId);
         expect(libBefore.lastAmountConsumed, 100.0);
 
         // Edit the catalog food (e.g. the manufacturer updated macros).
@@ -674,23 +651,16 @@ void main() {
         expect(newId, isNotEmpty);
 
         // Catalog has grown by one.
-        expect(
-          state.catalogFoods,
-          hasLength(baselineCatalogCount + 1),
-        );
+        expect(state.catalogFoods, hasLength(baselineCatalogCount + 1));
         // The new food is in the catalog with isCatalog = true.
-        final newFood = state.catalogFoods
-            .firstWhere((f) => f.id == newId);
+        final newFood = state.catalogFoods.firstWhere((f) => f.id == newId);
         expect(newFood.name, 'My Trail Mix');
         expect(newFood.protein, 10);
         expect(newFood.isCatalog, isTrue);
 
         // The food does NOT appear in the personal library.
         await state.loadFoods();
-        expect(
-          state.foods.where((f) => f.name == 'My Trail Mix'),
-          isEmpty,
-        );
+        expect(state.foods.where((f) => f.name == 'My Trail Mix'), isEmpty);
 
         // The repository also sees the new row.
         final fromRepo = await repo.getCatalogFoodById(newId);
