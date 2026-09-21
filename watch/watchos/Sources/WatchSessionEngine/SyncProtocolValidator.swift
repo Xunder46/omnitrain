@@ -21,6 +21,7 @@ import Foundation
 
 /// Machine-facing rejection codes. Documented one by one in PROTOCOL.md.
 public enum SyncRejectionCode {
+    public static let unsupportedProtocolVersion = "unsupported_protocol_version"
     public static let unknownMessageType = "unknown_message_type"
     public static let missingSchema = "missing_schema"
     public static let unresolvableReference = "unresolvable_reference"

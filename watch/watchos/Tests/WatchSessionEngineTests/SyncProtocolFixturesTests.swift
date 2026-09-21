@@ -84,8 +84,11 @@ final class SyncProtocolFixturesTests: XCTestCase {
                 try await engine.appendObservation(event)
             }
 
-            XCTAssertEqual(harness.emitted.count, events.count)
-            for envelope in harness.emitted {
+            // The session start announces itself too; the events are what this
+            // test counts.
+            let emitted = harness.emitted.filter { $0["type"] as? String == "observations_up" }
+            XCTAssertEqual(emitted.count, events.count)
+            for envelope in emitted {
                 let rejections = validator.validateEnvelope(envelope)
                 XCTAssertTrue(
                     rejections.isEmpty,
@@ -127,7 +130,10 @@ final class SyncProtocolFixturesTests: XCTestCase {
 
             let stored = await harness.store.readAll()
             XCTAssertTrue(stored.observations.isEmpty)
-            XCTAssertTrue(harness.emitted.isEmpty)
+            XCTAssertTrue(
+                harness.emitted.filter { $0["type"] as? String == "observations_up" }.isEmpty,
+                "a refused event is never emitted"
+            )
         }
     }
 

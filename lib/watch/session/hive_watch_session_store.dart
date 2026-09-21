@@ -45,6 +45,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
     final observations = <WatchObservationRecord>[];
     final timers = <WatchTimerRecord>[];
     final confirmations = <WatchConfirmationRecord>[];
+    final routineCatalogs = <WatchRoutineCatalogRecord>[];
 
     for (final row in rows) {
       switch (row) {
@@ -56,6 +57,8 @@ class HiveWatchSessionStore implements WatchSessionStore {
           timers.add(timer);
         case final WatchConfirmationRecord confirmation:
           confirmations.add(confirmation);
+        case final WatchRoutineCatalogRecord catalog:
+          routineCatalogs.add(catalog);
       }
     }
 
@@ -64,6 +67,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
       observations: applyConfirmations(observations, confirmations),
       timers: timers,
       confirmations: confirmations,
+      routineCatalogs: routineCatalogs,
     );
   }
 
@@ -91,6 +95,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
       WatchObservationRecord.type,
       WatchTimerRecord.type,
       WatchConfirmationRecord.type,
+      WatchRoutineCatalogRecord.type,
     ]) {
       final box = await _boxFor(type);
       for (final encoded in box.values) {

@@ -36,6 +36,15 @@ public enum WatchTimerState {
     public static let stopped = "stopped"
 }
 
+/// Session lifecycle states, matching `session_lifecycle.payload.state`. The
+/// watch emits these as the session moves; the phone's mirror follows them.
+public enum WatchLifecycleState {
+    public static let started = "started"
+    public static let exerciseAdvanced = "exercise_advanced"
+    public static let completed = "completed"
+    public static let abandoned = "abandoned"
+}
+
 /// A UTC timestamp in the protocol's wire shape: `YYYY-MM-DDTHH:MM:SS(.sss)Z`.
 public func utcIso(_ instant: Date) -> String {
     isoWithFractionalSeconds.string(from: instant)
@@ -427,11 +436,13 @@ public enum StoredWatchRecord {
     public static let observationType = "observation"
     public static let timerType = "timer"
     public static let confirmationType = "confirmation"
+    public static let routineCatalogType = "routine_catalog"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
     case timer(WatchTimerRecord)
     case confirmation(WatchConfirmationRecord)
+    case routineCatalog(WatchRoutineCatalogRecord)
 
     public var recordType: String {
         switch self {
@@ -439,6 +450,7 @@ public enum StoredWatchRecord {
         case .observation: return Self.observationType
         case .timer: return Self.timerType
         case .confirmation: return Self.confirmationType
+        case .routineCatalog: return Self.routineCatalogType
         }
     }
 
@@ -448,6 +460,7 @@ public enum StoredWatchRecord {
         case .observation(let row): return row.recordId
         case .timer(let row): return row.recordId
         case .confirmation(let row): return row.recordId
+        case .routineCatalog(let row): return row.recordId
         }
     }
 
@@ -457,6 +470,7 @@ public enum StoredWatchRecord {
         case .observation(let row): return row.sessionId
         case .timer(let row): return row.sessionId
         case .confirmation(let row): return row.sessionId
+        case .routineCatalog(let row): return row.sessionId
         }
     }
 
@@ -466,6 +480,7 @@ public enum StoredWatchRecord {
         case .observation(let row): return row.recordedAt
         case .timer(let row): return row.recordedAt
         case .confirmation(let row): return row.recordedAt
+        case .routineCatalog(let row): return row.recordedAt
         }
     }
 
@@ -475,6 +490,7 @@ public enum StoredWatchRecord {
         case .observation(let row): return row.sequence
         case .timer(let row): return row.sequence
         case .confirmation(let row): return row.sequence
+        case .routineCatalog(let row): return row.sequence
         }
     }
 
@@ -484,6 +500,7 @@ public enum StoredWatchRecord {
         case .observation(let row): return .observation(row.withSequence(sequence))
         case .timer(let row): return .timer(row.withSequence(sequence))
         case .confirmation(let row): return .confirmation(row.withSequence(sequence))
+        case .routineCatalog(let row): return .routineCatalog(row.withSequence(sequence))
         }
     }
 
@@ -493,6 +510,7 @@ public enum StoredWatchRecord {
         case .observation(let row): return row.toJson()
         case .timer(let row): return row.toJson()
         case .confirmation(let row): return row.toJson()
+        case .routineCatalog(let row): return row.toJson()
         }
     }
 
@@ -505,6 +523,7 @@ public enum StoredWatchRecord {
         case observationType: return .observation(try WatchObservationRecord.fromJson(json))
         case timerType: return .timer(try WatchTimerRecord.fromJson(json))
         case confirmationType: return .confirmation(try WatchConfirmationRecord.fromJson(json))
+        case routineCatalogType: return .routineCatalog(try WatchRoutineCatalogRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)
         }
     }

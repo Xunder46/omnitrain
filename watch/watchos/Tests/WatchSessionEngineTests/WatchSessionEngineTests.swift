@@ -216,16 +216,20 @@ final class WatchSessionEngineTests: XCTestCase {
             harness.clock.advance(60)
         }
 
-        XCTAssertEqual(harness.emitted.count, 3)
-        XCTAssertTrue(harness.emitted.allSatisfy { $0["type"] as? String == "observations_up" })
+        // A session start announces itself; the three entries follow it.
+        XCTAssertEqual(
+            harness.emitted.map { $0["type"] as? String },
+            ["session_lifecycle", "observations_up", "observations_up", "observations_up"]
+        )
 
         // Killed before anything left the watch: the replay rebuilds the same
         // events from persisted rows rather than inventing new ones.
+        let logged = harness.emitted.filter { $0["type"] as? String == "observations_up" }
         let relaunched = await harness.runningEngine()
         let replay = relaunched.pendingObservations()
         XCTAssertEqual(
             replay.map { $0["messageId"] as? String },
-            harness.emitted.map { $0["messageId"] as? String }
+            logged.map { $0["messageId"] as? String }
         )
 
         let validator = Harness.validator()

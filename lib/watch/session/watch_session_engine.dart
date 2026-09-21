@@ -28,8 +28,10 @@ import 'watch_session_store.dart';
 /// Where the engine hands the messages the watch owes the phone.
 typedef WatchMessageSink = void Function(Map<String, Object?> envelope);
 
-/// Thrown when a message fails protocol conformance. Nothing was persisted and
-/// nothing was emitted: the message never existed.
+/// Thrown when a message fails protocol conformance. The watch refuses both
+/// halves of the exchange: a message it cannot emit, and a message from the
+/// phone it cannot read. Nothing was persisted and nothing was emitted — the
+/// message never existed.
 class WatchEmissionRejected implements Exception {
   WatchEmissionRejected({required this.message, required this.rejections});
 
@@ -135,18 +137,23 @@ class WatchSessionEngine {
   // Lifecycle
   // ---------------------------------------------------------------------------
 
-  /// Starts a session that needs no phone to run.
+  /// Starts a session that needs no phone to run, and announces it.
   ///
   /// [exercises] are the protocol's `sessionExercise` slots — delivered by the
-  /// phone when it can reach the watch, or supplied by the start paths. They are
+  /// phone when it can reach the watch, or supplied by the start paths (a
+  /// routine's efforts, or the exercises the user just picked). They are
   /// persisted with the session so a relaunch knows what the position means.
+  ///
+  /// The session-started lifecycle event leaves through the same sink as every
+  /// other message, so the phone's live mirror learns about a wrist-started
+  /// session without being asked (S-006).
   Future<WatchSessionRecord> createSession({
     required String? modality,
     String source = 'watch',
     List<Map<String, Object?>> exercises = const [],
   }) async {
     final now = _clock();
-    final stored = await _store.append(
+    return _appendSessionRow(
       WatchSessionRecord(
         recordId: _newId(),
         sessionId: _newSessionId(),
@@ -158,10 +165,8 @@ class WatchSessionEngine {
         currentExerciseIndex: 0,
         exercises: exercises,
       ),
+      lifecycle: WatchLifecycleState.started,
     );
-
-    _session = stored;
-    return stored;
   }
 
   /// Moves to the next exercise. The last exercise is the end of the ladder.
@@ -175,16 +180,78 @@ class WatchSessionEngine {
         0,
         lastIndex,
       ),
+      lifecycle: WatchLifecycleState.exerciseAdvanced,
     );
   }
 
   /// Closes the session as done.
-  Future<WatchSessionRecord> finishSession() =>
-      _transitionTo(status: WatchSessionStatus.completed);
+  Future<WatchSessionRecord> finishSession() => _transitionTo(
+    status: WatchSessionStatus.completed,
+    lifecycle: WatchLifecycleState.completed,
+  );
 
   /// Closes the session as given up on. Entries already logged stay logged.
-  Future<WatchSessionRecord> abandonSession() =>
-      _transitionTo(status: WatchSessionStatus.abandoned);
+  Future<WatchSessionRecord> abandonSession() => _transitionTo(
+    status: WatchSessionStatus.abandoned,
+    lifecycle: WatchLifecycleState.abandoned,
+  );
+
+  /// Puts [slot] into the session's exercise ladder.
+  ///
+  /// A slot id already present is dropped rather than added twice, which is
+  /// what makes a re-delivered push harmless (PROTOCOL.md, "Exercise
+  /// identity"). [moveTo] decides where the position lands: the user's own pick
+  /// moves the session to the new exercise, while a structure change the phone
+  /// initiated leaves the user on the exercise they were logging — the rule the
+  /// phone's reconciler applies to its own pushes.
+  Future<WatchSessionRecord> insertExercise(
+    Map<String, Object?> slot, {
+    int? atIndex,
+    bool moveTo = false,
+  }) async {
+    final session = _requireSession();
+    final slotId = slot['sessionExerciseId'];
+    if (slotId is String &&
+        session.exercises.any((row) => row['sessionExerciseId'] == slotId)) {
+      return session;
+    }
+
+    final index = (atIndex ?? session.exercises.length).clamp(
+      0,
+      session.exercises.length,
+    );
+    final exercises = [...session.exercises]..insert(index, slot);
+
+    // The position follows the exercise, not the index: a slot inserted at or
+    // before the current one pushes the current one along with it. Computed
+    // rather than searched for, so there is no not-found case to fall back from.
+    final nextIndex = moveTo || session.exercises.isEmpty
+        ? index
+        : (session.currentExerciseIndex >= index
+              ? session.currentExerciseIndex + 1
+              : session.currentExerciseIndex);
+
+    return _transitionTo(
+      currentExerciseIndex: nextIndex,
+      exercises: exercises,
+      lifecycle: null,
+    );
+  }
+
+  /// Applies an `exercise_push` from the phone: the slot it names lands at the
+  /// position it names, and the user stays on the exercise they were logging.
+  ///
+  /// A message the watch cannot read is refused whole — no half-applied edit.
+  Future<WatchSessionRecord> applyExercisePush(
+    Map<String, Object?> envelope,
+  ) async {
+    _requireConformingIncoming(envelope);
+    final payload = asJsonObject(envelope['payload']);
+    return insertExercise(
+      asJsonObject(payload['exercise']),
+      atIndex: payload['insertAtIndex']! as int,
+    );
+  }
 
   /// Writes a new session row carrying [status] and [currentExerciseIndex].
   ///
@@ -193,9 +260,11 @@ class WatchSessionEngine {
   Future<WatchSessionRecord> _transitionTo({
     String? status,
     int? currentExerciseIndex,
+    List<Map<String, Object?>>? exercises,
+    required String? lifecycle,
   }) async {
     final session = _requireSession();
-    final stored = await _store.append(
+    return _appendSessionRow(
       WatchSessionRecord(
         recordId: _newId(),
         sessionId: session.sessionId,
@@ -206,12 +275,34 @@ class WatchSessionEngine {
         status: status ?? session.status,
         currentExerciseIndex:
             currentExerciseIndex ?? session.currentExerciseIndex,
-        exercises: session.exercises,
+        exercises: exercises ?? session.exercises,
       ),
+      lifecycle: lifecycle,
     );
+  }
 
+  /// Appends [row], and announces the lifecycle change through the message sink.
+  ///
+  /// A status change is not an observation: the state is the product and the
+  /// message is its mirror, so an announcement this build could not send is
+  /// dropped rather than blocking the session the user is in the middle of. The
+  /// suites pin the shape, so a drift fails there instead of going quiet.
+  Future<WatchSessionRecord> _appendSessionRow(
+    WatchSessionRecord row, {
+    required String? lifecycle,
+  }) async {
+    final stored = await _store.append(row);
     _session = stored;
+    if (lifecycle != null) _emitLifecycleIfConformant(stored, lifecycle);
     return stored;
+  }
+
+  void _emitLifecycleIfConformant(WatchSessionRecord row, String state) {
+    final envelope = _lifecycle(row, state);
+    final rejections =
+        _validator?.validateEnvelope(envelope) ?? const <SyncProtocolRejection>[];
+    if (rejections.isNotEmpty) return;
+    _emit(envelope);
   }
 
   // ---------------------------------------------------------------------------
@@ -491,6 +582,23 @@ class WatchSessionEngine {
     },
   };
 
+  /// The session's own state change, as the phone's mirror reads it. The index
+  /// travels only with `exercise_advanced` — the schema allows it nowhere else.
+  Map<String, Object?> _lifecycle(WatchSessionRecord row, String state) => {
+    'protocolVersion': SyncProtocolValidator.protocolVersion,
+    'messageId': _messageIdFor(row.recordId),
+    'sessionId': row.sessionId,
+    'type': 'session_lifecycle',
+    'origin': 'watch',
+    'sentAt': utcIso(row.recordedAt),
+    'payload': {
+      'state': state,
+      'at': utcIso(row.recordedAt),
+      if (state == WatchLifecycleState.exerciseAdvanced)
+        'exerciseIndex': row.currentExerciseIndex,
+    },
+  };
+
   /// The delivery key is derived from the row, not minted per attempt: a
   /// replay after a crash re-sends the same message for the same record.
   String _messageIdFor(String recordId) => 'msg-$recordId';
@@ -508,6 +616,25 @@ class WatchSessionEngine {
     throw WatchEmissionRejected(
       message: 'refusing to emit a non-conformant message: ${rejections.first}',
       rejections: rejections,
+    );
+  }
+
+  /// Refuses to apply anything this watch cannot read — version first, then
+  /// conformance. A message from a peer speaking another version is rejected
+  /// without being interpreted (PROTOCOL.md, "Versioning policy").
+  void _requireConformingIncoming(Map<String, Object?> envelope) {
+    final validator = _validator;
+    if (validator == null) return;
+
+    final decision = validator.evaluateIncoming(
+      envelope,
+      receiverVersion: SyncProtocolValidator.protocolVersion,
+    );
+    if (decision.accepted) return;
+
+    throw WatchEmissionRejected(
+      message: 'refusing to apply a non-conformant message: ${decision.reason}',
+      rejections: decision.rejections,
     );
   }
 

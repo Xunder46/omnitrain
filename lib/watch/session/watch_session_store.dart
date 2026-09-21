@@ -20,6 +20,7 @@ class WatchStoreContents {
     this.observations = const [],
     this.timers = const [],
     this.confirmations = const [],
+    this.routineCatalogs = const [],
   });
 
   final List<WatchSessionRecord> sessions;
@@ -32,11 +33,16 @@ class WatchStoreContents {
 
   final List<WatchConfirmationRecord> confirmations;
 
+  /// The reference data the phone sent down, oldest first. The newest row is
+  /// the catalog that applies.
+  final List<WatchRoutineCatalogRecord> routineCatalogs;
+
   bool get isEmpty =>
       sessions.isEmpty &&
       observations.isEmpty &&
       timers.isEmpty &&
-      confirmations.isEmpty;
+      confirmations.isEmpty &&
+      routineCatalogs.isEmpty;
 }
 
 abstract class WatchSessionStore {

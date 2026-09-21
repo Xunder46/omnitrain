@@ -36,6 +36,15 @@ abstract final class WatchTimerState {
   static const String stopped = 'stopped';
 }
 
+/// Session lifecycle states, matching `session_lifecycle.payload.state`. The
+/// watch emits these as the session moves; the phone's mirror follows them.
+abstract final class WatchLifecycleState {
+  static const String started = 'started';
+  static const String exerciseAdvanced = 'exercise_advanced';
+  static const String completed = 'completed';
+  static const String abandoned = 'abandoned';
+}
+
 /// Base of every stored record — the single shape the store accepts.
 ///
 /// Sealed on purpose: the store has exactly one mutation entry point, and it
@@ -77,6 +86,7 @@ sealed class WatchRecord {
       WatchObservationRecord.type => WatchObservationRecord.fromJson(json),
       WatchTimerRecord.type => WatchTimerRecord.fromJson(json),
       WatchConfirmationRecord.type => WatchConfirmationRecord.fromJson(json),
+      WatchRoutineCatalogRecord.type => WatchRoutineCatalogRecord.fromJson(json),
       _ => throw FormatException('unknown watch record type: $type'),
     };
   }
@@ -396,6 +406,79 @@ final class WatchConfirmationRecord extends WatchRecord {
         recordedAt: parseUtcIso(json['recordedAt']),
         observationIds: ((json['observationIds'] as List?) ?? const [])
             .cast<String>(),
+        sequence: (json['sequence'] as int?) ?? 0,
+      );
+}
+
+/// The reference data the phone sends down: the user's routines and the
+/// fallback exercise list the wrist may log without reaching the phone.
+///
+/// A catalog row carries no session, which is why its `sessionId` is empty — it
+/// belongs to the watch, not to any one workout. Like every other row it is
+/// append-only: a sync writes a new catalog and the newest one wins, so the
+/// version the user had before a sync is still readable afterwards.
+///
+/// What the wrist itself used recently is *not* stored here: it is derived from
+/// the sessions the watch already kept, which is one less thing that can drift.
+final class WatchRoutineCatalogRecord extends WatchRecord {
+  const WatchRoutineCatalogRecord({
+    required super.recordId,
+    required super.recordedAt,
+    required this.generatedAt,
+    this.routines = const [],
+    this.fallbackExercises = const [],
+    super.sequence,
+  }) : super(sessionId: '');
+
+  static const String type = 'routine_catalog';
+
+  /// When the phone generated this view of the routines. A message older than
+  /// the cached one is not a newer truth, so it is ignored.
+  final DateTime generatedAt;
+
+  /// The routines as `routines_down` carried them: routine → segments →
+  /// efforts → per-metric targets.
+  final List<Map<String, Object?>> routines;
+
+  /// The phone's fallback exercise list, in the phone's order.
+  final List<Map<String, Object?>> fallbackExercises;
+
+  @override
+  String get recordType => type;
+
+  @override
+  WatchRoutineCatalogRecord withSequence(int sequence) => WatchRoutineCatalogRecord(
+    recordId: recordId,
+    recordedAt: recordedAt,
+    generatedAt: generatedAt,
+    routines: routines,
+    fallbackExercises: fallbackExercises,
+    sequence: sequence,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    'recordType': type,
+    'recordId': recordId,
+    'sessionId': sessionId,
+    'recordedAt': utcIso(recordedAt),
+    'sequence': sequence,
+    'generatedAt': utcIso(generatedAt),
+    'routines': routines,
+    'fallbackExercises': fallbackExercises,
+  };
+
+  static WatchRoutineCatalogRecord fromJson(Map<String, Object?> json) =>
+      WatchRoutineCatalogRecord(
+        recordId: json['recordId']! as String,
+        recordedAt: parseUtcIso(json['recordedAt']),
+        generatedAt: parseUtcIso(json['generatedAt']),
+        routines: ((json['routines'] as List?) ?? const [])
+            .map(asJsonObject)
+            .toList(growable: false),
+        fallbackExercises: ((json['fallbackExercises'] as List?) ?? const [])
+            .map(asJsonObject)
+            .toList(growable: false),
         sequence: (json['sequence'] as int?) ?? 0,
       );
 }

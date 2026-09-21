@@ -1,5 +1,19 @@
 # OmniTrain Design System
 
+**Scope.** This document governs the Flutter app's visual system: the tokens in
+`lib/core/constants/omni_theme.dart`, and every surface under `lib/widgets/` and
+`lib/features/`. It also governs the values the watch clients **mirror** from
+those tokens — button shapes, radii, and heights reused by
+`lib/watch/logging/`, `lib/watch/start/`, and
+`watch/watchos/Sources/WatchSessionEngine/`.
+
+**Not in scope: wrist-only layout geometry.** Spacing and screen-level
+composition on a wrist are sized for a ~40 mm display, not a phone. The watch
+surfaces carry their own inset and height values (`WatchLoggingScreen.surfaceInset`,
+`WatchStartScreen.surfaceInset`) rather than scaling a phone token down, and
+rules written for a full-width phone screen — the `OmniBottomCTA` width and
+vertical-anchor rule in particular — do not apply to them.
+
 ## Core Design Philosophy: Minimum Friction
 
 Every design decision serves one question: **does this help the athlete get to work faster?**

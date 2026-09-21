@@ -94,9 +94,16 @@ public final class WatchSessionEngine {
 
     // MARK: - Lifecycle
 
-    /// Starts a session that needs no phone to run. `exercises` are the
-    /// protocol's `sessionExercise` slots, persisted with the session so a
-    /// relaunch knows what the position means.
+    /// Starts a session that needs no phone to run, and announces it.
+    ///
+    /// `exercises` are the protocol's `sessionExercise` slots — delivered by the
+    /// phone when it can reach the watch, or supplied by the start paths (a
+    /// routine's efforts, or the exercises the user just picked). They are
+    /// persisted with the session so a relaunch knows what the position means.
+    ///
+    /// The session-started lifecycle event leaves through the same sink as every
+    /// other message, so the phone's live mirror learns about a wrist-started
+    /// session without being asked (S-006).
     @discardableResult
     public func createSession(
         modality: String?,
@@ -118,7 +125,9 @@ public final class WatchSessionEngine {
 
         let stored = await store.append(.session(row))
         current = stored.sessionRow ?? row
-        return current ?? row
+        let live = current ?? row
+        emitLifecycle(live, state: WatchLifecycleState.started)
+        return live
     }
 
     /// Moves to the next exercise. The last exercise is the end of the ladder.
@@ -127,27 +136,96 @@ public final class WatchSessionEngine {
         let session = requireSession()
         let lastIndex = session.exercises.isEmpty ? 0 : session.exercises.count - 1
         return await transitionTo(
-            currentExerciseIndex: min(session.currentExerciseIndex + 1, lastIndex)
+            currentExerciseIndex: min(session.currentExerciseIndex + 1, lastIndex),
+            lifecycle: WatchLifecycleState.exerciseAdvanced
         )
     }
 
     /// Closes the session as done.
     @discardableResult
     public func finishSession() async -> WatchSessionRecord {
-        await transitionTo(status: WatchSessionStatus.completed)
+        await transitionTo(
+            status: WatchSessionStatus.completed,
+            lifecycle: WatchLifecycleState.completed
+        )
     }
 
     /// Closes the session as given up on. Entries already logged stay logged.
     @discardableResult
     public func abandonSession() async -> WatchSessionRecord {
-        await transitionTo(status: WatchSessionStatus.abandoned)
+        await transitionTo(
+            status: WatchSessionStatus.abandoned,
+            lifecycle: WatchLifecycleState.abandoned
+        )
     }
 
+    /// Puts `slot` into the session's exercise ladder.
+    ///
+    /// A slot id already present is dropped rather than added twice, which is
+    /// what makes a re-delivered push harmless (PROTOCOL.md, "Exercise
+    /// identity"). `moveTo` decides where the position lands: the user's own
+    /// pick moves the session to the new exercise, while a structure change the
+    /// phone initiated leaves the user on the exercise they were logging — the
+    /// rule `lib/core/sync_protocol/session_reconciler.dart` applies to it.
+    @discardableResult
+    public func insertExercise(
+        _ slot: [String: Any],
+        atIndex: Int? = nil,
+        moveTo: Bool = false
+    ) async -> WatchSessionRecord {
+        let session = requireSession()
+        if let slotId = slot["sessionExerciseId"] as? String,
+           session.exercises.contains(where: { $0["sessionExerciseId"] as? String == slotId }) {
+            return session
+        }
+
+        let index = min(max(atIndex ?? session.exercises.count, 0), session.exercises.count)
+        var exercises = session.exercises
+        exercises.insert(slot, at: index)
+
+        // The position follows the exercise, not the index: a slot inserted at
+        // or before the current one pushes the current one along with it.
+        // Computed rather than searched for, so there is no not-found case to
+        // fall back from.
+        let nextIndex: Int
+        if moveTo || session.exercises.isEmpty {
+            nextIndex = index
+        } else {
+            nextIndex = session.currentExerciseIndex >= index
+                ? session.currentExerciseIndex + 1
+                : session.currentExerciseIndex
+        }
+
+        return await transitionTo(
+            currentExerciseIndex: nextIndex,
+            exercises: exercises,
+            lifecycle: nil
+        )
+    }
+
+    /// Applies an `exercise_push` from the phone: the slot it names lands at the
+    /// position it names, and the user stays on the exercise they were logging.
+    ///
+    /// A message the watch cannot read is refused whole — no half-applied edit.
+    @discardableResult
+    public func applyExercisePush(_ envelope: [String: Any]) async throws -> WatchSessionRecord {
+        try requireConformingIncoming(envelope)
+        let payload = (envelope["payload"] as? [String: Any]) ?? [:]
+        return await insertExercise(
+            (payload["exercise"] as? [String: Any]) ?? [:],
+            atIndex: (payload["insertAtIndex"] as? NSNumber)?.intValue
+        )
+    }
+
+    /// Writes a new session row carrying `status` and `currentExerciseIndex`.
+    ///
     /// A state change appends rather than updates, which is what both keeps the
     /// store append-only and makes the position survive a kill.
     private func transitionTo(
         status: String? = nil,
-        currentExerciseIndex: Int? = nil
+        currentExerciseIndex: Int? = nil,
+        exercises: [[String: Any]]? = nil,
+        lifecycle: String?
     ) async -> WatchSessionRecord {
         let session = requireSession()
         let row = WatchSessionRecord(
@@ -159,12 +237,26 @@ public final class WatchSessionEngine {
             source: session.source,
             status: status ?? session.status,
             currentExerciseIndex: currentExerciseIndex ?? session.currentExerciseIndex,
-            exercises: session.exercises
+            exercises: exercises ?? session.exercises
         )
 
         let stored = await store.append(.session(row))
         current = stored.sessionRow ?? row
-        return current ?? row
+        let live = current ?? row
+        if let lifecycle { emitLifecycle(live, state: lifecycle) }
+        return live
+    }
+
+    /// Tells the phone the session moved, when the protocol accepts the telling.
+    ///
+    /// A status change is not an observation: the state is the product and the
+    /// message is its mirror, so an announcement this build could not send is
+    /// dropped rather than blocking the session the user is in the middle of.
+    /// The suites pin the shape, so a drift fails there instead of going quiet.
+    private func emitLifecycle(_ row: WatchSessionRecord, state: String) {
+        let envelope = lifecycle(row, state: state)
+        if let validator, !validator.validateEnvelope(envelope).isEmpty { return }
+        emit(envelope)
     }
 
     // MARK: - Observations
@@ -430,6 +522,28 @@ public final class WatchSessionEngine {
         ]
     }
 
+    /// The session's own state change, as the phone's mirror reads it. The index
+    /// travels only with `exercise_advanced` — the schema allows it nowhere else.
+    private func lifecycle(_ row: WatchSessionRecord, state: String) -> [String: Any] {
+        var payload: [String: Any] = [
+            "state": state,
+            "at": utcIso(row.recordedAt),
+        ]
+        if state == WatchLifecycleState.exerciseAdvanced {
+            payload["exerciseIndex"] = row.currentExerciseIndex
+        }
+
+        return [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId(for: row.recordId),
+            "sessionId": row.sessionId,
+            "type": "session_lifecycle",
+            "origin": "watch",
+            "sentAt": utcIso(row.recordedAt),
+            "payload": payload,
+        ]
+    }
+
     /// The delivery key is derived from the row, not minted per attempt: a
     /// replay after a crash re-sends the same message for the same record.
     private func messageId(for recordId: String) -> String { "msg-\(recordId)" }
@@ -446,6 +560,37 @@ public final class WatchSessionEngine {
         guard rejections.isEmpty else {
             throw WatchEmissionRejected(
                 message: "refusing to emit a non-conformant message: "
+                    + "\(rejections[0].description)",
+                rejections: rejections
+            )
+        }
+    }
+
+    /// Refuses to apply anything this watch cannot read — version first, then
+    /// conformance. A message from a peer speaking another version is rejected
+    /// without being interpreted (PROTOCOL.md, "Versioning policy").
+    private func requireConformingIncoming(_ envelope: [String: Any]) throws {
+        guard let validator else { return }
+
+        let version = envelope["protocolVersion"]
+        if (version as? NSNumber)?.intValue != SyncProtocolValidator.protocolVersion {
+            throw WatchEmissionRejected(
+                message: "refusing to apply a message that advertises "
+                    + "\(version ?? "nil")",
+                rejections: [
+                    SyncProtocolRejection(
+                        code: SyncRejectionCode.unsupportedProtocolVersion,
+                        path: "$.protocolVersion",
+                        message: "unsupported protocol version; the payload was not read"
+                    )
+                ]
+            )
+        }
+
+        let rejections = validator.validateEnvelope(envelope)
+        guard rejections.isEmpty else {
+            throw WatchEmissionRejected(
+                message: "refusing to apply a non-conformant message: "
                     + "\(rejections[0].description)",
                 rejections: rejections
             )

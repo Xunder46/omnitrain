@@ -24,21 +24,27 @@ public struct WatchStoreContents {
     public let timers: [WatchTimerRecord]
     public let confirmations: [WatchConfirmationRecord]
 
+    /// The reference data the phone sent down, oldest first. The newest row is
+    /// the catalog that applies.
+    public let routineCatalogs: [WatchRoutineCatalogRecord]
+
     public init(
         sessions: [WatchSessionRecord] = [],
         observations: [WatchObservationRecord] = [],
         timers: [WatchTimerRecord] = [],
-        confirmations: [WatchConfirmationRecord] = []
+        confirmations: [WatchConfirmationRecord] = [],
+        routineCatalogs: [WatchRoutineCatalogRecord] = []
     ) {
         self.sessions = sessions
         self.observations = observations
         self.timers = timers
         self.confirmations = confirmations
+        self.routineCatalogs = routineCatalogs
     }
 
     public var isEmpty: Bool {
         sessions.isEmpty && observations.isEmpty && timers.isEmpty
-            && confirmations.isEmpty
+            && confirmations.isEmpty && routineCatalogs.isEmpty
     }
 }
 
@@ -108,6 +114,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         var observations: [WatchObservationRecord] = []
         var timers: [WatchTimerRecord] = []
         var confirmations: [WatchConfirmationRecord] = []
+        var routineCatalogs: [WatchRoutineCatalogRecord] = []
 
         for row in rows {
             switch row {
@@ -115,6 +122,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             case .observation(let value): observations.append(value)
             case .timer(let value): timers.append(value)
             case .confirmation(let value): confirmations.append(value)
+            case .routineCatalog(let value): routineCatalogs.append(value)
             }
         }
 
@@ -122,7 +130,8 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             sessions: sessions,
             observations: applyConfirmations(observations, confirmations),
             timers: timers,
-            confirmations: confirmations
+            confirmations: confirmations,
+            routineCatalogs: routineCatalogs
         )
     }
 

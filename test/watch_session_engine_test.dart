@@ -300,18 +300,26 @@ void main() {
           harness.clock.advance(const Duration(minutes: 1));
         }
 
-        expect(harness.emitted, hasLength(3));
+        // A session start announces itself; the three entries follow it.
         expect(
           harness.emitted.map((envelope) => envelope['type']),
-          everyElement('observations_up'),
+          [
+            'session_lifecycle',
+            'observations_up',
+            'observations_up',
+            'observations_up',
+          ],
         );
 
         // Killed before anything left the watch: the replay rebuilds the same
         // events from persisted rows rather than inventing new ones.
+        final logged = harness.emitted
+            .where((envelope) => envelope['type'] == 'observations_up')
+            .toList();
         final relaunched = await harness.runningEngine();
         final replay = relaunched.pendingObservations();
         expect(replay.map((envelope) => envelope['messageId']), [
-          for (final envelope in harness.emitted) envelope['messageId'],
+          for (final envelope in logged) envelope['messageId'],
         ]);
 
         final phone = _phoneSession(harness.sessionId, [_exercise('sx-bench')]);
@@ -515,7 +523,9 @@ void main() {
             await engine.appendObservation(event);
           }
 
-          final emitted = harness.emitted;
+          final emitted = harness.emitted
+              .where((envelope) => envelope['type'] == 'observations_up')
+              .toList();
           expect(emitted, hasLength(events.length));
           for (final envelope in emitted) {
             expect(
@@ -569,7 +579,13 @@ void main() {
           }
 
           expect((await harness.store.readAll()).observations, isEmpty);
-          expect(harness.emitted, isEmpty);
+          expect(
+            harness.emitted.where(
+              (envelope) => envelope['type'] == 'observations_up',
+            ),
+            isEmpty,
+            reason: 'a refused event is never emitted',
+          );
         }
       },
     );
