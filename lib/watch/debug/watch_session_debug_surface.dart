@@ -16,6 +16,8 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../sensors/watch_platform_workout.dart';
+import '../sensors/watch_sensor_recording.dart';
 import '../session/in_memory_watch_session_store.dart';
 import '../session/watch_records.dart';
 import '../session/watch_session_engine.dart';
@@ -57,14 +59,64 @@ const List<Map<String, Object?>> _debugSlots = [
 /// How long a debug rest timer counts down from.
 const int _debugRestMs = 90 * 1000;
 
+/// The sensors a QA run has out of the box: none.
+///
+/// The platform source and health store belong to the app entry, which does not
+/// exist in this repository yet — so the harness runs the real wiring against
+/// hardware that is never there, which is also the shape permission denial takes
+/// (S-006). Pass a real pair to exercise the readout on a device.
+class _NoSensors implements WatchSensorSource {
+  const _NoSensors();
+
+  @override
+  Future<WatchSensorPermission> heartRatePermission() async =>
+      WatchSensorPermission.unavailable;
+
+  @override
+  Future<WatchSensorPermission> locationPermission() async =>
+      WatchSensorPermission.unavailable;
+
+  @override
+  Stream<double> heartRate() => const Stream.empty();
+
+  @override
+  Stream<WatchLocationFix> location() => const Stream.empty();
+}
+
+/// The health store a QA run has out of the box: nothing to open, nothing to
+/// close.
+class _NoPlatformWorkout implements WatchPlatformWorkoutStore {
+  const _NoPlatformWorkout();
+
+  @override
+  Future<void> begin(String activityType) async {}
+
+  @override
+  Future<void> end() async {}
+
+  @override
+  Future<List<String>> inProgressActivityTypes() async => const [];
+}
+
 /// A mountable harness for the engine: session state on top, one button per
 /// engine call below.
 class WatchSessionDebugSurface extends StatefulWidget {
-  const WatchSessionDebugSurface({super.key, this.store});
+  const WatchSessionDebugSurface({
+    super.key,
+    this.store,
+    this.sensorSource,
+    this.platformWorkout,
+  });
 
   /// Where the engine persists. Defaults to an in-memory store; pass a
   /// `HiveWatchSessionStore()` to exercise real on-device persistence.
   final WatchSessionStore? store;
+
+  /// The device's sensors. Defaults to none, which is what a desk run has.
+  final WatchSensorSource? sensorSource;
+
+  /// The health store. Defaults to one that opens nothing.
+  final WatchPlatformWorkoutStore? platformWorkout;
 
   @override
   State<WatchSessionDebugSurface> createState() =>
@@ -84,11 +136,16 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
   String? _note;
   String? _failure;
 
+  /// The sensors of the process that is running. Rebuilt whenever the engine is,
+  /// because a recorder writes through the engine it was given — and dropped on
+  /// a simulated kill, exactly as a real kill drops the subscriptions.
+  WatchSessionSensors? _sensors;
+
   @override
   void initState() {
     super.initState();
     _engine = _engineOver(_store);
-    _attempt(_engine.restore);
+    _attempt(_boot);
     // Every remaining-time read is derived from stored timestamps, which is the
     // behaviour QA is here to watch survive a kill.
     _ticker = Timer.periodic(_tick, (_) => _refresh());
@@ -102,6 +159,29 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
 
   WatchSessionEngine _engineOver(WatchSessionStore store) =>
       WatchSessionEngine(store, onEmit: _emitted.add);
+
+  WatchSessionSensors _sensorsFor(WatchSessionEngine engine) =>
+      WatchSessionSensors(
+        platform: WatchPlatformWorkout(
+          store: widget.platformWorkout ?? const _NoPlatformWorkout(),
+        ),
+        recorder: WatchSensorRecorder(
+          engine: engine,
+          source: widget.sensorSource ?? const _NoSensors(),
+        ),
+      );
+
+  /// What a watch app does at launch, in this order: end anything a previous
+  /// process left running in the health store, then read the session back. This
+  /// is the wiring the app entry copies.
+  Future<void> _boot() async {
+    _sensors = _sensorsFor(_engine);
+    final ended = await _sensors!.recoverInProgress();
+    if (ended.isNotEmpty) {
+      _note = 'closed a stranded workout: ${ended.join(', ')}';
+    }
+    await _engine.restore();
+  }
 
   void _refresh() {
     if (mounted) setState(() {});
@@ -127,10 +207,11 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
   Future<void> _startSession() => _attempt(() async {
     _emitted.clear();
     _note = 'session created';
-    await _engine.createSession(
+    final session = await _engine.createSession(
       modality: 'resistance_lifting',
       exercises: _debugSlots,
     );
+    await _sensors?.start(session);
   });
 
   Future<void> _logSet() => _attempt(() async {
@@ -177,6 +258,7 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
   Future<void> _finish() => _attempt(() async {
     _note = 'finished';
     await _engine.finishSession();
+    await _sensors?.stop();
   });
 
   /// Plays the phone's receipt: nothing is prunable until something is
@@ -201,7 +283,14 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
     _engine = _engineOver(_store);
     _emitted.clear();
     _note = 'engine discarded — restoring from storage';
-    await _engine.restore();
+    await _boot();
+  });
+
+  /// Releases the raw sensor log of every finished session the phone has
+  /// recorded in full — the retention rule the store's second prune implements.
+  Future<void> _releaseSensorLog() => _attempt(() async {
+    final dropped = await _engine.pruneSettledSensorSamples();
+    _note = 'released ${dropped.length} reading(s)';
   });
 
   // -----------------------------------------------------------------------------
@@ -261,6 +350,7 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
           'rest: ${_restState()}${remaining == null ? '' : ' · '
                     '${_formatMs(remaining)} left'}',
         ),
+        Text('sensor readings: ${_engine.sensorSamples.length}'),
         Text('messages emitted: ${_emitted.length}'),
         Text(
           'unconfirmed owed to phone: ${_engine.pendingObservations().length}',
@@ -282,6 +372,7 @@ class _WatchSessionDebugSurfaceState extends State<WatchSessionDebugSurface> {
       _action('Finish', _finish),
       _action('Confirm all', _confirmAll),
       _action('Prune confirmed', _prune),
+      _action('Release sensor log', _releaseSensorLog),
       _action('Simulate kill', _simulateKill, primary: true),
     ],
   );

@@ -45,6 +45,26 @@ abstract final class WatchLifecycleState {
   static const String abandoned = 'abandoned';
 }
 
+/// What a sensor sample measures, and in which unit.
+///
+/// The watch stores raw readings; nothing here is derived analytics, and the
+/// kinds are the vocabulary both watch clients agreed on
+/// (`watch/contract/watch_sensor_contract.json`).
+abstract final class WatchSensorKind {
+  /// Beats per minute, at the instant the sample was taken.
+  static const String heartRate = 'hr';
+
+  /// Cumulative metres covered since the session started, as the GPS fix saw
+  /// it. Each fix supersedes the one before: latest wins.
+  static const String gps = 'gps';
+
+  /// The session's distance total in metres, written when recording stops and
+  /// the measurement is final.
+  static const String distance = 'distance';
+
+  static const List<String> all = [heartRate, gps, distance];
+}
+
 /// Base of every stored record — the single shape the store accepts.
 ///
 /// Sealed on purpose: the store has exactly one mutation entry point, and it
@@ -85,8 +105,11 @@ sealed class WatchRecord {
       WatchSessionRecord.type => WatchSessionRecord.fromJson(json),
       WatchObservationRecord.type => WatchObservationRecord.fromJson(json),
       WatchTimerRecord.type => WatchTimerRecord.fromJson(json),
+      WatchSensorSampleRecord.type => WatchSensorSampleRecord.fromJson(json),
       WatchConfirmationRecord.type => WatchConfirmationRecord.fromJson(json),
-      WatchRoutineCatalogRecord.type => WatchRoutineCatalogRecord.fromJson(json),
+      WatchRoutineCatalogRecord.type => WatchRoutineCatalogRecord.fromJson(
+        json,
+      ),
       _ => throw FormatException('unknown watch record type: $type'),
     };
   }
@@ -376,6 +399,81 @@ final class WatchTimerRecord extends WatchRecord {
       );
 }
 
+/// One reading a platform sensor produced during a session.
+///
+/// Samples are records like any other: appended once, never rewritten, and read
+/// back by [WatchSessionEngine.sensorSamples] after a relaunch. A reading is
+/// therefore a fact with a timestamp, not a value held in memory — the watch can
+/// be killed mid-run and the distance it had measured is still there.
+///
+/// Nothing here is emitted to the phone as a message of its own. The distance a
+/// session covers travels as the `distanceMeters` of the effort that was logged,
+/// which is the protocol's own field, so the phone needs no new message type and
+/// no second source of truth for how far the user went.
+final class WatchSensorSampleRecord extends WatchRecord {
+  const WatchSensorSampleRecord({
+    required super.recordId,
+    required super.sessionId,
+    required super.recordedAt,
+    required this.kind,
+    required this.value,
+    super.sequence,
+  });
+
+  static const String type = 'sensor_sample';
+
+  /// One of [WatchSensorKind]. [value]'s unit follows from it.
+  final String kind;
+
+  /// Beats per minute, cumulative metres, or the settled total — see
+  /// [WatchSensorKind].
+  final double value;
+
+  /// The record id for a reading of [kind] taken at [at].
+  ///
+  /// Derived rather than random so that a reading delivered twice — a replay, a
+  /// duplicate callback from the sensor — is the same row and not a second one.
+  static String sampleId({
+    required String sessionId,
+    required String kind,
+    required DateTime at,
+  }) => 'sen-$sessionId-$kind-${at.toUtc().millisecondsSinceEpoch}';
+
+  @override
+  String get recordType => type;
+
+  @override
+  WatchSensorSampleRecord withSequence(int sequence) => WatchSensorSampleRecord(
+    recordId: recordId,
+    sessionId: sessionId,
+    recordedAt: recordedAt,
+    kind: kind,
+    value: value,
+    sequence: sequence,
+  );
+
+  @override
+  Map<String, Object?> toJson() => {
+    'recordType': type,
+    'recordId': recordId,
+    'sessionId': sessionId,
+    'recordedAt': utcIso(recordedAt),
+    'sequence': sequence,
+    'kind': kind,
+    'value': value,
+  };
+
+  static WatchSensorSampleRecord fromJson(Map<String, Object?> json) =>
+      WatchSensorSampleRecord(
+        recordId: json['recordId']! as String,
+        sessionId: json['sessionId']! as String,
+        recordedAt: parseUtcIso(json['recordedAt']),
+        kind: json['kind']! as String,
+        value: (json['value']! as num).toDouble(),
+        sequence: (json['sequence'] as int?) ?? 0,
+      );
+}
+
 /// The phone's receipt for observations it has already recorded.
 ///
 /// Confirmation is appended rather than written onto the observation row: the
@@ -469,14 +567,15 @@ final class WatchRoutineCatalogRecord extends WatchRecord {
   String get recordType => type;
 
   @override
-  WatchRoutineCatalogRecord withSequence(int sequence) => WatchRoutineCatalogRecord(
-    recordId: recordId,
-    recordedAt: recordedAt,
-    generatedAt: generatedAt,
-    routines: routines,
-    fallbackExercises: fallbackExercises,
-    sequence: sequence,
-  );
+  WatchRoutineCatalogRecord withSequence(int sequence) =>
+      WatchRoutineCatalogRecord(
+        recordId: recordId,
+        recordedAt: recordedAt,
+        generatedAt: generatedAt,
+        routines: routines,
+        fallbackExercises: fallbackExercises,
+        sequence: sequence,
+      );
 
   @override
   Map<String, Object?> toJson() => {

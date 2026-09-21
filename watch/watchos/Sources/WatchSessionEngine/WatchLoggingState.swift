@@ -59,13 +59,21 @@ public struct WatchMetricField: Equatable {
 
     public let unitLabel: String
 
+    /// Whether a sensor is keeping this value, rather than the user.
+    ///
+    /// A measured value is not dial-able: the row shows what the sensor read,
+    /// and the view leaves its controls inert so a stray turn cannot replace a
+    /// measurement with a guess (S-002).
+    public let isMeasured: Bool
+
     public init(
         metricKey: String,
         label: String,
         value: Double,
         displayValue: String,
         step: Double,
-        unitLabel: String
+        unitLabel: String,
+        isMeasured: Bool = false
     ) {
         self.metricKey = metricKey
         self.label = label
@@ -73,6 +81,42 @@ public struct WatchMetricField: Equatable {
         self.displayValue = displayValue
         self.step = step
         self.unitLabel = unitLabel
+        self.isMeasured = isMeasured
+    }
+}
+
+/// The pace floor: below this, a first fix a few metres from the start would
+/// print a number that is not a pace at all.
+///
+/// The value is not the wrist's to choose — `watch/contract/watch_sensor_contract.json`
+/// carries it and both clients' suites assert against it, so the two cannot
+/// disagree about when a pace appears.
+public enum WatchSensorPace {
+    public static let minDistanceMeters = 50.0
+}
+
+/// What the sensors are reading, as the wrist prints it: the beat, the distance
+/// in the saved unit, and the pace it is being covered at.
+///
+/// Three strings ready to render, not measurements — the raw values are
+/// `WatchSensorReadings`, which the sensors layer owns.
+public struct WatchSensorLabels {
+    /// Nothing to show — what a session with no sensors stays at.
+    public static let none = WatchSensorLabels()
+
+    /// Beats per minute, without a unit: the label beside it says what it is.
+    public let heartRate: String?
+
+    /// Distance in the saved display unit.
+    public let distance: String?
+
+    /// Minutes per display unit of distance.
+    public let pace: String?
+
+    public init(heartRate: String? = nil, distance: String? = nil, pace: String? = nil) {
+        self.heartRate = heartRate
+        self.distance = distance
+        self.pace = pace
     }
 }
 
@@ -85,6 +129,10 @@ public final class WatchLoggingState {
 
     /// Rest countdown length after a set, in seconds.
     public let restSeconds: Int
+
+    /// The session's live sensors, when the view is wired to them. A view with
+    /// none behaves exactly as before: every value is the user's to dial.
+    public let sensors: WatchSensorRecorder?
 
     private let clock: () -> Date
     private let newId: () -> String
@@ -124,13 +172,15 @@ public final class WatchLoggingState {
         clock: @escaping () -> Date = { Date() },
         idFactory: @escaping () -> String = { UUID().uuidString },
         units: WatchUnitPreferences = WatchUnitPreferences(),
-        restSeconds: Int = WatchLoggingDefaults.restSeconds
+        restSeconds: Int = WatchLoggingDefaults.restSeconds,
+        sensors: WatchSensorRecorder? = nil
     ) {
         self.engine = engine
         self.clock = clock
         self.newId = idFactory
         self.units = units
         self.restSeconds = restSeconds
+        self.sensors = sensors
     }
 
     // MARK: - What the view is showing
@@ -144,6 +194,65 @@ public final class WatchLoggingState {
     /// The current instant, read through this state's clock, so the view and
     /// the events it logs agree on the time.
     public func now() -> Date { clock() }
+
+    // MARK: - Live sensors
+
+    /// Whether the distance is being measured for the user rather than dialled
+    /// by them.
+    public var isMeasuringDistance: Bool { sensors?.isMeasuringDistance ?? false }
+
+    /// What the sensors are reading, resolved once so the whole readout costs
+    /// one pass over the session's stored rows.
+    public var readings: WatchSensorReadings { sensors?.readings ?? .none }
+
+    /// The readout as the wrist prints it, resolved once — one pass
+    /// over the stored rows for the beat, the distance and the pace together.
+    public var sensorLabels: WatchSensorLabels {
+        let readings = self.readings
+        return WatchSensorLabels(
+            heartRate: readings.heartRate.map { String(Int($0.rounded())) },
+            distance: distanceLabel(for: readings.distanceMeters),
+            pace: paceLabel(for: readings.distanceMeters)
+        )
+    }
+
+    /// The heart rate as the wrist prints it, without a unit: the label beside
+    /// it says what the number is.
+    public var heartRateLabel: String? { sensorLabels.heartRate }
+
+    /// The measured distance in the saved unit, or nil when nothing has been
+    /// measured.
+    public var liveDistanceLabel: String? { sensorLabels.distance }
+
+    /// Minutes per display unit of distance, or nil when there is not yet a
+    /// distance and an elapsed time to divide it by.
+    ///
+    /// Pace is derived on read rather than stored: it is a ratio of two things
+    /// the watch already keeps — the distance measured and the session's own
+    /// clock — and a stored pace would be wrong the moment either moved.
+    public var paceLabel: String? { sensorLabels.pace }
+
+    /// The distance in the saved unit, as the wrist prints it.
+    private func distanceLabel(for metres: Double?) -> String? {
+        guard let metres else { return nil }
+        let converted = metres / WatchMetricStepping.metresPerUnit(units.distanceUnit)
+        return String(format: "%.1f", converted)
+    }
+
+    /// The pace `metres` has been covered at, or nil when there is not yet a
+    /// distance worth dividing and a time to divide it by.
+    private func paceLabel(for metres: Double?) -> String? {
+        guard let metres, metres >= WatchSensorPace.minDistanceMeters,
+              let startedAt = engine.session?.startedAt
+        else { return nil }
+
+        let elapsed = clock().timeIntervalSince(startedAt)
+        guard elapsed > 0 else { return nil }
+
+        let unit = units.isMiles ? "mi" : "km"
+        let unitsCovered = metres / WatchMetricStepping.metresPerUnit(units.distanceUnit)
+        return "\(Self.clock(elapsed / unitsCovered)) /\(unit)"
+    }
 
     /// The newest timer of `kind`, which is the one that applies.
     public func timer(for kind: String) -> WatchTimerRecord? { engine.timerFor(kind) }
@@ -238,15 +347,31 @@ public final class WatchLoggingState {
     }
 
     private func field(for metricKey: String) -> WatchMetricField {
-        let value = dialled[metricKey] ?? initialValue(for: metricKey)
+        let measured = isMeasured(metricKey)
+        let value = measured
+            ? measuredValue(for: metricKey)
+            : dialled[metricKey] ?? initialValue(for: metricKey)
         return WatchMetricField(
             metricKey: metricKey,
             label: label(for: metricKey),
             value: value,
             displayValue: displayValue(for: metricKey, value: value),
             step: WatchMetricStepping.step(for: metricKey, units: units),
-            unitLabel: unitLabel(for: metricKey)
+            unitLabel: unitLabel(for: metricKey),
+            isMeasured: measured
         )
+    }
+
+    /// Whether a sensor, rather than the user, is keeping `metricKey`.
+    private func isMeasured(_ metricKey: String) -> Bool {
+        metricKey == WatchMetricKey.distance && isMeasuringDistance
+    }
+
+    /// What the sensors have measured for `metricKey`, or zero before the first
+    /// reading lands.
+    private func measuredValue(for metricKey: String) -> Double {
+        guard metricKey == WatchMetricKey.distance else { return 0 }
+        return readings.distanceMeters ?? 0
     }
 
     /// Where a value starts: what was logged last for this exercise, or what
@@ -263,7 +388,8 @@ public final class WatchLoggingState {
         case WatchMetricKey.duration, WatchMetricKey.distance:
             // Measured work starts empty: the next run or ride is timed from
             // zero (S-002). A hold is prescribed rather than measured, so it
-            // carries the length of the last one over.
+            // carries the length of the last one over. A distance the sensors are
+            // keeping never reaches here — `field(for:)` resolves it first.
             if effortKind == WatchEffortKind.timed { return 0 }
             return lastLogged(metricKey) ?? target(for: metricKey)
         default:
@@ -379,9 +505,14 @@ public final class WatchLoggingState {
     // MARK: - Input
 
     /// Applies `detents` rotary steps to `metricKey` — positive turns the value
-    /// up. An unknown metric, or one the exercise does not carry, does nothing.
+    /// up. An unknown metric, or one the exercise does not carry, does nothing —
+    /// and neither does a metric a sensor is keeping: a measurement outranks a
+    /// dial, so the row is read-only while it is being measured (S-002).
     public func adjust(_ metricKey: String, detents: Double) {
-        guard let field = fields.first(where: { $0.metricKey == metricKey }) else { return }
+        guard let field = fields.first(where: { $0.metricKey == metricKey }),
+              !field.isMeasured
+        else { return }
+
         dialled[metricKey] = WatchMetricStepping.adjust(
             field.value,
             metricKey: metricKey,

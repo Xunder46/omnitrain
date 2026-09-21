@@ -44,6 +44,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
     final sessions = <WatchSessionRecord>[];
     final observations = <WatchObservationRecord>[];
     final timers = <WatchTimerRecord>[];
+    final sensorSamples = <WatchSensorSampleRecord>[];
     final confirmations = <WatchConfirmationRecord>[];
     final routineCatalogs = <WatchRoutineCatalogRecord>[];
 
@@ -55,6 +56,8 @@ class HiveWatchSessionStore implements WatchSessionStore {
           observations.add(observation);
         case final WatchTimerRecord timer:
           timers.add(timer);
+        case final WatchSensorSampleRecord sample:
+          sensorSamples.add(sample);
         case final WatchConfirmationRecord confirmation:
           confirmations.add(confirmation);
         case final WatchRoutineCatalogRecord catalog:
@@ -66,6 +69,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
       sessions: sessions,
       observations: applyConfirmations(observations, confirmations),
       timers: timers,
+      sensorSamples: sensorSamples,
       confirmations: confirmations,
       routineCatalogs: routineCatalogs,
     );
@@ -86,6 +90,24 @@ class HiveWatchSessionStore implements WatchSessionStore {
     return confirmed;
   }
 
+  @override
+  Future<List<String>> pruneSensorSamples(Iterable<String> sessionIds) async {
+    final sessions = sessionIds.toSet();
+    if (sessions.isEmpty) return const [];
+
+    final contents = await readAll();
+    final dropped = [
+      for (final sample in contents.sensorSamples)
+        if (sessions.contains(sample.sessionId)) sample.recordId,
+    ];
+
+    if (dropped.isNotEmpty) {
+      final box = await _boxFor(WatchSensorSampleRecord.type);
+      await box.deleteAll(dropped);
+    }
+    return dropped;
+  }
+
   /// Every row the store holds, in append order. Rows written in the same
   /// millisecond are ordered by the sequence the store assigned them.
   Future<List<WatchRecord>> _allRows() async {
@@ -94,6 +116,7 @@ class HiveWatchSessionStore implements WatchSessionStore {
       WatchSessionRecord.type,
       WatchObservationRecord.type,
       WatchTimerRecord.type,
+      WatchSensorSampleRecord.type,
       WatchConfirmationRecord.type,
       WatchRoutineCatalogRecord.type,
     ]) {

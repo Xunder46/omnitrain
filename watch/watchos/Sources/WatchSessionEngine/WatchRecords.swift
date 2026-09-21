@@ -45,6 +45,26 @@ public enum WatchLifecycleState {
     public static let abandoned = "abandoned"
 }
 
+/// What a sensor sample measures, and in which unit.
+///
+/// The watch stores raw readings; nothing here is derived analytics, and the
+/// kinds are the vocabulary both watch clients agreed on
+/// (`watch/contract/watch_sensor_contract.json`).
+public enum WatchSensorKind {
+    /// Beats per minute, at the instant the sample was taken.
+    public static let heartRate = "hr"
+
+    /// Cumulative metres covered since the session started, as the GPS fix saw
+    /// it. Each fix supersedes the one before: latest wins.
+    public static let gps = "gps"
+
+    /// The session's distance total in metres, written when recording stops and
+    /// the measurement is final.
+    public static let distance = "distance"
+
+    public static let all = [heartRate, gps, distance]
+}
+
 /// A UTC timestamp in the protocol's wire shape: `YYYY-MM-DDTHH:MM:SS(.sss)Z`.
 public func utcIso(_ instant: Date) -> String {
     isoWithFractionalSeconds.string(from: instant)
@@ -451,20 +471,107 @@ public struct WatchConfirmationRecord {
     }
 }
 
-// MARK: - Stored record
+// MARK: - Sensor sample
 
+/// One reading a platform sensor produced during a session.
+///
+/// Samples are records like any other: appended once, never rewritten, and read
+/// back by `WatchSessionEngine.sensorSamples` after a relaunch. A reading is
+/// therefore a fact with a timestamp, not a value held in memory — the watch can
+/// be killed mid-run and the distance it had measured is still there.
+///
+/// Nothing here is emitted to the phone as a message of its own. The distance a
+/// session covers travels as the `distanceMeters` of the effort that was logged,
+/// which is the protocol's own field, so the phone needs no new message type and
+/// no second source of truth for how far the user went.
+public struct WatchSensorSampleRecord {
+    public let recordId: String
+    public let sessionId: String
+    public let recordedAt: Date
+    public let sequence: Int
+
+    /// One of `WatchSensorKind`. `value`'s unit follows from it.
+    public let kind: String
+
+    /// Beats per minute, cumulative metres, or the settled total — see
+    /// `WatchSensorKind`.
+    public let value: Double
+
+    public init(
+        recordId: String,
+        sessionId: String,
+        recordedAt: Date,
+        kind: String,
+        value: Double,
+        sequence: Int = 0
+    ) {
+        self.recordId = recordId
+        self.sessionId = sessionId
+        self.recordedAt = recordedAt
+        self.kind = kind
+        self.value = value
+        self.sequence = sequence
+    }
+
+    /// The record id for a reading of `kind` taken at `at`.
+    ///
+    /// Derived rather than random so that a reading delivered twice — a replay,
+    /// a duplicate callback from the sensor — is the same row and not a second
+    /// one.
+    public static func sampleId(sessionId: String, kind: String, at: Date) -> String {
+        "sen-\(sessionId)-\(kind)-\(Int((at.timeIntervalSince1970 * 1000).rounded()))"
+    }
+
+    public func withSequence(_ sequence: Int) -> WatchSensorSampleRecord {
+        WatchSensorSampleRecord(
+            recordId: recordId,
+            sessionId: sessionId,
+            recordedAt: recordedAt,
+            kind: kind,
+            value: value,
+            sequence: sequence
+        )
+    }
+
+    public func toJson() -> [String: Any] {
+        [
+            "recordType": StoredWatchRecord.sensorSampleType,
+            "recordId": recordId,
+            "sessionId": sessionId,
+            "recordedAt": utcIso(recordedAt),
+            "sequence": sequence,
+            "kind": kind,
+            "value": value,
+        ]
+    }
+
+    public static func fromJson(_ json: [String: Any]) throws -> WatchSensorSampleRecord {
+        WatchSensorSampleRecord(
+            recordId: try requiredString(json, "recordId"),
+            sessionId: try requiredString(json, "sessionId"),
+            recordedAt: try parseUtcIso(json["recordedAt"]),
+            kind: try requiredString(json, "kind"),
+            value: (json["value"] as? NSNumber)?.doubleValue ?? 0,
+            sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
+        )
+    }
+}
+
+// MARK: - Stored record
 /// What the store accepts and returns. One shape for every family, so the store
 /// has exactly one mutation entry point.
 public enum StoredWatchRecord {
     public static let sessionType = "session"
     public static let observationType = "observation"
     public static let timerType = "timer"
+    public static let sensorSampleType = "sensor_sample"
     public static let confirmationType = "confirmation"
     public static let routineCatalogType = "routine_catalog"
 
     case session(WatchSessionRecord)
     case observation(WatchObservationRecord)
     case timer(WatchTimerRecord)
+    case sensorSample(WatchSensorSampleRecord)
     case confirmation(WatchConfirmationRecord)
     case routineCatalog(WatchRoutineCatalogRecord)
 
@@ -473,6 +580,7 @@ public enum StoredWatchRecord {
         case .session: return Self.sessionType
         case .observation: return Self.observationType
         case .timer: return Self.timerType
+        case .sensorSample: return Self.sensorSampleType
         case .confirmation: return Self.confirmationType
         case .routineCatalog: return Self.routineCatalogType
         }
@@ -483,6 +591,7 @@ public enum StoredWatchRecord {
         case .session(let row): return row.recordId
         case .observation(let row): return row.recordId
         case .timer(let row): return row.recordId
+        case .sensorSample(let row): return row.recordId
         case .confirmation(let row): return row.recordId
         case .routineCatalog(let row): return row.recordId
         }
@@ -493,6 +602,7 @@ public enum StoredWatchRecord {
         case .session(let row): return row.sessionId
         case .observation(let row): return row.sessionId
         case .timer(let row): return row.sessionId
+        case .sensorSample(let row): return row.sessionId
         case .confirmation(let row): return row.sessionId
         case .routineCatalog(let row): return row.sessionId
         }
@@ -503,6 +613,7 @@ public enum StoredWatchRecord {
         case .session(let row): return row.recordedAt
         case .observation(let row): return row.recordedAt
         case .timer(let row): return row.recordedAt
+        case .sensorSample(let row): return row.recordedAt
         case .confirmation(let row): return row.recordedAt
         case .routineCatalog(let row): return row.recordedAt
         }
@@ -513,6 +624,7 @@ public enum StoredWatchRecord {
         case .session(let row): return row.sequence
         case .observation(let row): return row.sequence
         case .timer(let row): return row.sequence
+        case .sensorSample(let row): return row.sequence
         case .confirmation(let row): return row.sequence
         case .routineCatalog(let row): return row.sequence
         }
@@ -523,6 +635,7 @@ public enum StoredWatchRecord {
         case .session(let row): return .session(row.withSequence(sequence))
         case .observation(let row): return .observation(row.withSequence(sequence))
         case .timer(let row): return .timer(row.withSequence(sequence))
+        case .sensorSample(let row): return .sensorSample(row.withSequence(sequence))
         case .confirmation(let row): return .confirmation(row.withSequence(sequence))
         case .routineCatalog(let row): return .routineCatalog(row.withSequence(sequence))
         }
@@ -533,6 +646,7 @@ public enum StoredWatchRecord {
         case .session(let row): return row.toJson()
         case .observation(let row): return row.toJson()
         case .timer(let row): return row.toJson()
+        case .sensorSample(let row): return row.toJson()
         case .confirmation(let row): return row.toJson()
         case .routineCatalog(let row): return row.toJson()
         }
@@ -546,6 +660,7 @@ public enum StoredWatchRecord {
         case sessionType: return .session(try WatchSessionRecord.fromJson(json))
         case observationType: return .observation(try WatchObservationRecord.fromJson(json))
         case timerType: return .timer(try WatchTimerRecord.fromJson(json))
+        case sensorSampleType: return .sensorSample(try WatchSensorSampleRecord.fromJson(json))
         case confirmationType: return .confirmation(try WatchConfirmationRecord.fromJson(json))
         case routineCatalogType: return .routineCatalog(try WatchRoutineCatalogRecord.fromJson(json))
         default: throw WatchRecordError.unknownRecordType(type)

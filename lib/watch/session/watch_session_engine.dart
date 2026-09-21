@@ -92,6 +92,7 @@ class WatchSessionEngine {
   final List<WatchSessionRecord> _sessionRows = [];
   final List<WatchObservationRecord> _observations = [];
   final List<WatchTimerRecord> _timers = [];
+  final List<WatchSensorSampleRecord> _sensorSamples = [];
 
   /// The structure changes this watch has already applied, by `changeId`.
   /// Rebuilt from storage by [restore], so a relaunch cannot apply one twice
@@ -126,6 +127,9 @@ class WatchSessionEngine {
     _timers
       ..clear()
       ..addAll(contents.timers);
+    _sensorSamples
+      ..clear()
+      ..addAll(contents.sensorSamples);
 
     _session = contents.sessions.isEmpty
         ? null
@@ -157,6 +161,43 @@ class WatchSessionEngine {
     for (final observation in _observations)
       if (observation.sessionId == _session?.sessionId) observation,
   ]);
+
+  /// The readings the platform sensors produced for the current session, in the
+  /// order they arrived.
+  ///
+  /// Read back from storage, never from a live subscription: the newest heart
+  /// rate on the wrist is the newest row that reached the store, so a relaunch
+  /// shows what the watch measured instead of starting from nothing.
+  List<WatchSensorSampleRecord> get sensorSamples => List.unmodifiable([
+    for (final sample in _sensorSamples)
+      if (sample.sessionId == _session?.sessionId) sample,
+  ]);
+
+  /// The newest reading of [kind] for the current session, or null when there
+  /// has been none.
+  WatchSensorSampleRecord? newestSensorSample(String kind) =>
+      newestSensorSamples()[kind];
+
+  /// The newest reading of each kind, keyed by [WatchSensorKind] — one pass over
+  /// the session's samples.
+  ///
+  /// A readout needs several kinds at once (the beat, the distance, the pace
+  /// that divides them) and it is rebuilt on a one-second tick, so the caller
+  /// resolves the session's measurements once rather than scanning per value.
+  Map<String, WatchSensorSampleRecord> newestSensorSamples() {
+    final sessionId = _session?.sessionId;
+    final newest = <String, WatchSensorSampleRecord>{};
+
+    for (final sample in _sensorSamples) {
+      if (sample.sessionId != sessionId) continue;
+      final current = newest[sample.kind];
+      if (current == null || sample.sequence > current.sequence) {
+        newest[sample.kind] = sample;
+      }
+    }
+
+    return newest;
+  }
 
   /// The newest row for [kind], which is the timer that applies.
   WatchTimerRecord? timerFor(String kind) => _newestTimer(kind: kind);
@@ -196,8 +237,7 @@ class WatchSessionEngine {
 
     final envelope = <String, Object?>{
       'protocolVersion': SyncProtocolValidator.protocolVersion,
-      'messageId':
-          messageId ?? _messageIdFor('snapshot-${session.recordId}'),
+      'messageId': messageId ?? _messageIdFor('snapshot-${session.recordId}'),
       'sessionId': session.sessionId,
       'type': 'session_snapshot',
       'origin': 'watch',
@@ -489,7 +529,10 @@ class WatchSessionEngine {
       _ => session.status,
     };
     final index = state == WatchLifecycleState.exerciseAdvanced
-        ? _clampIndex(payload['exerciseIndex']! as int, session.exercises.length)
+        ? _clampIndex(
+            payload['exerciseIndex']! as int,
+            session.exercises.length,
+          )
         : session.currentExerciseIndex;
 
     await _appendSessionRow(
@@ -702,7 +745,10 @@ class WatchSessionEngine {
           _applyDeletion(change);
       }
     }
-    return (exercises: ladder.exercises, index: _clampIndex(ladder.index, ladder.exercises.length));
+    return (
+      exercises: ladder.exercises,
+      index: _clampIndex(ladder.index, ladder.exercises.length),
+    );
   }
 
   /// Adds the slot an `add_exercise` change names, at the index it names.
@@ -710,7 +756,8 @@ class WatchSessionEngine {
   /// A slot id that is already present makes this a no-op: a re-delivered change
   /// must not duplicate a slot, and replacing what a slot holds is
   /// `swap_exercise`'s job.
-  static ({List<Map<String, Object?>> exercises, int index}) _insertSlotFromChange(
+  static ({List<Map<String, Object?>> exercises, int index})
+  _insertSlotFromChange(
     ({List<Map<String, Object?>> exercises, int index}) ladder,
     Map<String, Object?> change,
   ) {
@@ -737,7 +784,8 @@ class WatchSessionEngine {
   /// it are untouched — history is append-only — and the position stays on the
   /// exercise the user was on, which is the slot that followed when the removed
   /// one was the current one.
-  static ({List<Map<String, Object?>> exercises, int index}) _removeSlotFromChange(
+  static ({List<Map<String, Object?>> exercises, int index})
+  _removeSlotFromChange(
     ({List<Map<String, Object?>> exercises, int index}) ladder,
     Map<String, Object?> change,
   ) {
@@ -757,7 +805,8 @@ class WatchSessionEngine {
 
   /// Applies the order a `reorder_exercises` change names, leaving the position
   /// on the exercise the user was on.
-  static ({List<Map<String, Object?>> exercises, int index}) _reorderSlotsFromChange(
+  static ({List<Map<String, Object?>> exercises, int index})
+  _reorderSlotsFromChange(
     ({List<Map<String, Object?>> exercises, int index}) ladder,
     Map<String, Object?> change,
   ) {
@@ -775,7 +824,8 @@ class WatchSessionEngine {
   /// Replaces what the slot a `swap_exercise` change names holds, and nothing
   /// else: the slot keeps its id, so the position does not move and entries
   /// logged against it still point at it.
-  static ({List<Map<String, Object?>> exercises, int index}) _swapSlotFromChange(
+  static ({List<Map<String, Object?>> exercises, int index})
+  _swapSlotFromChange(
     ({List<Map<String, Object?>> exercises, int index}) ladder,
     Map<String, Object?> change,
   ) {
@@ -830,8 +880,7 @@ class WatchSessionEngine {
     List<String> order,
   ) {
     final remaining = {
-      for (final slot in exercises)
-        slot['sessionExerciseId']! as String: slot,
+      for (final slot in exercises) slot['sessionExerciseId']! as String: slot,
     };
 
     final reordered = <Map<String, Object?>>[];
@@ -843,10 +892,10 @@ class WatchSessionEngine {
     return reordered;
   }
 
-  static int _indexOfSlotId(List<Map<String, Object?>> exercises, String slotId) =>
-      exercises.indexWhere(
-        (slot) => slot['sessionExerciseId'] == slotId,
-      );
+  static int _indexOfSlotId(
+    List<Map<String, Object?>> exercises,
+    String slotId,
+  ) => exercises.indexWhere((slot) => slot['sessionExerciseId'] == slotId);
 
   static String? _slotIdAt(List<Map<String, Object?>> exercises, int index) =>
       exercises.isEmpty
@@ -940,7 +989,11 @@ class WatchSessionEngine {
     WatchSessionRecord row, {
     required String? lifecycle,
   }) async {
+    final existing = _sessionRows.any(
+      (stored) => stored.recordId == row.recordId,
+    );
     final stored = await _store.append(row);
+    if (!existing) _sessionRows.add(stored);
     _session = stored;
     if (lifecycle != null) _emitLifecycleIfConformant(stored, lifecycle);
     return stored;
@@ -949,7 +1002,8 @@ class WatchSessionEngine {
   void _emitLifecycleIfConformant(WatchSessionRecord row, String state) {
     final envelope = _lifecycle(row, state);
     final rejections =
-        _validator?.validateEnvelope(envelope) ?? const <SyncProtocolRejection>[];
+        _validator?.validateEnvelope(envelope) ??
+        const <SyncProtocolRejection>[];
     if (rejections.isNotEmpty) return;
     _emit(envelope);
   }
@@ -996,6 +1050,41 @@ class WatchSessionEngine {
       _observations.add(stored);
       _emit(envelope);
     }
+    return stored;
+  }
+
+  /// Persists a reading the platform sensors produced.
+  ///
+  /// Storage first, and nothing emitted: a sensor reading is the watch's own
+  /// measurement, and the distance that reaches the phone travels as the
+  /// `distanceMeters` of the effort logged against it. Appending the same
+  /// reading twice — same kind, same instant — is a store no-op, which is what
+  /// keeps a duplicated sensor callback from becoming a second row.
+  Future<WatchSensorSampleRecord> appendSensorSample({
+    required String kind,
+    required double value,
+    DateTime? recordedAt,
+  }) async {
+    final session = _requireSession();
+    final now = recordedAt ?? _clock();
+
+    final record = WatchSensorSampleRecord(
+      recordId: WatchSensorSampleRecord.sampleId(
+        sessionId: session.sessionId,
+        kind: kind,
+        at: now,
+      ),
+      sessionId: session.sessionId,
+      recordedAt: now,
+      kind: kind,
+      value: value,
+    );
+
+    final existing = _sensorSamples.any(
+      (row) => row.recordId == record.recordId,
+    );
+    final stored = await _store.append(record);
+    if (!existing) _sensorSamples.add(stored);
     return stored;
   }
 
@@ -1195,6 +1284,54 @@ class WatchSessionEngine {
       (observation) => dropped.contains(observation.recordId),
     );
     return pruned;
+  }
+
+  /// Drops the raw sensor log of every session that is over and whose entries
+  /// the phone has recorded in full.
+  ///
+  /// Raw readings are not gated on a receipt of their own — the phone never
+  /// receives one, and its mirror has no field for them. What gates them is the
+  /// session: once a finished session's entries have all been acknowledged, the
+  /// readings that produced them have done their job, and the distance they
+  /// measured has already crossed as the logged effort's `distanceMeters`. A
+  /// session still running, or one with an entry still awaiting a receipt, keeps
+  /// its log — which is what makes the live readout and the settled distance
+  /// survive a kill.
+  Future<List<String>> pruneSettledSensorSamples() async {
+    final settled = [
+      for (final session in _newestSessionRows().values)
+        if (session.status != WatchSessionStatus.active &&
+            !_awaitsReceipt.contains(session.sessionId) &&
+            _sensorSamples.any((row) => row.sessionId == session.sessionId))
+          session.sessionId,
+    ];
+    if (settled.isEmpty) return const [];
+
+    final pruned = await _store.pruneSensorSamples(settled);
+    final dropped = pruned.toSet();
+    _sensorSamples.removeWhere((row) => dropped.contains(row.recordId));
+    return pruned;
+  }
+
+  /// The session ids with an observation the phone has not acknowledged. A
+  /// session on this list has not reached the phone in full, so nothing of it
+  /// may be dropped.
+  Set<String> get _awaitsReceipt => {
+    for (final observation in _observations)
+      if (observation.confirmedAt == null) observation.sessionId,
+  };
+
+  /// The current version of each session the store holds, by session id — the
+  /// newest row wins, exactly as [restore] reduces the session the watch is on.
+  Map<String, WatchSessionRecord> _newestSessionRows() {
+    final newest = <String, WatchSessionRecord>{};
+    for (final row in _sessionRows) {
+      final current = newest[row.sessionId];
+      if (current == null || row.sequence > current.sequence) {
+        newest[row.sessionId] = row;
+      }
+    }
+    return newest;
   }
 
   // ---------------------------------------------------------------------------

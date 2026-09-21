@@ -90,16 +90,40 @@ public struct WatchLoggingView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            if let sensors = sensorLine {
+                Text(sensors)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// What the sensors are reading, as one line: the heart rate, the distance,
+    /// and the pace it is being covered at. Absent pieces are left out rather
+    /// than shown as zero — a session with no reading has nothing to report, and
+    /// the line disappears entirely when there is nothing at all.
+    private var sensorLine: String? {
+        let readout = model.state.sensorLabels
+        let unit = model.state.units.isMiles ? "mi" : "km"
+        var parts: [String] = []
+        if let beats = readout.heartRate { parts.append("\(beats) bpm") }
+        if let distance = readout.distance { parts.append("\(distance) \(unit)") }
+        if let pace = readout.pace { parts.append(pace) }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
     }
 
     /// One value: the label, the numerals, and both ways to move it. The crown
     /// drives whichever row carries focus, which is the row the user last
     /// touched.
+    ///
+    /// A row a sensor is keeping has neither: its controls are inert and it takes
+    /// no crown focus, so a turn aimed at the row does nothing rather than
+    /// replacing a measurement with a guess.
     private func row(_ field: WatchMetricField) -> some View {
         HStack {
-            stepButton(systemName: "minus", label: "Less \(field.label)") {
+            stepButton(systemName: "minus", label: "Less \(field.label)", enabled: !field.isMeasured) {
                 model.adjust(field.metricKey, detents: -1)
             }
 
@@ -115,7 +139,7 @@ public struct WatchLoggingView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .focusable()
+            .focusable(!field.isMeasured)
             .digitalCrownRotation(
                 detent: Binding(
                     get: { model.crownPosition(for: field.metricKey) },
@@ -129,7 +153,7 @@ public struct WatchLoggingView: View {
                 isHapticFeedbackEnabled: true
             )
 
-            stepButton(systemName: "plus", label: "More \(field.label)") {
+            stepButton(systemName: "plus", label: "More \(field.label)", enabled: !field.isMeasured) {
                 model.adjust(field.metricKey, detents: 1)
             }
         }
@@ -138,12 +162,14 @@ public struct WatchLoggingView: View {
     private func stepButton(
         systemName: String,
         label: String,
+        enabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
         }
         .buttonStyle(.bordered)
+        .disabled(!enabled)
         .accessibilityLabel(label)
     }
 

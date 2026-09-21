@@ -68,8 +68,11 @@ class _TempRepo {
   /// invariants under test.
   ///
   /// The copy uses `rsync` when available so we can exclude
-  /// `.dart_tool/`, `build/`, `ios/Pods/`, and other generated
-  /// directories that the gate does not inspect. `cp -R` would
+  /// `.dart_tool/`, `build/`, `.build/`, `ios/Pods/`, and other generated
+  /// directories that the gate does not inspect. `build` does not match
+  /// `.build`, and the watchOS package's build output is large enough that
+  /// copying it per test approaches the 30-second test-framework timeout.
+  /// `cp -R` would
   /// copy the entire `.dart_tool` cache (hundreds of MB), pushing
   /// each test setup past the 30-second test-framework timeout.
   /// The gate's checks read `.github/workflows/release.yml`,
@@ -89,6 +92,7 @@ class _TempRepo {
         '--exclude', '.git',
         '--exclude', '.dart_tool',
         '--exclude', 'build',
+        '--exclude', '.build',
         '--exclude', 'ios/Pods',
         '--exclude', 'ios/.symlinks',
         '--exclude', 'ios/Flutter/Flutter.framework',

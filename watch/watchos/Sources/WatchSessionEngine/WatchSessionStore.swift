@@ -6,9 +6,11 @@
 //  `lib/watch/session/watch_session_store.dart`.
 //
 //  Append-only by construction (PROTOCOL.md, authority rule 1): a store offers
-//  no update, no delete and no remove. `append` is the only way anything enters
-//  and `pruneConfirmed` the only way anything leaves — and it may only drop
-//  what the phone has already acknowledged.
+//  no update, no delete and no remove. `append` is the only way anything enters,
+//  and there are exactly two ways anything leaves it — both of them prunes, both
+//  gated on the session being over: `pruneConfirmed` drops observations the
+//  phone has acknowledged, and `pruneSensorSamples` drops the raw sensor log of a
+//  session the phone has recorded in full.
 //
 //  `WatchSessionEngineTests` (S-004) fails the build if a mutating method is
 //  declared anywhere in this module or if the engine reaches for a store method
@@ -24,6 +26,11 @@ public struct WatchStoreContents {
     public let timers: [WatchTimerRecord]
     public let confirmations: [WatchConfirmationRecord]
 
+    /// The readings the platform sensors produced, oldest first. Sensor rows are
+    /// never pruned: they are small, they are the session's measurement, and the
+    /// phone has no receipt for them to be gated on.
+    public let sensorSamples: [WatchSensorSampleRecord]
+
     /// The reference data the phone sent down, oldest first. The newest row is
     /// the catalog that applies.
     public let routineCatalogs: [WatchRoutineCatalogRecord]
@@ -33,18 +40,21 @@ public struct WatchStoreContents {
         observations: [WatchObservationRecord] = [],
         timers: [WatchTimerRecord] = [],
         confirmations: [WatchConfirmationRecord] = [],
+        sensorSamples: [WatchSensorSampleRecord] = [],
         routineCatalogs: [WatchRoutineCatalogRecord] = []
     ) {
         self.sessions = sessions
         self.observations = observations
         self.timers = timers
         self.confirmations = confirmations
+        self.sensorSamples = sensorSamples
         self.routineCatalogs = routineCatalogs
     }
 
     public var isEmpty: Bool {
         sessions.isEmpty && observations.isEmpty && timers.isEmpty
-            && confirmations.isEmpty && routineCatalogs.isEmpty
+            && confirmations.isEmpty && sensorSamples.isEmpty
+            && routineCatalogs.isEmpty
     }
 }
 
@@ -59,6 +69,16 @@ public protocol WatchSessionStore {
     /// Drops confirmed observations, returning the record ids that were
     /// dropped. Unconfirmed observations are retained indefinitely.
     func pruneConfirmed() async -> [String]
+
+    /// Drops the sensor samples of `sessionIds`, returning the record ids that
+    /// were dropped.
+    ///
+    /// The gate is not a receipt — the phone never receives a raw reading — but
+    /// the session: the caller only names sessions that are over and whose
+    /// entries the phone has recorded in full. A session that is still running
+    /// keeps every reading it has taken, which is what makes the live readout
+    /// kill-safe.
+    func pruneSensorSamples(_ sessionIds: [String]) async -> [String]
 }
 
 /// Folds confirmations into observations as their `confirmedAt` receipt.
@@ -114,6 +134,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
         var observations: [WatchObservationRecord] = []
         var timers: [WatchTimerRecord] = []
         var confirmations: [WatchConfirmationRecord] = []
+        var sensorSamples: [WatchSensorSampleRecord] = []
         var routineCatalogs: [WatchRoutineCatalogRecord] = []
 
         for row in rows {
@@ -121,6 +142,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             case .session(let value): sessions.append(value)
             case .observation(let value): observations.append(value)
             case .timer(let value): timers.append(value)
+            case .sensorSample(let value): sensorSamples.append(value)
             case .confirmation(let value): confirmations.append(value)
             case .routineCatalog(let value): routineCatalogs.append(value)
             }
@@ -131,6 +153,7 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             observations: applyConfirmations(observations, confirmations),
             timers: timers,
             confirmations: confirmations,
+            sensorSamples: sensorSamples,
             routineCatalogs: routineCatalogs
         )
     }
@@ -146,5 +169,23 @@ public final class InMemoryWatchSessionStore: WatchSessionStore {
             return false
         }
         return confirmed
+    }
+
+    public func pruneSensorSamples(_ sessionIds: [String]) async -> [String] {
+        let sessions = Set(sessionIds)
+        guard !sessions.isEmpty else { return [] }
+
+        let dropped = rows.compactMap { row -> String? in
+            if case .sensorSample(let value) = row,
+               sessions.contains(value.sessionId) { return value.recordId }
+            return nil
+        }
+        rows.removeAll { row in
+            if case .sensorSample(let value) = row {
+                return sessions.contains(value.sessionId)
+            }
+            return false
+        }
+        return dropped
     }
 }

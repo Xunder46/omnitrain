@@ -42,6 +42,20 @@ enum Fixtures {
         return object
     }
 
+    /// The sensor vocabulary both watch clients share: the sample kinds, the
+    /// modality → platform workout type table, and the capability profile the
+    /// GPS decision is derived from.
+    static func sensorContract() throws -> [String: Any] {
+        let url = repositoryRoot.appendingPathComponent(
+            "watch/contract/watch_sensor_contract.json"
+        )
+        let data = try Data(contentsOf: url)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw FixtureError.malformed("watch/contract/watch_sensor_contract.json")
+        }
+        return object
+    }
+
     static func json(_ relativePath: String) throws -> [String: Any] {
         let url = protocolRoot.appendingPathComponent(relativePath)
         let data = try Data(contentsOf: url)

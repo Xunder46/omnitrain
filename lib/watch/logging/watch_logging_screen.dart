@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/unit_formatter.dart';
 import '../session/watch_records.dart';
 import '../session/watch_timer_math.dart';
 import 'watch_logging_state.dart';
@@ -179,8 +180,33 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
             '${OmniDateUtils.formatClock(countdown)} left',
             style: styles.bodySmall,
           ),
+        if (_sensorLine() case final sensors?)
+          Text(
+            sensors,
+            style: styles.bodySmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
       ],
     );
+  }
+
+  /// What the sensors are reading, as one line: the heart rate, the distance,
+  /// and the pace it is being covered at. Absent pieces are left out rather than
+  /// shown as zero — a session with no reading has nothing to report, and the
+  /// line disappears entirely when there is nothing at all.
+  String? _sensorLine() {
+    final readout = widget.state.sensorLabels;
+    final units = widget.state.units;
+
+    final parts = [
+      if (readout.heartRate case final beats?) '$beats bpm',
+      if (readout.distance case final distance?)
+        '$distance ${UnitFormatter.distanceLabelForUnit(units.distanceUnit)}',
+      ?readout.pace,
+    ];
+
+    return parts.isEmpty ? null : parts.join('  ·  ');
   }
 
   /// What is left of the running countdown, or null when none is running. The
@@ -197,25 +223,39 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
   }
 
   /// One value: the label, the numerals, and both ways to move it.
+  /// One value: the label, the numerals, and both ways to move it. The crown
+  /// drives whichever row carries focus, which is the row the user last
+  /// touched.
+  ///
+  /// A row a sensor is keeping has neither: its controls are inert and its
+  /// rotary handler is not attached, so a turn aimed at the row does nothing
+  /// rather than replacing a measurement with a guess.
   Widget _row(BuildContext context, WatchMetricField field) {
     final styles = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
+    final dialable = !field.isMeasured;
 
     return Listener(
-      onPointerSignal: (event) {
-        if (event is PointerScrollEvent) {
-          _turnField(field, event.scrollDelta.dy);
-        }
-      },
+      onPointerSignal: dialable
+          ? (event) {
+              if (event is PointerScrollEvent) {
+                _turnField(field, event.scrollDelta.dy);
+              }
+            }
+          : null,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (details) => _turnField(field, details.delta.dy),
+        onVerticalDragUpdate: dialable
+            ? (details) => _turnField(field, details.delta.dy)
+            : null,
         child: Row(
           children: [
             _stepButton(
               icon: Icons.remove,
               label: 'Less ${field.label}',
-              onPressed: () => widget.state.adjust(field.metricKey, -1),
+              onPressed: dialable
+                  ? () => widget.state.adjust(field.metricKey, -1)
+                  : null,
             ),
             Expanded(
               child: Column(
@@ -242,7 +282,9 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
             _stepButton(
               icon: Icons.add,
               label: 'More ${field.label}',
-              onPressed: () => widget.state.adjust(field.metricKey, 1),
+              onPressed: dialable
+                  ? () => widget.state.adjust(field.metricKey, 1)
+                  : null,
             ),
           ],
         ),
@@ -253,7 +295,7 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
   Widget _stepButton({
     required IconData icon,
     required String label,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return IconButton(
       icon: Icon(icon),
@@ -264,10 +306,12 @@ class _WatchLoggingScreenState extends State<WatchLoggingScreen>
           borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
         ),
       ),
-      onPressed: () {
-        onPressed();
-        setState(() {});
-      },
+      onPressed: onPressed == null
+          ? null
+          : () {
+              onPressed();
+              setState(() {});
+            },
     );
   }
 

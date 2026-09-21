@@ -42,8 +42,11 @@ class _TempRepo {
     final parent = Directory.systemTemp.createTempSync('omnitrain_gate_');
     final dst = '${parent.path}/repo';
     // Use rsync with exclusions when available so we skip the
-    // large `.dart_tool/`, `build/`, and `ios/Pods/` directories.
-    // The gate inspects `.github/workflows/release.yml`,
+    // large `.dart_tool/`, `build/`, `.build/`, and `ios/Pods/`
+    // directories. `build` does not match `.build`, and the watchOS
+    // package's build output is large enough that copying it per test
+    // approaches the 30-second test-framework timeout. The gate inspects
+    // `.github/workflows/release.yml`,
     // `pubspec.yaml`, and the iOS source files — none of which
     // live in those directories. The original test used `cp -R`
     // and would push each test setup past the 30-second
@@ -57,6 +60,7 @@ class _TempRepo {
         '--exclude', '.git',
         '--exclude', '.dart_tool',
         '--exclude', 'build',
+        '--exclude', '.build',
         '--exclude', 'ios/Pods',
         '--exclude', 'ios/.symlinks',
         '--exclude', 'ios/Flutter/Flutter.framework',

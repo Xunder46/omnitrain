@@ -3,7 +3,11 @@
 **Scope.** The state layer as a whole: the `ChangeNotifier` classes under
 `lib/state/`, the service and utility classes under `lib/core/services/` and
 `lib/core/utils/`, and the dependency graph that `lib/main.dart` wires between
-them. Screens and widgets are documented under
+them. It also covers the watch's own state classes and services under
+`lib/watch/` (`WatchSessionEngine`, `WatchLoggingState`, the sensor layer), which
+mirror `lib/state/`'s responsibilities on the wrist and are documented in
+[Service & Utility Classes](state_management/services_and_utils.md). Screens and
+widgets are documented under
 [navigation_and_screens.md](navigation_and_screens.md) and
 [widget_catalog.md](widget_catalog.md) instead.
 
@@ -67,7 +71,13 @@ State classes follow strict rules:
 | `SessionBlockManager` | [Workout Session State](state_management/workout_state.md) |
 | `SessionCore` | [Workout Session State](state_management/workout_state.md) |
 | `SyncSessionReconciler` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchActivityTypes` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchGpsPolicy` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchLoggingState` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchPlatformWorkout` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchSensorRecorder` | [Services & Utilities](state_management/services_and_utils.md) |
 | `WatchSessionEngine` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchSessionSensors` | [Services & Utilities](state_management/services_and_utils.md) |
 | `WatchSyncOrchestrator` | [Services & Utilities](state_management/services_and_utils.md) |
 | `SessionSummaryBuilder` | [Workout Session State](state_management/workout_state.md) |
 | `SessionSummaryService` | [Services & Utilities](state_management/services_and_utils.md) |

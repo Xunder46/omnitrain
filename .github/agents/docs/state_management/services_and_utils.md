@@ -4,7 +4,9 @@
 nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
 pieces those classes own. It also covers the watch↔phone live mirroring surface
 (`lib/state/watch/`, `lib/watch/start/watch_sync_orchestrator.dart`,
-`lib/core/sync_protocol/`), which is service-shaped rather than screen state.
+`lib/core/sync_protocol/`) and the watch's own runtime layer (`lib/watch/`,
+mirrored file for file by `watch/watchos/Sources/WatchSessionEngine/`), which are
+service-shaped rather than screen state.
 
 > Part of [State Management & Services](../state_management.md). Return to the
 > index for the full class list and dependency graph.
@@ -236,7 +238,7 @@ scoring described in [Exercise Ranking](../exercise_ranking.md).
 
 ## Watch ↔ Phone Live Session Mirroring
 
-Added on 2026-09-20. The watch clients are built from the same protocol and the
+The watch clients are built from the same protocol and the
 same fixtures as the phone; the protocol itself is `watch/sync_protocol/PROTOCOL.md`.
 
 ### The two reconcilers, and why there are two
@@ -338,6 +340,87 @@ duplicates`) and by watchOS
 (`WatchSessionEngine.entries`), not an edit: the stored observation row is never
 rewritten. Verified by `test/watch_session_engine_test.dart` (`S-004 append-only
 enforcement at the storage API`).
+
+## Watch Sensors and the Platform Workout
+
+Both watch clients run the same layer: `lib/watch/sensors/`
+and `watch/watchos/Sources/WatchSessionEngine/WatchPlatformWorkout.swift` +
+`WatchSensorRecording.swift`.
+
+### Structure
+
+| Concern | Owner |
+|---------|-------|
+| The OS-level workout registration | `WatchPlatformWorkout`, over a `WatchPlatformWorkoutStore` the app target implements |
+| What the device's sensors read | `WatchSensorRecorder`, over a `WatchSensorSource` the app target implements |
+| Starting and stopping both together | `WatchSessionSensors` |
+| Whether a session records GPS | `WatchGpsPolicy`, reading the modality's capability profile |
+| Modality → platform workout type | `WatchActivityTypes` |
+
+`WatchSensorSource` and `WatchPlatformWorkoutStore` are the seam the OS bindings
+sit behind, and they are why this layer is testable: `HKWorkoutSession`,
+`HKLiveWorkoutBuilder` and `CLLocationManager` exist only in an app target, so
+neither `swift test` nor a Dart suite can reach them directly. The
+implementations in the tree are the two suites' fakes and the QA harness's own
+defaults: `test/watch_sensor_recording_test.dart`,
+`watch/watchos/Tests/WatchSessionEngineTests/WatchSensorRecordingTests.swift`, and
+`lib/watch/debug/watch_session_debug_surface.dart`, which takes both seams as
+constructor parameters and passes a no-permission source and a no-op store when it
+is given none. Which app target provides the real bindings, and what that means
+for acceptance criterion 2, is recorded in
+[the documentation audit](../docs-audit-2026-07-26.md) §8.6.
+
+### Rationale
+
+**Sensor readings are stored rows, not fields.** A heart rate or a distance is
+appended to the watch's own store like everything else, and the live readout is
+derived from the newest stored row. A value held in memory would be the one thing
+on the wrist that a kill loses, and the whole watch design exists to avoid that.
+
+**Sensor rows are dropped with the session, not with a receipt.** Observations
+are gated on the phone's receipt because the phone is their destination. A
+reading's destination is the session that produced it: once a session is over and
+every entry it produced has been acknowledged, its raw log has done its job. The
+distance that reached the phone is already the logged effort's `distanceMeters` —
+the protocol's own field — so no message type was added and the phone holds one
+source of truth for how far the user went. A session still running, or one with an
+entry still awaiting a receipt, keeps its log, which is what keeps the live
+readout and the settled distance across a kill.
+
+**The workout is recovered, not resumed.** A kill cannot be caught, so the next
+launch ends whatever the health store still reports as running rather than trying
+to adopt it. The session it belonged to is already over as far as the process is
+concerned, and its logged entries are in storage either way. Verified by
+`test/watch_sensor_recording_test.dart` (`S-005`) and by watchOS
+`WatchSensorRecordingTests.testS005TheNextLaunchEndsTheWorkoutTheKillLeftBehind`.
+
+### Invariants
+
+- **GPS activation derives from the modality's capability profile, never from its
+name.** A modality added later is handled without touching the policy, and one
+that merely sounds like distance work does not wake the radio. Verified by
+`test/watch_sensor_recording_test.dart` (`S-008`) and by watchOS
+`WatchSensorRecordingTests.testS008TheGpsDecisionFollowsTheCapabilityProfile`.
+- **A denied permission or absent hardware never blocks logging.** The
+subscription is skipped and nothing else changes; sensor fields are simply
+absent. Verified by `S-006` in both sensor suites.
+- **Both clients read one vocabulary.** The sample kinds, the modality → workout
+type table and the capability profile the GPS decision depends on live in
+`watch/contract/watch_sensor_contract.json`, and both suites assert against it, so
+a change on one platform fails the other's tests.
+- **A reading is stored, never sent.** Sensor rows are written through the same
+append entry point as every other row and emit nothing; the measured distance
+reaches the phone inside the logged effort. Verified by
+`test/watch_sensor_recording_test.dart` (`a reading is stored without being sent
+anywhere`) and by watchOS
+`WatchSensorRecordingTests.testAReadingIsStoredWithoutBeingSentAnywhere`.
+- **Two prunes, both gated on having nothing to lose.** The store's public surface
+is exactly `append`, `readAll`, `pruneConfirmed` and `pruneSensorSamples`;
+confirmed observations go first, and a session's sensor log goes only after the
+session is over and all of its entries are acknowledged. Verified by
+`test/watch_session_engine_test.dart` (`S-004 append-only enforcement at the
+storage API`) and by watchOS
+`WatchSessionEngineTests.testS004NoMutatingOperationExistsAnywhereInTheModule`.
 - **Timers travel as wall-clock timestamps.** A countdown is never sent;
 either end derives it, which is what keeps a timer correct through a
 suspension or a reconnect. Verified by `test/live_mirroring_test.dart`

@@ -301,15 +301,12 @@ void main() {
         }
 
         // A session start announces itself; the three entries follow it.
-        expect(
-          harness.emitted.map((envelope) => envelope['type']),
-          [
-            'session_lifecycle',
-            'observations_up',
-            'observations_up',
-            'observations_up',
-          ],
-        );
+        expect(harness.emitted.map((envelope) => envelope['type']), [
+          'session_lifecycle',
+          'observations_up',
+          'observations_up',
+          'observations_up',
+        ]);
 
         // Killed before anything left the watch: the replay rebuilds the same
         // events from persisted rows rather than inventing new ones.
@@ -341,7 +338,18 @@ void main() {
 
   group('S-004 append-only enforcement at the storage API', () {
     test('the store contract is append-only, and the engine keeps to it', () async {
-      const allowed = {'append', 'readAll', 'pruneConfirmed'};
+      // Exactly five names are deliberate. `pruneConfirmed` and
+      // `pruneSensorSamples` are the two ways anything leaves the store, and
+      // each is gated on having nothing left to lose: confirmed observations
+      // for the first, and for the second a session that is over whose numbers
+      // the phone has already recorded in full. A third prune, or a wider gate,
+      // has to be added here on purpose.
+      const allowed = {
+        'append',
+        'readAll',
+        'pruneConfirmed',
+        'pruneSensorSamples',
+      };
 
       final sessionLayer =
           Directory('${Directory.current.path}/lib/watch/session')

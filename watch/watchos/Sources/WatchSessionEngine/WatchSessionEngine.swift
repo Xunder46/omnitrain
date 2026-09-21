@@ -52,6 +52,7 @@ public final class WatchSessionEngine {
     private var sessionRows: [WatchSessionRecord] = []
     private var storedObservations: [WatchObservationRecord] = []
     private var storedTimers: [WatchTimerRecord] = []
+    private var storedSensorSamples: [WatchSensorSampleRecord] = []
 
     /// The structure changes this watch has already applied, by `changeId`.
     /// Rebuilt from storage by `restore`, so a relaunch cannot apply one twice
@@ -93,6 +94,7 @@ public final class WatchSessionEngine {
         sessionRows = contents.sessions
         storedObservations = contents.observations
         storedTimers = contents.timers
+        storedSensorSamples = contents.sensorSamples
 
         current = contents.sessions.max { $0.sequence < $1.sequence }
         appliedChangeIds = Set(
@@ -111,6 +113,41 @@ public final class WatchSessionEngine {
     /// The current session's observations, in the order they were logged.
     public var observations: [WatchObservationRecord] {
         storedObservations.filter { $0.sessionId == current?.sessionId }
+    }
+
+    /// The readings the platform sensors produced for the current session, in
+    /// the order they arrived.
+    ///
+    /// Read back from storage, never from a live subscription: the newest heart
+    /// rate on the wrist is the newest row that reached the store, so a relaunch
+    /// shows what the watch measured instead of starting from nothing.
+    public var sensorSamples: [WatchSensorSampleRecord] {
+        storedSensorSamples.filter { $0.sessionId == current?.sessionId }
+    }
+
+    /// The newest reading of `kind` for the current session, or nil when there
+    /// has been none.
+    public func newestSensorSample(_ kind: String) -> WatchSensorSampleRecord? {
+        newestSensorSamples()[kind]
+    }
+
+    /// The newest reading of each kind, keyed by `WatchSensorKind` — one pass
+    /// over the session's samples.
+    ///
+    /// A readout needs several kinds at once (the beat, the distance, the pace
+    /// that divides them) and it is rebuilt on a one-second tick, so the caller
+    /// resolves the session's measurements once rather than scanning per value.
+    public func newestSensorSamples() -> [String: WatchSensorSampleRecord] {
+        var newest: [String: WatchSensorSampleRecord] = [:]
+
+        for sample in storedSensorSamples where sample.sessionId == current?.sessionId {
+            if let existing = newest[sample.kind], existing.sequence >= sample.sequence {
+                continue
+            }
+            newest[sample.kind] = sample
+        }
+
+        return newest
     }
 
     /// The newest row for `kind`, which is the timer that applies.
@@ -201,8 +238,7 @@ public final class WatchSessionEngine {
         )
 
         let stored = await store.append(.session(row))
-        current = stored.sessionRow ?? row
-        let live = current ?? row
+        let live = mirrored(stored.sessionRow ?? row)
         emitLifecycle(live, state: WatchLifecycleState.started)
         return live
     }
@@ -611,7 +647,7 @@ public final class WatchSessionEngine {
     /// the phone is the author of the news.
     private func storeSessionRow(_ row: WatchSessionRecord) async {
         let stored = await store.append(.session(row))
-        current = stored.sessionRow ?? row
+        current = mirrored(stored.sessionRow ?? row)
     }
 
     /// The session's entries in `entryMaps`, oldest first — the moment the
@@ -803,10 +839,25 @@ public final class WatchSessionEngine {
         )
 
         let stored = await store.append(.session(row))
-        current = stored.sessionRow ?? row
-        let live = current ?? row
+        let live = mirrored(stored.sessionRow ?? row)
         if let lifecycle { emitLifecycle(live, state: lifecycle) }
         return live
+    }
+
+    /// Records a stored session row in the in-memory mirror retention reads,
+    /// and makes it the session the watch is on.
+    ///
+    /// `restore` rebuilds the mirror from storage; a write that happens while
+    /// the process is up has to keep it in step, or a session that never
+    /// relaunched would look like it never existed and its sensor log would
+    /// never be released.
+    @discardableResult
+    private func mirrored(_ row: WatchSessionRecord) -> WatchSessionRecord {
+        if !sessionRows.contains(where: { $0.recordId == row.recordId }) {
+            sessionRows.append(row)
+        }
+        current = row
+        return row
     }
 
     /// Tells the phone the session moved, when the protocol accepts the telling.
@@ -860,6 +911,88 @@ public final class WatchSessionEngine {
             emit(envelope)
         }
         return stored.observationRow ?? record
+    }
+
+    /// Persists a reading the platform sensors produced.
+    ///
+    /// Storage first, and nothing emitted: a sensor reading is the watch's own
+    /// measurement, and the distance that reaches the phone travels as the
+    /// `distanceMeters` of the effort logged against it. Appending the same
+    /// reading twice — same kind, same instant — is a store no-op, which is what
+    /// keeps a duplicated sensor callback from becoming a second row.
+    @discardableResult
+    public func appendSensorSample(
+        kind: String,
+        value: Double,
+        recordedAt: Date? = nil
+    ) async -> WatchSensorSampleRecord {
+        let session = requireSession()
+        let now = recordedAt ?? clock()
+
+        let record = WatchSensorSampleRecord(
+            recordId: WatchSensorSampleRecord.sampleId(
+                sessionId: session.sessionId,
+                kind: kind,
+                at: now
+            ),
+            sessionId: session.sessionId,
+            recordedAt: now,
+            kind: kind,
+            value: value
+        )
+
+        let alreadyStored = storedSensorSamples.contains { $0.recordId == record.recordId }
+        let stored = await store.append(.sensorSample(record))
+        if !alreadyStored, case .sensorSample(let row) = stored {
+            storedSensorSamples.append(row)
+        }
+        return stored.sensorSampleRow ?? record
+    }
+
+    /// Drops the raw sensor log of every session that is over and whose entries
+    /// the phone has recorded in full.
+    ///
+    /// Raw readings are not gated on a receipt of their own — the phone never
+    /// receives one, and its mirror has no field for them. What gates them is the
+    /// session: once a finished session's entries have all been acknowledged, the
+    /// readings that produced them have done their job, and the distance they
+    /// measured has already crossed as the logged effort's `distanceMeters`. A
+    /// session still running, or one with an entry still awaiting a receipt,
+    /// keeps its log — which is what makes the live readout and the settled
+    /// distance survive a kill.
+    @discardableResult
+    public func pruneSettledSensorSamples() async -> [String] {
+        let awaitingReceipt = Set(
+            storedObservations.filter { $0.confirmedAt == nil }.map(\.sessionId)
+        )
+
+        let settled = newestSessionRows().values
+            .filter { session in
+                session.status != WatchSessionStatus.active
+                    && !awaitingReceipt.contains(session.sessionId)
+                    && storedSensorSamples.contains { $0.sessionId == session.sessionId }
+            }
+            .map(\.sessionId)
+
+        guard !settled.isEmpty else { return [] }
+
+        let pruned = await store.pruneSensorSamples(settled)
+        let dropped = Set(pruned)
+        storedSensorSamples.removeAll { dropped.contains($0.recordId) }
+        return pruned
+    }
+
+    /// The current version of each session the store holds, by session id — the
+    /// newest row wins, exactly as `restore` reduces the session the watch is on.
+    private func newestSessionRows() -> [String: WatchSessionRecord] {
+        var newest: [String: WatchSessionRecord] = [:]
+        for row in sessionRows {
+            if let existing = newest[row.sessionId], existing.sequence >= row.sequence {
+                continue
+            }
+            newest[row.sessionId] = row
+        }
+        return newest
     }
 
     /// The messages the phone still owes a receipt for, rebuilt from storage.
@@ -1186,6 +1319,11 @@ private extension StoredWatchRecord {
 
     var timerRow: WatchTimerRecord? {
         if case .timer(let row) = self { return row }
+        return nil
+    }
+
+    var sensorSampleRow: WatchSensorSampleRecord? {
+        if case .sensorSample(let row) = self { return row }
         return nil
     }
 }

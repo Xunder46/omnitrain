@@ -1,0 +1,74 @@
+{
+  "description": "The sensor vocabulary both watch clients share: the sample kinds the wrist stores, what each sample's value means, and the platform workout session type every modality maps to (HealthKit on watchOS, Health Connect on Wear OS). Neither client owns these values: the Flutter client derives the GPS decision from ModalityConfig's capability profile, the Swift client mirrors it, and both suites assert against this file — so a change on one platform fails the other's tests instead of diverging silently.",
+  "kinds": ["hr", "gps", "distance"],
+  "sampleUnits": {
+    "hr": "beatsPerMinute",
+    "gps": "cumulativeMetres",
+    "distance": "totalMetres"
+  },
+  "gpsCapability": "distance",
+  "gpsModalities": ["cardio_endurance", "sports"],
+  "paceMinDistanceMeters": 50,
+  "modalityCapabilities": [
+    {
+      "modality": "cardio_endurance",
+      "capabilities": ["time", "distance", "rounds"]
+    },
+    {
+      "modality": "resistance_lifting",
+      "capabilities": ["reps", "sets", "load", "time"]
+    },
+    {
+      "modality": "isometric_stretching",
+      "capabilities": ["hold", "time", "sets"]
+    },
+    { "modality": "sports", "capabilities": ["time", "rounds", "distance"] },
+    { "modality": null, "capabilities": [] }
+  ],
+  "genericActivityType": {
+    "watchos": "other",
+    "wear": "exercise_type_other_workout"
+  },
+  "activityTypes": {
+    "cardio_endurance": {
+      "watchos": "running",
+      "wear": "exercise_type_running"
+    },
+    "resistance_lifting": {
+      "watchos": "traditionalStrengthTraining",
+      "wear": "exercise_type_strength_training"
+    },
+    "isometric_stretching": {
+      "watchos": "flexibility",
+      "wear": "exercise_type_flexibility"
+    },
+    "sports": {
+      "watchos": "other",
+      "wear": "exercise_type_other_workout"
+    },
+    "strength_resistance": {
+      "watchos": "traditionalStrengthTraining",
+      "wear": "exercise_type_strength_training"
+    },
+    "skill_technique": {
+      "watchos": "other",
+      "wear": "exercise_type_other_workout"
+    },
+    "conditioning_mixed": {
+      "watchos": "crossTraining",
+      "wear": "exercise_type_cross_training"
+    },
+    "mobility_flexibility": {
+      "watchos": "flexibility",
+      "wear": "exercise_type_flexibility"
+    },
+    "recovery_rehab": {
+      "watchos": "flexibility",
+      "wear": "exercise_type_flexibility"
+    },
+    "competition_match": {
+      "watchos": "other",
+      "wear": "exercise_type_other_workout"
+    }
+  }
+}

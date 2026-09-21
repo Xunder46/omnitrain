@@ -55,8 +55,11 @@ class _TempRepo {
   /// invariants under test.
   ///
   /// Uses rsync with exclusions when available so we skip the
-  /// large `.dart_tool/`, `build/`, and `ios/Pods/` directories.
-  /// Without exclusions, each test setup copies hundreds of MB
+  /// large `.dart_tool/`, `build/`, `.build/`, and `ios/Pods/`
+  /// directories. `build` does not match `.build`, and the watchOS
+  /// package's build output is large enough that copying it per test
+  /// approaches the 30-second test-framework timeout. Without
+  /// exclusions, each test setup copies hundreds of MB
   /// and the suite runs past the 30-second test-framework
   /// timeout. The gate inspects `.github/workflows/release.yml`,
   /// `pubspec.yaml`, and the iOS source files — none of which
@@ -73,6 +76,7 @@ class _TempRepo {
         '--exclude', '.git',
         '--exclude', '.dart_tool',
         '--exclude', 'build',
+        '--exclude', '.build',
         '--exclude', 'ios/Pods',
         '--exclude', 'ios/.symlinks',
         '--exclude', 'ios/Flutter/Flutter.framework',

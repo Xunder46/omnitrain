@@ -231,6 +231,29 @@ audit's scope and marked instead.
 Untouched by this audit and still open — see
 [`docs/releases/2026-06-27-pr-surface-verification.md`](../../../docs/releases/2026-06-27-pr-surface-verification.md).
 
+### 8.6 The watch sensor seams have no platform implementation
+*Flagged in `state_management/services_and_utils.md` under "Watch Sensors and the
+Platform Workout".*
+
+`WatchSensorSource` and `WatchPlatformWorkoutStore` (see
+`lib/watch/sensors/`, mirrored by `watch/watchos/Sources/WatchSessionEngine/`) are
+the seam the watch's sensor layer sits behind, so that heart rate, distance and
+the OS workout registration stay testable off-device. Nothing in this repository
+implements them against a platform: the only implementations are the two suites'
+fakes and the QA harness's defaults. The app target that would provide
+`HKWorkoutSession` / `HKLiveWorkoutBuilder` / `CLLocationManager` (and their Health
+Connect equivalents) is not part of this tree.
+
+Consequence: acceptance criterion 2 of the watch sensor plan — "live heart rate
+appears on the logging surface within seconds of session start **on real
+hardware**" — cannot be satisfied, and no reading is taken on a device. Tracked in
+[`plans/2026-07-13-11-d-watch-sensor-recording-plan.md`](../plans/2026-07-13-11-d-watch-sensor-recording-plan.md)
+as the open item.
+
+**Cannot be resolved from source.** Writing the bindings is authoring new
+platform code, not correcting drift, and it needs a device to verify — out of
+scope for a documentation audit.
+
 ---
 
 ## 9. Verification

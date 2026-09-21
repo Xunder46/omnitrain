@@ -22,6 +22,7 @@ import '../../core/constants/modality_config.dart';
 import '../../core/constants/modality_display.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/unit_formatter.dart';
+import '../sensors/watch_sensor_recording.dart';
 import '../session/watch_records.dart';
 import '../session/watch_session_engine.dart';
 import '../session/watch_timer_math.dart';
@@ -60,6 +61,7 @@ class WatchMetricField {
     required this.displayValue,
     required this.step,
     required this.unitLabel,
+    this.isMeasured = false,
   });
 
   /// One of [WatchMetricKey].
@@ -76,8 +78,46 @@ class WatchMetricField {
 
   final String unitLabel;
 
+  /// Whether a sensor is keeping this value, rather than the user.
+  ///
+  /// A measured value is not dial-able: the row shows what the sensor read, and
+  /// the surface leaves its controls inert so a stray turn cannot replace a
+  /// measurement with a guess (S-002).
+  final bool isMeasured;
+
   @override
   String toString() => 'WatchMetricField($metricKey: $displayValue $unitLabel)';
+}
+
+/// The pace floor: below this, a first fix a few metres from the start would
+/// print a number that is not a pace at all.
+///
+/// The value is not the wrist's to choose — `watch/contract/watch_sensor_contract.json`
+/// carries it and both clients' suites assert against it, so the two cannot
+/// disagree about when a pace appears.
+abstract final class WatchSensorPace {
+  static const double minDistanceMeters = 50;
+}
+
+/// What the sensors are reading, as the wrist prints it: the beat, the distance
+/// in the saved unit, and the pace it is being covered at.
+///
+/// Three strings ready to render, not measurements — the raw values are
+/// [WatchSensorReadings], which the sensors layer owns.
+class WatchSensorLabels {
+  const WatchSensorLabels({this.heartRate, this.distance, this.pace});
+
+  /// Nothing to show — what a session with no sensors stays at.
+  static const WatchSensorLabels none = WatchSensorLabels();
+
+  /// Beats per minute, without a unit: the label beside it says what it is.
+  final String? heartRate;
+
+  /// Distance in the saved display unit.
+  final String? distance;
+
+  /// Minutes per display unit of distance.
+  final String? pace;
 }
 
 /// The value screen for the effort the session is currently on.
@@ -88,9 +128,11 @@ class WatchLoggingState {
     String Function()? idFactory,
     this.units = const WatchUnitPreferences(),
     this.restSeconds = WatchLoggingDefaults.restSeconds,
+    WatchSensorRecorder? sensors,
   }) : _engine = engine,
        _clock = clock ?? _utcNow,
-       _newId = idFactory ?? _uuid;
+       _newId = idFactory ?? _uuid,
+       _sensors = sensors;
 
   static const Uuid _uuidV4 = Uuid();
 
@@ -118,6 +160,10 @@ class WatchLoggingState {
   final WatchSessionEngine _engine;
   final DateTime Function() _clock;
   final String Function() _newId;
+
+  /// The session's live sensors, when the surface is wired to them. A surface
+  /// with none behaves exactly as before: every value is the user's to dial.
+  final WatchSensorRecorder? _sensors;
 
   /// The saved unit preferences the wrist reads in.
   final WatchUnitPreferences units;
@@ -147,6 +193,79 @@ class WatchLoggingState {
   /// The current instant, read through this state's clock, so the screen and
   /// the events it logs agree on the time.
   DateTime now() => _clock();
+
+  // ---------------------------------------------------------------------------
+  // Live sensors
+  // ---------------------------------------------------------------------------
+
+  /// Whether the distance is being measured for the user rather than dialled by
+  /// them.
+  bool get isMeasuringDistance => _sensors?.isMeasuringDistance ?? false;
+
+  /// What the sensors are reading, resolved once so the whole readout costs one
+  /// pass over the session's stored rows.
+  WatchSensorReadings get readings =>
+      _sensors?.readings ?? WatchSensorReadings.none;
+
+  /// The readout as the wrist prints it, resolved once — one pass over the
+  /// stored rows for the beat, the distance and the pace together.
+  WatchSensorLabels get sensorLabels {
+    final readings = this.readings;
+    return WatchSensorLabels(
+      heartRate: readings.heartRate?.round().toString(),
+      distance: _distanceLabelFor(readings.distanceMeters),
+      pace: _paceLabelFor(readings.distanceMeters),
+    );
+  }
+
+  /// The newest heart rate the sensors stored, or null when none has been.
+  double? get heartRate => readings.heartRate;
+
+  /// The distance covered so far, in metres, or null when nothing has measured
+  /// any.
+  double? get distanceMeters => readings.distanceMeters;
+
+  /// The heart rate as the wrist prints it, without a unit: the label beside it
+  /// says what the number is.
+  String? get heartRateLabel => sensorLabels.heartRate;
+
+  /// The measured distance in the saved unit, or null when nothing has been
+  /// measured.
+  String? get liveDistanceLabel => sensorLabels.distance;
+
+  /// Minutes per display unit of distance, or null when there is not yet a
+  /// distance and an elapsed time to divide it by.
+  ///
+  /// Pace is derived on read rather than stored: it is a ratio of two things the
+  /// watch already keeps — the distance measured and the session's own clock —
+  /// and a stored pace would be wrong the moment either moved.
+  String? get paceLabel => sensorLabels.pace;
+
+  /// The distance in the saved unit, as the wrist prints it.
+  String? _distanceLabelFor(double? metres) => metres == null
+      ? null
+      : (metres / UnitFormatter.metresPerUnit(units.distanceUnit))
+            .toStringAsFixed(1);
+
+  /// The pace [metres] has been covered at, or null when there is not yet a
+  /// distance worth dividing and a time to divide it by.
+  String? _paceLabelFor(double? metres) {
+    final startedAt = _engine.session?.startedAt;
+    if (metres == null ||
+        metres < WatchSensorPace.minDistanceMeters ||
+        startedAt == null) {
+      return null;
+    }
+
+    final elapsedSeconds = _clock().difference(startedAt).inSeconds;
+    if (elapsedSeconds <= 0) return null;
+
+    final unitsCovered =
+        metres / UnitFormatter.metresPerUnit(units.distanceUnit);
+    final secondsPerUnit = elapsedSeconds / unitsCovered;
+    final clock = OmniDateUtils.formatClock((secondsPerUnit * 1000).round());
+    return '$clock /${UnitFormatter.distanceLabelForUnit(units.distanceUnit)}';
+  }
 
   /// The effort kind the current exercise is, derived from its capabilities —
   /// the same way the phone decides, so the two agree without being told.
@@ -247,7 +366,10 @@ class WatchLoggingState {
   }
 
   WatchMetricField _field(String metricKey) {
-    final value = _dialled[metricKey] ?? _initialValue(metricKey);
+    final measured = _isMeasured(metricKey);
+    final value = measured
+        ? _measuredValue(metricKey)
+        : _dialled[metricKey] ?? _initialValue(metricKey);
     return WatchMetricField(
       metricKey: metricKey,
       label: _labelFor(metricKey),
@@ -255,7 +377,23 @@ class WatchLoggingState {
       displayValue: _displayValueFor(metricKey, value),
       step: WatchMetricStepping.stepFor(metricKey, units: units),
       unitLabel: _unitLabelFor(metricKey),
+      isMeasured: measured,
     );
+  }
+
+  /// Whether a sensor, rather than the user, is keeping [metricKey].
+  bool _isMeasured(String metricKey) =>
+      metricKey == WatchMetricKey.distance && isMeasuringDistance;
+
+  /// What the sensors have measured for [metricKey], or zero before the first
+  /// reading lands.
+  double _measuredValue(String metricKey) {
+    switch (metricKey) {
+      case WatchMetricKey.distance:
+        return distanceMeters ?? 0;
+      default:
+        return 0;
+    }
   }
 
   /// Where a value starts: what was logged last for this exercise, or what the
@@ -271,8 +409,14 @@ class WatchLoggingState {
         return planned == null
             ? _targetFor(metricKey)
             : planned / Duration.millisecondsPerSecond;
-      case WatchMetricKey.duration:
       case WatchMetricKey.distance:
+        // Measured work starts empty: the next run or ride is timed from zero
+        // (S-002). A hold is prescribed rather than measured, so it carries the
+        // length of the last one over. A distance the sensors are keeping never
+        // reaches here — [WatchLoggingState._field] resolves it first.
+        if (effortKind == WatchEffortKind.timed) return 0;
+        return _lastLogged(metricKey) ?? _targetFor(metricKey);
+      case WatchMetricKey.duration:
         // Measured work starts empty: the next run or ride is timed from zero
         // (S-002). A hold is prescribed rather than measured, so it carries the
         // length of the last one over.
@@ -403,10 +547,12 @@ class WatchLoggingState {
   // ---------------------------------------------------------------------------
 
   /// Applies [detents] rotary steps to [metricKey] — positive turns the value
-  /// up. An unknown metric, or one the exercise does not carry, does nothing.
+  /// up. An unknown metric, or one the exercise does not carry, does nothing —
+  /// and neither does a metric a sensor is keeping: a measurement outranks a
+  /// dial, so the row is read-only while it is being measured (S-002).
   void adjust(String metricKey, double detents) {
     final field = _fieldOrNull(metricKey);
-    if (field == null) return;
+    if (field == null || field.isMeasured) return;
 
     _dialled[metricKey] = WatchMetricStepping.adjust(
       field.value,

@@ -34,6 +34,7 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
     final sessions = <WatchSessionRecord>[];
     final observations = <WatchObservationRecord>[];
     final timers = <WatchTimerRecord>[];
+    final sensorSamples = <WatchSensorSampleRecord>[];
     final confirmations = <WatchConfirmationRecord>[];
     final routineCatalogs = <WatchRoutineCatalogRecord>[];
 
@@ -45,6 +46,8 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
           observations.add(observation);
         case final WatchTimerRecord timer:
           timers.add(timer);
+        case final WatchSensorSampleRecord sample:
+          sensorSamples.add(sample);
         case final WatchConfirmationRecord confirmation:
           confirmations.add(confirmation);
         case final WatchRoutineCatalogRecord catalog:
@@ -58,6 +61,7 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
         applyConfirmations(observations, confirmations),
       ),
       timers: List.unmodifiable(timers),
+      sensorSamples: List.unmodifiable(sensorSamples),
       confirmations: List.unmodifiable(confirmations),
       routineCatalogs: List.unmodifiable(routineCatalogs),
     );
@@ -75,5 +79,20 @@ class InMemoryWatchSessionStore implements WatchSessionStore {
       (row) => row is WatchObservationRecord && dropped.contains(row.recordId),
     );
     return confirmed;
+  }
+
+  @override
+  Future<List<String>> pruneSensorSamples(Iterable<String> sessionIds) async {
+    final sessions = sessionIds.toSet();
+    final dropped = [
+      for (final row in _rows)
+        if (row is WatchSensorSampleRecord && sessions.contains(row.sessionId))
+          row.recordId,
+    ];
+    _rows.removeWhere(
+      (row) =>
+          row is WatchSensorSampleRecord && sessions.contains(row.sessionId),
+    );
+    return dropped;
   }
 }

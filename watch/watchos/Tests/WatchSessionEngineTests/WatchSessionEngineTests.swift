@@ -249,7 +249,18 @@ final class WatchSessionEngineTests: XCTestCase {
     // MARK: - S-004 append-only enforcement at the storage API
 
     func testS004NoMutatingOperationExistsAnywhereInTheModule() throws {
-        let allowed: Set<String> = ["append", "readAll", "pruneConfirmed"]
+        // Exactly five names are deliberate. `pruneConfirmed` and
+        // `pruneSensorSamples` are the two ways anything leaves the store, and
+        // each is gated on having nothing left to lose: confirmed observations
+        // for the first, and for the second a session that is over whose numbers
+        // the phone has already recorded in full. A third prune, or a wider
+        // gate, has to be added here on purpose.
+        let allowed: Set<String> = [
+            "append",
+            "readAll",
+            "pruneConfirmed",
+            "pruneSensorSamples",
+        ]
         let verbs = "update|delete|remove|replace|edit|overwrite|write|clear"
             + "|purge|wipe|reset|drop|truncate|erase|forget|modify|mutate|destroy|set"
         let mutating = try NSRegularExpression(
