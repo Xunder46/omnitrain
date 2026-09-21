@@ -176,6 +176,27 @@ Pushed from `SessionOverviewScreen`, `WorkoutSessionScreen`,
 `RoutineSetupScreen`, and the save-as-routine sheet on
 `SessionSummaryScreen`.
 
+The pop contract above holds only while no `liveSession` is supplied. Given one,
+the picker writes into the wrist's session and pops without a selection;
+`liveSessionInsertIndex` and `liveSessionSwapSlotId` choose between joining the
+ladder at a position and replacing what a slot holds, and a swap keeps the slot
+identity the ladder already has. Held by `test/interaction_flow_test.dart`,
+group `Phone manage-bridge for live sessions`.
+
+Sending to the watch is not a special case of selection — the two outcomes are
+disjoint, and only one is reachable per picker instance.
+
+### `LiveSessionEntryPoint`
+
+**File**: `lib/widgets/session/live_session_entry_point.dart`
+
+One-line way into the session running on the wrist, for the home panel. Shows
+the exercise the wrist is on and how many entries have been logged, read
+straight from `LiveSessionMirrorState` rather than from a copy. Presentation
+only: the caller owns the tap destination. Rendered only while a watch session
+is active — see `docs/navigation_and_screens.md` for the optional threading that
+makes a watch-less build lay out unchanged.
+
 ### `MetricChooserDialog`
 
 **File**: `lib/widgets/pickers/metric_chooser_dialog.dart`
@@ -235,4 +256,4 @@ Used by `WorkoutSessionScreen` and `RoutineSetupScreen` for ephemeral UI state.
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This page is one part of the [Widget Catalog](../widget_catalog.md); see that index for the full component list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+> **Doc freshness** — Last reconciled against source: 2026-09-20. This page is one part of the [Widget Catalog](../widget_catalog.md); see that index for the full component list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.

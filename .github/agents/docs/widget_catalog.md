@@ -60,6 +60,7 @@ Alphabetical. Use this rather than guessing which page a component lives on.
 | `FoodThumbnail` | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) |
 | `HomeLogoButton` | [Routine, Profile & Brand](widget_catalog/feature_primitives.md) |
 | `InlineMetricEditor` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
+| `LiveSessionEntryPoint` | [Session, Picker & Presentation](widget_catalog/session_widgets.md) |
 | `LogFoodRow` | [Nutrition Widgets](widget_catalog/nutrition_widgets.md) |
 | `MacroDonutChart` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
 | `MacroFocusContent` | [Home Screen & Nutrition Cards](widget_catalog/home_screen.md) |
@@ -155,4 +156,4 @@ GestureDetector (press tracking)
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-09-20. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

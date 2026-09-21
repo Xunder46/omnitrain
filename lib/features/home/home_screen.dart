@@ -32,6 +32,9 @@ import '../../widgets/dialogs/confirmation_dialog.dart';
 import '../../state/food_library_state.dart';
 import '../../state/nutrition/nutrition_primer_state.dart';
 import '../../state/exercise/exercise_library_state.dart';
+import '../../state/watch/live_session_mirror_state.dart';
+import '../../widgets/session/live_session_entry_point.dart';
+import '../session/live_session_screen.dart';
 import '../nutrition/nutrition_screen.dart';
 import '../nutrition/widgets/nutrition_primer_sheet.dart';
 
@@ -67,6 +70,9 @@ const double hubTileNaturalAspectRatio = 1.1;
 /// this the tile has no room for a label at all.
 const double hubMinTileHeight = 56.0;
 
+/// Gap between the live-session entry point and the TRAIN label.
+const double liveSessionEntryGap = 12.0;
+
 class HomeScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final HomeState homeState;
@@ -85,6 +91,11 @@ class HomeScreen extends StatefulWidget {
   final ExerciseLibraryState exerciseLibraryState;
   final AppVersionInfo? appVersionInfo;
 
+  /// The session running on the wrist, when there is one. Null in builds with
+  /// no watch sync — the panel then has nothing to surface, and nothing is
+  /// reserved for it.
+  final LiveSessionMirrorState? liveSession;
+
   HomeScreen({
     super.key,
     required this.workoutState,
@@ -102,6 +113,7 @@ class HomeScreen extends StatefulWidget {
     required this.nutritionPrimerState,
     required this.exerciseLibraryState,
     this.appVersionInfo,
+    this.liveSession,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -129,6 +141,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       widget.workoutState.checkForInProgressSession();
       _resumeCheckDone = true;
     }
+
+    // A watch session can start, move on, or end while this panel is on screen;
+    // the entry point shows it or does not, and the reserved height follows.
+    widget.liveSession?.addListener(_onLiveSessionChanged);
 
     // Initialize last seen date for rollover detection
     _initializeLastSeenDate();
@@ -196,11 +212,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    widget.liveSession?.removeListener(_onLiveSessionChanged);
     _sheetController.dispose();
     _sheetExtent.removeListener(_onSheetExtentChanged);
     _sheetExtent.dispose();
     _hintController.dispose();
     super.dispose();
+  }
+
+  /// A watch session started, moved, or ended: the entry point and the height
+  /// reserved for it both follow from that.
+  void _onLiveSessionChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// The session running on the wrist, or null when there is nothing to
+  /// surface. A session the phone has closed is not live: the panel stops
+  /// offering it the moment Finish lands.
+  LiveSessionMirrorState? get _liveWatchSession {
+    final session = widget.liveSession;
+    return session != null && session.isActive ? session : null;
+  }
+
+  void _openLiveSession(LiveSessionMirrorState liveSession) {
+    OmniNavigator.push(
+      context,
+      (_) => LiveSessionScreen(
+        liveSession: liveSession,
+        workoutState: widget.workoutState,
+        settingsState: widget.settingsState,
+      ),
+    );
   }
 
   /// Initial-load coroutine. Uses `Future.microtask` (not
@@ -403,6 +445,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 // accurate across accessibility settings.
                 final textScale = MediaQuery.textScalerOf(context).scale(1.0);
                 final titleHeight = 30.0 * textScale;
+                // The live-session entry point, when a watch session is live.
+                // Nothing is reserved for a panel with nothing to surface.
+                // The block's height is the widget's own budget, asked for
+                // rather than restated here.
+                final liveSession = _liveWatchSession;
+                final liveSessionBlock = liveSession == null
+                    ? 0.0
+                    : LiveSessionEntryPoint.budgetHeight(textScale) +
+                          liveSessionEntryGap;
                 // Measured card natural total height at
                 // `textScaler = 1.0` is 112 px (the card
                 // has no internal slack to compress, per
@@ -420,6 +471,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
                 // Total content height at natural sizes.
                 final totalNatural =
+                    liveSessionBlock +
                     titleHeight +
                     titleToGridGap +
                     naturalGridHeight +
@@ -445,6 +497,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (liveSession != null) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: LiveSessionEntryPoint(
+                          liveSession: liveSession,
+                          onTap: () => _openLiveSession(liveSession),
+                        ),
+                      ),
+                      const SizedBox(height: liveSessionEntryGap),
+                    ],
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 0.0),
                       child: Column(

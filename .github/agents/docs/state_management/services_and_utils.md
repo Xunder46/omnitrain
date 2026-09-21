@@ -278,6 +278,43 @@ to buffer, not a decision the session logic should make.
 
 Verified by `test/live_mirroring_test.dart` (`S-008`, `S-010`).
 
+#### The same object is the phone's manage-bridge (item 10)
+
+A live session can be *driven* from the phone, not merely watched, and the
+mirror is where every one of those edits originates. Its named operations —
+`addExercise`, `removeExercise`, `reorderExercises`, `moveExercise`,
+`swapExercise`, `correctEntry`, `deleteEntry`, `pushExercise`,
+`completeSession` — apply the change locally, then hand the protocol message to
+the transport. They exist so no screen has to know a `structure_change` from an
+`exercise_push`: a searched catalog exercise is a push (it carries its own
+position), while managing the ladder is a change. Both are the phone's to
+originate — the watch never does (PROTOCOL.md, authority rules 1 and 2).
+
+`reorderExercises` takes a whole order and `moveExercise` is the one-place case
+of it, because the protocol carries the ladder rather than a pair of indices;
+the arithmetic therefore belongs to the ladder's owner, not to a screen.
+
+`completedRecord` is the merge point: `completeSession` reports the lifecycle
+once, snapshots the converged session, and returns the same record on a second
+call, so one session closes as one record however many times Finish is tapped.
+The entries in it are the reconciler's — ordered by wall-clock `loggedAt`, so
+ordering does not depend on which device logged what.
+
+Two rules the bridge depends on, both already in `PROTOCOL.md`:
+
+- **A phone holding no ladder has no shape to assert.** When a snapshot arrives
+  reporting a different session and the phone's own ladder is empty, the phone
+  adopts the snapshot instead of answering with an empty one — otherwise joining
+  a wrist-started session would wipe it.
+- **A correction is addressed by `entryId`, never by the slot.** What a slot
+  holds can change under a logged entry, and history records what happened.
+
+Verified by `test/phone_manage_bridge_test.dart` (structure events against the
+protocol's own schemas and against the shape
+`watch/sync_protocol/fixtures/valid/structure_change.json` pins; interleaved
+observations merging into one ordered record) and by
+`test/interaction_flow_test.dart` (`Phone manage-bridge for live sessions`).
+
 ### `WatchSyncOrchestrator`
 
 **Files**: `lib/watch/start/watch_sync_orchestrator.dart`,

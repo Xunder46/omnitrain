@@ -15,6 +15,12 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/constants/omni_theme.dart';
+import '../../core/navigation/navigation.dart';
+import '../../core/services/preferences_service.dart';
+import '../../data/repositories/mock_workout_repository.dart';
+import '../../features/session/live_session_screen.dart';
+import '../../state/settings/settings_state.dart';
+import '../../state/workout/workout_state.dart';
 import '../../watch/logging/watch_logging_state.dart';
 import '../../watch/session/in_memory_watch_session_store.dart';
 import '../../watch/session/watch_session_engine.dart';
@@ -206,21 +212,54 @@ class _LiveMirrorDebugHarnessState extends State<_LiveMirrorDebugHarness> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _actionButton(
-                onPressed: _logOnWrist,
-                label: 'Log a set',
-              ),
-              _actionButton(
-                onPressed: _advanceWrist,
-                label: 'Next exercise',
-              ),
+              _actionButton(onPressed: _logOnWrist, label: 'Log a set'),
+              _actionButton(onPressed: _advanceWrist, label: 'Next exercise'),
               _actionButton(
                 onPressed: _reorderOnPhone,
                 label: 'Reorder on phone',
               ),
+              _actionButton(
+                onPressed: _manageOnPhone,
+                label: 'Manage on phone',
+              ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// The states the live session screen needs to search the catalog and to show
+  /// loads in the saved unit. Built on first use so the harness's own screen
+  /// never waits on a repository.
+  late final Future<({WorkoutState workoutState, SettingsState settingsState})>
+  _phoneStates = _buildPhoneStates();
+
+  static Future<({WorkoutState workoutState, SettingsState settingsState})>
+  _buildPhoneStates() async {
+    final repository = MockWorkoutRepository();
+    await repository.initialize();
+    final preferences = PreferencesServiceImpl();
+    await preferences.init();
+    final settingsState = SettingsState(repository, preferences);
+    await settingsState.initialize();
+    return (
+      workoutState: WorkoutState(repository),
+      settingsState: settingsState,
+    );
+  }
+
+  /// Opens the shipping live session screen over the harness's session — the
+  /// screen itself, not a debug stand-in for it.
+  Future<void> _manageOnPhone() async {
+    final states = await _phoneStates;
+    if (!mounted) return;
+    await OmniNavigator.push(
+      context,
+      (_) => LiveSessionScreen(
+        liveSession: _mirror,
+        workoutState: states.workoutState,
+        settingsState: states.settingsState,
       ),
     );
   }

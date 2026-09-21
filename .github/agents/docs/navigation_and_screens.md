@@ -174,18 +174,19 @@ Day rollover:
 
 | Screen | File | Purpose |
 |--------|------|---------|
-| `HomeScreen` | `lib/features/home/home_screen.dart` | Modality tile grid, the nutrition summary card, and the maintenance sheet. Owns day-rollover for the nutrition target. |
+| `HomeScreen` | `lib/features/home/home_screen.dart` | Modality tile grid, the nutrition summary card, the live-session entry point while a watch session is active, and the maintenance sheet. Owns day-rollover for the nutrition target. |
 | `NutritionScreen` | `lib/features/nutrition/nutrition_screen.dart` | Daily nutrition summary: calorie ring, macro donut, sodium and water totals, and the grouped "Foods I Eat" browse card. |
 | `AddFoodScreen` | `lib/features/nutrition/add_food_screen.dart` | Three-tab management surface for the global food catalog, the user's My Foods collection, and food groups. |
 | `EditFoodScreen` | `lib/features/nutrition/edit_food_screen.dart` | Edit a single catalog food. Edits propagate to personal library rows through the durable `catalogId` linkage; past `ConsumedFood` snapshots are unaffected. |
 | `NutritionTargetScreen` | `lib/features/nutrition/nutrition_target_screen.dart` | Set today's calorie target. Persists through `NutritionState` with forward-propagation to future dates that still hold the old value. |
 | `SessionOverviewScreen` | `lib/features/session/session_overview_screen.dart` | Exercise list for current session, add/remove exercises |
+| `LiveSessionScreen` | `lib/features/session/live_session_screen.dart` | The session running on the wrist, managed from the phone. Reads and writes `LiveSessionMirrorState` — there is no second copy of the session here. Reachable from the home panel's live-session entry point (`lib/widgets/session/live_session_entry_point.dart`, shown only while a watch session is active). Renumbering, correction and deletion are the screen's own affordances; adding and swapping route through `ExercisePickerScreen`. Hidden in builds with no watch sync, which pass no `LiveSessionMirrorState`. |
 | `WorkoutSessionScreen` | `lib/features/session/workout_session_screen.dart` | Core workout tracking (list view + detail view), split across part files: main coordinator, timer mixin, list-view builders, detail-view builders. Also hosts the session discard action and the rest overlay. |
 | `SessionSummaryScreen` | `lib/features/session/session_summary_screen.dart` | Post-workout summary, PRs, save-as-routine. Also reused for **historical** sessions reached from the calendar (tap a past day with one entry → `SessionSummaryScreen`). Accepts an optional `openedFromCalendar: true` + `originatingCalendarState` to differentiate the two flows: when set, the embedded calendar card renders the **historical session's month** (not today), the "Open Calendar" button **pops back** instead of pushing a fresh `CalendarScreen`, and "Discard" deletes the historical record and returns to the originating calendar / day list. When omitted (post-workout flow), the calendar card renders the current month, "Open Calendar" pushes a fresh calendar, and "Discard" returns to the home hub via `popUntil(isFirst)`. |
 | `MyRoutinesScreen` | `lib/features/routine/my_routines_screen.dart` | List of saved routines |
 | `RoutineSetupScreen` | `lib/features/routine/routine_setup_screen.dart` | Create/edit routines (dual view) |
 | `ExerciseEditorScreen` | `lib/features/exercise/exercise_editor_screen.dart` | Create/edit custom exercises with modality-aware capability/discipline filtering; accepts optional `contextModality` for session-prefill |
-| `ExercisePickerScreen` | `lib/features/exercise/exercise_picker_screen.dart` | Full-screen exercise search and selection with modality ranking and discipline/muscle filters; opened via `OmniNavigator.push<Exercise>` and returns the selected `Exercise` on pop. Custom exercises are marked as such. |
+| `ExercisePickerScreen` | `lib/features/exercise/exercise_picker_screen.dart` | Full-screen exercise search and selection with modality ranking and discipline/muscle filters; opened via `OmniNavigator.push<Exercise>` and returns the selected `Exercise` on pop — or nothing, when given a `liveSession`, in which case it writes into the wrist's session instead. `liveSessionInsertIndex` and `liveSessionSwapSlotId` choose between joining the ladder at a position and replacing what a slot holds. Custom exercises are marked as such. |
 | `ExerciseLibraryScreen` | `lib/features/exercise/exercise_library_screen.dart` | Read-only management surface for the user's exercise catalog, reachable from the maintenance sheet. Never offers an add-to-workout action — the library is for management, not selection. |
 | `ExerciseLibraryDetailScreen` | `lib/features/exercise/exercise_library_detail_screen.dart` | Management surface for one exercise. Built-in rows offer copy; custom rows offer edit and remove. Removal is reference-aware: zero references hard-delete, any reference retires (`isArchived = true`). |
 | `ExerciseDetailViewScreen` | `lib/features/exercise/exercise_detail_view_screen.dart` | Read-only exercise details: description, discipline, capabilities split into tracking methods and movement properties, and muscles. Sections collapse when empty. Reused in management contexts with the add action suppressed. |
@@ -255,6 +256,8 @@ main.dart
 
 The Daily Nutrition primer (see [`widget_catalog/nutrition_widgets.md`](widget_catalog/nutrition_widgets.md) → `NutritionPrimerSheet`) auto-shows on the first-ever tap of the home `NutritionSummaryCard` via a `showModalBottomSheet` over the home screen; dismissal flips `NutritionPrimerState.shouldShowPrimer` to `false` and pushes `NutritionScreen`. The header "?" on `NutritionScreen` reopens the same sheet at any time without mutating the seen state.
 
+The live watch session is threaded the same way and is **optional** at every level: `MyApp` and `HomeScreen` take a `LiveSessionMirrorState?`, and null means "this build has no watch sync", not "no session". A consumer handed null shows nothing and reserves no space for it, which is why a watch-less build lays out identically. Verified by `test/screen_widget_test.dart` (`shows no entry point without a live watch session`).
+
 ### Key Injection Rules
 - State classes depend only on `WorkoutRepository` interface (never concrete implementations)
 - Services depend only on `WorkoutRepository` interface
@@ -297,10 +300,10 @@ Verified by `test/interaction_flow_test.dart`.
 
 ---
 
-**Document Version**: 1.8
-**Last Updated**: July 27, 2026
+**Document Version**: 1.9
+**Last Updated**: September 20, 2026
 
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-27. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.
+> **Doc freshness** — Last reconciled against source: 2026-09-20. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree as it exists on the reconciliation date. If you find a claim here that disagrees with `lib/`, `lib/` wins — please flag the drift in a fresh chat with the Coordinator agent.

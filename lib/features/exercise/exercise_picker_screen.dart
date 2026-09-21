@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/omni_theme.dart';
 import '../../core/utils/exercise_helpers.dart';
 import '../../data/models/models.dart';
+import '../../state/watch/live_session_mirror_state.dart';
 import '../../state/workout/workout_state.dart';
 import '../../features/exercise/exercise_detail_view_screen.dart';
 import '../../features/exercise/exercise_editor_screen.dart';
@@ -15,14 +16,34 @@ import '../../widgets/layout/omni_back_header.dart';
 /// Replaces the former [ExercisePickerDialog]. All search, ranking,
 /// create-new, and exercise-return behaviour is preserved exactly.
 /// Use [OmniNavigator.push<Exercise>] to open and await the result.
+///
+/// With [liveSession] set, every row also carries a "Send to watch session"
+/// action, which puts the exercise into the session running on the wrist
+/// instead of returning it to the caller. That is how the phone's full-catalog
+/// search feeds a live session.
 class ExercisePickerScreen extends StatefulWidget {
   final WorkoutState workoutState;
   final String? sessionModality;
+
+  /// The live watch session, when one is running. Non-null shows the send
+  /// action on every row.
+  final LiveSessionMirrorState? liveSession;
+
+  /// Where a sent exercise lands in the ladder; null appends. Ignored without
+  /// [liveSession].
+  final int? liveSessionInsertIndex;
+
+  /// The slot a sent exercise replaces, or null to add it to the ladder.
+  /// Ignored without [liveSession].
+  final String? liveSessionSwapSlotId;
 
   const ExercisePickerScreen({
     super.key,
     required this.workoutState,
     this.sessionModality,
+    this.liveSession,
+    this.liveSessionInsertIndex,
+    this.liveSessionSwapSlotId,
   });
 
   @override
@@ -662,30 +683,85 @@ class _ExercisePickerScreenState extends State<ExercisePickerScreen> {
           ),
         ],
       ),
-      trailing: IconButton(
-        key: const Key('exercise_row_details_button'),
-        icon: Icon(
-          Icons.info_outline,
-          color: theme.colorScheme.primary,
-          size: 20,
-        ),
-        tooltip: 'View exercise details',
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(
-          width: 44,
-          height: 44,
-        ),
-        style: IconButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(
-              OmniTheme.buttonIconRadius,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.liveSession != null)
+            IconButton(
+              key: const Key('exercise_row_send_to_watch_button'),
+              icon: Icon(
+                Icons.watch,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              tooltip: 'Send to watch session',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              style: IconButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(
+                    OmniTheme.buttonIconRadius,
+                  ),
+                ),
+              ),
+              onPressed: () => _sendToWatchSession(exercise),
             ),
+          IconButton(
+            key: const Key('exercise_row_details_button'),
+            icon: Icon(
+              Icons.info_outline,
+              color: theme.colorScheme.primary,
+              size: 20,
+            ),
+            tooltip: 'View exercise details',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+            style: IconButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(OmniTheme.buttonIconRadius),
+              ),
+            ),
+            onPressed: () => _openDetails(context, exercise),
           ),
-        ),
-        onPressed: () => _openDetails(context, exercise),
+        ],
       ),
-      onTap: () => Navigator.of(context).pop(exercise),
+      // In live mode a row tap sends too: the whole row is the primary target,
+      // and a tap that did nothing because the caller wanted no return value
+      // would read as a broken row. The watch icon is what makes the action
+      // visible; the row body is what makes it reachable.
+      onTap: () => widget.liveSession == null
+          ? Navigator.of(context).pop(exercise)
+          : _sendToWatchSession(exercise),
     );
+  }
+
+  /// Sends [exercise] into the live watch session and leaves the picker.
+  ///
+  /// The slot's id is the phone's to choose — a slot is what entries point at,
+  /// so its identity has to be stable — while a swap replaces what a slot holds
+  /// and keeps the slot the ladder already has (PROTOCOL.md, "Exercise
+  /// identity").
+  Future<void> _sendToWatchSession(Exercise exercise) async {
+    final liveSession = widget.liveSession;
+    if (liveSession == null) return;
+
+    final catalogExercise = {
+      'exerciseId': exercise.id,
+      'name': exercise.name,
+      'capabilities': exercise.capabilities,
+    };
+    final swapSlotId = widget.liveSessionSwapSlotId;
+
+    if (swapSlotId != null) {
+      await liveSession.swapExercise(swapSlotId, catalogExercise);
+    } else {
+      await liveSession.pushExercise(
+        {'sessionExerciseId': liveSession.mintSlotId(), ...catalogExercise},
+        atIndex: widget.liveSessionInsertIndex ?? liveSession.exercises.length,
+      );
+    }
+
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _openDetails(BuildContext context, Exercise exercise) async {

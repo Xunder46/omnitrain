@@ -21,9 +21,6 @@
 // severed link buffers exactly as a radio would. Nothing here is a mock of the
 // code under test — both devices run their real implementations.
 
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/sync_protocol/message_validator.dart';
 import 'package:omnitrain/state/watch/live_session_mirror_state.dart';
@@ -34,61 +31,25 @@ import 'package:omnitrain/watch/session/watch_timer_math.dart';
 import 'package:omnitrain/watch/start/watch_session_start_paths.dart';
 import 'package:omnitrain/watch/start/watch_sync_orchestrator.dart';
 
-const String _protocolRoot = 'watch/sync_protocol';
-
-/// Deterministic clock: neither side reads `DateTime.now()`, which is what lets
-/// these tests assert wall-clock derivation instead of counters.
-class _Clock {
-  _Clock(this.now);
-
-  DateTime now;
-
-  DateTime call() => now;
-
-  void advance(Duration delta) => now = now.add(delta);
-}
-
-Map<String, Object?> _asObject(Object? value) =>
-    (value as Map).cast<String, Object?>();
-
-List<Map<String, Object?>> _objects(Object? value) =>
-    (value! as List).map(_asObject).toList(growable: false);
-
-Map<String, Object?> _readJson(String relativePath) => _asObject(
-  jsonDecode(
-    File('${Directory.current.path}/$relativePath').readAsStringSync(),
-  ),
-);
-
-/// The shared schemas, keyed the way `$ref` addresses them.
-SyncProtocolValidator _validator() {
-  final root = Directory('${Directory.current.path}/$_protocolRoot/schemas');
-  return SyncProtocolValidator({
-    for (final file in root.listSync(recursive: true).whereType<File>())
-      if (file.path.endsWith('.json'))
-        file.path.substring(root.path.length + 1): jsonDecode(
-          file.readAsStringSync(),
-        ),
-  });
-}
+import 'helpers/sync_protocol_harness.dart';
 
 /// Every reconciliation fixture that replays from a snapshot.
 List<Map<String, Object?>> _replayableFixtures() {
-  final manifest = _readJson('$_protocolRoot/fixtures/manifest.json');
+  final manifest = readProtocolJson('fixtures/manifest.json');
   return [
-    for (final scenario in _objects(manifest['scenarios']))
-      if (_readJson('$_protocolRoot/fixtures/${scenario['path']}')['snapshot'] !=
-          null)
+    for (final scenario in objectsOf(manifest['scenarios']))
+      if (readProtocolJson('fixtures/${scenario['path']}')['snapshot'] != null)
         {
           'path': scenario['path'],
-          'fixture': _readJson(
-            '$_protocolRoot/fixtures/${scenario['path']}',
-          ),
+          'fixture': readProtocolJson('fixtures/${scenario['path']}'),
         },
   ];
 }
 
-Map<String, Object?> _slot(String slot, {String name = 'Barbell Bench Press'}) => {
+Map<String, Object?> _slot(
+  String slot, {
+  String name = 'Barbell Bench Press',
+}) => {
   'sessionExerciseId': slot,
   'exerciseId': 'ex-$slot',
   'name': name,
@@ -98,14 +59,14 @@ Map<String, Object?> _slot(String slot, {String name = 'Barbell Bench Press'}) =
 /// A schema-conformant `set` observation, the way the logging surfaces hand it
 /// to the engine.
 Map<String, Object?> _setEvent(
-  _Clock clock, {
+  TestClock clock, {
   required String entryId,
   String slot = 'sx-bench',
 }) => {
   'entryId': entryId,
   'eventId': entryId,
   'kind': 'set',
-  'loggedAt': _iso(clock.now),
+  'loggedAt': isoUtc(clock.now),
   'sessionExerciseId': slot,
   'exerciseId': 'ex-$slot',
   'reps': 5,
@@ -129,9 +90,6 @@ Map<String, Object?> _snapshotPayload({
   'entries': entries,
   'timers': timers,
 };
-
-String _iso(DateTime instant) =>
-    '${instant.toUtc().toIso8601String().split('.').first}Z';
 
 /// A `session_snapshot` envelope over [payload], as the other device would send
 /// it.
@@ -168,21 +126,22 @@ Map<String, Object?> _snapshot({
 Map<String, Object?> _normalizedTimer(Map<String, Object?> timer) => {
   for (final entry in timer.entries)
     entry.key: switch (entry.key) {
-      'startedAt' || 'pausedAt' || 'stoppedAt' => DateTime.parse(
-        entry.value! as String,
-      ),
+      'startedAt' ||
+      'pausedAt' ||
+      'stoppedAt' => DateTime.parse(entry.value! as String),
       _ => entry.value,
     },
 };
 
 List<String> _slotIds(WatchSessionEngine engine) => [
-  for (final slot in engine.session?.exercises ?? const []) slot['sessionExerciseId']! as String,
+  for (final slot in engine.session?.exercises ?? const [])
+    slot['sessionExerciseId']! as String,
 ];
 
 /// The slot order a converged `exercises` list carries — the phone's state, in
 /// the same shape `_slotIds` reads from the watch's session.
 List<String> _slotIdsIn(Object? exercises) => [
-  for (final slot in _objects(exercises)) slot['sessionExerciseId']! as String,
+  for (final slot in objectsOf(exercises)) slot['sessionExerciseId']! as String,
 ];
 
 /// One watch and one phone, joined by an in-process transport pair.
@@ -191,9 +150,9 @@ List<String> _slotIdsIn(Object? exercises) => [
 /// transport buffers what it cannot carry, exactly as a store-and-forward radio
 /// would.
 class _Session {
-  _Session({required Map<String, Object?> phoneState, _Clock? clock})
-    : clock = clock ?? _Clock(DateTime.utc(2026, 7, 13, 6)) {
-    final validator = _validator();
+  _Session({required Map<String, Object?> phoneState, TestClock? clock})
+    : clock = clock ?? TestClock(DateTime.utc(2026, 7, 13, 6)) {
+    final validator = loadProtocolValidator();
     final store = InMemoryWatchSessionStore();
 
     _watchTransport = _WatchTransport(this);
@@ -229,7 +188,7 @@ class _Session {
     phone.addListener(() => phoneNotifications++);
   }
 
-  final _Clock clock;
+  final TestClock clock;
   late final WatchSessionEngine engine;
   late final WatchSessionStartPaths paths;
   late final WatchSyncOrchestrator orchestrator;
@@ -360,7 +319,7 @@ void main() {
       );
       await session.deliverEmitted();
 
-      final entries = _objects(session.phone.state['entries']);
+      final entries = objectsOf(session.phone.state['entries']);
       expect(entries, hasLength(1));
       expect(entries.single['entryId'], 'e-live-1');
       expect(entries.single['reps'], 5);
@@ -393,10 +352,11 @@ void main() {
       ]);
 
       expect(session.watchOrder, ['sx-squat', 'sx-bench', 'sx-plank']);
-      expect(
-        _slotIdsIn(session.phone.state['exercises']),
-        ['sx-squat', 'sx-bench', 'sx-plank'],
-      );
+      expect(_slotIdsIn(session.phone.state['exercises']), [
+        'sx-squat',
+        'sx-bench',
+        'sx-plank',
+      ]);
       expect(session.phone.state['revision'], 1);
     });
   });
@@ -423,12 +383,15 @@ void main() {
 
       await session.reconnect();
 
-      final entries = _objects(session.phone.state['entries']);
+      final entries = objectsOf(session.phone.state['entries']);
       expect(entries, hasLength(5));
-      expect(
-        entries.map((entry) => entry['entryId']),
-        ['e-offline-1', 'e-offline-2', 'e-offline-3', 'e-offline-4', 'e-offline-5'],
-      );
+      expect(entries.map((entry) => entry['entryId']), [
+        'e-offline-1',
+        'e-offline-2',
+        'e-offline-3',
+        'e-offline-4',
+        'e-offline-5',
+      ]);
       expect(
         session.engine.pendingObservations(),
         isEmpty,
@@ -453,7 +416,10 @@ void main() {
       final before = Map<String, Object?>.of(session.phone.state);
 
       // The transport retries everything it ever carried, twice over.
-      for (final envelope in [...session._watchTransport.sent, ...session._watchTransport.sent]) {
+      for (final envelope in [
+        ...session._watchTransport.sent,
+        ...session._watchTransport.sent,
+      ]) {
         await session.phone.receive(envelope);
       }
 
@@ -462,7 +428,7 @@ void main() {
         equals(before),
         reason: 're-delivery is a no-op end to end',
       );
-      expect(_objects(session.phone.state['entries']), hasLength(1));
+      expect(objectsOf(session.phone.state['entries']), hasLength(1));
     });
   });
 
@@ -511,41 +477,44 @@ void main() {
   });
 
   group('S-005 the timer\'s end moment is the same on both devices', () {
-    test('a rest timer started on the wrist ends when the phone says it does', () async {
-      final session = _Session(
-        phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
-      );
-      await session.engine.createSession(
-        modality: 'resistance_lifting',
-        exercises: [_slot('sx-bench')],
-      );
-      await session.deliverEmitted();
+    test(
+      'a rest timer started on the wrist ends when the phone says it does',
+      () async {
+        final session = _Session(
+          phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
+        );
+        await session.engine.createSession(
+          modality: 'resistance_lifting',
+          exercises: [_slot('sx-bench')],
+        );
+        await session.deliverEmitted();
 
-      final timer = await session.engine.startTimer(
-        WatchTimerKind.rest,
-        plannedDurationMs: 90000,
-      );
-      await session.deliverEmitted();
+        final timer = await session.engine.startTimer(
+          WatchTimerKind.rest,
+          plannedDurationMs: 90000,
+        );
+        await session.deliverEmitted();
 
-      final onPhone = _asObject(
-        _asObject(session.phone.state['timers'])['rest'],
-      );
-      expect(onPhone['kind'], 'rest');
-      expect(
-        onPhone.containsKey('remainingSeconds'),
-        isFalse,
-        reason: 'a countdown is never sent; the receiver derives it',
-      );
-      expect(
-        completionInstant(timer),
-        session.phone.timerEnd('rest'),
-        reason: 'both sides derive the end from the same timestamps',
-      );
-      expect(
-        session.phone.timerEnd('rest'),
-        equals(session.clock.now.add(const Duration(seconds: 90))),
-      );
-    });
+        final onPhone = asObject(
+          asObject(session.phone.state['timers'])['rest'],
+        );
+        expect(onPhone['kind'], 'rest');
+        expect(
+          onPhone.containsKey('remainingSeconds'),
+          isFalse,
+          reason: 'a countdown is never sent; the receiver derives it',
+        );
+        expect(
+          completionInstant(timer),
+          session.phone.timerEnd('rest'),
+          reason: 'both sides derive the end from the same timestamps',
+        );
+        expect(
+          session.phone.timerEnd('rest'),
+          equals(session.clock.now.add(const Duration(seconds: 90))),
+        );
+      },
+    );
   });
 
   group('S-006 joining an in-progress phone session from the watch', () {
@@ -608,10 +577,7 @@ void main() {
       );
       final rest = session.engine.timerFor(WatchTimerKind.rest)!;
       expect(rest.state, WatchTimerState.running);
-      expect(
-        completionInstant(rest),
-        DateTime.utc(2026, 7, 13, 6, 26, 30),
-      );
+      expect(completionInstant(rest), DateTime.utc(2026, 7, 13, 6, 26, 30));
     });
   });
 
@@ -649,98 +615,105 @@ void main() {
     });
   });
 
-  group('S-008 a snapshot the phone disagrees with is answered with its own', () {
-    test('the phone re-asserts its state and keeps it', () async {
-      final session = _Session(
-        phoneState: _snapshotPayload(
-          revision: 5,
-          exercises: [_slot('sx-bench'), _slot('sx-plank')],
-        ),
-      );
-      final before = Map<String, Object?>.of(session.phone.state);
-      final sentBefore = session._phoneTransport.sent.length;
+  group(
+    'S-008 a snapshot the phone disagrees with is answered with its own',
+    () {
+      test('the phone re-asserts its state and keeps it', () async {
+        final session = _Session(
+          phoneState: _snapshotPayload(
+            revision: 5,
+            exercises: [_slot('sx-bench'), _slot('sx-plank')],
+          ),
+        );
+        final before = Map<String, Object?>.of(session.phone.state);
+        final sentBefore = session._phoneTransport.sent.length;
 
-      // A watch snapshot that reports a different shape.
-      final outcome = await session.phone.receive(
-        _snapshot(
-          revision: 3,
-          exercises: [_slot('sx-squat')],
-          origin: 'watch',
-        ),
-      );
+        // A watch snapshot that reports a different shape.
+        final outcome = await session.phone.receive(
+          _snapshot(
+            revision: 3,
+            exercises: [_slot('sx-squat')],
+            origin: 'watch',
+          ),
+        );
 
-      expect(outcome, MirrorOutcome.applied);
-      expect(
-        session._phoneTransport.sent.length,
-        sentBefore + 1,
-        reason: 'structure is the phone\'s to own, so it answers',
-      );
-      final answer = _asObject(session._phoneTransport.sent.last['payload']);
-      expect(answer['revision'], 5);
-      expect(answer['exercises'], before['exercises']);
-    });
+        expect(outcome, MirrorOutcome.applied);
+        expect(
+          session._phoneTransport.sent.length,
+          sentBefore + 1,
+          reason: 'structure is the phone\'s to own, so it answers',
+        );
+        final answer = asObject(session._phoneTransport.sent.last['payload']);
+        expect(answer['revision'], 5);
+        expect(answer['exercises'], before['exercises']);
+      });
 
-    test('an identical snapshot is left unanswered', () async {
-      final session = _Session(
-        phoneState: _snapshotPayload(
-          revision: 5,
-          exercises: [_slot('sx-bench')],
-        ),
-      );
-      final sentBefore = session._phoneTransport.sent.length;
+      test('an identical snapshot is left unanswered', () async {
+        final session = _Session(
+          phoneState: _snapshotPayload(
+            revision: 5,
+            exercises: [_slot('sx-bench')],
+          ),
+        );
+        final sentBefore = session._phoneTransport.sent.length;
 
-      // The phone's own state, arriving back from the watch.
-      final outcome = await session.phone.receive(
-        session.phone.snapshotEnvelope(),
-      );
+        // The phone's own state, arriving back from the watch.
+        final outcome = await session.phone.receive(
+          session.phone.snapshotEnvelope(),
+        );
 
-      expect(outcome, MirrorOutcome.applied);
-      expect(
-        session._phoneTransport.sent.length,
-        sentBefore,
-        reason: 'two agreeing devices must not answer each other for ever',
-      );
-    });
-  });
+        expect(outcome, MirrorOutcome.applied);
+        expect(
+          session._phoneTransport.sent.length,
+          sentBefore,
+          reason: 'two agreeing devices must not answer each other for ever',
+        );
+      });
+    },
+  );
 
-  group('S-009 a sessionless watch answers a snapshot request with nothing', () {
-    test('the watch sends no empty session when it has none', () async {
-      final session = _Session(
-        phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
-      );
-      await session.engine.restore();
-      expect(session.engine.session, isNull);
+  group(
+    'S-009 a sessionless watch answers a snapshot request with nothing',
+    () {
+      test('the watch sends no empty session when it has none', () async {
+        final session = _Session(
+          phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
+        );
+        await session.engine.restore();
+        expect(session.engine.session, isNull);
 
-      await session.orchestrator.answerSnapshotRequest();
+        await session.orchestrator.answerSnapshotRequest();
 
-      expect(
-        session._watchTransport.sent,
-        isEmpty,
-        reason: 'a watch with nothing logged has nothing authoritative to report',
-      );
-    });
+        expect(
+          session._watchTransport.sent,
+          isEmpty,
+          reason:
+              'a watch with nothing logged has nothing authoritative to report',
+        );
+      });
 
-    test('joining asks for a snapshot rather than offering one', () async {
-      final session = _Session(
-        phoneState: _snapshotPayload(
-          revision: 4,
-          exercises: [_slot('sx-bench'), _slot('sx-plank')],
-        ),
-      );
-      await session.engine.restore();
+      test('joining asks for a snapshot rather than offering one', () async {
+        final session = _Session(
+          phoneState: _snapshotPayload(
+            revision: 4,
+            exercises: [_slot('sx-bench'), _slot('sx-plank')],
+          ),
+        );
+        await session.engine.restore();
 
-      await session.orchestrator.sync(reconnect: true);
+        await session.orchestrator.sync(reconnect: true);
 
-      expect(session._watchTransport.snapshotRequests, 1);
-      expect(
-        session._watchTransport.sent.where(
-          (envelope) => envelope['type'] == 'session_snapshot',
-        ),
-        isEmpty,
-      );
-      expect(session.engine.session, isNotNull);
-    });
-  });
+        expect(session._watchTransport.snapshotRequests, 1);
+        expect(
+          session._watchTransport.sent.where(
+            (envelope) => envelope['type'] == 'session_snapshot',
+          ),
+          isEmpty,
+        );
+        expect(session.engine.session, isNotNull);
+      });
+    },
+  );
 
   group('S-010 the phone drives the session it owns', () {
     test('a pushed exercise lands on the watch at the named index', () async {
@@ -755,7 +728,10 @@ void main() {
       );
       await session.deliverEmitted();
 
-      final pushed = await session.phone.pushExercise(_slot('sx-pullup'), atIndex: 1);
+      final pushed = await session.phone.pushExercise(
+        _slot('sx-pullup'),
+        atIndex: 1,
+      );
 
       expect(pushed['type'], 'exercise_push');
       expect(pushed['origin'], 'phone');
@@ -763,7 +739,8 @@ void main() {
       expect(
         _slotIdsIn(session.phone.state['exercises']),
         ['sx-bench', 'sx-pullup', 'sx-squat'],
-        reason: 'the phone applies what it originates, before telling the watch',
+        reason:
+            'the phone applies what it originates, before telling the watch',
       );
     });
 
@@ -793,11 +770,11 @@ void main() {
         phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
       );
       final before = Map<String, Object?>.of(session.phone.state);
-      final v2 = _readJson(
-        '$_protocolRoot/fixtures/reconciliation/version_mismatch.json',
+      final v2 = readProtocolJson(
+        'fixtures/reconciliation/version_mismatch.json',
       );
-      final message = _asObject(
-        _asObject((v2['cases']! as List).last)['message'],
+      final message = asObject(
+        asObject((v2['cases']! as List).last)['message'],
       );
 
       final outcome = await session.phone.receive(message);
@@ -809,24 +786,27 @@ void main() {
       expect(answer['protocolVersion'], SyncProtocolValidator.protocolVersion);
     });
 
-    test('a conformant message for another surface is ignored, not refused', () async {
-      final session = _Session(
-        phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
-      );
-      final before = Map<String, Object?>.of(session.phone.state);
-      final sentBefore = session._phoneTransport.sent.length;
-      final routines = _readJson('$_protocolRoot/fixtures/valid/routines_down.json');
+    test(
+      'a conformant message for another surface is ignored, not refused',
+      () async {
+        final session = _Session(
+          phoneState: _snapshotPayload(exercises: [_slot('sx-bench')]),
+        );
+        final before = Map<String, Object?>.of(session.phone.state);
+        final sentBefore = session._phoneTransport.sent.length;
+        final routines = readProtocolJson('fixtures/valid/routines_down.json');
 
-      final outcome = await session.phone.receive(routines);
+        final outcome = await session.phone.receive(routines);
 
-      expect(outcome, MirrorOutcome.ignored);
-      expect(session.phone.state, equals(before));
-      expect(
-        session._phoneTransport.sent.length,
-        sentBefore,
-        reason: 'nothing to converge, so nothing is sent',
-      );
-    });
+        expect(outcome, MirrorOutcome.ignored);
+        expect(session.phone.state, equals(before));
+        expect(
+          session._phoneTransport.sent.length,
+          sentBefore,
+          reason: 'nothing to converge, so nothing is sent',
+        );
+      },
+    );
 
     test('the watch refuses it and answers with its snapshot', () async {
       final session = _Session(
@@ -837,11 +817,11 @@ void main() {
         exercises: [_slot('sx-bench')],
       );
       await session.deliverEmitted();
-      final v2 = _readJson(
-        '$_protocolRoot/fixtures/reconciliation/version_mismatch.json',
+      final v2 = readProtocolJson(
+        'fixtures/reconciliation/version_mismatch.json',
       );
-      final message = _asObject(
-        _asObject((v2['cases']! as List).last)['message'],
+      final message = asObject(
+        asObject((v2['cases']! as List).last)['message'],
       );
 
       await expectLater(
@@ -857,38 +837,40 @@ void main() {
   group('the reconciliation register drives both engines', () {
     for (final fixture in _replayableFixtures()) {
       final path = fixture['path']! as String;
-      final replay = _asObject(fixture['fixture']);
+      final replay = asObject(fixture['fixture']);
 
       test('phone: $path converges on its expected state', () async {
         final phone = LiveSessionMirrorState(
           transport: _RecordingTransport(),
-          snapshot: _asObject(_asObject(replay['snapshot'])['payload']),
-          validator: _validator(),
+          snapshot: asObject(asObject(replay['snapshot'])['payload']),
+          validator: loadProtocolValidator(),
         );
 
-        for (final message in _objects(replay['stream'])) {
+        for (final message in objectsOf(replay['stream'])) {
           await phone.receive(message);
         }
 
-        expect(phone.state, equals(_asObject(replay['expected'])));
+        expect(phone.state, equals(asObject(replay['expected'])));
       });
 
       test('watch: $path converges on its expected state', () async {
-        final clock = _Clock(DateTime.utc(2026, 7, 13, 6));
+        final clock = TestClock(DateTime.utc(2026, 7, 13, 6));
         var ids = 0;
         final engine = WatchSessionEngine(
           InMemoryWatchSessionStore(),
-          validator: _validator(),
+          validator: loadProtocolValidator(),
           clock: clock.call,
           idFactory: () => 'rec-${++ids}',
           sessionIdFactory: () => 's-replay',
         );
         await engine.restore();
 
-        await engine.applyMessage(_asObject(replay['snapshot']));
-        for (final message in _objects(replay['stream'])) {
+        await engine.applyMessage(asObject(replay['snapshot']));
+        for (final message in objectsOf(replay['stream'])) {
           if (message['type'] == 'observations_up') {
-            for (final event in _objects(_asObject(message['payload'])['events'])) {
+            for (final event in objectsOf(
+              asObject(message['payload'])['events'],
+            )) {
               await engine.appendObservation(event);
             }
           } else {
@@ -896,19 +878,18 @@ void main() {
           }
         }
 
-        final expected = _asObject(replay['expected']);
+        final expected = asObject(replay['expected']);
         final session = engine.session!;
         expect(session.sessionId, expected['sessionId']);
         expect(session.status, expected['status']);
         expect(session.revision, expected['revision']);
         expect(session.currentExerciseIndex, expected['currentExerciseIndex']);
         expect(session.exercises, equals(expected['exercises']));
-        expect(
-          [for (final entry in engine.entries) entry.payload],
-          equals(expected['entries']),
-        );
+        expect([
+          for (final entry in engine.entries) entry.payload,
+        ], equals(expected['entries']));
 
-        final expectedTimers = _asObject(expected['timers']);
+        final expectedTimers = asObject(expected['timers']);
         for (final kind in WatchTimerKind.all) {
           final timer = engine.timerFor(kind);
           if (!expectedTimers.containsKey(kind)) {
@@ -922,7 +903,7 @@ void main() {
           expect(timer, isNotNull, reason: '$kind is expected to be running');
           expect(
             _normalizedTimer(timer!.toTimerJson()),
-            equals(_normalizedTimer(_asObject(expectedTimers[kind]))),
+            equals(_normalizedTimer(asObject(expectedTimers[kind]))),
           );
         }
       });

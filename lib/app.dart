@@ -11,6 +11,7 @@ import 'state/calendar/calendar_state.dart';
 import 'state/period/period_state.dart';
 import 'state/profile/profile_state.dart';
 import 'state/settings/settings_state.dart';
+import 'state/watch/live_session_mirror_state.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/utils/rest_notification_service.dart';
 import 'state/nutrition_state.dart';
@@ -42,6 +43,10 @@ class MyApp extends StatelessWidget {
   final RestNotificationService restNotificationService;
   final AppVersionInfo? appVersionInfo;
 
+  /// The session running on the wrist, when this build has watch sync wired up.
+  /// Null otherwise, and the home panel reserves nothing for it.
+  final LiveSessionMirrorState? liveSession;
+
   MyApp({
     super.key,
     required this.repository,
@@ -61,6 +66,7 @@ class MyApp extends StatelessWidget {
     required this.exerciseLibraryState,
     required this.timerAlertService,
     this.appVersionInfo,
+    this.liveSession,
     RestNotificationService? restNotificationService,
   }) : restNotificationService =
            restNotificationService ?? RestNotificationService.noop();
@@ -152,6 +158,7 @@ class MyApp extends StatelessWidget {
                   nutritionPrimerState: nutritionPrimerState,
                   restNotificationService: restNotificationService,
                   appVersionInfo: appVersionInfo,
+                  liveSession: liveSession,
                 ),
         );
       },

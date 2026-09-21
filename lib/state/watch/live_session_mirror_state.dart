@@ -80,6 +80,9 @@ class LiveSessionMirrorState extends ChangeNotifier {
   final String Function() _newId;
   final SyncSessionReconciler _reconciler;
 
+  /// The session as the phone closed it. Null while it is running.
+  Map<String, Object?>? _completedRecord;
+
   // ---------------------------------------------------------------------------
   // What the surface reads
   // ---------------------------------------------------------------------------
@@ -87,6 +90,38 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// The converged session: structure from this phone, entries from everyone,
   /// timers as wall-clock state.
   Map<String, Object?> get state => _reconciler.convergedState();
+
+  /// The session's identity, as both devices know it.
+  String? get sessionId => state['sessionId'] as String?;
+
+  /// The protocol's status for the session — `active`, `completed`, or
+  /// `abandoned`.
+  String? get status => state['status'] as String?;
+
+  /// Whether the session is still running on the wrist.
+  bool get isActive => status == WatchSessionStatus.active;
+
+  /// Where in the ladder the session is.
+  int get currentExerciseIndex => (state['currentExerciseIndex'] as int?) ?? 0;
+
+  /// The ladder, in session order.
+  List<Map<String, Object?>> get exercises => _objects(state['exercises']);
+
+  /// Every entry either device logged, ordered by wall-clock `loggedAt` then
+  /// `entryId`.
+  List<Map<String, Object?>> get entries => _objects(state['entries']);
+
+  /// The exercise the session is on, or null when the ladder is empty.
+  Map<String, Object?>? get currentExercise {
+    final ladder = exercises;
+    if (ladder.isEmpty) return null;
+    return ladder[currentExerciseIndex.clamp(0, ladder.length - 1)];
+  }
+
+  /// The one merged record the session closed with: every observation from both
+  /// devices, in wall-clock order, whoever logged it. Null until the phone
+  /// closes the session — [completeSession] is what makes it.
+  Map<String, Object?>? get completedRecord => _completedRecord;
 
   /// The wall-clock instant the timer of [kind] reaches zero, or null when
   /// there is no such timer or it counts up.
@@ -125,21 +160,34 @@ class LiveSessionMirrorState extends ChangeNotifier {
       }
     }
 
-    if (!_consumedTypes.contains(envelope['type'])) return MirrorOutcome.ignored;
+    if (!_consumedTypes.contains(envelope['type'])) {
+      return MirrorOutcome.ignored;
+    }
 
     final before = state;
     _reconciler.applyMessage(envelope);
     notifyListeners();
 
-    if (envelope['type'] == 'session_snapshot' && _shapeDiffers(envelope, before)) {
+    if (envelope['type'] == 'session_snapshot' &&
+        _shapeDiffers(envelope, before)) {
       // The watch's ladder is a reflection of the phone's, so it is normally
       // the same. When it is not, the phone has changed shape since the watch
       // last heard, and the watch's copy is the stale one: answer with what the
       // phone holds rather than adopting a ladder nobody asked for.
-      await _transport.send(snapshotEnvelope(state: before));
+      //
+      // A phone that has never held a ladder has no shape to assert, and
+      // asserting an empty one would wipe the wrist's. It adopts the wrist's
+      // instead, which is what makes a session started on the wrist renderable
+      // here at all.
+      if (_holdsLadder(before)) {
+        await _transport.send(snapshotEnvelope(state: before));
+      }
     }
     return MirrorOutcome.applied;
   }
+
+  static bool _holdsLadder(Map<String, Object?> state) =>
+      _objects(state['exercises']).isNotEmpty;
 
   /// The message types that carry live session state. Everything else the
   /// protocol defines is another surface's news: conformant, and none of this
@@ -215,6 +263,13 @@ class LiveSessionMirrorState extends ChangeNotifier {
     return envelope;
   }
 
+  /// The id a slot gets when a searched exercise joins the ladder.
+  ///
+  /// The phone chooses slot ids (PROTOCOL.md, "Exercise identity"), and the id
+  /// has to be stable for the life of the session: entries point at the slot,
+  /// not at the exercise in it.
+  String mintSlotId() => 'sx-${_newId()}';
+
   /// Applies [changes] to the live session and tells the watch.
   ///
   /// [changes] are the protocol's change objects — `add_exercise`,
@@ -230,6 +285,114 @@ class LiveSessionMirrorState extends ChangeNotifier {
     });
     await _sendOwn(envelope);
     return envelope;
+  }
+
+  /// Adds [slot] to the ladder — the phone's own management of the session.
+  ///
+  /// Structure is the phone's to own (PROTOCOL.md, authority rule 2), so this
+  /// is the one device that may do it. [atIndex] is where the user put it;
+  /// null appends, which is where an exercise nobody placed goes.
+  ///
+  /// An exercise the user found by searching the catalog is [pushExercise]
+  /// instead: `exercise_push` carries the position with the slot, and the
+  /// protocol forbids following it with an `add_exercise` for the same slot.
+  Future<Map<String, Object?>> addExercise(
+    Map<String, Object?> slot, {
+    int? atIndex,
+  }) => applyStructureChange([
+    {
+      'kind': 'add_exercise',
+      'exercise': slot,
+      'atIndex': atIndex ?? exercises.length,
+    },
+  ]);
+
+  /// Takes the slot [sessionExerciseId] out of the ladder.
+  ///
+  /// Entries already logged against it stay: history records what happened, not
+  /// what the ladder holds now (PROTOCOL.md, authority rule 5).
+  Future<Map<String, Object?>> removeExercise(String sessionExerciseId) =>
+      applyStructureChange([
+        {'kind': 'remove_exercise', 'sessionExerciseId': sessionExerciseId},
+      ]);
+
+  /// Puts the ladder in [order].
+  ///
+  /// Slots [order] does not name keep their relative order after the ones it
+  /// does, and the session stays on the exercise it was on — a reorder does not
+  /// move the user.
+  Future<Map<String, Object?>> reorderExercises(List<String> order) =>
+      applyStructureChange([
+        {'kind': 'reorder_exercises', 'order': order},
+      ]);
+
+  /// Moves the slot at [index] by [delta] places.
+  ///
+  /// A move is a whole order, not a pair of indices: `reorder_exercises`
+  /// carries the ladder, so both devices end up with the order the user asked
+  /// for rather than inferring it from a swap. A move that would leave the
+  /// ladder, or that starts off it, is not an error — it is a move that cannot
+  /// happen, and nothing is sent.
+  Future<void> moveExercise(int index, int delta) {
+    final order = [
+      for (final slot in exercises) slot['sessionExerciseId']! as String,
+    ];
+    final target = index + delta;
+    if (index < 0 || index >= order.length) return Future<void>.value();
+    if (target < 0 || target >= order.length) return Future<void>.value();
+
+    order.insert(target, order.removeAt(index));
+    return reorderExercises(order);
+  }
+
+  /// Replaces what the slot [sessionExerciseId] holds.
+  ///
+  /// [exercise] is catalog reference data — what the exercise *is*, not where
+  /// it sits — so it carries no slot id. The slot keeps its own, which is what
+  /// leaves entries logged against it pointing at it and the position unmoved.
+  Future<Map<String, Object?>> swapExercise(
+    String sessionExerciseId,
+    Map<String, Object?> exercise,
+  ) => applyStructureChange([
+    {
+      'kind': 'swap_exercise',
+      'sessionExerciseId': sessionExerciseId,
+      'exercise': exercise,
+    },
+  ]);
+
+  /// Fixes an entry the wrist logged — a fat-fingered set, say.
+  ///
+  /// [correction] carries only the metrics being corrected, and the entry
+  /// travels by `entryId`, never by the slot: correcting what was logged must
+  /// not depend on what the slot holds now.
+  Future<Map<String, Object?>> correctEntry(
+    String entryId,
+    Map<String, Object?> correction,
+  ) => applyStructureChange([
+    {'kind': 'correct_entry', 'entryId': entryId, 'correction': correction},
+  ]);
+
+  /// Deletes an entry the wrist logged.
+  Future<Map<String, Object?>> deleteEntry(String entryId) =>
+      applyStructureChange([
+        {'kind': 'delete_entry', 'entryId': entryId},
+      ]);
+
+  /// Closes the session from the phone and hands back the merged record.
+  ///
+  /// The record is made once: the wrist is told the session completed a single
+  /// time, and a second tap on Finish returns the same record rather than
+  /// producing a second session. Entries are ordered by wall-clock `loggedAt`,
+  /// so the record reads the same whichever device logged what.
+  Future<Map<String, Object?>> completeSession() async {
+    final closed = _completedRecord;
+    if (closed != null) return closed;
+
+    await reportLifecycle(WatchLifecycleState.completed);
+    _completedRecord = Map<String, Object?>.of(state);
+    notifyListeners();
+    return _completedRecord!;
   }
 
   /// Reports a lifecycle change — the session completed on the phone, say.
@@ -287,7 +450,10 @@ class LiveSessionMirrorState extends ChangeNotifier {
   /// two devices build the same shape in different orders — and a comparison
   /// that disagreed about key order would answer a snapshot with an identical
   /// one, for ever.
-  bool _shapeDiffers(Map<String, Object?> envelope, Map<String, Object?> local) {
+  bool _shapeDiffers(
+    Map<String, Object?> envelope,
+    Map<String, Object?> local,
+  ) {
     final payload = _asObject(envelope['payload']);
     for (final field in const [
       'sessionId',
