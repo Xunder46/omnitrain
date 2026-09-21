@@ -171,6 +171,29 @@ timer state as a whole; kinds it omits are cleared.
 - Between snapshots, incremental messages keep the two sides aligned. A device
   that reconnects MUST resume from the last snapshot it reconciled, then replay
   the observations it accumulated while apart.
+- A device MAY ask its peer for a snapshot at any time — joining a session that
+  is already running, or resuming after a reconnect. The request is a transport
+  concern and carries no message of its own; the answer MUST be a
+  `session_snapshot`. A device with no session to report answers nothing: an
+  empty session is not a state, and a device that has logged nothing is not
+  the authority on anything.
+  Verified by `test/live_mirroring_test.dart` (`S-006 joining an in-progress
+  phone session from the watch`, `S-009 a sessionless watch answers a snapshot
+  request with nothing`) and by watchOS
+  `WatchLiveMirroringTests.testASnapshotRequestIsAnsweredOnce` and
+  `WatchLiveMirroringTests.testASessionlessWatchAnswersNothing`.
+- A snapshot MUST NOT be answered with a snapshot that says the same thing:
+  agreeing peers stay silent, or two connected devices would answer each other
+  for ever. This is the phone's rule to apply, and it applies to the phone
+  alone: structure is the phone's to own (authority rule 2), so when a watch
+  snapshot reports a different session shape the phone answers with the shape it
+  held, and a watch never answers a snapshot at all — its ladder is the phone's
+  reflection, and a watch that re-asserted one would be originating structure.
+  Entries are not part of this comparison: they merge by `entryId`, so an entry
+  one side lacks is a convergence in progress rather than a disagreement.
+  Verified by `test/live_mirroring_test.dart` (`S-008 a snapshot the phone
+  disagrees with is answered with its own`) and by watchOS
+  `WatchLiveMirroringTests.testPendingObservationsSurviveARelaunchAndClearOnTheSnapshotsReceipt`.
 - Concurrent edits are resolved by authority, not by last-write-wins: structure
   comes from the phone, entries come from whoever logged them.
 - Lifecycle messages are applied in the order received, and the most recent
@@ -241,11 +264,17 @@ fixtures MUST be rejected with the code and reason the manifest states, and
 every reconciliation fixture MUST converge on its `expected` state.
 
 - **Phone (Flutter).** `test/sync_protocol_fixtures_test.dart` walks the
-  manifest and covers all three. The standing `flutter test` gate runs it, so it
-  also runs as part of the pre-release check.
+  manifest and covers all three. `test/live_mirroring_test.dart` replays the
+  same register through the phone's live mirror
+  (`lib/state/watch/live_session_mirror_state.dart`) and through the Wear OS
+  watch engine, which is what keeps "the phone's half" and "the watch's half"
+  of the apply rules from drifting apart. The standing `flutter test` gate runs
+  both, so they also run as part of the pre-release check.
 - **watchOS.** The Swift package that owns the watch-side sync client MUST load
   the same JSON from this directory and re-run the conformance and
-  reconciliation cases in XCTest.
+  reconciliation cases in XCTest: `SyncProtocolFixturesTests.swift` for
+  conformance, `WatchLiveMirroringTests.swift` for the watch engine's half of
+  the reconciliation.
 - **Wear OS.** The Kotlin module MUST do the same in JUnit, using the repository
   copy of `fixtures/manifest.json`.
 

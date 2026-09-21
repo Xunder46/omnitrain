@@ -1,10 +1,14 @@
 // Watch↔phone sync protocol conformance gate.
 //
-// This is not a behaviour test for the live app — the app has no watch sync
-// implementation yet. It validates the platform-neutral contract specified by
+// This validates the platform-neutral contract specified by
 // `watch/sync_protocol/PROTOCOL.md`, which the native watchOS client and the
-// Flutter Wear OS client consume from the very same JSON fixtures. The
-// fixtures are read from the repository, not from an asset bundle, so the
+// Flutter Wear OS client consume from the very same JSON fixtures. It is not a
+// behaviour test for a client: the *apply* rules each client implements are
+// exercised by `test/live_mirroring_test.dart` (phone mirror + Wear OS engine)
+// and by the watchOS suite's `WatchLiveMirroringTests`. What this gate owns is
+// the register itself — every fixture in the manifest validates, every invalid
+// one is rejected as stated, and the spec's normative sentences are present.
+// The fixtures are read from the repository, not from an asset bundle, so the
 // tests fail first if the spec or the fixtures drift.
 //
 // Scenario mapping (plan: 2026-07-13-05-pr4-watch-phone-sync-protocol-plan.md):

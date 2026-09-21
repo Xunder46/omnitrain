@@ -29,15 +29,26 @@ import '../start/watch_sync_orchestrator.dart';
 const bool watchStartDebugEnabled = bool.fromEnvironment('WATCH_START_DEBUG');
 
 /// A transport with a switch where the radio would be: it answers nothing and
-/// reports what the toggle says.
+/// reports what the toggle says. A desktop run has no way to carry a message,
+/// so what the watch owes the phone is kept where a real transport would have
+/// put it — in flight, undelivered.
 class _DebugTransport implements WatchSyncTransport {
   _DebugTransport(this.isPhoneReachable);
 
   @override
   bool isPhoneReachable;
 
+  /// What the watch handed over, in order.
+  final List<Map<String, Object?>> sent = [];
+
   @override
   Future<void> requestRoutines({DateTime? since}) async {}
+
+  @override
+  Future<void> requestSnapshot() async {}
+
+  @override
+  Future<void> send(Map<String, Object?> envelope) async => sent.add(envelope);
 }
 
 /// Two routines and the fallback list that covers them, shaped exactly as the
@@ -175,7 +186,10 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
   final WatchSessionStore _store = InMemoryWatchSessionStore();
   final _DebugTransport _transport = _DebugTransport(false);
 
-  late final WatchSessionEngine _engine = WatchSessionEngine(_store);
+  late final WatchSessionEngine _engine = WatchSessionEngine(
+    _store,
+    onEmit: _transport.send,
+  );
   late final WatchSessionStartPaths _paths = WatchSessionStartPaths(
     engine: _engine,
     store: _store,
@@ -200,6 +214,15 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
     if (mounted) setState(() {});
   }
 
+  /// What the watch handed to the radio, in order. A desktop run carries
+  /// nothing, so this line is the only way to see what a real transport would
+  /// have been given.
+  String get _handedOver {
+    if (_transport.sent.isEmpty) return 'Nothing handed over yet.';
+    final types = _transport.sent.map((envelope) => envelope['type']).join(', ');
+    return 'Handed over: $types';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,10 +239,18 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
               dense: true,
               title: const Text('Phone reachable'),
               value: _transport.isPhoneReachable,
-              onChanged: (reachable) {
-                setState(() => _transport.isPhoneReachable = reachable);
-                _orchestrator.sync(reconnect: true);
+              onChanged: (reachable) async {
+                _transport.isPhoneReachable = reachable;
+                await _orchestrator.sync(reconnect: true);
+                if (mounted) setState(() {});
               },
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text(
+                _handedOver,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
           ],
         ),
@@ -230,9 +261,8 @@ class _WatchStartDebugHarnessState extends State<_WatchStartDebugHarness> {
   void _openLogging(WatchSessionRecord session) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => WatchLoggingScreen(
-          state: WatchLoggingState(engine: _engine),
-        ),
+        builder: (context) =>
+            WatchLoggingScreen(state: WatchLoggingState(engine: _engine)),
       ),
     );
   }

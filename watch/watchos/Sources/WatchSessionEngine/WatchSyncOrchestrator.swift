@@ -32,6 +32,14 @@ public protocol WatchSyncTransport: AnyObject {
     /// `since`. The reply arrives through `WatchSyncOrchestrator.receive` — this
     /// call carries no payload of its own.
     func requestRoutines(since: Date?) async
+
+    /// Asks the phone for a `session_snapshot`. The reply arrives through
+    /// `WatchSyncOrchestrator.receive`, exactly as a `routines_down` reply does.
+    func requestSnapshot() async
+
+    /// Hands the phone one message the watch owes it — an observation, a timer,
+    /// a lifecycle change, or the watch's own session snapshot.
+    func send(_ envelope: [String: Any]) async
 }
 
 public final class WatchSyncOrchestrator {
@@ -49,30 +57,65 @@ public final class WatchSyncOrchestrator {
         self.engine = engine
     }
 
-    /// Pulls the routines: everything on a first connect, what changed after one.
+    /// Brings the watch up to date with the phone: the routines, and then the
+    /// session state the two devices do not share yet.
     ///
     /// Call on connect and on reconnect. It never throws: a watch that cannot
     /// reach the phone keeps the routines it has, which is the whole point of
     /// syncing proactively.
+    ///
+    /// The watch re-sends every observation the phone has not acknowledged —
+    /// rebuilt from storage rather than from a queue, so a relaunch re-sends the
+    /// same identifiers and the phone deduplicates them (S-003). It asks for a
+    /// snapshot when it has no session to converge on (joining a phone session),
+    /// and hands over its own when it has one, which is the exchange the
+    /// protocol asks of both devices on connect.
     public func sync(reconnect: Bool = false) async {
         paths.phoneReachable = transport.isPhoneReachable
         await transport.requestRoutines(since: reconnect ? paths.syncedAt : nil)
+
+        for message in engine.pendingObservations() {
+            await transport.send(message)
+        }
+
+        if engine.session == nil {
+            await transport.requestSnapshot()
+        } else {
+            await answerSnapshotRequest()
+        }
+    }
+
+    /// Answers a snapshot request from the phone with the watch's live session.
+    ///
+    /// A watch with nothing logged has nothing authoritative to report, so the
+    /// request goes unanswered rather than answered with an empty session.
+    public func answerSnapshotRequest() async {
+        guard let snapshot = engine.sessionSnapshot() else { return }
+        await transport.send(snapshot)
     }
 
     /// Routes an arriving message to whoever owns it.
     ///
     /// Returns what the message changed, or false when the watch has no use for
-    /// it — a conformant message for another item's surface, say. A message the
-    /// watch cannot read throws, and nothing is applied: a peer speaking another
-    /// protocol version must not half-edit a live session.
+    /// it — a conformant message for another item's surface, say, or reference
+    /// data already older than the cached catalog. A message the watch cannot
+    /// read is refused whole, nothing is applied, and the phone is answered with
+    /// the watch's snapshot so it converges from what the wrist actually holds
+    /// (PROTOCOL.md, "Versioning policy"). The refusal is still reported,
+    /// because a caller needs to know its session was not advanced.
     @discardableResult
     public func receive(_ envelope: [String: Any]) async throws -> Bool {
         switch envelope["type"] as? String {
         case "routines_down":
             return await paths.applyRoutinesDown(envelope).applied
-        case "exercise_push":
-            _ = try await engine.applyExercisePush(envelope)
-            return true
+        case "exercise_push", "session_snapshot", "structure_change",
+             "session_lifecycle", "timer_state", "observations_up":
+            do {
+                return try await engine.applyMessage(envelope)
+            } catch {
+                await answerSnapshotRequest()
+                throw error
+            }
         default:
             return false
         }

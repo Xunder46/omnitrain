@@ -99,6 +99,11 @@ public struct WatchSessionRecord {
     public let currentExerciseIndex: Int
     public let exercises: [[String: Any]]
 
+    /// The phone's structure counter — bumped by one per applied structure
+    /// change, so the two devices can tell at a glance whether they are looking
+    /// at the same session shape. Zero until a snapshot says otherwise.
+    public let revision: Int
+
     public init(
         recordId: String,
         sessionId: String,
@@ -109,6 +114,7 @@ public struct WatchSessionRecord {
         status: String,
         currentExerciseIndex: Int,
         exercises: [[String: Any]] = [],
+        revision: Int = 0,
         sequence: Int = 0
     ) {
         self.recordId = recordId
@@ -121,6 +127,7 @@ public struct WatchSessionRecord {
         self.status = status
         self.currentExerciseIndex = currentExerciseIndex
         self.exercises = exercises
+        self.revision = revision
     }
 
     public var currentExercise: [String: Any]? {
@@ -139,6 +146,7 @@ public struct WatchSessionRecord {
             status: status,
             currentExerciseIndex: currentExerciseIndex,
             exercises: exercises,
+            revision: revision,
             sequence: sequence
         )
     }
@@ -156,6 +164,7 @@ public struct WatchSessionRecord {
             "status": status,
             "currentExerciseIndex": currentExerciseIndex,
             "exercises": exercises,
+            "revision": revision,
         ]
     }
 
@@ -170,6 +179,7 @@ public struct WatchSessionRecord {
             status: try requiredString(json, "status"),
             currentExerciseIndex: (json["currentExerciseIndex"] as? NSNumber)?.intValue ?? 0,
             exercises: (json["exercises"] as? [[String: Any]]) ?? [],
+            revision: (json["revision"] as? NSNumber)?.intValue ?? 0,
             sequence: (json["sequence"] as? NSNumber)?.intValue ?? 0
         )
     }
@@ -224,6 +234,20 @@ public struct WatchObservationRecord {
 
     /// The same observation, carrying the phone's receipt.
     public func withConfirmation(_ confirmedAt: Date) -> WatchObservationRecord {
+        WatchObservationRecord(
+            recordId: recordId,
+            sessionId: sessionId,
+            recordedAt: recordedAt,
+            kind: kind,
+            payload: payload,
+            confirmedAt: confirmedAt,
+            sequence: sequence
+        )
+    }
+
+    /// The same observation carrying `payload` — how a correction the phone sent
+    /// reaches the surface without rewriting the stored row.
+    public func withPayload(_ payload: [String: Any]) -> WatchObservationRecord {
         WatchObservationRecord(
             recordId: recordId,
             sessionId: sessionId,

@@ -90,10 +90,24 @@ class _Transport implements WatchSyncTransport {
 
   final List<DateTime?> requested = [];
 
+  /// What the watch handed over: observations, timers, and snapshots.
+  final List<Map<String, Object?>> sent = [];
+
+  /// How many times the watch asked for a session snapshot.
+  int snapshotRequests = 0;
+
   @override
   Future<void> requestRoutines({DateTime? since}) async {
     requested.add(since);
   }
+
+  @override
+  Future<void> requestSnapshot() async {
+    snapshotRequests++;
+  }
+
+  @override
+  Future<void> send(Map<String, Object?> envelope) async => sent.add(envelope);
 }
 
 /// A watch: one engine, its start paths, and the orchestrator that keeps them

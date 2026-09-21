@@ -105,6 +105,7 @@ final class WatchSessionRecord extends WatchRecord {
     required this.status,
     required this.currentExerciseIndex,
     this.exercises = const [],
+    this.revision = 0,
     super.sequence,
   });
 
@@ -128,6 +129,11 @@ final class WatchSessionRecord extends WatchRecord {
   /// The session's exercise slots, as the protocol's `sessionExercise` objects.
   final List<Map<String, Object?>> exercises;
 
+  /// The phone's structure counter — bumped by one per applied structure
+  /// change, so the two devices can tell at a glance whether they are looking
+  /// at the same session shape. Zero until a snapshot says otherwise.
+  final int revision;
+
   Map<String, Object?>? get currentExercise => exercises.isEmpty
       ? null
       : exercises[currentExerciseIndex.clamp(0, exercises.length - 1)];
@@ -146,6 +152,7 @@ final class WatchSessionRecord extends WatchRecord {
     status: status,
     currentExerciseIndex: currentExerciseIndex,
     exercises: exercises,
+    revision: revision,
     sequence: sequence,
   );
 
@@ -162,6 +169,7 @@ final class WatchSessionRecord extends WatchRecord {
     'status': status,
     'currentExerciseIndex': currentExerciseIndex,
     'exercises': exercises,
+    'revision': revision,
   };
 
   static WatchSessionRecord fromJson(Map<String, Object?> json) =>
@@ -177,6 +185,7 @@ final class WatchSessionRecord extends WatchRecord {
         exercises: ((json['exercises'] as List?) ?? const [])
             .map(asJsonObject)
             .toList(growable: false),
+        revision: (json['revision'] as int?) ?? 0,
         sequence: (json['sequence'] as int?) ?? 0,
       );
 }
@@ -221,6 +230,19 @@ final class WatchObservationRecord extends WatchRecord {
   /// The same observation, carrying the phone's [confirmedAt] receipt.
   WatchObservationRecord withConfirmation(DateTime confirmedAt) =>
       _copy(confirmedAt: confirmedAt, sequence: sequence);
+
+  /// The same observation carrying [payload] — how a correction the phone sent
+  /// reaches the surface without rewriting the stored row.
+  WatchObservationRecord withPayload(Map<String, Object?> payload) =>
+      WatchObservationRecord(
+        recordId: recordId,
+        sessionId: sessionId,
+        recordedAt: recordedAt,
+        kind: kind,
+        payload: payload,
+        confirmedAt: confirmedAt,
+        sequence: sequence,
+      );
 
   WatchObservationRecord _copy({DateTime? confirmedAt, int? sequence}) =>
       WatchObservationRecord(

@@ -65,6 +65,15 @@ class WatchSessionEngine {
 
   static const Uuid _uuidV4 = Uuid();
 
+  /// Record-id prefixes for the rows a message from the phone writes. The id is
+  /// derived from the `changeId` (or `messageId`) that caused the row, which is
+  /// what makes re-delivery a store no-op *and* what lets [restore] rebuild
+  /// "already applied" from storage instead of from memory.
+  static const String _changePrefix = 'chg-';
+  static const String _snapshotPrefix = 'snap-';
+  static const String _timerPrefix = 'tms-';
+  static const String _lifecyclePrefix = 'life-';
+
   static DateTime _utcNow() => DateTime.now().toUtc();
 
   static String _uuid() => _uuidV4.v4();
@@ -83,6 +92,17 @@ class WatchSessionEngine {
   final List<WatchSessionRecord> _sessionRows = [];
   final List<WatchObservationRecord> _observations = [];
   final List<WatchTimerRecord> _timers = [];
+
+  /// The structure changes this watch has already applied, by `changeId`.
+  /// Rebuilt from storage by [restore], so a relaunch cannot apply one twice
+  /// (PROTOCOL.md, authority rule 6).
+  final Set<String> _appliedChangeIds = {};
+
+  /// The phone's corrections to entries the watch holds, keyed by `entryId`,
+  /// and the ones it deleted. The stored row is never rewritten — these are
+  /// what [entries] folds in.
+  final Map<String, Map<String, Object?>> _entryCorrections = {};
+  final Set<String> _deletedEntryIds = {};
 
   WatchSessionRecord? _session;
 
@@ -112,6 +132,14 @@ class WatchSessionEngine {
         : contents.sessions.reduce(
             (latest, row) => row.sequence > latest.sequence ? row : latest,
           );
+
+    _appliedChangeIds
+      ..clear()
+      ..addAll([
+        for (final row in contents.sessions)
+          if (row.recordId.startsWith(_changePrefix))
+            row.recordId.substring(_changePrefix.length),
+      ]);
   }
 
   // ---------------------------------------------------------------------------
@@ -132,6 +160,61 @@ class WatchSessionEngine {
 
   /// The newest row for [kind], which is the timer that applies.
   WatchTimerRecord? timerFor(String kind) => _newestTimer(kind: kind);
+
+  /// The session's entries as the wrist shows them: the watch's own log plus
+  /// the entries the phone sent, with the phone's corrections folded in and its
+  /// deletions dropped, in the order they were logged.
+  ///
+  /// [observations] is the log as appended — nothing in it is ever rewritten.
+  /// A correction is therefore a projection, not an edit, which is what keeps
+  /// the store append-only and the phone the only side that can edit history.
+  List<WatchObservationRecord> get entries {
+    final projected = <WatchObservationRecord>[
+      for (final observation in observations)
+        if (!_deletedEntryIds.contains(observation.entryId))
+          switch (_entryCorrections[observation.entryId]) {
+            null => observation,
+            final correction => observation.withPayload({
+              ...observation.payload,
+              ...correction,
+            }),
+          },
+    ];
+    projected.sort(_byLoggedAtThenEntryId);
+    return List.unmodifiable(projected);
+  }
+
+  /// The watch's live session as the phone's mirror reads it — the answer to a
+  /// snapshot request. Null when the watch has no session to report.
+  ///
+  /// Entries travel as [entries], so a correction the phone sent is not echoed
+  /// back as the original, and timers travel as wall-clock state: the phone
+  /// derives remaining time from its own clock (PROTOCOL.md, "Timer state").
+  Map<String, Object?>? sessionSnapshot({String? messageId}) {
+    final session = _session;
+    if (session == null) return null;
+
+    final envelope = <String, Object?>{
+      'protocolVersion': SyncProtocolValidator.protocolVersion,
+      'messageId':
+          messageId ?? _messageIdFor('snapshot-${session.recordId}'),
+      'sessionId': session.sessionId,
+      'type': 'session_snapshot',
+      'origin': 'watch',
+      'sentAt': utcIso(_clock()),
+      'payload': <String, Object?>{
+        'sessionId': session.sessionId,
+        'revision': session.revision,
+        'status': session.status,
+        'currentExerciseIndex': session.currentExerciseIndex,
+        'exercises': session.exercises,
+        'entries': [for (final entry in entries) entry.payload],
+        'timers': _timersJson(),
+      },
+    };
+    _requireConformant(envelope);
+    return envelope;
+  }
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -216,23 +299,19 @@ class WatchSessionEngine {
       return session;
     }
 
-    final index = (atIndex ?? session.exercises.length).clamp(
-      0,
+    final index = _insertionIndex(
+      atIndex ?? session.exercises.length,
       session.exercises.length,
     );
     final exercises = [...session.exercises]..insert(index, slot);
 
-    // The position follows the exercise, not the index: a slot inserted at or
-    // before the current one pushes the current one along with it. Computed
-    // rather than searched for, so there is no not-found case to fall back from.
-    final nextIndex = moveTo || session.exercises.isEmpty
-        ? index
-        : (session.currentExerciseIndex >= index
-              ? session.currentExerciseIndex + 1
-              : session.currentExerciseIndex);
-
     return _transitionTo(
-      currentExerciseIndex: nextIndex,
+      currentExerciseIndex: _positionAfterInsert(
+        currentIndex: session.currentExerciseIndex,
+        insertedAt: index,
+        moveTo: moveTo,
+        wasEmpty: session.exercises.isEmpty,
+      ),
       exercises: exercises,
       lifecycle: null,
     );
@@ -251,6 +330,576 @@ class WatchSessionEngine {
       asJsonObject(payload['exercise']),
       atIndex: payload['insertAtIndex']! as int,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Messages from the phone
+  // ---------------------------------------------------------------------------
+
+  /// Applies one message from the phone to the live session.
+  ///
+  /// This is the watch's half of the reconciliation contract: the same messages
+  /// the phone's reference reconciler
+  /// (`lib/core/sync_protocol/session_reconciler.dart`) applies, applied to the
+  /// append-only store instead of to memory. Applying the same message twice
+  /// changes nothing — structure changes are keyed by `changeId`, and every
+  /// row a message writes carries an id derived from the message itself.
+  ///
+  /// Returns true when the message changed something the watch holds, false
+  /// when it had nothing for this session (reference data, or an observation —
+  /// which only ever travels the other way). A message the watch cannot read is
+  /// refused whole: [WatchEmissionRejected] is thrown and nothing is applied.
+  Future<bool> applyMessage(Map<String, Object?> envelope) async {
+    switch (envelope['type']) {
+      case 'session_snapshot':
+        _requireConformingIncoming(envelope);
+        return _applySnapshot(envelope);
+      case 'structure_change':
+        _requireConformingIncoming(envelope);
+        return _applyStructureChange(envelope);
+      case 'session_lifecycle':
+        _requireConformingIncoming(envelope);
+        return _applyLifecycle(envelope);
+      case 'timer_state':
+        _requireConformingIncoming(envelope);
+        return _applyTimerState(envelope);
+      case 'exercise_push':
+        final before = _session;
+        final after = await applyExercisePush(envelope);
+        return !identical(before, after);
+      case 'observations_up':
+        // The watch's own product; a phone has no business sending one. It is
+        // still read, so a peer speaking another version is refused here rather
+        // than quietly ignored (PROTOCOL.md, "Versioning policy").
+        _requireConformingIncoming(envelope);
+        return false;
+      default:
+        return false;
+    }
+  }
+
+  /// A snapshot replaces structure, status, position, revision, and timer state;
+  /// entries merge by `entryId` (PROTOCOL.md, "Idempotency and reconciliation").
+  ///
+  /// Merging is what makes a wrist log survive the phone's snapshot: an
+  /// observation the phone has not seen is still the watch's, and the entries
+  /// the snapshot carries are the phone's — stored here as confirmed, because
+  /// the phone obviously has them. The snapshot is also the receipt for
+  /// observations it does carry: the watch may drop them.
+  Future<bool> _applySnapshot(Map<String, Object?> envelope) async {
+    final payload = asJsonObject(envelope['payload']);
+    final sessionId = payload['sessionId']! as String;
+    final exercises = [
+      for (final slot in payload['exercises']! as List) asJsonObject(slot),
+    ];
+    final entryMaps = [
+      for (final entry in payload['entries']! as List) asJsonObject(entry),
+    ];
+    final sentAt = parseUtcIso(envelope['sentAt']);
+    final messageId = envelope['messageId']! as String;
+    final existing = _session?.sessionId == sessionId ? _session : null;
+
+    final row = WatchSessionRecord(
+      recordId: '$_snapshotPrefix$messageId',
+      sessionId: sessionId,
+      recordedAt: sentAt,
+      startedAt:
+          existing?.startedAt ?? _startedAtOf(entryMaps, fallback: sentAt),
+      modality: existing?.modality,
+      source: existing?.source ?? 'phone',
+      status: payload['status']! as String,
+      currentExerciseIndex: _clampIndex(
+        payload['currentExerciseIndex']! as int,
+        exercises.length,
+      ),
+      exercises: exercises,
+      revision: payload['revision']! as int,
+    );
+    await _appendSessionRow(row, lifecycle: null);
+
+    for (final entry in entryMaps) {
+      await _storeSnapshotEntry(sessionId, entry);
+    }
+    await confirmObservations([
+      for (final entry in entryMaps) entry['entryId']! as String,
+    ]);
+    await _adoptTimers(
+      asJsonObject(payload['timers']),
+      sessionId: sessionId,
+      messageId: messageId,
+      recordedAt: sentAt,
+      authoritative: true,
+    );
+    return true;
+  }
+
+  /// Applies one structure change: the ladder, the position that follows from
+  /// it, and the phone's corrections to entries the watch holds.
+  ///
+  /// A slot that is already present is left alone (a re-delivered push must not
+  /// duplicate it), a removed slot never takes its entries with it, and a swap
+  /// keeps the slot's id so entries logged against it still point at it.
+  Future<bool> _applyStructureChange(Map<String, Object?> envelope) async {
+    final payload = asJsonObject(envelope['payload']);
+    final changeId = payload['changeId']! as String;
+    final session = _session;
+    if (session == null) return false; // structure without a session is nothing
+    if (!_appliedChangeIds.add(changeId)) return false;
+
+    final ladder = _ladderAfter(
+      session.exercises,
+      session.currentExerciseIndex,
+      [for (final change in payload['changes']! as List) asJsonObject(change)],
+    );
+
+    await _appendSessionRow(
+      WatchSessionRecord(
+        recordId: '$_changePrefix$changeId',
+        sessionId: session.sessionId,
+        recordedAt: _clock(),
+        startedAt: session.startedAt,
+        modality: session.modality,
+        source: session.source,
+        status: session.status,
+        currentExerciseIndex: ladder.index,
+        exercises: ladder.exercises,
+        revision: session.revision + 1,
+      ),
+      lifecycle: null,
+    );
+    return true;
+  }
+
+  /// Applies a lifecycle message from the phone: the most recent status wins,
+  /// and an advanced position clamps to the ladder (PROTOCOL.md, "Idempotency
+  /// and reconciliation").
+  ///
+  /// Nothing is echoed back — the phone is telling the watch what it decided,
+  /// and answering it with the same news would be noise.
+  Future<bool> _applyLifecycle(Map<String, Object?> envelope) async {
+    final session = _session;
+    if (session == null) return false;
+
+    final payload = asJsonObject(envelope['payload']);
+    final state = payload['state']! as String;
+    final status = switch (state) {
+      WatchLifecycleState.started => WatchSessionStatus.active,
+      WatchLifecycleState.completed => WatchSessionStatus.completed,
+      WatchLifecycleState.abandoned => WatchSessionStatus.abandoned,
+      _ => session.status,
+    };
+    final index = state == WatchLifecycleState.exerciseAdvanced
+        ? _clampIndex(payload['exerciseIndex']! as int, session.exercises.length)
+        : session.currentExerciseIndex;
+
+    await _appendSessionRow(
+      WatchSessionRecord(
+        recordId: '$_lifecyclePrefix${envelope['messageId']}',
+        sessionId: session.sessionId,
+        recordedAt: parseUtcIso(envelope['sentAt']),
+        startedAt: session.startedAt,
+        modality: session.modality,
+        source: session.source,
+        status: status,
+        currentExerciseIndex: index,
+        exercises: session.exercises,
+        revision: session.revision,
+      ),
+      lifecycle: null,
+    );
+    return true;
+  }
+
+  /// Applies an incremental timer update: the kinds it names are adopted or
+  /// cleared, the kinds it does not name are left alone (PROTOCOL.md, "Timer
+  /// state"). Only a snapshot is authoritative for timer state as a whole.
+  Future<bool> _applyTimerState(Map<String, Object?> envelope) async {
+    final session = _session;
+    if (session == null) return false;
+    final payload = asJsonObject(envelope['payload']);
+    return _adoptTimers(
+      asJsonObject(payload['timers']),
+      sessionId: envelope['sessionId']! as String,
+      messageId: envelope['messageId']! as String,
+      recordedAt: parseUtcIso(envelope['sentAt']),
+      authoritative: false,
+    );
+  }
+
+  /// Adopts [timers] as the rows that apply. A kind the message names as `null`
+  /// is cleared; a kind it does not name keeps whatever it had, unless the
+  /// message is a snapshot — only a snapshot is authoritative for timer state
+  /// as a whole (PROTOCOL.md, "Timer state").
+  ///
+  /// Every row's id is derived from the message that named it, so re-delivery is
+  /// a no-op and a relaunch cannot tell the difference.
+  Future<bool> _adoptTimers(
+    Map<String, Object?> timers, {
+    required String sessionId,
+    required String messageId,
+    required DateTime recordedAt,
+    required bool authoritative,
+  }) async {
+    var changed = false;
+    for (final kind in WatchTimerKind.all) {
+      final recordId = '$_timerPrefix$messageId-$kind';
+      final action = _timerActionFor(
+        timers,
+        kind: kind,
+        authoritative: authoritative,
+      );
+      switch (action) {
+        case _TimerAction.leaveAlone:
+          continue;
+        case _TimerAction.stop:
+          changed |= await _stopTimerFromMessage(
+            kind,
+            sessionId: sessionId,
+            recordId: recordId,
+            stoppedAt: recordedAt,
+          );
+        case _TimerAction.adopt:
+          changed |= await _adoptTimer(
+            asJsonObject(timers[kind]),
+            sessionId,
+            recordId: recordId,
+            recordedAt: recordedAt,
+          );
+      }
+    }
+    return changed;
+  }
+
+  /// What [timers] says about one kind: unnamed means "leave it" for an
+  /// incremental message and "stop it" for a snapshot, and a named `null` means
+  /// "stop it" either way.
+  static _TimerAction _timerActionFor(
+    Map<String, Object?> timers, {
+    required String kind,
+    required bool authoritative,
+  }) {
+    if (!timers.containsKey(kind)) {
+      return authoritative ? _TimerAction.stop : _TimerAction.leaveAlone;
+    }
+    return timers[kind] == null ? _TimerAction.stop : _TimerAction.adopt;
+  }
+
+  /// A timer the phone told the watch about. It is not news back to the phone,
+  /// so nothing is emitted: the phone already decided this.
+  Future<bool> _adoptTimer(
+    Map<String, Object?> timer,
+    String sessionId, {
+    required String recordId,
+    required DateTime recordedAt,
+  }) async {
+    if (_timers.any((row) => row.recordId == recordId)) return false;
+
+    final stored = await _store.append(
+      WatchTimerRecord(
+        recordId: recordId,
+        sessionId: sessionId,
+        recordedAt: recordedAt,
+        kind: timer['kind']! as String,
+        startedAt: parseUtcIso(timer['startedAt']),
+        pausedAt: parseOptionalUtcIso(timer['pausedAt']),
+        stoppedAt: parseOptionalUtcIso(timer['stoppedAt']),
+        accumulatedPauseMs: (timer['accumulatedPauseMs'] as int?) ?? 0,
+        plannedDurationMs: timer['plannedDurationMs'] as int?,
+      ),
+    );
+    _timers.add(stored);
+    return true;
+  }
+
+  /// Stops the newest timer of [kind] by appending its stopped version — the
+  /// row that was running is never rewritten.
+  ///
+  /// The protocol calls this clearing a timer, but nothing here clears
+  /// anything: a timer advances by append like every other synced record, and a
+  /// store whose contract forbids mutation deserves method names that say so.
+  Future<bool> _stopTimerFromMessage(
+    String kind, {
+    required String sessionId,
+    required String recordId,
+    required DateTime stoppedAt,
+  }) async {
+    final timer = _newestTimer(kind: kind);
+    if (timer == null || timer.state == WatchTimerState.stopped) return false;
+    if (timer.sessionId != sessionId) return false;
+    if (_timers.any((row) => row.recordId == recordId)) return false;
+
+    final stored = await _store.append(
+      _timerRowFrom(
+        timer,
+        recordId: recordId,
+        recordedAt: stoppedAt,
+        stoppedAt: stoppedAt,
+      ),
+    );
+    _timers.add(stored);
+    return true;
+  }
+
+  /// Stores an entry the phone sent, in the shape the wrist shows it. Nothing
+  /// is emitted: the phone is the source, and the receipt is [entries].
+  Future<void> _storeSnapshotEntry(
+    String sessionId,
+    Map<String, Object?> entry,
+  ) async {
+    final entryId = entry['entryId']! as String;
+    if (_observations.any((row) => row.recordId == entryId)) return;
+
+    final stored = await _store.append(
+      WatchObservationRecord(
+        recordId: entryId,
+        sessionId: sessionId,
+        recordedAt: parseUtcIso(entry['loggedAt']),
+        kind: entry['kind']! as String,
+        payload: entry,
+      ),
+    );
+    _observations.add(stored);
+  }
+
+  /// The session's entries in [entryMaps], oldest first — the moment the session
+  /// began, as far as a snapshot can say. Falls back to when the snapshot was
+  /// sent when it carries no entries.
+  static DateTime _startedAtOf(
+    List<Map<String, Object?>> entryMaps, {
+    required DateTime fallback,
+  }) {
+    DateTime? earliest;
+    for (final entry in entryMaps) {
+      final loggedAt = parseUtcIso(entry['loggedAt']);
+      if (earliest == null || loggedAt.isBefore(earliest)) earliest = loggedAt;
+    }
+    return earliest ?? fallback;
+  }
+
+  /// The ladder and position the changes so far have left behind.
+  ///
+  /// One change kind touches the ladder and the rest touch entries, so the pair
+  /// travels together and only the ladder kinds rebuild it.
+  ({List<Map<String, Object?>> exercises, int index}) _ladderAfter(
+    List<Map<String, Object?>> exercises,
+    int index,
+    List<Map<String, Object?>> changes,
+  ) {
+    var ladder = (exercises: exercises, index: index);
+    for (final change in changes) {
+      switch (change['kind']) {
+        case 'add_exercise':
+          ladder = _insertSlotFromChange(ladder, change);
+        case 'remove_exercise':
+          ladder = _removeSlotFromChange(ladder, change);
+        case 'reorder_exercises':
+          ladder = _reorderSlotsFromChange(ladder, change);
+        case 'swap_exercise':
+          ladder = _swapSlotFromChange(ladder, change);
+        case 'correct_entry':
+          _applyCorrection(change);
+        case 'delete_entry':
+          _applyDeletion(change);
+      }
+    }
+    return (exercises: ladder.exercises, index: _clampIndex(ladder.index, ladder.exercises.length));
+  }
+
+  /// Adds the slot an `add_exercise` change names, at the index it names.
+  ///
+  /// A slot id that is already present makes this a no-op: a re-delivered change
+  /// must not duplicate a slot, and replacing what a slot holds is
+  /// `swap_exercise`'s job.
+  static ({List<Map<String, Object?>> exercises, int index}) _insertSlotFromChange(
+    ({List<Map<String, Object?>> exercises, int index}) ladder,
+    Map<String, Object?> change,
+  ) {
+    final slot = asJsonObject(change['exercise']);
+    final slotId = slot['sessionExerciseId'];
+    final exercises = ladder.exercises;
+    if (slotId is String && _indexOfSlotId(exercises, slotId) >= 0) {
+      return ladder;
+    }
+
+    final at = _insertionIndex(change['atIndex']! as int, exercises.length);
+    return (
+      exercises: [...exercises]..insert(at, slot),
+      index: _positionAfterInsert(
+        currentIndex: ladder.index,
+        insertedAt: at,
+        moveTo: false,
+        wasEmpty: exercises.isEmpty,
+      ),
+    );
+  }
+
+  /// Removes the slot a `remove_exercise` change names. Entries logged against
+  /// it are untouched — history is append-only — and the position stays on the
+  /// exercise the user was on, which is the slot that followed when the removed
+  /// one was the current one.
+  static ({List<Map<String, Object?>> exercises, int index}) _removeSlotFromChange(
+    ({List<Map<String, Object?>> exercises, int index}) ladder,
+    Map<String, Object?> change,
+  ) {
+    final at = _indexOfSlotId(
+      ladder.exercises,
+      change['sessionExerciseId']! as String,
+    );
+    if (at < 0) return ladder; // removing something already gone is a no-op
+
+    final currentSlotId = _slotIdAt(ladder.exercises, ladder.index);
+    final exercises = [...ladder.exercises]..removeAt(at);
+    return (
+      exercises: exercises,
+      index: _positionOf(currentSlotId, exercises, fallback: ladder.index),
+    );
+  }
+
+  /// Applies the order a `reorder_exercises` change names, leaving the position
+  /// on the exercise the user was on.
+  static ({List<Map<String, Object?>> exercises, int index}) _reorderSlotsFromChange(
+    ({List<Map<String, Object?>> exercises, int index}) ladder,
+    Map<String, Object?> change,
+  ) {
+    final currentSlotId = _slotIdAt(ladder.exercises, ladder.index);
+    final exercises = _reordered(
+      ladder.exercises,
+      (change['order']! as List).cast<String>(),
+    );
+    return (
+      exercises: exercises,
+      index: _positionOf(currentSlotId, exercises, fallback: ladder.index),
+    );
+  }
+
+  /// Replaces what the slot a `swap_exercise` change names holds, and nothing
+  /// else: the slot keeps its id, so the position does not move and entries
+  /// logged against it still point at it.
+  static ({List<Map<String, Object?>> exercises, int index}) _swapSlotFromChange(
+    ({List<Map<String, Object?>> exercises, int index}) ladder,
+    Map<String, Object?> change,
+  ) {
+    final slotId = change['sessionExerciseId']! as String;
+    final at = _indexOfSlotId(ladder.exercises, slotId);
+    if (at < 0) return ladder;
+
+    final exercises = [...ladder.exercises];
+    exercises[at] = {
+      ...asJsonObject(change['exercise']),
+      'sessionExerciseId': slotId,
+    };
+    return (exercises: exercises, index: ladder.index);
+  }
+
+  /// Folds a `correct_entry` change into the projection [entries] reads. The
+  /// stored observation is not touched — the phone owns history, and a correction
+  /// is a lens over it rather than a rewrite.
+  void _applyCorrection(Map<String, Object?> change) {
+    final entryId = change['entryId']! as String;
+    _entryCorrections[entryId] = {
+      ...?_entryCorrections[entryId],
+      ...asJsonObject(change['correction']),
+    };
+  }
+
+  /// Drops a deleted entry from the projection, and any correction that pointed
+  /// at it.
+  void _applyDeletion(Map<String, Object?> change) {
+    final entryId = change['entryId']! as String;
+    _entryCorrections.remove(entryId);
+    _deletedEntryIds.add(entryId);
+  }
+
+  /// Where the position lands once the ladder has changed shape: on the slot it
+  /// was on, when that slot survived, and clamped into range when it did not.
+  static int _positionOf(
+    String? sessionExerciseId,
+    List<Map<String, Object?>> exercises, {
+    required int fallback,
+  }) {
+    final at = sessionExerciseId == null
+        ? -1
+        : _indexOfSlotId(exercises, sessionExerciseId);
+    return at >= 0 ? at : _clampIndex(fallback, exercises.length);
+  }
+
+  /// [exercises] reordered as [order] names them; slots it does not name keep
+  /// their relative order after those it does.
+  static List<Map<String, Object?>> _reordered(
+    List<Map<String, Object?>> exercises,
+    List<String> order,
+  ) {
+    final remaining = {
+      for (final slot in exercises)
+        slot['sessionExerciseId']! as String: slot,
+    };
+
+    final reordered = <Map<String, Object?>>[];
+    for (final slotId in order) {
+      final slot = remaining.remove(slotId);
+      if (slot != null) reordered.add(slot);
+    }
+    reordered.addAll(remaining.values);
+    return reordered;
+  }
+
+  static int _indexOfSlotId(List<Map<String, Object?>> exercises, String slotId) =>
+      exercises.indexWhere(
+        (slot) => slot['sessionExerciseId'] == slotId,
+      );
+
+  static String? _slotIdAt(List<Map<String, Object?>> exercises, int index) =>
+      exercises.isEmpty
+      ? null
+      : exercises[_clampIndex(index, exercises.length)]['sessionExerciseId']
+            as String?;
+
+  /// The position after inserting a slot: the position follows the exercise,
+  /// not the index, so a slot inserted at or before the current one pushes the
+  /// current one along with it. Computed rather than searched for, so there is
+  /// no not-found case to fall back from.
+  static int _positionAfterInsert({
+    required int currentIndex,
+    required int insertedAt,
+    required bool moveTo,
+    required bool wasEmpty,
+  }) => moveTo || wasEmpty
+      ? insertedAt
+      : (currentIndex >= insertedAt ? currentIndex + 1 : currentIndex);
+
+  /// Where an inserted slot lands: anywhere from the front of the ladder to
+  /// after its last exercise — there is one more valid insertion point than
+  /// there are exercises.
+  static int _insertionIndex(int index, int length) => index.clamp(0, length);
+
+  /// Where a position lands: always on an exercise that exists.
+  static int _clampIndex(int index, int length) =>
+      length == 0 ? 0 : index.clamp(0, length - 1).toInt();
+
+  /// The order the wrist reads entries in: when they were logged, and by id when
+  /// two share an instant — the same deterministic order the phone's reconciler
+  /// uses.
+  static int _byLoggedAtThenEntryId(
+    WatchObservationRecord a,
+    WatchObservationRecord b,
+  ) {
+    final byLoggedAt = (a.payload['loggedAt']! as String).compareTo(
+      b.payload['loggedAt']! as String,
+    );
+    return byLoggedAt != 0 ? byLoggedAt : a.entryId.compareTo(b.entryId);
+  }
+
+  /// The timers that apply, as the protocol's `timers` object: the newest of
+  /// each kind, and only while it is running or paused.
+  Map<String, Object?> _timersJson() {
+    final timers = <String, Object?>{};
+    for (final kind in WatchTimerKind.all) {
+      final timer = _newestTimer(kind: kind);
+      if (timer != null && timer.state != WatchTimerState.stopped) {
+        timers[kind] = timer.toTimerJson();
+      }
+    }
+    return timers;
   }
 
   /// Writes a new session row carrying [status] and [currentExerciseIndex].
@@ -432,15 +1081,19 @@ class WatchSessionEngine {
   }
 
   /// Copies [timer]'s identity into a new row — timers advance by append too.
+  ///
+  /// [recordId] is supplied when the row comes from a message rather than from
+  /// the wrist, so the id can be derived from the message and be replayable.
   WatchTimerRecord _timerRowFrom(
     WatchTimerRecord timer, {
     required DateTime recordedAt,
+    String? recordId,
     DateTime? pausedAt,
     bool clearPause = false,
     int? accumulatedPauseMs,
     DateTime? stoppedAt,
   }) => WatchTimerRecord(
-    recordId: _newId(),
+    recordId: recordId ?? _newId(),
     sessionId: timer.sessionId,
     recordedAt: recordedAt,
     kind: timer.kind,
@@ -647,4 +1300,17 @@ class WatchSessionEngine {
     }
     return session;
   }
+}
+
+/// What a `timer_state` or snapshot message asks of one timer kind.
+enum _TimerAction {
+  /// Adopt the timer the message names.
+  adopt,
+
+  /// Stop the kind's timer — either the message named it as `null`, or the
+  /// message is a snapshot and left the kind out.
+  stop,
+
+  /// An incremental message said nothing about this kind: leave it running.
+  leaveAlone,
 }

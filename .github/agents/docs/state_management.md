@@ -1,5 +1,12 @@
 # State Management & Services
 
+**Scope.** The state layer as a whole: the `ChangeNotifier` classes under
+`lib/state/`, the service and utility classes under `lib/core/services/` and
+`lib/core/utils/`, and the dependency graph that `lib/main.dart` wires between
+them. Screens and widgets are documented under
+[navigation_and_screens.md](navigation_and_screens.md) and
+[widget_catalog.md](widget_catalog.md) instead.
+
 > **This page is an index.** The state documentation was split into four part
 > pages on 2026-07-26 so that no single documentation file sits near the
 > per-file size ceiling that the tools indexing this folder enforce. Nothing
@@ -29,7 +36,7 @@ State classes follow strict rules:
 | [Workout Session State](state_management/workout_state.md) | `WorkoutState` facade + `SessionCore`, `SessionBlockManager`, `SessionSummaryBuilder`, `TimerManager`, `ExerciseLibrary` |
 | [Nutrition State](state_management/nutrition_state.md) | `NutritionState`, `FoodLibraryState`, `NutritionPrimerState` |
 | [Routine, Calendar, Home, Profile & Settings State](state_management/app_state.md) | `RoutineState`, `CalendarState`, `HomeState`, `ProfileState`, `SettingsState`, `PeriodState` |
-| [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch` |
+| [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch`, and the watch↔phone live mirroring surface (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, the two reconcilers) |
 
 ---
 
@@ -47,6 +54,7 @@ State classes follow strict rules:
 | `FuzzySearch` | [Services & Utilities](state_management/services_and_utils.md) |
 | `HealthSyncService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `HomeState` | [App State](state_management/app_state.md) |
+| `LiveSessionMirrorState` | [Services & Utilities](state_management/services_and_utils.md) |
 | `NutritionPrimerState` | [Nutrition State](state_management/nutrition_state.md) |
 | `NutritionState` | [Nutrition State](state_management/nutrition_state.md) |
 | `ObservationGrouper` | [Services & Utilities](state_management/services_and_utils.md) |
@@ -58,6 +66,9 @@ State classes follow strict rules:
 | `RoutineState` | [App State](state_management/app_state.md) |
 | `SessionBlockManager` | [Workout Session State](state_management/workout_state.md) |
 | `SessionCore` | [Workout Session State](state_management/workout_state.md) |
+| `SyncSessionReconciler` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchSessionEngine` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchSyncOrchestrator` | [Services & Utilities](state_management/services_and_utils.md) |
 | `SessionSummaryBuilder` | [Workout Session State](state_management/workout_state.md) |
 | `SessionSummaryService` | [Services & Utilities](state_management/services_and_utils.md) |
 | `SettingsState` | [App State](state_management/app_state.md) |

@@ -182,10 +182,12 @@ class WatchLoggingState {
       for (final metricKey in _metricKeys) _field(metricKey),
   ];
 
-  /// The current session's observations for the exercise being shown.
+  /// The current session's entries for the exercise being shown, with the
+  /// phone's corrections folded in — what the wrist shows is the engine's
+  /// projection, not the raw log.
   Iterable<WatchObservationRecord> get _observations {
     final slotId = _slot?['sessionExerciseId'];
-    return _engine.observations.where(
+    return _engine.entries.where(
       (observation) => observation.payload['sessionExerciseId'] == slotId,
     );
   }

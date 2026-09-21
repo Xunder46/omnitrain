@@ -28,6 +28,14 @@ abstract interface class WatchSyncTransport {
   /// [since]. The reply arrives through [WatchSyncOrchestrator.receive] — this
   /// call carries no payload of its own.
   Future<void> requestRoutines({DateTime? since});
+
+  /// Asks the phone for a `session_snapshot`. The reply arrives through
+  /// [WatchSyncOrchestrator.receive], exactly as a `routines_down` reply does.
+  Future<void> requestSnapshot();
+
+  /// Hands the phone one message the watch owes it — an observation, a timer,
+  /// a lifecycle change, or the watch's own session snapshot.
+  Future<void> send(Map<String, Object?> envelope);
 }
 
 class WatchSyncOrchestrator {
@@ -43,30 +51,84 @@ class WatchSyncOrchestrator {
   final WatchSessionStartPaths _paths;
   final WatchSessionEngine _engine;
 
-  /// Pulls the routines: everything on a first connect, what changed after one.
+  /// Brings the watch up to date with the phone: the routines, and then the
+  /// session state the two devices do not share yet.
   ///
   /// Call on connect and on reconnect. It is safe to call at any time and it
   /// never throws: a watch that cannot reach the phone keeps the routines it
   /// has, which is the whole point of syncing proactively.
+  ///
+  /// The watch re-sends every observation the phone has not acknowledged —
+  /// rebuilt from storage rather than from a queue, so a relaunch re-sends the
+  /// same identifiers and the phone deduplicates them (S-003). It asks for a
+  /// snapshot when it has no session to converge on (joining a phone session),
+  /// and hands over its own when it has one, which is the exchange the protocol
+  /// asks of both devices on connect.
   Future<void> sync({bool reconnect = false}) async {
     _paths.phoneReachable = _transport.isPhoneReachable;
-    await _transport.requestRoutines(since: reconnect ? _paths.syncedAt : null);
+    await _transport.requestRoutines(
+      since: reconnect ? _paths.syncedAt : null,
+    );
+    await _sendOwedObservations();
+    await _exchangeSessionState();
+  }
+
+  /// Answers a snapshot request from the phone with the watch's live session.
+  ///
+  /// A watch with nothing logged has nothing authoritative to report, so the
+  /// request goes unanswered rather than answered with an empty session.
+  /// Verified by `test/live_mirroring_test.dart` (`S-009 a sessionless watch
+  /// answers a snapshot request with nothing`) and by watchOS
+  /// `WatchLiveMirroringTests.testASessionlessWatchAnswersNothing`.
+  Future<void> answerSnapshotRequest() async {
+    final snapshot = _engine.sessionSnapshot();
+    if (snapshot == null) return;
+    await _transport.send(snapshot);
+  }
+
+  /// Replays what the phone has not acknowledged, from storage.
+  Future<void> _sendOwedObservations() async {
+    for (final message in _engine.pendingObservations()) {
+      await _transport.send(message);
+    }
+  }
+
+  /// The connect handshake: a watch with a session reports it, and asks for the
+  /// phone's only when it has nothing of its own to converge on.
+  Future<void> _exchangeSessionState() async {
+    if (_engine.session == null) {
+      await _transport.requestSnapshot();
+      return;
+    }
+    await answerSnapshotRequest();
   }
 
   /// Routes an arriving message to whoever owns it.
   ///
   /// Returns what the message changed, or false when the watch has no use for
-  /// it — a conformant message for another item's surface, say. A message the
-  /// watch cannot read throws, and nothing is applied: a peer speaking another
-  /// protocol version must not half-edit a live session.
+  /// it — a conformant message for another item's surface, say, or reference
+  /// data already older than the cached catalog. A message the watch cannot
+  /// read is refused whole, nothing is applied, and the phone is answered with
+  /// the watch's snapshot so it converges from what the wrist actually holds
+  /// (PROTOCOL.md, "Versioning policy"). The refusal is still reported, because
+  /// a caller needs to know its session was not advanced.
   Future<bool> receive(Map<String, Object?> envelope) async {
     switch (envelope['type']) {
       case 'routines_down':
         final result = await _paths.applyRoutinesDown(envelope);
         return result.applied;
       case 'exercise_push':
-        await _engine.applyExercisePush(envelope);
-        return true;
+      case 'session_snapshot':
+      case 'structure_change':
+      case 'session_lifecycle':
+      case 'timer_state':
+      case 'observations_up':
+        try {
+          return await _engine.applyMessage(envelope);
+        } on WatchEmissionRejected {
+          await answerSnapshotRequest();
+          rethrow;
+        }
       default:
         return false;
     }

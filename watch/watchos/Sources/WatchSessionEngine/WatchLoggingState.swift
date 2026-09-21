@@ -195,10 +195,12 @@ public final class WatchLoggingState {
         return metricKeys.map(field(for:))
     }
 
-    /// The current session's observations for the exercise being shown.
+    /// The current session's entries for the exercise being shown, with the
+    /// phone's corrections folded in — what the wrist shows is the engine's
+    /// projection, not the raw log.
     private var observations: [WatchObservationRecord] {
         guard let slotId = slot?["sessionExerciseId"] as? String else { return [] }
-        return engine.observations.filter {
+        return engine.entries.filter {
             $0.payload["sessionExerciseId"] as? String == slotId
         }
     }

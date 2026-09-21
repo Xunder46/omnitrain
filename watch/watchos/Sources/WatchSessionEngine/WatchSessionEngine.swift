@@ -40,9 +40,30 @@ public final class WatchSessionEngine {
     private let newId: () -> String
     private let newSessionId: () -> String
 
+    /// Record-id prefixes for the rows a message from the phone writes. The id
+    /// is derived from the `changeId` (or `messageId`) that caused the row,
+    /// which is what makes re-delivery a store no-op *and* what lets `restore`
+    /// rebuild "already applied" from storage instead of from memory.
+    private static let changePrefix = "chg-"
+    private static let snapshotPrefix = "snap-"
+    private static let timerPrefix = "tms-"
+    private static let lifecyclePrefix = "life-"
+
     private var sessionRows: [WatchSessionRecord] = []
     private var storedObservations: [WatchObservationRecord] = []
     private var storedTimers: [WatchTimerRecord] = []
+
+    /// The structure changes this watch has already applied, by `changeId`.
+    /// Rebuilt from storage by `restore`, so a relaunch cannot apply one twice
+    /// (PROTOCOL.md, authority rule 6).
+    private var appliedChangeIds: Set<String> = []
+
+    /// The phone's corrections to entries the watch holds, keyed by `entryId`,
+    /// and the ones it deleted. The stored row is never rewritten — these are
+    /// what `entries` folds in.
+    private var entryCorrections: [String: [String: Any]] = [:]
+    private var deletedEntryIds: Set<String> = []
+
     private var current: WatchSessionRecord?
 
     public init(
@@ -74,6 +95,11 @@ public final class WatchSessionEngine {
         storedTimers = contents.timers
 
         current = contents.sessions.max { $0.sequence < $1.sequence }
+        appliedChangeIds = Set(
+            contents.sessions
+                .filter { $0.recordId.hasPrefix(Self.changePrefix) }
+                .map { String($0.recordId.dropFirst(Self.changePrefix.count)) }
+        )
     }
 
     // MARK: - Session state
@@ -90,6 +116,57 @@ public final class WatchSessionEngine {
     /// The newest row for `kind`, which is the timer that applies.
     public func timerFor(_ kind: String) -> WatchTimerRecord? {
         newestTimer(kind: kind)
+    }
+
+    /// The session's entries as the wrist shows them: the watch's own log plus
+    /// the entries the phone sent, with the phone's corrections folded in and
+    /// its deletions dropped, in the order they were logged.
+    ///
+    /// `observations` is the log as appended — nothing in it is ever rewritten.
+    /// A correction is therefore a projection, not an edit, which is what keeps
+    /// the store append-only and the phone the only side that can edit history.
+    public var entries: [WatchObservationRecord] {
+        observations
+            .filter { !deletedEntryIds.contains($0.entryId) }
+            .map { observation in
+                guard let correction = entryCorrections[observation.entryId] else {
+                    return observation
+                }
+                return observation.withPayload(
+                    observation.payload.merging(correction) { _, corrected in corrected }
+                )
+            }
+            .sorted(by: Self.byLoggedAtThenEntryId)
+    }
+
+    /// The watch's live session as the phone's mirror reads it — the answer to
+    /// a snapshot request. Nil when the watch has no session to report.
+    ///
+    /// Entries travel as `entries`, so a correction the phone sent is not echoed
+    /// back as the original, and timers travel as wall-clock state: the phone
+    /// derives remaining time from its own clock (PROTOCOL.md, "Timer state").
+    public func sessionSnapshot(messageId: String? = nil) -> [String: Any]? {
+        guard let session = current else { return nil }
+
+        let envelope: [String: Any] = [
+            "protocolVersion": SyncProtocolValidator.protocolVersion,
+            "messageId": messageId ?? self.messageId(for: "snapshot-\(session.recordId)"),
+            "sessionId": session.sessionId,
+            "type": "session_snapshot",
+            "origin": "watch",
+            "sentAt": utcIso(clock()),
+            "payload": [
+                "sessionId": session.sessionId,
+                "revision": session.revision,
+                "status": session.status,
+                "currentExerciseIndex": session.currentExerciseIndex,
+                "exercises": session.exercises,
+                "entries": entries.map(\.payload),
+                "timers": timersJson(),
+            ] as [String: Any],
+        ]
+        try? requireConformant(envelope)
+        return envelope
     }
 
     // MARK: - Lifecycle
@@ -179,25 +256,17 @@ public final class WatchSessionEngine {
             return session
         }
 
-        let index = min(max(atIndex ?? session.exercises.count, 0), session.exercises.count)
+        let index = Self.insertionIndex(atIndex ?? session.exercises.count, session.exercises.count)
         var exercises = session.exercises
         exercises.insert(slot, at: index)
 
-        // The position follows the exercise, not the index: a slot inserted at
-        // or before the current one pushes the current one along with it.
-        // Computed rather than searched for, so there is no not-found case to
-        // fall back from.
-        let nextIndex: Int
-        if moveTo || session.exercises.isEmpty {
-            nextIndex = index
-        } else {
-            nextIndex = session.currentExerciseIndex >= index
-                ? session.currentExerciseIndex + 1
-                : session.currentExerciseIndex
-        }
-
         return await transitionTo(
-            currentExerciseIndex: nextIndex,
+            currentExerciseIndex: Self.positionAfterInsert(
+                currentIndex: session.currentExerciseIndex,
+                insertedAt: index,
+                moveTo: moveTo,
+                wasEmpty: session.exercises.isEmpty
+            ),
             exercises: exercises,
             lifecycle: nil
         )
@@ -215,6 +284,499 @@ public final class WatchSessionEngine {
             (payload["exercise"] as? [String: Any]) ?? [:],
             atIndex: (payload["insertAtIndex"] as? NSNumber)?.intValue
         )
+    }
+
+    // MARK: - Messages from the phone
+
+    /// Applies one message from the phone to the live session.
+    ///
+    /// This is the watch's half of the reconciliation contract: the same
+    /// messages the phone's reference reconciler
+    /// (`lib/core/sync_protocol/session_reconciler.dart`) applies, applied to
+    /// the append-only store instead of to memory. Applying the same message
+    /// twice changes nothing — structure changes are keyed by `changeId`, and
+    /// every row a message writes carries an id derived from the message itself.
+    ///
+    /// Returns true when the message changed something the watch holds, false
+    /// when it had nothing for this session (reference data, or an observation —
+    /// which only ever travels the other way). A message the watch cannot read is
+    /// refused whole: `WatchEmissionRejected` is thrown and nothing is applied.
+    @discardableResult
+    public func applyMessage(_ envelope: [String: Any]) async throws -> Bool {
+        switch envelope["type"] as? String {
+        case "session_snapshot":
+            try requireConformingIncoming(envelope)
+            return await applySnapshot(envelope)
+        case "structure_change":
+            try requireConformingIncoming(envelope)
+            return await applyStructureChange(envelope)
+        case "session_lifecycle":
+            try requireConformingIncoming(envelope)
+            return await applyLifecycle(envelope)
+        case "timer_state":
+            try requireConformingIncoming(envelope)
+            return await applyTimerState(envelope)
+        case "exercise_push":
+            let before = current?.recordId
+            _ = try await applyExercisePush(envelope)
+            return current?.recordId != before
+        case "observations_up":
+            // The watch's own product; a phone has no business sending one. It
+            // is still read, so a peer speaking another version is refused here
+            // rather than quietly ignored (PROTOCOL.md, "Versioning policy").
+            try requireConformingIncoming(envelope)
+            return false
+        default:
+            return false
+        }
+    }
+
+    /// A snapshot replaces structure, status, position, revision, and timer
+    /// state; entries merge by `entryId` (PROTOCOL.md, "Idempotency and
+    /// reconciliation").
+    ///
+    /// Merging is what makes a wrist log survive the phone's snapshot: an
+    /// observation the phone has not seen is still the watch's, and the entries
+    /// the snapshot carries are the phone's — stored here as confirmed, because
+    /// the phone obviously has them. The snapshot is also the receipt for the
+    /// observations it does carry: the watch may drop them.
+    private func applySnapshot(_ envelope: [String: Any]) async -> Bool {
+        let payload = (envelope["payload"] as? [String: Any]) ?? [:]
+        guard let sessionId = payload["sessionId"] as? String,
+              let messageId = envelope["messageId"] as? String,
+              let sentAt = try? parseUtcIso(envelope["sentAt"])
+        else { return false }
+
+        let exercises = (payload["exercises"] as? [[String: Any]]) ?? []
+        let entryMaps = (payload["entries"] as? [[String: Any]]) ?? []
+        let existing = current?.sessionId == sessionId ? current : nil
+
+        await storeSessionRow(
+            WatchSessionRecord(
+                recordId: "\(Self.snapshotPrefix)\(messageId)",
+                sessionId: sessionId,
+                recordedAt: sentAt,
+                startedAt: existing?.startedAt
+                    ?? Self.startedAtOf(entryMaps, fallback: sentAt),
+                modality: existing?.modality,
+                source: existing?.source ?? "phone",
+                status: (payload["status"] as? String) ?? WatchSessionStatus.active,
+                currentExerciseIndex: Self.clampIndex(
+                    (payload["currentExerciseIndex"] as? NSNumber)?.intValue ?? 0,
+                    exercises.count
+                ),
+                exercises: exercises,
+                revision: (payload["revision"] as? NSNumber)?.intValue ?? 0
+            )
+        )
+
+        for entry in entryMaps {
+            await storeSnapshotEntry(sessionId, entry)
+        }
+        _ = await confirmObservations(entryMaps.compactMap { $0["entryId"] as? String })
+        _ = await adoptTimers(
+            (payload["timers"] as? [String: Any]) ?? [:],
+            sessionId: sessionId,
+            messageId: messageId,
+            recordedAt: sentAt,
+            authoritative: true
+        )
+        return true
+    }
+
+    /// Applies one structure change: the ladder, the position that follows from
+    /// it, and the phone's corrections to entries the watch holds.
+    ///
+    /// A slot that is already present is left alone (a re-delivered push must
+    /// not duplicate it), a removed slot never takes its entries with it, and a
+    /// swap keeps the slot's id so entries logged against it still point at it.
+    private func applyStructureChange(_ envelope: [String: Any]) async -> Bool {
+        let payload = (envelope["payload"] as? [String: Any]) ?? [:]
+        guard let session = current,
+              let changeId = payload["changeId"] as? String
+        else { return false }
+        guard appliedChangeIds.insert(changeId).inserted else { return false }
+
+        let ladder = ladderAfter(
+            exercises: session.exercises,
+            index: session.currentExerciseIndex,
+            changes: (payload["changes"] as? [[String: Any]]) ?? []
+        )
+
+        await storeSessionRow(
+            WatchSessionRecord(
+                recordId: "\(Self.changePrefix)\(changeId)",
+                sessionId: session.sessionId,
+                recordedAt: clock(),
+                startedAt: session.startedAt,
+                modality: session.modality,
+                source: session.source,
+                status: session.status,
+                currentExerciseIndex: ladder.index,
+                exercises: ladder.exercises,
+                revision: session.revision + 1
+            )
+        )
+        return true
+    }
+
+    /// Applies a lifecycle message from the phone: the most recent status wins,
+    /// and an advanced position clamps to the ladder (PROTOCOL.md, "Idempotency
+    /// and reconciliation").
+    ///
+    /// Nothing is echoed back — the phone is telling the watch what it decided,
+    /// and answering it with the same news would be noise.
+    private func applyLifecycle(_ envelope: [String: Any]) async -> Bool {
+        guard let session = current else { return false }
+
+        let payload = (envelope["payload"] as? [String: Any]) ?? [:]
+        let state = payload["state"] as? String ?? ""
+        let status: String
+        switch state {
+        case WatchLifecycleState.started: status = WatchSessionStatus.active
+        case WatchLifecycleState.completed: status = WatchSessionStatus.completed
+        case WatchLifecycleState.abandoned: status = WatchSessionStatus.abandoned
+        default: status = session.status
+        }
+        let index = state == WatchLifecycleState.exerciseAdvanced
+            ? Self.clampIndex(
+                (payload["exerciseIndex"] as? NSNumber)?.intValue ?? 0,
+                session.exercises.count
+            )
+            : session.currentExerciseIndex
+
+        await storeSessionRow(
+            WatchSessionRecord(
+                recordId: "\(Self.lifecyclePrefix)\(envelope["messageId"] as? String ?? newId())",
+                sessionId: session.sessionId,
+                recordedAt: (try? parseUtcIso(envelope["sentAt"])) ?? clock(),
+                startedAt: session.startedAt,
+                modality: session.modality,
+                source: session.source,
+                status: status,
+                currentExerciseIndex: index,
+                exercises: session.exercises,
+                revision: session.revision
+            )
+        )
+        return true
+    }
+
+    /// Applies an incremental timer update: the kinds it names are adopted or
+    /// cleared, the kinds it does not name are left alone (PROTOCOL.md, "Timer
+    /// state"). Only a snapshot is authoritative for timer state as a whole.
+    private func applyTimerState(_ envelope: [String: Any]) async -> Bool {
+        guard let sessionId = envelope["sessionId"] as? String,
+              let messageId = envelope["messageId"] as? String,
+              let sentAt = try? parseUtcIso(envelope["sentAt"]),
+              current != nil
+        else { return false }
+
+        let payload = (envelope["payload"] as? [String: Any]) ?? [:]
+        return await adoptTimers(
+            (payload["timers"] as? [String: Any]) ?? [:],
+            sessionId: sessionId,
+            messageId: messageId,
+            recordedAt: sentAt,
+            authoritative: false
+        )
+    }
+
+    /// Adopts `timers` as the rows that apply. A kind the message names as null
+    /// is cleared; a kind it does not name keeps whatever it had, unless the
+    /// message is a snapshot — only a snapshot is authoritative for timer state
+    /// as a whole (PROTOCOL.md, "Timer state").
+    ///
+    /// Every row's id is derived from the message that named it, so re-delivery
+    /// is a no-op and a relaunch cannot tell the difference.
+    private func adoptTimers(
+        _ timers: [String: Any],
+        sessionId: String,
+        messageId: String,
+        recordedAt: Date,
+        authoritative: Bool
+    ) async -> Bool {
+        var changed = false
+        for kind in WatchTimerKind.all {
+            let recordId = "\(Self.timerPrefix)\(messageId)-\(kind)"
+            guard let timer = timers[kind], !(timer is NSNull) else {
+                if authoritative || timers.keys.contains(kind) {
+                    changed = await stopTimerFromMessage(
+                        kind,
+                        sessionId: sessionId,
+                        recordId: recordId,
+                        stoppedAt: recordedAt
+                    ) || changed
+                }
+                continue
+            }
+            changed = await adoptTimer(
+                (timer as? [String: Any]) ?? [:],
+                sessionId: sessionId,
+                recordId: recordId,
+                recordedAt: recordedAt
+            ) || changed
+        }
+        return changed
+    }
+
+    /// A timer the phone told the watch about. It is not news back to the phone,
+    /// so nothing is emitted: the phone already decided this.
+    private func adoptTimer(
+        _ timer: [String: Any],
+        sessionId: String,
+        recordId: String,
+        recordedAt: Date
+    ) async -> Bool {
+        guard !storedTimers.contains(where: { $0.recordId == recordId }) else {
+            return false
+        }
+
+        let stored = await store.append(
+            .timer(
+                WatchTimerRecord(
+                    recordId: recordId,
+                    sessionId: sessionId,
+                    recordedAt: recordedAt,
+                    kind: timer["kind"] as? String ?? "",
+                    startedAt: (try? parseUtcIso(timer["startedAt"])) ?? recordedAt,
+                    pausedAt: try? parseOptionalUtcIso(timer["pausedAt"]),
+                    stoppedAt: try? parseOptionalUtcIso(timer["stoppedAt"]),
+                    accumulatedPauseMs: (timer["accumulatedPauseMs"] as? NSNumber)?.intValue ?? 0,
+                    plannedDurationMs: (timer["plannedDurationMs"] as? NSNumber)?.intValue
+                )
+            )
+        )
+        guard let row = stored.timerRow else { return false }
+        storedTimers.append(row)
+        return true
+    }
+
+    /// Stops the newest timer of `kind` by appending its stopped version — the
+    /// row that was running is never rewritten.
+    ///
+    /// The protocol calls this clearing a timer, but nothing here clears
+    /// anything: a timer advances by append like every other synced record, and a
+    /// store whose contract forbids mutation deserves method names that say so.
+    private func stopTimerFromMessage(
+        _ kind: String,
+        sessionId: String,
+        recordId: String,
+        stoppedAt: Date
+    ) async -> Bool {
+        guard let timer = newestTimer(kind: kind),
+              timer.state != WatchTimerState.stopped,
+              timer.sessionId == sessionId,
+              !storedTimers.contains(where: { $0.recordId == recordId })
+        else { return false }
+
+        let stored = await store.append(
+            .timer(
+                timerRowFrom(
+                    timer,
+                    recordId: recordId,
+                    recordedAt: stoppedAt,
+                    stoppedAt: stoppedAt
+                )
+            )
+        )
+        guard let row = stored.timerRow else { return false }
+        storedTimers.append(row)
+        return true
+    }
+
+    /// Stores an entry the phone sent, in the shape the wrist shows it. Nothing
+    /// is emitted: the phone is the source, and the receipt is `entries`.
+    private func storeSnapshotEntry(_ sessionId: String, _ entry: [String: Any]) async {
+        guard let entryId = entry["entryId"] as? String,
+              !storedObservations.contains(where: { $0.recordId == entryId })
+        else { return }
+
+        let stored = await store.append(
+            .observation(
+                WatchObservationRecord(
+                    recordId: entryId,
+                    sessionId: sessionId,
+                    recordedAt: (try? parseUtcIso(entry["loggedAt"])) ?? clock(),
+                    kind: entry["kind"] as? String ?? "",
+                    payload: entry
+                )
+            )
+        )
+        guard let row = stored.observationRow else { return }
+        storedObservations.append(row)
+    }
+
+    /// Writes a row a message produced, without announcing it back to the phone:
+    /// the phone is the author of the news.
+    private func storeSessionRow(_ row: WatchSessionRecord) async {
+        let stored = await store.append(.session(row))
+        current = stored.sessionRow ?? row
+    }
+
+    /// The session's entries in `entryMaps`, oldest first — the moment the
+    /// session began, as far as a snapshot can say. Falls back to when the
+    /// snapshot was sent when it carries no entries.
+    private static func startedAtOf(
+        _ entryMaps: [[String: Any]],
+        fallback: Date
+    ) -> Date {
+        entryMaps
+            .compactMap { try? parseUtcIso($0["loggedAt"]) }
+            .min() ?? fallback
+    }
+
+    // MARK: - The ladder
+
+    /// The ladder and position that follow from applying `changes` in order.
+    private func ladderAfter(
+        exercises: [[String: Any]],
+        index: Int,
+        changes: [[String: Any]]
+    ) -> (exercises: [[String: Any]], index: Int) {
+        var ladder = exercises
+        var position = index
+
+        for change in changes {
+            switch change["kind"] as? String {
+            case "add_exercise":
+                let slot = (change["exercise"] as? [String: Any]) ?? [:]
+                let slotId = slot["sessionExerciseId"] as? String
+                if let slotId, Self.indexOfSlot(ladder, slotId) >= 0 { continue }
+                let at = Self.insertionIndex(
+                    (change["atIndex"] as? NSNumber)?.intValue ?? ladder.count,
+                    ladder.count
+                )
+                let wasEmpty = ladder.isEmpty
+                ladder.insert(slot, at: at)
+                position = Self.positionAfterInsert(
+                    currentIndex: position,
+                    insertedAt: at,
+                    moveTo: false,
+                    wasEmpty: wasEmpty
+                )
+            case "remove_exercise":
+                let slotId = change["sessionExerciseId"] as? String ?? ""
+                let at = Self.indexOfSlot(ladder, slotId)
+                if at < 0 { continue } // removing something already gone is a no-op
+                let currentSlotId = Self.slotIdAt(ladder, position)
+                ladder.remove(at: at)
+                let moved = currentSlotId.map { Self.indexOfSlot(ladder, $0) } ?? -1
+                position = moved >= 0 ? moved : Self.clampIndex(position, ladder.count)
+            case "reorder_exercises":
+                let currentSlotId = Self.slotIdAt(ladder, position)
+                ladder = Self.reordered(
+                    ladder,
+                    order: (change["order"] as? [String]) ?? []
+                )
+                let moved = currentSlotId.map { Self.indexOfSlot(ladder, $0) } ?? -1
+                position = moved >= 0 ? moved : Self.clampIndex(position, ladder.count)
+            case "swap_exercise":
+                let slotId = change["sessionExerciseId"] as? String ?? ""
+                let at = Self.indexOfSlot(ladder, slotId)
+                if at < 0 { continue }
+                var swapped = (change["exercise"] as? [String: Any]) ?? [:]
+                swapped["sessionExerciseId"] = slotId
+                ladder[at] = swapped
+            case "correct_entry":
+                let entryId = change["entryId"] as? String ?? ""
+                let correction = (change["correction"] as? [String: Any]) ?? [:]
+                entryCorrections[entryId] = (entryCorrections[entryId] ?? [:])
+                    .merging(correction) { _, corrected in corrected }
+            case "delete_entry":
+                let entryId = change["entryId"] as? String ?? ""
+                entryCorrections.removeValue(forKey: entryId)
+                deletedEntryIds.insert(entryId)
+            default:
+                continue
+            }
+        }
+
+        return (ladder, Self.clampIndex(position, ladder.count))
+    }
+
+    /// `exercises` reordered as `order` names them; slots it does not name keep
+    /// their relative order after those it does.
+    private static func reordered(
+        _ exercises: [[String: Any]],
+        order: [String]
+    ) -> [[String: Any]] {
+        var remaining: [String: [String: Any]] = [:]
+        for slot in exercises {
+            if let slotId = slot["sessionExerciseId"] as? String {
+                remaining[slotId] = slot
+            }
+        }
+
+        var reordered: [[String: Any]] = []
+        for slotId in order {
+            if let slot = remaining.removeValue(forKey: slotId) {
+                reordered.append(slot)
+            }
+        }
+        reordered.append(contentsOf: remaining.values)
+        return reordered
+    }
+
+    private static func indexOfSlot(_ exercises: [[String: Any]], _ slotId: String) -> Int {
+        exercises.firstIndex { $0["sessionExerciseId"] as? String == slotId } ?? -1
+    }
+
+    private static func slotIdAt(_ exercises: [[String: Any]], _ index: Int) -> String? {
+        guard !exercises.isEmpty else { return nil }
+        return exercises[clampIndex(index, exercises.count)]["sessionExerciseId"] as? String
+    }
+
+    /// The position after inserting a slot: the position follows the exercise,
+    /// not the index, so a slot inserted at or before the current one pushes the
+    /// current one along with it. Computed rather than searched for, so there is
+    /// no not-found case to fall back from.
+    private static func positionAfterInsert(
+        currentIndex: Int,
+        insertedAt: Int,
+        moveTo: Bool,
+        wasEmpty: Bool
+    ) -> Int {
+        if moveTo || wasEmpty { return insertedAt }
+        return currentIndex >= insertedAt ? currentIndex + 1 : currentIndex
+    }
+
+    /// Where an inserted slot lands: anywhere from the front of the ladder to
+    /// after its last exercise — there is one more valid insertion point than
+    /// there are exercises.
+    private static func insertionIndex(_ index: Int, _ length: Int) -> Int {
+        min(max(index, 0), length)
+    }
+
+    /// Where a position lands: always on an exercise that exists.
+    private static func clampIndex(_ index: Int, _ length: Int) -> Int {
+        length == 0 ? 0 : min(max(index, 0), length - 1)
+    }
+
+    /// The order the wrist reads entries in: when they were logged, and by id
+    /// when two share an instant — the same deterministic order the phone's
+    /// reconciler uses.
+    private static func byLoggedAtThenEntryId(
+        _ a: WatchObservationRecord,
+        _ b: WatchObservationRecord
+    ) -> Bool {
+        let left = a.payload["loggedAt"] as? String ?? ""
+        let right = b.payload["loggedAt"] as? String ?? ""
+        if left != right { return left < right }
+        return a.entryId < b.entryId
+    }
+
+    /// The timers that apply, as the protocol's `timers` object: the newest of
+    /// each kind, and only while it is running or paused.
+    private func timersJson() -> [String: Any] {
+        var timers: [String: Any] = [:]
+        for kind in WatchTimerKind.all {
+            guard let timer = newestTimer(kind: kind),
+                  timer.state != WatchTimerState.stopped
+            else { continue }
+            timers[kind] = timer.toTimerJson()
+        }
+        return timers
     }
 
     /// Writes a new session row carrying `status` and `currentExerciseIndex`.
@@ -380,8 +942,12 @@ public final class WatchSessionEngine {
     }
 
     /// Copies the timer's identity into a new row — timers advance by append too.
+    ///
+    /// `recordId` is supplied when the row comes from a message rather than from
+    /// the wrist, so the id can be derived from the message and be replayable.
     private func timerRowFrom(
         _ timer: WatchTimerRecord,
+        recordId: String? = nil,
         recordedAt: Date,
         pausedAt: Date? = nil,
         clearPause: Bool = false,
@@ -389,7 +955,7 @@ public final class WatchSessionEngine {
         stoppedAt: Date? = nil
     ) -> WatchTimerRecord {
         WatchTimerRecord(
-            recordId: newId(),
+            recordId: recordId ?? newId(),
             sessionId: timer.sessionId,
             recordedAt: recordedAt,
             kind: timer.kind,

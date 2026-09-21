@@ -28,12 +28,26 @@ final class RecordingTransport: WatchSyncTransport {
     var isPhoneReachable: Bool
     private(set) var requested: [Date?] = []
 
+    /// What the watch handed over: observations, timers, and snapshots.
+    private(set) var sent: [[String: Any]] = []
+
+    /// How many times the watch asked for a session snapshot.
+    private(set) var snapshotRequests = 0
+
     init(isPhoneReachable: Bool = false) {
         self.isPhoneReachable = isPhoneReachable
     }
 
     func requestRoutines(since: Date?) async {
         requested.append(since)
+    }
+
+    func requestSnapshot() async {
+        snapshotRequests += 1
+    }
+
+    func send(_ envelope: [String: Any]) async {
+        sent.append(envelope)
     }
 }
 

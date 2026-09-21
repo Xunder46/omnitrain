@@ -1,6 +1,13 @@
 # Service & Utility Classes
 
-> Part of [State Management & Services](../state_management.md). Return to the index for the full class list and dependency graph.
+**Scope.** The service and utility classes that are neither session, nutrition,
+nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
+pieces those classes own. It also covers the watch↔phone live mirroring surface
+(`lib/state/watch/`, `lib/watch/start/watch_sync_orchestrator.dart`,
+`lib/core/sync_protocol/`), which is service-shaped rather than screen state.
+
+> Part of [State Management & Services](../state_management.md). Return to the
+> index for the full class list and dependency graph.
 
 ---
 
@@ -227,4 +234,95 @@ scoring described in [Exercise Ranking](../exercise_ranking.md).
 
 ---
 
-> **Doc freshness** — Last reconciled against source: 2026-07-26. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
+## Watch ↔ Phone Live Session Mirroring
+
+Added on 2026-09-20. The watch clients are built from the same protocol and the
+same fixtures as the phone; the protocol itself is `watch/sync_protocol/PROTOCOL.md`.
+
+### The two reconcilers, and why there are two
+
+| Codebase | Reconciler |
+|----------|-----------|
+| Phone (Flutter) | `SyncSessionReconciler` — `lib/core/sync_protocol/session_reconciler.dart`, owned by `LiveSessionMirrorState` |
+| Wear OS (Flutter) and watchOS (Swift) | `WatchSessionEngine.applyMessage` / `applyMessage(_:)` — `lib/watch/session/watch_session_engine.dart`, `watch/watchos/Sources/WatchSessionEngine/WatchSessionEngine.swift` |
+
+There are two because the two ends converge on the same state from different
+storage: the phone's session lives in memory and its reconciler is a pure
+function over the message stream, while the watch's must survive a kill on an
+append-only store. The apply *rules* are the same on both — they are the
+fixtures' `expected` blocks, and the contract is that both implementations
+converge on them. A cheaper-looking single reconciler would have to be the
+intersection of two storage models, which is neither.
+
+Verified by `test/live_mirroring_test.dart` and by watchOS
+`WatchLiveMirroringTests.testEveryReconciliationFixtureConverges`, which replay
+every reconciliation fixture in `watch/sync_protocol/fixtures/manifest.json`
+through both.
+
+### `LiveSessionMirrorState`
+
+**File**: `lib/state/watch/live_session_mirror_state.dart`
+
+The phone's view of a session that a watch is running, or that both are. It is
+a `ChangeNotifier` wrapping the reference reconciler: validate the envelope,
+apply it, then `notifyListeners()`. Phone-originated messages are applied
+locally *before* they go to the transport, because the session the user is
+looking at has to be the session the watch is told about.
+
+`WatchMirrorTransport` is the phone's half of the transport contract: `send`
+and `requestSnapshot`. Per-platform carriers (WatchConnectivity, the Wear OS
+data layer) implement it; it is fire-and-forget with retries, and the protocol's
+idempotency is what makes at-least-once delivery safe. There is deliberately no
+reachability flag on it — a send that cannot be carried yet is the transport's
+to buffer, not a decision the session logic should make.
+
+Verified by `test/live_mirroring_test.dart` (`S-008`, `S-010`).
+
+### `WatchSyncOrchestrator`
+
+**Files**: `lib/watch/start/watch_sync_orchestrator.dart`,
+`watch/watchos/Sources/WatchSessionEngine/WatchSyncOrchestrator.swift`
+
+Routes arriving messages to their owner — reference data to the start paths,
+session state to the engine — and owns the connect exchange that
+`PROTOCOL.md`'s "Idempotency and reconciliation" section specifies. Verified by
+`test/live_mirroring_test.dart` (`S-009`) and by watchOS
+`WatchLiveMirroringTests.testJoiningAsksForASnapshotRatherThanOfferingOne`.
+
+### Invariants
+
+- **Nothing is written twice.** A structure change is keyed by `changeId`, and
+every row the watch writes from a message carries an id derived from that
+message, so re-delivery is a store-level no-op. Verified by
+`test/live_mirroring_test.dart` (`S-007 forced redelivery produces no
+duplicates`) and by watchOS
+`WatchLiveMirroringTests.testReplayingTheStreamTwiceConvergesIdentically`.
+- **The watch store stays append-only.** A phone correction is a *projection*
+(`WatchSessionEngine.entries`), not an edit: the stored observation row is never
+rewritten. Verified by `test/watch_session_engine_test.dart` (`S-004 append-only
+enforcement at the storage API`).
+- **Timers travel as wall-clock timestamps.** A countdown is never sent;
+either end derives it, which is what keeps a timer correct through a
+suspension or a reconnect. Verified by `test/live_mirroring_test.dart`
+(`S-005 the timer's end moment is the same on both devices`).
+- **A message a receiver cannot read is refused whole.** Nothing is applied, and
+the refuser answers with its own snapshot so the peer converges from real state
+instead of from a stream it could not interpret. Verified by
+`test/live_mirroring_test.dart` (the two `a message the receiver cannot read`
+cases) and by watchOS
+`WatchLiveMirroringTests.testAVersionMismatchIsRefusedAndAnsweredWithASnapshot`.
+
+### Vocabulary
+
+- **Snapshot exchange** — the connect/reconnect handshake defined in
+`PROTOCOL.md` under "Idempotency and reconciliation".
+- **Correction vs. observation** — an observation is an append by whoever logged
+it and is never edited; a correction is the phone's edit to an existing entry,
+which the watch reflects without rewriting its own history.
+- **Reflection** — a watch's copy of session structure or timer state, which it
+holds but does not originate. `PROTOCOL.md` authority rules 1 and 2 are what
+make the distinction consequential.
+
+---
+
+> **Doc freshness** — Last reconciled against source: 2026-09-20. This page is one part of [State Management & Services](../state_management.md); see that index for the full class list. This doc is derived from source, not hand-maintained. Source of truth: the `lib/` tree. If you find a claim here that disagrees with `lib/`, `lib/` wins.
