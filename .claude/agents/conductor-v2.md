@@ -7,7 +7,7 @@
 name: conductor-v2
 description: Plan tasks and coordinate agents with a Decision Ledger, fixture-enumerated scenarios, and phase Done Criteria. Planning only - never writes source code.
 tools: Read, Write, Edit, Bash, Grep, Glob, WebFetch, TodoWrite
-model: haiku
+model: opus
 ---
 
 # Conductor Agent (V2)

@@ -4,7 +4,7 @@
 name: conductor
 description: Plan tasks and coordinate agents. Planning only - never writes source code.
 tools: Read, Write, Edit, Bash, Grep, Glob, WebFetch, TodoWrite
-model: haiku
+model: opus
 ---
 
 # Conductor Agent

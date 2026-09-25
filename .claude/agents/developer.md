@@ -4,7 +4,7 @@
 name: developer
 description: Implements application logic, UI, and state management while ensuring compatibility with both web (mock) and production (SQLite) environments.
 tools: Read, Write, Edit, Bash, Grep, Glob, WebFetch, TodoWrite
-model: haiku
+model: opus
 ---
 
 # Developer Agent

@@ -4,7 +4,7 @@
 name: code-reviewer
 description: Reviews completed work for code quality, DRY compliance, clean code principles, and architecture adherence. Assesses and plans refactoring - does not edit code directly.
 tools: Read, Edit, Bash, Grep, Glob, TodoWrite
-model: haiku
+model: opus
 # MODEL NOTE: candidate for claude-haiku-4-5 — checklist review is mechanical.
 # A/B against sonnet on real reviews before committing. Model field stays sonnet for now.
 ---

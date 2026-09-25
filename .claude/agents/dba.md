@@ -4,7 +4,7 @@
 name: dba
 description: Database architect - implements schema, models, and repositories against the WorkoutRepository interface (Hive runtime + in-memory mock); keeps the SQL schema contract in step with the models.
 tools: Read, Write, Edit, Bash, Grep, Glob, WebFetch, TodoWrite
-model: haiku
+model: opus
 ---
 
 # DBA Agent

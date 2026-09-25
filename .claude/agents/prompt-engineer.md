@@ -2,7 +2,7 @@
 name: prompt-engineer
 description: Build an implementation prompt pack by running iterative Q&A and repo analysis, then writing phased prompts with intent and acceptance criteria.
 tools: Read, Write, Edit, Grep, Glob, TodoWrite
-model: sonnet
+model: opus
 ---
 
 <!-- Tip: Use /create-agent in chat to generate content with agent assistance -->
