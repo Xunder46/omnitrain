@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/modality_colors.dart';
 import 'package:omnitrain/core/constants/omni_theme.dart';
+import 'package:omnitrain/core/utils/session_feeling_utils.dart';
 import 'package:omnitrain/widgets/cards/energy_tile.dart';
 import 'package:omnitrain/app.dart';
 import 'contrast_helpers.dart';
@@ -253,6 +254,55 @@ void main() {
           if (tileContrast < 4.5) {
             results[theme.name]!.add(
               'Check 16 FAIL: secondary tile label on ${entry.key} fill = $tileContrast (required ≥ 4.5:1)',
+            );
+          }
+        }
+
+        // ── Checks 18-20: Effort-rating intensity ramp ─────────────────────
+        // The intensity ramp is used for effort-rating tiles, calendar tints,
+        // and future analytics displays. All five steps must pass three checks:
+        //
+        // Check 18a: Each step ≥ 1.8:1 vs surface (minimum legible tint).
+        // Check 18b: Contrast strictly increases from step 1 to 5.
+        // Check 18c: Number text (headlineSmall) on each step tile ≥ 3:1,
+        //           using whichever of onPrimary or textDominant passes.
+        //
+        // The ramp is guaranteed to exist (calculated per theme in omni_theme.dart).
+        final ramp = colors.intensityRamp;
+        final rampSteps = [ramp.step1, ramp.step2, ramp.step3, ramp.step4, ramp.step5];
+        final rampNames = ['step1', 'step2', 'step3', 'step4', 'step5'];
+
+        // Check 18a: All steps ≥ 1.8:1 vs surface
+        for (int i = 0; i < rampSteps.length; i++) {
+          final rampContrast = contrastRatio(rampSteps[i], colors.surface);
+          if (rampContrast < 1.8) {
+            results[theme.name]!.add(
+              'Check 18a FAIL: intensity ${rampNames[i]} vs surface = $rampContrast (required ≥ 1.8:1)',
+            );
+          }
+        }
+
+        // Check 18b: Contrast strictly increases 1→5
+        for (int i = 0; i < rampSteps.length - 1; i++) {
+          final contrastI = contrastRatio(rampSteps[i], colors.surface);
+          final contrastI1 = contrastRatio(rampSteps[i + 1], colors.surface);
+          if (contrastI1 <= contrastI) {
+            results[theme.name]!.add(
+              'Check 18b FAIL: intensity contrast does not strictly increase: ${rampNames[i]} = $contrastI, ${rampNames[i + 1]} = $contrastI1 (required: strict increase)',
+            );
+          }
+        }
+
+        // Check 18c: Number text on each tile ≥ 3:1
+        // Use the same helper the UI uses for selecting text color on effort tiles
+        // (onPrimary was already obtained for Check 9)
+        for (int i = 1; i <= 5; i++) {
+          final textColor = effortTileTextColor(i, colors, onPrimary: onPrimary);
+          final rampStep = feelingColor(i, colors);
+          final textContrast = contrastRatio(textColor, rampStep);
+          if (textContrast < 3.0) {
+            results[theme.name]!.add(
+              'Check 18c FAIL: text on intensity step $i tile: contrast = $textContrast (required ≥ 3:1)',
             );
           }
         }

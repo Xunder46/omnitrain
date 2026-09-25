@@ -546,14 +546,6 @@ class StatsProgressService {
     // `days: null` to remove the 10-day cap.
     final nutritionTrend = await computeNutritionTrend(days: null);
 
-    // Feeling trend (HOW DID IT FEEL card). Walks the same window that
-    // drove Strength/Cardio selection so the trend moves in
-    // lockstep with the other trends when the window changes.
-    // Only sessions with a recorded feeling (1..5) produce a
-    // point; sessions without one are omitted (no zero-fill, no
-    // synthetic flat line).
-    final feelingTrend = await computeFeelingTrend(window: window);
-
     return StatsProgressData(
       topLifts: topLifts,
       topCardio: topCardio,
@@ -561,7 +553,6 @@ class StatsProgressService {
       topSports: topSports,
       recentPRs: recentPRs,
       nutritionTrend: nutritionTrend,
-      feelingTrend: feelingTrend,
       window: window,
     );
   }
@@ -896,53 +887,6 @@ class StatsProgressService {
           ),
         )
         .toList();
-  }
-
-  /// Compute the per-session feeling trend (HOW DID IT FEEL card on the
-  /// Stats screen). One `FeelingTrendPoint` per completed session
-  /// whose `sessionFeeling` is in 1..5 and whose `startedAtMs`
-  /// falls inside the supplied [window]. Sessions without a
-  /// recorded feeling are omitted entirely (no zero-fill, no
-  /// synthetic flat line). Empty list when no qualifying session
-  /// exists in the window — the UI then renders an explicit
-  /// empty-state card.
-  ///
-  /// Universal across modalities: this aggregator reads only
-  /// `TrainingSession.sessionFeeling` and the window boundaries.
-  /// It does not touch `SegmentEffort`, `Exercise`, or any
-  /// modality / strength-specific table, so an all-running or
-  /// all-grappling user renders identically to a lifter.
-  ///
-  /// Points are sorted ascending by date. The window is inclusive
-  /// on both ends, matching the boundary check used for Strength
-  /// and Cardio selection so the feeling trend moves in lockstep
-  /// with the other trends when the window changes.
-  Future<List<FeelingTrendPoint>> computeFeelingTrend({
-    required StatsWindow window,
-  }) async {
-    final allSessions = (await _loadHistory()).sessions;
-    final completed = allSessions.where((s) => s.endedAtMs != null).toList();
-
-    final fromMs = window.fromMs.millisecondsSinceEpoch;
-    final toMs = window.toMs.millisecondsSinceEpoch;
-
-    final points = <FeelingTrendPoint>[];
-    for (final session in completed) {
-      if (session.startedAtMs < fromMs || session.startedAtMs > toMs) {
-        continue;
-      }
-      final feeling = session.sessionFeeling;
-      if (feeling == null || feeling < 1 || feeling > 5) continue;
-      final dt = DateTime.fromMillisecondsSinceEpoch(session.startedAtMs);
-      points.add(
-        FeelingTrendPoint(
-          date: DateTime(dt.year, dt.month, dt.day),
-          feeling: feeling,
-        ),
-      );
-    }
-    points.sort((a, b) => a.date.compareTo(b.date));
-    return points;
   }
 
   /// Epley 1-rep-max estimate: weight × (1 + reps / 30).

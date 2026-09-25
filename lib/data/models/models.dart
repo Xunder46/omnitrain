@@ -198,7 +198,7 @@ class TrainingSession {
   final String? modality;
   final String? intent;
   final double? perceivedSessionRpe;
-  final int? sessionFeeling; // 1-5 scale: 1=Rough, 5=Great
+  final int? sessionFeeling; // Session effort rating, 1-5: 1=Very easy, 5=Max effort
   final int? qualityRating; // Reserved for future computed session quality
   final bool isRolling;
   final int createdAtMs;

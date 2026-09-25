@@ -8,7 +8,7 @@ OmniTrain's Settings screen is fully implemented. It owns persisted preferences 
 - measurement units (`Weight`, `Distance`, `Height`)
 - timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`)
 - notification permission copy that covers both rest reminders and effort-expiry alerts
-- workout follow-up (`Feeling Survey`)
+- workout follow-up (`Effort Rating` — "Ask how hard the workout was after finishing")
 - appearance (`AppTheme` selection)
 
 All settings apply immediately. There is no save button and no staged draft state.
@@ -80,7 +80,7 @@ values themselves live only in `lib/core/constants/omni_theme.dart`.
 | `preferredDistanceUnit` | `String` | `km` | `preferred_distance_unit` |
 | `preferredHeightUnit` | `String` | `cm` | `preferred_height_unit` |
 | `startOfWeek` | `String` | `monday` | `preferred_start_of_week` |
-| `showFeelingSurvey` | `bool` | `true` | `show_feeling_survey` |
+| `showFeelingSurvey` | `bool` | `true` | `show_feeling_survey` (backs the "Effort Rating" toggle; key kept from the feeling survey so every user's choice carried over) |
 | `effortTimerSound` | `String` | `boxing_bell` | `effort_timer_sound` |
 | `restPingInterval` | `int` | `0` (`Off`) | `rest_ping_interval` |
 | `restPingSound` | `String` | `soft_chime` | `rest_ping_sound` |
@@ -115,7 +115,7 @@ Valid rest ping intervals:
 | `setPreferredDistanceUnit(unit)` | Normalizes to `km` or `miles` |
 | `setPreferredHeightUnit(unit)` | Normalizes to `cm` or `ftin` (feet/inches) |
 | `setStartOfWeek(value)` | Normalizes to `monday` or `sunday` |
-| `setShowFeelingSurvey(value)` | Enables/disables the post-workout survey |
+| `setShowFeelingSurvey(value)` | Enables/disables the automatic post-workout effort rating prompt |
 | `setEffortTimerSound(soundId)` | Persists the effort-timer alert sound |
 | `setRestPingInterval(seconds)` | Persists periodic rest reminders |
 | `setRestPingSound(soundId)` | Persists the rest-ping sound |

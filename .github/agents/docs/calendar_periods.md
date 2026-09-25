@@ -53,6 +53,12 @@ depending on whether it is routine-linked.
 When a workout is saved from the summary, the originating `PlannedSession` is marked completed and
 linked via `linkedSessionId`.
 
+**Effort tint.** A completed session row carries a 4dp left border in its session effort rating's
+color — the theme's one-color intensity ramp via `feelingColor(rating, themeColors)`, from the
+faintest step (1, Very easy) to the full accent (5, Max effort) — so a week reads as an intensity
+map. Unrated sessions keep the standard border with no tint. Ratings recorded before the effort
+rating replaced the feeling survey are shown the same way (see [Session Summary](session_summary.md)).
+
 #### Historical-session summary behavior
 
 When a `SessionSummaryScreen` is opened from the calendar flow (either

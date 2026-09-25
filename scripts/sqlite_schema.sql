@@ -197,7 +197,7 @@ CREATE TABLE app_training_session (
   modality TEXT, -- Functional training type: 'cardio_endurance', 'resistance_lifting', 'isometric_stretching', 'sports', or NULL for 'Free Training'
   intent TEXT,
   perceived_session_rpe REAL,
-  session_feeling INTEGER, -- 1-5 scale, nullable (1=Rough, 5=Great)
+  session_feeling INTEGER, -- session effort rating 1-5, nullable (1=Very easy, 5=Max effort)
   quality_rating INTEGER, -- Reserved for computed session quality score, nullable
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL,

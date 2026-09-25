@@ -148,7 +148,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `preferredWeightUnit` | Getter — current displayed load unit (`kg` or `lbs`) |
 | `preferredDistanceUnit` | Getter — current displayed distance unit (`km` or `miles`) |
 | `startOfWeek` | Getter — current calendar week start (`monday` or `sunday`) |
-| `showFeelingSurvey` | Getter — whether to show the post-workout feeling prompt |
+| `showFeelingSurvey` | Getter — whether to show the automatic post-workout effort rating prompt ("Effort Rating" toggle) |
 | `effortTimerSound` | Getter — selected alert sound for timer completion |
 | `restPingInterval` | Getter — periodic rest reminder interval in seconds |
 | `restPingSound` | Getter — selected rest-ping sound |
@@ -159,7 +159,7 @@ Owns persisted app appearance, calendar, timer-alert, and workout follow-up pref
 | `setPreferredWeightUnit(String)` | Normalizes/persists the display weight unit and notifies listeners |
 | `setPreferredDistanceUnit(String)` | Normalizes/persists the display distance unit and notifies listeners |
 | `setStartOfWeek(String)` | Normalizes/persists the calendar week start and notifies listeners |
-| `setShowFeelingSurvey(bool)` | Persists the post-workout survey toggle |
+| `setShowFeelingSurvey(bool)` | Persists the "Effort Rating" toggle (key `show_feeling_survey`) |
 | `setEffortTimerSound(String)` | Persists the selected effort-timer alert sound |
 | `setRestPingInterval(int)` | Persists the periodic rest reminder interval |
 | `setRestPingSound(String)` | Persists the selected rest-ping sound |

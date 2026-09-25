@@ -81,7 +81,7 @@ Handles all session lifecycle and CRUD concerns (Cluster A of the original `Work
 | `discardCurrentSession()` | Deletes session and all related data |
 | `updateSessionNote(note)` | Updates session note |
 | `updateSessionEndTime(durationSecs)` | Edit-mode only — sets `endedAtMs = startedAtMs + durationSecs × 1000`; no-op if `durationSecs ≤ 0` |
-| `updateSessionFeeling(feeling)` | Persists a 1-5 feeling score to `TrainingSession.sessionFeeling`; updates `_currentSession` in-place |
+| `updateSessionFeeling(sessionId, rating)` | Persists the 1-5 session effort rating (1 Very easy … 5 Max effort) to `TrainingSession.sessionFeeling` for any session id; updates `_currentSession` in-place when it is that session |
 | `isRollingSession` | Getter — returns `true` when the active session has `isRolling == true`; returns `false` when no session is loaded |
 
 #### Exercise Management

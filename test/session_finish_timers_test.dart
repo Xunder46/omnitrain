@@ -180,9 +180,9 @@ void main() {
 
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
 
-    // The summary screen shows a non-dismissible "How did it feel?" sheet.
+    // The summary screen shows a non-dismissible "How hard was this session?" sheet.
     // Select a feeling to dismiss it before navigating back.
-    if (find.text('How did it feel?').evaluate().isNotEmpty) {
+    if (find.text('How hard was this session?').evaluate().isNotEmpty) {
       // Tap the "3" tile in the feeling sheet (last occurrence to avoid ambiguity)
       await tester.tap(find.text('3').last);
       await tester.pumpAndSettle();
@@ -280,8 +280,8 @@ void main() {
 
     expect(find.byType(SessionSummaryScreen), findsOneWidget);
 
-    // Dismiss the "How did it feel?" rating sheet if present.
-    if (find.text('How did it feel?').evaluate().isNotEmpty) {
+    // Dismiss the "How hard was this session?" rating sheet if present.
+    if (find.text('How hard was this session?').evaluate().isNotEmpty) {
       await tester.tap(find.text('3').last);
       await tester.pumpAndSettle();
     }

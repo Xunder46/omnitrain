@@ -7,30 +7,39 @@ The Session Summary screen appears after workout completion and focuses on sessi
 Current hierarchy:
 
 1. Header
-2. Top Stats (Duration, Rest Time) for standard sessions only
+2. Top Stats (Duration, Rest Time for standard sessions; EFFORT row for every session)
 3. Context-aware modality group cards (Strength, Cardio, Sports, Isometric)
 4. Session note
 5. Calendar card
 
 The screen keeps existing summary navigation actions (edit, save as routine, discard) and the bottom Done action.
 
-### Feeling Survey Capture
+### Effort Rating Capture
 
-After the first frame, when `sessionFeeling == null` AND `SettingsState.showFeelingSurvey == true`, the summary shows a non-dismissible modal bottom sheet (`_FeelingSheetContent`) with a 1–5 prompt:
+The post-session survey records the **session effort rating**: how hard the whole session was, 1 (Very easy) → 5 (Max effort). It is stored in the existing `TrainingSession.sessionFeeling` field (nullable `int`; the name is historical — it is not a feeling score). Ratings recorded before the redefinition (when the prompt asked "How did it feel?", Rough → Great) are read as effort ratings on the same scale with no conversion — a deliberate owner decision (Stats redesign D-5, `.github/agents/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`).
 
-- **Range:** 1 (Rough) → 5 (Great); colour-mapped via `feelingColor(feeling, themeColors)` in `lib/core/utils/session_feeling_utils.dart`.
-- **Sheet mechanics:** `showModalBottomSheet` with `isDismissible: false, enableDrag: false` — the user must pick a value (or skip via the explicit close affordance) before the sheet dismisses. Selection writes through `WorkoutState.updateSessionFeeling(sessionId, feeling)` which persists `TrainingSession.sessionFeeling` (nullable `int`) and updates the in-memory session.
-- **Idempotent:** `_hasShownFeelingSheet` guards against re-show on rebuilds; the persistence path skips when `session.sessionFeeling != null`.
-- **Toggle:** the `Show Feeling Survey` switch in `Settings → WORKOUT` (default `true`, preference key `show_feeling_survey`, see [Theme & Settings](theme_and_settings.md)) disables the sheet for the whole post-workout flow.
+#### Automatic post-workout prompt
 
-#### Where the feeling survey does and does NOT surface today
+After the first frame, when `sessionFeeling == null`, `SettingsState.showFeelingSurvey == true` and the summary was reached from the post-workout flow (not from the calendar), the summary shows a modal bottom sheet (`_FeelingSheetContent`):
 
-- **Surfaces:** Post-workout `SessionSummaryScreen` only (when reached via the post-workout flow — i.e. `openedFromCalendar == false`).
-- **Does NOT surface:**
-  - The historical summary opened from the calendar (`openedFromCalendar: true`) does not trigger the sheet; the historical session is for review / discard only and has no feeling capture moment.
-  - There is no in-session feeling prompt; the survey is post-workout only.
-  - The sheet does not fire when the user opens the summary as part of the discard / "Unsaved changes" guard.
-- **Toggling `showFeelingSurvey = false`** suppresses the sheet globally; the `sessionFeeling` field can still be set elsewhere (e.g. directly via the repository) but no in-app UI surfaces the prompt when the toggle is off.
+- **Copy:** title "How hard was this session?"; five numbered tiles 1–5; end labels "Very easy" under 1 and "Max effort" under 5. There are no per-number words (they don't fit the tile row).
+- **Colors:** tiles use the theme's one-color intensity ramp via `feelingColor(rating, themeColors)` (1 faintest → 5 the full accent); the selected tile's number uses `effortTileTextColor(...)`. Both live in `lib/core/utils/session_feeling_utils.dart`; the ramp is `OmniThemeColors.intensityRamp` (see [Design System](design_system.md)).
+- **Must answer:** `isDismissible: false, enableDrag: false`. The sheet has no close or skip control; one tap on a tile writes through `WorkoutState.updateSessionFeeling(sessionId, rating)` and closes it. The settings toggle is the only way not to be asked.
+- **Once per session:** `_hasShownFeelingSheet` guards against re-show on rebuilds, and the sheet is skipped when the session already has a rating.
+- **Refresh:** when the sheet closes, the summary rebuilds so the EFFORT row shows the new value immediately.
+- **Toggle:** the "Effort Rating" switch in `Settings → WORKOUT` (default on, preference key `show_feeling_survey`, see [Theme & Settings](theme_and_settings.md)) disables the automatic prompt.
+- **Never shown** on a summary opened from the calendar (`openedFromCalendar: true`), during the discard / "Unsaved changes" guard, or in-session.
+
+#### EFFORT row (add or change the rating)
+
+The first summary card always carries an EFFORT row, whether or not the toggle is on and for both post-workout and calendar-opened summaries. It sits beneath the Duration | Rest Time row as a second full-width row:
+
+- `_StatPill` labelled EFFORT, value `n / 5` in that step's ramp color, or `—` when unrated.
+- A trailing text button: **Add rating** when unrated, **Change** when rated.
+- The button opens the same `_FeelingSheetContent` with the current value pre-selected. Unlike the automatic prompt, this user-opened sheet **is dismissible** (tap outside or swipe down) and dismissing changes nothing. Picking a value saves through `updateSessionFeeling`, closes the sheet and refreshes the row.
+- **Rolling sessions:** the card still renders, but with only the EFFORT row — Duration and Rest Time stay hidden as before.
+
+Tests: `test/session_summary_effort_row_test.dart` (automatic-prompt refresh, add / change / dismiss on fresh and calendar-opened sessions, rolling sessions).
 
 ---
 
@@ -152,11 +161,11 @@ Summary data loaded on entry:
 8. getPreferredWeightUnit from SessionSummaryService
 9. calendar-day data for current month
 
-Feeling sheet behavior:
+Effort rating sheet behavior:
 
-- shown after first frame when sessionFeeling is null
-- non-dismissible until user selects a value
-- writes through updateSessionFeeling
+- automatic prompt shown after first frame when sessionFeeling is null, the toggle is on and the summary is not calendar-opened
+- automatic prompt is non-dismissible until the user selects a value; the EFFORT row's Add rating / Change sheet is dismissible
+- both write through updateSessionFeeling and refresh the summary when they close
 
 ### Service: SessionSummaryService
 

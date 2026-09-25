@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/effort_defaults.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
@@ -14,6 +13,7 @@ import 'package:omnitrain/data/models/models.dart';
 import 'package:omnitrain/data/repositories/mock_workout_repository.dart';
 import 'package:omnitrain/state/settings/settings_state.dart';
 import 'helpers/fake_preferences_service.dart';
+import 'contrast_helpers.dart';
 
 // ── Minimal observation stub for ObservationGrouper tests ─────────────────
 // ObservationGrouper accesses .metricId, .valueInt, .valueReal, .valueBool
@@ -1325,21 +1325,85 @@ void main() {
       expect(fromBareCall, themeColors.primary);
 
       // Every other rating must also be deterministic from the
-      // theme tokens (today they are Material defaults; this
+      // theme tokens (now from the intensity ramp; this
       // guards against accidental regression to a context read).
       expect(feelingColor(1, themeColors), feelingColor(1, themeColors));
-      expect(feelingColor(4, themeColors), Colors.green);
+      expect(feelingColor(4, themeColors), themeColors.intensityRamp.step4);
     });
 
-    test('ratings 1..4 keep their established Material palette — only '
-        'rating 5 changed (it now equals themeColors.primary instead '
-        'of Theme.of(context).primaryColor)', () {
+    test('intensity ramp: ratings 1..5 map to the theme intensity ramp, '
+        'from faintest (step 1) to full strength (step 5).', () {
       final themeColors = OmniTheme.colors;
-      expect(feelingColor(1, themeColors), Colors.red);
-      expect(feelingColor(2, themeColors), Colors.orange);
-      expect(feelingColor(3, themeColors), Colors.yellow[700]);
-      expect(feelingColor(4, themeColors), Colors.green);
-      expect(feelingColor(5, themeColors), themeColors.primary);
+      expect(feelingColor(1, themeColors), themeColors.intensityRamp.step1);
+      expect(feelingColor(2, themeColors), themeColors.intensityRamp.step2);
+      expect(feelingColor(3, themeColors), themeColors.intensityRamp.step3);
+      expect(feelingColor(4, themeColors), themeColors.intensityRamp.step4);
+      expect(feelingColor(5, themeColors), themeColors.intensityRamp.step5);
+    });
+  });
+
+  group('Intensity ramp spacing (T-1)', () {
+    test('Each step contrast is within ±0.1 of its evenly-spaced target '
+        'on all themes', () {
+      for (final theme in AppTheme.values) {
+        final colors = OmniTheme.colorsForTheme(theme);
+        final ramp = colors.intensityRamp;
+        final rampSteps = [
+          ramp.step1,
+          ramp.step2,
+          ramp.step3,
+          ramp.step4,
+          ramp.step5,
+        ];
+
+        // Calculate contrasts for each step vs surface
+        final contrasts = rampSteps
+            .map((step) => contrastRatio(step, colors.surface))
+            .toList();
+
+        // Verify each step's contrast is within ±0.1 of its target
+        // Target for step k: c1 + (c5 - c1) * (k-1) / 4
+        final c1 = contrasts[0];
+        final c5 = contrasts[4];
+
+        for (int k = 0; k < 5; k++) {
+          final targetContrast = c1 + (c5 - c1) * k / 4;
+          final actualContrast = contrasts[k];
+          final error = (actualContrast - targetContrast).abs();
+
+          expect(
+            error,
+            lessThanOrEqualTo(0.1),
+            reason:
+                'Theme ${theme.name}: step ${k + 1} contrast $actualContrast '
+                'should be within ±0.1 of target $targetContrast '
+                '(c1=$c1, c5=$c5)',
+          );
+        }
+      }
+    });
+
+    test('Cached ramps: two calls for the same theme return identical results', () {
+      for (final theme in AppTheme.values) {
+        // Get the ramp twice
+        final colors1 = OmniTheme.colorsForTheme(theme);
+        final ramp1 = colors1.intensityRamp;
+
+        final colors2 = OmniTheme.colorsForTheme(theme);
+        final ramp2 = colors2.intensityRamp;
+
+        // They should be the exact same object (cached)
+        expect(identical(ramp1, ramp2), true,
+            reason:
+                'Theme ${theme.name}: ramps should be identical (cached) but were different objects');
+
+        // And all steps should have the same color values
+        expect(ramp1.step1, ramp2.step1);
+        expect(ramp1.step2, ramp2.step2);
+        expect(ramp1.step3, ramp2.step3);
+        expect(ramp1.step4, ramp2.step4);
+        expect(ramp1.step5, ramp2.step5);
+      }
     });
   });
 

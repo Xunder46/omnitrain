@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 enum AppTheme {
   abyssalNeon,
@@ -39,6 +40,17 @@ typedef MacroChartPalette = ({
 /// while staying restrained (no bright/saturated primaries).
 typedef StripMacroPalette = ({Color protein, Color carbs, Color fat});
 
+/// Intensity ramp for effort-rating UI: 5 steps, step 1 faintest (≥1.8:1 vs surface)
+/// to step 5 full strength (primary at 100% opacity). Steps 2–4 are evenly spaced
+/// so contrast strictly increases. Used for rating tiles, calendar tints, and stats.
+typedef IntensityRampPalette = ({
+  Color step1,
+  Color step2,
+  Color step3,
+  Color step4,
+  Color step5,
+});
+
 typedef OmniThemeColors = ({
   Color backgroundTop,
   Color backgroundBottom,
@@ -53,6 +65,7 @@ typedef OmniThemeColors = ({
   Color surfaceBorder,
   MacroChartPalette macroChart,
   StripMacroPalette stripMacros,
+  IntensityRampPalette intensityRamp,
 });
 
 /// Core theme constants for OMNITRAIN biomechanical training system
@@ -79,14 +92,160 @@ class OmniTheme {
   static const Color _baseFiber = Color.fromARGB(255, 87, 167, 112);
   static const Color _baseFat = Color.fromARGB(255, 201, 191, 99);
 
+  /// Cached intensity ramps per theme. Computed once to avoid expensive
+  /// search operations during build cycles (especially common for
+  /// `colorsForTheme` calls in ListenableBuilder or similar).
+  static final Map<AppTheme, IntensityRampPalette> _rampCache = {};
+
+  /// Get the intensity ramp for a theme, using cached value if available.
+  /// Caches the result to avoid recomputation during build cycles.
+  static IntensityRampPalette _getCachedOrComputeRamp(
+    AppTheme theme,
+    Color primary,
+    Color surface,
+  ) {
+    if (_rampCache.containsKey(theme)) {
+      return _rampCache[theme]!;
+    }
+    final ramp = _calculateIntensityRamp(primary, surface);
+    _rampCache[theme] = ramp;
+    return ramp;
+  }
+
+  /// Calculate the 5-step intensity ramp for effort rating.
+  /// Step 5 is primary at 100% (full strength).
+  /// Step 1 is the minimum alpha to reach 1.8:1 contrast with surface.
+  /// Steps 2–4 are evenly spaced alphas between step 1 and 5, ensuring
+  /// strict monotonic increase in contrast.
+  static IntensityRampPalette _calculateIntensityRamp(
+    Color primary,
+    Color surface,
+  ) {
+    // Step 5 is always primary at full opacity (100%)
+    final step5 = primary;
+
+    // Calculate step 1: find minimum alpha where composite ≥ 1.8:1 vs surface
+    double alpha1 = 0.0;
+    for (double testAlpha = 0.05; testAlpha <= 1.0; testAlpha += 0.01) {
+      final composite = _compositeColorWithAlpha(primary, surface, testAlpha);
+      if (_contrastRatio(composite, surface) >= 1.8) {
+        alpha1 = testAlpha;
+        break;
+      }
+    }
+    alpha1 = alpha1.clamp(0.05, 0.95);
+    final step1 = _compositeColorWithAlpha(primary, surface, alpha1);
+
+    // Get contrast values for step 1 and step 5
+    final c1 = _contrastRatio(step1, surface);
+    final c5 = _contrastRatio(step5, surface);
+
+    // Steps 2–4 have contrasts evenly spaced between c1 and c5
+    // Target contrasts: c1 + (c5 - c1) * (k-1) / 4 for step k
+    final targetC2 = c1 + (c5 - c1) * 1 / 4;
+    final targetC3 = c1 + (c5 - c1) * 2 / 4;
+    final targetC4 = c1 + (c5 - c1) * 3 / 4;
+
+    // Find alphas that produce the target contrasts
+    final alpha2 = _findAlphaForTargetContrast(primary, surface, targetC2);
+    final alpha3 = _findAlphaForTargetContrast(primary, surface, targetC3);
+    final alpha4 = _findAlphaForTargetContrast(primary, surface, targetC4);
+
+    final step2 = _compositeColorWithAlpha(primary, surface, alpha2);
+    final step3 = _compositeColorWithAlpha(primary, surface, alpha3);
+    final step4 = _compositeColorWithAlpha(primary, surface, alpha4);
+
+    return (
+      step1: step1,
+      step2: step2,
+      step3: step3,
+      step4: step4,
+      step5: step5,
+    );
+  }
+
+  /// Binary search to find the alpha that produces a target contrast.
+  /// Search resolution: 0.005 (200 possible values).
+  static double _findAlphaForTargetContrast(
+    Color primary,
+    Color surface,
+    double targetContrast,
+  ) {
+    double bestAlpha = 0.1;
+    double bestError = double.infinity;
+
+    // Search from 0.01 to 0.99 with 0.005 resolution
+    for (double alpha = 0.01; alpha <= 0.99; alpha += 0.005) {
+      final composite = _compositeColorWithAlpha(primary, surface, alpha);
+      final contrast = _contrastRatio(composite, surface);
+      final error = (contrast - targetContrast).abs();
+
+      if (error < bestError) {
+        bestError = error;
+        bestAlpha = alpha;
+      }
+    }
+
+    return bestAlpha;
+  }
+
+  /// Composite a color with alpha over a background surface (opaque).
+  static Color _compositeColorWithAlpha(
+    Color foreground,
+    Color background,
+    double alpha,
+  ) {
+    final r = (_channel8(foreground.r) * alpha + _channel8(background.r) * (1 - alpha)).round();
+    final g =
+        (_channel8(foreground.g) * alpha + _channel8(background.g) * (1 - alpha)).round();
+    final b = (_channel8(foreground.b) * alpha + _channel8(background.b) * (1 - alpha)).round();
+    return Color.fromARGB(255, r, g, b);
+  }
+
+  /// Contrast ratio between two colors (WCAG formula).
+  /// Calculate WCAG contrast ratio between two colors.
+  /// Public API for text color selection and accessibility checks.
+  static double contrastRatio(Color color1, Color color2) {
+    return _contrastRatio(color1, color2);
+  }
+
+  static double _contrastRatio(Color color1, Color color2) {
+    final lum1 = _relativeLuminance(color1);
+    final lum2 = _relativeLuminance(color2);
+    final lighter = lum1 > lum2 ? lum1 : lum2;
+    final darker = lum1 > lum2 ? lum2 : lum1;
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  /// Relative luminance per WCAG (sRGB).
+  static double _relativeLuminance(Color color) {
+    final r = _linearizeChannel(_channel8(color.r) / 255.0);
+    final g = _linearizeChannel(_channel8(color.g) / 255.0);
+    final b = _linearizeChannel(_channel8(color.b) / 255.0);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+
+  /// A 0–1 color component as an 8-bit channel value (0–255).
+  static int _channel8(double component) =>
+      (component * 255.0).round().clamp(0, 255);
+
+  /// Linearize an sRGB channel.
+  static double _linearizeChannel(double c) {
+    return c <= 0.04045
+        ? c / 12.92
+        : (math.pow((c + 0.055) / 1.055, 2.4) as double);
+  }
+
   static OmniThemeColors colorsForTheme(AppTheme theme) {
     switch (theme) {
       case AppTheme.abyssalNeon:
+        final primary = Color(0xFF2DE2E6);
+        final surface = Color(0xFF102842);
         return (
           backgroundTop: Color(0xFF0F1F33),
           backgroundBottom: Color(0xFF060B14),
-          surface: Color(0xFF102842),
-          primary: Color(0xFF2DE2E6),
+          surface: surface,
+          primary: primary,
           secondary: Color(0xFF1B9AAA),
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
@@ -106,13 +265,16 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
+          intensityRamp: _getCachedOrComputeRamp(AppTheme.abyssalNeon, primary, surface),
         );
       case AppTheme.forgeEmber:
+        final primary = Color(0xFFFF7B45);
+        final surface = Color(0xFF3A2712);
         return (
           backgroundTop: Color(0xFF33210F),
           backgroundBottom: Color(0xFF120B06),
-          surface: Color(0xFF3A2712),
-          primary: Color(0xFFFF7B45),
+          surface: surface,
+          primary: primary,
           secondary: Color(0xFFCC4A1A),
           textDominant: Color(0xF0FFF5EA),
           textSecondary: Color(0x99FFFFFF),
@@ -132,13 +294,16 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
+          intensityRamp: _getCachedOrComputeRamp(AppTheme.forgeEmber, primary, surface),
         );
       case AppTheme.obsidianVolt:
+        final primary = Color(0xFFE8B420);
+        final surface = Color(0xFF262626);
         return (
           backgroundTop: Color(0xFF1E1E1E),
           backgroundBottom: Color(0xFF0D0D0D),
-          surface: Color(0xFF262626),
-          primary: Color(0xFFE8B420),
+          surface: surface,
+          primary: primary,
           secondary: Color(0xFF8A6600),
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
@@ -158,13 +323,16 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
+          intensityRamp: _getCachedOrComputeRamp(AppTheme.obsidianVolt, primary, surface),
         );
       case AppTheme.voidPulse:
+        final primary = Color(0xFFA478FF);
+        final surface = Color(0xFF2A2350);
         return (
           backgroundTop: Color(0xFF221C40),
           backgroundBottom: Color(0xFF110D26),
-          surface: Color(0xFF2A2350),
-          primary: Color(0xFFA478FF),
+          surface: surface,
+          primary: primary,
           secondary: Color(0xFF6D3FD4),
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
@@ -184,13 +352,16 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
+          intensityRamp: _getCachedOrComputeRamp(AppTheme.voidPulse, primary, surface),
         );
       case AppTheme.crimsonDojo:
+        final primary = Color(0xFFFF4C47);
+        final surface = Color(0xFF3A1A16);
         return (
           backgroundTop: Color(0xFF331612),
           backgroundBottom: Color(0xFF130806),
-          surface: Color(0xFF3A1A16),
-          primary: Color(0xFFFF4C47),
+          surface: surface,
+          primary: primary,
           secondary: Color(0xFFD32F2F),
           textDominant: Color(0xF2FFFFFF),
           textSecondary: Color(0x99FFFFFF),
@@ -210,13 +381,16 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
+          intensityRamp: _getCachedOrComputeRamp(AppTheme.crimsonDojo, primary, surface),
         );
       case AppTheme.malachiteCore:
+        final primary = Color(0xFF24B85A);
+        final surface = Color(0xFF182E1B);
         return (
           backgroundTop: Color(0xFF102613),
           backgroundBottom: Color(0xFF060C08),
-          surface: Color(0xFF182E1B),
-          primary: Color(0xFF24B85A),
+          surface: surface,
+          primary: primary,
           secondary: Color(
             0xFF10863E,
           ), // D-14: Corrected to 3.11:1 vs surface, 4.66:1 white label
@@ -238,6 +412,7 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
+          intensityRamp: _getCachedOrComputeRamp(AppTheme.malachiteCore, primary, surface),
         );
     }
   }

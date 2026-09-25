@@ -830,8 +830,8 @@ class _WorkoutSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SettingsRow(
-            label: 'Feeling Survey',
-            subtitle: 'Ask how the workout felt after finishing',
+            label: 'Effort Rating',
+            subtitle: 'Ask how hard the workout was after finishing',
             trailing: Switch(
               value: settingsState.showFeelingSurvey,
               onChanged: settingsState.setShowFeelingSurvey,

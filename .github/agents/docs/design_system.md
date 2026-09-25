@@ -74,8 +74,22 @@ It iterates `AppTheme.values`, so once the code compiles, every rule applies to 
 theme automatically with **no test edits**. It covers background lightness, surface lift,
 muted and secondary text, borders, dividers, accent contrast, the on-primary/on-secondary
 labels, the interactive vs decorative outline split, the elevated container tier, the home
-tile fills at both tiers, and the modality accents against the surface. A failure names the
-theme, the check, the measured value and the threshold.
+tile fills at both tiers, the modality accents against the surface, and the effort-rating
+intensity ramp (below). A failure names the theme, the check, the measured value and the
+threshold.
+
+**Derived tokens — the effort-rating intensity ramp.** `OmniThemeColors.intensityRamp`
+(`step1`…`step5`) is not hand-picked per theme; `OmniTheme` derives it from each theme's
+`primary` and `surface` and caches it per `AppTheme`, so a new theme gets a ramp for free.
+Each step is `primary` alpha-composited over `surface`: step 5 is `primary` itself, step 1 is
+the lowest alpha whose composite reaches 1.8:1 against `surface` (the same floor as
+`surfaceBorder`), and steps 2–4 space the contrast against `surface` evenly between them.
+It colors the effort-rating tiles and the calendar day-list tint through
+`feelingColor(rating, themeColors)`; the selected tile's number uses
+`effortTileTextColor(...)`. Contract checks 18a–c require every step ≥ 1.8:1 vs `surface`,
+contrast strictly increasing from step 1 to 5, and the tile number ≥ 3:1 on every step;
+`test/utils_test.dart` pins the even spacing (±0.1). The ramp reads as "more", never as
+good/bad — don't reintroduce a traffic-light palette for ratings.
 
 Related gates that also iterate the roster: `emphasis_tier_contract_test.dart` (accent stays
 chromatically distinct from the text tiers) and `switch_consistency_contract_test.dart`

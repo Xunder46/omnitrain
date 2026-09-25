@@ -259,6 +259,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     if (!widget.settingsState.showFeelingSurvey) return;
     if (_hasShownFeelingSheet) return;
 
+    // Only show automatic prompt for fresh sessions, not historical ones
+    if (_isHistoricalView) return;
+
     final session = widget.workoutState.currentSession;
     if (session == null) return;
     if (session.sessionFeeling != null) return;
@@ -277,6 +280,39 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
         modality: session.modality,
       ),
     );
+
+    // Rebuild to reflect any rating changes made in the automatic prompt
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// Open the effort-rating sheet from the Summary's add/change control.
+  /// Unlike the post-workout prompt (isDismissible: false), this sheet
+  /// CAN be dismissed without selecting a value — tapping outside or
+  /// swiping down cancels without changing the rating.
+  Future<void> _openEffortRatingSheet(ThemeData theme) async {
+    final session = widget.workoutState.currentSession;
+    if (session == null) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: true,
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      isScrollControlled: true,
+      builder: (context) => _FeelingSheetContent(
+        workoutState: widget.workoutState,
+        modality: session.modality,
+        initialRating: session.sessionFeeling,
+      ),
+    );
+
+    // Rebuild to reflect any rating changes made in the sheet
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _showDiscardDialog() async {
@@ -659,9 +695,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                       // day-context reminder; the card body is the
                       // only part that the rolling branch omits.
                       _buildSessionInfoHeader(theme),
-                      if (!widget.workoutState.isRollingSession) ...[
-                        _buildSessionInfoCard(theme),
-                      ],
+                      _buildSessionInfoCard(theme),
                       ..._buildGroupCards(theme),
                       const SizedBox(height: 16),
                       const OmniCardHeader(title: 'SESSION NOTE'),
@@ -715,31 +749,83 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     );
   }
 
-  /// Combined session info card: Duration pill + Rest Time pill.
+  /// Combined session info card: Duration pill + Rest Time pill + Effort pill.
   ///
   /// Replaces the previous two-card layout (header card + stats card)
   /// per the Phase 2.1 refinement. The page title lives in
   /// [OmniBackHeader]; the date and modality chip live in
   /// [_buildSessionInfoHeader] above this card. The card body is
-  /// content-only.
+  /// content-only. The EFFORT row is always shown (even if toggle is off),
+  /// with an "Add rating" or "Change rating" button to modify the rating.
+  ///
+  /// For rolling sessions, Duration/Rest Time are hidden, but EFFORT row
+  /// remains visible so the user can rate the session.
   Widget _buildSessionInfoCard(ThemeData theme) {
+    final session = widget.workoutState.currentSession;
+    final feeling = session?.sessionFeeling;
+    final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
+    final isRolling = widget.workoutState.isRollingSession;
+
     return OmniSurface(
       key: const Key('omni_session_info_card'),
       padding: const EdgeInsets.all(16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: _StatPill(
-              label: 'Duration',
-              value: _formatDuration(_summary.totalDurationMs),
+          // First row: Duration | Rest Time (hidden for rolling sessions)
+          if (!isRolling) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _StatPill(
+                    label: 'Duration',
+                    value: _formatDuration(_summary.totalDurationMs),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _StatPill(
+                    label: 'Rest Time',
+                    value: _formatDurationOrZero(_restTimeMs),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _StatPill(
-              label: 'Rest Time',
-              value: _formatDurationOrZero(_restTimeMs),
-            ),
+            // Gap between rows (only when Duration row is visible)
+            const SizedBox(height: 16),
+          ],
+          // Effort rating row: always visible (even for rolling sessions)
+          Row(
+            children: [
+              Expanded(
+                child: _StatPill(
+                  label: 'Effort',
+                  value: feeling != null
+                      ? '$feeling / 5'
+                      : '—',
+                  valueColor: feeling != null
+                      ? feelingColor(feeling, themeColors)
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: () => _openEffortRatingSheet(theme),
+                style: ButtonStyle(
+                  shape: WidgetStatePropertyAll(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(OmniTheme.buttonUtilityRadius),
+                    ),
+                  ),
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                ),
+                child: Text(
+                  feeling != null ? 'Change' : 'Add rating',
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1154,8 +1240,13 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 class _FeelingSheetContent extends StatefulWidget {
   final WorkoutState workoutState;
   final String? modality;
+  final int? initialRating;
 
-  const _FeelingSheetContent({required this.workoutState, this.modality});
+  const _FeelingSheetContent({
+    required this.workoutState,
+    this.modality,
+    this.initialRating,
+  });
 
   @override
   State<_FeelingSheetContent> createState() => _FeelingSheetContentState();
@@ -1163,6 +1254,13 @@ class _FeelingSheetContent extends StatefulWidget {
 
 class _FeelingSheetContentState extends State<_FeelingSheetContent> {
   int? _selectedFeeling;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-select the initial rating if provided
+    _selectedFeeling = widget.initialRating;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1199,7 +1297,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
           ),
           // Title
           Text(
-            'How did it feel?',
+            'How hard was this session?',
             textAlign: TextAlign.center,
             style: theme.textTheme.titleLarge?.copyWith(
               color: theme.colorScheme.onSurface.withOpacity(0.9),
@@ -1236,14 +1334,14 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Rough',
+                  'Very easy',
                   style: theme.textTheme.labelSmall?.copyWith(
                     letterSpacing: 1.0,
                     color: themeColors.textMuted,
                   ),
                 ),
                 Text(
-                  'Great',
+                  'Max effort',
                   style: theme.textTheme.labelSmall?.copyWith(
                     letterSpacing: 1.0,
                     color: themeColors.textMuted,
@@ -1262,6 +1360,13 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
     final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
     final isSelected = _selectedFeeling == number;
     final tileColor = feelingColor(number, themeColors);
+    final selectedTextColor = isSelected
+        ? effortTileTextColor(
+            number,
+            themeColors,
+            onPrimary: theme.colorScheme.onPrimary,
+          )
+        : theme.colorScheme.onSurface.withOpacity(0.35);
 
     return GestureDetector(
       onTap: () => _selectFeeling(number),
@@ -1286,9 +1391,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
               number.toString(),
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w500,
-                color: isSelected
-                    ? Colors.white
-                    : theme.colorScheme.onSurface.withOpacity(0.35),
+                color: selectedTextColor,
               ),
             ),
           ),
@@ -1313,8 +1416,13 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
 class _StatPill extends StatelessWidget {
   final String label;
   final String value;
+  final Color? valueColor;
 
-  const _StatPill({required this.label, required this.value});
+  const _StatPill({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1333,7 +1441,7 @@ class _StatPill extends StatelessWidget {
         Text(
           value,
           style: theme.textTheme.titleLarge?.copyWith(
-            color: theme.colorScheme.primary,
+            color: valueColor ?? theme.colorScheme.primary,
           ),
         ),
       ],

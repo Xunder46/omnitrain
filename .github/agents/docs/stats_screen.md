@@ -270,53 +270,23 @@ lines). Empty per-tab state: "No Week data yet. Log a session to see
 this trend here." — descriptive only. Section hides itself when both
 tabs are empty.
 
-### HOW DID IT FEEL
-A **passive readout** of the post-session feeling captured by the summary
-sheet. Surface purpose: the user reads how their feeling has drifted over
-time against how much they've been training, by visual alignment on the
-same time window. The HOW DID IT FEEL card never tells the user to rest.
-
-- **Source** — `TrainingSession.sessionFeeling`.
-  Aggregated by `StatsProgressService.computeFeelingTrend({required StatsWindow window})`,
-  which walks all **completed** sessions inside the same
-  `StatsWindow` resolved for Strength/Cardio selection. Sessions without
-  a recorded feeling are omitted entirely (no zero-fill, no synthetic
-  flat line, no interpolated dip between two real points).
-- **Universal across modalities** — the aggregator reads only the
-  session-level feeling field. It does not touch `SegmentEffort`,
-  `Exercise`, or any modality / strength-specific table, so an all-running
-  or all-grappling user renders identically to a lifter.
-- **Window coupling** — uses the same `StatsWindow` the Strength and
-  Cardio sections use. Changing the window moves the HOW DID IT FEEL trend in
-  lockstep with the other trends.
-- **Chart** — fixed 1..5 semantic range pinned at exactly 5 integer
-  ticks (1, 2, 3, 4, 5; interval = 1). The y-axis is not auto-scaled;
-  feeling is ordinal, not continuous, so no padding above 5 (which
-  would produce a misleading 6th tick) and no zero-baseline below 1.
-  Each point is painted in its own session's feeling
-  color via `feelingColor(feeling, themeColors)`, the same shared helper
-  the post-session survey tile and the day-session-list border tint
-  already use; the three surfaces stay in lockstep from one palette
-  source.
-- **Empty state** — when the resolved window contains zero sessions with
-  a recorded feeling, an explicit empty-state card renders
-  ("No feeling logged in this window yet"). Not a chart, not a flat line
-  at zero, not a crash.
-- **No-sessions branch** — when the repository has zero completed
-  sessions, the HOW DID IT FEEL card is not rendered at all (the global
-  "No sessions yet" empty state wins, the same as for every other
-  section).
+### Effort rating (no section)
+The HOW DID IT FEEL trend section was **removed** when the post-session
+survey was redefined as the session effort rating (Stats redesign PR 1,
+`.github/agents/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
+The rating is captured and edited on the Session Summary (see
+[Session Summary](session_summary.md)) and shown as the calendar
+day-list tint; the Stats screen has no rating chart, scalar or pill.
+The planned Mix layer (Stats redesign item 7) will use it as the
+cross-modality session load.
 
 #### Deliberate non-features
 
-- No stat tile, no average-feeling scalar, no Feeling pill in the ALL TIME
+- No stat tile, average-rating scalar or rating pill in the ALL TIME
   row. The summary stat grid remains Sessions / Time / Streak only.
-- No rest / deload / recovery suggestion, banner, nudge, or call-to-action.
-- No changes to the day-session-list feeling border tint; that stays as-is.
-- The connecting line never takes its color from any session's rating.
-  Only the points carry rating color. The line is `themeColors.primary`
-  — a single fixed color that stays clearly legible on every theme
-  background.
+- No rest / deload / recovery suggestion, banner, nudge, or
+  call-to-action. (Stats redesign item 8 will replace this with its
+  Signals rules; update this line when it ships.)
 
 ### NUTRITION
 A **full-history** nutrition trend computed from every logged `ConsumedFood`
@@ -494,7 +464,6 @@ one window in a given load.
 |---------|-----------|-------|
 | Strength card exercise list (top-N) | **Yes** | Same `kTopLiftCount` cap and alphabetical tiebreak; only the session set selection runs over changes |
 | Cardio card exercise list (top-N) | **Yes** | Same `kTopCardioCount` cap and alphabetical tiebreak; same window as Strength |
-| HOW DID IT FEEL trend | **Yes** | Same window as Strength/Cardio selection; sessions outside the window are omitted from the trend (no zero-fill) |
 | Strength `e1RmTrend` / `volumeTrend` | No | Always full history for the selected exercise |
 | Cardio pace / distance / duration trend | No | Always full history for the selected exercise |
 | Recent PRs | No | Always all-time (Epley, `effortKind == 'set'`) |
@@ -546,8 +515,8 @@ Values live in `lib/core/services/stats_progress_service.dart`; this document na
 |------|------|
 | `lib/features/stats/stats_screen.dart` | Full screen implementation |
 | `lib/features/stats/widgets/scrollable_trend_chart.dart` | Scrollable chart wrapper (pinned y-axis, horizontal scroll, newest-first jump) |
-| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `FeelingTrendPoint`, `ExerciseRecord`, `VolumeTrend`, `ConsistencyTrend`, `NutritionAdherence`, `StatsWindow` |
-| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the feeling trend via `computeFeelingTrend({required StatsWindow window})`, the records via `computeExerciseRecords()`, the volume / time / distance trends via `computeVolumeTonnage` / `computeTimedDuration` / `computeTimedDistance`, the consistency trends via `computeConsistencyWeekly` / `computeConsistencyMonthly`, and the nutrition adherence via `computeNutritionAdherence()`) |
+| `lib/core/models/stats_progress.dart` | Value types: `StatsProgressData`, `LiftProgress`, `CardioProgress`, `StatsPR`, `TrendPoint`, `CardioTrendPoint`, `NutritionTrendPoint`, `ExerciseRecord`, `VolumeTrend`, `ConsistencyTrend`, `NutritionAdherence`, `StatsWindow` |
+| `lib/core/services/stats_progress_service.dart` | Pure-Dart computation service (also computes the nutrition trend via `computeNutritionTrend({int? days})`, the records via `computeExerciseRecords()`, the volume / time / distance trends via `computeVolumeTonnage` / `computeTimedDuration` / `computeTimedDistance`, the consistency trends via `computeConsistencyWeekly` / `computeConsistencyMonthly`, and the nutrition adherence via `computeNutritionAdherence()`) |
 | `lib/state/workout/workout_state.dart` | `getAllSessions()`, repository access |
 | `lib/state/calendar/calendar_state.dart` | `streakDays` (created internally by `StatsScreen`) |
 | `lib/state/settings/settings_state.dart` | Theme colors, weight/distance unit preferences |

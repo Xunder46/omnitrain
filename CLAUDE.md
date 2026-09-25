@@ -36,10 +36,10 @@ OmniTrain is a Flutter/Dart strength-and-fitness training app (iOS/Android focus
   - `my_routines.md` — reusable workout templates (CRUD + template-to-session)
   - `calendar_periods.md` — month calendar, day-session list, training periods
   - `rolling_sessions.md` — rolling/continuous free session format, `isRolling` flag
-  - `session_summary.md` — post-workout analytics, per-group deltas, feeling-survey capture
+  - `session_summary.md` — post-workout analytics, per-group deltas, session effort rating capture
   - `stats_screen.md` — all-time aggregates, scrollable strength + cardio trends, Recent PRs, NUTRITION card
   - `profile_and_measurements.md` — identity, avatar, body measurement logging, history chart
-  - `theme_and_settings.md` — theme grid, units, timer alerts, Feeling Survey toggle
+  - `theme_and_settings.md` — theme grid, units, timer alerts, Effort Rating toggle
   - `state_management.md` — index for `ChangeNotifier` classes, service classes, dependency graph (split into `state_management/`)
   - `data_models.md` — all domain models (sessions, exercises, templates, measurements, etc.)
   - `constants_reference.md` — modalities, capabilities, metrics, effort kinds, intents, design tokens

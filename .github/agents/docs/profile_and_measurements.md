@@ -19,7 +19,7 @@ Primary capabilities:
 - `HomeScreen` maintenance sheet:
   - Profile tile pushes `ProfileScreen`
   - Stats tile pushes `StatsScreen` (all-time aggregates, scrollable strength + cardio trends, Recent PRs, NUTRITION card — see [Stats Screen](stats_screen.md))
-  - Settings tile pushes `SettingsScreen` (preferences, sounds & alerts, Feeling Survey toggle, theme grid, version footer — see [Theme & Settings](theme_and_settings.md))
+  - Settings tile pushes `SettingsScreen` (preferences, sounds & alerts, Effort Rating toggle, theme grid, version footer — see [Theme & Settings](theme_and_settings.md))
 - `ProfileScreen` depends on `ProfileState` via constructor injection
 
 ---

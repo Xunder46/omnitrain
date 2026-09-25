@@ -660,7 +660,7 @@ void main() {
       );
       // Dismiss the feeling modal first.
       await tester.pumpAndSettle();
-      if (find.text('How did it feel?').evaluate().isNotEmpty) {
+      if (find.text('How hard was this session?').evaluate().isNotEmpty) {
         final sheet = find.byType(BottomSheet);
         await tester.tap(
           find.descendant(of: sheet, matching: find.text('1')).first,
@@ -692,7 +692,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       // Dismiss feeling modal.
-      if (find.text('How did it feel?').evaluate().isNotEmpty) {
+      if (find.text('How hard was this session?').evaluate().isNotEmpty) {
         final sheet = find.byType(BottomSheet);
         await tester.tap(
           find.descendant(of: sheet, matching: find.text('1')).first,
@@ -1036,7 +1036,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     // Dismiss the feeling modal if it surfaces — it gates the body.
-    if (find.text('How did it feel?').evaluate().isNotEmpty) {
+    if (find.text('How hard was this session?').evaluate().isNotEmpty) {
       final sheet = find.byType(BottomSheet);
       await tester.tap(
         find.descendant(of: sheet, matching: find.text('1')).first,
@@ -1120,43 +1120,48 @@ void main() {
     );
 
     testWidgets(
-      'S-008: rolling session hides the combined session info card; remaining cards still OmniSurface',
+      'S-008: rolling session shows combined card with EFFORT row only (Duration/Rest hidden)',
       (WidgetTester tester) async {
         await pumpSessionSummary(tester, isRolling: true);
 
-        // The rolling branch hides the combined session info card
-        // (which is what the stats card was after the Phase 2.1
-        // merge). Its metric labels are absent.
+        // For rolling sessions, Duration and Rest Time labels are absent
+        // (the row is hidden), but EFFORT is still shown so users can rate
+        // the session afterwards. The pumpSessionSummary helper dismisses
+        // the automatic feeling modal by selecting "1", so the session has
+        // a rating of 1 / 5.
         expect(find.text('DURATION'), findsNothing);
         expect(find.text('REST TIME'), findsNothing);
+        expect(find.text('EFFORT'), findsOneWidget,
+            reason: 'EFFORT row must be visible for rolling sessions');
+        expect(find.text('1 / 5'), findsOneWidget,
+            reason: 'EFFORT value must show the rating for rolling sessions');
+        expect(find.text('Change'), findsOneWidget,
+            reason: 'Change button must be visible when a rating exists');
 
-        // Only the note and calendar cards remain — exactly 2.
-        expect(find.byType(OmniSurface), findsNWidgets(2));
+        // The combined info card is still rendered (3 OmniSurface: info + note + calendar)
+        expect(find.byType(OmniSurface), findsNWidgets(3));
 
         // Calendar card chrome + extracted header are intact.
         expect(find.text('Open Calendar'), findsOneWidget);
         expect(find.text('SESSION NOTE'), findsOneWidget);
 
-        // Phase 2.3: the date header (with the chip) is still
-        // rendered even though the combined card is hidden. It
-        // acts as a day-context reminder.
+        // The date header (with the chip) is still rendered for
+        // context. It acts as a day-context reminder.
         expect(
           find.byKey(const Key('omni_session_info_header')),
           findsOneWidget,
           reason:
-              'The date header must remain visible when the combined '
-              'card is hidden (rolling session).',
+              'The date header must remain visible even for rolling sessions.',
         );
         expect(
           find.byKey(const Key('omni_session_summary_modality_chip')),
           findsOneWidget,
           reason:
-              'The modality chip must remain visible with the date '
-              'header when the combined card is hidden.',
+              'The modality chip must remain visible with the date header.',
         );
 
-        // Three OmniCardHeaders are rendered even for a rolling
-        // session: date (always), note, and calendar.
+        // Three OmniCardHeaders are rendered for a rolling session:
+        // date (always), note, and calendar.
         expect(find.byType(OmniCardHeader), findsNWidgets(3));
       },
     );
