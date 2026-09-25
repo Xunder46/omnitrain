@@ -8,7 +8,7 @@ OmniTrain's Settings screen is fully implemented. It owns persisted preferences 
 - measurement units (`Weight`, `Distance`, `Height`)
 - timer alert behavior (`Effort Timer Sound`, `Rest Ping`, `Rest Ping Sound`)
 - notification permission copy that covers both rest reminders and effort-expiry alerts
-- workout follow-up (`Effort Rating` — "Ask how hard the workout was after finishing")
+- workout follow-up (`Effort Rating`, the automatic post-workout effort-rating prompt; copy verified by `test/screen_widget_test.dart`, `settings screen keeps the streamlined section layout`)
 - appearance (`AppTheme` selection)
 
 All settings apply immediately. There is no save button and no staged draft state.

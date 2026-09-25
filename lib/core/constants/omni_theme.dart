@@ -41,8 +41,9 @@ typedef MacroChartPalette = ({
 typedef StripMacroPalette = ({Color protein, Color carbs, Color fat});
 
 /// Intensity ramp for effort-rating UI: 5 steps, step 1 faintest (≥1.8:1 vs surface)
-/// to step 5 full strength (primary at 100% opacity). Steps 2–4 are evenly spaced
-/// so contrast strictly increases. Used for rating tiles, calendar tints, and stats.
+/// to step 5 full strength (primary at 100% opacity). Steps 2–4 space the contrast
+/// against surface evenly, so contrast strictly increases. Used for the rating
+/// tiles, the Summary EFFORT marker and the calendar day-list tint.
 typedef IntensityRampPalette = ({
   Color step1,
   Color step2,
@@ -92,31 +93,26 @@ class OmniTheme {
   static const Color _baseFiber = Color.fromARGB(255, 87, 167, 112);
   static const Color _baseFat = Color.fromARGB(255, 201, 191, 99);
 
-  /// Cached intensity ramps per theme. Computed once to avoid expensive
-  /// search operations during build cycles (especially common for
-  /// `colorsForTheme` calls in ListenableBuilder or similar).
-  static final Map<AppTheme, IntensityRampPalette> _rampCache = {};
+  /// Cached intensity ramps, keyed on the `(primary, surface)` pair the ramp
+  /// is derived from. Computed once per pair to avoid the alpha scans during
+  /// build cycles (`colorsForTheme` runs inside builders). Keying on the
+  /// colors rather than the `AppTheme` means a palette edit (e.g. after hot
+  /// reload) can never be served a ramp derived from the old values.
+  static final Map<(Color, Color), IntensityRampPalette> _rampCache = {};
 
-  /// Get the intensity ramp for a theme, using cached value if available.
-  /// Caches the result to avoid recomputation during build cycles.
-  static IntensityRampPalette _getCachedOrComputeRamp(
-    AppTheme theme,
-    Color primary,
-    Color surface,
-  ) {
-    if (_rampCache.containsKey(theme)) {
-      return _rampCache[theme]!;
-    }
-    final ramp = _calculateIntensityRamp(primary, surface);
-    _rampCache[theme] = ramp;
-    return ramp;
-  }
+  /// The effort-rating intensity ramp derived from [primary] over [surface]
+  /// (see [_calculateIntensityRamp]), cached per color pair.
+  static IntensityRampPalette intensityRampFor(Color primary, Color surface) =>
+      _rampCache.putIfAbsent(
+        (primary, surface),
+        () => _calculateIntensityRamp(primary, surface),
+      );
 
   /// Calculate the 5-step intensity ramp for effort rating.
   /// Step 5 is primary at 100% (full strength).
   /// Step 1 is the minimum alpha to reach 1.8:1 contrast with surface.
-  /// Steps 2–4 are evenly spaced alphas between step 1 and 5, ensuring
-  /// strict monotonic increase in contrast.
+  /// Steps 2–4 have their contrast against surface spaced evenly between
+  /// step 1 and step 5, so contrast strictly increases.
   static IntensityRampPalette _calculateIntensityRamp(
     Color primary,
     Color surface,
@@ -164,8 +160,8 @@ class OmniTheme {
     );
   }
 
-  /// Binary search to find the alpha that produces a target contrast.
-  /// Search resolution: 0.005 (200 possible values).
+  /// Linear scan for the alpha whose composite contrast against [surface]
+  /// is closest to [targetContrast]. Resolution: 0.005 steps from 0.01 to 0.99.
   static double _findAlphaForTargetContrast(
     Color primary,
     Color surface,
@@ -265,7 +261,7 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
-          intensityRamp: _getCachedOrComputeRamp(AppTheme.abyssalNeon, primary, surface),
+          intensityRamp: intensityRampFor(primary, surface),
         );
       case AppTheme.forgeEmber:
         final primary = Color(0xFFFF7B45);
@@ -294,7 +290,7 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
-          intensityRamp: _getCachedOrComputeRamp(AppTheme.forgeEmber, primary, surface),
+          intensityRamp: intensityRampFor(primary, surface),
         );
       case AppTheme.obsidianVolt:
         final primary = Color(0xFFE8B420);
@@ -323,7 +319,7 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
-          intensityRamp: _getCachedOrComputeRamp(AppTheme.obsidianVolt, primary, surface),
+          intensityRamp: intensityRampFor(primary, surface),
         );
       case AppTheme.voidPulse:
         final primary = Color(0xFFA478FF);
@@ -352,7 +348,7 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
-          intensityRamp: _getCachedOrComputeRamp(AppTheme.voidPulse, primary, surface),
+          intensityRamp: intensityRampFor(primary, surface),
         );
       case AppTheme.crimsonDojo:
         final primary = Color(0xFFFF4C47);
@@ -381,7 +377,7 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
-          intensityRamp: _getCachedOrComputeRamp(AppTheme.crimsonDojo, primary, surface),
+          intensityRamp: intensityRampFor(primary, surface),
         );
       case AppTheme.malachiteCore:
         final primary = Color(0xFF24B85A);
@@ -412,7 +408,7 @@ class OmniTheme {
             carbs: _baseCarbs,
             fat: _baseFat,
           ),
-          intensityRamp: _getCachedOrComputeRamp(AppTheme.malachiteCore, primary, surface),
+          intensityRamp: intensityRampFor(primary, surface),
         );
     }
   }

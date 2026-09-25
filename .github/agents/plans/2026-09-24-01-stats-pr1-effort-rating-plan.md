@@ -31,10 +31,17 @@ Redefine the post-workout "feeling" survey as an effort-rating survey. Keep the 
 
 | ID | Decision |
 |---|---|
-| **T-1** | **Intensity ramp derivation: deterministic rule.** Each step is the theme accent (`primary`) alpha-composited over `surface`. Step 5 = `primary` (100% opacity; already passes ≥3:1 vs `surface` by contract check 8). Step 1 = lowest alpha where the composite reaches ≥1.8:1 vs `surface` (same floor as contract check 6 for `surfaceBorder`). Steps 2–4 = alphas spaced evenly between step 1 and 5 so the composite's contrast-vs-surface strictly increases monotonically. Add to `test/palette_legibility_contract_test.dart` three contract checks for every ramp step on every theme: (a) step n ≥ 1.8:1 vs surface, (b) contrast strictly increases step 1→5, (c) the number text (headlineSmall) on each filled tile reaches ≥3:1 in contrast, using whichever of `onPrimary` or the dominant text color passes (the helper is the same one the UI will use). Never relax a threshold. If a theme cannot satisfy (a)–(c), stop and report Blocked; do not tune quietly. |
-| **T-2** | **Summary effort row: always-on, in-stats-area placement.** The Session Summary's stats section always displays an "EFFORT" row (even if toggle is off): label "EFFORT", value drawn as "n / 5" in that step's ramp color when rated, or "—" when unrated. Place this row inside the existing summary stats area using the existing `_StatPill` / stats-grid pattern; The EFFORT row goes in the first Summary card (`_buildSessionInfoCard`, key `omni_session_info_card`), as a second full-width row beneath the existing Duration | Rest Time row, separated by the same 16dp gap: `_StatPill(label: 'Effort', …)` on the left (the pill upper-cases it to "EFFORT") and the trailing text button on the right. (Pinned by the orchestrator on review, 2026-09-24.) The row's trailing text button reads "Change" when rated, "Add rating" when unrated. Tapping it opens the SAME sheet widget as the post-workout prompt (title "How hard was this session?", end labels "Very easy"/"Max effort", 1–5 tiles), pre-selecting the current value. DIFFERENCE from the automatic prompt: this user-opened sheet CAN be dismissed without a choice (tap outside or swipe down); dismissing changes nothing. Only the automatic post-workout prompt is must-answer. Picking a value saves through `WorkoutState.updateSessionFeeling`, closes the sheet, and the effort row updates immediately. Works on both post-workout Summary and calendar-opened (historical) Summary. |
+| **T-1** | **Intensity ramp derivation: deterministic rule.** Each step is the theme accent (`primary`) alpha-composited over `surface`. Step 5 = `primary` (100% opacity; already passes ≥3:1 vs `surface` by contract check 8). Step 1 = lowest alpha where the composite reaches ≥1.8:1 vs `surface` (same floor as contract check 6 for `surfaceBorder`). Steps 2–4 = contrast spaced evenly: each step's contrast-vs-surface sits evenly between step 1's and step 5's (its alpha is the one whose composite lands closest to that target), so contrast strictly increases monotonically. Add to `test/palette_legibility_contract_test.dart` three contract checks for every ramp step on every theme: (a) step n ≥ 1.8:1 vs surface, (b) contrast strictly increases step 1→5, (c) the number text (headlineSmall) on each filled tile reaches ≥3:1 in contrast, using whichever of `onPrimary` or the dominant text color passes (the helper is the same one the UI will use). Never relax a threshold. If a theme cannot satisfy (a)–(c), stop and report Blocked; do not tune quietly. |
+| **T-2** | **Summary effort row: always-on, in-stats-area placement.** The Session Summary's stats section always displays an "EFFORT" row (even if toggle is off): label "EFFORT", value drawn as "n / 5" when rated, or "—" when unrated. Per D-15 the value text uses the stat pills' shared value color (the `_StatPill` default), and the rating's intensity is a non-text mark: a 12×12 rounded square (corner radius 3) filled with that step's ramp color (`feelingColor(n, themeColors)`), immediately before the value text with an 8dp gap; unrated sessions have no square. Place this row inside the existing summary stats area using the existing `_StatPill` / stats-grid pattern; The EFFORT row goes in the first Summary card (`_buildSessionInfoCard`, key `omni_session_info_card`), as a second full-width row beneath the existing Duration | Rest Time row, separated by the same 16dp gap: `_StatPill(label: 'Effort', …)` on the left (the pill upper-cases it to "EFFORT") and the trailing text button on the right. (Pinned by the orchestrator on review, 2026-09-24.) The row's trailing text button reads "Change" when rated, "Add rating" when unrated. Tapping it opens the SAME sheet widget as the post-workout prompt (title "How hard was this session?", end labels "Very easy"/"Max effort", 1–5 tiles), pre-selecting the current value. DIFFERENCE from the automatic prompt: this user-opened sheet CAN be dismissed without a choice (tap outside or swipe down); dismissing changes nothing. Only the automatic post-workout prompt is must-answer. Picking a value saves through `WorkoutState.updateSessionFeeling`, closes the sheet, and the effort row updates immediately. Works on both post-workout Summary and calendar-opened (historical) Summary. |
 | **T-3** | **Theme color updates.** All intensity-ramp color definitions live in `lib/core/constants/omni_theme.dart`, derived per T-1. Every color is tested against `test/palette_legibility_contract_test.dart` before merge; the test must pass without exception and must not be disabled for any step. |
 | **T-4** | **Settings toggle label: exact text, no migration.** The toggle label in Settings is exactly "Effort Rating" with subtitle exactly "Ask how hard the workout was after finishing". The preference key stays `show_feeling_survey` and the stored boolean value is unchanged. Every user's existing on/off choice is preserved without any code intervention. |
+
+### Review Follow-up Decisions (orchestrator defaults, owner to confirm)
+
+| ID | Decision |
+|---|---|
+| **D-15** | **(orchestrator default, owner to confirm) EFFORT value legibility.** Drawing "n / 5" in the ramp color fails the design system's text-contrast rule (step 1 is about 1.8:1 against the card on every theme; checks 18a–c cover the ramp as a fill, not as text). The EFFORT value text is therefore drawn in the same color as the other stat pills (the `_StatPill` default), and the intensity is carried by a non-text mark: a 12×12 rounded square (corner radius 3) filled with `feelingColor(n, themeColors)`, placed immediately before the value text with an 8dp gap. Unrated sessions show "—" and no square. Owner may veto. |
+| **D-16** | **(orchestrator default, owner to confirm) Rating-sheet subtitle date.** The sheet subtitle was hard-coded "<modality> · Today", so a past session opened from the calendar read "· Today". The sheet now receives the session's start time: it shows "· Today" when the session started today (local date) and otherwise the date in the Summary's existing short-date style (e.g. "Sep 18"), reusing the Summary's `_formatDate`. Owner may veto. |
 
 ---
 
@@ -112,8 +119,8 @@ All fixtures are concrete; every scenario is enumerated.
 **Expected outcome:**
 - Rating 3 is persisted to the session.
 - Modal closes.
-- SessionSummaryScreen re-renders, showing the rating value 3 (with intensity-ramp color).
-- Session Summary button/control shows "Change rating" (not "Add rating").
+- SessionSummaryScreen re-renders, showing the rating value 3 (with the step-3 ramp marker, D-15).
+- Session Summary button/control shows "Change" (not "Add rating").
 - Closing and reopening the summary still shows rating 3.
 
 **Edge case of:** none (happy path).
@@ -158,7 +165,7 @@ All fixtures are concrete; every scenario is enumerated.
 **Expected outcome:**
 - Rating 4 is persisted to the session.
 - Modal closes.
-- EFFORT row updates to show "4 / 5" in step-4 ramp color.
+- EFFORT row updates to show "4 / 5" with the step-4 ramp marker.
 - The row's button now shows "Change" (not "Add rating").
 - Closing and reopening the summary still shows "4 / 5" in the EFFORT row.
 
@@ -186,7 +193,7 @@ All fixtures are concrete; every scenario is enumerated.
 **Expected outcome:**
 - Rating 2 is persisted.
 - Modal closes.
-- EFFORT row updates to show "2 / 5" in step-2 ramp color.
+- EFFORT row updates to show "2 / 5" with the step-2 ramp marker.
 - Button now shows "Change".
 - User closes summary and re-opens it from calendar; EFFORT row shows "2 / 5" and persists.
 
@@ -204,7 +211,7 @@ All fixtures are concrete; every scenario is enumerated.
 - User views the historical SessionSummary.
 
 **Flow:**
-- EFFORT row shows "5 / 5" in step-5 ramp color.
+- EFFORT row shows "5 / 5" with the step-5 ramp marker.
 - Button shows "Change".
 - User taps it.
 - Modal opens, pre-selected on tile 5.
@@ -213,7 +220,7 @@ All fixtures are concrete; every scenario is enumerated.
 **Expected outcome:**
 - Rating is updated to 1.
 - Modal closes.
-- EFFORT row updates to show "1 / 5" in step-1 ramp color (faintest).
+- EFFORT row updates to show "1 / 5" with the step-1 ramp marker (faintest).
 - Closing and reopening summary shows "1 / 5".
 - Calendar border tint for this session now shows step-1 intensity (faintest).
 
@@ -230,7 +237,7 @@ All fixtures are concrete; every scenario is enumerated.
 - User is on SessionSummary.
 
 **Flow:**
-- EFFORT row shows "3 / 5" in step-3 ramp color.
+- EFFORT row shows "3 / 5" with the step-3 ramp marker.
 - User taps the "Change" button.
 - Modal opens with tiles, pre-selected on tile 3.
 - User taps outside the modal or swipes down to dismiss without selecting a different value.
@@ -255,7 +262,7 @@ All fixtures are concrete; every scenario is enumerated.
 
 **Flow:**
 - No conversion happens.
-- EFFORT row shows "5 / 5" in step-5 ramp color (full accent).
+- EFFORT row shows "5 / 5" with the step-5 ramp marker (full accent).
 - Calendar border shows step-5 intensity tint.
 - User can tap "Change" and select a different rating if desired.
 
@@ -364,7 +371,7 @@ All fixtures are concrete; every scenario is enumerated.
 **Owner responsibility:** Add the intensity-ramp colors to the theme system, verify every step on every theme, and relabel the Settings toggle while preserving user state.
 
 **Changes:**
-1. Add five-step intensity ramp to `OmniTheme.colors` per T-1 (step 1 = lowest alpha reaching ≥1.8:1 vs surface; steps 2–4 = evenly spaced alphas; step 5 = primary at 100%).
+1. Add five-step intensity ramp to `OmniTheme.colors` per T-1 (step 1 = lowest alpha reaching ≥1.8:1 vs surface; steps 2–4 = contrast spaced evenly; step 5 = primary at 100%).
 2. Create or update `feelingColor()` in `session_feeling_utils.dart` to use the new ramp instead of the current red/orange/yellow/green/accent scheme.
 3. Relabel the Settings toggle in `lib/features/settings/settings_screen.dart` to exactly "Effort Rating" with subtitle exactly "Ask how hard the workout was after finishing".
 4. Ensure the preference key remains `show_feeling_survey` (no migration, no code-side logic needed).
@@ -441,7 +448,7 @@ All fixtures are concrete; every scenario is enumerated.
 1. Insertion point (pinned): The EFFORT row goes in the first Summary card (`_buildSessionInfoCard`, key `omni_session_info_card`), as a second full-width row beneath the existing Duration | Rest Time row, separated by the same 16dp gap: `_StatPill(label: 'Effort', …)` on the left (the pill upper-cases it to "EFFORT") and the trailing text button on the right.
 2. Add an EFFORT row in the stats area:
    - Label: "EFFORT".
-   - Value: displays "n / 5" (rated) in the corresponding step's ramp color (via `feelingColor(n)`), or "—" (unrated), using existing pill styling.
+   - Value: displays "n / 5" (rated) in the pills' shared value color with a ramp-filled marker (via `feelingColor(n)`) before it (D-15), or "—" and no marker (unrated), using existing pill styling.
    - Trailing button: text reads "Change" (rated) or "Add rating" (unrated).
 3. The button opens the rating sheet (same widget as the post-workout prompt: title "How hard was this session?", end labels "Very easy" / "Max effort", 1–5 tiles in ramp colors). PRE-SELECT the current value if one exists.
 4. **Difference from post-workout prompt:** This user-opened sheet IS dismissible (can tap outside or swipe down). Dismissing without picking a value changes nothing. Only the automatic post-workout prompt is non-dismissible.
@@ -535,7 +542,7 @@ All fixtures are concrete; every scenario is enumerated.
    - Clarify that the border color represents effort intensity, not feeling.
 
 3. **Settings doc** (`docs/theme_and_settings.md`):
-   - Update the toggle label and description from "Feeling Survey" to "Effort Rating Survey".
+   - Update the toggle label and description from "Feeling Survey" to "Effort Rating".
    - Note that the preference key is unchanged.
 
 4. **Stats doc** (`docs/stats_screen.md`):
@@ -615,10 +622,11 @@ After Phase 5 completes, run these checks:
 
 2. **Add/change rating on fresh session:**
    - [ ] Complete a session with toggle on, select a rating (e.g., 3).
-   - [ ] On Summary, "Change rating" button is visible.
+   - [ ] On Summary, the "Change" button is visible.
    - [ ] Tap it; same modal opens.
    - [ ] Select a different value (e.g., 2).
-   - [ ] Modal closes, Summary shows new rating.
+   - [ ] Modal closes, Summary shows new rating: the number in the same color as DURATION / REST TIME, with a small square in the rating's ramp color before it (D-15).
+   - [ ] Open a past session from the calendar and tap Change: the sheet subtitle shows that session's date, not "Today" (D-16).
 
 3. **Add rating from past session (calendar):**
    - [ ] Open calendar, tap a past session with no rating.
@@ -636,7 +644,7 @@ After Phase 5 completes, run these checks:
 
 5. **Settings toggle relabel and preservation:**
    - [ ] Open Settings.
-   - [ ] Workout section shows the toggle relabeled (e.g., "Effort Rating Survey").
+   - [ ] Workout section shows the toggle relabeled "Effort Rating".
    - [ ] If you toggle it off, close the app, restart, and reopen Settings; toggle is still off.
    - [ ] If you toggle it on and complete a session, the post-workout prompt appears.
 
@@ -685,7 +693,7 @@ After Phase 5 completes, run these checks:
 | Old "How did it feel" strings remain in code or tests after Phase 2. | Grep confirms removal in Phase 5 Done Criteria. |
 | Settings toggle preference is somehow corrupted or lost. | The preference key is unchanged (T-4); no migration logic is needed or invoked. |
 | Add/change control doesn't persist changes. | Test covers add/change/close/reopen flow for both fresh and past sessions. |
-| Calendar tint doesn't update after a session is reopened and rating is changed. | Test covers this scenario. |
+| Calendar tint doesn't update after a session is reopened and rating is changed. | A saved rating on a calendar-opened Summary refreshes the originating `CalendarState`; covered by `test/session_summary_effort_row_test.dart` (`S-5: day list → rated-5 session → Summary → Change to 1 → back …`). |
 | Stats computation or rendering breaks when HOW DID IT FEEL is removed. | Tests verify Stats screen renders without the section and all other sections work. |
 
 ---
@@ -697,6 +705,7 @@ After Phase 5 completes, run these checks:
 - [x] Phase 3 complete (Add/Change Rating Control on Summary) - All 6 tests passing
 - [x] Phase 4 complete (Calendar Tint & Stats Cleanup) — finished by the orchestrator on 2026-09-25 (see Phase 4–5 Verification)
 - [x] Phase 5 complete (Documentation & Final Verification) — finished by the orchestrator on 2026-09-25
+- [x] Code-review follow-up (findings 1–9, 12; 10–11 were already in `dcfe474`) — 2026-09-25, see Review follow-up verification
 - [ ] Manual QA passed — owner
 
 ### Baseline Test Run
@@ -791,6 +800,51 @@ was false. The orchestrator finished the phase:
 **Final full suite (orchestrator's run): +2813 passed, ~1 skipped, 0 failed**
 (exit 0). The drop from 2825 is the 13 retired feeling-trend tests (7 service,
 6 chart); every other count change is a one-for-one replacement.
+
+### Review follow-up verification
+
+Method: each red run below is a scratch copy of the source (`cp` to the
+scratchpad), one deliberate break of only the behaviour under test, the named
+test run and failed, then the source restored from the copy (`cmp`
+byte-identical in every case) and the same test run green. Tests that did not
+exist before are also shown red against `dcfe474` behaviour where that applies.
+`git stash` was not used.
+
+| Finding | Test (file › name) | Red evidence | Green |
+|---|---|---|---|
+| 1 calendar refresh | effort_row › `S-5: day list → rated-5 session → Summary → Change to 1 → back …` | before the fix and with the post-save refresh removed: row tint Expected step 1 (0.09, 0.33, 0.41), Actual step 5 (0.18, 0.89, 0.90) | pass |
+| 2a end labels | effort_row › `Task 1a …` (now asserts Very easy / Max effort, no Rough / Great) | labels reverted to Rough / Great: `Found 0 widgets with text "Very easy"` | pass |
+| 2b pre-selection | effort_row › `Change sheet pre-selects the stored rating …` (ratings 1–5) | `_selectedFeeling = null`: tile fill Expected step 1, Actual unselected surface @0.6 | pass |
+| 2d tile number colour | same test | selected number → `Colors.white`: Expected textDominant (α 0.949), Actual white; → `textDominant`: fails at tile 2, Expected onPrimary (0.04, 0.08, 0.14), Actual near-white | pass |
+| 2c / 5 value colour | effort_row › `EFFORT value is drawn in the stat pills' shared value colour …` | against `dcfe474` (value in ramp): Expected primary, Actual step 1; value text forced to ramp step 1: same failure | pass |
+| 2c / 5 marker colour | same test (+ S-3, Fresh Change, S-6 marker asserts) | marker filled with `primary`: Expected step 1, Actual primary | pass |
+| 2c / 5 no marker when unrated | effort_row › `S-3: …` | marker always built: `Found 1 widget with key omni_session_effort_marker`, expected none | pass |
+| 2e step 1 lowest alpha | utils › `Step 1 is the lowest qualifying alpha …` (all six themes) | step 1 forced to alpha 0.5: alpha 0.49 already reaches 3.36:1 (expected < 1.8) | pass |
+| 2 fresh-session Change | effort_row › `Fresh session — Change replaces an existing rating (button path)` | rebuild after the user-opened sheet removed: `Found 0 widgets with text "4 / 5"` | pass |
+| 2 S-6 | effort_row › `S-6: a session stored with 5 before any interaction …` | display converted (`6 - n`): Expected '5 / 5', Actual '1 / 5' | pass |
+| 2 swipe-down | effort_row › `Change sheet swiped down closes it without changing the rating` | `enableDrag: false` on the user-opened sheet: sheet title still found after the drag | pass |
+| 2 exact "—" | effort_row › `S-3` now `findsOneWidget` + EFFORT pill value is "—" | (tightened assertion; covered by the no-marker mutation above) | pass |
+| 6 subtitle, today | effort_row › `Sheet subtitle reads "· Today" …` | today-check forced false: `Found 0 widgets with text "Free Training · Today"` | pass |
+| 6 subtitle, past | effort_row › `Sheet subtitle shows the session date …` | against `dcfe474` (hard-coded Today) and with the check forced true: `Found 0 widgets with text "Resistance / Lifting · Mar 7"` | pass |
+| 7 cache key | utils › `Ramp cache never serves a stale ramp after a palette edit …`; existing `Cached ramps …` adapted (also asserts `intensityRampFor(primary, surface)` is the cached object) | key reduced to `(surface, surface)`: step 5 Expected edited primary (0.05, 0.89, 0.90), Actual stale primary (0.18, 0.89, 0.90) | pass |
+| 9 tautologies | utils › `S-002: feelingColor is theme-pure …` (now every theme vs its own `intensityRamp`) | helper reading the active theme's ramp: Expected forgeEmber step 1, Actual abyssalNeon step 1 | pass |
+| 9 rating-4 day list | screen_widget › `completed session cards show time, duration, and feeling border` (now asserts `intensityRamp.step4`) | rating 4 mapped to step 3: Expected step 4, Actual step 3 | pass |
+
+Other changes: calendar refresh shared by Discard and rating save
+(`_refreshOriginatingCalendar`; Discard now also returns early if unmounted);
+`_openEffortRatingSheet` takes no `theme`; the sheet pops with the saved rating;
+`_StatPill.valueColor` replaced by `leading`; stale comments fixed
+(`session_summary_screen.dart`, `omni_theme.dart` ramp doc + "linear scan",
+`session_feeling_utils.dart` null note); plan T-1 / T-2 / S-1 / Manual QA wording;
+D-15 / D-16 recorded. Docs: `session_summary.md`, `calendar_periods.md`,
+`design_system.md`, `stats_screen.md`, `theme_and_settings.md`,
+`navigation_and_screens.md` (all ≤ 64 KiB).
+
+**Full suite: +2823 passed, ~1 skipped, 0 failed (exit 0)** — baseline 2813 plus
+the 10 new tests (8 in `session_summary_effort_row_test.dart`, 2 in
+`utils_test.dart`). `flutter analyze` on the changed Dart files: 18 issues vs 19
+at `dcfe474`, none new (one pre-existing context-across-async info removed).
+CRLF kept in `omni_theme.dart` (823/823), `models.dart`, `sqlite_schema.sql`.
 ---
 
 ## Assumption Log
@@ -801,7 +855,7 @@ was false. The orchestrator finished the phase:
 
 ## Feedback
 
-### Code review — 2026-09-25 (CHANGES REQUESTED)
+### Code review — 2026-09-25 (CHANGES REQUESTED → addressed; see Progress › Review follow-up verification)
 
 Full suite re-run by reviewer: +2813 passed, ~1 skipped, 0 failed (exit 0). Mutation runs
 on a scratch copy (full suite each) show which required behaviours no test protects.

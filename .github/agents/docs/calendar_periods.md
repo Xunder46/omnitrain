@@ -53,11 +53,15 @@ depending on whether it is routine-linked.
 When a workout is saved from the summary, the originating `PlannedSession` is marked completed and
 linked via `linkedSessionId`.
 
-**Effort tint.** A completed session row carries a 4dp left border in its session effort rating's
-color — the theme's one-color intensity ramp via `feelingColor(rating, themeColors)`, from the
-faintest step (1, Very easy) to the full accent (5, Max effort) — so a week reads as an intensity
-map. Unrated sessions keep the standard border with no tint. Ratings recorded before the effort
-rating replaced the feeling survey are shown the same way (see [Session Summary](session_summary.md)).
+**Effort tint.** A completed session row's left border carries its session effort rating on the
+theme's one-color intensity ramp (`feelingColor(rating, themeColors)`), so a week reads as an
+intensity map; the ramp means "more", never good/bad. Unrated sessions keep the standard border.
+Ratings recorded before the effort rating replaced the feeling survey are shown the same way (see
+[Session Summary](session_summary.md)). Verified by `test/screen_widget_test.dart` (`effort tint:
+ratings 1, 3 and 5 on one day draw ramp steps 1, 3 and 5, each visibly different`, `completed
+session cards show time, duration, and feeling border`, `completed session cards without a feeling
+keep the standard border`); a rating changed on a calendar-opened summary re-tints the row on
+return (`test/session_summary_effort_row_test.dart`, `S-5: day list → …`).
 
 #### Historical-session summary behavior
 
@@ -65,7 +69,7 @@ When a `SessionSummaryScreen` is opened from the calendar flow (either
 from the day-list row tap on a completed entry, or from a single-entry
 past-day cell on the month grid), the screen is constructed with
 `openedFromCalendar: true` and the originating `CalendarState`. This
-unlocks three pieces of historical-aware behavior:
+unlocks four pieces of historical-aware behavior:
 
 1. The embedded calendar card (the monthly grid + "workout days / rest
    days" totals) renders the **session's start month**, not today.
@@ -80,6 +84,12 @@ unlocks three pieces of historical-aware behavior:
    originating day list (calendar state is refreshed so the deleted
    indicator disappears from the grid). The confirmation dialog copy
    reflects the destructive + "return to previous screen" semantics.
+4. The automatic post-workout effort-rating prompt is never shown (the
+   rating can still be added or changed from the EFFORT row, and a
+   change refreshes the originating calendar). Verified by
+   `test/session_summary_effort_row_test.dart` (`S-4/S-5: Historical
+   session — add and change rating (opened from calendar)`, `S-5: day
+   list → …`).
 
 ### Periods
 

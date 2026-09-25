@@ -3,18 +3,17 @@ import 'package:flutter/material.dart';
 import '../constants/omni_theme.dart';
 
 /// Single source of truth for the per-rating color used on every
-/// effort-rating surface (post-workout survey tile, day-session-list
-/// border tint, future analytics surfaces).
+/// effort-rating surface (rating-sheet tiles, the Session Summary EFFORT
+/// marker, the day-session-list border tint).
 ///
 /// The helper takes the active `OmniThemeColors`. Ratings 1..5 are drawn from
 /// the theme's intensity ramp, which uses the theme accent at varying
 /// opacities to create a consistent one-color gradient from faintest
 /// (1 = very easy) to full strength (5 = max effort).
 ///
-/// Effort ratings follow the intensity scale: 1 (very easy) shows
-/// the faintest ramp color; 5 (max effort) shows the theme's primary
-/// accent at full strength. Ratings are never null (1–5); unrated
-/// sessions pass null and should display a neutral placeholder.
+/// A stored rating is 1..5. `null` (an unrated session) and any
+/// out-of-range value return [Colors.transparent]; callers decide what, if
+/// anything, to draw for an unrated session.
 Color feelingColor(int? feeling, OmniThemeColors themeColors) {
   if (feeling == null) {
     // Unrated; return a neutral/transparent result. Callers handle display.

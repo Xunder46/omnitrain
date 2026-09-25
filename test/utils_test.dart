@@ -1,3 +1,4 @@
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:omnitrain/core/constants/effort_defaults.dart';
 import 'package:omnitrain/core/constants/metric_ids.dart';
@@ -1315,20 +1316,18 @@ void main() {
     test('S-002: feelingColor is theme-pure — the same themeColors '
         'yields the same color regardless of any BuildContext. '
         'No `Theme.of(context)` indirection survives in the helper.', () {
-      final themeColors = OmniTheme.colors;
-      // Call twice and confirm the result is identical. If the
-      // helper still secretly consulted Theme.of(context), calling
-      // it inside vs outside a widget tree would diverge.
-      final fromBareCall = feelingColor(5, themeColors);
-      final fromBareCallAgain = feelingColor(5, themeColors);
-      expect(fromBareCall, fromBareCallAgain);
-      expect(fromBareCall, themeColors.primary);
-
-      // Every other rating must also be deterministic from the
-      // theme tokens (now from the intensity ramp; this
-      // guards against accidental regression to a context read).
-      expect(feelingColor(1, themeColors), feelingColor(1, themeColors));
-      expect(feelingColor(4, themeColors), themeColors.intensityRamp.step4);
+      // The active theme stays at its default while every theme's
+      // tokens are passed in: each call must answer from the tokens
+      // it was given (that theme's ramp), never from ambient state.
+      for (final t in AppTheme.values) {
+        final themeColors = OmniTheme.colorsForTheme(t);
+        final ramp = themeColors.intensityRamp;
+        expect(feelingColor(1, themeColors), ramp.step1, reason: '$t step 1');
+        expect(feelingColor(2, themeColors), ramp.step2, reason: '$t step 2');
+        expect(feelingColor(3, themeColors), ramp.step3, reason: '$t step 3');
+        expect(feelingColor(4, themeColors), ramp.step4, reason: '$t step 4');
+        expect(feelingColor(5, themeColors), ramp.step5, reason: '$t step 5');
+      }
     });
 
     test('intensity ramp: ratings 1..5 map to the theme intensity ramp, '
@@ -1383,6 +1382,62 @@ void main() {
       }
     });
 
+    test('Step 1 is the lowest qualifying alpha: ≥ 1.8:1 vs surface, and '
+        'one alpha increment (0.01) lower is < 1.8:1, on all themes', () {
+      int ch(double c) => (c * 255.0).round().clamp(0, 255);
+      Color over(Color fg, Color bg, double a) => Color.fromARGB(
+        255,
+        (ch(fg.r) * a + ch(bg.r) * (1 - a)).round(),
+        (ch(fg.g) * a + ch(bg.g) * (1 - a)).round(),
+        (ch(fg.b) * a + ch(bg.b) * (1 - a)).round(),
+      );
+
+      for (final theme in AppTheme.values) {
+        final colors = OmniTheme.colorsForTheme(theme);
+        final primary = colors.primary;
+        final surface = colors.surface;
+        final step1 = colors.intensityRamp.step1;
+
+        // Recover step 1's alpha by projecting it onto the
+        // surface → primary line, then snap to the 0.01 grid.
+        final d = [
+          ch(primary.r) - ch(surface.r),
+          ch(primary.g) - ch(surface.g),
+          ch(primary.b) - ch(surface.b),
+        ];
+        final v = [
+          ch(step1.r) - ch(surface.r),
+          ch(step1.g) - ch(surface.g),
+          ch(step1.b) - ch(surface.b),
+        ];
+        final dot = v[0] * d[0] + v[1] * d[1] + v[2] * d[2];
+        final norm = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        final k = (dot / norm * 100).round();
+
+        // Guard: step 1 really is the composite at that alpha.
+        final atK = over(primary, surface, k / 100);
+        expect(
+          [
+            (ch(atK.r) - ch(step1.r)).abs(),
+            (ch(atK.g) - ch(step1.g)).abs(),
+            (ch(atK.b) - ch(step1.b)).abs(),
+          ].every((delta) => delta <= 1),
+          isTrue,
+          reason: '${theme.name}: step 1 must be primary over surface at '
+              'alpha ${k / 100}',
+        );
+
+        final c1 = contrastRatio(step1, surface);
+        expect(c1, greaterThanOrEqualTo(1.8),
+            reason: '${theme.name}: step 1 ($c1:1) must reach 1.8:1');
+        final below = contrastRatio(over(primary, surface, (k - 1) / 100),
+            surface);
+        expect(below, lessThan(1.8),
+            reason: '${theme.name}: alpha ${(k - 1) / 100} already reaches '
+                '$below:1, so step 1 (alpha ${k / 100}) is not the lowest');
+      }
+    });
+
     test('Cached ramps: two calls for the same theme return identical results', () {
       for (final theme in AppTheme.values) {
         // Get the ramp twice
@@ -1392,10 +1447,20 @@ void main() {
         final colors2 = OmniTheme.colorsForTheme(theme);
         final ramp2 = colors2.intensityRamp;
 
-        // They should be the exact same object (cached)
+        // They should be the exact same object: same (primary, surface)
+        // pair, same cache entry.
         expect(identical(ramp1, ramp2), true,
             reason:
                 'Theme ${theme.name}: ramps should be identical (cached) but were different objects');
+        expect(
+          identical(
+            OmniTheme.intensityRampFor(colors1.primary, colors1.surface),
+            ramp1,
+          ),
+          isTrue,
+          reason: 'Theme ${theme.name}: the cache is keyed on the '
+              '(primary, surface) pair',
+        );
 
         // And all steps should have the same color values
         expect(ramp1.step1, ramp2.step1);
@@ -1403,6 +1468,42 @@ void main() {
         expect(ramp1.step3, ramp2.step3);
         expect(ramp1.step4, ramp2.step4);
         expect(ramp1.step5, ramp2.step5);
+      }
+    });
+
+    test('Ramp cache never serves a stale ramp after a palette edit '
+        '(new primary or new surface → fresh ramp)', () {
+      for (final theme in AppTheme.values) {
+        final colors = OmniTheme.colorsForTheme(theme);
+        final cached = colors.intensityRamp;
+
+        // Same theme, edited primary (as after a hot-reloaded palette
+        // change): the ramp must be derived from the new primary.
+        final editedPrimary = Color.fromARGB(
+          255,
+          (colors.primary.r * 255).round() ^ 0x20,
+          (colors.primary.g * 255).round(),
+          (colors.primary.b * 255).round(),
+        );
+        final fromPrimary =
+            OmniTheme.intensityRampFor(editedPrimary, colors.surface);
+        expect(fromPrimary.step5, editedPrimary,
+            reason: '${theme.name}: step 5 must follow the edited primary');
+        expect(identical(fromPrimary, cached), isFalse);
+
+        // Same theme, edited surface.
+        final editedSurface = Color.fromARGB(
+          255,
+          (colors.surface.r * 255).round(),
+          (colors.surface.g * 255).round() ^ 0x04,
+          (colors.surface.b * 255).round(),
+        );
+        final fromSurface =
+            OmniTheme.intensityRampFor(colors.primary, editedSurface);
+        expect(identical(fromSurface, cached), isFalse,
+            reason: '${theme.name}: an edited surface must not reuse the '
+                'cached ramp');
+        expect(fromSurface.step1, isNot(cached.step1));
       }
     });
   });

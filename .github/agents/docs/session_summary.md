@@ -7,7 +7,7 @@ The Session Summary screen appears after workout completion and focuses on sessi
 Current hierarchy:
 
 1. Header
-2. Top Stats (Duration, Rest Time for standard sessions; EFFORT row for every session)
+2. Session info card (Duration and Rest Time for standard sessions; the EFFORT row for every session)
 3. Context-aware modality group cards (Strength, Cardio, Sports, Isometric)
 4. Session note
 5. Calendar card
@@ -16,30 +16,24 @@ The screen keeps existing summary navigation actions (edit, save as routine, dis
 
 ### Effort Rating Capture
 
-The post-session survey records the **session effort rating**: how hard the whole session was, 1 (Very easy) → 5 (Max effort). It is stored in the existing `TrainingSession.sessionFeeling` field (nullable `int`; the name is historical — it is not a feeling score). Ratings recorded before the redefinition (when the prompt asked "How did it feel?", Rough → Great) are read as effort ratings on the same scale with no conversion — a deliberate owner decision (Stats redesign D-5, `.github/agents/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`).
+The **session effort rating** is how hard the whole session was: 1 is the easiest, 5 the hardest. It is stored in `TrainingSession.sessionFeeling` — the field name is historical; it is not a feeling score. Ratings recorded before the redefinition (when the prompt asked how the session felt) are read as effort ratings on the same scale with no conversion: an owner decision (Stats redesign D-5, `.github/agents/plans/2026-09-24-stats-redesign-modality-lens-prompt-pack.md`).
 
-#### Automatic post-workout prompt
+**Structure.** One sheet widget, `_FeelingSheetContent` in `lib/features/session/session_summary_screen.dart`, serves two entry points: the **automatic post-workout prompt** (`_showFeelingSheet`) and the **EFFORT row's add/change control** (`_openEffortRatingSheet`) in the first summary card, which exists on post-workout and calendar-opened summaries whether or not the prompt is enabled. Both write through `WorkoutState.updateSessionFeeling`, and the summary rebuilds when the sheet closes. Rating colors come only from `feelingColor` / `effortTileTextColor` in `lib/core/utils/session_feeling_utils.dart`, which read `OmniThemeColors.intensityRamp` (see [Design System](design_system.md)).
 
-After the first frame, when `sessionFeeling == null`, `SettingsState.showFeelingSurvey == true` and the summary was reached from the post-workout flow (not from the calendar), the summary shows a modal bottom sheet (`_FeelingSheetContent`):
+**Rules.**
 
-- **Copy:** title "How hard was this session?"; five numbered tiles 1–5; end labels "Very easy" under 1 and "Max effort" under 5. There are no per-number words (they don't fit the tile row).
-- **Colors:** tiles use the theme's one-color intensity ramp via `feelingColor(rating, themeColors)` (1 faintest → 5 the full accent); the selected tile's number uses `effortTileTextColor(...)`. Both live in `lib/core/utils/session_feeling_utils.dart`; the ramp is `OmniThemeColors.intensityRamp` (see [Design System](design_system.md)).
-- **Must answer:** `isDismissible: false, enableDrag: false`. The sheet has no close or skip control; one tap on a tile writes through `WorkoutState.updateSessionFeeling(sessionId, rating)` and closes it. The settings toggle is the only way not to be asked.
-- **Once per session:** `_hasShownFeelingSheet` guards against re-show on rebuilds, and the sheet is skipped when the session already has a rating.
-- **Refresh:** when the sheet closes, the summary rebuilds so the EFFORT row shows the new value immediately.
-- **Toggle:** the "Effort Rating" switch in `Settings → WORKOUT` (default on, preference key `show_feeling_survey`, see [Theme & Settings](theme_and_settings.md)) disables the automatic prompt.
-- **Never shown** on a summary opened from the calendar (`openedFromCalendar: true`), during the discard / "Unsaved changes" guard, or in-session.
+- **The automatic prompt must be answered.** It has no close or skip control and cannot be dismissed without a choice; the Effort Rating setting (`SettingsState.showFeelingSurvey`, see [Theme & Settings](theme_and_settings.md)) is the only way not to be asked. It appears only on a post-workout summary of an unrated session, at most once.
+- **The user-opened sheet is optional.** The user chose to open it, so closing it without a choice leaves the rating unchanged.
+- **A change reaches the calendar.** On a calendar-opened summary a saved rating refreshes the originating `CalendarState` — the same path Discard uses — so the day list shows the new tint on return.
+- **The rating is never drawn as ramp-colored text.** The lower ramp steps sit below the text-contrast floor, so the EFFORT value uses the stat pills' shared value color and the intensity is carried by a non-text marker in the rating's ramp step (D-15 in `.github/agents/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
+- **Rolling sessions can still be rated.** They have no session clock, so their info card drops Duration and Rest Time but keeps the EFFORT row.
 
-#### EFFORT row (add or change the rating)
+Verified by:
 
-The first summary card always carries an EFFORT row, whether or not the toggle is on and for both post-workout and calendar-opened summaries. It sits beneath the Duration | Rest Time row as a second full-width row:
-
-- `_StatPill` labelled EFFORT, value `n / 5` in that step's ramp color, or `—` when unrated.
-- A trailing text button: **Add rating** when unrated, **Change** when rated.
-- The button opens the same `_FeelingSheetContent` with the current value pre-selected. Unlike the automatic prompt, this user-opened sheet **is dismissible** (tap outside or swipe down) and dismissing changes nothing. Picking a value saves through `updateSessionFeeling`, closes the sheet and refreshes the row.
-- **Rolling sessions:** the card still renders, but with only the EFFORT row — Duration and Rest Time stay hidden as before.
-
-Tests: `test/session_summary_effort_row_test.dart` (automatic-prompt refresh, add / change / dismiss on fresh and calendar-opened sessions, rolling sessions).
+- `test/screen_widget_test.dart` (group `SessionSummaryScreen`): `feeling modal is non-dismissible and blocks summary controls`, `selecting tile 3 dismisses the feeling modal and persists`, `does not show feeling modal when session feeling already exists`.
+- `test/interaction_flow_test.dart`: `does not show feeling survey sheet when disabled in settings`.
+- `test/session_summary_effort_row_test.dart`: the prompt's copy and refresh (`Task 1a`); add, change, pre-selection and the selected tile's text color (`S-3`, `Fresh session — Change replaces …`, `Change sheet pre-selects …`); closing without a choice by tap and by swipe (`S-5.5`, `Change sheet swiped down …`); calendar-opened summaries — no prompt, add/change, day-list refresh (`S-4/S-5`, `S-5: day list → …`); value color and marker (`EFFORT value is drawn …`); pre-redefinition answers (`S-6`); the sheet's date subtitle (`Sheet subtitle …`); rolling sessions (`Task 3`).
+- `test/header_standardization_test.dart`: `S-008: rolling session shows combined card with EFFORT row only (Duration/Rest hidden)`.
 
 ---
 
@@ -50,7 +44,7 @@ The screen renders a CustomScrollView over OmniGradientBackground with this orde
 | Section | Content |
 |---------|---------|
 | Header | Session title, formatted start date and time, modality badge |
-| Top Stats | Standard sessions only: Duration and Rest Time |
+| Session info card | Duration and Rest Time, then the EFFORT row (rolling sessions: EFFORT row only — see [Effort Rating Capture](#effort-rating-capture)) |
 | Group Cards | One card per group that has data in this session |
 | Session Note | Inline TextField with debounce save |
 | Calendar | Month grid and Open Calendar navigation button |
@@ -64,8 +58,6 @@ What is not rendered in the active layout:
 Notes:
 
 - Group cards are conditional by data presence; empty groups are hidden.
-- Rolling sessions omit the top-stats section entirely because they have no
-  session clock.
 
 ---
 
@@ -102,12 +94,8 @@ Behavior details:
 
 ## Rest Time and Duration
 
-Top stats are rendered only for standard sessions and contain exactly:
-
-- Duration
-- Rest Time
-
-Rolling sessions do not render the top-stats card or its surrounding spacing.
+Rolling sessions have no session clock, so neither value is shown for them
+(`test/header_standardization_test.dart`, `S-008`).
 
 Rest Time is aggregated from EntryRest records by:
 
@@ -139,8 +127,8 @@ Inputs:
 - SettingsState, TimerAlertService, RestNotificationService
 - optional onSessionSaved callback
 - optional `openedFromCalendar: bool` (default `false`)
-- optional `originatingCalendarState: CalendarState` (used to refresh
-  the month grid after Discard when `openedFromCalendar == true`)
+- optional `originatingCalendarState: CalendarState` (refreshed after
+  Discard or a rating change when `openedFromCalendar == true`)
 
 Two entry points feed this screen:
 
@@ -161,11 +149,7 @@ Summary data loaded on entry:
 8. getPreferredWeightUnit from SessionSummaryService
 9. calendar-day data for current month
 
-Effort rating sheet behavior:
-
-- automatic prompt shown after first frame when sessionFeeling is null, the toggle is on and the summary is not calendar-opened
-- automatic prompt is non-dismissible until the user selects a value; the EFFORT row's Add rating / Change sheet is dismissible
-- both write through updateSessionFeeling and refresh the summary when they close
+Effort rating sheet: see [Effort Rating Capture](#effort-rating-capture).
 
 ### Service: SessionSummaryService
 

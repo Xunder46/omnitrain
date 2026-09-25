@@ -271,22 +271,22 @@ this trend here." — descriptive only. Section hides itself when both
 tabs are empty.
 
 ### Effort rating (no section)
-The HOW DID IT FEEL trend section was **removed** when the post-session
-survey was redefined as the session effort rating (Stats redesign PR 1,
-`.github/agents/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
-The rating is captured and edited on the Session Summary (see
+The Stats screen has no effort-rating chart, scalar or pill: the rating
+is captured and edited on the Session Summary (see
 [Session Summary](session_summary.md)) and shown as the calendar
-day-list tint; the Stats screen has no rating chart, scalar or pill.
-The planned Mix layer (Stats redesign item 7) will use it as the
-cross-modality session load.
+day-list tint. The former feeling-trend section was removed when the
+post-session survey was redefined as the effort rating (rationale:
+`.github/agents/plans/2026-09-24-01-stats-pr1-effort-rating-plan.md`).
+Verified by `test/screen_widget_test.dart` (`HOW DID IT FEEL section is
+removed (Phase 4)`).
 
 #### Deliberate non-features
 
 - No stat tile, average-rating scalar or rating pill in the ALL TIME
-  row. The summary stat grid remains Sessions / Time / Streak only.
+  row (`test/screen_widget_test.dart`, `S-005 guard: no feeling scalar /
+  pill / tile appears in the ALL TIME summary stat row`).
 - No rest / deload / recovery suggestion, banner, nudge, or
-  call-to-action. (Stats redesign item 8 will replace this with its
-  Signals rules; update this line when it ships.)
+  call-to-action.
 
 ### NUTRITION
 A **full-history** nutrition trend computed from every logged `ConsumedFood`

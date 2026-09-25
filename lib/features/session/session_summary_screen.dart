@@ -268,7 +268,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
     _hasShownFeelingSheet = true;
 
-    await showModalBottomSheet<void>(
+    await showModalBottomSheet<int>(
       context: context,
       isDismissible: false,
       enableDrag: false,
@@ -278,6 +278,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       builder: (context) => _FeelingSheetContent(
         workoutState: widget.workoutState,
         modality: session.modality,
+        startedAt: OmniDateUtils.fromMs(session.startedAtMs),
       ),
     );
 
@@ -291,11 +292,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Unlike the post-workout prompt (isDismissible: false), this sheet
   /// CAN be dismissed without selecting a value — tapping outside or
   /// swiping down cancels without changing the rating.
-  Future<void> _openEffortRatingSheet(ThemeData theme) async {
+  Future<void> _openEffortRatingSheet() async {
     final session = widget.workoutState.currentSession;
     if (session == null) return;
 
-    await showModalBottomSheet<void>(
+    final saved = await showModalBottomSheet<int>(
       context: context,
       isDismissible: true,
       enableDrag: true,
@@ -305,13 +306,31 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       builder: (context) => _FeelingSheetContent(
         workoutState: widget.workoutState,
         modality: session.modality,
+        startedAt: OmniDateUtils.fromMs(session.startedAtMs),
         initialRating: session.sessionFeeling,
       ),
     );
 
+    // A calendar-opened summary returns to a day list / grid that drew
+    // the old rating; refresh it the same way Discard does.
+    if (saved != null && _isHistoricalView) {
+      await _refreshOriginatingCalendar();
+    }
+
     // Rebuild to reflect any rating changes made in the sheet
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  /// Reload the calendar this summary was opened from so it reflects a
+  /// change made here (a discarded session, a new effort rating).
+  Future<void> _refreshOriginatingCalendar() async {
+    try {
+      await (widget.originatingCalendarState ?? _calendarState).refresh();
+    } catch (_) {
+      // Calendar refresh is best-effort; a failure here shouldn't block
+      // the user.
     }
   }
 
@@ -356,12 +375,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       // Refresh the originating calendar so the deleted session
       // disappears from the grid, then pop back to where the user
       // came from (calendar or day list).
-      try {
-        await (widget.originatingCalendarState ?? _calendarState).refresh();
-      } catch (_) {
-        // Calendar refresh is best-effort; the user is already
-        // navigating back, so a failure here shouldn't block that.
-      }
+      await _refreshOriginatingCalendar();
+      if (!mounted) return;
       Navigator.pop(context);
     } else {
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -688,12 +703,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
-                      // The date header (with the modality chip) is
-                      // always rendered — even when the combined
-                      // Duration/Rest Time card is hidden for a
-                      // rolling session. The header acts as a
-                      // day-context reminder; the card body is the
-                      // only part that the rolling branch omits.
+                      // The date header (with the modality chip) and
+                      // the session info card are always rendered; for
+                      // a rolling session the card carries only the
+                      // EFFORT row (no Duration/Rest Time row).
                       _buildSessionInfoHeader(theme),
                       _buildSessionInfoCard(theme),
                       ..._buildGroupCards(theme),
@@ -756,7 +769,10 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// [OmniBackHeader]; the date and modality chip live in
   /// [_buildSessionInfoHeader] above this card. The card body is
   /// content-only. The EFFORT row is always shown (even if toggle is off),
-  /// with an "Add rating" or "Change rating" button to modify the rating.
+  /// with an "Add rating" or "Change" button to modify the rating. The value
+  /// text uses the pills' shared value color; the rating's intensity is a
+  /// non-text marker in its ramp step, because low ramp steps are below the
+  /// text contrast floor (D-15 in the Stats PR 1 plan).
   ///
   /// For rolling sessions, Duration/Rest Time are hidden, but EFFORT row
   /// remains visible so the user can rate the session.
@@ -803,14 +819,22 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   value: feeling != null
                       ? '$feeling / 5'
                       : '—',
-                  valueColor: feeling != null
-                      ? feelingColor(feeling, themeColors)
+                  leading: feeling != null
+                      ? Container(
+                          key: const Key('omni_session_effort_marker'),
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: feelingColor(feeling, themeColors),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        )
                       : null,
                 ),
               ),
               const SizedBox(width: 12),
               TextButton(
-                onPressed: () => _openEffortRatingSheet(theme),
+                onPressed: _openEffortRatingSheet,
                 style: ButtonStyle(
                   shape: WidgetStatePropertyAll(
                     RoundedRectangleBorder(
@@ -1192,7 +1216,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
     return value.toStringAsFixed(1);
   }
 
-  String _formatDate(DateTime date) {
+  /// Short "Mon D" date (e.g. "Sep 18"). Static so the rating sheet in this
+  /// file can reuse it.
+  static String _formatDate(DateTime date) {
     const months = [
       'Jan',
       'Feb',
@@ -1236,15 +1262,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 }
 
-/// Modal bottom sheet content for session feeling rating (1-5).
+/// Modal bottom sheet content for the session effort rating (1-5). Pops
+/// with the chosen rating once it has been saved.
 class _FeelingSheetContent extends StatefulWidget {
   final WorkoutState workoutState;
   final String? modality;
+
+  /// When the rated session started; the subtitle reads "Today" for a
+  /// session that started today and the session's date otherwise.
+  final DateTime startedAt;
   final int? initialRating;
 
   const _FeelingSheetContent({
     required this.workoutState,
     this.modality,
+    required this.startedAt,
     this.initialRating,
   });
 
@@ -1267,7 +1299,10 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
     final theme = Theme.of(context);
     final themeColors = OmniTheme.colorsForTheme(OmniTheme.activeTheme);
     final displayName = ModalityDisplay.getName(widget.modality);
-    final subtitle = '$displayName · Today';
+    final when = OmniDateUtils.isToday(widget.startedAt)
+        ? 'Today'
+        : _SessionSummaryScreenState._formatDate(widget.startedAt);
+    final subtitle = '$displayName · $when';
 
     return Container(
       decoration: BoxDecoration(
@@ -1407,7 +1442,7 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
     if (session != null) {
       await widget.workoutState.updateSessionFeeling(session.id, feeling);
       if (mounted) {
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(feeling);
       }
     }
   }
@@ -1416,17 +1451,26 @@ class _FeelingSheetContentState extends State<_FeelingSheetContent> {
 class _StatPill extends StatelessWidget {
   final String label;
   final String value;
-  final Color? valueColor;
+
+  /// Optional non-text mark drawn immediately before [value] (the EFFORT
+  /// row's intensity marker).
+  final Widget? leading;
 
   const _StatPill({
     required this.label,
     required this.value,
-    this.valueColor,
+    this.leading,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final valueText = Text(
+      value,
+      style: theme.textTheme.titleLarge?.copyWith(
+        color: theme.colorScheme.primary,
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1438,12 +1482,13 @@ class _StatPill extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          value,
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: valueColor ?? theme.colorScheme.primary,
+        if (leading == null)
+          valueText
+        else
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [leading!, const SizedBox(width: 8), valueText],
           ),
-        ),
       ],
     );
   }

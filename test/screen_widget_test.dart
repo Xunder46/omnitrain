@@ -37,7 +37,6 @@ import 'package:omnitrain/features/stats/stats_screen.dart';
 import 'package:omnitrain/features/stats/widgets/scrollable_trend_chart.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:omnitrain/core/utils/chart_axis_helper.dart';
-import 'package:omnitrain/core/utils/session_feeling_utils.dart';
 import 'package:omnitrain/state/calendar/calendar_state.dart';
 import 'package:omnitrain/state/food_library_state.dart';
 import 'package:omnitrain/state/home/home_state.dart';
@@ -6133,11 +6132,9 @@ void main() {
         final border =
             (highlightedCards.first.decoration! as BoxDecoration).border!
                 as Border;
-        // Session has sessionFeeling: 4, which maps to step4 of the intensity ramp
-        expect(
-          border.left.color,
-          feelingColor(4, OmniTheme.colors),
-        );
+        // Session has sessionFeeling: 4 → ramp step 4, asserted against the
+        // token directly so a regression in feelingColor fails here.
+        expect(border.left.color, OmniTheme.colors.intensityRamp.step4);
       },
     );
 

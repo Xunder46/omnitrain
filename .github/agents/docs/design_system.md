@@ -79,17 +79,21 @@ intensity ramp (below). A failure names the theme, the check, the measured value
 threshold.
 
 **Derived tokens — the effort-rating intensity ramp.** `OmniThemeColors.intensityRamp`
-(`step1`…`step5`) is not hand-picked per theme; `OmniTheme` derives it from each theme's
-`primary` and `surface` and caches it per `AppTheme`, so a new theme gets a ramp for free.
-Each step is `primary` alpha-composited over `surface`: step 5 is `primary` itself, step 1 is
-the lowest alpha whose composite reaches 1.8:1 against `surface` (the same floor as
-`surfaceBorder`), and steps 2–4 space the contrast against `surface` evenly between them.
-It colors the effort-rating tiles and the calendar day-list tint through
-`feelingColor(rating, themeColors)`; the selected tile's number uses
-`effortTileTextColor(...)`. Contract checks 18a–c require every step ≥ 1.8:1 vs `surface`,
-contrast strictly increasing from step 1 to 5, and the tile number ≥ 3:1 on every step;
-`test/utils_test.dart` pins the even spacing (±0.1). The ramp reads as "more", never as
-good/bad — don't reintroduce a traffic-light palette for ratings.
+(`step1`…`step5`) is not hand-picked per theme; `OmniTheme.intensityRampFor` derives it from
+each theme's `primary` and `surface`, cached per `(primary, surface)` pair so an edited palette
+can never be served a stale ramp, and a new theme gets a ramp for free. Each step is `primary`
+alpha-composited over `surface`: step 5 is `primary` itself, step 1 is the lowest alpha whose
+composite clears the same floor contract check 6 holds `surfaceBorder` to, and steps 2–4 space
+the contrast against `surface` evenly between them. It colors the effort-rating tiles, the
+Session Summary EFFORT marker and the calendar day-list tint through
+`feelingColor(rating, themeColors)`; the selected tile's number uses `effortTileTextColor(...)`.
+Enforced by contract checks 18a (every step clears the border floor), 18b (contrast strictly
+increases from step 1 to 5) and 18c (the tile number clears the text floor on every step) in
+`test/palette_legibility_contract_test.dart`, and by `test/utils_test.dart` (group
+`Intensity ramp spacing (T-1)`: step 1 is the lowest qualifying alpha, even spacing, cache
+keying). The ramp reads as "more", never as good/bad — don't reintroduce a traffic-light
+palette for ratings. It is a fill, never a text color: the low steps sit below the text floor,
+so a rating shown as text uses the normal text tokens with a ramp-filled mark beside it.
 
 Related gates that also iterate the roster: `emphasis_tier_contract_test.dart` (accent stays
 chromatically distinct from the text tiers) and `switch_consistency_contract_test.dart`
