@@ -385,6 +385,12 @@ class WatchSessionEngine {
   /// changes nothing — structure changes are keyed by `changeId`, and every
   /// row a message writes carries an id derived from the message itself.
   ///
+  /// Cross-stack conformance verified by
+  /// `test/watch_reconciliation_cross_stack_test.dart`. Do not change these
+  /// rules without running that test: it replays every reconciliation fixture
+  /// through this engine and through the phone's reconciler and fails if the two
+  /// converge on different structure.
+  ///
   /// Returns true when the message changed something the watch holds, false
   /// when it had nothing for this session (reference data, or an observation —
   /// which only ever travels the other way). A message the watch cannot read is

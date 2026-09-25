@@ -40,7 +40,7 @@ State classes follow strict rules:
 | [Workout Session State](state_management/workout_state.md) | `WorkoutState` facade + `SessionCore`, `SessionBlockManager`, `SessionSummaryBuilder`, `TimerManager`, `ExerciseLibrary` |
 | [Nutrition State](state_management/nutrition_state.md) | `NutritionState`, `FoodLibraryState`, `NutritionPrimerState` |
 | [Routine, Calendar, Home, Profile & Settings State](state_management/app_state.md) | `RoutineState`, `CalendarState`, `HomeState`, `ProfileState`, `SettingsState`, `PeriodState` |
-| [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch`, and the watch↔phone live mirroring surface (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchNutritionLogBridge`, `WatchIncomingRouter`, `WatchReferenceSync`, the two reconcilers) |
+| [Service & Utility Classes](state_management/services_and_utils.md) | `CrashReportingService`, `RoutineSessionService`, `SessionSummaryService`, `HealthSyncService` (+ `HealthPlatformService` gateway), `ObservationGrouper`, `TimerAlertService`, `RestNotificationService`, `WorkoutSessionTimerMixin`, plus `CatalogSource` / `BundledCatalogSource`, `DemoRoutinesValidator`, `StartupFailureDiagnosticWriter`, `OmniDateUtils`, `FuzzySearch`, and the watch↔phone surface (`LiveSessionMirrorState`, `WatchSyncOrchestrator`, `WatchNutritionState`, `WatchNutritionLogBridge`, `WatchIncomingRouter`, `WatchSyncRequestHandler`, `WatchReferenceSync`, `WatchTransport` and its channel/factory, the two reconcilers) |
 
 ---
 
@@ -77,6 +77,10 @@ State classes follow strict rules:
 | `WatchNutritionState` | [Services & Utilities](state_management/services_and_utils.md) |
 | `WatchNutritionLogBridge` | [Services & Utilities](state_management/services_and_utils.md) |
 | `WatchIncomingRouter` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchMessageChannel` | [Services & Utilities](state_management/services_and_utils.md) |
+| `WatchSyncRequestHandler` | [Services & Utilities](state_management/services_and_utils.md) |
+| `createWatchSync` | [Services & Utilities](state_management/services_and_utils.md) |
+| `createPlatformWatchTransport` | [Services & Utilities](state_management/services_and_utils.md) |
 | `WatchPlatformWorkout` | [Services & Utilities](state_management/services_and_utils.md) |
 | `WatchReferenceSync` | [Services & Utilities](state_management/services_and_utils.md) |
 | `WatchSensorRecorder` | [Services & Utilities](state_management/services_and_utils.md) |

@@ -115,6 +115,10 @@
           "items": {
             "$ref": "#/$defs/capability"
           }
+        },
+        "effortKind": {
+          "$ref": "#/$defs/effortKind",
+          "description": "The effort kind the routine that produced this slot declared. Omitted where no routine declared one — a free workout, or a slot the phone pushed — and the receiver resolves the kind from the capabilities instead."
         }
       }
     },

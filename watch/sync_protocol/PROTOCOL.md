@@ -164,6 +164,16 @@ identifiers, and they answer different questions:
   Neither is rewritten by a later structure change: history records what
   happened, not what the slot holds now.
 - Removing a slot MUST NOT touch the entries logged against it.
+- A slot MAY carry the `effortKind` its routine declared, and a slot that does
+  MUST be rendered with it. This is the one field a receiver does not derive:
+  the routine is the user's own plan, and re-deriving the kind from the
+  exercise's capabilities would render the effort as something the plan never
+  asked for (a Plank carries `time` and `hold`, which the capability rule reads
+  as a hold, while the routine that declares it `timed` is what the user set
+  up). A slot with no `effortKind` — a free workout, or an exercise pushed into
+  a live session — is resolved from its capabilities, which is the rule
+  `watch/contract/watch_start_paths_contract.json` (`effortKindParity`) pins for
+  both clients.
 
 ## Timer state (normative)
 

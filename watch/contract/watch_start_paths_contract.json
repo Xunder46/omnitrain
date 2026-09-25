@@ -1,5 +1,5 @@
 {
-  "description": "What both watch clients must agree on when a session starts on the wrist: the fallback list's contents and order, the slots a synced routine turns into, the position rule when the phone pushes an exercise into a live session, the effort-kind each capability set resolves to, and the lifecycle event a session start emits. Neither client owns these values — both suites read this file, so a change on one platform fails the other's tests instead of diverging silently. The two routines_down messages below are schema-conformant phone messages, fed through the same validator the protocol fixtures use.",
+  "description": "What both watch clients must agree on when a session starts on the wrist: the fallback list's contents and order, the slots a synced routine turns into, the position rule when the phone pushes an exercise into a live session, the effort-kind each capability set resolves to, and the lifecycle event a session start emits. Neither client owns these values — both suites read this file, so a change on one platform fails the other's tests instead of diverging silently. The two routines_down messages below are schema-conformant phone messages, fed through the same validator the protocol fixtures use. `effortKindParity` is the rule for a slot that declares no kind of its own — a free workout, or an exercise the phone pushed. A slot a routine produced carries the routine's declared `effortKind`, and both clients render that instead: it is what the user set up on the phone, and `routineSession.expectedSlots` pins it. `startSurface` is the sentence the start surface must carry about sync being watch-initiated — nothing arrives unless the user asks, and a user who is not told waits for routines that are never coming.",
   "fallback": {
     "recents": [
       {
@@ -95,19 +95,22 @@
         "sessionExerciseId": "sx-eff-bench",
         "exerciseId": "ex-barbell-bench-press",
         "name": "Barbell Bench Press",
-        "capabilities": ["sets", "reps", "load"]
+        "capabilities": ["sets", "reps", "load"],
+        "effortKind": "set"
       },
       {
         "sessionExerciseId": "sx-eff-plank",
         "exerciseId": "ex-plank",
         "name": "Plank",
-        "capabilities": ["time", "hold"]
+        "capabilities": ["time", "hold"],
+        "effortKind": "timed"
       },
       {
         "sessionExerciseId": "sx-eff-pullup",
         "exerciseId": "ex-pull-up",
         "name": "Pull-Up",
-        "capabilities": ["sets", "reps", "load"]
+        "capabilities": ["sets", "reps", "load"],
+        "effortKind": "set"
       }
     ]
   },
@@ -235,6 +238,10 @@
     { "capabilities": ["load"], "effortKind": "set" },
     { "capabilities": ["hold"], "effortKind": "drill" }
   ],
+  "startSurface": {
+    "noAutoSyncLabel": "No automatic sync",
+    "syncLabel": "Sync routines"
+  },
   "sessionStarted": {
     "type": "session_lifecycle",
     "origin": "watch",

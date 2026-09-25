@@ -1,5 +1,14 @@
 # Modality-Aware Workout Tracking
 
+**Scope.** How an exercise's capabilities and its modality resolve into an effort
+kind, and what each effort kind means for logging and analytics. Covers
+`lib/core/constants/modality_config.dart`, `lib/core/constants/modality.dart`,
+`lib/core/constants/metric_ids.dart`, and the exercise-capability rows the
+repository serves via `getExerciseCapabilities`. Session-screen behaviour for
+each kind lives in [Modality-Based Exercise UI](modality_based_exercise_ui.md);
+the routine editor that writes effort targets lives in
+[My Routines](my_routines.md).
+
 ## Business Context
 
 ### Problem Statement
@@ -71,6 +80,33 @@ for a tracking method. Cancelling adds nothing.
 Changing modality while a session is active starts a **new** session rather than
 re-mapping the existing one — re-mapping would leave the logged efforts in an
 ambiguous state. See [Key Design Decisions](#key-design-decisions).
+
+### A routine's slot carries the kind the routine declared
+
+A session started from a modality tile resolves its effort kind from
+`ModalityConfig` directly, and that stays true. A session started from a
+**routine** does not: each of its slots carries the `effortKind` the routine
+declared, and a receiver renders that kind rather than re-deriving one.
+
+The reason is that a routine is a plan the user wrote. Deriving the kind from
+capabilities instead would render a Plank in an isometric routine as whatever its
+capabilities suggest, which is not what the routine asked for — the same
+exercise can be a hold in one routine and timed work in another, and only the
+routine knows which.
+
+The rule is a **fallback**, not a replacement: a slot with no declared kind — a
+free workout, or an exercise the phone pushed mid-session — resolves from
+capabilities by the same precedence as before, so nothing that worked without a
+routine changes behaviour. `WatchEffortKind.declared` is the closed set a
+declared value must be in to be honoured, so a value the protocol cannot mean is
+not mistaken for intent.
+
+Verified on both clients by
+`test/watch_reference_sync_test.dart` (S-004) and the wrist's
+`testS004APlankDeclaredTimedRendersAsATimedEffort` in
+`watch/watchos/Tests/WatchSessionEngineTests/WatchSessionStartPathsTests.swift`,
+with `watch/contract/watch_start_paths_contract.json` (`routineSession.expectedSlots`)
+holding the two to the same answer.
 
 ---
 

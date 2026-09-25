@@ -55,13 +55,22 @@ public struct WatchCatalogExercise: Equatable {
     public var slotId: String { "sx-\(exerciseId)" }
 
     /// This exercise as a protocol `sessionExercise` slot.
-    public func toSlot(sessionExerciseId: String? = nil) -> [String: Any] {
-        [
+    ///
+    /// `effortKind` is the routine's declared kind, and only a routine has one:
+    /// a slot without it carries no `effortKind` at all, and the receiver
+    /// resolves the kind from the capabilities (PROTOCOL.md, `sessionExercise`).
+    public func toSlot(
+        sessionExerciseId: String? = nil,
+        effortKind: String? = nil
+    ) -> [String: Any] {
+        var slot: [String: Any] = [
             "sessionExerciseId": sessionExerciseId ?? slotId,
             "exerciseId": exerciseId,
             "name": name,
             "capabilities": capabilities,
         ]
+        if let effortKind { slot["effortKind"] = effortKind }
+        return slot
     }
 
     public func toJson() -> [String: Any] {
@@ -106,9 +115,15 @@ public struct WatchRoutineEffort {
     }
 
     /// The slot this effort becomes when the routine is started. Keyed by
-    /// effort, so a routine that benches in two segments yields two slots.
+    /// effort, so a routine that benches in two segments yields two slots — and
+    /// carrying the routine's declared effort kind, which is the one the wrist
+    /// renders (a Plank in an isometric routine is timed because the routine says
+    /// so, not because a capability suggests otherwise).
     public var slot: [String: Any] {
-        catalogExercise.toSlot(sessionExerciseId: "sx-\(effortId)")
+        catalogExercise.toSlot(
+            sessionExerciseId: "sx-\(effortId)",
+            effortKind: effortKind
+        )
     }
 
     /// This effort as a catalog exercise, for the fallback list.

@@ -307,12 +307,56 @@ final class WatchSessionStartPathsTests: XCTestCase {
             XCTAssertEqual(slot["exerciseId"] as? String, expectedSlot["exerciseId"] as? String)
             XCTAssertEqual(slot["name"] as? String, expectedSlot["name"] as? String)
             XCTAssertEqual(slot["capabilities"] as? [String], expectedSlot["capabilities"] as? [String])
+            // The routine's declared kind travels with the slot (D-6).
+            XCTAssertEqual(slot["effortKind"] as? String, expectedSlot["effortKind"] as? String)
         }
 
         // The first exercise reaches the logging surface as its own effort kind,
         // off the capabilities the routine carried.
         XCTAssertEqual(harness.surface.effortKind, WatchEffortKind.set)
         XCTAssertEqual(harness.surface.exerciseName, "Barbell Bench Press")
+    }
+
+    /// D-6: a slot a routine produced renders the kind the routine declared, not
+    /// the one its capabilities imply — which is where the two disagree for
+    /// `Plank`, stored `timed` on the phone while `hold` wins the shared
+    /// precedence.
+    func testS004APlankDeclaredTimedRendersAsATimedEffort() async throws {
+        let harness = WatchStartHarness()
+        await harness.launch()
+        _ = try await harness.receive(try firstMessage())
+
+        let session = try await harness.paths.startFromRoutine("routine-push-a")
+        XCTAssertEqual(session.exercises.count, 3)
+
+        // The routine's second effort is the Plank.
+        _ = await harness.engine.advanceExercise()
+
+        XCTAssertEqual(harness.surface.exerciseName, "Plank")
+        XCTAssertEqual(harness.surface.effortKind, WatchEffortKind.timed)
+
+        // The capability rule on its own would have produced a hold, which is
+        // the divergence this closes.
+        let derived = await effortKind(
+            capabilities: ["time", "hold"],
+            clock: harness.clock.call
+        )
+        XCTAssertEqual(derived, WatchEffortKind.drill)
+    }
+
+    /// S-010: sync is watch-initiated, and the start surface has to say so.
+    /// Both clients read the sentence from the contract, so neither can drift.
+    func testS010TheStartSurfaceCarriesTheNoAutomaticSyncLabel() throws {
+        let surface = try object(try startContract()["startSurface"])
+
+        XCTAssertEqual(
+            WatchStartSurfaceCopy.noAutoSyncLabel,
+            surface["noAutoSyncLabel"] as? String
+        )
+        XCTAssertEqual(
+            WatchStartSurfaceCopy.syncLabel,
+            surface["syncLabel"] as? String
+        )
     }
 
     func testS001ARelaunchWithNoPhoneStillListsAndStartsTheRoutine() async throws {
@@ -721,7 +765,7 @@ final class WatchSessionStartPathsTests: XCTestCase {
         }
     }
 
-    func testS007ARoutineNamedEffortRendersAsTheKindItsCapabilitiesImply() async throws {
+    func testS007ARoutineNamedEffortRendersTheKindTheRoutineDeclared() async throws {
         let harness = WatchStartHarness()
         await harness.launch()
         _ = try await harness.receive(try firstMessage())
@@ -743,33 +787,31 @@ final class WatchSessionStartPathsTests: XCTestCase {
         }
 
         for effort in sent.routines.flatMap(\.efforts) {
-            let resolved = await effortKind(
-                capabilities: effort.capabilities,
-                clock: harness.clock.call
-            )
             XCTAssertEqual(
                 rendered[effort.exerciseId],
-                resolved,
-                "\(effort.exerciseName) renders as the phone resolves it"
+                effort.effortKind,
+                "\(effort.exerciseName) renders as the routine declares it"
             )
         }
 
-        // A slot on the wire carries capabilities and no effort kind, so the
-        // wrist resolves one — and `Plank` is stored as `timed` on the phone
-        // while its `hold` capability wins in the shared precedence. The wrist
-        // shows a hold, which is what the exercise is. Recorded rather than
-        // papered over: this is the one effort where the two disagree.
-        var disagreements: [String] = []
-        for effort in sent.routines.flatMap(\.efforts) {
-            let resolved = await effortKind(
-                capabilities: effort.capabilities,
-                clock: harness.clock.call
-            )
-            if resolved != effort.effortKind {
-                disagreements.append("\(effort.exerciseName): \(effort.effortKind) → \(resolved)")
-            }
-        }
-        XCTAssertEqual(disagreements, ["Plank: timed → drill"])
+        // The divergence D-6 closes: `Plank` carries `time` and `hold`, which the
+        // capability rule reads as a drill, while the routine the user built
+        // declares it `timed`. The routine wins — the wrist renders the surface
+        // the phone's own routine sets up, not one inferred from a capability
+        // list.
+        let plank = try XCTUnwrap(
+            sent.routines.flatMap(\.efforts).first { $0.exerciseName == "Plank" }
+        )
+        XCTAssertEqual(rendered[plank.exerciseId], WatchEffortKind.timed)
+        let derived = await effortKind(
+            capabilities: plank.capabilities,
+            clock: harness.clock.call
+        )
+        XCTAssertNotEqual(
+            derived,
+            WatchEffortKind.timed,
+            "the capability rule alone would have rendered a hold"
+        )
     }
 
     func testS007APushedExerciseAndARoutineExerciseWithTheSameCapabilitiesAgree() async throws {

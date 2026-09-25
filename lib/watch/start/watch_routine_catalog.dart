@@ -56,11 +56,19 @@ class WatchCatalogExercise {
   String get slotId => 'sx-$exerciseId';
 
   /// This exercise as a protocol `sessionExercise` slot.
-  Map<String, Object?> toSlot({String? sessionExerciseId}) => {
+  ///
+  /// [effortKind] is the routine's declared kind, and only a routine has one:
+  /// a slot without it carries no `effortKind` at all, and the receiver
+  /// resolves the kind from the capabilities (PROTOCOL.md, `sessionExercise`).
+  Map<String, Object?> toSlot({
+    String? sessionExerciseId,
+    String? effortKind,
+  }) => {
     'sessionExerciseId': sessionExerciseId ?? slotId,
     'exerciseId': exerciseId,
     'name': name,
     'capabilities': capabilities,
+    'effortKind': ?effortKind,
   };
 
   Map<String, Object?> toJson() => {
@@ -105,9 +113,14 @@ class WatchRoutineEffort {
   final Map<String, Object?> targets;
 
   /// The slot this effort becomes when the routine is started. Keyed by
-  /// effort, so a routine that benches in two segments yields two slots.
-  Map<String, Object?> get slot =>
-      catalogExercise.toSlot(sessionExerciseId: 'sx-$effortId');
+  /// effort, so a routine that benches in two segments yields two slots — and
+  /// carrying the routine's declared effort kind, which is the one the wrist
+  /// renders (a Plank in an isometric routine is timed because the routine says
+  /// so, not because a capability suggests otherwise).
+  Map<String, Object?> get slot => catalogExercise.toSlot(
+    sessionExerciseId: 'sx-$effortId',
+    effortKind: effortKind,
+  );
 
   /// This effort as a catalog exercise, for the fallback list.
   WatchCatalogExercise get catalogExercise => WatchCatalogExercise(

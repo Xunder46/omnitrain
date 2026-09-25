@@ -23,6 +23,25 @@
 
 import Foundation
 
+/// The words the start surface says, in one place so the views render them and
+/// the suite can hold them to the shared contract.
+///
+/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// D-7 and S-010. They live here rather than on the SwiftUI view because the
+/// view is compiled only into a watch target, while the sentence itself is a
+/// product requirement on every client — and the Flutter client reads the same
+/// two strings from `watch/contract/watch_start_paths_contract.json`.
+public enum WatchStartSurfaceCopy {
+    /// Said plainly because there is nothing to discover: nothing arrives on the
+    /// wrist unless its user asks, and a user who does not know that reads an
+    /// unchanged routine list as a broken phone.
+    public static let noAutoSyncLabel = "No automatic sync"
+
+    /// The user's explicit action — the only thing that asks the phone for
+    /// anything.
+    public static let syncLabel = "Sync routines"
+}
+
 /// The exercises the wrist may offer without reaching the phone (S-003).
 ///
 /// Three sources, in this order: what the user used on the wrist most recently,

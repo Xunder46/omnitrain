@@ -33,6 +33,7 @@ import 'state/nutrition_state.dart';
 import 'state/food_library_state.dart';
 import 'state/nutrition/nutrition_primer_state.dart';
 import 'state/exercise/exercise_library_state.dart';
+import 'state/watch/watch_sync_wiring.dart';
 import 'core/utils/timer_alert_service.dart';
 import 'core/services/crash_reporting_service.dart';
 import 'core/utils/rest_notification_service.dart';
@@ -361,6 +362,20 @@ Future<Widget> runStartup({
     workoutState: workoutState,
   );
 
+  // The watch graph, when this platform has a watch to talk to. Null on web,
+  // desktop, and Android (the Wear OS client is a later plan), and null when the
+  // transport cannot be set up — a wrist that is not there is not a reason to
+  // refuse to start.
+  final watchMirror = await createWatchSync(
+    repository: repository,
+    nutritionState: nutritionState,
+    foodLibraryState: foodLibraryState,
+    onFailure: (error, stackTrace) {
+      debugPrint('Watch transport unavailable: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    },
+  );
+
   // Build-metadata for the Settings footer.
   //
   // Source of truth = `pubspec.yaml`'s `version:` line, compiled into
@@ -392,5 +407,6 @@ Future<Widget> runStartup({
     timerAlertService: timerAlertService,
     restNotificationService: restNotificationService,
     appVersionInfo: appVersionInfo,
+    liveSession: watchMirror,
   );
 }

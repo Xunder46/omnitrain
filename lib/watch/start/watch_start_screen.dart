@@ -1,12 +1,14 @@
 /// Where a session begins on the wrist: a synced routine, or a free workout.
 ///
-/// Plan: `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`,
-/// frontend changes.
+/// Plans: `.github/agents/plans/2026-07-13-08-b-watch-session-start-paths-plan.md`
+/// (the paths) and `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`
+/// (D-7 / S-010 — sync is watch-initiated, and this surface is where the user
+/// finds that out).
 ///
 /// Everything on this screen is already on the watch. The routine list is read
 /// from local storage, so it renders with the phone off, in airplane mode, or
-/// before the wrist has ever seen a radio — which is the point of syncing
-/// proactively rather than at session start.
+/// before the wrist has ever seen a radio — which is why the list only changes
+/// when the user asks, and why this screen says so.
 library;
 
 import 'package:flutter/material.dart';
@@ -22,6 +24,7 @@ class WatchStartScreen extends StatelessWidget {
     required this.paths,
     this.onSessionStarted,
     this.onOpenNutrition,
+    this.onRequestSync,
   });
 
   final WatchSessionStartPaths paths;
@@ -36,6 +39,10 @@ class WatchStartScreen extends StatelessWidget {
   /// home surface rather than behind a workout (S-006).
   final VoidCallback? onOpenNutrition;
 
+  /// Asks the phone for the routines. Left null, the wrist cannot ask — the app
+  /// owns the transport, not this widget.
+  final VoidCallback? onRequestSync;
+
   /// Wrist-scale layout: the phone's spacing tokens are sized for a full-width
   /// screen, so the watch carries its own two values rather than scaling a
   /// phone token down.
@@ -46,6 +53,15 @@ class WatchStartScreen extends StatelessWidget {
   /// The home surface's way into the quick-log, which is reachable with no
   /// workout running.
   static const String logFoodLabel = 'Log food';
+
+  /// Said plainly because there is nothing to discover: nothing arrives on the
+  /// wrist unless its user asks, and a user who does not know that reads an
+  /// unchanged routine list as a broken phone (D-7, S-010).
+  static const String noAutoSyncLabel = 'No automatic sync';
+
+  /// The user's explicit action — the only thing that asks the phone for
+  /// anything.
+  static const String syncLabel = 'Sync routines';
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +80,15 @@ class WatchStartScreen extends StatelessWidget {
                     ? _nothingSynced(context)
                     : _routineList(context),
               ),
+              const SizedBox(height: rowGap),
+              const NoAutomaticSyncHint(),
+              if (onRequestSync != null) ...[
+                const SizedBox(height: rowGap),
+                WatchUtilityButton(
+                  label: syncLabel,
+                  onPressed: onRequestSync!,
+                ),
+              ],
               const SizedBox(height: rowGap),
               _freeWorkoutButton(context),
               if (onOpenNutrition != null) ...[
@@ -200,19 +225,22 @@ class WatchUtilityButton extends StatelessWidget {
   }
 }
 
-/// "The full catalog is a phone away" — shown only while the phone can actually
-/// be reached, because it is a promise about a radio.
-class SearchOnPhoneHint extends StatelessWidget {
-  const SearchOnPhoneHint({super.key});
+/// A quiet line of small print under the wrist's actions: an icon and a
+/// sentence. Both hints on this surface are one of these, so they stay the same
+/// weight as each other.
+class WatchHintRow extends StatelessWidget {
+  const WatchHintRow({super.key, required this.icon, required this.label});
 
-  static const String label = 'Search on phone';
+  final IconData icon;
+  final String label;
+
   static const double iconSize = 14;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.phone_iphone, size: iconSize),
+        Icon(icon, size: iconSize),
         const SizedBox(width: WatchStartScreen.rowGap),
         Expanded(
           child: Text(
@@ -223,5 +251,38 @@ class SearchOnPhoneHint extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// "The phone will not do this for you" — the one thing the wrist has to say
+/// about a routine list that only changes when the user asks.
+///
+/// Plan: `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+/// D-7 and S-010. The label is part of the product, not decoration: sync is
+/// watch-initiated, so a user who never learns that waits for routines that are
+/// never coming. The watchOS client renders the same sentence from the same
+/// contract fixture.
+class NoAutomaticSyncHint extends StatelessWidget {
+  const NoAutomaticSyncHint({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const WatchHintRow(
+      icon: Icons.sync_disabled,
+      label: WatchStartScreen.noAutoSyncLabel,
+    );
+  }
+}
+
+/// "The full catalog is a phone away" — shown only while the phone can actually
+/// be reached, because it is a promise about a radio.
+class SearchOnPhoneHint extends StatelessWidget {
+  const SearchOnPhoneHint({super.key});
+
+  static const String label = 'Search on phone';
+
+  @override
+  Widget build(BuildContext context) {
+    return const WatchHintRow(icon: Icons.phone_iphone, label: label);
   }
 }

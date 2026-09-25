@@ -896,7 +896,7 @@ void main() {
     });
 
     test(
-      'a routine-named effort renders as the kind its capabilities imply',
+      'a routine-named effort renders the kind the routine declared',
       () async {
         watch = await harness.launch();
         await syncFirstMessage();
@@ -923,26 +923,25 @@ void main() {
         )) {
           expect(
             rendered[effort.exerciseId],
-            _phoneEffortKind(effort.capabilities),
-            reason: '${effort.exerciseName} renders as the phone resolves it',
+            effort.effortKind,
+            reason:
+                '${effort.exerciseName} renders as the routine declares it',
           );
         }
 
-        // A slot on the wire carries capabilities and no effort kind, so the
-        // wrist resolves one — and `Plank` is stored as `timed` on the phone
-        // while its `hold` capability wins in the shared precedence. The wrist
-        // shows a hold, which is what the exercise is. Recorded rather than
-        // papered over: this is the one effort where the two disagree.
+        // The divergence this closes (D-6): `Plank` carries `time` and `hold`,
+        // which the capability rule reads as a drill, while the routine the
+        // user built declares it `timed`. The routine wins — the wrist renders
+        // the surface the phone's own routine sets up, not one inferred from a
+        // capability list. Resolving plan 08's open item 2.
+        expect(rendered['ex-plank'], 'timed');
+        final plank = sent.routines
+            .expand((routine) => routine.efforts)
+            .firstWhere((effort) => effort.exerciseName == 'Plank');
         expect(
-          [
-            for (final effort in sent.routines.expand(
-              (routine) => routine.efforts,
-            ))
-              if (effort.effortKind != _phoneEffortKind(effort.capabilities))
-                '${effort.exerciseName}: ${effort.effortKind} → '
-                    '${_phoneEffortKind(effort.capabilities)}',
-          ],
-          ['Plank: timed → drill'],
+          _phoneEffortKind(plank.capabilities),
+          isNot('timed'),
+          reason: 'the capability rule alone would have rendered a hold',
         );
       },
     );
@@ -1017,6 +1016,54 @@ void main() {
   });
 
   group('start surfaces', () {
+    testWidgets('the screen says there is no automatic sync', (tester) async {
+      watch = await harness.launch();
+      final surface = _asObject(_contract()['startSurface']);
+
+      await tester.pumpWidget(
+        MaterialApp(home: WatchStartScreen(paths: watch.paths)),
+      );
+
+      // Said whether or not anything has synced: it is the whole reason the
+      // routine list looks the way it does, and the only thing telling the user
+      // that asking is what changes it (D-7, S-010). The sentence comes from the
+      // shared contract, so the watchOS client says the same thing.
+      expect(
+        WatchStartScreen.noAutoSyncLabel,
+        surface['noAutoSyncLabel'],
+      );
+      expect(find.text(WatchStartScreen.noAutoSyncLabel), findsOneWidget);
+    });
+
+    testWidgets('the sync action is offered only when the app can ask', (
+      tester,
+    ) async {
+      watch = await harness.launch();
+      final surface = _asObject(_contract()['startSurface']);
+      var requested = 0;
+
+      expect(WatchStartScreen.syncLabel, surface['syncLabel']);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: WatchStartScreen(
+            paths: watch.paths,
+            onRequestSync: () => requested++,
+          ),
+        ),
+      );
+      await tester.tap(find.text(WatchStartScreen.syncLabel));
+      expect(requested, 1);
+
+      // No transport, no button: the widget does not own the radio, and a
+      // button that cannot do anything is worse than none.
+      await tester.pumpWidget(
+        MaterialApp(home: WatchStartScreen(paths: watch.paths)),
+      );
+      expect(find.text(WatchStartScreen.syncLabel), findsNothing);
+      expect(find.text(WatchStartScreen.noAutoSyncLabel), findsOneWidget);
+    });
+
     testWidgets('the start screen lists synced routines and starts one', (
       tester,
     ) async {

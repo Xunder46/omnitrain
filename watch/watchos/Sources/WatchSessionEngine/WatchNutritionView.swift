@@ -118,9 +118,10 @@ public struct WatchNutritionView: View {
         .padding(.horizontal, Self.surfaceInset)
     }
 
+    @ViewBuilder
     private func foodButton(_ food: WatchFood) -> some View {
         let isSelected = food.foodId == model.state.selectedFoodId
-        return Button {
+        let button = Button {
             model.select(food.foodId)
         } label: {
             HStack {
@@ -130,7 +131,14 @@ public struct WatchNutritionView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(isSelected ? .borderedProminent : .bordered)
+        // `.borderedProminent` and `.bordered` are distinct concrete types, so a
+        // ternary between them has no common type to infer. The branches have to
+        // be separate views.
+        if isSelected {
+            button.buttonStyle(.borderedProminent)
+        } else {
+            button.buttonStyle(.bordered)
+        }
     }
 
     /// The portion row: the count, what it means in the food's own unit, the two
@@ -151,9 +159,9 @@ public struct WatchNutritionView: View {
                     get: { model.crownPosition },
                     set: { model.turn(to: $0) }
                 ),
-                from: -Self.pointsPerDetent * Self.crownRangeDetents,
-                through: Self.pointsPerDetent * Self.crownRangeDetents,
-                by: Self.pointsPerDetent,
+                from: -WatchNutritionModel.pointsPerDetent * Self.crownRangeDetents,
+                through: WatchNutritionModel.pointsPerDetent * Self.crownRangeDetents,
+                by: WatchNutritionModel.pointsPerDetent,
                 sensitivity: .medium,
                 isContinuous: true,
                 isHapticFeedbackEnabled: true

@@ -36,6 +36,10 @@ public enum WatchEffortKind {
     public static let round = "round"
     public static let drill = "drill"
 
+    /// Every kind a slot may declare, so a value that is not one of them is not
+    /// mistaken for the routine's intent.
+    public static let declared = [set, timed, round, drill]
+
     /// The `observations_up` event a surface of this kind emits.
     public static func eventKind(_ effortKind: String) -> String {
         effortKind == drill ? "hold" : effortKind
@@ -257,9 +261,19 @@ public final class WatchLoggingState {
     /// The newest timer of `kind`, which is the one that applies.
     public func timer(for kind: String) -> WatchTimerRecord? { engine.timerFor(kind) }
 
-    /// The effort kind the current exercise is, derived from its capabilities —
-    /// the same way the phone decides, so the two agree without being told.
+    /// The effort kind the current exercise is.
+    ///
+    /// A slot the routine produced says so itself: the routine's declared kind
+    /// is what the user set up on the phone, and re-deriving it from capabilities
+    /// would render a Plank in an isometric routine as something the routine
+    /// never asked for. Only a slot with no declared kind — a free workout, or one
+    /// the phone pushed — is resolved from its capabilities, the same way the
+    /// phone decides, so the two agree without being told.
     public var effortKind: String {
+        if let declared = slot?["effortKind"] as? String,
+           WatchEffortKind.declared.contains(declared) {
+            return declared
+        }
         for capability in Self.kindPrecedence where capabilities.contains(capability) {
             return Self.effortKindFromMetric(capability)
         }

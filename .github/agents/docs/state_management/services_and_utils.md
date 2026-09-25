@@ -4,7 +4,8 @@
 nor app state: `lib/core/services/`, `lib/core/utils/`, and the cross-cutting
 pieces those classes own. It also covers the watch↔phone live mirroring surface
 (`lib/state/watch/`, `lib/watch/start/watch_sync_orchestrator.dart`,
-`lib/core/sync_protocol/`) and the watch's own runtime layer (`lib/watch/`,
+`lib/core/sync_protocol/`), the platform transport that surface rides on
+(`lib/core/platform/`), and the watch's own runtime layer (`lib/watch/`,
 mirrored file for file by `watch/watchos/Sources/WatchSessionEngine/`), which are
 service-shaped rather than screen state.
 
@@ -377,16 +378,119 @@ A change to the ordering on either platform therefore fails the other's suite.
 
 **File**: `lib/core/utils/watch_reference_sync.dart`
 
-Builds the reference-data messages the phone sends down — currently
-`foods_down` — and nothing else. Building and carrying are separate jobs, so it
-hands back an envelope and owns no transport. The order it sends in is the
-phone's own Foods I Eat order rather than a rule the wrist has to be told, and
-the energy per serving comes from `calculateCalories` rather than being derived
-a second time. It sits beside `foods_i_eat_order.dart` because it is a pure
-function over the phone's models, with no state and no storage. Verified by
-`test/watch_nutrition_quick_log_test.dart` (S-003), and called from the phone QA
-harness (`lib/state/watch/live_session_mirror_debug_main.dart`) so a desktop run
-sends what the app would send.
+Builds the reference-data messages the phone sends down — `foods_down` and
+`routines_down` — and nothing else. Building and carrying are separate jobs, so
+it hands back an envelope and owns no transport; the foods' order is the phone's
+own Foods I Eat order rather than a rule the wrist has to be told, and the energy
+per serving comes from `calculateCalories` rather than being derived a second
+time. It sits beside `foods_i_eat_order.dart` because it is a pure function over
+the phone's models, with no state and no storage.
+
+`buildRoutinesDown` returns **null** rather than an empty message when the phone
+holds nothing the wrist could start. `routines_down` requires at least one
+routine and at least one fallback exercise, so a phone that sent an empty list
+would be sending a message the wrist must reject; a null is the honest answer to
+"nothing to sync". It also skips an exercise with no capabilities, because
+`sessionExercise` requires a non-empty `capabilities` array — a slot without one
+would fail validation before any renderer saw it.
+
+Two mappings in that builder are not mechanical, and both are the phone's
+decision rather than the wire's:
+
+- **Effort kind.** The app's `BlockTypes` vocabulary is larger than the wire's
+  (`interval` is timed work, `amrap` is rounds, a `note` carries no exercise and
+  never reaches here). The mapping is the phone's to make because the phone is
+  the one that knows what the user built.
+- **Targets.** A routine's targets are per metric *and per set*; the wire's
+  `targets` is per effort, so the first set travels and the phone's own screen is
+  where the rest stay. Durations are stored in seconds and travel in
+  milliseconds; metrics the wire has no key for (RPE, rest, band assist) are not
+  sent, because the schema carries no field for them.
+
+Verified by `test/watch_reference_sync_test.dart` (S-003, S-004, S-007) and
+`test/watch_nutrition_quick_log_test.dart` (S-003, for the foods half).
+
+### The watch transport
+
+**Files**: `lib/core/platform/watch_transport.dart`,
+`lib/core/platform/watch_connectivity_channel.dart`,
+`lib/core/platform/no_watch_transport.dart`,
+`lib/core/utils/platform_watch_transport_factory.dart`
+
+One object is both the watch's `WatchSyncTransport` and the phone's
+`WatchMirrorTransport`, because they are one radio: `WatchTransport` extends both
+and adds `onIncoming`, the single handler every arriving frame is handed to.
+
+**The package boundary is `WatchMessageChannel` and nothing else.**
+`watch_connectivity` is imported in exactly one file
+(`watch_connectivity_channel.dart`); `WatchConnectivityTransport` is written
+against the `WatchMessageChannel` interface, which is what lets a hand-rolled
+`MethodChannel` + `WCSession` layer, or a Wear OS data-layer one, replace it
+without touching a caller.
+
+**Nothing is queued in the app layer.** A send the radio refuses is reported
+through the transport's `onFailure` and dropped; what the peer still owes is
+re-sent from storage on the next sync (PROTOCOL.md, "Idempotency and
+reconciliation"). The transport is fire-and-forget by design — a queue here would
+be a second source of truth about what has been delivered.
+
+**A request is not a message.** PROTOCOL.md says so normatively, and
+`WatchTransportRequest` is where that lives: a frame with no `type` is a request
+(`routines` or `snapshot`), and a frame with one is a protocol message.
+`WatchConnectivityTransport` implements the request calls over that one
+vocabulary, so adding a request does not add a wire type.
+
+**Platform choice happens once**, in `createPlatformWatchTransport`: iOS gets
+`WatchConnectivityTransport`, and web, desktop, and Android get `null` — Android
+until the Wear OS client is built. It reads `defaultTargetPlatform` rather than
+`dart:io`'s `Platform`, because this file is compiled for web too, and a failure
+to construct answers null rather than refusing to start the app.
+
+Verified by `test/watch_transport_test.dart` (S-001, S-002, S-003, S-006, S-009)
+over an in-memory two-ended channel.
+
+### `WatchSyncRequestHandler`
+
+**File**: `lib/state/watch/watch_sync_request_handler.dart`
+
+Answers the frames that are requests rather than protocol messages: `routines`
+builds `routines_down` through `WatchReferenceSync` and sends it, `snapshot`
+re-asserts the phone's session. It is separate from `WatchIncomingRouter`
+because the two answer different kinds of frame, and merging them would make a
+transport detail a protocol one.
+
+**Nothing here answers a request the wrist has not made.** There is no phone-side
+schedule and no launch-time push. A phone holding no routines, or no session,
+answers nothing at all: the wrist keeps the copy it has, and an empty answer
+would be a state it never asked for.
+
+Verified by `test/watch_transport_test.dart` (S-003): a seeded routine is built
+and sent on request, a phone with nothing to send stays quiet, the wrist can ask
+for the phone's session, and a phone with no ladder answers that with silence.
+
+### `createWatchSync` — the phone's watch graph
+
+**File**: `lib/state/watch/watch_sync_wiring.dart`
+
+The one place the phone's watch graph is built: transport, `LiveSessionMirrorState`,
+`WatchIncomingRouter` (mirror + nutrition bridge), and `WatchSyncRequestHandler`,
+with the transport's inbound handler dispatching between the last two. It returns
+null when the platform has no watch, which is what keeps the environment contract
+intact — `main.dart` passes `liveSession` to `MyApp` only when this answered.
+
+Two construction details are load-bearing:
+
+- The mirror starts from `watchSessionPlaceholder` — a **valid but unheld**
+  session id with status `abandoned` and no ladder. The id is not empty because
+  every envelope the phone builds carries it and the protocol requires a
+  non-empty `sessionId`; the status is `abandoned` so nothing offers a
+  session-less phone as live, and the missing ladder means the first real shape
+  arrives from the wrist (a session started there) rather than being asserted.
+
+Verified by `test/watch_transport_test.dart` (S-006) for the platform decision
+and the null answer, and by its S-001 cases for the placeholder: a phone whose
+id the wrist does not hold is a phone whose pushes the wrist ignores, which is
+why the id is valid rather than empty.
 
 ### `WatchIncomingRouter`
 

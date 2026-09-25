@@ -45,6 +45,10 @@ abstract final class WatchEffortKind {
   static const String round = 'round';
   static const String drill = 'drill';
 
+  /// Every kind a slot may declare, so a value that is not one of them is not
+  /// mistaken for the routine's intent.
+  static const List<String> declared = [set, timed, round, drill];
+
   /// The `observations_up` event a surface of this kind emits.
   static String eventKind(String effortKind) =>
       effortKind == drill ? 'hold' : effortKind;
@@ -267,9 +271,20 @@ class WatchLoggingState {
     return '$clock /${UnitFormatter.distanceLabelForUnit(units.distanceUnit)}';
   }
 
-  /// The effort kind the current exercise is, derived from its capabilities —
-  /// the same way the phone decides, so the two agree without being told.
+  /// The effort kind the current exercise is.
+  ///
+  /// A slot the routine produced says so itself: the routine's declared kind
+  /// is what the user set up on the phone, and re-deriving it from capabilities
+  /// would render a Plank in an isometric routine as something the routine
+  /// never asked for. Only a slot with no declared kind — a free workout, or one
+  /// the phone pushed — is resolved from its capabilities, the same way the
+  /// phone decides, so the two agree without being told.
   String get effortKind {
+    final declared = _slot?['effortKind'];
+    if (declared is String && WatchEffortKind.declared.contains(declared)) {
+      return declared;
+    }
+
     final capabilities = _capabilities;
     for (final capability in _kindPrecedence) {
       if (capabilities.contains(capability)) {

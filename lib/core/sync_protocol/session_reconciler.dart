@@ -12,6 +12,13 @@
 /// applying anything (see `SyncProtocolValidator.evaluateIncoming`); this class
 /// implements the apply rules of protocol v1 and assumes schema-conformant
 /// payloads.
+///
+/// **Cross-stack conformance verified by
+/// `test/watch_reconciliation_cross_stack_test.dart`.** Do not change these
+/// rules without running that test: it replays every reconciliation fixture
+/// through this reconciler and through the wrist's engine
+/// (`lib/watch/session/watch_session_engine.dart`) and fails if the two converge
+/// on different structure.
 library;
 
 /// The converged session: structure from the phone, entries from everyone.

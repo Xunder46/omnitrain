@@ -19,7 +19,18 @@ import PackageDescription
 
 let package = Package(
     name: "WatchSessionEngine",
-    platforms: [.macOS(.v13)],
+    // watchOS is declared so the watch app target can link this library; the
+    // macOS platform is what keeps `swift test` runnable without a watch target
+    // (see `.github/agents/plans/2026-09-21-13-watch-integration-shipping.md`,
+    // Phase 7 step 0).
+    platforms: [.macOS(.v13), .watchOS(.v9)],
+    // The library the Xcode watch target links. Without a declared product the
+    // package has nothing consumable from outside it — `swift test` still passes,
+    // because the test target reaches the source target directly, but Xcode
+    // refuses to add the package at all.
+    products: [
+        .library(name: "WatchSessionEngine", targets: ["WatchSessionEngine"]),
+    ],
     targets: [
         .target(name: "WatchSessionEngine"),
         .testTarget(
